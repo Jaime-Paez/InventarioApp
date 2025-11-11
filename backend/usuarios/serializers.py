@@ -1,20 +1,46 @@
 from rest_framework import serializers
 
-from usuarios.models import Usuario
+from .models import Usuario, UsuarioSucursal
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
-    sucursal_nombre = serializers.CharField(source="sucursal.nombre", read_only=True)
+    """Serializa usuarios internos."""
 
     class Meta:
         model = Usuario
+        fields = ["id", "nombres", "apellidos", "correo", "telefono", "cargo", "activo"]
+
+
+class UsuarioSucursalSerializer(serializers.ModelSerializer):
+    """Serializa la asignación de usuarios a sucursales."""
+
+    usuario_id = serializers.PrimaryKeyRelatedField(
+        source="usuario",
+        queryset=Usuario.objects.all(),
+        write_only=True,
+    )
+    sucursal_id = serializers.PrimaryKeyRelatedField(
+        source="sucursal",
+        queryset=None,
+        write_only=True,
+    )
+    usuario = UsuarioSerializer(read_only=True)
+    sucursal = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = UsuarioSucursal
         fields = [
             "id",
-            "nombre",
-            "email",
-            "telefono",
-            "rol",
+            "usuario",
+            "usuario_id",
             "sucursal",
-            "sucursal_nombre",
-            "activo",
+            "sucursal_id",
+            "rol",
+            "es_responsable",
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from ubicaciones.models import Sucursal
+
+        self.fields["sucursal_id"].queryset = Sucursal.objects.all()

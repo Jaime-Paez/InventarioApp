@@ -1,25 +1,33 @@
 from rest_framework import filters, viewsets
 
-from usuarios.models import Usuario
-from usuarios.serializers import UsuarioSerializer
+from .models import Usuario, UsuarioSucursal
+from .serializers import UsuarioSerializer, UsuarioSucursalSerializer
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):
-    queryset = Usuario.objects.select_related("sucursal").all().order_by("nombre")
+    """Gestión de usuarios internos."""
+
+    queryset = Usuario.objects.all().order_by("apellidos", "nombres")
     serializer_class = UsuarioSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombre", "email", "rol", "sucursal__nombre"]
-    ordering_fields = ["nombre", "rol"]
+    search_fields = ["nombres", "apellidos", "correo", "cargo"]
+    ordering_fields = ["apellidos", "nombres", "correo"]
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        rol = self.request.query_params.get("rol")
-        if rol:
-            queryset = queryset.filter(rol=rol)
-        sucursal = self.request.query_params.get("sucursal")
-        if sucursal:
-            queryset = queryset.filter(sucursal_id=sucursal)
-        activo = self.request.query_params.get("activo")
-        if activo in {"true", "false", "1", "0"}:
-            queryset = queryset.filter(activo=activo.lower() in {"true", "1"})
-        return queryset
+
+class UsuarioSucursalViewSet(viewsets.ModelViewSet):
+    """Gestión de asignaciones de usuarios a sucursales."""
+
+    queryset = (
+        UsuarioSucursal.objects.select_related("usuario", "sucursal")
+        .all()
+        .order_by("sucursal__nombre", "usuario__apellidos")
+    )
+    serializer_class = UsuarioSucursalSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        "usuario__nombres",
+        "usuario__apellidos",
+        "sucursal__nombre",
+        "rol",
+    ]
+    ordering_fields = ["sucursal__nombre", "usuario__apellidos"]
