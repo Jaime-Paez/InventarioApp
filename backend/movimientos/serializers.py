@@ -1,5 +1,9 @@
 from rest_framework import serializers
 
+from inventarios.models import EstadoProducto, Inventario
+from productos.models import Producto
+from ubicaciones.models import SubDivision
+
 from .models import (
     DetalleMovimiento,
     EstadoMovimiento,
@@ -43,17 +47,17 @@ class DetalleMovimientoSerializer(serializers.ModelSerializer):
     )
     inventario_id = serializers.PrimaryKeyRelatedField(
         source="inventario",
-        queryset=None,
+        queryset=Inventario.objects.all(),
         write_only=True,
     )
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
-        queryset=None,
+        queryset=Producto.objects.all(),
         write_only=True,
     )
     estado_producto_id = serializers.PrimaryKeyRelatedField(
         source="estado_producto",
-        queryset=None,
+        queryset=EstadoProducto.objects.all(),
         write_only=True,
     )
     movimiento = serializers.StringRelatedField(read_only=True)
@@ -79,8 +83,6 @@ class DetalleMovimientoSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from inventarios.models import EstadoProducto, Inventario
-        from productos.models import Producto
 
         self.fields["inventario_id"].queryset = Inventario.objects.all()
         self.fields["producto_id"].queryset = Producto.objects.all()
@@ -92,7 +94,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
     subdivision_id = serializers.PrimaryKeyRelatedField(
         source="subdivision",
-        queryset=None,
+        queryset=SubDivision.objects.all(),
         write_only=True,
     )
     tipo_movimiento_id = serializers.PrimaryKeyRelatedField(
@@ -140,6 +142,5 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from ubicaciones.models import SubDivision
 
         self.fields["subdivision_id"].queryset = SubDivision.objects.all()
