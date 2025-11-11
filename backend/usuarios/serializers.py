@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from ubicaciones.models import Sucursal
+
 from .models import Usuario, UsuarioSucursal
 
 
@@ -21,7 +23,7 @@ class UsuarioSucursalSerializer(serializers.ModelSerializer):
     )
     sucursal_id = serializers.PrimaryKeyRelatedField(
         source="sucursal",
-        queryset=None,
+        queryset=Sucursal.objects.all(),
         write_only=True,
     )
     usuario = UsuarioSerializer(read_only=True)
@@ -41,6 +43,4 @@ class UsuarioSucursalSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from ubicaciones.models import Sucursal
-
         self.fields["sucursal_id"].queryset = Sucursal.objects.all()

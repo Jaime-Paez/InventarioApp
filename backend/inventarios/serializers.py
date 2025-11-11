@@ -1,5 +1,8 @@
 from rest_framework import serializers
 
+from productos.models import Producto
+from ubicaciones.models import SubDivision
+
 from .models import EstadoProducto, Inventario
 
 
@@ -16,12 +19,12 @@ class InventarioSerializer(serializers.ModelSerializer):
 
     subdivision_id = serializers.PrimaryKeyRelatedField(
         source="subdivision",
-        queryset=None,
+        queryset=SubDivision.objects.all(),
         write_only=True,
     )
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
-        queryset=None,
+        queryset=Producto.objects.all(),
         write_only=True,
     )
     estado_producto_id = serializers.PrimaryKeyRelatedField(
@@ -53,9 +56,5 @@ class InventarioSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Importaciones diferidas para evitar ciclos con otras apps
-        from ubicaciones.models import SubDivision
-        from productos.models import Producto
-
         self.fields["subdivision_id"].queryset = SubDivision.objects.all()
         self.fields["producto_id"].queryset = Producto.objects.all()
