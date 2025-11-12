@@ -19,29 +19,6 @@ class Pais(models.Model):
         return self.nombre
 
 
-class CasaProducto(models.Model):
-    """Fabricante o marca del producto."""
-
-    nombre = models.CharField(max_length=150)
-    codigo = models.CharField(max_length=50, unique=True)
-    descripcion = models.TextField(blank=True)
-    pais = models.ForeignKey(
-        Pais,
-        on_delete=models.SET_NULL,
-        related_name="casas_producto",
-        null=True,
-        blank=True,
-    )
-
-    class Meta:
-        ordering = ["nombre"]
-        verbose_name = "Casa de producto"
-        verbose_name_plural = "Casas de producto"
-
-    def __str__(self) -> str:
-        return f"{self.nombre} ({self.codigo})"
-
-
 class CasaCompra(models.Model):
     """Proveedor o casa comercial donde se adquiere el producto."""
 
@@ -77,11 +54,6 @@ class Producto(models.Model):
     nombre = models.CharField(max_length=200)
     descripcion = models.TextField(blank=True)
     pieza_original = models.BooleanField(default=False)
-    casa_producto = models.ForeignKey(
-        CasaProducto,
-        on_delete=models.PROTECT,
-        related_name="productos",
-    )
     casa_compra = models.ForeignKey(
         CasaCompra,
         on_delete=models.SET_NULL,
@@ -89,7 +61,6 @@ class Producto(models.Model):
         null=True,
         blank=True,
     )
-    referencia_fabricante = models.CharField(max_length=120, blank=True)
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 
@@ -102,30 +73,6 @@ class Producto(models.Model):
         return f"{self.nombre} ({self.codigo})"
 
 
-class ProductoReferencia(models.Model):
-    """Códigos alternativos del mismo producto (OCP_PRO en el diagrama).
-
-    Ejemplo: ProductoReferencia(producto=Producto(...), codigo="OC-1234", descripcion="Código interno").
-    """
-
-    producto = models.ForeignKey(
-        Producto,
-        on_delete=models.CASCADE,
-        related_name="referencias",
-    )
-    codigo = models.CharField(max_length=80)
-    descripcion = models.TextField(blank=True)
-
-    class Meta:
-        ordering = ["codigo"]
-        verbose_name = "Referencia de producto"
-        verbose_name_plural = "Referencias de producto"
-        unique_together = ("producto", "codigo")
-
-    def __str__(self) -> str:
-        return f"{self.codigo} - {self.producto.codigo}"
-
-
 class ProductoOEM(models.Model):
     """Códigos OEM proporcionados por el fabricante."""
 
@@ -135,7 +82,6 @@ class ProductoOEM(models.Model):
         related_name="codigos_oem",
     )
     codigo = models.CharField(max_length=80)
-    descripcion = models.TextField(blank=True)
 
     class Meta:
         ordering = ["codigo"]
