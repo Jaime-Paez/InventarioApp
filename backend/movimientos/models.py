@@ -73,12 +73,6 @@ class MovimientoInventario(models.Model):
 
     Ejemplo: MovimientoInventario(tipo_movimiento=Ingreso, subdivision=SubDivision(...), fecha_documento=2024-01-01).
     """
-
-    subdivision = models.ForeignKey(
-        "ubicaciones.SubDivision",
-        on_delete=models.PROTECT,
-        related_name="movimientos",
-    )
     tipo_movimiento = models.ForeignKey(
         TipoMovimiento,
         on_delete=models.PROTECT,
@@ -127,11 +121,6 @@ class DetalleMovimiento(models.Model):
         on_delete=models.CASCADE,
         related_name="detalles",
     )
-    inventario = models.ForeignKey(
-        "inventarios.Inventario",
-        on_delete=models.PROTECT,
-        related_name="movimientos",
-    )
     producto = models.ForeignKey(
         "productos.Producto",
         on_delete=models.PROTECT,
@@ -143,7 +132,6 @@ class DetalleMovimiento(models.Model):
         related_name="movimientos",
     )
     cantidad = models.PositiveIntegerField()
-    notas = models.TextField(blank=True)
 
     class Meta:
         verbose_name = "Detalle de movimiento"
@@ -167,12 +155,6 @@ class PagoMovimiento(models.Model):
         on_delete=models.PROTECT,
         related_name="pagos",
     )
-    fecha_pago = models.DateField(default=timezone.now)
-    monto = models.DecimalField(max_digits=12, decimal_places=2)
-    referencia = models.CharField(max_length=120, blank=True)
-    notas = models.TextField(blank=True)
-    creado_en = models.DateTimeField(auto_now_add=True)
-    actualizado_en = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-fecha_pago", "movimiento__numero_documento"]
