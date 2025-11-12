@@ -1,6 +1,27 @@
 from django.contrib import admin
 
-from .models import Usuario, UsuarioSucursal
+from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
+
+
+class RolPermisoInline(admin.TabularInline):
+    model = RolPermiso
+    extra = 0
+    fields = (
+        "modulo",
+        "submodulo",
+        "puede_crear",
+        "puede_leer",
+        "puede_actualizar",
+        "puede_eliminar",
+    )
+
+
+@admin.register(Rol)
+class RolAdmin(admin.ModelAdmin):
+    list_display = ("nombre", "activo")
+    list_filter = ("activo",)
+    search_fields = ("nombre",)
+    inlines = [RolPermisoInline]
 
 
 @admin.register(Usuario)
