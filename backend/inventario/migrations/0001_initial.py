@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("productos", "0006_remove_producto_referencia_fabricante_and_more"),
+        ("productos", "0006_remove_producto_casa_comercial_and_more"),
         ("tipos", "0003_tipodivision"),
     ]
 
