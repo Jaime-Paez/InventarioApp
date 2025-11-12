@@ -11,6 +11,9 @@ class RolPermisoSerializer(serializers.ModelSerializer):
     modulo_display = serializers.CharField(
         source="get_modulo_display", read_only=True
     )
+    submodulo_display = serializers.CharField(
+        source="get_submodulo_display", read_only=True
+    )
 
     class Meta:
         model = RolPermiso
@@ -18,6 +21,8 @@ class RolPermisoSerializer(serializers.ModelSerializer):
             "id",
             "modulo",
             "modulo_display",
+            "submodulo",
+            "submodulo_display",
             "puede_crear",
             "puede_leer",
             "puede_actualizar",
@@ -57,8 +62,28 @@ class RolSerializer(serializers.ModelSerializer):
         for permiso in permisos_data:
             permiso_data = permiso.copy()
             permiso_data.pop("id", None)
-            permisos_instances.append(RolPermiso(rol=rol, **permiso_data))
+            submodulo = permiso_data.get("submodulo") or ""
+            permiso_instance = RolPermiso(
+                rol=rol,
+                submodulo=submodulo,
+                **{k: v for k, v in permiso_data.items() if k != "submodulo"},
+            )
+            permiso_instance.full_clean()
+            permisos_instances.append(permiso_instance)
         RolPermiso.objects.bulk_create(permisos_instances)
+
+    def validate_permisos(self, value):
+        combos = set()
+        for permiso in value:
+            modulo = permiso.get("modulo")
+            submodulo = permiso.get("submodulo") or ""
+            key = (modulo, submodulo)
+            if key in combos:
+                raise serializers.ValidationError(
+                    "No se pueden repetir permisos con el mismo módulo y submódulo."
+                )
+            combos.add(key)
+        return value
 
 
 class UsuarioSerializer(serializers.ModelSerializer):

@@ -6,6 +6,14 @@ from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
 class RolPermisoInline(admin.TabularInline):
     model = RolPermiso
     extra = 0
+    fields = (
+        "modulo",
+        "submodulo",
+        "puede_crear",
+        "puede_leer",
+        "puede_actualizar",
+        "puede_eliminar",
+    )
 
 
 @admin.register(Rol)
