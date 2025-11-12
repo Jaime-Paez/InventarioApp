@@ -33,6 +33,15 @@ class InventarioSerializer(serializers.ModelSerializer):
         write_only=True,
     )
     subdivision = serializers.StringRelatedField(read_only=True)
+    division = serializers.CharField(
+        source="subdivision.division.nombre", read_only=True
+    )
+    bodega = serializers.CharField(
+        source="subdivision.division.bodega.nombre", read_only=True
+    )
+    sucursal = serializers.CharField(
+        source="subdivision.division.bodega.sucursal.nombre", read_only=True
+    )
     producto = serializers.StringRelatedField(read_only=True)
     estado_producto = EstadoProductoSerializer(read_only=True)
     disponible = serializers.IntegerField(read_only=True)
@@ -43,6 +52,9 @@ class InventarioSerializer(serializers.ModelSerializer):
             "id",
             "subdivision",
             "subdivision_id",
+            "division",
+            "bodega",
+            "sucursal",
             "producto",
             "producto_id",
             "estado_producto",

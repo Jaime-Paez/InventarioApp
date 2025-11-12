@@ -7,6 +7,8 @@ from movimientos.viewsets import (
     DetalleMovimientoViewSet,
     EstadoMovimientoViewSet,
     MovimientoInventarioViewSet,
+    PagoMovimientoViewSet,
+    SubTipoMovimientoViewSet,
     TipoMovimientoViewSet,
     TipoPagoViewSet,
 )
@@ -30,15 +32,24 @@ from usuarios.viewsets import UsuarioSucursalViewSet, UsuarioViewSet
 
 router = CustomRouter()
 
-# Ubicaciones
-router.register(r"ubicaciones/sucursales", SucursalViewSet, basename="ubicaciones-sucursales")
-router.register(r"ubicaciones/bodegas", BodegaViewSet, basename="ubicaciones-bodegas")
-router.register(r"ubicaciones/tipos-division", TipoDivisionViewSet, basename="ubicaciones-tipos-division")
-router.register(r"ubicaciones/divisiones", DivisionViewSet, basename="ubicaciones-divisiones")
-router.register(r"ubicaciones/subdivisiones", SubDivisionViewSet, basename="ubicaciones-subdivisiones")
+# Ubicaciones agrupadas en inventario
+router.register(r"inventario/sucursales", SucursalViewSet, basename="inventario-sucursales")
+router.register(r"inventario/bodegas", BodegaViewSet, basename="inventario-bodegas")
+router.register(r"inventario/divisiones", DivisionViewSet, basename="inventario-divisiones")
+router.register(r"inventario/subdivisiones", SubDivisionViewSet, basename="inventario-subdivisiones")
 
 # Tipos
 router.register(r"tipos/paises", PaisViewSet, basename="tipos-paises")
+router.register(r"tipos/tipos-division", TipoDivisionViewSet, basename="tipos-tipos-division")
+router.register(r"tipos/estados-producto", EstadoProductoViewSet, basename="tipos-estados-producto")
+router.register(r"tipos/tipos-pago", TipoPagoViewSet, basename="tipos-tipos-pago")
+router.register(r"tipos/estados-movimiento", EstadoMovimientoViewSet, basename="tipos-estados-movimiento")
+router.register(r"tipos/tipos-movimiento", TipoMovimientoViewSet, basename="tipos-tipos-movimiento")
+router.register(
+    r"tipos/subtipos-movimiento",
+    SubTipoMovimientoViewSet,
+    basename="tipos-subtipos-movimiento",
+)
 
 # Casas comerciales
 router.register(r"casa-comercial/casas", CasaComercialViewSet, basename="casa-comercial-casas")
@@ -52,15 +63,24 @@ router.register(r"productos/oem-producto", OEMProductoViewSet, basename="product
 router.register(r"productos/alternos", ProductoAlternoViewSet, basename="productos-alternos")
 
 # Inventarios
-router.register(r"inventarios/estados-producto", EstadoProductoViewSet, basename="inventarios-estados-producto")
-router.register(r"inventarios/lotes", InventarioViewSet, basename="inventarios-lotes")
+router.register(r"inventario/inventario", InventarioViewSet, basename="inventario-inventario")
 
 # Movimientos
-router.register(r"movimientos/tipos-pago", TipoPagoViewSet, basename="movimientos-tipos-pago")
-router.register(r"movimientos/tipos", TipoMovimientoViewSet, basename="movimientos-tipos")
-router.register(r"movimientos/estados", EstadoMovimientoViewSet, basename="movimientos-estados")
-router.register(r"movimientos/encabezados", MovimientoInventarioViewSet, basename="movimientos-encabezados")
-router.register(r"movimientos/detalles", DetalleMovimientoViewSet, basename="movimientos-detalles")
+router.register(
+    r"movimientos/movimiento_inventario",
+    MovimientoInventarioViewSet,
+    basename="movimientos-movimiento-inventario",
+)
+router.register(
+    r"movimientos/detalle_inventario",
+    DetalleMovimientoViewSet,
+    basename="movimientos-detalle-inventario",
+)
+router.register(
+    r"movimientos/pago_movimiento",
+    PagoMovimientoViewSet,
+    basename="movimientos-pago-movimiento",
+)
 
 # Usuarios
 router.register(r"usuarios/listado", UsuarioViewSet, basename="usuarios-listado")
