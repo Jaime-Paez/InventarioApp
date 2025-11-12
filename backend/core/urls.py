@@ -2,8 +2,14 @@ from django.contrib import admin
 from django.urls import include, path
 
 from app.routers import CustomRouter
-from inventarios.viewsets import InventarioViewSet
 from movimientos.viewsets import MovimientoInventarioViewSet
+from inventario.viewsets import (
+    BodegaViewSet,
+    DivisionViewSet,
+    InventarioViewSet,
+    SucursalViewSet,
+    SubDivisionViewSet,
+)
 from casa_comercial.viewsets import CasaComercialViewSet
 from marcas.viewsets import MarcaViewSet
 from productos.viewsets import (
@@ -17,15 +23,9 @@ from tipos.viewsets import (
     EstadoProductoViewSet,
     PaisViewSet,
     SubTipoMovimientoViewSet,
+    TipoDivisionViewSet,
     TipoMovimientoViewSet,
     TipoPagoViewSet,
-)
-from ubicaciones.viewsets import (
-    BodegaViewSet,
-    DivisionViewSet,
-    SucursalViewSet,
-    SubDivisionViewSet,
-    TipoDivisionViewSet,
 )
 from usuarios.viewsets import UsuarioSucursalViewSet, UsuarioViewSet
 

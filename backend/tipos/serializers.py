@@ -5,6 +5,7 @@ from .models import (
     EstadoProducto,
     Pais,
     SubTipoMovimiento,
+    TipoDivision,
     TipoMovimiento,
     TipoPago,
 )
@@ -44,16 +45,22 @@ class SubTipoMovimientoSerializer(serializers.ModelSerializer):
 class EstadoMovimientoSerializer(serializers.ModelSerializer):
     class Meta:
         model = EstadoMovimiento
-        fields = ["id", "nombre", "descripcion"]
+        fields = ["id", "nombre"]
 
 
 class EstadoProductoSerializer(serializers.ModelSerializer):
     class Meta:
         model = EstadoProducto
-        fields = ["id", "nombre", "descripcion"]
+        fields = ["id", "nombre"]
 
 
 class TipoPagoSerializer(serializers.ModelSerializer):
     class Meta:
         model = TipoPago
         fields = ["id", "nombre"]
+
+
+class TipoDivisionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoDivision
+        fields = ["id", "nombre", "descripcion"]

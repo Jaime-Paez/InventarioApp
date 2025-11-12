@@ -9,7 +9,7 @@ from tipos.models import (
     TipoMovimiento,
     TipoPago,
 )
-from ubicaciones.models import Sucursal
+from inventario.models import Sucursal
 
 from .models import DetalleMovimiento, MovimientoInventario, PagoMovimiento
 

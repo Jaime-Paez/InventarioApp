@@ -5,6 +5,7 @@ from .models import (
     EstadoProducto,
     Pais,
     SubTipoMovimiento,
+    TipoDivision,
     TipoMovimiento,
     TipoPago,
 )
@@ -13,6 +14,7 @@ from .serializers import (
     EstadoProductoSerializer,
     PaisSerializer,
     SubTipoMovimientoSerializer,
+    TipoDivisionSerializer,
     TipoMovimientoSerializer,
     TipoPagoSerializer,
 )
@@ -65,6 +67,14 @@ class EstadoProductoViewSet(viewsets.ModelViewSet):
 class TipoPagoViewSet(viewsets.ModelViewSet):
     queryset = TipoPago.objects.all().order_by("nombre")
     serializer_class = TipoPagoSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["nombre"]
+    ordering_fields = ["nombre"]
+
+
+class TipoDivisionViewSet(viewsets.ModelViewSet):
+    queryset = TipoDivision.objects.all().order_by("nombre")
+    serializer_class = TipoDivisionSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre"]
     ordering_fields = ["nombre"]
