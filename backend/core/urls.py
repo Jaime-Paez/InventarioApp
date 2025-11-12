@@ -27,7 +27,7 @@ from tipos.viewsets import (
     TipoMovimientoViewSet,
     TipoPagoViewSet,
 )
-from usuarios.viewsets import UsuarioSucursalViewSet, UsuarioViewSet
+from usuarios.viewsets import RolViewSet, UsuarioSucursalViewSet, UsuarioViewSet
 from solicitudes.viewsets import (
     ClienteViewSet,
     OEMProductoSolicitadoViewSet,
@@ -80,6 +80,7 @@ router.register(
 # Usuarios
 router.register(r"usuarios/listado", UsuarioViewSet, basename="usuarios-listado")
 router.register(r"usuarios/asignaciones", UsuarioSucursalViewSet, basename="usuarios-asignaciones")
+router.register(r"usuarios/roles", RolViewSet, basename="usuarios-roles")
 
 # Solicitudes
 router.register(r"solicitudes/clientes", ClienteViewSet, basename="solicitudes-clientes")
