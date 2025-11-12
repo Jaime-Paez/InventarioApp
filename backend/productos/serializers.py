@@ -1,100 +1,39 @@
 from rest_framework import serializers
 
-from .models import (
-    CasaCompra,
-    CasaProducto,
-    Pais,
-    Producto,
-    ProductoAlterno,
-    ProductoOEM,
-    ProductoReferencia,
-)
+from casa_comercial.models import CasaComercial
+from casa_comercial.serializers import CasaComercialSerializer
+from marcas.models import Marca
+from marcas.serializers import MarcaSerializer
+
+from .models import OEM, OEMProducto, Producto, ProductoAlterno
 
 
-class PaisSerializer(serializers.ModelSerializer):
-    """Serializa los países del catálogo."""
-
+class OEMSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Pais
-        fields = ["id", "codigo_tais", "nombre"]
+        model = OEM
+        fields = ["id", "codigo", "descripcion"]
 
 
-class CasaProductoSerializer(serializers.ModelSerializer):
-    """Serializa las casas de producto (fabricantes)."""
-
-    pais = PaisSerializer(read_only=True)
-    pais_id = serializers.PrimaryKeyRelatedField(
-        source="pais",
-        queryset=Pais.objects.all(),
-        allow_null=True,
-        required=False,
-        write_only=True,
-    )
-
-    class Meta:
-        model = CasaProducto
-        fields = ["id", "codigo", "nombre", "descripcion", "pais", "pais_id"]
-
-
-class CasaCompraSerializer(serializers.ModelSerializer):
-    """Serializa las casas comerciales donde se compran los productos."""
-
-    pais = PaisSerializer(read_only=True)
-    pais_id = serializers.PrimaryKeyRelatedField(
-        source="pais",
-        queryset=Pais.objects.all(),
-        allow_null=True,
-        required=False,
-        write_only=True,
-    )
-
-    class Meta:
-        model = CasaCompra
-        fields = [
-            "id",
-            "codigo",
-            "nombre",
-            "descripcion",
-            "telefono",
-            "correo",
-            "pais",
-            "pais_id",
-        ]
-
-
-class ProductoReferenciaSerializer(serializers.ModelSerializer):
-    """Serializa códigos alternos del producto."""
-
+class OEMProductoSerializer(serializers.ModelSerializer):
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
         queryset=Producto.objects.all(),
         write_only=True,
     )
     producto = serializers.StringRelatedField(read_only=True)
-
-    class Meta:
-        model = ProductoReferencia
-        fields = ["id", "codigo", "descripcion", "producto", "producto_id"]
-
-
-class ProductoOEMSerializer(serializers.ModelSerializer):
-    """Serializa códigos OEM asociados al producto."""
-
-    producto_id = serializers.PrimaryKeyRelatedField(
-        source="producto",
-        queryset=Producto.objects.all(),
+    oem = OEMSerializer(read_only=True)
+    oem_id = serializers.PrimaryKeyRelatedField(
+        source="oem",
+        queryset=OEM.objects.all(),
         write_only=True,
     )
-    producto = serializers.StringRelatedField(read_only=True)
 
     class Meta:
-        model = ProductoOEM
-        fields = ["id", "codigo", "descripcion", "producto", "producto_id"]
+        model = OEMProducto
+        fields = ["id", "producto", "producto_id", "oem", "oem_id"]
 
 
 class ProductoAlternoSerializer(serializers.ModelSerializer):
-    """Serializa relaciones de compatibilidad entre productos."""
-
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
         queryset=Producto.objects.all(),
@@ -114,24 +53,21 @@ class ProductoAlternoSerializer(serializers.ModelSerializer):
 
 
 class ProductoSerializer(serializers.ModelSerializer):
-    """Serializa productos, incluyendo información de fabricante y proveedor."""
-
-    casa_producto = CasaProductoSerializer(read_only=True)
-    casa_producto_id = serializers.PrimaryKeyRelatedField(
-        source="casa_producto",
-        queryset=CasaProducto.objects.all(),
-        write_only=True,
-    )
-    casa_compra = CasaCompraSerializer(read_only=True)
-    casa_compra_id = serializers.PrimaryKeyRelatedField(
-        source="casa_compra",
-        queryset=CasaCompra.objects.all(),
+    casa_comercial = CasaComercialSerializer(read_only=True)
+    casa_comercial_id = serializers.PrimaryKeyRelatedField(
+        source="casa_comercial",
+        queryset=CasaComercial.objects.all(),
         allow_null=True,
         required=False,
         write_only=True,
     )
-    referencias = ProductoReferenciaSerializer(many=True, read_only=True)
-    codigos_oem = ProductoOEMSerializer(many=True, read_only=True)
+    marca = MarcaSerializer(read_only=True)
+    marca_id = serializers.PrimaryKeyRelatedField(
+        source="marca",
+        queryset=Marca.objects.all(),
+        write_only=True,
+    )
+    oem_productos = OEMProductoSerializer(many=True, read_only=True)
     alternativas = serializers.SerializerMethodField()
 
     class Meta:
@@ -143,12 +79,11 @@ class ProductoSerializer(serializers.ModelSerializer):
             "descripcion",
             "pieza_original",
             "referencia_fabricante",
-            "casa_producto",
-            "casa_producto_id",
-            "casa_compra",
-            "casa_compra_id",
-            "referencias",
-            "codigos_oem",
+            "casa_comercial",
+            "casa_comercial_id",
+            "marca",
+            "marca_id",
+            "oem_productos",
             "alternativas",
             "creado_en",
             "actualizado_en",
