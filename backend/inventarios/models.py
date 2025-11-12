@@ -2,7 +2,7 @@ from django.db import models
 
 
 class EstadoProducto(models.Model):
-    """Estado físico del producto (Nuevo, Usado, Reparado, etc.)."""
+    """Estado físico del producto (Enviado, Recibido, No llego, etc.)."""
 
     nombre = models.CharField(max_length=80, unique=True)
     descripcion = models.TextField(blank=True)
