@@ -6,74 +6,55 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("ubicaciones", "0001_initial"),
-        ("inventarios", "0001_initial"),
+        ("tipos", "0002_estadoproducto_tipopago"),
         ("productos", "0001_initial"),
+        ("ubicaciones", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name="EstadoMovimiento",
-            fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("nombre", models.CharField(max_length=80, unique=True)),
-                ("descripcion", models.TextField(blank=True)),
-            ],
-            options={
-                "ordering": ["nombre"],
-                "verbose_name": "Estado de movimiento",
-                "verbose_name_plural": "Estados de movimiento",
-            },
-        ),
-        migrations.CreateModel(
-            name="TipoMovimiento",
-            fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("nombre", models.CharField(max_length=80, unique=True)),
-                ("descripcion", models.TextField(blank=True)),
-            ],
-            options={
-                "ordering": ["nombre"],
-                "verbose_name": "Tipo de movimiento",
-                "verbose_name_plural": "Tipos de movimiento",
-            },
-        ),
-        migrations.CreateModel(
-            name="TipoPago",
-            fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("nombre", models.CharField(max_length=80, unique=True)),
-                ("descripcion", models.TextField(blank=True)),
-            ],
-            options={
-                "ordering": ["nombre"],
-                "verbose_name": "Tipo de pago",
-                "verbose_name_plural": "Tipos de pago",
-            },
-        ),
-        migrations.CreateModel(
             name="MovimientoInventario",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("fecha_documento", models.DateField()),
-                ("numero_documento", models.CharField(max_length=80)),
-                ("observaciones", models.TextField(blank=True)),
-                ("creado_en", models.DateTimeField(auto_now_add=True)),
-                ("actualizado_en", models.DateTimeField(auto_now=True)),
+                ("descripcion", models.TextField(blank=True)),
+                ("funcional", models.BooleanField(default=True)),
+                ("descuento", models.DecimalField(decimal_places=2, default=0, max_digits=10)),
+                ("fecha", models.DateField()),
+                ("no_documento", models.CharField(max_length=80)),
                 (
-                    "estado",
+                    "estado_movimiento",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="movimientos",
-                        to="movimientos.estadomovimiento",
+                        to="tipos.estadomovimiento",
                     ),
                 ),
                 (
-                    "subdivision",
+                    "sucursal",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
+                        related_name="movimientos_origen",
+                        to="ubicaciones.sucursal",
+                    ),
+                ),
+                (
+                    "sucursal_objetivo",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="movimientos_destino",
+                        to="ubicaciones.sucursal",
+                    ),
+                ),
+                (
+                    "sub_tipo_movimiento",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
                         related_name="movimientos",
-                        to="ubicaciones.subdivision",
+                        to="tipos.subtipomovimiento",
                     ),
                 ),
                 (
@@ -81,25 +62,15 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="movimientos",
-                        to="movimientos.tipomovimiento",
-                    ),
-                ),
-                (
-                    "tipo_pago",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.SET_NULL,
-                        related_name="movimientos",
-                        to="movimientos.tipopago",
+                        to="tipos.tipomovimiento",
                     ),
                 ),
             ],
             options={
-                "ordering": ["-fecha_documento", "numero_documento"],
+                "ordering": ["-fecha", "no_documento"],
+                "unique_together": {("tipo_movimiento", "no_documento")},
                 "verbose_name": "Movimiento de inventario",
                 "verbose_name_plural": "Movimientos de inventario",
-                "unique_together": {("tipo_movimiento", "numero_documento")},
             },
         ),
         migrations.CreateModel(
@@ -107,25 +78,18 @@ class Migration(migrations.Migration):
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("cantidad", models.PositiveIntegerField()),
-                ("notas", models.TextField(blank=True)),
+                ("valor", models.DecimalField(decimal_places=2, max_digits=10)),
+                ("valor_total", models.DecimalField(decimal_places=2, max_digits=12)),
                 (
                     "estado_producto",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
-                        related_name="movimientos",
-                        to="inventarios.estadoproducto",
+                        related_name="detalles_movimiento",
+                        to="tipos.estadoproducto",
                     ),
                 ),
                 (
-                    "inventario",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="movimientos",
-                        to="inventarios.inventario",
-                    ),
-                ),
-                (
-                    "movimiento",
+                    "movimiento_inventario",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="detalles",
@@ -136,15 +100,51 @@ class Migration(migrations.Migration):
                     "producto",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
-                        related_name="movimientos",
+                        related_name="detalles_movimiento",
                         to="productos.producto",
                     ),
                 ),
             ],
             options={
-                "ordering": ["movimiento__fecha_documento", "producto__nombre"],
                 "verbose_name": "Detalle de movimiento",
                 "verbose_name_plural": "Detalles de movimiento",
             },
+        ),
+        migrations.CreateModel(
+            name="PagoMovimiento",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "movimiento_inventario",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="pagos",
+                        to="movimientos.movimientoinventario",
+                    ),
+                ),
+                (
+                    "tipo_pago",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="pagos_movimiento",
+                        to="tipos.tipopago",
+                    ),
+                ),
+            ],
+            options={
+                "verbose_name": "Pago de movimiento",
+                "verbose_name_plural": "Pagos de movimiento",
+                "unique_together": {("movimiento_inventario", "tipo_pago")},
+            },
+        ),
+        migrations.AddField(
+            model_name="movimientoinventario",
+            name="tipos_pago",
+            field=models.ManyToManyField(
+                blank=True,
+                related_name="movimientos",
+                through="movimientos.PagoMovimiento",
+                to="tipos.tipopago",
+            ),
         ),
     ]

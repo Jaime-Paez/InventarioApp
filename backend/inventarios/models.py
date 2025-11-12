@@ -1,21 +1,6 @@
 from django.db import models
 
 
-class EstadoProducto(models.Model):
-    """Estado físico del producto (Enviado, Recibido, No llego, etc.)."""
-
-    nombre = models.CharField(max_length=80, unique=True)
-    descripcion = models.TextField(blank=True)
-
-    class Meta:
-        ordering = ["nombre"]
-        verbose_name = "Estado de producto"
-        verbose_name_plural = "Estados de producto"
-
-    def __str__(self) -> str:
-        return self.nombre
-
-
 class Inventario(models.Model):
     """Representa un lote de productos almacenados en una subdivisión específica.
 
@@ -33,7 +18,7 @@ class Inventario(models.Model):
         related_name="inventarios",
     )
     estado_producto = models.ForeignKey(
-        EstadoProducto,
+        "tipos.EstadoProducto",
         on_delete=models.PROTECT,
         related_name="inventarios",
     )

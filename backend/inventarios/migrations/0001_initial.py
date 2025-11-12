@@ -6,24 +6,12 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
+        ("tipos", "0002_estadoproducto_tipopago"),
         ("ubicaciones", "0001_initial"),
         ("productos", "0001_initial"),
     ]
 
     operations = [
-        migrations.CreateModel(
-            name="EstadoProducto",
-            fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("nombre", models.CharField(max_length=80, unique=True)),
-                ("descripcion", models.TextField(blank=True)),
-            ],
-            options={
-                "ordering": ["nombre"],
-                "verbose_name": "Estado de producto",
-                "verbose_name_plural": "Estados de producto",
-            },
-        ),
         migrations.CreateModel(
             name="Inventario",
             fields=[
@@ -37,7 +25,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="inventarios",
-                        to="inventarios.estadoproducto",
+                        to="tipos.estadoproducto",
                     ),
                 ),
                 (

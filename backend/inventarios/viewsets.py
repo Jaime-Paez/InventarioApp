@@ -1,17 +1,7 @@
 from rest_framework import filters, viewsets
 
-from .models import EstadoProducto, Inventario
-from .serializers import EstadoProductoSerializer, InventarioSerializer
-
-
-class EstadoProductoViewSet(viewsets.ModelViewSet):
-    """API para el catálogo de estados de producto."""
-
-    queryset = EstadoProducto.objects.all().order_by("nombre")
-    serializer_class = EstadoProductoSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombre"]
-    ordering_fields = ["nombre"]
+from .models import Inventario
+from .serializers import InventarioSerializer
 
 
 class InventarioViewSet(viewsets.ModelViewSet):
