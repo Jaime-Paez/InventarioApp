@@ -32,6 +32,7 @@ class Producto(models.Model):
         blank=True,
         help_text="Precio de venta sugerido",
     )
+
     casas_comerciales = models.ManyToManyField(
         CasaComercial,
         related_name="productos",
