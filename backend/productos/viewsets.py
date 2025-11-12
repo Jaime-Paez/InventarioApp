@@ -11,7 +11,8 @@ from .serializers import (
 
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = (
-        Producto.objects.select_related("casa_comercial", "marca")
+        Producto.objects.select_related("marca")
+        .prefetch_related("casas_comerciales")
         .all()
         .order_by("nombre")
     )
@@ -20,10 +21,15 @@ class ProductoViewSet(viewsets.ModelViewSet):
     search_fields = [
         "codigo",
         "nombre",
-        "casa_comercial__nombre",
+        "casas_comerciales__nombre",
         "marca__nombre",
     ]
-    ordering_fields = ["nombre", "codigo", "casa_comercial__nombre", "marca__nombre"]
+    ordering_fields = [
+        "nombre",
+        "codigo",
+        "casas_comerciales__nombre",
+        "marca__nombre",
+    ]
 
 
 class OEMViewSet(viewsets.ModelViewSet):

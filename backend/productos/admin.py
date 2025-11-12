@@ -16,15 +16,29 @@ class ProductoAlternoInline(admin.TabularInline):
 
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
-    list_display = ("codigo", "nombre", "marca", "casa_comercial", "pieza_original")
-    list_filter = ("pieza_original", "marca", "casa_comercial")
+    list_display = (
+        "codigo",
+        "nombre",
+        "marca",
+        "mostrar_casas_comerciales",
+        "pieza_original",
+    )
+    list_filter = (
+        "pieza_original",
+        "marca",
+        ("casas_comerciales", admin.RelatedOnlyFieldListFilter),
+    )
     search_fields = (
         "codigo",
         "nombre",
         "marca__nombre",
-        "casa_comercial__nombre",
+        "casas_comerciales__nombre",
     )
     inlines = [OEMProductoInline, ProductoAlternoInline]
+
+    @admin.display(description="Casas comerciales")
+    def mostrar_casas_comerciales(self, obj):
+        return ", ".join(obj.casas_comerciales.values_list("nombre", flat=True)) or "-"
 
 
 @admin.register(OEM)
