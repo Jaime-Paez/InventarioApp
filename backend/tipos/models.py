@@ -56,7 +56,6 @@ class EstadoMovimiento(models.Model):
     """Estado del movimiento de inventario (Borrador, Confirmado, etc.)."""
 
     nombre = models.CharField(max_length=80, unique=True)
-    descripcion = models.TextField(blank=True)
 
     class Meta:
         ordering = ["nombre"]
@@ -71,7 +70,6 @@ class EstadoProducto(models.Model):
     """Estado físico del producto (Enviado, Recibido, etc.)."""
 
     nombre = models.CharField(max_length=80, unique=True)
-    descripcion = models.TextField(blank=True)
 
     class Meta:
         ordering = ["nombre"]
