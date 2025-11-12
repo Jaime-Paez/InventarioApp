@@ -10,35 +10,57 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
+# ============================================================
+# BASE DIR
+# ============================================================
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+# ============================================================
+# DATABASE CONFIGURATION
+# ============================================================
+# Variables de entorno (puedes moverlas a un archivo .env)
+DB_NAME = os.getenv("POSTGRES_DB", "kava")
+DB_USER = os.getenv("POSTGRES_USER", "ConnectionDjango")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "ka25va18$")
+DB_HOST = os.getenv("POSTGRES_HOST", "127.0.0.1")
+DB_PORT = os.getenv("POSTGRES_PORT", "5432")
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-y$x-!b&yxi36il!&ws$$^a=t3$i)x_q(m)8)4(^hnels&=3!83'
 
-# SECURITY WARNING: don't run with debug turned on in production!
+# ============================================================
+# SECURITY
+# ============================================================
+# ⚠️ No uses esta clave en producción, cámbiala por una variable de entorno
+SECRET_KEY = "django-insecure-y$x-!b&yxi36il!&ws$$^a=t3$i)x_q(m)8)4(^hnels&=3!83"
+
+# DEBUG debe ser False en producción
 DEBUG = True
 
+# En producción agrega tus dominios o IPs
 ALLOWED_HOSTS = []
 
 
-# Application definition
-
+# ============================================================
+# APPLICATIONS
+# ============================================================
 INSTALLED_APPS = [
+    # Django apps básicas
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+
+    # Dependencias externas
     "rest_framework",
     "corsheaders",
+
+    # Tus aplicaciones locales
     "inventario",
     "tipos",
     "casa_comercial",
@@ -49,17 +71,22 @@ INSTALLED_APPS = [
     "app",
 ]
 
+# Configuración de Django REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
-        "rest_framework.renderers.BrowsableAPIRenderer",  # UI tipo la imagen
+        "rest_framework.renderers.BrowsableAPIRenderer",  # Interfaz visual del API
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
 }
 
+
+# ============================================================
+# MIDDLEWARE
+# ============================================================
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # Debe ir arriba de CommonMiddleware
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -69,85 +96,94 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = 'core.urls'
 
+# ============================================================
+# URLS & WSGI
+# ============================================================
+ROOT_URLCONF = "core.urls"
+WSGI_APPLICATION = "core.wsgi.application"
+
+
+# ============================================================
+# TEMPLATES
+# ============================================================
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        # Directorio donde se sirve el frontend compilado (React/Vite)
+        "DIRS": [os.path.join(BASE_DIR, "..", "frontend", "dist")],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'core.wsgi.application'
 
-
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
+# ============================================================
+# DATABASE
+# ============================================================
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": DB_NAME,
+        "USER": DB_USER,
+        "PASSWORD": DB_PASSWORD,
+        "HOST": DB_HOST,
+        "PORT": DB_PORT,
+        "CONN_MAX_AGE": 60,              # mantiene conexión viva (útil en producción)
+        "OPTIONS": {"sslmode": "disable"},
     }
 }
 
 
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
-
+# ============================================================
+# AUTH & PASSWORD VALIDATION
+# ============================================================
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
 
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
-
-LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
+# ============================================================
+# INTERNATIONALIZATION
+# ============================================================
+# Localización y zona horaria (ajustada a Ecuador)
+LANGUAGE_CODE = "es-ec"
+TIME_ZONE = "America/Guayaquil"
 USE_I18N = True
-
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
-STATIC_URL = 'static/'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-
-import os
-
-CORS_ALLOW_ALL_ORIGINS = True
-CSRF_TRUSTED_ORIGINS = ["http://localhost:5173"]
-
+# ============================================================
+# STATIC FILES (CSS, JS, IMÁGENES)
+# ============================================================
 STATIC_URL = "static/"
-STATICFILES_DIRS = [os.path.join(BASE_DIR, "..", "frontend", "dist", "assets")]
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "..", "frontend", "dist", "assets"),
+]
 
-TEMPLATES[0]["DIRS"] = [os.path.join(BASE_DIR, "..", "frontend", "dist")]
+
+# ============================================================
+# CORS / CSRF CONFIG
+# ============================================================
+# Permitir todas las conexiones CORS (solo en desarrollo)
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Permitir CSRF desde el frontend local (ajusta según tu puerto o dominio)
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+]
+
+
+# ============================================================
+# DEFAULT AUTO FIELD
+# ============================================================
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
