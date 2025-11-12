@@ -23,6 +23,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             "subdivision",
             "subdivision__division",
             "subdivision__division__bodega",
+            "subdivision__division__bodega__sucursal",
             "estado_producto",
         )
         .all()
@@ -35,9 +36,11 @@ class InventarioViewSet(viewsets.ModelViewSet):
         "producto__nombre",
         "subdivision__nombre",
         "subdivision__division__bodega__nombre",
+        "subdivision__division__bodega__sucursal__nombre",
     ]
     ordering_fields = [
         "producto__nombre",
         "subdivision__division__bodega__nombre",
+        "subdivision__division__bodega__sucursal__nombre",
         "estado_producto__nombre",
     ]

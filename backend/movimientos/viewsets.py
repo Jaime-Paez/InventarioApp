@@ -1,10 +1,20 @@
 from rest_framework import filters, viewsets
 
-from .models import DetalleMovimiento, EstadoMovimiento, MovimientoInventario, TipoMovimiento, TipoPago
+from .models import (
+    DetalleMovimiento,
+    EstadoMovimiento,
+    MovimientoInventario,
+    PagoMovimiento,
+    SubTipoMovimiento,
+    TipoMovimiento,
+    TipoPago,
+)
 from .serializers import (
     DetalleMovimientoSerializer,
     EstadoMovimientoSerializer,
     MovimientoInventarioSerializer,
+    PagoMovimientoSerializer,
+    SubTipoMovimientoSerializer,
     TipoMovimientoSerializer,
     TipoPagoSerializer,
 )
@@ -40,6 +50,20 @@ class EstadoMovimientoViewSet(viewsets.ModelViewSet):
     ordering_fields = ["nombre"]
 
 
+class SubTipoMovimientoViewSet(viewsets.ModelViewSet):
+    """Catálogo de subtipos de movimiento."""
+
+    queryset = (
+        SubTipoMovimiento.objects.select_related("tipo_movimiento")
+        .all()
+        .order_by("tipo_movimiento__nombre", "nombre")
+    )
+    serializer_class = SubTipoMovimientoSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["nombre", "tipo_movimiento__nombre"]
+    ordering_fields = ["nombre", "tipo_movimiento__nombre"]
+
+
 class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     """Gestión de movimientos de inventario."""
 
@@ -48,10 +72,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "subdivision",
             "subdivision__division",
             "subdivision__division__bodega",
+            "subdivision__division__bodega__sucursal",
             "tipo_movimiento",
+            "sub_tipo_movimiento",
             "estado",
             "tipo_pago",
         )
+        .prefetch_related("detalles", "pagos")
         .all()
         .order_by("-fecha_documento", "numero_documento")
     )
@@ -61,6 +88,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         "numero_documento",
         "subdivision__nombre",
         "subdivision__division__bodega__nombre",
+        "subdivision__division__bodega__sucursal__nombre",
     ]
     ordering_fields = ["fecha_documento", "numero_documento"]
 
@@ -73,6 +101,10 @@ class DetalleMovimientoViewSet(viewsets.ModelViewSet):
             "movimiento",
             "producto",
             "inventario",
+            "inventario__subdivision",
+            "inventario__subdivision__division",
+            "inventario__subdivision__division__bodega",
+            "inventario__subdivision__division__bodega__sucursal",
             "estado_producto",
         )
         .all()
@@ -86,3 +118,21 @@ class DetalleMovimientoViewSet(viewsets.ModelViewSet):
         "producto__nombre",
     ]
     ordering_fields = ["movimiento__fecha_documento", "producto__nombre"]
+
+
+class PagoMovimientoViewSet(viewsets.ModelViewSet):
+    """Gestión de pagos relacionados a un movimiento de inventario."""
+
+    queryset = (
+        PagoMovimiento.objects.select_related("movimiento", "tipo_pago")
+        .all()
+        .order_by("-fecha_pago", "movimiento__numero_documento")
+    )
+    serializer_class = PagoMovimientoSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        "movimiento__numero_documento",
+        "tipo_pago__nombre",
+        "referencia",
+    ]
+    ordering_fields = ["fecha_pago", "monto"]

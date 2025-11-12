@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import DetalleMovimiento, EstadoMovimiento, MovimientoInventario, TipoMovimiento, TipoPago
+from .models import (
+    DetalleMovimiento,
+    EstadoMovimiento,
+    MovimientoInventario,
+    PagoMovimiento,
+    SubTipoMovimiento,
+    TipoMovimiento,
+    TipoPago,
+)
 
 
 @admin.register(TipoPago)
@@ -13,6 +21,13 @@ class TipoPagoAdmin(admin.ModelAdmin):
 class TipoMovimientoAdmin(admin.ModelAdmin):
     list_display = ("nombre",)
     search_fields = ("nombre",)
+
+
+@admin.register(SubTipoMovimiento)
+class SubTipoMovimientoAdmin(admin.ModelAdmin):
+    list_display = ("nombre", "tipo_movimiento")
+    list_filter = ("tipo_movimiento",)
+    search_fields = ("nombre", "tipo_movimiento__nombre")
 
 
 @admin.register(EstadoMovimiento)
@@ -54,3 +69,14 @@ class DetalleMovimientoAdmin(admin.ModelAdmin):
         "producto__nombre",
     )
     list_filter = ("estado_producto",)
+
+
+@admin.register(PagoMovimiento)
+class PagoMovimientoAdmin(admin.ModelAdmin):
+    list_display = ("movimiento", "tipo_pago", "monto", "fecha_pago")
+    search_fields = (
+        "movimiento__numero_documento",
+        "tipo_pago__nombre",
+        "referencia",
+    )
+    list_filter = ("tipo_pago", "fecha_pago")
