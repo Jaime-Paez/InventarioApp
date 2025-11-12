@@ -10,15 +10,15 @@ from movimientos.viewsets import (
     TipoMovimientoViewSet,
     TipoPagoViewSet,
 )
+from casa_comercial.viewsets import CasaComercialViewSet
+from marcas.viewsets import MarcaViewSet
 from productos.viewsets import (
-    CasaCompraViewSet,
-    CasaProductoViewSet,
-    PaisViewSet,
+    OEMProductoViewSet,
+    OEMViewSet,
     ProductoAlternoViewSet,
-    ProductoOEMViewSet,
-    ProductoReferenciaViewSet,
     ProductoViewSet,
 )
+from tipos.viewsets import PaisViewSet
 from ubicaciones.viewsets import (
     BodegaViewSet,
     DivisionViewSet,
@@ -37,13 +37,18 @@ router.register(r"ubicaciones/tipos-division", TipoDivisionViewSet, basename="ub
 router.register(r"ubicaciones/divisiones", DivisionViewSet, basename="ubicaciones-divisiones")
 router.register(r"ubicaciones/subdivisiones", SubDivisionViewSet, basename="ubicaciones-subdivisiones")
 
+# Tipos
+router.register(r"tipos/paises", PaisViewSet, basename="tipos-paises")
+
+# Casas comerciales
+router.register(r"casa-comercial/casas", CasaComercialViewSet, basename="casa-comercial-casas")
+# Marcas
+router.register(r"marcas/listado", MarcaViewSet, basename="marcas-listado")
+
 # Productos
-router.register(r"productos/paises", PaisViewSet, basename="productos-paises")
-router.register(r"productos/casas-producto", CasaProductoViewSet, basename="productos-casas-producto")
-router.register(r"productos/casas-compra", CasaCompraViewSet, basename="productos-casas-compra")
 router.register(r"productos/listado", ProductoViewSet, basename="productos-listado")
-router.register(r"productos/referencias", ProductoReferenciaViewSet, basename="productos-referencias")
-router.register(r"productos/codigos-oem", ProductoOEMViewSet, basename="productos-codigos-oem")
+router.register(r"productos/oem", OEMViewSet, basename="productos-oem")
+router.register(r"productos/oem-producto", OEMProductoViewSet, basename="productos-oem-producto")
 router.register(r"productos/alternos", ProductoAlternoViewSet, basename="productos-alternos")
 
 # Inventarios

@@ -1,41 +1,10 @@
 from django.contrib import admin
 
-from .models import (
-    CasaCompra,
-    CasaProducto,
-    Pais,
-    Producto,
-    ProductoAlterno,
-    ProductoOEM,
-    ProductoReferencia,
-)
+from .models import OEM, OEMProducto, Producto, ProductoAlterno
 
 
-@admin.register(Pais)
-class PaisAdmin(admin.ModelAdmin):
-    list_display = ("codigo_tais", "nombre")
-    search_fields = ("codigo_tais", "nombre")
-
-
-@admin.register(CasaProducto)
-class CasaProductoAdmin(admin.ModelAdmin):
-    list_display = ("codigo", "nombre", "pais")
-    search_fields = ("codigo", "nombre", "pais__nombre")
-
-
-@admin.register(CasaCompra)
-class CasaCompraAdmin(admin.ModelAdmin):
-    list_display = ("codigo", "nombre", "pais")
-    search_fields = ("codigo", "nombre", "pais__nombre")
-
-
-class ProductoReferenciaInline(admin.TabularInline):
-    model = ProductoReferencia
-    extra = 1
-
-
-class ProductoOEMInline(admin.TabularInline):
-    model = ProductoOEM
+class OEMProductoInline(admin.TabularInline):
+    model = OEMProducto
     extra = 1
 
 
@@ -47,22 +16,27 @@ class ProductoAlternoInline(admin.TabularInline):
 
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
-    list_display = ("codigo", "nombre", "casa_producto", "pieza_original")
-    list_filter = ("pieza_original", "casa_producto")
-    search_fields = ("codigo", "nombre", "casa_producto__nombre")
-    inlines = [ProductoReferenciaInline, ProductoOEMInline, ProductoAlternoInline]
+    list_display = ("codigo", "nombre", "marca", "casa_comercial", "pieza_original")
+    list_filter = ("pieza_original", "marca", "casa_comercial")
+    search_fields = (
+        "codigo",
+        "nombre",
+        "marca__nombre",
+        "casa_comercial__nombre",
+    )
+    inlines = [OEMProductoInline, ProductoAlternoInline]
 
 
-@admin.register(ProductoReferencia)
-class ProductoReferenciaAdmin(admin.ModelAdmin):
-    list_display = ("codigo", "producto")
-    search_fields = ("codigo", "producto__codigo", "producto__nombre")
+@admin.register(OEM)
+class OEMAdmin(admin.ModelAdmin):
+    list_display = ("codigo",)
+    search_fields = ("codigo",)
 
 
-@admin.register(ProductoOEM)
-class ProductoOEMAdmin(admin.ModelAdmin):
-    list_display = ("codigo", "producto")
-    search_fields = ("codigo", "producto__codigo", "producto__nombre")
+@admin.register(OEMProducto)
+class OEMProductoAdmin(admin.ModelAdmin):
+    list_display = ("producto", "oem")
+    search_fields = ("producto__codigo", "producto__nombre", "oem__codigo")
 
 
 @admin.register(ProductoAlterno)

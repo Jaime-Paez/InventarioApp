@@ -1,65 +1,28 @@
 from django.db import models
 
-
-class Pais(models.Model):
-    """País de origen o comercialización.
-
-    Ejemplo: Pais(codigo_tais="MX", nombre="México").
-    """
-
-    codigo_tais = models.CharField(max_length=10, unique=True)
-    nombre = models.CharField(max_length=120)
-
-    class Meta:
-        ordering = ["nombre"]
-        verbose_name = "País"
-        verbose_name_plural = "Países"
-
-    def __str__(self) -> str:
-        return self.nombre
-
-
-class CasaCompra(models.Model):
-    """Proveedor o casa comercial donde se adquiere el producto."""
-
-    nombre = models.CharField(max_length=150)
-    codigo = models.CharField(max_length=50, unique=True)
-    descripcion = models.TextField(blank=True)
-    pais = models.ForeignKey(
-        Pais,
-        on_delete=models.SET_NULL,
-        related_name="casas_compra",
-        null=True,
-        blank=True,
-    )
-    telefono = models.CharField(max_length=30, blank=True)
-    correo = models.EmailField(blank=True)
-
-    class Meta:
-        ordering = ["nombre"]
-        verbose_name = "Casa de compra"
-        verbose_name_plural = "Casas de compra"
-
-    def __str__(self) -> str:
-        return f"{self.nombre} ({self.codigo})"
+from casa_comercial.models import CasaComercial
+from marcas.models import Marca
 
 
 class Producto(models.Model):
-    """Producto disponible para inventario y movimientos.
-
-    Ejemplo: Producto(codigo="FILTRO-ACD123", nombre="Filtro de aceite ACDelco", pieza_original=True).
-    """
+    """Producto disponible para inventario y movimientos."""
 
     codigo = models.CharField(max_length=80, unique=True)
     nombre = models.CharField(max_length=200)
     descripcion = models.TextField(blank=True)
     pieza_original = models.BooleanField(default=False)
-    casa_compra = models.ForeignKey(
-        CasaCompra,
+    referencia_fabricante = models.CharField(max_length=120, blank=True)
+    casa_comercial = models.ForeignKey(
+        CasaComercial,
         on_delete=models.SET_NULL,
         related_name="productos",
         null=True,
         blank=True,
+    )
+    marca = models.ForeignKey(
+        Marca,
+        on_delete=models.PROTECT,
+        related_name="productos",
     )
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
@@ -69,28 +32,46 @@ class Producto(models.Model):
         verbose_name = "Producto"
         verbose_name_plural = "Productos"
 
-    def __str__(self) -> str:
+    def __str__(self) -> str:  # pragma: no cover - representación legible
         return f"{self.nombre} ({self.codigo})"
 
 
-class ProductoOEM(models.Model):
-    """Códigos OEM proporcionados por el fabricante."""
+class OEM(models.Model):
+    """Identificador OEM provisto por el fabricante."""
+
+    codigo = models.CharField(max_length=80, unique=True)
+    descripcion = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["codigo"]
+        verbose_name = "OEM"
+        verbose_name_plural = "OEM"
+
+    def __str__(self) -> str:  # pragma: no cover - representación legible
+        return self.codigo
+
+
+class OEMProducto(models.Model):
+    """Relación entre un producto y un código OEM."""
 
     producto = models.ForeignKey(
         Producto,
         on_delete=models.CASCADE,
-        related_name="codigos_oem",
+        related_name="oem_productos",
     )
-    codigo = models.CharField(max_length=80)
+    oem = models.ForeignKey(
+        OEM,
+        on_delete=models.CASCADE,
+        related_name="productos",
+    )
 
     class Meta:
-        ordering = ["codigo"]
-        verbose_name = "Código OEM"
-        verbose_name_plural = "Códigos OEM"
-        unique_together = ("producto", "codigo")
+        verbose_name = "OEM de producto"
+        verbose_name_plural = "OEM por producto"
+        unique_together = ("producto", "oem")
 
-    def __str__(self) -> str:
-        return f"{self.codigo} - {self.producto.codigo}"
+    def __str__(self) -> str:  # pragma: no cover - representación legible
+        return f"{self.producto.codigo} - {self.oem.codigo}"
 
 
 class ProductoAlterno(models.Model):
@@ -113,5 +94,5 @@ class ProductoAlterno(models.Model):
         verbose_name_plural = "Productos alternos"
         unique_together = ("producto", "alterno")
 
-    def __str__(self) -> str:
+    def __str__(self) -> str:  # pragma: no cover - representación legible
         return f"Alterno de {self.producto.codigo}: {self.alterno.codigo}"
