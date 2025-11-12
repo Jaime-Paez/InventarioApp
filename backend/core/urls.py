@@ -28,6 +28,12 @@ from tipos.viewsets import (
     TipoPagoViewSet,
 )
 from usuarios.viewsets import UsuarioSucursalViewSet, UsuarioViewSet
+from solicitudes.viewsets import (
+    ClienteViewSet,
+    OEMProductoSolicitadoViewSet,
+    ProductoSolicitadoViewSet,
+    SolicitudViewSet,
+)
 
 router = CustomRouter()
 
@@ -74,6 +80,20 @@ router.register(
 # Usuarios
 router.register(r"usuarios/listado", UsuarioViewSet, basename="usuarios-listado")
 router.register(r"usuarios/asignaciones", UsuarioSucursalViewSet, basename="usuarios-asignaciones")
+
+# Solicitudes
+router.register(r"solicitudes/clientes", ClienteViewSet, basename="solicitudes-clientes")
+router.register(
+    r"solicitudes/productos-solicitados",
+    ProductoSolicitadoViewSet,
+    basename="solicitudes-productos-solicitados",
+)
+router.register(
+    r"solicitudes/oem-productos",
+    OEMProductoSolicitadoViewSet,
+    basename="solicitudes-oem-productos",
+)
+router.register(r"solicitudes/solicitudes", SolicitudViewSet, basename="solicitudes-solicitudes")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
