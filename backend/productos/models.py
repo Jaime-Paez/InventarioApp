@@ -11,7 +11,27 @@ class Producto(models.Model):
     nombre = models.CharField(max_length=200)
     descripcion = models.TextField(blank=True)
     pieza_original = models.BooleanField(default=False)
-    referencia_fabricante = models.CharField(max_length=120, blank=True)
+    costo_minimo = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Costo mínimo de adquisición",
+    )
+    costo_maximo = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Costo máximo registrado",
+    )
+    precio = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Precio de venta sugerido",
+    )
     casa_comercial = models.ForeignKey(
         CasaComercial,
         on_delete=models.SET_NULL,
