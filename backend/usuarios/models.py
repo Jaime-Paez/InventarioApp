@@ -29,7 +29,7 @@ class UsuarioSucursal(models.Model):
         related_name="asignaciones",
     )
     sucursal = models.ForeignKey(
-        "ubicaciones.Sucursal",
+        "inventario.Sucursal",
         on_delete=models.CASCADE,
         related_name="usuarios",
     )

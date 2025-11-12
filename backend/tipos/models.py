@@ -92,3 +92,18 @@ class TipoPago(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
         return self.nombre
+
+
+class TipoDivision(models.Model):
+    """Catálogo de tipos de división para organizar bodegas."""
+
+    nombre = models.CharField(max_length=80, unique=True)
+    descripcion = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["nombre"]
+        verbose_name = "Tipo de división"
+        verbose_name_plural = "Tipos de división"
+
+    def __str__(self) -> str:  # pragma: no cover - representación legible
+        return self.nombre

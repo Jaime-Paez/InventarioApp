@@ -1,48 +1,34 @@
 from rest_framework import filters, viewsets
 
-from .models import Bodega, Division, Sucursal, SubDivision, TipoDivision
+from .models import Bodega, Division, Inventario, SubDivision, Sucursal
 from .serializers import (
     BodegaSerializer,
     DivisionSerializer,
-    SucursalSerializer,
+    InventarioSerializer,
     SubDivisionSerializer,
-    TipoDivisionSerializer,
+    SucursalSerializer,
 )
 
 
 class SucursalViewSet(viewsets.ModelViewSet):
-    """API CRUD para las sucursales físicas."""
-
     queryset = Sucursal.objects.all().order_by("nombre")
     serializer_class = SucursalSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["codigo", "nombre", "ciudad"]
-    ordering_fields = ["nombre", "codigo", "ciudad"]
-
-
-class BodegaViewSet(viewsets.ModelViewSet):
-    """API CRUD para bodegas dentro de una sucursal."""
-
-    queryset = Bodega.objects.select_related("sucursal").all().order_by("sucursal__nombre", "nombre")
-    serializer_class = BodegaSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombre", "sucursal__nombre", "sucursal__codigo"]
-    ordering_fields = ["nombre", "sucursal__nombre"]
-
-
-class TipoDivisionViewSet(viewsets.ModelViewSet):
-    """API CRUD para los tipos de división (estantería, repisa, mueble, etc.)."""
-
-    queryset = TipoDivision.objects.all().order_by("nombre")
-    serializer_class = TipoDivisionSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre"]
     ordering_fields = ["nombre"]
 
 
-class DivisionViewSet(viewsets.ModelViewSet):
-    """API CRUD para divisiones específicas dentro de una bodega."""
+class BodegaViewSet(viewsets.ModelViewSet):
+    queryset = Bodega.objects.select_related("sucursal").all().order_by(
+        "sucursal__nombre", "nombre"
+    )
+    serializer_class = BodegaSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["nombre", "sucursal__nombre"]
+    ordering_fields = ["nombre", "sucursal__nombre"]
 
+
+class DivisionViewSet(viewsets.ModelViewSet):
     queryset = (
         Division.objects.select_related("tipo_division", "bodega", "bodega__sucursal")
         .all()
@@ -60,8 +46,6 @@ class DivisionViewSet(viewsets.ModelViewSet):
 
 
 class SubDivisionViewSet(viewsets.ModelViewSet):
-    """API CRUD para subdivisiones (niveles, cajones o repisas)."""
-
     queryset = (
         SubDivision.objects.select_related(
             "division",
@@ -76,3 +60,31 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "division__nombre", "division__bodega__nombre"]
     ordering_fields = ["nombre", "division__nombre"]
+
+
+class InventarioViewSet(viewsets.ModelViewSet):
+    queryset = (
+        Inventario.objects.select_related(
+            "producto",
+            "subdivision",
+            "subdivision__division",
+            "subdivision__division__bodega",
+            "subdivision__division__bodega__sucursal",
+        )
+        .all()
+        .order_by("subdivision__division__bodega__nombre", "producto__nombre")
+    )
+    serializer_class = InventarioSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        "producto__codigo",
+        "producto__nombre",
+        "subdivision__nombre",
+        "subdivision__division__bodega__nombre",
+        "subdivision__division__bodega__sucursal__nombre",
+    ]
+    ordering_fields = [
+        "producto__nombre",
+        "subdivision__division__bodega__nombre",
+        "subdivision__division__bodega__sucursal__nombre",
+    ]

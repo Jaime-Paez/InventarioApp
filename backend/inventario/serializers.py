@@ -1,27 +1,18 @@
 from rest_framework import serializers
 
-from .models import Bodega, Division, Sucursal, SubDivision, TipoDivision
+from productos.models import Producto
+
+from .models import Bodega, Division, Inventario, SubDivision, Sucursal
+from tipos.models import TipoDivision
 
 
 class SucursalSerializer(serializers.ModelSerializer):
-    """Serializa sucursales y permite registrar datos básicos de ubicación."""
-
     class Meta:
         model = Sucursal
-        fields = [
-            "id",
-            "codigo",
-            "nombre",
-            "direccion",
-            "ciudad",
-            "telefono",
-            "notas",
-        ]
+        fields = ["id", "nombre", "direccion"]
 
 
 class BodegaSerializer(serializers.ModelSerializer):
-    """Serializa bodegas ligadas a una sucursal específica."""
-
     sucursal_id = serializers.PrimaryKeyRelatedField(
         source="sucursal",
         queryset=Sucursal.objects.all(),
@@ -31,20 +22,10 @@ class BodegaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Bodega
-        fields = ["id", "nombre", "descripcion", "sucursal", "sucursal_id"]
-
-
-class TipoDivisionSerializer(serializers.ModelSerializer):
-    """Serializa catálogos de tipos de división (estantería, repisa, etc.)."""
-
-    class Meta:
-        model = TipoDivision
-        fields = ["id", "nombre", "descripcion"]
+        fields = ["id", "nombre", "sucursal", "sucursal_id"]
 
 
 class DivisionSerializer(serializers.ModelSerializer):
-    """Serializa divisiones dentro de una bodega."""
-
     tipo_division_id = serializers.PrimaryKeyRelatedField(
         source="tipo_division",
         queryset=TipoDivision.objects.all(),
@@ -55,7 +36,7 @@ class DivisionSerializer(serializers.ModelSerializer):
         queryset=Bodega.objects.all(),
         write_only=True,
     )
-    tipo_division = TipoDivisionSerializer(read_only=True)
+    tipo_division = serializers.StringRelatedField(read_only=True)
     bodega = BodegaSerializer(read_only=True)
 
     class Meta:
@@ -63,7 +44,6 @@ class DivisionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "nombre",
-            "descripcion",
             "tipo_division",
             "tipo_division_id",
             "bodega",
@@ -72,8 +52,6 @@ class DivisionSerializer(serializers.ModelSerializer):
 
 
 class SubDivisionSerializer(serializers.ModelSerializer):
-    """Serializa subdivisiones como niveles, repisas o cajones."""
-
     division_id = serializers.PrimaryKeyRelatedField(
         source="division",
         queryset=Division.objects.all(),
@@ -83,4 +61,31 @@ class SubDivisionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SubDivision
-        fields = ["id", "nombre", "descripcion", "division", "division_id"]
+        fields = ["id", "nombre", "division", "division_id"]
+
+
+class InventarioSerializer(serializers.ModelSerializer):
+    subdivision_id = serializers.PrimaryKeyRelatedField(
+        source="subdivision",
+        queryset=SubDivision.objects.all(),
+        write_only=True,
+    )
+    producto_id = serializers.PrimaryKeyRelatedField(
+        source="producto",
+        queryset=Producto.objects.all(),
+        write_only=True,
+    )
+    subdivision = SubDivisionSerializer(read_only=True)
+    producto = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = Inventario
+        fields = [
+            "id",
+            "subdivision",
+            "subdivision_id",
+            "producto",
+            "producto_id",
+            "referencia",
+            "cantidad",
+        ]

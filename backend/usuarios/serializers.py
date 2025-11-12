@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ubicaciones.models import Sucursal
+from inventario.models import Sucursal
 
 from .models import Usuario, UsuarioSucursal
 

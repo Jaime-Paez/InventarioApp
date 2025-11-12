@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ("tipos", "0002_estadoproducto_tipopago"),
         ("productos", "0001_initial"),
-        ("ubicaciones", "0001_initial"),
+        ("inventario", "0001_initial"),
     ]
 
     operations = [
@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="movimientos_origen",
-                        to="ubicaciones.sucursal",
+                        to="inventario.sucursal",
                     ),
                 ),
                 (
@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
                         null=True,
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="movimientos_destino",
-                        to="ubicaciones.sucursal",
+                        to="inventario.sucursal",
                     ),
                 ),
                 (

@@ -6,7 +6,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("ubicaciones", "0001_initial"),
+        ("inventario", "0001_initial"),
     ]
 
     operations = [
@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="usuarios",
-                        to="ubicaciones.sucursal",
+                        to="inventario.sucursal",
                     ),
                 ),
                 (

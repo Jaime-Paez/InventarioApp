@@ -5,6 +5,7 @@ from .models import (
     EstadoProducto,
     Pais,
     SubTipoMovimiento,
+    TipoDivision,
     TipoMovimiento,
     TipoPago,
 )
@@ -43,5 +44,11 @@ class EstadoProductoAdmin(admin.ModelAdmin):
 
 @admin.register(TipoPago)
 class TipoPagoAdmin(admin.ModelAdmin):
+    list_display = ("nombre",)
+    search_fields = ("nombre",)
+
+
+@admin.register(TipoDivision)
+class TipoDivisionAdmin(admin.ModelAdmin):
     list_display = ("nombre",)
     search_fields = ("nombre",)

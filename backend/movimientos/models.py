@@ -5,7 +5,7 @@ class MovimientoInventario(models.Model):
     """Representa un movimiento de inventario entre sucursales."""
 
     sucursal = models.ForeignKey(
-        "ubicaciones.Sucursal",
+        "inventario.Sucursal",
         on_delete=models.PROTECT,
         related_name="movimientos_origen",
     )
@@ -24,7 +24,7 @@ class MovimientoInventario(models.Model):
     descripcion = models.TextField(blank=True)
     funcional = models.BooleanField(default=True)
     sucursal_objetivo = models.ForeignKey(
-        "ubicaciones.Sucursal",
+        "inventario.Sucursal",
         on_delete=models.PROTECT,
         related_name="movimientos_destino",
         null=True,
