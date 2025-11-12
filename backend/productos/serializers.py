@@ -53,11 +53,11 @@ class ProductoAlternoSerializer(serializers.ModelSerializer):
 
 
 class ProductoSerializer(serializers.ModelSerializer):
-    casa_comercial = CasaComercialSerializer(read_only=True)
-    casa_comercial_id = serializers.PrimaryKeyRelatedField(
-        source="casa_comercial",
+    casas_comerciales = CasaComercialSerializer(many=True, read_only=True)
+    casas_comerciales_ids = serializers.PrimaryKeyRelatedField(
+        source="casas_comerciales",
         queryset=CasaComercial.objects.all(),
-        allow_null=True,
+        many=True,
         required=False,
         write_only=True,
     )
@@ -81,8 +81,8 @@ class ProductoSerializer(serializers.ModelSerializer):
             "costo_minimo",
             "costo_maximo",
             "precio",
-            "casa_comercial",
-            "casa_comercial_id",
+            "casas_comerciales",
+            "casas_comerciales_ids",
             "marca",
             "marca_id",
             "oem_productos",

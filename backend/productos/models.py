@@ -32,11 +32,10 @@ class Producto(models.Model):
         blank=True,
         help_text="Precio de venta sugerido",
     )
-    casa_comercial = models.ForeignKey(
+
+    casas_comerciales = models.ManyToManyField(
         CasaComercial,
-        on_delete=models.SET_NULL,
         related_name="productos",
-        null=True,
         blank=True,
     )
     marca = models.ForeignKey(
