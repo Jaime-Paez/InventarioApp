@@ -3,15 +3,7 @@ from django.urls import include, path
 
 from app.routers import CustomRouter
 from inventarios.viewsets import EstadoProductoViewSet, InventarioViewSet
-from movimientos.viewsets import (
-    DetalleMovimientoViewSet,
-    EstadoMovimientoViewSet,
-    MovimientoInventarioViewSet,
-    PagoMovimientoViewSet,
-    SubTipoMovimientoViewSet,
-    TipoMovimientoViewSet,
-    TipoPagoViewSet,
-)
+from movimientos.viewsets import MovimientoInventarioViewSet
 from casa_comercial.viewsets import CasaComercialViewSet
 from marcas.viewsets import MarcaViewSet
 from productos.viewsets import (
@@ -20,7 +12,12 @@ from productos.viewsets import (
     ProductoAlternoViewSet,
     ProductoViewSet,
 )
-from tipos.viewsets import PaisViewSet
+from tipos.viewsets import (
+    EstadoMovimientoViewSet,
+    PaisViewSet,
+    SubTipoMovimientoViewSet,
+    TipoMovimientoViewSet,
+)
 from ubicaciones.viewsets import (
     BodegaViewSet,
     DivisionViewSet,
@@ -42,7 +39,6 @@ router.register(r"inventario/subdivisiones", SubDivisionViewSet, basename="inven
 router.register(r"tipos/paises", PaisViewSet, basename="tipos-paises")
 router.register(r"tipos/tipos-division", TipoDivisionViewSet, basename="tipos-tipos-division")
 router.register(r"tipos/estados-producto", EstadoProductoViewSet, basename="tipos-estados-producto")
-router.register(r"tipos/tipos-pago", TipoPagoViewSet, basename="tipos-tipos-pago")
 router.register(r"tipos/estados-movimiento", EstadoMovimientoViewSet, basename="tipos-estados-movimiento")
 router.register(r"tipos/tipos-movimiento", TipoMovimientoViewSet, basename="tipos-tipos-movimiento")
 router.register(
@@ -70,16 +66,6 @@ router.register(
     r"movimientos/movimiento_inventario",
     MovimientoInventarioViewSet,
     basename="movimientos-movimiento-inventario",
-)
-router.register(
-    r"movimientos/detalle_inventario",
-    DetalleMovimientoViewSet,
-    basename="movimientos-detalle-inventario",
-)
-router.register(
-    r"movimientos/pago_movimiento",
-    PagoMovimientoViewSet,
-    basename="movimientos-pago-movimiento",
 )
 
 # Usuarios
