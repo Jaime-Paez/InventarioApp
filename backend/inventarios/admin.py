@@ -1,12 +1,6 @@
 from django.contrib import admin
 
-from .models import EstadoProducto, Inventario
-
-
-@admin.register(EstadoProducto)
-class EstadoProductoAdmin(admin.ModelAdmin):
-    list_display = ("nombre",)
-    search_fields = ("nombre",)
+from .models import Inventario
 
 
 @admin.register(Inventario)

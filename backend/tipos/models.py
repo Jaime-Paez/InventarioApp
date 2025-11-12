@@ -65,3 +65,32 @@ class EstadoMovimiento(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
         return self.nombre
+
+
+class EstadoProducto(models.Model):
+    """Estado físico del producto (Enviado, Recibido, etc.)."""
+
+    nombre = models.CharField(max_length=80, unique=True)
+    descripcion = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["nombre"]
+        verbose_name = "Estado de producto"
+        verbose_name_plural = "Estados de producto"
+
+    def __str__(self) -> str:  # pragma: no cover - representación legible
+        return self.nombre
+
+
+class TipoPago(models.Model):
+    """Catálogo de tipos de pago disponibles para los movimientos."""
+
+    nombre = models.CharField(max_length=80, unique=True)
+
+    class Meta:
+        ordering = ["nombre"]
+        verbose_name = "Tipo de pago"
+        verbose_name_plural = "Tipos de pago"
+
+    def __str__(self) -> str:  # pragma: no cover - representación legible
+        return self.nombre

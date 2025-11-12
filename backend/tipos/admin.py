@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import EstadoMovimiento, Pais, SubTipoMovimiento, TipoMovimiento
+from .models import (
+    EstadoMovimiento,
+    EstadoProducto,
+    Pais,
+    SubTipoMovimiento,
+    TipoMovimiento,
+    TipoPago,
+)
 
 
 @admin.register(Pais)
@@ -24,5 +31,17 @@ class SubTipoMovimientoAdmin(admin.ModelAdmin):
 
 @admin.register(EstadoMovimiento)
 class EstadoMovimientoAdmin(admin.ModelAdmin):
+    list_display = ("nombre",)
+    search_fields = ("nombre",)
+
+
+@admin.register(EstadoProducto)
+class EstadoProductoAdmin(admin.ModelAdmin):
+    list_display = ("nombre",)
+    search_fields = ("nombre",)
+
+
+@admin.register(TipoPago)
+class TipoPagoAdmin(admin.ModelAdmin):
     list_display = ("nombre",)
     search_fields = ("nombre",)

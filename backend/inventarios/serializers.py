@@ -3,15 +3,9 @@ from rest_framework import serializers
 from productos.models import Producto
 from ubicaciones.models import SubDivision
 
-from .models import EstadoProducto, Inventario
-
-
-class EstadoProductoSerializer(serializers.ModelSerializer):
-    """Serializa los estados en los que puede estar un producto."""
-
-    class Meta:
-        model = EstadoProducto
-        fields = ["id", "nombre", "descripcion"]
+from .models import Inventario
+from tipos.models import EstadoProducto
+from tipos.serializers import EstadoProductoSerializer
 
 
 class InventarioSerializer(serializers.ModelSerializer):

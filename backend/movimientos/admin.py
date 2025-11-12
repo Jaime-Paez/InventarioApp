@@ -1,6 +1,16 @@
 from django.contrib import admin
 
-from .models import MovimientoInventario
+from .models import DetalleMovimiento, MovimientoInventario, PagoMovimiento
+
+
+class DetalleMovimientoInline(admin.TabularInline):
+    model = DetalleMovimiento
+    extra = 0
+
+
+class PagoMovimientoInline(admin.TabularInline):
+    model = PagoMovimiento
+    extra = 0
 
 
 @admin.register(MovimientoInventario)
@@ -25,3 +35,4 @@ class MovimientoInventarioAdmin(admin.ModelAdmin):
         "sucursal__nombre",
         "sucursal_objetivo__nombre",
     )
+    inlines = [DetalleMovimientoInline, PagoMovimientoInline]

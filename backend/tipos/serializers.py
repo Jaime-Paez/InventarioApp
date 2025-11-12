@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
-from .models import EstadoMovimiento, Pais, SubTipoMovimiento, TipoMovimiento
+from .models import (
+    EstadoMovimiento,
+    EstadoProducto,
+    Pais,
+    SubTipoMovimiento,
+    TipoMovimiento,
+    TipoPago,
+)
 
 
 class PaisSerializer(serializers.ModelSerializer):
@@ -38,3 +45,15 @@ class EstadoMovimientoSerializer(serializers.ModelSerializer):
     class Meta:
         model = EstadoMovimiento
         fields = ["id", "nombre", "descripcion"]
+
+
+class EstadoProductoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EstadoProducto
+        fields = ["id", "nombre", "descripcion"]
+
+
+class TipoPagoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoPago
+        fields = ["id", "nombre"]

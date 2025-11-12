@@ -1,11 +1,20 @@
 from rest_framework import filters, viewsets
 
-from .models import EstadoMovimiento, Pais, SubTipoMovimiento, TipoMovimiento
+from .models import (
+    EstadoMovimiento,
+    EstadoProducto,
+    Pais,
+    SubTipoMovimiento,
+    TipoMovimiento,
+    TipoPago,
+)
 from .serializers import (
     EstadoMovimientoSerializer,
+    EstadoProductoSerializer,
     PaisSerializer,
     SubTipoMovimientoSerializer,
     TipoMovimientoSerializer,
+    TipoPagoSerializer,
 )
 
 
@@ -40,6 +49,22 @@ class SubTipoMovimientoViewSet(viewsets.ModelViewSet):
 class EstadoMovimientoViewSet(viewsets.ModelViewSet):
     queryset = EstadoMovimiento.objects.all().order_by("nombre")
     serializer_class = EstadoMovimientoSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["nombre"]
+    ordering_fields = ["nombre"]
+
+
+class EstadoProductoViewSet(viewsets.ModelViewSet):
+    queryset = EstadoProducto.objects.all().order_by("nombre")
+    serializer_class = EstadoProductoSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["nombre"]
+    ordering_fields = ["nombre"]
+
+
+class TipoPagoViewSet(viewsets.ModelViewSet):
+    queryset = TipoPago.objects.all().order_by("nombre")
+    serializer_class = TipoPagoSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre"]
     ordering_fields = ["nombre"]

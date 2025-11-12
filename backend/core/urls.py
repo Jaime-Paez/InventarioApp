@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from app.routers import CustomRouter
-from inventarios.viewsets import EstadoProductoViewSet, InventarioViewSet
+from inventarios.viewsets import InventarioViewSet
 from movimientos.viewsets import MovimientoInventarioViewSet
 from casa_comercial.viewsets import CasaComercialViewSet
 from marcas.viewsets import MarcaViewSet
@@ -14,9 +14,11 @@ from productos.viewsets import (
 )
 from tipos.viewsets import (
     EstadoMovimientoViewSet,
+    EstadoProductoViewSet,
     PaisViewSet,
     SubTipoMovimientoViewSet,
     TipoMovimientoViewSet,
+    TipoPagoViewSet,
 )
 from ubicaciones.viewsets import (
     BodegaViewSet,
@@ -46,6 +48,7 @@ router.register(
     SubTipoMovimientoViewSet,
     basename="tipos-subtipos-movimiento",
 )
+router.register(r"tipos/tipos-pago", TipoPagoViewSet, basename="tipos-tipos-pago")
 
 # Casas comerciales
 router.register(r"casa-comercial/casas", CasaComercialViewSet, basename="casa-comercial-casas")

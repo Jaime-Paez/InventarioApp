@@ -1,9 +1,63 @@
+from django.db import transaction
 from rest_framework import serializers
 
-from tipos.models import EstadoMovimiento, SubTipoMovimiento, TipoMovimiento
+from productos.models import Producto
+from tipos.models import (
+    EstadoMovimiento,
+    EstadoProducto,
+    SubTipoMovimiento,
+    TipoMovimiento,
+    TipoPago,
+)
 from ubicaciones.models import Sucursal
 
-from .models import MovimientoInventario
+from .models import DetalleMovimiento, MovimientoInventario, PagoMovimiento
+
+
+class DetalleMovimientoSerializer(serializers.ModelSerializer):
+    """Serializa los productos asociados a un movimiento."""
+
+    producto = serializers.StringRelatedField(read_only=True)
+    producto_id = serializers.PrimaryKeyRelatedField(
+        source="producto",
+        queryset=Producto.objects.all(),
+        write_only=True,
+    )
+    estado_producto = serializers.StringRelatedField(read_only=True)
+    estado_producto_id = serializers.PrimaryKeyRelatedField(
+        source="estado_producto",
+        queryset=EstadoProducto.objects.all(),
+        write_only=True,
+    )
+
+    class Meta:
+        model = DetalleMovimiento
+        fields = [
+            "id",
+            "producto",
+            "producto_id",
+            "cantidad",
+            "estado_producto",
+            "estado_producto_id",
+            "valor",
+            "valor_total",
+        ]
+
+
+class PagoMovimientoSerializer(serializers.ModelSerializer):
+    """Serializa los tipos de pago asociados a un movimiento."""
+
+    tipo_pago = serializers.StringRelatedField(read_only=True)
+    tipo_pago_id = serializers.PrimaryKeyRelatedField(
+        source="tipo_pago",
+        queryset=TipoPago.objects.all(),
+        write_only=True,
+        allow_null=False,
+    )
+
+    class Meta:
+        model = PagoMovimiento
+        fields = ["id", "tipo_pago", "tipo_pago_id"]
 
 
 class MovimientoInventarioSerializer(serializers.ModelSerializer):
@@ -43,6 +97,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         queryset=EstadoMovimiento.objects.all(),
         write_only=True,
     )
+    detalles = DetalleMovimientoSerializer(many=True)
+    pagos = PagoMovimientoSerializer(many=True, required=False)
 
     class Meta:
         model = MovimientoInventario
@@ -63,4 +119,42 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "descuento",
             "fecha",
             "no_documento",
+            "detalles",
+            "pagos",
         ]
+
+    def create(self, validated_data):
+        detalles_data = validated_data.pop("detalles", [])
+        pagos_data = validated_data.pop("pagos", [])
+        with transaction.atomic():
+            movimiento = super().create(validated_data)
+            self._replace_detalles(movimiento, detalles_data)
+            self._replace_pagos(movimiento, pagos_data)
+        return movimiento
+
+    def update(self, instance, validated_data):
+        detalles_data = validated_data.pop("detalles", None)
+        pagos_data = validated_data.pop("pagos", None)
+        with transaction.atomic():
+            movimiento = super().update(instance, validated_data)
+            if detalles_data is not None:
+                movimiento.detalles.all().delete()
+                self._replace_detalles(movimiento, detalles_data)
+            if pagos_data is not None:
+                movimiento.pagos.all().delete()
+                self._replace_pagos(movimiento, pagos_data)
+        return movimiento
+
+    def _replace_detalles(self, movimiento, detalles_data):
+        for detalle in detalles_data:
+            DetalleMovimiento.objects.create(
+                movimiento_inventario=movimiento,
+                **detalle,
+            )
+
+    def _replace_pagos(self, movimiento, pagos_data):
+        for pago in pagos_data:
+            PagoMovimiento.objects.create(
+                movimiento_inventario=movimiento,
+                **pago,
+            )

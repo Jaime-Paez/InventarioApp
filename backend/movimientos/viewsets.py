@@ -15,6 +15,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "sub_tipo_movimiento",
             "estado_movimiento",
         )
+        .prefetch_related(
+            "detalles__producto",
+            "detalles__estado_producto",
+            "pagos__tipo_pago",
+        )
         .all()
         .order_by("-fecha", "no_documento")
     )
