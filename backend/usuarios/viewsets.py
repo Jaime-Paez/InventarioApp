@@ -1,16 +1,34 @@
 from rest_framework import filters, viewsets
 
-from .models import Usuario, UsuarioSucursal
-from .serializers import UsuarioSerializer, UsuarioSucursalSerializer
+from .models import Rol, Usuario, UsuarioSucursal
+from .serializers import (
+    RolSerializer,
+    UsuarioSerializer,
+    UsuarioSucursalSerializer,
+)
+
+
+class RolViewSet(viewsets.ModelViewSet):
+    """Gestión de roles y permisos."""
+
+    queryset = Rol.objects.prefetch_related("permisos").all().order_by("nombre")
+    serializer_class = RolSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["nombre"]
+    ordering_fields = ["nombre"]
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):
     """Gestión de usuarios internos."""
 
-    queryset = Usuario.objects.all().order_by("apellidos", "nombres")
+    queryset = (
+        Usuario.objects.prefetch_related("roles__permisos")
+        .all()
+        .order_by("apellidos", "nombres")
+    )
     serializer_class = UsuarioSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombres", "apellidos", "correo", "cargo"]
+    search_fields = ["nombres", "apellidos", "correo", "cargo", "roles__nombre"]
     ordering_fields = ["apellidos", "nombres", "correo"]
 
 
