@@ -4,7 +4,7 @@ from django.db import models
 class Pais(models.Model):
     """País de origen o comercialización."""
 
-    codigo_tais = models.CharField(max_length=10, unique=True)
+    codigo_pais = models.CharField(max_length=10, unique=True)
     nombre = models.CharField(max_length=120)
 
     class Meta:

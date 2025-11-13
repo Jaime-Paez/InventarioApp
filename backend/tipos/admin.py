@@ -13,8 +13,8 @@ from .models import (
 
 @admin.register(Pais)
 class PaisAdmin(admin.ModelAdmin):
-    list_display = ("codigo_tais", "nombre")
-    search_fields = ("codigo_tais", "nombre")
+    list_display = ("codigo_pais", "nombre")
+    search_fields = ("codigo_pais", "nombre")
 
 
 @admin.register(TipoMovimiento)
