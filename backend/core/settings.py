@@ -41,7 +41,9 @@ SECRET_KEY = "django-insecure-y$x-!b&yxi36il!&ws$$^a=t3$i)x_q(m)8)4(^hnels&=3!83
 DEBUG = True
 
 # En producción agrega tus dominios o IPs
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "192.168.0.72"]
+ALLOWED_HOSTS = ["*"]
+
 
 
 # ============================================================
