@@ -14,7 +14,7 @@ from .models import (
 class PaisSerializer(serializers.ModelSerializer):
     class Meta:
         model = Pais
-        fields = ["id", "codigo_tais", "nombre"]
+        fields = ["id", "codigo_pais", "nombre"]
 
 
 class TipoMovimientoSerializer(serializers.ModelSerializer):
