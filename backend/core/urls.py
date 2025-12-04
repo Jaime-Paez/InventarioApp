@@ -27,7 +27,14 @@ from tipos.viewsets import (
     TipoMovimientoViewSet,
     TipoPagoViewSet,
 )
-from usuarios.viewsets import RolViewSet, UsuarioSucursalViewSet, UsuarioViewSet
+from usuarios.viewsets import (
+    LoginAPIView,
+    PerfilAPIView,
+    RegistroAPIView,
+    RolViewSet,
+    UsuarioSucursalViewSet,
+    UsuarioViewSet,
+)
 from solicitudes.viewsets import (
     ClienteViewSet,
     OEMProductoSolicitadoViewSet,
@@ -98,5 +105,8 @@ router.register(r"solicitudes/solicitudes", SolicitudViewSet, basename="solicitu
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("auth/register/", RegistroAPIView.as_view(), name="auth-register"),
+    path("auth/login/", LoginAPIView.as_view(), name="auth-login"),
+    path("auth/me/", PerfilAPIView.as_view(), name="auth-profile"),
     path("", include(router.urls)),
 ]
