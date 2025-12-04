@@ -1,8 +1,12 @@
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from inventario.models import Sucursal
 
 from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
+
+
+User = get_user_model()
 
 
 class RolPermisoSerializer(serializers.ModelSerializer):
@@ -142,3 +146,45 @@ class UsuarioSucursalSerializer(serializers.ModelSerializer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["sucursal_id"].queryset = Sucursal.objects.all()
+
+
+class AuthUserSerializer(serializers.ModelSerializer):
+    """Serializa la información básica de un usuario autenticado."""
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "first_name", "last_name", "email"]
+
+
+class RegistroSerializer(serializers.Serializer):
+    """Valida los datos para crear una nueva cuenta interna."""
+
+    first_name = serializers.CharField(max_length=150)
+    last_name = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError(
+                "Ya existe una cuenta registrada con este correo."
+            )
+        return value
+
+    def create(self, validated_data):
+        email = validated_data["email"].lower()
+        username = email
+        return User.objects.create_user(
+            username=username,
+            email=email,
+            first_name=validated_data.get("first_name", ""),
+            last_name=validated_data.get("last_name", ""),
+            password=validated_data["password"],
+        )
+
+
+class LoginSerializer(serializers.Serializer):
+    """Valida las credenciales de acceso."""
+
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
