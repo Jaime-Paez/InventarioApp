@@ -19,6 +19,7 @@
 .dashboard-shell.entering {
   opacity: 0.98;
   transform: translateX(-120%);
+  filter: blur(16px);
   animation: dashboard-slide-in 0.55s ease-out 0.2s forwards;
 }
 
@@ -257,11 +258,13 @@
   0% {
     opacity: 0.6;
     transform: translateX(-120%);
+    filter: blur(14px);
   }
 
   100% {
     opacity: 1;
     transform: translateX(0);
+    filter: blur(0);
   }
 }
 
