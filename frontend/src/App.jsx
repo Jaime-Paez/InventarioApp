@@ -22,7 +22,7 @@ function App() {
 
   const [token, setToken] = useState(() => localStorage.getItem('token') || '')
   const [showApp, setShowApp] = useState(() => Boolean(token && user))
-  const [loginTransitioning, setLoginTransitioning] = useState(false)
+  const [dashboardEntering, setDashboardEntering] = useState(false)
 
   useEffect(() => {
     localStorage.setItem('theme', darkMode ? 'dark' : 'light')
@@ -47,10 +47,10 @@ function App() {
   const handleLoginSuccess = (incomingUser, incomingToken) => {
     setUser(incomingUser)
     setToken(incomingToken)
-    setLoginTransitioning(true)
+    setShowApp(true)
+    setDashboardEntering(true)
 
-    setTimeout(() => setShowApp(true), 420)
-    setTimeout(() => setLoginTransitioning(false), 1050)
+    setTimeout(() => setDashboardEntering(false), 850)
   }
 
   const handleLogout = () => {
@@ -66,12 +66,11 @@ function App() {
 
   return (
     <div className={appClassName}>
-      {(!showApp || loginTransitioning) && (
+      {!showApp && (
         <Login
           darkMode={darkMode}
           onToggleTheme={() => setDarkMode((value) => !value)}
           onLoginSuccess={handleLoginSuccess}
-          isCollapsing={loginTransitioning}
         />
       )}
 
@@ -81,7 +80,7 @@ function App() {
           token={token}
           darkMode={darkMode}
           onLogout={handleLogout}
-          isEntering={loginTransitioning}
+          isEntering={dashboardEntering}
         />
       )}
     </div>

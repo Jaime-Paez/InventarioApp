@@ -51,7 +51,7 @@ const MoonIcon = () => (
   </svg>
 )
 
-function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
+function Login({ darkMode, onToggleTheme, onLoginSuccess }) {
   const [statusMessage, setStatusMessage] = useState('')
   const [authError, setAuthError] = useState('')
   const [loading, setLoading] = useState(false)
