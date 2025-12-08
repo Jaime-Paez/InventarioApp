@@ -143,55 +143,59 @@ function Login() {
           </div>
         </div>
 
-        <h1>Iniciar sesión</h1>
+        <div className="panel-body">
+          <h1>Iniciar sesión</h1>
 
-        <form onSubmit={handleLogin}>
-          <div className="form-row">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              value={loginData.email}
-              onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
-              placeholder="usuario@correo.com"
-              required
-            />
-          </div>
-          <div className="form-row">
-            <label htmlFor="password">Contraseña</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={loginData.password}
-              onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-              placeholder="Tu contraseña"
-              required
-            />
-          </div>
-          <button type="submit" className="primary-button" disabled={loading}>
-            {loading ? 'Validando...' : 'Iniciar Sesión'}
-          </button>
-        </form>
+          <form onSubmit={handleLogin}>
+            <div className="form-row">
+              <label htmlFor="email">Email</label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                value={loginData.email}
+                onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                placeholder="usuario@correo.com"
+                required
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="password">Contraseña</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={loginData.password}
+                onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                placeholder="Tu contraseña"
+                required
+              />
+            </div>
+            <button type="submit" className="primary-button" disabled={loading}>
+              {loading ? 'Validando...' : 'Iniciar Sesión'}
+            </button>
+          </form>
 
-        {statusMessage && <p className="status success">{statusMessage}</p>}
-        {authError && <p className="status error">{authError}</p>}
-
-        <div className="helper-row">
-          <button type="button" className="link-button">
-            Olvidaste tu contraseña
-          </button>
+          {statusMessage && <p className="status success">{statusMessage}</p>}
+          {authError && <p className="status error">{authError}</p>}
         </div>
 
-        <button
-          type="button"
-          className="theme-toggle"
-          onClick={() => setDarkMode((value) => !value)}
-          aria-label="Cambiar tema"
-        >
-          {darkMode ? <SunIcon /> : <MoonIcon />}
-        </button>
+        <div className="panel-footer">
+          <div className="helper-row">
+            <button type="button" className="link-button">
+              Olvidaste tu contraseña
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setDarkMode((value) => !value)}
+            aria-label="Cambiar tema"
+          >
+            {darkMode ? <SunIcon /> : <MoonIcon />}
+          </button>
+        </div>
       </section>
     </div>
   )
