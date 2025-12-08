@@ -12,30 +12,9 @@ const ExitIcon = () => (
   </svg>
 )
 
-const MenuIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M4 6h16" />
-    <path d="M4 12h16" />
-    <path d="M4 18h16" />
-  </svg>
-)
-
 function Sidebar({ items, activeItem, onSelect, user, onLogout }) {
   return (
     <aside className="sidebar">
-      <header className="sidebar__header">
-        <div className="sidebar__brand">
-          <div className="sidebar__logo">k</div>
-          <div className="sidebar__text">
-            <span className="sidebar__title">kava</span>
-            <span className="sidebar__subtitle">panel</span>
-          </div>
-        </div>
-        <button className="sidebar__collapse" type="button" aria-label="Ocultar menú">
-          <MenuIcon />
-        </button>
-      </header>
-
       <nav className="sidebar__nav">
         <p className="sidebar__section">Menú</p>
         <ul>

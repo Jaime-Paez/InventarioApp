@@ -22,6 +22,7 @@ function DashboardLayout({ user, darkMode, onToggleTheme, onLogout, isEntering }
   const [search, setSearch] = useState('')
 
   const heroLogo = useMemo(() => (darkMode ? kavaLight : kavaDark), [darkMode])
+  const brandLogo = useMemo(() => (darkMode ? kavaLight : kavaDark), [darkMode])
 
   return (
     <div className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isEntering ? 'entering' : ''}`}>
@@ -40,15 +41,10 @@ function DashboardLayout({ user, darkMode, onToggleTheme, onLogout, isEntering }
           onSearchChange={setSearch}
           darkMode={darkMode}
           onToggleTheme={onToggleTheme}
+          brandLogo={brandLogo}
         />
 
-        <Workspace
-          activeItem={activeItem}
-          user={user}
-          darkMode={darkMode}
-          logo={heroLogo}
-          search={search}
-        />
+        <Workspace activeItem={activeItem} user={user} logo={heroLogo} />
       </div>
     </div>
   )
