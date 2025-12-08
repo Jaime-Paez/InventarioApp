@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import '../App.css'
-import wallpaperLight from '../assets/login/login_wallpaper(light).png'
-import wallpaperDark from '../assets/login/login_wallpaper(dark).png'
-import jpaezDark from '../assets/login/jpaez(dark).png'
-import jpaezLight from '../assets/login/jpaez(light).png'
-import kavaDark from '../assets/login/kava(dark).png'
-import kavaLight from '../assets/login/kava(light).png'
+import './login.css'
+import wallpaperLight from '../../assets/login/login_wallpaper(light).png'
+import wallpaperDark from '../../assets/login/login_wallpaper(dark).png'
+import jpaezDark from '../../assets/login/jpaez(dark).png'
+import jpaezLight from '../../assets/login/jpaez(light).png'
+import kavaDark from '../../assets/login/kava(dark).png'
+import kavaLight from '../../assets/login/kava(light).png'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
