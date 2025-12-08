@@ -1,7 +1,93 @@
+import { useEffect, useMemo, useState } from 'react'
+import DashboardLayout from './components/dashboard/DashboardLayout'
 import Login from './components/login/Login'
 
+const getSystemThemePreference = () =>
+  typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : false
+
 function App() {
-  return <Login />
+  const [darkMode, setDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem('theme')
+    if (savedTheme === 'dark') return true
+    if (savedTheme === 'light') return false
+    return getSystemThemePreference()
+  })
+
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('user')
+    if (!saved) return null
+
+    try {
+      return JSON.parse(saved)
+    } catch (error) {
+      console.warn('User data en almacenamiento local no es válido, se borra.', error)
+      localStorage.removeItem('user')
+      return null
+    }
+  })
+
+  const [token, setToken] = useState(() => localStorage.getItem('token') || '')
+  const [showApp, setShowApp] = useState(() => Boolean(token && user))
+
+  useEffect(() => {
+    localStorage.setItem('theme', darkMode ? 'dark' : 'light')
+  }, [darkMode])
+
+  useEffect(() => {
+    if (token) {
+      localStorage.setItem('token', token)
+    } else {
+      localStorage.removeItem('token')
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user))
+    } else {
+      localStorage.removeItem('user')
+    }
+  }, [user])
+
+  const handleLoginSuccess = (incomingUser, incomingToken) => {
+    setUser(incomingUser)
+    setToken(incomingToken)
+    setShowApp(true)
+  }
+
+  const handleLogout = () => {
+    setToken('')
+    setUser(null)
+    setShowApp(false)
+  }
+
+  const appClassName = useMemo(
+    () => `app-shell ${darkMode ? 'theme-dark' : 'theme-light'}`,
+    [darkMode]
+  )
+
+  return (
+    <div className={appClassName}>
+      {!showApp && (
+        <Login
+          darkMode={darkMode}
+          onToggleTheme={() => setDarkMode((value) => !value)}
+          onLoginSuccess={handleLoginSuccess}
+        />
+      )}
+
+      {showApp && user && (
+        <DashboardLayout
+          user={user}
+          token={token}
+          darkMode={darkMode}
+          onLogout={handleLogout}
+        />
+      )}
+    </div>
+  )
 }
 
 export default App
