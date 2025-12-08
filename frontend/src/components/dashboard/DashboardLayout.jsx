@@ -18,7 +18,7 @@ const MENU_ITEMS = [
   'Administrar',
 ]
 
-function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
+function DashboardLayout({ user, darkMode, onLogout }) {
   const [activeItem, setActiveItem] = useState(MENU_ITEMS[0])
 
   const heroLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
@@ -26,7 +26,7 @@ function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
   const partnerLogo = useMemo(() => (darkMode ? jpaezDark : jpaezLight), [darkMode])
 
   return (
-    <div className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isEntering ? 'entering' : ''}`}>
+    <div className={`dashboard-shell ${darkMode ? 'dark' : 'light'}`}>
       <Sidebar
         items={MENU_ITEMS}
         activeItem={activeItem}

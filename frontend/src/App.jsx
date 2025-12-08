@@ -22,7 +22,6 @@ function App() {
 
   const [token, setToken] = useState(() => localStorage.getItem('token') || '')
   const [showApp, setShowApp] = useState(() => Boolean(token && user))
-  const [dashboardEntering, setDashboardEntering] = useState(false)
 
   useEffect(() => {
     localStorage.setItem('theme', darkMode ? 'dark' : 'light')
@@ -48,9 +47,6 @@ function App() {
     setUser(incomingUser)
     setToken(incomingToken)
     setShowApp(true)
-    setDashboardEntering(true)
-
-    setTimeout(() => setDashboardEntering(false), 850)
   }
 
   const handleLogout = () => {
@@ -80,7 +76,6 @@ function App() {
           token={token}
           darkMode={darkMode}
           onLogout={handleLogout}
-          isEntering={dashboardEntering}
         />
       )}
     </div>

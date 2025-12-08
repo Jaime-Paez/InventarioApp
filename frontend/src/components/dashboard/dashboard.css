@@ -11,16 +11,7 @@
   height: 100vh;
   background: #eff1f5;
   color: #0f172a;
-  transition: background-color 0.4s ease, color 0.4s ease, opacity 0.5s ease,
-    transform 0.55s ease;
-  transform: translateX(0);
-}
-
-.dashboard-shell.entering {
-  opacity: 0.98;
-  transform: translateX(-120%);
-  filter: blur(16px);
-  animation: dashboard-slide-in 0.55s ease-out 0.2s forwards;
+  transition: background-color 0.4s ease, color 0.4s ease;
 }
 
 .dashboard-shell.dark {
@@ -252,20 +243,6 @@
 
 .dashboard-shell.dark .brand-divider {
   background: rgba(255, 255, 255, 0.12);
-}
-
-@keyframes dashboard-slide-in {
-  0% {
-    opacity: 0.6;
-    transform: translateX(-120%);
-    filter: blur(14px);
-  }
-
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-    filter: blur(0);
-  }
 }
 
 @media (max-width: 1040px) {
