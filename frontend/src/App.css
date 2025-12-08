@@ -1,7 +1,9 @@
 .login-page {
-  display: grid;
-  grid-template-columns: minmax(360px, 430px) 1fr;
-  height: 100vh;
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
   background: #d9e0ea;
   color: #0f172a;
   overflow: hidden;
@@ -12,15 +14,15 @@
   color: #f5f7fb;
 }
 
-.login-hero {
-  position: relative;
-  overflow: hidden;
-  height: 100vh;
+.wallpaper-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
 }
 
-.login-hero img {
+.wallpaper-layer img {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   object-fit: cover;
   display: block;
 }
@@ -37,7 +39,11 @@
   background: #f4f6fa;
   box-shadow: 0 30px 80px rgba(15, 23, 42, 0.2);
   border-right: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 0 28px 28px 0;
+  border-radius: 0 28px 0 0;
+  max-width: 430px;
+  width: min(430px, 100vw);
+  min-height: 100vh;
+  flex: 0 0 auto;
 }
 
 .login-page.dark .login-panel {
