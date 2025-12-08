@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import '../App.css'
-import wallpaper from '../assets/login/login_wallpaper(light).png'
+import wallpaperLight from '../assets/login/login_wallpaper(light).png'
+import wallpaperDark from '../assets/login/login_wallpaper.webp'
 import jpaezDark from '../assets/login/jpaez(dark).png'
 import jpaezLight from '../assets/login/jpaez(light).png'
 import kavaDark from '../assets/login/kava(dark).png'
@@ -54,7 +55,17 @@ function Login() {
   const [statusMessage, setStatusMessage] = useState('')
   const [authError, setAuthError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [darkMode, setDarkMode] = useState(false)
+  const getSystemThemePreference = () =>
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false
+
+  const [darkMode, setDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem('theme')
+    if (savedTheme === 'dark') return true
+    if (savedTheme === 'light') return false
+    return getSystemThemePreference()
+  })
 
   const [loginData, setLoginData] = useState({
     email: '',
@@ -82,6 +93,10 @@ function Login() {
       localStorage.removeItem('user')
     }
   }, [user])
+
+  useEffect(() => {
+    localStorage.setItem('theme', darkMode ? 'dark' : 'light')
+  }, [darkMode])
 
   const headers = useMemo(() => {
     const baseHeaders = { 'Content-Type': 'application/json' }
@@ -123,7 +138,16 @@ function Login() {
   return (
     <div className={`login-page ${darkMode ? 'dark' : ''}`}>
       <div className="wallpaper-layer" aria-hidden>
-        <img src={wallpaper} alt="" />
+        <img
+          src={wallpaperLight}
+          className={`wallpaper ${darkMode ? '' : 'active'}`}
+          alt=""
+        />
+        <img
+          src={wallpaperDark}
+          className={`wallpaper ${darkMode ? 'active' : ''}`}
+          alt=""
+        />
       </div>
 
       <section className="login-panel">
