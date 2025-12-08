@@ -6,7 +6,6 @@ function Workspace({ user, logo }) {
           <img src={logo} alt="Logotipo Kava" />
         </div>
         <h2>¡Qué gusto tenerte de vuelta, {user?.nombre || 'usuario'}!</h2>
-        <p className="workspace__subtitle">Para comenzar, selecciona una opción del menú.</p>
       </section>
     </main>
   )

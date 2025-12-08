@@ -12,9 +12,15 @@ const ExitIcon = () => (
   </svg>
 )
 
-function Sidebar({ items, activeItem, onSelect, user, onLogout }) {
+function Sidebar({ items, activeItem, onSelect, user, onLogout, brandLogo, partnerLogo }) {
   return (
     <aside className="sidebar">
+      <div className="sidebar__brand">
+        <img src={brandLogo} alt="Logo Kava" className="sidebar__brand-logo" />
+        <span className="brand-divider" aria-hidden />
+        <img src={partnerLogo} alt="Logo JPaez" className="sidebar__partner-logo" />
+      </div>
+
       <nav className="sidebar__nav">
         <p className="sidebar__section">Menú</p>
         <ul>

@@ -306,9 +306,9 @@ input:focus {
 }
 
 .login-page.collapse .login-panel {
-  max-width: 340px;
-  width: 340px;
-  transform: translateX(-10%) scale(0.98);
+  max-width: 420px;
+  width: 420px;
+  transform: translateX(-120%);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
@@ -318,6 +318,7 @@ input:focus {
   width: 100%;
   pointer-events: none;
   z-index: 4;
+  animation: login-slide-out 0.45s ease-in forwards;
 }
 
 .login-page.collapse .panel-body,
@@ -329,4 +330,16 @@ input:focus {
 
 .login-page.collapse .panel-header {
   padding-top: 0.5rem;
+}
+
+@keyframes login-slide-out {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  100% {
+    opacity: 0.35;
+    transform: translateX(-120%);
+  }
 }

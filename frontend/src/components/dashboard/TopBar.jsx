@@ -18,11 +18,15 @@ const ThemeIcon = () => (
   </svg>
 )
 
-function TopBar({ user, search, onSearchChange, darkMode, onToggleTheme, brandLogo }) {
+function TopBar({ user, search, onSearchChange, darkMode, onToggleTheme, brandLogo, partnerLogo }) {
   return (
     <header className="topbar">
       <div className="topbar__brand">
-        <img src={brandLogo} alt="Logo Kava" />
+        <div className="topbar__brand-logos">
+          <img src={brandLogo} alt="Logo Kava" className="topbar__kava" />
+          <span className="brand-divider" aria-hidden />
+          <img src={partnerLogo} alt="Logo JPaez" className="topbar__partner" />
+        </div>
         <span className="brand-label">panel</span>
       </div>
 
