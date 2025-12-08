@@ -49,7 +49,7 @@ function App() {
     setToken(incomingToken)
     setLoginTransitioning(true)
 
-    setTimeout(() => setShowApp(true), 350)
+    setTimeout(() => setShowApp(true), 420)
     setTimeout(() => setLoginTransitioning(false), 1050)
   }
 
@@ -71,7 +71,7 @@ function App() {
           darkMode={darkMode}
           onToggleTheme={() => setDarkMode((value) => !value)}
           onLoginSuccess={handleLoginSuccess}
-          isCollapsing={loginTransitioning && showApp}
+          isCollapsing={loginTransitioning}
         />
       )}
 
@@ -80,7 +80,6 @@ function App() {
           user={user}
           token={token}
           darkMode={darkMode}
-          onToggleTheme={() => setDarkMode((value) => !value)}
           onLogout={handleLogout}
           isEntering={loginTransitioning}
         />

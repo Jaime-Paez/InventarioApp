@@ -5,7 +5,6 @@ import jpaezDark from '../../assets/login/jpaez(dark).png'
 import jpaezLight from '../../assets/login/jpaez(light).png'
 import './dashboard.css'
 import Sidebar from './Sidebar'
-import TopBar from './TopBar'
 import Workspace from './Workspace'
 
 const MENU_ITEMS = [
@@ -19,13 +18,12 @@ const MENU_ITEMS = [
   'Administrar',
 ]
 
-function DashboardLayout({ user, darkMode, onToggleTheme, onLogout, isEntering }) {
+function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
   const [activeItem, setActiveItem] = useState(MENU_ITEMS[0])
-  const [search, setSearch] = useState('')
 
-  const heroLogo = useMemo(() => (darkMode ? kavaLight : kavaDark), [darkMode])
-  const brandLogo = useMemo(() => (darkMode ? kavaLight : kavaDark), [darkMode])
-  const partnerLogo = useMemo(() => (darkMode ? jpaezLight : jpaezDark), [darkMode])
+  const heroLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
+  const brandLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
+  const partnerLogo = useMemo(() => (darkMode ? jpaezDark : jpaezLight), [darkMode])
 
   return (
     <div className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isEntering ? 'entering' : ''}`}>
@@ -39,19 +37,7 @@ function DashboardLayout({ user, darkMode, onToggleTheme, onLogout, isEntering }
         partnerLogo={partnerLogo}
       />
 
-      <div className="dashboard-canvas">
-        <TopBar
-          user={user}
-          search={search}
-          onSearchChange={setSearch}
-          darkMode={darkMode}
-          onToggleTheme={onToggleTheme}
-          brandLogo={brandLogo}
-          partnerLogo={partnerLogo}
-        />
-
-        <Workspace activeItem={activeItem} user={user} logo={heroLogo} />
-      </div>
+      <Workspace activeItem={activeItem} user={user} logo={heroLogo} />
     </div>
   )
 }
