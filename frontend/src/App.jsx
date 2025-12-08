@@ -8,6 +8,48 @@ import kavaLight from './assets/login/kava(light).png'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+const SunIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2" />
+    <path d="M12 20v2" />
+    <path d="m4.93 4.93 1.41 1.41" />
+    <path d="m17.66 17.66 1.41 1.41" />
+    <path d="M2 12h2" />
+    <path d="M20 12h2" />
+    <path d="m6.34 17.66-1.41 1.41" />
+    <path d="m19.07 4.93-1.41 1.41" />
+  </svg>
+)
+
+const MoonIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+  </svg>
+)
+
 function App() {
   const [statusMessage, setStatusMessage] = useState('')
   const [authError, setAuthError] = useState('')
@@ -81,24 +123,32 @@ function App() {
   return (
     <div className={`login-page ${darkMode ? 'dark' : ''}`}>
       <section className="login-panel">
-        <div className="brand-row">
-          <img
-            src={darkMode ? kavaDark : kavaLight}
-            alt="Logo Kava"
-            className="brand-logo"
-          />
-          <span className="brand-divider" aria-hidden />
-          <img
-            src={darkMode ? jpaezDark : jpaezLight}
-            alt="Logo JPaez"
-            className="brand-logo"
-          />
+        <div className="panel-header">
+          <div className="brand-row">
+            <img
+              src={darkMode ? kavaDark : kavaLight}
+              alt="Logo Kava"
+              className="brand-logo"
+            />
+            <span className="brand-divider" aria-hidden />
+            <img
+              src={darkMode ? jpaezDark : jpaezLight}
+              alt="Logo JPaez"
+              className="brand-logo"
+            />
+          </div>
+
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setDarkMode((value) => !value)}
+            aria-label="Cambiar tema"
+          >
+            {darkMode ? <SunIcon /> : <MoonIcon />}
+          </button>
         </div>
 
-        <div>
-          <h1>Iniciar sesión</h1>
-          <p className="description">Accede a tu cuenta para continuar.</p>
-        </div>
+        <h1>Iniciar sesión</h1>
 
         <form onSubmit={handleLogin}>
           <div className="form-row">
@@ -137,19 +187,11 @@ function App() {
           <button type="button" className="link-button">
             Olvidaste tu contraseña
           </button>
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={() => setDarkMode((value) => !value)}
-          >
-            {darkMode ? 'Modo claro' : 'Modo oscuro'}
-          </button>
         </div>
       </section>
 
       <section className="login-hero" aria-hidden>
         <img src={wallpaper} alt="Fondo" />
-        <div className="hero-overlay" />
       </section>
     </div>
   )
