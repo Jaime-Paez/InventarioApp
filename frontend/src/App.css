@@ -41,8 +41,8 @@
   box-shadow: 0 30px 80px rgba(15, 23, 42, 0.2);
   border-right: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 0 28px 0 0;
-  max-width: 430px;
-  width: min(430px, 100vw);
+  max-width: 500px;
+  width: min(500px, 100vw);
   min-height: 100vh;
   flex: 0 0 auto;
 }
