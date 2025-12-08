@@ -92,7 +92,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess }) {
   }
 
   return (
-    <div className={`login-page ${darkMode ? 'dark' : ''}`}>
+    <div className={`login-page ${darkMode ? 'dark' : ''} ${isCollapsing ? 'collapse' : ''}`}>
       <div className="wallpaper-layer" aria-hidden>
         <img
           src={wallpaperLight}
