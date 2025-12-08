@@ -156,7 +156,7 @@ function Login() {
             <img
               src={darkMode ? kavaDark : kavaLight}
               alt="Logo Kava"
-              className="brand-logo"
+              className="kava-logo"
             />
             <span className="brand-divider" aria-hidden />
             <img

@@ -91,6 +91,11 @@
   flex: 1 1 auto;
 }
 
+.kava-logo {
+  height: 80px;
+  object-fit: contain;
+}
+
 .brand-logo {
   height: 100px;
   object-fit: contain;
@@ -98,7 +103,7 @@
 
 .brand-divider {
   width: 4px;
-  height: 54px;
+  height: 35px;
   border-radius: 99px;
   background: var(--color-divider-light);
   transition: background-color 0.45s ease;

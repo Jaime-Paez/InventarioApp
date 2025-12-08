@@ -4,13 +4,13 @@
   --color-background: #e9edf5;
   --color-surface: #f4f6fa;
   --color-surface-alt: #d9e0ea;
-  --color-surface-dark: #0f1218;
-  --color-surface-darker: #0b0d12;
+  --color-surface-dark: #181818;
+  --color-surface-darker: #191919;
   --color-text-primary: #0f172a;
   --color-text-inverse: #f5f7fb;
   --color-border: #cbd5e1;
-  --color-border-subtle: rgba(15, 23, 42, 0.08);
-  --color-divider-light: rgba(15, 23, 42, 0.15);
+  --color-border-subtle: #FFFFFF;
+  --color-divider-light: #181818;
   --color-divider-dark: #ffffff;
   --color-input-bg: #f8fafc;
   --color-link: #2563eb;
