@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import './login.css'
 import wallpaperLight from '../../assets/login/login_wallpaper(light).png'
 import wallpaperDark from '../../assets/login/login_wallpaper(dark).png'
@@ -51,60 +51,17 @@ const MoonIcon = () => (
   </svg>
 )
 
-function Login() {
+function Login({ darkMode, onToggleTheme, onLoginSuccess }) {
   const [statusMessage, setStatusMessage] = useState('')
   const [authError, setAuthError] = useState('')
   const [loading, setLoading] = useState(false)
-  const getSystemThemePreference = () =>
-    typeof window !== 'undefined' && window.matchMedia
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-      : false
-
-  const [darkMode, setDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem('theme')
-    if (savedTheme === 'dark') return true
-    if (savedTheme === 'light') return false
-    return getSystemThemePreference()
-  })
 
   const [loginData, setLoginData] = useState({
     email: '',
     password: '',
   })
 
-  const [token, setToken] = useState(() => localStorage.getItem('token') || '')
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('user')
-    return saved ? JSON.parse(saved) : null
-  })
-
-  useEffect(() => {
-    if (token) {
-      localStorage.setItem('token', token)
-    } else {
-      localStorage.removeItem('token')
-    }
-  }, [token])
-
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('user', JSON.stringify(user))
-    } else {
-      localStorage.removeItem('user')
-    }
-  }, [user])
-
-  useEffect(() => {
-    localStorage.setItem('theme', darkMode ? 'dark' : 'light')
-  }, [darkMode])
-
-  const headers = useMemo(() => {
-    const baseHeaders = { 'Content-Type': 'application/json' }
-    if (token) {
-      baseHeaders['Authorization'] = `Token ${token}`
-    }
-    return baseHeaders
-  }, [token])
+  const headers = useMemo(() => ({ 'Content-Type': 'application/json' }), [])
 
   const handleLogin = async (event) => {
     event.preventDefault()
@@ -124,8 +81,7 @@ function Login() {
         return
       }
 
-      setToken(data.token)
-      setUser(data.usuario)
+      onLoginSuccess(data.usuario, data.token)
       setStatusMessage('¡Bienvenido de nuevo!')
       setLoginData({ email: '', password: '' })
     } catch (error) {
@@ -214,7 +170,7 @@ function Login() {
           <button
             type="button"
             className="theme-toggle"
-            onClick={() => setDarkMode((value) => !value)}
+            onClick={onToggleTheme}
             aria-label="Cambiar tema"
           >
             {darkMode ? <SunIcon /> : <MoonIcon />}
