@@ -106,21 +106,14 @@ label {
 }
 
 input {
-  padding: 0 0.75rem;
+  padding: 0.65rem 0.75rem;
   border-radius: 10px;
   border: 1px solid #cbd5e1;
   background: #f8fafc;
   font-size: 1rem;
   color: #0f172a;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  width: 130px;
-  height: 40px;
-}
-
-.login-page.dark input {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.16);
-  color: #f5f7fb;
+  width: 100%;
 }
 
 .login-page.dark input {
@@ -195,12 +188,12 @@ input:focus {
 
 .theme-toggle {
   position: absolute;
-  right: 0.25rem;
-  top: -0.5rem;
+  right: 1.25rem;
+  bottom: 1.5rem;
   background: rgba(255, 255, 255, 0.55);
   color: #0f172a;
   border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 14px 14px 0 14px;
+  border-radius: 14px;
   padding: 0.55rem 0.65rem;
   cursor: pointer;
   backdrop-filter: blur(10px);

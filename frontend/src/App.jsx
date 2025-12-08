@@ -137,15 +137,6 @@ function App() {
               className="brand-logo"
             />
           </div>
-
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={() => setDarkMode((value) => !value)}
-            aria-label="Cambiar tema"
-          >
-            {darkMode ? <SunIcon /> : <MoonIcon />}
-          </button>
         </div>
 
         <h1>Iniciar sesión</h1>
@@ -188,6 +179,15 @@ function App() {
             Olvidaste tu contraseña
           </button>
         </div>
+
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={() => setDarkMode((value) => !value)}
+          aria-label="Cambiar tema"
+        >
+          {darkMode ? <SunIcon /> : <MoonIcon />}
+        </button>
       </section>
 
       <section className="login-hero" aria-hidden>
