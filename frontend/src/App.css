@@ -123,6 +123,12 @@ input {
   color: #f5f7fb;
 }
 
+.login-page.dark input {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #f5f7fb;
+}
+
 input:focus {
   outline: none;
   border-color: #2563eb;
