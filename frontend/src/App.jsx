@@ -1,20 +1,61 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import wallpaper from './assets/login/login_wallpaper.webp'
+import jpaezDark from './assets/login/jpaez(dark).png'
+import jpaezLight from './assets/login/jpaez(light).png'
+import kavaDark from './assets/login/kava(dark).png'
+import kavaLight from './assets/login/kava(light).png'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+const SunIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2" />
+    <path d="M12 20v2" />
+    <path d="m4.93 4.93 1.41 1.41" />
+    <path d="m17.66 17.66 1.41 1.41" />
+    <path d="M2 12h2" />
+    <path d="M20 12h2" />
+    <path d="m6.34 17.66-1.41 1.41" />
+    <path d="m19.07 4.93-1.41 1.41" />
+  </svg>
+)
+
+const MoonIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+  </svg>
+)
+
 function App() {
-  const [mode, setMode] = useState('register')
   const [statusMessage, setStatusMessage] = useState('')
   const [authError, setAuthError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [darkMode, setDarkMode] = useState(false)
 
-  const [registerData, setRegisterData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    password: '',
-  })
   const [loginData, setLoginData] = useState({
     email: '',
     password: '',
@@ -50,35 +91,6 @@ function App() {
     return baseHeaders
   }, [token])
 
-  const handleRegister = async (event) => {
-    event.preventDefault()
-    setLoading(true)
-    setAuthError('')
-    setStatusMessage('')
-    try {
-      const response = await fetch(`${API_URL}/auth/register/`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(registerData),
-      })
-      const data = await response.json().catch(() => ({}))
-
-      if (!response.ok) {
-        setAuthError(data.detail || 'No se pudo crear la cuenta. Verifica los datos.')
-        return
-      }
-
-      setToken(data.token)
-      setUser(data.usuario)
-      setStatusMessage('Cuenta creada y sesión iniciada correctamente.')
-      setRegisterData({ first_name: '', last_name: '', email: '', password: '' })
-    } catch (error) {
-      setAuthError('No se pudo contactar al servidor. Intenta de nuevo.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const handleLogin = async (event) => {
     event.preventDefault()
     setLoading(true)
@@ -108,222 +120,79 @@ function App() {
     }
   }
 
-  const checkProtectedArea = async () => {
-    if (!token) {
-      setAuthError('Debes iniciar sesión para entrar a la zona protegida.')
-      return
-    }
-
-    setLoading(true)
-    setAuthError('')
-    setStatusMessage('')
-    try {
-      const response = await fetch(`${API_URL}/auth/me/`, {
-        headers,
-      })
-      const data = await response.json().catch(() => ({}))
-
-      if (!response.ok) {
-        setAuthError('Tu sesión expiró, vuelve a iniciar sesión.')
-        return
-      }
-
-      setUser(data.usuario)
-      setStatusMessage('Accediste correctamente al contenido protegido.')
-    } catch (error) {
-      setAuthError('No se pudo contactar al servidor. Intenta de nuevo.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const logout = () => {
-    setToken('')
-    setUser(null)
-    setStatusMessage('Sesión cerrada.')
-  }
-
   return (
-    <div className="app">
-      <header className="header">
-        <div>
-          <p className="eyebrow">InventarioApp</p>
-          <h1>Autenticación básica</h1>
-          <p className="subtitle">
-            Crea una cuenta, inicia sesión y prueba el acceso a una pantalla protegida
-            desde el frontend.
-          </p>
-        </div>
-        <div className="header-actions">
-          <button
-            type="button"
-            className={mode === 'register' ? 'primary' : 'ghost'}
-            onClick={() => setMode('register')}
-          >
-            Crear cuenta
-          </button>
-          <button
-            type="button"
-            className={mode === 'login' ? 'primary' : 'ghost'}
-            onClick={() => setMode('login')}
-          >
-            Iniciar sesión
-          </button>
-          {token && (
-            <button type="button" className="ghost" onClick={logout}>
-              Cerrar sesión
-            </button>
-          )}
-        </div>
-      </header>
-
-      <div className="panels">
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">API REST</p>
-              <h2>{mode === 'register' ? 'Crear nueva cuenta' : 'Iniciar sesión'}</h2>
-              <p className="subtitle">
-                Completa el formulario y la aplicación consumirá la API del backend.
-              </p>
-            </div>
+    <div className={`login-page ${darkMode ? 'dark' : ''}`}>
+      <section className="login-panel">
+        <div className="panel-header">
+          <div className="brand-row">
+            <img
+              src={darkMode ? kavaDark : kavaLight}
+              alt="Logo Kava"
+              className="brand-logo"
+            />
+            <span className="brand-divider" aria-hidden />
+            <img
+              src={darkMode ? jpaezDark : jpaezLight}
+              alt="Logo JPaez"
+              className="brand-logo"
+            />
           </div>
+        </div>
 
-          {mode === 'register' ? (
-            <form className="form" onSubmit={handleRegister}>
-              <div className="form-row">
-                <label htmlFor="first_name">Nombres</label>
-                <input
-                  id="first_name"
-                  name="first_name"
-                  value={registerData.first_name}
-                  onChange={(e) =>
-                    setRegisterData({ ...registerData, first_name: e.target.value })
-                  }
-                  placeholder="Andrea Paola"
-                  required
-                />
-              </div>
-              <div className="form-row">
-                <label htmlFor="last_name">Apellidos</label>
-                <input
-                  id="last_name"
-                  name="last_name"
-                  value={registerData.last_name}
-                  onChange={(e) =>
-                    setRegisterData({ ...registerData, last_name: e.target.value })
-                  }
-                  placeholder="Martínez López"
-                  required
-                />
-              </div>
-              <div className="form-row">
-                <label htmlFor="email">Correo</label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={registerData.email}
-                  onChange={(e) =>
-                    setRegisterData({ ...registerData, email: e.target.value })
-                  }
-                  placeholder="usuario@correo.com"
-                  required
-                />
-              </div>
-              <div className="form-row">
-                <label htmlFor="password">Contraseña</label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  minLength={8}
-                  value={registerData.password}
-                  onChange={(e) =>
-                    setRegisterData({ ...registerData, password: e.target.value })
-                  }
-                  placeholder="Mínimo 8 caracteres"
-                  required
-                />
-              </div>
-              <button type="submit" className="primary" disabled={loading}>
-                {loading ? 'Creando cuenta...' : 'Crear cuenta y entrar'}
-              </button>
-            </form>
-          ) : (
-            <form className="form" onSubmit={handleLogin}>
-              <div className="form-row">
-                <label htmlFor="email-login">Correo</label>
-                <input
-                  id="email-login"
-                  name="email"
-                  type="email"
-                  value={loginData.email}
-                  onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
-                  placeholder="usuario@correo.com"
-                  required
-                />
-              </div>
-              <div className="form-row">
-                <label htmlFor="password-login">Contraseña</label>
-                <input
-                  id="password-login"
-                  name="password"
-                  type="password"
-                  value={loginData.password}
-                  onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                  placeholder="Tu contraseña"
-                  required
-                />
-              </div>
-              <button type="submit" className="primary" disabled={loading}>
-                {loading ? 'Validando...' : 'Entrar'}
-              </button>
-            </form>
-          )}
+        <h1>Iniciar sesión</h1>
 
-          {statusMessage && <p className="status success">{statusMessage}</p>}
-          {authError && <p className="status error">{authError}</p>}
-        </section>
-
-        <section className="panel protected">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Pantalla protegida</p>
-              <h2>Solo usuarios autenticados</h2>
-              <p className="subtitle">
-                Esta sección llama al endpoint /auth/me/. Si hay un token válido,
-                verás los datos básicos del usuario.
-              </p>
-            </div>
+        <form onSubmit={handleLogin}>
+          <div className="form-row">
+            <label htmlFor="email">Email</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              value={loginData.email}
+              onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+              placeholder="usuario@correo.com"
+              required
+            />
           </div>
-
-          {user ? (
-            <div className="user-card">
-              <div className="avatar" aria-hidden>
-                {user.first_name?.[0]?.toUpperCase() || user.username?.[0]?.toUpperCase()}
-              </div>
-              <div>
-                <p className="user-name">
-                  {user.first_name} {user.last_name}
-                </p>
-                <p className="user-email">{user.email}</p>
-              </div>
-            </div>
-          ) : (
-            <p className="muted">No hay ninguna sesión activa.</p>
-          )}
-
-          <button
-            type="button"
-            className="primary full-width"
-            onClick={checkProtectedArea}
-            disabled={loading}
-          >
-            {loading ? 'Comprobando...' : 'Entrar a la zona protegida'}
+          <div className="form-row">
+            <label htmlFor="password">Contraseña</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              value={loginData.password}
+              onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+              placeholder="Tu contraseña"
+              required
+            />
+          </div>
+          <button type="submit" className="primary-button" disabled={loading}>
+            {loading ? 'Validando...' : 'Iniciar Sesión'}
           </button>
-        </section>
-      </div>
+        </form>
+
+        {statusMessage && <p className="status success">{statusMessage}</p>}
+        {authError && <p className="status error">{authError}</p>}
+
+        <div className="helper-row">
+          <button type="button" className="link-button">
+            Olvidaste tu contraseña
+          </button>
+        </div>
+
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={() => setDarkMode((value) => !value)}
+          aria-label="Cambiar tema"
+        >
+          {darkMode ? <SunIcon /> : <MoonIcon />}
+        </button>
+      </section>
+
+      <section className="login-hero" aria-hidden>
+        <img src={wallpaper} alt="Fondo" />
+      </section>
     </div>
   )
 }
