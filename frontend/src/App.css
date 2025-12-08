@@ -97,8 +97,9 @@
 }
 
 .brand-divider {
-  width: 5px;
+  width: 4px;
   height: 54px;
+  border-radius: 99px;
   background: rgba(15, 23, 42, 0.15);
   transition: background-color 0.45s ease;
 }
@@ -109,7 +110,7 @@
 
 .login-panel h1 {
   margin: 0 0 0.4rem;
-  font-size: 1.85rem;
+  font-size: 1.50rem;
   letter-spacing: -0.2px;
   text-align: center;
 }

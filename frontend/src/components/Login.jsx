@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import '../App.css'
 import wallpaperLight from '../assets/login/login_wallpaper(light).png'
-import wallpaperDark from '../assets/login/login_wallpaper.webp'
+import wallpaperDark from '../assets/login/login_wallpaper(dark).png'
 import jpaezDark from '../assets/login/jpaez(dark).png'
 import jpaezLight from '../assets/login/jpaez(light).png'
 import kavaDark from '../assets/login/kava(dark).png'
