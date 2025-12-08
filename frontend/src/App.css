@@ -90,18 +90,19 @@
 }
 
 .brand-logo {
-  height: 64px;
+  height: 100px;
   object-fit: contain;
 }
 
 .brand-divider {
-  width: 1px;
+  width: 5px;
   height: 54px;
-  background: rgba(15, 23, 42, 0.15);
+  border-radius: 99px;
+  background: rgb(0, 0, 0);
 }
 
 .login-page.dark .brand-divider {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgb(255, 255, 255);
 }
 
 .login-panel h1 {
