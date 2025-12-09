@@ -85,6 +85,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
       setStatusMessage('¡Bienvenido de nuevo!')
       setLoginData({ email: '', password: '' })
     } catch (error) {
+      console.error('Error al iniciar sesión:', error)
       setAuthError('No se pudo contactar al servidor. Intenta de nuevo.')
     } finally {
       setLoading(false)
