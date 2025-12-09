@@ -9,7 +9,7 @@
   display: grid;
   grid-template-columns: 280px 1fr;
   height: 100vh;
-  background: var(--color-background, #e9ecef);
+  background: #eff1f5;
   color: #0f172a;
   transition: background-color 0.4s ease, color 0.4s ease, opacity 0.5s ease,
     transform 0.55s ease;
@@ -23,13 +23,13 @@
 }
 
 .dashboard-shell.dark {
-  background: var(--color-surface-darker, #212121);
+  background: #0b0d11;
   color: #e7e8ed;
 }
 
 .sidebar {
-  background: var(--color-input-bg, #f8f9fa);
-  border-right: 1px solid rgba(15, 23, 42, 0.04);
+  background: #ffffff;
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
   display: grid;
   grid-template-rows: auto 1fr auto;
   padding: 22px 18px 22px;
@@ -37,8 +37,8 @@
 }
 
 .dashboard-shell.dark .sidebar {
-  background: var(--color-surface-dark, #181818);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: #06070c;
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .sidebar__collapse {
@@ -212,36 +212,29 @@
 .workspace__hero {
   text-align: center;
   display: grid;
-  gap: 0.8rem;
-  padding: 32px 24px;
+  gap: 0.6rem;
+  padding: 28px;
   border-radius: 16px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 14px 45px rgba(15, 23, 42, 0.08);
 }
 
 .dashboard-shell.dark .workspace__hero {
-  background: transparent;
+  background: rgba(18, 20, 26, 0.9);
+  border-color: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
 }
 
 .workspace__logo img {
   width: 110px;
   height: auto;
   display: block;
-  margin: 0 auto 18px;
-}
-
-.workspace__copy h2 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 700;
-  color: #1f1f1f;
-}
-
-.dashboard-shell.dark .workspace__copy h2 {
-  color: #f2f2f2;
+  margin: 0 auto 12px;
 }
 
 .workspace__subtitle {
-  margin: 6px 0 0;
+  margin: 0;
   color: rgba(15, 23, 42, 0.7);
 }
 
