@@ -36,7 +36,7 @@
   --font-size-sm: 12px;
   --font-size-base: 14px;
   --font-size-md: 16px;
-  --font-size-lg: 22px;
+  --font-size-lg: 20px;
 
   font-family: 'Helvetica Now Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: var(--font-size-base);
