@@ -112,7 +112,7 @@
 }
 
 .sidebar__item.open {
-  padding: 4px 4px 6px;
+  padding: 0px 4px 6px;
   background: transparent;
 }
 
