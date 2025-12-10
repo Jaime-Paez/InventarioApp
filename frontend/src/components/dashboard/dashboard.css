@@ -158,18 +158,10 @@
 
 .sidebar__bullet {
   margin-left: auto;
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #5d7cff;
-  box-shadow: 0 0 0 3px rgba(93, 124, 255, 0.28);
-}
-
-.sidebar__link-end {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
 }
 
 .sidebar__chevron {

@@ -257,16 +257,7 @@ function Sidebar({
                 >
                   <Icon />
                   <span>{item.label}</span>
-                  {isGroup ? (
-                    <div className="sidebar__link-end">
-                      {isActive && <span className="sidebar__bullet" aria-hidden />}
-                      <ChevronDownIcon
-                        className={`sidebar__chevron ${isOpenGroup ? 'open' : ''}`}
-                      />
-                    </div>
-                  ) : (
-                    isActive && <span className="sidebar__bullet" aria-hidden />
-                  )}
+                  {isActive && <span className="sidebar__bullet" aria-hidden />}
                 </button>
 
                 {isGroup && isOpenGroup && (
