@@ -17,7 +17,6 @@ import {
   IdCard,
   Settings,
   PanelLeftClose,
-  PanelLeftOpen,
 } from 'lucide-react'
 
 const MENU_STRUCTURE = [
@@ -106,7 +105,7 @@ function Sidebar({
       <nav className="sidebar__nav">
         <ul>
           {menuItems.map((item) => {
-            const Icon = item.icon || LayersIcon
+            const Icon = item.icon || Layers
             const isGroup = Boolean(item.children)
             const childActive =
               isGroup &&
@@ -200,5 +199,4 @@ function Sidebar({
   )
 }
 
-export { MENU_STRUCTURE, PanelLeftOpen }
 export default Sidebar

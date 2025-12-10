@@ -1,7 +1,17 @@
 import WorkspaceTabs from './tabs/WorkspaceTabs'
+import QuickActions from './QuickActions'
 import './Workspace.css'
 
-function Workspace({ activeItem, openTabs, onSelectTab, onCloseTab, user, logo }) {
+function Workspace({
+  activeItem,
+  openTabs,
+  onSelectTab,
+  onCloseTab,
+  user,
+  logo,
+  darkMode,
+  onToggleTheme,
+}) {
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
     .join(' ')
@@ -11,12 +21,15 @@ function Workspace({ activeItem, openTabs, onSelectTab, onCloseTab, user, logo }
 
   return (
     <main className="workspace">
-      <WorkspaceTabs
-        openTabs={openTabs}
-        activeItem={activeItem}
-        onSelectTab={onSelectTab}
-        onCloseTab={onCloseTab}
-      />
+      <div className="workspace__toolbar">
+        <WorkspaceTabs
+          openTabs={openTabs}
+          activeItem={activeItem}
+          onSelectTab={onSelectTab}
+          onCloseTab={onCloseTab}
+        />
+        <QuickActions darkMode={darkMode} onToggleTheme={onToggleTheme} />
+      </div>
 
       {showWelcome && (
         <section className="workspace__hero">
