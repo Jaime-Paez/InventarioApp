@@ -87,8 +87,8 @@ function Sidebar({
           {menuItems.map((item) => {
             const Icon = item.icon || LayersIcon
             const isGroup = Boolean(item.children)
-            const isOpenGroup =
-              isGroup && (openGroups[item.label] || item.children?.some((child) => child.label === activeItem))
+            const childActive = isGroup && item.children?.some((child) => child.label === activeItem)
+            const isOpenGroup = isGroup && openGroups[item.label]
             const isActive = activeItem === item.label
 
             return (
@@ -103,7 +103,7 @@ function Sidebar({
                 >
                   <Icon />
                   <span>{item.label}</span>
-                  {isActive && <span className="sidebar__bullet" aria-hidden />}
+                  {(isActive || childActive) && <span className="sidebar__bullet" aria-hidden />}
                 </button>
 
                 {isGroup && isOpenGroup && (
