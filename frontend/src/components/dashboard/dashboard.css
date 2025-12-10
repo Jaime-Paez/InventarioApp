@@ -485,7 +485,7 @@
 .workspace__tabs {
   display: flex;
   align-items: flex-start;
-  min-height: 44px;
+  min-height: 30px;
 }
 
 .workspace__tablist {
@@ -499,15 +499,14 @@
   outline: none;
   background: var(--color-primary);
   color: #ffffff;
-  padding: 10px 14px;
-  border-radius: 999px;
+  padding: 5px 10px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   box-shadow: 0 8px 20px rgba(0, 69, 112, 0.26);
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-  font-weight: 700;
 }
 
 .workspace__tab:hover,
