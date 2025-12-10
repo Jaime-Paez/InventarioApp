@@ -151,9 +151,20 @@ class UsuarioSucursalSerializer(serializers.ModelSerializer):
 class AuthUserSerializer(serializers.ModelSerializer):
     """Serializa la información básica de un usuario autenticado."""
 
+    nombre = serializers.CharField(source="first_name", read_only=True)
+    apellido = serializers.CharField(source="last_name", read_only=True)
+
     class Meta:
         model = User
-        fields = ["id", "username", "first_name", "last_name", "email"]
+        fields = [
+            "id",
+            "username",
+            "first_name",
+            "last_name",
+            "email",
+            "nombre",
+            "apellido",
+        ]
 
 
 class RegistroSerializer(serializers.Serializer):

@@ -1,5 +1,8 @@
 function Workspace({ user, logo }) {
-  const username = user?.nombre || 'usuario'
+  const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim() || 'usuario'
 
   return (
     <main className="workspace">
