@@ -113,11 +113,10 @@
 
 .sidebar__item.open {
   padding: 4px 4px 6px;
+  background: transparent;
 }
 
-.dashboard-shell.dark .sidebar__item.open {
-  background: var(--color-surface-darker);
-}
+
 
 .sidebar__link {
   width: 100%;
