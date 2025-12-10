@@ -8,12 +8,30 @@ import Sidebar, { MENU_STRUCTURE, PanelLeftOpen } from './Sidebar'
 import Workspace from './Workspace'
 
 function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
-  const [activeItem, setActiveItem] = useState(MENU_STRUCTURE[0].label)
+  const [openTabs, setOpenTabs] = useState([])
+  const [activeItem, setActiveItem] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
   const heroLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const brandLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const partnerLogo = useMemo(() => (darkMode ? jpaezDark : jpaezLight), [darkMode])
+
+  const handleSelect = (label) => {
+    setActiveItem(label)
+    setOpenTabs((prev) => (prev.includes(label) ? prev : [...prev, label]))
+  }
+
+  const handleCloseTab = (label) => {
+    setOpenTabs((prev) => {
+      const filteredTabs = prev.filter((tab) => tab !== label)
+
+      if (label === activeItem) {
+        setActiveItem(filteredTabs[filteredTabs.length - 1] || '')
+      }
+
+      return filteredTabs
+    })
+  }
 
   return (
     <div
@@ -21,7 +39,8 @@ function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
     >
       <Sidebar
         activeItem={activeItem}
-        onSelect={setActiveItem}
+        onSelect={handleSelect}
+        openTabs={openTabs}
         user={user}
         onLogout={onLogout}
         brandLogo={brandLogo}
@@ -30,7 +49,14 @@ function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
         onToggleSidebar={() => setIsSidebarOpen((value) => !value)}
       />
 
-      <Workspace activeItem={activeItem} user={user} logo={heroLogo} />
+      <Workspace
+        activeItem={activeItem}
+        openTabs={openTabs}
+        onSelectTab={handleSelect}
+        onCloseTab={handleCloseTab}
+        user={user}
+        logo={heroLogo}
+      />
 
       {!isSidebarOpen && (
         <button
