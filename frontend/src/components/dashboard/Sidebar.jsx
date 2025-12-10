@@ -202,13 +202,21 @@ function Sidebar({
   isOpen,
   onToggleSidebar,
 }) {
-  const [openGroups, setOpenGroups] = useState({ Movimientos: true })
+  const [openGroups, setOpenGroups] = useState({})
   const [profileOpen, setProfileOpen] = useState(false)
 
   const menuItems = useMemo(() => MENU_STRUCTURE, [])
 
   const toggleGroup = (label) => {
-    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }))
+    setOpenGroups((prev) => {
+      const shouldOpen = !prev[label]
+
+      if (shouldOpen) {
+        return { [label]: true }
+      }
+
+      return {}
+    })
   }
 
   const handlePrimarySelect = (item) => {
@@ -249,16 +257,7 @@ function Sidebar({
                 >
                   <Icon />
                   <span>{item.label}</span>
-                  {isGroup ? (
-                    <div className="sidebar__link-end">
-                      {isActive && <span className="sidebar__bullet" aria-hidden />}
-                      <ChevronDownIcon
-                        className={`sidebar__chevron ${isOpenGroup ? 'open' : ''}`}
-                      />
-                    </div>
-                  ) : (
-                    isActive && <span className="sidebar__bullet" aria-hidden />
-                  )}
+                  {isActive && <span className="sidebar__bullet" aria-hidden />}
                 </button>
 
                 {isGroup && isOpenGroup && (
@@ -275,7 +274,6 @@ function Sidebar({
                           >
                             <ChildIcon />
                             <span>{child.label}</span>
-                            {childActive && <span className="sidebar__bullet" aria-hidden />}
                           </button>
                         </li>
                       )
