@@ -159,6 +159,11 @@
   transform: none;
 }
 
+.sidebar__link:focus-visible,
+.sidebar__link:active {
+  color: inherit;
+}
+
 .sidebar__link.open {
   background: transparent;
   color: inherit;
@@ -247,6 +252,11 @@
   border-color: transparent;
   background: transparent;
   color: var(--color-primary);
+}
+
+.sidebar__sublink:focus-visible,
+.sidebar__sublink:active {
+  color: inherit;
 }
 
 .dashboard-shell.dark .sidebar__sublink {

@@ -87,7 +87,10 @@ function Sidebar({
           {menuItems.map((item) => {
             const Icon = item.icon || LayersIcon
             const isGroup = Boolean(item.children)
-            const childActive = isGroup && item.children?.some((child) => child.label === activeItem)
+            const childActive =
+              isGroup &&
+              item.label !== 'Sucursales' &&
+              item.children?.some((child) => child.label === activeItem)
             const isOpenGroup = isGroup && openGroups[item.label]
             const isActive = activeItem === item.label
 
