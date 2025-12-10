@@ -22,15 +22,14 @@ function Workspace({
   return (
     <main className="workspace">
       <div className="workspace__toolbar">
+        <WorkspaceTabs
+          openTabs={openTabs}
+          activeItem={activeItem}
+          onSelectTab={onSelectTab}
+          onCloseTab={onCloseTab}
+        />
         <QuickActions darkMode={darkMode} onToggleTheme={onToggleTheme} />
       </div>
-
-      <WorkspaceTabs
-        openTabs={openTabs}
-        activeItem={activeItem}
-        onSelectTab={onSelectTab}
-        onCloseTab={onCloseTab}
-      />
 
       {showWelcome && (
         <section className="workspace__hero">

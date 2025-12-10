@@ -1,7 +1,4 @@
 .quick-actions {
-  position: absolute;
-  top: 18px;
-  right: 24px;
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
@@ -10,7 +7,6 @@
   backdrop-filter: blur(12px);
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
   transition: background 0.2s ease, border-color 0.2s ease;
-  z-index: 2;
 }
 
 .quick-actions.dark {
