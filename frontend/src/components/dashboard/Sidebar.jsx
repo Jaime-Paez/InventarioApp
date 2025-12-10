@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Layers, ArrowRightLeft, CircleArrowDown, CircleArrowUp, Tag, Map, Compass, Box, Truck, Hexagon, Building, Hand, UsersRound, IdCard, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 const iconProps = {
   width: 18,
@@ -11,148 +12,6 @@ const iconProps = {
   strokeLinejoin: 'round',
 }
 
-const LayersIcon = () => (
-  <svg {...iconProps}>
-    <polygon points="12 2 2 7 12 12 22 7 12 2" />
-    <polyline points="2 12 12 17 22 12" />
-    <polyline points="2 17 12 22 22 17" />
-  </svg>
-)
-
-const ArrowRightLeftIcon = () => (
-  <svg {...iconProps}>
-    <path d="m16 3 4 4-4 4" />
-    <path d="M20 7H4" />
-    <path d="m8 21-4-4 4-4" />
-    <path d="M4 17h16" />
-  </svg>
-)
-
-const CircleArrowDownIcon = () => (
-  <svg {...iconProps}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="m8.5 12.5 3.5 3.5 3.5-3.5" />
-    <path d="M12 7.5v8.5" />
-  </svg>
-)
-
-const CircleArrowUpIcon = () => (
-  <svg {...iconProps}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M15.5 11.5 12 8 8.5 11.5" />
-    <path d="M12 16.5V8" />
-  </svg>
-)
-
-const TagIcon = () => (
-  <svg {...iconProps}>
-    <path d="M2 12V7.67a1 1 0 0 1 .29-.7l4.68-4.68a1 1 0 0 1 .7-.29H12a1 1 0 0 1 .7.29l8.31 8.31a1 1 0 0 1 0 1.41l-6.59 6.59a1 1 0 0 1-1.41 0l-9-9A1 1 0 0 1 2 12Z" />
-    <path d="M7.5 5.5h.01" />
-  </svg>
-)
-
-const MapIcon = () => (
-  <svg {...iconProps}>
-    <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6" />
-    <line x1="9" x2="9" y1="3" y2="18" />
-    <line x1="15" x2="15" y1="6" y2="21" />
-  </svg>
-)
-
-const CompassIcon = () => (
-  <svg {...iconProps}>
-    <circle cx="12" cy="12" r="9" />
-    <polygon points="15.5 8.5 13.8 13.8 8.5 15.5 10.2 10.2 15.5 8.5" />
-  </svg>
-)
-
-const BoxIcon = () => (
-  <svg {...iconProps}>
-    <path d="M21 16.5V8.5L12 4 3 8.5v8l9 4 9-4Z" />
-    <path d="m3 8.5 9 4 9-4" />
-    <path d="M12 12.5v8" />
-  </svg>
-)
-
-const TruckIcon = () => (
-  <svg {...iconProps}>
-    <path d="M16 3H3v13h13V3Z" />
-    <path d="m16 8 3 1.5V16h-3" />
-    <circle cx="7" cy="17" r="1.8" />
-    <circle cx="17" cy="17" r="1.8" />
-  </svg>
-)
-
-const RegisteredIcon = () => (
-  <svg {...iconProps}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M9 17V7h4a3 3 0 0 1 0 6H9" />
-    <path d="m13 13 2.2 4" />
-  </svg>
-)
-
-const BuildingIcon = () => (
-  <svg {...iconProps}>
-    <rect x="4" y="3" width="16" height="18" rx="2" />
-    <path d="M9 7h6" />
-    <path d="M9 11h6" />
-    <path d="M9 15h6" />
-  </svg>
-)
-
-const HandIcon = () => (
-  <svg {...iconProps}>
-    <path d="M18 11v7a2.5 2.5 0 0 1-2.5 2.5H9a4.5 4.5 0 0 1-4.5-4.5V12" />
-    <path d="M22 11h-3.5" />
-    <path d="M13.5 11H12" />
-    <path d="M10 11H7.5" />
-    <path d="M7.5 15.5v-5A3.5 3.5 0 0 1 11 7h0a2.5 2.5 0 0 1 2.5 2.5V11" />
-    <path d="M12 7V4" />
-  </svg>
-)
-
-const UsersRoundIcon = () => (
-  <svg {...iconProps}>
-    <path d="M19 21a8 8 0 0 0-14 0" />
-    <circle cx="12" cy="8" r="4.5" />
-    <path d="M21 22a6 6 0 0 0-4-5.66" />
-    <path d="M17 3.34a4 4 0 0 1 0 7.32" />
-  </svg>
-)
-
-const IdCardIcon = () => (
-  <svg {...iconProps}>
-    <rect x="3" y="4" width="18" height="16" rx="2" />
-    <path d="M7 8h7" />
-    <path d="M7 12h4" />
-    <circle cx="17" cy="12" r="1.5" />
-    <path d="M15.5 16.5c1-.9 2.5-.9 3.5 0" />
-  </svg>
-)
-
-const SettingsIcon = () => (
-  <svg {...iconProps}>
-    <circle cx="12" cy="12" r="3" />
-    <path d="m19.4 15 .5 2.5a2 2 0 0 1-2 2.5h-.7a2 2 0 0 0-1.9 1.3l-.2.6a2 2 0 0 1-3.8 0l-.2-.6A2 2 0 0 0 9.3 20H8.6a2 2 0 0 1-2-2.5l.5-2.5a2 2 0 0 0-.5-1.8l-1.8-1.8a2 2 0 0 1 1.4-3.4h1.7a2 2 0 0 0 1.8-1.2l.5-1.3a2 2 0 0 1 3.7 0l.5 1.3a2 2 0 0 0 1.8 1.2h1.7a2 2 0 0 1 1.4 3.4L19 13.2a2 2 0 0 0-.5 1.8Z" />
-  </svg>
-)
-
-const PanelLeftCloseIcon = () => (
-  <svg {...iconProps}>
-    <path d="M3 5v14a2 2 0 0 0 2 2h14" />
-    <path d="M13 3h6v18h-6" />
-    <path d="m9 15-3-3 3-3" />
-  </svg>
-)
-
-const PanelRightOpenIcon = ({ className }) => (
-  <svg {...iconProps} className={className}>
-    <path d="M21 5v14a2 2 0 0 1-2 2H5" />
-    <path d="M11 3H5v18h6" />
-    <path d="m15 9 3 3-3 3" />
-  </svg>
-)
-
 const ChevronDownIcon = ({ className }) => (
   <svg {...iconProps} width={18} height={18} className={className}>
     <path d="m6 9 6 6 6-6" />
@@ -160,35 +19,35 @@ const ChevronDownIcon = ({ className }) => (
 )
 
 const MENU_STRUCTURE = [
-  { label: 'Inventario', icon: LayersIcon },
+  { label: 'Inventario', icon: Layers },
   {
     label: 'Movimientos',
-    icon: ArrowRightLeftIcon,
+    icon: ArrowRightLeft,
     children: [
-      { label: 'Entradas', icon: CircleArrowDownIcon },
-      { label: 'Salidas', icon: CircleArrowUpIcon },
+      { label: 'Entradas', icon: CircleArrowDown },
+      { label: 'Salidas', icon: CircleArrowUp },
     ],
   },
-  { label: 'Productos', icon: TagIcon },
+  { label: 'Productos', icon: Tag },
   {
     label: 'Sucursales',
-    icon: MapIcon,
+    icon: Map,
     children: [
-      { label: 'Sucursales', icon: CompassIcon },
-      { label: 'Bodegas', icon: BoxIcon },
+      { label: 'Sucursales', icon: Compass },
+      { label: 'Bodegas', icon: Box },
     ],
   },
   {
     label: 'Proovedores',
-    icon: TruckIcon,
+    icon: Truck,
     children: [
-      { label: 'Marcas', icon: RegisteredIcon },
-      { label: 'Casas comerciales', icon: BuildingIcon },
+      { label: 'Marcas', icon: Hexagon },
+      { label: 'Casas comerciales', icon: Building },
     ],
   },
-  { label: 'Solicitudes', icon: HandIcon },
-  { label: 'Clientes', icon: UsersRoundIcon },
-  { label: 'Administrar', icon: IdCardIcon },
+  { label: 'Solicitudes', icon: Hand },
+  { label: 'Clientes', icon: UsersRound },
+  { label: 'Administrar', icon: IdCard },
 ]
 
 function Sidebar({
@@ -291,11 +150,11 @@ function Sidebar({
       <footer className="sidebar__footer">
         <div className="sidebar__actions">
           <button type="button" className="sidebar__action ghost">
-            <SettingsIcon />
+            <Settings />
             Configuración
           </button>
           <button type="button" className="sidebar__action" onClick={onToggleSidebar}>
-            <PanelLeftCloseIcon />
+            <PanelLeftClose />
             Cerrar panel
           </button>
         </div>
@@ -324,5 +183,5 @@ function Sidebar({
   )
 }
 
-export { MENU_STRUCTURE, PanelRightOpenIcon }
+export { MENU_STRUCTURE, PanelLeftOpen }
 export default Sidebar

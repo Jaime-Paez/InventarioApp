@@ -4,7 +4,7 @@ import kavaLight from '../../assets/login/kava(light).png'
 import jpaezDark from '../../assets/login/jpaez(dark).png'
 import jpaezLight from '../../assets/login/jpaez(light).png'
 import './dashboard.css'
-import Sidebar, { MENU_STRUCTURE, PanelRightOpenIcon } from './Sidebar'
+import Sidebar, { MENU_STRUCTURE, PanelLeftOpen } from './Sidebar'
 import Workspace from './Workspace'
 
 function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
@@ -38,7 +38,7 @@ function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
           className="sidebar__reopen"
           onClick={() => setIsSidebarOpen(true)}
         >
-          <PanelRightOpenIcon />
+          <PanelLeftOpen />
           Abrir panel
         </button>
       )}
