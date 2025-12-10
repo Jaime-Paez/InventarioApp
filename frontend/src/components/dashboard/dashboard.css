@@ -112,8 +112,12 @@
 }
 
 .sidebar__item.open {
-  background: #303030;
+  background: var(--color-surface-alt);
   padding: 4px 4px 6px;
+}
+
+.dashboard-shell.dark .sidebar__item.open {
+  background: var(--color-surface-darker);
 }
 
 .sidebar__link {
@@ -152,14 +156,20 @@
 .sidebar__link.active {
   border-color: transparent;
   background: transparent;
-  color: inherit;
+  color: var(--color-primary);
   transform: none;
 }
 
 .sidebar__link.open {
-  background: #303030;
-  color: #ffffff;
-  border-color: #303030;
+  background: var(--color-surface-alt);
+  color: var(--color-text-primary);
+  border-color: var(--color-surface-alt);
+}
+
+.dashboard-shell.dark .sidebar__link.open {
+  background: var(--color-surface-darker);
+  color: var(--color-text-inverse);
+  border-color: var(--color-surface-darker);
 }
 
 .dashboard-shell.dark .sidebar__link:hover {
@@ -169,7 +179,7 @@
 .dashboard-shell.dark .sidebar__link.active {
   border-color: transparent;
   background: transparent;
-  color: inherit;
+  color: var(--color-primary-contrast);
 }
 
 .sidebar__bullet {
@@ -177,7 +187,11 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #5d7cff;
+  background: var(--color-primary);
+}
+
+.dashboard-shell.dark .sidebar__bullet {
+  background: var(--color-primary-contrast);
 }
 
 .sidebar__chevron {
@@ -201,9 +215,13 @@
 }
 
 .sidebar__submenu.open {
-  background: #303030;
+  background: var(--color-surface-alt);
   border-radius: 12px;
   padding: 0.35rem 0.25rem;
+}
+
+.dashboard-shell.dark .sidebar__submenu.open {
+  background: var(--color-surface-darker);
 }
 
 .sidebar__sublink {
@@ -224,7 +242,12 @@
 
 .sidebar__link.open + .sidebar__submenu .sidebar__sublink,
 .sidebar__submenu.open .sidebar__sublink {
-  color: #f4f4f4;
+  color: var(--color-text-primary);
+}
+
+.dashboard-shell.dark .sidebar__link.open + .sidebar__submenu .sidebar__sublink,
+.dashboard-shell.dark .sidebar__submenu.open .sidebar__sublink {
+  color: var(--color-text-inverse);
 }
 
 .sidebar__sublink:hover {
@@ -234,7 +257,7 @@
 .sidebar__sublink.active {
   border-color: transparent;
   background: transparent;
-  color: inherit;
+  color: var(--color-primary);
 }
 
 .dashboard-shell.dark .sidebar__sublink {
@@ -246,7 +269,7 @@
 }
 
 .dashboard-shell.dark .sidebar__sublink.active {
-  color: inherit;
+  color: var(--color-primary-contrast);
 }
 
 .sidebar__footer {

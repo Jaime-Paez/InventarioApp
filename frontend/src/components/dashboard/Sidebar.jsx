@@ -68,8 +68,11 @@ function Sidebar({
     onSelect(item.label)
   }
 
-  const userInitial = (user?.nombre || 'U')[0]?.toUpperCase()
-  const userName = user?.nombre || 'Usuario'
+  const userInitial = (user?.nombre || user?.first_name || 'U')[0]?.toUpperCase()
+  const userName = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim() || 'Usuario'
 
   return (
     <aside className={`sidebar ${isOpen ? '' : 'sidebar--hidden'}`}>
@@ -84,10 +87,9 @@ function Sidebar({
           {menuItems.map((item) => {
             const Icon = item.icon || LayersIcon
             const isGroup = Boolean(item.children)
-            const isOpenGroup = isGroup && openGroups[item.label]
-            const isActive =
-              activeItem === item.label ||
-              item.children?.some((child) => child.label === activeItem)
+            const isOpenGroup =
+              isGroup && (openGroups[item.label] || item.children?.some((child) => child.label === activeItem))
+            const isActive = activeItem === item.label
 
             return (
               <li
