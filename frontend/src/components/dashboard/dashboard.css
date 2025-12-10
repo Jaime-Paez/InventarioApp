@@ -71,8 +71,7 @@
 .sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 0.9rem;
-  padding: 6px 4px 14px;
+  gap: 0.6rem;
 }
 
 .sidebar__brand-logo {
@@ -81,7 +80,7 @@
 }
 
 .sidebar__partner-logo {
-  height: 68px;
+  height: 65px;
   width: auto;
 }
 
