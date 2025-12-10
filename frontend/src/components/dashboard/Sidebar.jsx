@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 
 const iconProps = {
-  width: 20,
-  height: 20,
+  width: 18,
+  height: 18,
   viewBox: '0 0 24 24',
   fill: 'none',
   stroke: 'currentColor',
@@ -221,7 +221,6 @@ function Sidebar({
 
   const userInitial = (user?.nombre || 'U')[0]?.toUpperCase()
   const userName = user?.nombre || 'Usuario'
-  const userEmail = user?.correo || 'correo@empresa.com'
 
   return (
     <aside className={`sidebar ${isOpen ? '' : 'sidebar--hidden'}`}>
@@ -290,17 +289,25 @@ function Sidebar({
       </nav>
 
       <footer className="sidebar__footer">
+        <div className="sidebar__actions">
+          <button type="button" className="sidebar__action ghost">
+            <SettingsIcon />
+            Configuración
+          </button>
+          <button type="button" className="sidebar__action" onClick={onToggleSidebar}>
+            <PanelLeftCloseIcon />
+            Cerrar panel
+          </button>
+        </div>
+
         <div className="sidebar__profile">
           <button
             type="button"
             className={`sidebar__user ${profileOpen ? 'open' : ''}`}
             onClick={() => setProfileOpen((value) => !value)}
           >
-            <div className="sidebar__avatar">{userInitial}</div>
-            <div className="sidebar__user-text">
-              <span className="sidebar__user-name">{userName}</span>
-              <span className="sidebar__user-role">{userEmail}</span>
-            </div>
+            <div className="sidebar__avatar minimal">{userInitial}</div>
+            <span className="sidebar__user-name">{userName}</span>
             <ChevronDownIcon className="sidebar__chevron" />
           </button>
 
@@ -311,17 +318,6 @@ function Sidebar({
               </button>
             </div>
           )}
-        </div>
-
-        <div className="sidebar__actions">
-          <button type="button" className="sidebar__action" onClick={onToggleSidebar}>
-            <PanelLeftCloseIcon />
-            Cerrar panel
-          </button>
-          <button type="button" className="sidebar__action ghost">
-            <SettingsIcon />
-            Configuración
-          </button>
         </div>
       </footer>
     </aside>

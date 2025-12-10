@@ -119,6 +119,15 @@
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease,
     transform 0.2s ease;
+  font-size: 14px;
+}
+
+.sidebar__link svg,
+.sidebar__sublink svg,
+.sidebar__action svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
 .dashboard-shell.dark .sidebar__link {
@@ -194,6 +203,7 @@
   color: rgba(15, 23, 42, 0.76);
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  font-size: 13px;
 }
 
 .sidebar__sublink:hover {
@@ -232,25 +242,29 @@
 .sidebar__user {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.5rem;
   width: 100%;
-  padding: 0.75rem 0.9rem;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(15, 23, 42, 0.02);
+  padding: 0.45rem 0.2rem 0.35rem;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
   cursor: pointer;
 }
 
 .sidebar__avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
   background: linear-gradient(135deg, #5d7cff, #8b7bff);
   color: white;
   display: grid;
   place-items: center;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.sidebar__avatar.minimal {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .sidebar__user-text {
@@ -269,8 +283,7 @@
 }
 
 .dashboard-shell.dark .sidebar__user {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  background: transparent;
 }
 
 .sidebar__profile-menu {
@@ -315,12 +328,13 @@
   border-radius: 12px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: rgba(15, 23, 42, 0.02);
-  padding: 0.72rem 0.9rem;
+  padding: 0.64rem 0.85rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-weight: 700;
   cursor: pointer;
+  font-size: 14px;
 }
 
 .sidebar__action.ghost {
