@@ -118,7 +118,6 @@ function Sidebar({ items, activeItem, onSelect, user, onLogout, brandLogo, partn
       </div>
 
       <nav className="sidebar__nav">
-        <p className="sidebar__section">Menú</p>
         <ul>
           {items.map((item) => (
             <li key={item}>
