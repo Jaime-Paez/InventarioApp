@@ -270,6 +270,8 @@
   border: none;
   background: transparent;
   cursor: pointer;
+  color: inherit;
+  font-size: 14px;
 }
 
 .sidebar__avatar {
@@ -332,7 +334,8 @@
   background: transparent;
   color: inherit;
   text-align: left;
-  font-weight: 700;
+  font-weight: 400;
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -342,31 +345,48 @@
 
 .sidebar__actions {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 .sidebar__action {
-  border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(15, 23, 42, 0.02);
-  padding: 0.64rem 0.85rem;
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-weight: 700;
+  gap: 0.6rem;
+  height: 35px;
+  padding: 0 0.9rem;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
+  font-weight: 400;
   font-size: 14px;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.sidebar__user-name {
+  font-size: 14px;
+  font-weight: 400;
+  color: inherit;
 }
 
 .sidebar__action.ghost {
   background: transparent;
-  border-color: rgba(15, 23, 42, 0.08);
+  border-color: transparent;
+}
+
+.sidebar__action:hover {
+  background: rgba(15, 23, 42, 0.04);
 }
 
 .dashboard-shell.dark .sidebar__action {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: white;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.dashboard-shell.dark .sidebar__action:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .sidebar__reopen {
