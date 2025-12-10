@@ -38,6 +38,7 @@
   grid-template-rows: auto 1fr auto;
   padding: 20px 16px 24px;
   gap: 1rem;
+  max-width: 850px;
   transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
