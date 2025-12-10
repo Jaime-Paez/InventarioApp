@@ -452,8 +452,9 @@
 }
 
 .workspace {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   height: 100%;
   overflow: hidden;
   padding: 24px;
@@ -464,13 +465,72 @@
   background: transparent;
 }
 
+.workspace__tabs {
+  display: flex;
+  align-items: flex-start;
+  min-height: 44px;
+}
+
+.workspace__tablist {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.workspace__tab {
+  border: none;
+  outline: none;
+  background: #4c3fdb;
+  color: #ffffff;
+  padding: 10px 14px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 20px rgba(76, 63, 219, 0.3);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  font-weight: 700;
+}
+
+.workspace__tab:hover,
+.workspace__tab:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(76, 63, 219, 0.35);
+}
+
+.workspace__tab.active {
+  background: #3f32c4;
+}
+
+.workspace__tab-label {
+  font-size: var(--font-size-base);
+}
+
+.workspace__tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.workspace__tab-close:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 .workspace__hero {
   text-align: center;
   display: grid;
   gap: 0.8rem;
   padding: 32px 24px;
-  border-radius: 0;
+  border-radius: 16px;
   background: transparent;
+  margin: auto;
 }
 
 .dashboard-shell.dark .workspace__hero {
@@ -502,6 +562,33 @@
 
 .dashboard-shell.dark .workspace__subtitle {
   color: rgba(255, 255, 255, 0.7);
+}
+
+.workspace__panel {
+  flex: 1;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.06);
+  display: grid;
+  align-items: flex-start;
+}
+
+.dashboard-shell.dark .workspace__panel {
+  background: rgba(24, 24, 24, 0.92);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.workspace__view-title {
+  margin: 0;
+  font-size: calc(var(--font-size-lg) + 6px);
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
+.dashboard-shell.dark .workspace__view-title {
+  color: var(--color-text-inverse);
 }
 
 .brand-divider {
