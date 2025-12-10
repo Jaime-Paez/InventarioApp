@@ -186,7 +186,6 @@ const MENU_STRUCTURE = [
       { label: 'Casas comerciales', icon: BuildingIcon },
     ],
   },
-  { label: 'Proveedores', icon: TruckIcon },
   { label: 'Solicitudes', icon: HandIcon },
   { label: 'Clientes', icon: UsersRoundIcon },
   { label: 'Administrar', icon: IdCardIcon },
