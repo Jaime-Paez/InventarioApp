@@ -112,7 +112,6 @@
 }
 
 .sidebar__item.open {
-  background: var(--color-surface-alt);
   padding: 4px 4px 6px;
 }
 
@@ -161,15 +160,9 @@
 }
 
 .sidebar__link.open {
-  background: var(--color-surface-alt);
-  color: var(--color-text-primary);
-  border-color: var(--color-surface-alt);
-}
-
-.dashboard-shell.dark .sidebar__link.open {
-  background: var(--color-surface-darker);
-  color: var(--color-text-inverse);
-  border-color: var(--color-surface-darker);
+  background: transparent;
+  color: inherit;
+  border-color: transparent;
 }
 
 .dashboard-shell.dark .sidebar__link:hover {
@@ -188,10 +181,6 @@
   height: 8px;
   border-radius: 50%;
   background: var(--color-primary);
-}
-
-.dashboard-shell.dark .sidebar__bullet {
-  background: var(--color-primary-contrast);
 }
 
 .sidebar__chevron {
