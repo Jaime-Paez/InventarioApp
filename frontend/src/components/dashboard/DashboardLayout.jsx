@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
+import { PanelLeftOpen } from 'lucide-react'
 import kavaDark from '../../assets/login/kava(dark).png'
 import kavaLight from '../../assets/login/kava(light).png'
 import jpaezDark from '../../assets/login/jpaez(dark).png'
 import jpaezLight from '../../assets/login/jpaez(light).png'
 import './DashboardLayout.css'
-import Sidebar, { MENU_STRUCTURE, PanelLeftOpen } from './Sidebar'
+import Sidebar from './Sidebar'
 import Workspace from './Workspace'
 
-function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
+function DashboardLayout({ user, darkMode, onLogout, isEntering, onToggleTheme }) {
   const [openTabs, setOpenTabs] = useState([])
   const [activeItem, setActiveItem] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -56,6 +57,8 @@ function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
         onCloseTab={handleCloseTab}
         user={user}
         logo={heroLogo}
+        darkMode={darkMode}
+        onToggleTheme={onToggleTheme}
       />
 
       {!isSidebarOpen && (
