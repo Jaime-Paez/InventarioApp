@@ -1,13 +1,15 @@
 .workspace__tabs {
   display: flex;
-  align-items: flex-start;
-  min-height: 30px;
+  align-items: center;
+  min-height: 44px;
+  flex: 1;
 }
 
 .workspace__tablist {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .workspace__tab {
