@@ -1,23 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Layers, ArrowRightLeft, CircleArrowDown, CircleArrowUp, Tag, Map, Compass, Box, Truck, Hexagon, Building, Hand, UsersRound, IdCard, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
-const iconProps = {
-  width: 18,
-  height: 18,
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 1.8,
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-}
-
-const ChevronDownIcon = ({ className }) => (
-  <svg {...iconProps} width={18} height={18} className={className}>
-    <path d="m6 9 6 6 6-6" />
-  </svg>
-)
-
 const MENU_STRUCTURE = [
   { label: 'Inventario', icon: Layers },
   {
@@ -167,7 +150,6 @@ function Sidebar({
           >
             <div className="sidebar__avatar minimal">{userInitial}</div>
             <span className="sidebar__user-name">{userName}</span>
-            <ChevronDownIcon className="sidebar__chevron" />
           </button>
 
           {profileOpen && (
