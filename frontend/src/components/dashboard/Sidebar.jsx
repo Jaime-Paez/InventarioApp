@@ -1,5 +1,24 @@
 import { useMemo, useState } from 'react'
-import { Layers, ArrowRightLeft, CircleArrowDown, CircleArrowUp, Tag, Map, Compass, Box, Truck, Hexagon, Building, Hand, UsersRound, IdCard, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import './Sidebar.css'
+import {
+  Layers,
+  ArrowRightLeft,
+  CircleArrowDown,
+  CircleArrowUp,
+  Tag,
+  Map,
+  Compass,
+  Box,
+  Truck,
+  Hexagon,
+  Building,
+  Hand,
+  UsersRound,
+  IdCard,
+  Settings,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from 'lucide-react'
 
 const MENU_STRUCTURE = [
   { label: 'Inventario', icon: Layers },
@@ -36,6 +55,7 @@ const MENU_STRUCTURE = [
 function Sidebar({
   activeItem,
   onSelect,
+  openTabs = [],
   user,
   onLogout,
   brandLogo,
@@ -47,6 +67,7 @@ function Sidebar({
   const [profileOpen, setProfileOpen] = useState(false)
 
   const menuItems = useMemo(() => MENU_STRUCTURE, [])
+  const openTabSet = useMemo(() => new Set(openTabs), [openTabs])
 
   const toggleGroup = (label) => {
     setOpenGroups((prev) => {
@@ -93,6 +114,9 @@ function Sidebar({
               item.children?.some((child) => child.label === activeItem)
             const isOpenGroup = isGroup && openGroups[item.label]
             const isActive = activeItem === item.label
+            const hasOpenTab = openTabSet.has(item.label)
+            const hasOpenChild =
+              isGroup && item.children?.some((child) => openTabSet.has(child.label))
 
             return (
               <li
@@ -106,7 +130,9 @@ function Sidebar({
                 >
                   <Icon />
                   <span>{item.label}</span>
-                  {(isActive || childActive) && <span className="sidebar__bullet" aria-hidden />}
+                  {(isActive || childActive || hasOpenTab || hasOpenChild) && (
+                    <span className="sidebar__bullet" aria-hidden />
+                  )}
                 </button>
 
                 {isGroup && isOpenGroup && (
@@ -114,6 +140,7 @@ function Sidebar({
                     {item.children.map((child) => {
                       const ChildIcon = child.icon || Icon
                       const childActive = activeItem === child.label
+                      const childHasOpenTab = openTabSet.has(child.label)
                       return (
                         <li key={child.label}>
                           <button
@@ -123,6 +150,9 @@ function Sidebar({
                           >
                             <ChildIcon />
                             <span>{child.label}</span>
+                            {(childActive || childHasOpenTab) && (
+                              <span className="sidebar__bullet sidebar__bullet--small" aria-hidden />
+                            )}
                           </button>
                         </li>
                       )
