@@ -38,6 +38,22 @@
   box-shadow: 0 10px 24px rgba(0, 69, 112, 0.3);
 }
 
+.dashboard-shell.dark .workspace__tab {
+  background: var(--color-primary-contrast);
+  box-shadow: 0 8px 20px rgba(0, 144, 187, 0.26);
+}
+
+.dashboard-shell.dark .workspace__tab:hover,
+.dashboard-shell.dark .workspace__tab:focus-visible,
+.dashboard-shell.dark .workspace__tab.active {
+  background: var(--color-primary-contrast-strong);
+  box-shadow: 0 10px 24px rgba(0, 144, 187, 0.3);
+}
+
+.workspace__tab-label {
+  font-size: var(--font-size-base);
+}
+
 .workspace__tab-close {
   display: inline-flex;
   align-items: center;
