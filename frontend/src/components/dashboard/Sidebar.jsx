@@ -1,5 +1,24 @@
 import { useMemo, useState } from 'react'
-import { Layers, ArrowRightLeft, CircleArrowDown, CircleArrowUp, Tag, Map, Compass, Box, Truck, Hexagon, Building, Hand, UsersRound, IdCard, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import './Sidebar.css'
+import {
+  Layers,
+  ArrowRightLeft,
+  CircleArrowDown,
+  CircleArrowUp,
+  Tag,
+  Map,
+  Compass,
+  Box,
+  Truck,
+  Hexagon,
+  Building,
+  Hand,
+  UsersRound,
+  IdCard,
+  Settings,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from 'lucide-react'
 
 const MENU_STRUCTURE = [
   { label: 'Inventario', icon: Layers },

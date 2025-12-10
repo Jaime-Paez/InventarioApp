@@ -1,46 +1,22 @@
+import WorkspaceTabs from './tabs/WorkspaceTabs'
+import './Workspace.css'
+
 function Workspace({ activeItem, openTabs, onSelectTab, onCloseTab, user, logo }) {
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
     .join(' ')
     .trim() || 'usuario'
 
-  const hasTabs = openTabs?.length > 0
   const showWelcome = !activeItem
 
   return (
     <main className="workspace">
-      <section className="workspace__tabs">
-        {hasTabs && (
-          <div className="workspace__tablist" role="tablist" aria-label="Pestañas del panel">
-            {openTabs.map((tab) => {
-              const isActive = tab === activeItem
-              return (
-                <button
-                  key={tab}
-                  type="button"
-                  className={`workspace__tab ${isActive ? 'active' : ''}`}
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => onSelectTab(tab)}
-                >
-                  <span className="workspace__tab-label">{tab}</span>
-                  <span
-                    role="button"
-                    aria-label={`Cerrar ${tab}`}
-                    className="workspace__tab-close"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onCloseTab(tab)
-                    }}
-                  >
-                    ×
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </section>
+      <WorkspaceTabs
+        openTabs={openTabs}
+        activeItem={activeItem}
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
+      />
 
       {showWelcome && (
         <section className="workspace__hero">

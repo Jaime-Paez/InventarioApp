@@ -3,7 +3,7 @@ import kavaDark from '../../assets/login/kava(dark).png'
 import kavaLight from '../../assets/login/kava(light).png'
 import jpaezDark from '../../assets/login/jpaez(dark).png'
 import jpaezLight from '../../assets/login/jpaez(light).png'
-import './dashboard.css'
+import './DashboardLayout.css'
 import Sidebar, { MENU_STRUCTURE, PanelLeftOpen } from './Sidebar'
 import Workspace from './Workspace'
 
