@@ -270,6 +270,8 @@
   border: none;
   background: transparent;
   cursor: pointer;
+  color: inherit;
+  font-size: 14px;
 }
 
 .sidebar__avatar {
@@ -332,7 +334,8 @@
   background: transparent;
   color: inherit;
   text-align: left;
-  font-weight: 700;
+  font-weight: 400;
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -357,10 +360,16 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 400;
   font-size: 14px;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease,
     transform 0.2s ease;
+}
+
+.sidebar__user-name {
+  font-size: 14px;
+  font-weight: 400;
+  color: inherit;
 }
 
 .sidebar__action.ghost {
