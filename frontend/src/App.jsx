@@ -82,6 +82,7 @@ function App() {
           darkMode={darkMode}
           onLogout={handleLogout}
           isEntering={loginTransitioning}
+          onToggleTheme={() => setDarkMode((value) => !value)}
         />
       )}
     </div>

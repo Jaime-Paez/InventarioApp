@@ -6,10 +6,16 @@
   overflow: hidden;
   padding: 24px;
   background: transparent;
+  position: relative;
 }
 
 .dashboard-shell.dark .workspace {
   background: transparent;
+}
+
+.workspace__toolbar {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .workspace__hero {
