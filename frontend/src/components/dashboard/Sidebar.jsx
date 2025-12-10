@@ -132,13 +132,13 @@ function Sidebar({
 
       <footer className="sidebar__footer">
         <div className="sidebar__actions">
-          <button type="button" className="sidebar__action ghost">
-            <Settings />
-            Configuración
-          </button>
           <button type="button" className="sidebar__action" onClick={onToggleSidebar}>
             <PanelLeftClose />
             Cerrar panel
+          </button>
+          <button type="button" className="sidebar__action ghost">
+            <Settings />
+            Configuración
           </button>
         </div>
 
