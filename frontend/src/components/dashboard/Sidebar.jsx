@@ -249,10 +249,13 @@ function Sidebar({
               item.children?.some((child) => child.label === activeItem)
 
             return (
-              <li key={item.label}>
+              <li
+                key={item.label}
+                className={`sidebar__item ${isOpenGroup ? 'open' : ''}`}
+              >
                 <button
                   type="button"
-                  className={`sidebar__link ${isActive ? 'active' : ''}`}
+                  className={`sidebar__link ${isActive ? 'active' : ''} ${isOpenGroup ? 'open' : ''}`}
                   onClick={() => handlePrimarySelect(item)}
                 >
                   <Icon />
@@ -261,7 +264,7 @@ function Sidebar({
                 </button>
 
                 {isGroup && isOpenGroup && (
-                  <ul className="sidebar__submenu">
+                  <ul className="sidebar__submenu open">
                     {item.children.map((child) => {
                       const ChildIcon = child.icon || Icon
                       const childActive = activeItem === child.label
