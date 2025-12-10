@@ -8,8 +8,8 @@ import Sidebar, { MENU_STRUCTURE, PanelLeftOpen } from './Sidebar'
 import Workspace from './Workspace'
 
 function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
-  const [openTabs, setOpenTabs] = useState([MENU_STRUCTURE[0].label])
-  const [activeItem, setActiveItem] = useState(MENU_STRUCTURE[0].label)
+  const [openTabs, setOpenTabs] = useState([])
+  const [activeItem, setActiveItem] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
   const heroLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
@@ -40,6 +40,7 @@ function DashboardLayout({ user, darkMode, onLogout, isEntering }) {
       <Sidebar
         activeItem={activeItem}
         onSelect={handleSelect}
+        openTabs={openTabs}
         user={user}
         onLogout={onLogout}
         brandLogo={brandLogo}

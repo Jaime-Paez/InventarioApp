@@ -201,6 +201,11 @@
   background: var(--color-primary);
 }
 
+.sidebar__bullet--small {
+  width: 6px;
+  height: 6px;
+}
+
 .sidebar__chevron {
   margin-left: auto;
   width: 16px;
