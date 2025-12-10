@@ -112,7 +112,6 @@
 }
 
 .sidebar__item.open {
-  background: #303030;
   padding: 4px 4px 6px;
 }
 
@@ -157,9 +156,9 @@
 }
 
 .sidebar__link.open {
-  background: #303030;
-  color: #ffffff;
-  border-color: #303030;
+  background: transparent;
+  color: inherit;
+  border-color: transparent;
 }
 
 .dashboard-shell.dark .sidebar__link:hover {
@@ -177,7 +176,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #5d7cff;
+  background: var(--color-primary);
 }
 
 .sidebar__chevron {
