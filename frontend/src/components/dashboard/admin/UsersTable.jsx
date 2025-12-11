@@ -178,9 +178,9 @@ function UsersTable({ token }) {
     <div className="users-table">
       <header className="users-table__header">
         <div>
-          <p className="eyebrow">Administración de usuarios</p>
+          <p className="users-table__eyebrow">Administración de usuarios</p>
           <h2>Usuarios del sistema</h2>
-          <p className="description">
+          <p className="users-table__description">
             Consulta y gestiona a todas las personas que tienen acceso a la plataforma.
           </p>
         </div>

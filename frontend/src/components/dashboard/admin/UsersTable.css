@@ -16,7 +16,7 @@
   flex-wrap: wrap;
 }
 
-.eyebrow {
+.users-table__eyebrow {
   font-size: 12px;
   letter-spacing: 0.08em;
   color: #94a3b8;
@@ -29,7 +29,7 @@
   color: #e2e8f0;
 }
 
-.description {
+.users-table__description {
   margin-top: 4px;
   color: #cbd5e1;
   max-width: 42ch;
