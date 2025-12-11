@@ -1,7 +1,7 @@
 .workspace__tabs {
   display: flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 30px;
   gap: 8px;
   flex: 1;
   min-width: 0;
@@ -44,14 +44,13 @@
   gap: 10px;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-  width: 180px;
-  flex: 0 0 180px;
+  width: 120px;
+  flex: 0 0 120px;
   min-width: 0;
 }
 
 .workspace__tab:hover,
 .workspace__tab:focus-visible {
-  transform: translateY(-1px);
   background: var(--color-primary-strong);
 }
 
