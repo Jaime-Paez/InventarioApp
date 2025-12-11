@@ -44,6 +44,9 @@
   gap: 10px;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  width: 180px;
+  flex: 0 0 180px;
+  min-width: 0;
 }
 
 .workspace__tab:hover,
@@ -68,6 +71,11 @@
 
 .workspace__tab-label {
   font-size: var(--font-size-base);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
 .workspace__tab-close {

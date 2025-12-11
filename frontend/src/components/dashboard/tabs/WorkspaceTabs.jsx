@@ -5,14 +5,18 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   const listRef = useRef(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
+  const [hasOverflow, setHasOverflow] = useState(false)
 
   const updateScrollControls = useCallback(() => {
     const element = listRef.current
     if (!element) return
 
     const { scrollLeft, clientWidth, scrollWidth } = element
-    setCanScrollLeft(scrollLeft > 0)
-    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 1)
+    const overflow = scrollWidth > clientWidth + 1
+
+    setHasOverflow(overflow)
+    setCanScrollLeft(overflow && scrollLeft > 0)
+    setCanScrollRight(overflow && scrollLeft + clientWidth < scrollWidth - 1)
   }, [])
 
   useEffect(() => {
@@ -55,15 +59,17 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
 
   return (
     <section className="workspace__tabs">
-      <button
-        type="button"
-        className="workspace__tab-control"
-        aria-label="Ver pestañas anteriores"
-        onClick={() => scrollTabs('left')}
-        disabled={!canScrollLeft}
-      >
-        ‹
-      </button>
+      {hasOverflow && (
+        <button
+          type="button"
+          className="workspace__tab-control"
+          aria-label="Ver pestañas anteriores"
+          onClick={() => scrollTabs('left')}
+          disabled={!canScrollLeft}
+        >
+          ‹
+        </button>
+      )}
 
       <div className="workspace__tablist-wrapper">
         <div className="workspace__tablist" ref={listRef} role="tablist" aria-label="Pestañas del panel">
@@ -96,15 +102,17 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
         </div>
       </div>
 
-      <button
-        type="button"
-        className="workspace__tab-control"
-        aria-label="Ver más pestañas"
-        onClick={() => scrollTabs('right')}
-        disabled={!canScrollRight}
-      >
-        ›
-      </button>
+      {hasOverflow && (
+        <button
+          type="button"
+          className="workspace__tab-control"
+          aria-label="Ver más pestañas"
+          onClick={() => scrollTabs('right')}
+          disabled={!canScrollRight}
+        >
+          ›
+        </button>
+      )}
     </section>
   )
 }
