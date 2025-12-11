@@ -35,6 +35,8 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         .order_by("apellidos", "nombres")
     )
     serializer_class = UsuarioSerializer
+    permission_classes = [AllowAny]
+    pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombres", "apellidos", "correo", "cargo", "roles__nombre"]
     ordering_fields = ["apellidos", "nombres", "correo"]

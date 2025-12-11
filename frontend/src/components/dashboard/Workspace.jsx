@@ -1,5 +1,6 @@
 import WorkspaceTabs from './tabs/WorkspaceTabs'
 import QuickActions from './QuickActions'
+import UsersTable from './admin/UsersTable'
 import './Workspace.css'
 
 function Workspace({
@@ -11,6 +12,7 @@ function Workspace({
   logo,
   darkMode,
   onToggleTheme,
+  token,
 }) {
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
@@ -18,6 +20,18 @@ function Workspace({
     .trim() || 'usuario'
 
   const showWelcome = !activeItem
+
+  const renderContent = () => {
+    if (activeItem === 'Administrar') {
+      return <UsersTable token={token} />
+    }
+
+    return (
+      <p className="workspace__subtitle">
+        El módulo "{activeItem}" todavía no tiene contenido disponible.
+      </p>
+    )
+  }
 
   return (
     <main className="workspace">
@@ -48,6 +62,7 @@ function Workspace({
       {!showWelcome && (
         <section className="workspace__panel">
           <h1 className="workspace__view-title">{activeItem}</h1>
+          {renderContent()}
         </section>
       )}
     </main>
