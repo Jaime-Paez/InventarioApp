@@ -72,6 +72,25 @@ function UsersTable({ token }) {
     fetchUsers()
   }, [token])
 
+  const filteredUsers = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return [...users]
+
+    return users.filter((user) => {
+      const roleText = formatRoles(user.roles_detalle || [])
+      return [
+        user.nombres,
+        user.apellidos,
+        user.correo,
+        user.telefono,
+        user.cargo,
+        roleText,
+      ]
+        .filter(Boolean)
+        .some((field) => field.toString().toLowerCase().includes(term))
+    })
+  }, [search, users])
+
   const handleSort = (key) => {
     setSortConfig((prev) => {
       if (prev.key === key) {
@@ -110,25 +129,6 @@ function UsersTable({ token }) {
     const filteredIds = filteredUsers.map((user) => user.id)
     setSelectedRows(filteredIds)
   }, [allSelected, filteredUsers])
-
-  const filteredUsers = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return [...users]
-
-    return users.filter((user) => {
-      const roleText = formatRoles(user.roles_detalle || [])
-      return [
-        user.nombres,
-        user.apellidos,
-        user.correo,
-        user.telefono,
-        user.cargo,
-        roleText,
-      ]
-        .filter(Boolean)
-        .some((field) => field.toString().toLowerCase().includes(term))
-    })
-  }, [search, users])
 
   const sortedUsers = useMemo(() => {
     const data = [...filteredUsers]
