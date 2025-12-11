@@ -9,6 +9,10 @@
   transition: background 0.2s ease, border-color 0.2s ease;
 }
 
+.workspace__toolbar .quick-actions {
+  margin-left: auto;
+}
+
 .quick-actions.dark {
   background: rgba(17, 24, 39, 0.5);
   border-color: rgba(255, 255, 255, 0.08);
