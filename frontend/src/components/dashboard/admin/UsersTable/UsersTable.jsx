@@ -78,11 +78,15 @@ function UsersTable({ token }) {
 
   const handleUserCreated = (createdUser) => {
     setShowCreateModal(false)
-    setStatusMessage(
-      createdUser?.nombres
-        ? `Usuario "${createdUser.nombres} ${createdUser.apellidos || ''}" creado correctamente.`
-        : 'Usuario creado correctamente.'
-    )
+    const fullName = createdUser?.nombres
+      ? `"${createdUser.nombres} ${createdUser.apellidos || ''}"`
+      : 'Usuario'
+
+    const passwordNote = createdUser?.password
+      ? ` Clave temporal: ${createdUser.password}`
+      : ''
+
+    setStatusMessage(`${fullName} creado correctamente.${passwordNote}`)
     fetchUsers()
   }
 

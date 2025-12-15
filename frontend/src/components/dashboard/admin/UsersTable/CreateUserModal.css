@@ -3,21 +3,22 @@
   inset: 0;
   background: rgba(8, 15, 30, 0.7);
   backdrop-filter: blur(6px);
-  display: grid;
-  place-items: center;
   z-index: 50;
   padding: 16px;
+  overflow: hidden;
 }
 
 .create-user__modal {
-  width: min(960px, 100%);
+  position: absolute;
+  width: min(960px, calc(100% - 24px));
   background: #0f172a;
   border: 1px solid #1f2937;
-  border-radius: 18px;
+  border-radius: 14px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
-  padding: 20px 22px 22px;
-  max-height: 90vh;
+  padding: 12px 20px 22px;
+  max-height: calc(100vh - 32px);
   overflow: auto;
+  cursor: default;
 }
 
 .create-user__header {
@@ -26,7 +27,13 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid #1f2937;
-  padding-bottom: 12px;
+  padding: 10px 0 12px;
+  margin: 0 -8px;
+  padding-inline: 8px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), transparent);
+  border-radius: 10px 10px 0 0;
+  cursor: move;
+  user-select: none;
 }
 
 .create-user__modal .ghost {
@@ -75,6 +82,32 @@
   flex-direction: column;
   gap: 6px;
   color: #cbd5e1;
+}
+
+.create-user__field--password {
+  grid-column: span 2;
+  min-width: 320px;
+}
+
+.create-user__field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.create-user__password-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.create-user__password-actions .ghost {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.create-user__field small {
+  color: #94a3b8;
 }
 
 .create-user__field input {
