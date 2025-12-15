@@ -5,17 +5,16 @@ import './UsersTable.css'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const ALL_COLUMNS = [
-  { key: 'nombres', label: 'Nombre' },
-  { key: 'apellidos', label: 'Apellido' },
-  { key: 'correo', label: 'Correo' },
+  { key: 'codigo', label: 'Código' },
+  { key: 'nombre', label: 'Nombre' },
+  { key: 'pais', label: 'País' },
+  { key: 'descripcion', label: 'Descripción' },
   { key: 'telefono', label: 'Teléfono' },
-  { key: 'cargo', label: 'Cargo' },
-  { key: 'activo', label: 'Estado' },
-  { key: 'roles', label: 'Roles' },
+  { key: 'correo', label: 'Correo' },
 ]
 
-const formatRoles = (roles = []) =>
-  roles.map((rol) => rol.nombre).filter(Boolean).join(', ') || 'Sin roles'
+const formatFullName = (user) =>
+  [user?.nombres, user?.apellidos].filter(Boolean).join(' ').trim() || '—'
 
 function UsersTable({ token }) {
   const [users, setUsers] = useState([])
@@ -23,29 +22,10 @@ function UsersTable({ token }) {
   const [error, setError] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
   const [search, setSearch] = useState('')
-  const [sortConfig, setSortConfig] = useState({ key: 'apellidos', direction: 'asc' })
+  const [sortConfig, setSortConfig] = useState({ key: 'codigo', direction: 'asc' })
   const [selectedRows, setSelectedRows] = useState([])
   const [allSelected, setAllSelected] = useState(false)
-  const [showColumnPicker, setShowColumnPicker] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
-
-  const [selectedColumns, setSelectedColumns] = useState(() => {
-    const stored = localStorage.getItem('users-table-columns')
-    if (stored) {
-      return JSON.parse(stored)
-    }
-    return ALL_COLUMNS
-  })
-
-  useEffect(() => {
-    localStorage.setItem('users-table-columns', JSON.stringify(selectedColumns))
-  }, [selectedColumns])
-
-  const columnsToRender = useMemo(() => {
-    return ALL_COLUMNS.filter((column) =>
-      selectedColumns.some((selected) => selected.key === column.key)
-    )
-  }, [selectedColumns])
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -78,10 +58,7 @@ function UsersTable({ token }) {
 
   const handleUserCreated = (createdUser) => {
     setShowCreateModal(false)
-    const fullName = createdUser?.nombres
-      ? `"${createdUser.nombres} ${createdUser.apellidos || ''}"`
-      : 'Usuario'
-
+    const fullName = formatFullName(createdUser)
     const passwordNote = createdUser?.password
       ? ` Clave temporal: ${createdUser.password}`
       : ''
@@ -95,17 +72,19 @@ function UsersTable({ token }) {
     if (!term) return [...users]
 
     return users.filter((user) => {
-      const roleText = formatRoles(user.roles_detalle || [])
-      return [
-        user.nombres,
-        user.apellidos,
-        user.correo,
+      const name = formatFullName(user)
+      const fields = [
+        user.codigo || user.id,
+        name,
+        user.pais,
+        user.descripcion || user.cargo,
         user.telefono,
-        user.cargo,
-        roleText,
+        user.correo,
       ]
         .filter(Boolean)
-        .some((field) => field.toString().toLowerCase().includes(term))
+        .map((field) => field.toString().toLowerCase())
+
+      return fields.some((field) => field.includes(term))
     })
   }, [search, users])
 
@@ -152,36 +131,51 @@ function UsersTable({ token }) {
     const data = [...filteredUsers]
     const { key, direction } = sortConfig
     data.sort((a, b) => {
-      const valueA = key === 'roles' ? formatRoles(a.roles_detalle || []) : a[key]
-      const valueB = key === 'roles' ? formatRoles(b.roles_detalle || []) : b[key]
+      const mapValue = (user) => {
+        switch (key) {
+          case 'codigo':
+            return user.codigo || user.id
+          case 'nombre':
+            return formatFullName(user)
+          case 'pais':
+            return user.pais
+          case 'descripcion':
+            return user.descripcion || user.cargo
+          default:
+            return user[key]
+        }
+      }
+
+      const valueA = mapValue(a)
+      const valueB = mapValue(b)
 
       if (valueA === undefined || valueA === null) return 1
       if (valueB === undefined || valueB === null) return -1
 
-      return String(valueA).localeCompare(String(valueB), 'es', { sensitivity: 'base' }) *
+      return (
+        String(valueA).localeCompare(String(valueB), 'es', { sensitivity: 'base' }) *
         (direction === 'asc' ? 1 : -1)
+      )
     })
     return data
   }, [filteredUsers, sortConfig])
 
-  const handleColumnToggle = (column) => {
-    setSelectedColumns((prev) => {
-      const exists = prev.some((item) => item.key === column.key)
-      if (exists) {
-        return prev.filter((item) => item.key !== column.key)
-      }
-      return [...prev, column]
-    })
-  }
-
   const renderCell = (user, columnKey) => {
     switch (columnKey) {
-      case 'activo':
-        return user.activo ? 'Activo' : 'Inactivo'
-      case 'roles':
-        return formatRoles(user.roles_detalle || [])
+      case 'codigo':
+        return user.codigo || user.id || '—'
+      case 'nombre':
+        return formatFullName(user)
+      case 'pais':
+        return user.pais || '—'
+      case 'descripcion':
+        return user.descripcion || user.cargo || '—'
+      case 'telefono':
+        return user.telefono || '—'
+      case 'correo':
+        return user.correo || '—'
       default:
-        return user[columnKey] || '—'
+        return '—'
     }
   }
 
@@ -194,74 +188,35 @@ function UsersTable({ token }) {
 
   return (
     <div className="users-table">
-      <header className="users-table__header">
-        <div>
-          <p className="users-table__eyebrow">Administración de usuarios</p>
-          <h2>Usuarios del sistema</h2>
-          <p className="users-table__description">
-            Consulta y gestiona a todas las personas que tienen acceso a la plataforma.
-          </p>
+      <div className="users-table__toolbar">
+        <div className="users-table__search">
+          <span aria-hidden>🔍</span>
+          <input
+            id="users-search"
+            type="search"
+            placeholder="Buscar"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
 
-        <div className="users-table__actions">
-          <div className="users-table__primary-action">
-            <button type="button" onClick={() => setShowCreateModal(true)}>
-              + Crear usuario
-            </button>
-            <p className="users-table__hint">Añade nuevos usuarios con todos sus datos y roles.</p>
-          </div>
-
-          <div className="input-with-label">
-            <label htmlFor="users-search">Búsqueda rápida</label>
-            <input
-              id="users-search"
-              type="search"
-              placeholder="Filtrar por nombre, correo o rol"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="button-row">
-            <button type="button" className="ghost" onClick={() => setSearch('')}>
-              Limpiar filtros
-            </button>
-            <button type="button" onClick={fetchUsers} disabled={loading}>
-              {loading ? 'Actualizando...' : 'Refrescar'}
-            </button>
-            <div className="column-picker">
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => setShowColumnPicker((value) => !value)}
-              >
-                Columnas
-              </button>
-              {showColumnPicker && (
-                <div className="column-picker__panel">
-                  {ALL_COLUMNS.map((column) => (
-                    <label key={column.key}>
-                      <input
-                        type="checkbox"
-                        checked={selectedColumns.some((item) => item.key === column.key)}
-                        onChange={() => handleColumnToggle(column)}
-                      />
-                      {column.label}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+        <div className="users-table__toolbar-actions" aria-label="Acciones de tabla">
+          <span className="toolbar-dot toolbar-dot--red" aria-hidden />
+          <span className="toolbar-dot toolbar-dot--amber" aria-hidden />
+          <span className="toolbar-dot toolbar-dot--green" aria-hidden />
+          <button type="button" className="toolbar-button" onClick={fetchUsers} disabled={loading}>
+            ⟳
+          </button>
+          <button type="button" className="toolbar-button primary" onClick={() => setShowCreateModal(true)}>
+            +
+          </button>
         </div>
-      </header>
+      </div>
 
       <div className="users-table__meta">
         <div className="selection-info">{activeSelectionLabel}</div>
         <div className="table-meta">
-          <span>
-            {loading ? 'Cargando usuarios...' : `${sortedUsers.length} resultados`}
-          </span>
+          <span>{loading ? 'Cargando usuarios...' : `${sortedUsers.length} resultados`}</span>
           {error && <span className="error">{error}</span>}
           {statusMessage && <span className="success">{statusMessage}</span>}
         </div>
@@ -274,14 +229,18 @@ function UsersTable({ token }) {
               <th className="checkbox-cell">
                 <input type="checkbox" checked={allSelected} onChange={toggleAllRows} />
               </th>
-              {columnsToRender.map((column) => (
+              {ALL_COLUMNS.map((column) => (
                 <th
                   key={column.key}
                   onClick={() => handleSort(column.key)}
                   className={sortConfig.key === column.key ? sortConfig.direction : ''}
                   scope="col"
                 >
-                  {column.label}
+                  <span>{column.label}</span>
+                  <span className="sort-icons" aria-hidden>
+                    <span className="caret up" />
+                    <span className="caret down" />
+                  </span>
                 </th>
               ))}
             </tr>
@@ -298,7 +257,7 @@ function UsersTable({ token }) {
                       onChange={() => toggleRowSelection(user.id)}
                     />
                   </td>
-                  {columnsToRender.map((column) => (
+                  {ALL_COLUMNS.map((column) => (
                     <td key={column.key}>{renderCell(user, column.key)}</td>
                   ))}
                 </tr>
@@ -307,7 +266,7 @@ function UsersTable({ token }) {
 
             {!sortedUsers.length && (
               <tr>
-                <td colSpan={columnsToRender.length + 1} className="empty">
+                <td colSpan={ALL_COLUMNS.length + 1} className="empty">
                   {loading ? 'Cargando información...' : 'No se encontraron usuarios'}
                 </td>
               </tr>
