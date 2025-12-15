@@ -200,6 +200,59 @@
   text-align: center;
 }
 
+/* Header estilo MarcasTable (como en tu screenshot) */
+.users-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+}
+
+.users-header__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 320px;
+}
+
+.users-header__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.users-header__count {
+  font-weight: 700;
+  color: var(--text-color, #111827);
+  margin-right: 4px;
+}
+
+/* Botones circulares del lado derecho (excel/pdf/email/carpeta) */
+.users-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+}
+
+.users-circle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.users-circle--excel { background: #22c55e; }
+.users-circle--pdf { background: #ef4444; }
+.users-circle--mail { background: #3b82f6; }
+.users-circle--folder { background: #14b8a6; }
+
+
 @media (max-width: 900px) {
   .users-table__toolbar {
     flex-direction: column;

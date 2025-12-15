@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import DashboardLayout from './components/dashboard/DashboardLayout/DashboardLayout'
 import Login from './components/login/Login/Login'
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+
+// un theme (elige uno)
+import 'primereact/resources/themes/lara-light-cyan/theme.css';
+
+// opcional (si usas utilidades)
+import 'primeflex/primeflex.css';
+
 
 const getSystemThemePreference = () =>
   typeof window !== 'undefined' && window.matchMedia

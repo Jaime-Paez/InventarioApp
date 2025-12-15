@@ -1,279 +1,460 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { DataTable } from 'primereact/datatable'
+import { Column } from 'primereact/column'
+import { Toast } from 'primereact/toast'
+import { Tooltip } from 'primereact/tooltip'
+import { OverlayPanel } from 'primereact/overlaypanel'
+import { Checkbox } from 'primereact/checkbox'
+import { Button } from 'primereact/button'
+
 import CreateUserModal from './CreateUserModal'
 import './UsersTable.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-const ALL_COLUMNS = [
-  { key: 'codigo', label: 'Código' },
-  { key: 'nombre', label: 'Nombre' },
-  { key: 'pais', label: 'País' },
-  { key: 'descripcion', label: 'Descripción' },
-  { key: 'telefono', label: 'Teléfono' },
-  { key: 'correo', label: 'Correo' },
-]
+const formatFullName = (u) =>
+  [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || '—'
 
-const formatFullName = (user) =>
-  [user?.nombres, user?.apellidos].filter(Boolean).join(' ').trim() || '—'
+function UsersTable({
+  token,
+  onSelect,
 
-function UsersTable({ token }) {
+  // opcional: para que luego conectes export/email/carpeta
+  onExportExcel,
+  onExportPdf,
+  onEmail,
+  onOpenFolder,
+}) {
+  const toast = useRef(null)
+  const opColumns = useRef(null)
+
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [statusMessage, setStatusMessage] = useState('')
-  const [search, setSearch] = useState('')
-  const [sortConfig, setSortConfig] = useState({ key: 'codigo', direction: 'asc' })
-  const [selectedRows, setSelectedRows] = useState([])
-  const [allSelected, setAllSelected] = useState(false)
-  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [error, setError] = useState(null)
 
   const fetchUsers = async () => {
     setLoading(true)
-    setError('')
-    setStatusMessage('')
+    setError(null)
     try {
-      const response = await fetch(`${API_URL}/usuarios/listado/`, {
+      const res = await fetch(`${API_URL}/usuarios/listado/`, {
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Token ${token}` } : {}),
         },
       })
 
-      if (!response.ok) {
-        throw new Error('No se pudo obtener la lista de usuarios.')
-      }
+      if (!res.ok) throw new Error('No se pudo obtener la lista de usuarios.')
 
-      const data = await response.json()
-      setUsers(Array.isArray(data) ? data : data.results || [])
-    } catch (err) {
-      setError(err.message || 'Ocurrió un error al cargar los usuarios.')
+      const data = await res.json()
+      const list = Array.isArray(data) ? data : data?.results || []
+      setUsers(list)
+    } catch (e) {
+      const msg = e?.message || 'Ocurrió un error al cargar los usuarios.'
+      setError(msg)
+      toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
     } finally {
       setLoading(false)
+      setIsRefreshing(false)
     }
   }
 
   useEffect(() => {
     fetchUsers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
-  const handleUserCreated = (createdUser) => {
-    setShowCreateModal(false)
-    const fullName = formatFullName(createdUser)
-    const passwordNote = createdUser?.password
-      ? ` Clave temporal: ${createdUser.password}`
-      : ''
-
-    setStatusMessage(`${fullName} creado correctamente.${passwordNote}`)
+  const refreshData = () => {
+    setIsRefreshing(true)
     fetchUsers()
   }
 
-  const filteredUsers = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return [...users]
+  // ---------------- Filters (MarcasTable-style) ----------------
+  const [filters, setFilters] = useState(null)
+  const [globalFilterValue, setGlobalFilterValue] = useState('')
 
-    return users.filter((user) => {
-      const name = formatFullName(user)
-      const fields = [
-        user.codigo || user.id,
-        name,
-        user.pais,
-        user.descripcion || user.cargo,
-        user.telefono,
-        user.correo,
-      ]
-        .filter(Boolean)
-        .map((field) => field.toString().toLowerCase())
+  const initFilters = () => {
+    setFilters({
+      global: { value: null, matchMode: FilterMatchMode.CONTAINS },
 
-      return fields.some((field) => field.includes(term))
+      codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      pais: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      descripcion: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      cargo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      activo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
     })
-  }, [search, users])
-
-  const handleSort = (key) => {
-    setSortConfig((prev) => {
-      if (prev.key === key) {
-        const nextDirection = prev.direction === 'asc' ? 'desc' : 'asc'
-        return { key, direction: nextDirection }
-      }
-      return { key, direction: 'asc' }
-    })
-  }
-
-  const toggleRowSelection = (id) => {
-    setSelectedRows((prev) => {
-      if (prev.includes(id)) {
-        setAllSelected(false)
-        return prev.filter((item) => item !== id)
-      }
-      return [...prev, id]
-    })
-  }
-
-  const toggleAllRows = () => {
-    setAllSelected((prev) => {
-      const shouldSelectAll = !prev
-      if (shouldSelectAll) {
-        const ids = filteredUsers.map((user) => user.id)
-        setSelectedRows(ids)
-      } else {
-        setSelectedRows([])
-      }
-      return shouldSelectAll
-    })
+    setGlobalFilterValue('')
   }
 
   useEffect(() => {
-    if (!allSelected) return
-    const filteredIds = filteredUsers.map((user) => user.id)
-    setSelectedRows(filteredIds)
-  }, [allSelected, filteredUsers])
-
-  const sortedUsers = useMemo(() => {
-    const data = [...filteredUsers]
-    const { key, direction } = sortConfig
-    data.sort((a, b) => {
-      const mapValue = (user) => {
-        switch (key) {
-          case 'codigo':
-            return user.codigo || user.id
-          case 'nombre':
-            return formatFullName(user)
-          case 'pais':
-            return user.pais
-          case 'descripcion':
-            return user.descripcion || user.cargo
-          default:
-            return user[key]
-        }
+    // mantiene comportamiento tipo MarcasTable (si no hay state guardado)
+    const saved = sessionStorage.getItem('usuarios-table-state')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (parsed?.filters) {
+        setFilters(parsed.filters)
+        if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
+        return
       }
+    }
+    initFilters()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-      const valueA = mapValue(a)
-      const valueB = mapValue(b)
+  const clearFilter = () => initFilters()
 
-      if (valueA === undefined || valueA === null) return 1
-      if (valueB === undefined || valueB === null) return -1
+  const onGlobalFilterChange = (e) => {
+    const value = e.target.value
+    const _filters = { ...filters, global: { ...filters?.global, value } }
+    setFilters(_filters)
+    setGlobalFilterValue(value)
+  }
 
-      return (
-        String(valueA).localeCompare(String(valueB), 'es', { sensitivity: 'base' }) *
-        (direction === 'asc' ? 1 : -1)
+  // ---------------- Row selection checkboxes (export-style) ----------------
+  const [selectedRowIds, setSelectedRowIds] = useState([])
+  const [allRowsSelected, setAllRowsSelected] = useState(false)
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem('usuarios-table-selected-rows')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      setSelectedRowIds(parsed.selectedRowIds || [])
+      setAllRowsSelected(parsed.allRowsSelected || false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const saveState = () => {
+      sessionStorage.setItem(
+        'usuarios-table-selected-rows',
+        JSON.stringify({ selectedRowIds, allRowsSelected })
       )
-    })
-    return data
-  }, [filteredUsers, sortConfig])
+    }
+    return saveState
+  }, [selectedRowIds, allRowsSelected])
 
-  const renderCell = (user, columnKey) => {
-    switch (columnKey) {
-      case 'codigo':
-        return user.codigo || user.id || '—'
-      case 'nombre':
-        return formatFullName(user)
-      case 'pais':
-        return user.pais || '—'
-      case 'descripcion':
-        return user.descripcion || user.cargo || '—'
-      case 'telefono':
-        return user.telefono || '—'
-      case 'correo':
-        return user.correo || '—'
-      default:
-        return '—'
+  const rowSelectionTemplate = (rowData) => {
+    const id = rowData?.id
+    const onCheckboxChange = (e) => {
+      e.originalEvent?.stopPropagation?.()
+      if (e.checked) setSelectedRowIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+      else {
+        setSelectedRowIds((prev) => prev.filter((x) => x !== id))
+        setAllRowsSelected(false)
+      }
+    }
+
+    return (
+      <span style={{ display: 'flex', justifyContent: 'center' }}>
+        <Checkbox onChange={onCheckboxChange} checked={allRowsSelected ? true : selectedRowIds.includes(id)} />
+      </span>
+    )
+  }
+
+  const rowSelectionHeaderTemplate = () => {
+    const onCheckboxChange = (e) => {
+      e.originalEvent?.stopPropagation?.()
+      const next = e.checked
+      setAllRowsSelected(next)
+      if (!next) setSelectedRowIds([])
+    }
+
+    return (
+      <span style={{ display: 'flex', justifyContent: 'center' }}>
+        <Checkbox onChange={onCheckboxChange} checked={allRowsSelected} />
+      </span>
+    )
+  }
+
+  // ---------------- Columns (persist like MarcasTable) ----------------
+  const columnsData = useMemo(
+    () => [
+      { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
+      { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
+      { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
+      { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
+      { nombrevar: 'cargo', header: 'Cargo', filterPlaceholder: 'Buscar por cargo' },
+      { nombrevar: 'activo', header: 'Estado', filterPlaceholder: 'Buscar por estado' },
+    ],
+    []
+  )
+
+  const [selectedColumns, setSelectedColumns] = useState(columnsData)
+  const selectedColumnsRef = useRef(selectedColumns)
+
+  useEffect(() => {
+    selectedColumnsRef.current = selectedColumns
+  }, [selectedColumns])
+
+  useEffect(() => {
+    const stored = localStorage.getItem('usuarios-table-columns')
+    if (stored) setSelectedColumns(JSON.parse(stored))
+    return () => {
+      localStorage.setItem('usuarios-table-columns', JSON.stringify(selectedColumnsRef.current))
+    }
+  }, [])
+
+  const handleCheckboxChangeColumn = (column) => {
+    if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
+      setSelectedColumns(selectedColumns.filter((c) => c.nombrevar !== column.nombrevar))
+    } else {
+      setSelectedColumns([...selectedColumns, column])
     }
   }
 
-  const activeSelectionLabel = useMemo(() => {
-    if (allSelected) return 'Todos los resultados seleccionados'
-    if (!selectedRows.length) return 'Ningún usuario seleccionado'
-    if (selectedRows.length === 1) return '1 usuario seleccionado'
-    return `${selectedRows.length} usuarios seleccionados`
-  }, [allSelected, selectedRows])
+  const handleOrderChange = (e) => {
+    const columnOrder = e.columns.map((col) => col.props.field)
+    const sortedSelectedColumns = columnOrder
+      .map((orderName) => selectedColumns.find((col) => col.nombrevar === orderName))
+      .filter(Boolean)
+    setSelectedColumns(sortedSelectedColumns)
+  }
 
-  return (
-    <div className="users-table">
-      <div className="users-table__toolbar">
-        <div className="users-table__search">
-          <span aria-hidden>🔍</span>
+  // ---------------- Body templates ----------------
+  const cellWithTooltip = (rowData, field) => {
+    const content = rowData?.[field] ?? '—'
+    return (
+      <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: content === '—' ? 'var(--darker-gray)' : undefined }}>
+        {String(content)}
+      </span>
+    )
+  }
+
+  const codigoBodyTemplate = (rowData) => {
+    const code = rowData?.codigo ?? rowData?.id ?? '—'
+    return (
+      <span className="cell-tooltip" data-pr-tooltip={String(code)} style={{ color: code === '—' ? 'var(--darker-gray)' : undefined }}>
+        {String(code)}
+      </span>
+    )
+  }
+
+  const nombreBodyTemplate = (rowData) => {
+    const name = formatFullName(rowData)
+    return (
+      <span className="cell-tooltip" data-pr-tooltip={name}>
+        {name}
+      </span>
+    )
+  }
+
+  const activoBodyTemplate = (rowData) => {
+    const v = rowData?.activo
+    const isTrue = v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true'
+    return (
+      <span style={{ display: 'flex', justifyContent: 'center' }}>
+        <i className={`pi pi-${isTrue ? 'check-circle' : 'times-circle'}`} style={{ color: isTrue ? 'var(--main-cyan)' : 'var(--even-darker-gray)' }} />
+      </span>
+    )
+  }
+
+  // ---------------- Single selection (row click) ----------------
+  const [selectedObject, setSelectedObject] = useState(null)
+
+  const onRowSelect = (event) => {
+    const id = event?.data?.id
+    if (typeof onSelect === 'function' && id != null) onSelect(id)
+  }
+
+  // ---------------- Header (igual look MarcasTable / imagen) ----------------
+  const dataLength = users?.length ?? 0
+
+  const header = (
+    <div className="users-header">
+      <div className="users-header__left">
+        <div className="search-input-container">
+          <i className="pi pi-search search-input-icon" />
           <input
-            id="users-search"
+            className="search-input"
             type="search"
             placeholder="Buscar"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={globalFilterValue}
+            onChange={onGlobalFilterChange}
           />
         </div>
 
-        <div className="users-table__toolbar-actions" aria-label="Acciones de tabla">
-          <span className="toolbar-dot toolbar-dot--red" aria-hidden />
-          <span className="toolbar-dot toolbar-dot--amber" aria-hidden />
-          <span className="toolbar-dot toolbar-dot--green" aria-hidden />
-          <button type="button" className="toolbar-button" onClick={fetchUsers} disabled={loading}>
-            ⟳
-          </button>
-          <button type="button" className="toolbar-button primary" onClick={() => setShowCreateModal(true)}>
-            +
-          </button>
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={refreshData}
+          disabled={loading || isRefreshing}
+          title="Recargar"
+        >
+          <i className="pi pi-refresh" />
+        </button>
+
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={clearFilter}
+          title="Limpiar filtros"
+        >
+          <i className="pi pi-filter-slash" />
+        </button>
+
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={(e) => opColumns.current?.toggle(e)}
+          title="Columnas"
+        >
+          <i className="pi pi-sliders-h" />
+        </button>
+      </div>
+
+      <div className="users-header__right">
+        <span className="users-header__count">Reg. {dataLength}</span>
+
+        <button className="users-circle users-circle--excel" type="button" title="Excel" onClick={onExportExcel} disabled={!onExportExcel}>
+          <i className="pi pi-file-excel" />
+        </button>
+
+        <button className="users-circle users-circle--pdf" type="button" title="PDF" onClick={onExportPdf} disabled={!onExportPdf}>
+          <i className="pi pi-file-pdf" />
+        </button>
+
+        <button className="users-circle users-circle--mail" type="button" title="Email" onClick={onEmail} disabled={!onEmail}>
+          <i className="pi pi-envelope" />
+        </button>
+
+        <button className="users-circle users-circle--folder" type="button" title="Carpeta" onClick={onOpenFolder} disabled={!onOpenFolder}>
+          <i className="pi pi-folder" />
+        </button>
+      </div>
+    </div>
+  )
+
+  // ---------------- Create modal (opcional) ----------------
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const handleUserCreated = () => {
+    setShowCreateModal(false)
+    refreshData()
+    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario creado correctamente', life: 2500 })
+  }
+
+  return (
+    <div className="tabla">
+      <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
+      <Toast ref={toast} />
+
+      {(loading || isRefreshing) && (
+        <div className="spinner-container">
+          <div className="spinner" />
         </div>
-      </div>
+      )}
 
-      <div className="users-table__meta">
-        <div className="selection-info">{activeSelectionLabel}</div>
-        <div className="table-meta">
-          <span>{loading ? 'Cargando usuarios...' : `${sortedUsers.length} resultados`}</span>
-          {error && <span className="error">{error}</span>}
-          {statusMessage && <span className="success">{statusMessage}</span>}
+      {error && (
+        <div className="stale-data-msg">
+          <i className="pi pi-exclamation-circle" style={{ fontSize: '0.8rem', margin: 0, color: 'white' }} />
+          <span>
+            <strong>Los datos pueden estar desactualizados</strong> | intenta recargar la tabla
+          </span>
         </div>
-      </div>
+      )}
 
-      <div className="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th className="checkbox-cell">
-                <input type="checkbox" checked={allSelected} onChange={toggleAllRows} />
-              </th>
-              {ALL_COLUMNS.map((column) => (
-                <th
-                  key={column.key}
-                  onClick={() => handleSort(column.key)}
-                  className={sortConfig.key === column.key ? sortConfig.direction : ''}
-                  scope="col"
-                >
-                  <span>{column.label}</span>
-                  <span className="sort-icons" aria-hidden>
-                    <span className="caret up" />
-                    <span className="caret down" />
-                  </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedUsers.map((user) => {
-              const isSelected = allSelected || selectedRows.includes(user.id)
-              return (
-                <tr key={user.id} className={isSelected ? 'selected' : ''}>
-                  <td className="checkbox-cell">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleRowSelection(user.id)}
-                    />
-                  </td>
-                  {ALL_COLUMNS.map((column) => (
-                    <td key={column.key}>{renderCell(user, column.key)}</td>
-                  ))}
-                </tr>
-              )
-            })}
+      <DataTable
+        value={users}
+        dataKey="id"
+        header={header}
+        emptyMessage="No se encontraron usuarios"
+        showGridlines
+        size="small"
+        scrollable
+        scrollHeight={error ? 'calc(100svh - 310px)' : 'calc(103svh - 310px)'}
+        paginator
+        rows={25}
+        rowsPerPageOptions={[5, 10, 25, 50]}
+        removableSort
+        filters={filters}
+        onFilter={(e) => setFilters(e.filters)}
+        globalFilterFields={['codigo', 'nombre', 'correo', 'telefono', 'cargo', 'activo']}
+        stateStorage="session"
+        stateKey="usuarios-table-state"
+        reorderableColumns
+        onColReorder={handleOrderChange}
+        resizableColumns
+        columnResizeMode="expand"
+        selectionMode="single"
+        selection={selectedObject}
+        onSelectionChange={(e) => setSelectedObject(e.value)}
+        onRowSelect={onRowSelect}
+        metaKeySelection={false}
+        rowClassName={(rowData) => (selectedRowIds.includes(rowData?.id) ? 'selected-row-shadow' : '')}
+      >
+        <Column className="row-selection-column" frozen header={rowSelectionHeaderTemplate} body={rowSelectionTemplate} />
 
-            {!sortedUsers.length && (
-              <tr>
-                <td colSpan={ALL_COLUMNS.length + 1} className="empty">
-                  {loading ? 'Cargando información...' : 'No se encontraron usuarios'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+        {selectedColumns.map((column, index) => {
+          let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+          let isFilterable = true
+          let isSortable = true
+          let className = 'column-max-min-width'
+
+          switch (column.nombrevar) {
+            case 'codigo':
+              bodyTemplate = (rowData) => codigoBodyTemplate(rowData)
+              break
+            case 'nombre':
+              bodyTemplate = (rowData) => nombreBodyTemplate(rowData)
+              break
+            case 'activo':
+              bodyTemplate = (rowData) => activoBodyTemplate(rowData)
+              isFilterable = false
+              isSortable = false
+              className = 'column-max-min-width--small'
+              break
+            default:
+              bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+              break
+          }
+
+          return (
+            <Column
+              key={index}
+              field={column.nombrevar}
+              header={column.header}
+              body={bodyTemplate}
+              sortable={isSortable}
+              filter={isFilterable}
+              filterField={column.nombrevar}
+              filterPlaceholder={column.filterPlaceholder}
+              className={className}
+            />
+          )
+        })}
+      </DataTable>
+
+      <OverlayPanel ref={opColumns} className="table-options-list">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+          <strong>Columnas</strong>
+
+          <Button
+            type="button"
+            icon="pi pi-plus"
+            className="p-button-text"
+            onClick={() => setShowCreateModal(true)}
+            tooltip="Crear usuario"
+            tooltipOptions={{ position: 'top' }}
+          />
+        </div>
+
+        {columnsData.map((column, idx) => (
+          <div key={idx} className="p-field-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+            <Checkbox
+              inputId={`usuarios-col-${idx}`}
+              value={column}
+              onChange={() => handleCheckboxChangeColumn(column)}
+              checked={selectedColumns.some((item) => item.nombrevar === column.nombrevar)}
+            />
+            <label htmlFor={`usuarios-col-${idx}`} style={{ cursor: 'pointer' }}>
+              {column.header}
+            </label>
+          </div>
+        ))}
+      </OverlayPanel>
 
       <CreateUserModal
         open={showCreateModal}
