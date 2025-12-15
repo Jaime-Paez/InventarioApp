@@ -31,10 +31,10 @@
   --color-error-border-dark: rgba(254, 205, 211, 0.4);
   --shadow-panel: 0 30px 80px rgba(15, 23, 42, 0.2);
 
-  --font-size-sm: 12px;
-  --font-size-base: 14px;
-  --font-size-md: 16px;
-  --font-size-lg: 20px;
+  --font-size-sm: 9px;
+  --font-size-base: 11px;
+  --font-size-md: 13px;
+  --font-size-lg: 16px;
 
   font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: var(--font-size-base);

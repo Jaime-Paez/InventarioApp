@@ -41,11 +41,10 @@
   border-radius: 10px;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-  width: 120px;
-  flex: 0 0 120px;
+  width: 100px;
+  flex: 0 0 100px;
   min-width: 0;
 }
 
