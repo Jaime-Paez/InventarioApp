@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import CreateUserModal from './CreateUserModal'
 import './UsersTable.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -20,11 +21,13 @@ function UsersTable({ token }) {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [statusMessage, setStatusMessage] = useState('')
   const [search, setSearch] = useState('')
   const [sortConfig, setSortConfig] = useState({ key: 'apellidos', direction: 'asc' })
   const [selectedRows, setSelectedRows] = useState([])
   const [allSelected, setAllSelected] = useState(false)
   const [showColumnPicker, setShowColumnPicker] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
   const [selectedColumns, setSelectedColumns] = useState(() => {
     const stored = localStorage.getItem('users-table-columns')
@@ -47,6 +50,7 @@ function UsersTable({ token }) {
   const fetchUsers = async () => {
     setLoading(true)
     setError('')
+    setStatusMessage('')
     try {
       const response = await fetch(`${API_URL}/usuarios/listado/`, {
         headers: {
@@ -71,6 +75,16 @@ function UsersTable({ token }) {
   useEffect(() => {
     fetchUsers()
   }, [token])
+
+  const handleUserCreated = (createdUser) => {
+    setShowCreateModal(false)
+    setStatusMessage(
+      createdUser?.nombres
+        ? `Usuario "${createdUser.nombres} ${createdUser.apellidos || ''}" creado correctamente.`
+        : 'Usuario creado correctamente.'
+    )
+    fetchUsers()
+  }
 
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -186,6 +200,13 @@ function UsersTable({ token }) {
         </div>
 
         <div className="users-table__actions">
+          <div className="users-table__primary-action">
+            <button type="button" onClick={() => setShowCreateModal(true)}>
+              + Crear usuario
+            </button>
+            <p className="users-table__hint">Añade nuevos usuarios con todos sus datos y roles.</p>
+          </div>
+
           <div className="input-with-label">
             <label htmlFor="users-search">Búsqueda rápida</label>
             <input
@@ -238,6 +259,7 @@ function UsersTable({ token }) {
             {loading ? 'Cargando usuarios...' : `${sortedUsers.length} resultados`}
           </span>
           {error && <span className="error">{error}</span>}
+          {statusMessage && <span className="success">{statusMessage}</span>}
         </div>
       </div>
 
@@ -289,6 +311,13 @@ function UsersTable({ token }) {
           </tbody>
         </table>
       </div>
+
+      <CreateUserModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={handleUserCreated}
+        token={token}
+      />
     </div>
   )
 }

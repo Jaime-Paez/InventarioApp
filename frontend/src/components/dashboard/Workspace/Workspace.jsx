@@ -1,6 +1,6 @@
-import WorkspaceTabs from './tabs/WorkspaceTabs'
-import QuickActions from './QuickActions'
-import UsersTable from './admin/UsersTable'
+import WorkspaceTabs from '../tabs/WorkspaceTabs/WorkspaceTabs'
+import QuickActions from '../QuickActions/QuickActions'
+import UsersTable from '../admin/UsersTable/UsersTable'
 import './Workspace.css'
 
 function Workspace({

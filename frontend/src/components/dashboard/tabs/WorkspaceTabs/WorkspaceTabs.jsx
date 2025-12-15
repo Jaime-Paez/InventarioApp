@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import './workspaceTabs.css'
+import './WorkspaceTabs.css'
 
 function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   const listRef = useRef(null)
