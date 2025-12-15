@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import './CreateUserModal.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -26,25 +26,7 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
 
-  useEffect(() => {
-    if (!open) return
-    setError('')
-    setFormData(initialForm)
-    setPassword('')
-    setConfirmPassword('')
-    setPasswordCopied(false)
-    fetchRoles()
-  }, [open])
-
-  useLayoutEffect(() => {
-    if (!open || !modalRef.current) return
-    const rect = modalRef.current.getBoundingClientRect()
-    const centeredX = (window.innerWidth - rect.width) / 2
-    const centeredY = (window.innerHeight - rect.height) / 2
-    setPosition({ x: Math.max(centeredX, 12), y: Math.max(centeredY, 12) })
-  }, [open])
-
-  const fetchRoles = async () => {
+  const fetchRoles = useCallback(async () => {
     setRolesLoading(true)
     try {
       const response = await fetch(`${API_URL}/usuarios/roles/`, {
@@ -65,7 +47,25 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
     } finally {
       setRolesLoading(false)
     }
-  }
+  }, [token])
+
+  useEffect(() => {
+    if (!open) return
+    setError('')
+    setFormData(initialForm)
+    setPassword('')
+    setConfirmPassword('')
+    setPasswordCopied(false)
+    fetchRoles()
+  }, [open, fetchRoles])
+
+  useLayoutEffect(() => {
+    if (!open || !modalRef.current) return
+    const rect = modalRef.current.getBoundingClientRect()
+    const centeredX = (window.innerWidth - rect.width) / 2
+    const centeredY = (window.innerHeight - rect.height) / 2
+    setPosition({ x: Math.max(centeredX, 12), y: Math.max(centeredY, 12) })
+  }, [open])
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
@@ -225,7 +225,7 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
       await navigator.clipboard.writeText(password)
       setPasswordCopied(true)
       setTimeout(() => setPasswordCopied(false), 2500)
-    } catch (err) {
+    } catch {
       setError('No se pudo copiar la contraseña. Intenta nuevamente.')
     }
   }

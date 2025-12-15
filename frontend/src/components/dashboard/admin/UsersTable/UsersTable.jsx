@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FilterMatchMode, FilterOperator } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -34,7 +34,7 @@ function UsersTable({
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -58,12 +58,11 @@ function UsersTable({
       setLoading(false)
       setIsRefreshing(false)
     }
-  }
+  }, [token])
 
   useEffect(() => {
     fetchUsers()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+  }, [fetchUsers])
 
   const refreshData = () => {
     setIsRefreshing(true)
@@ -71,24 +70,19 @@ function UsersTable({
   }
 
   // ---------------- Filters (MarcasTable-style) ----------------
-  const [filters, setFilters] = useState(null)
+  const buildDefaultFilters = () => ({
+    global: { value: null, matchMode: FilterMatchMode.CONTAINS },
+
+    codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+    nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+    correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+    telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+    cargo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+    activo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
+  })
+
+  const [filters, setFilters] = useState(buildDefaultFilters)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
-
-  const initFilters = () => {
-    setFilters({
-      global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-
-      codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      pais: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      descripcion: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      cargo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      activo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
-    })
-    setGlobalFilterValue('')
-  }
 
   useEffect(() => {
     // mantiene comportamiento tipo MarcasTable (si no hay state guardado)
@@ -101,11 +95,13 @@ function UsersTable({
         return
       }
     }
-    initFilters()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setFilters(buildDefaultFilters())
   }, [])
 
-  const clearFilter = () => initFilters()
+  const clearFilter = () => {
+    setFilters(buildDefaultFilters())
+    setGlobalFilterValue('')
+  }
 
   const onGlobalFilterChange = (e) => {
     const value = e.target.value
@@ -217,8 +213,9 @@ function UsersTable({
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
     const content = rowData?.[field] ?? '—'
+    const textColor = content === '—' ? '#9ca3af' : undefined
     return (
-      <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: content === '—' ? 'var(--darker-gray)' : undefined }}>
+      <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: textColor }}>
         {String(content)}
       </span>
     )
@@ -226,8 +223,9 @@ function UsersTable({
 
   const codigoBodyTemplate = (rowData) => {
     const code = rowData?.codigo ?? rowData?.id ?? '—'
+    const textColor = code === '—' ? '#9ca3af' : undefined
     return (
-      <span className="cell-tooltip" data-pr-tooltip={String(code)} style={{ color: code === '—' ? 'var(--darker-gray)' : undefined }}>
+      <span className="cell-tooltip" data-pr-tooltip={String(code)} style={{ color: textColor }}>
         {String(code)}
       </span>
     )
@@ -247,7 +245,7 @@ function UsersTable({
     const isTrue = v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true'
     return (
       <span style={{ display: 'flex', justifyContent: 'center' }}>
-        <i className={`pi pi-${isTrue ? 'check-circle' : 'times-circle'}`} style={{ color: isTrue ? 'var(--main-cyan)' : 'var(--even-darker-gray)' }} />
+        <i className={`pi pi-${isTrue ? 'check-circle' : 'times-circle'}`} style={{ color: isTrue ? '#22c55e' : '#9ca3af' }} />
       </span>
     )
   }
@@ -337,7 +335,7 @@ function UsersTable({
   }
 
   return (
-    <div className="tabla">
+    <div className="users-table">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
       <Toast ref={toast} />
 
@@ -360,6 +358,7 @@ function UsersTable({
         value={users}
         dataKey="id"
         header={header}
+        className="users-datatable"
         emptyMessage="No se encontraron usuarios"
         showGridlines
         size="small"
@@ -372,6 +371,7 @@ function UsersTable({
         filters={filters}
         onFilter={(e) => setFilters(e.filters)}
         globalFilterFields={['codigo', 'nombre', 'correo', 'telefono', 'cargo', 'activo']}
+        filterDisplay="row"
         stateStorage="session"
         stateKey="usuarios-table-state"
         reorderableColumns
@@ -421,6 +421,7 @@ function UsersTable({
               filter={isFilterable}
               filterField={column.nombrevar}
               filterPlaceholder={column.filterPlaceholder}
+              showFilterMenu={false}
               className={className}
             />
           )
