@@ -259,10 +259,7 @@ function UsersTable({
     const isTrue = v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true'
     return (
       <span style={{ display: 'flex', justifyContent: 'center' }}>
-        <i
-          className={`pi pi-${isTrue ? 'check-circle' : 'times-circle'}`}
-          style={{ color: isTrue ? '#22c55e' : '#9ca3af' }}
-        />
+        <i className={`pi pi-${isTrue ? 'check-circle' : 'times-circle'}`} style={{ color: isTrue ? '#22c55e' : '#9ca3af' }} />
       </span>
     )
   }
@@ -312,13 +309,7 @@ function UsersTable({
           />
         </div>
 
-        <button
-          className="rounded-icon-btn"
-          type="button"
-          onClick={refreshData}
-          disabled={loading || isRefreshing}
-          title="Recargar"
-        >
+        <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
         </button>
 
@@ -370,16 +361,13 @@ function UsersTable({
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
       <Toast ref={toast} />
 
-      {/* ===== Top Title + Actions (igual a la imagen) ===== */}
       <div className="users-page__top">
-
         <div className="users-page__actions">
           <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
           <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
         </div>
       </div>
 
-      {/* ===== Card table wrapper (scroll responsive real) ===== */}
       <div className="users-table users-table--card">
         {(loading || isRefreshing) && (
           <div className="spinner-container">
@@ -401,6 +389,7 @@ function UsersTable({
           dataKey="id"
           header={header}
           className="users-datatable"
+          tableStyle={{ width: '100%' }}
           emptyMessage="No se encontraron usuarios"
           showGridlines
           size="small"

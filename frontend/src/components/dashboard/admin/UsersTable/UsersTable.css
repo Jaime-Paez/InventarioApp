@@ -72,8 +72,8 @@
 .users-table--card {
   border: 1px solid #eef2f7;
   overflow: hidden;
-  flex: 1;                 /* ocupa el espacio disponible */
-  min-height: 520px;       /* evita que se “aplane” */
+  flex: 1;
+  min-height: 520px;
 }
 
 .dashboard-shell.dark .users-table {
@@ -93,7 +93,7 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 10px 10px 6px 10px; /* NUEVO: padding tipo barra */
+  padding: 10px 10px 6px 10px;
 }
 
 .users-header__left {
@@ -126,7 +126,7 @@
   gap: 8px;
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
-  border-radius: 999px; /* NUEVO: pill como la imagen */
+  border-radius: 999px;
   padding: 8px 12px;
   flex: 1;
   min-width: 260px;
@@ -234,9 +234,17 @@
 
 /* CRÍTICO: para scrollHeight="flex" */
 .users-datatable .p-datatable-wrapper {
-  border-radius: 10px;
   flex: 1;
   min-height: 0;
+}
+
+/* --- FIX: que la tabla y su wrapper hereden bien el fondo en dark --- */
+.users-datatable .p-datatable-scrollable-wrapper,
+.users-datatable .p-datatable-scrollable-view,
+.users-datatable .p-datatable-scrollable-body,
+.users-datatable .p-datatable-scrollable-header,
+.users-datatable .p-datatable-scrollable-footer {
+  background: transparent;
 }
 
 .users-datatable .p-datatable-table {
@@ -247,16 +255,7 @@
   background: transparent;
 }
 
-.dashboard-shell.dark .users-datatable .p-datatable-table {
-  color: var(--color-text-inverse);
-  background: var(--color-surface-dark);
-}
-
-.dashboard-shell.dark .users-datatable .p-datatable-header {
-  background: var(--color-surface-dark);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
+/* ====== THEAD ====== */
 .users-datatable .p-datatable-thead > tr > th {
   background: #f7f7f7;
   color: #111827;
@@ -266,51 +265,116 @@
   padding: 8px 10px;
 }
 
+/* ====== TBODY ====== */
+.users-datatable .p-datatable-tbody > tr > td {
+  border: none;
+  border-bottom: 1px solid #f1f5f9;
+  padding: 9px 10px;
+  color: #111827;
+  background: #ffffff; /* IMPORTANTE: en light explícito */
+}
+
+.users-datatable .p-datatable-tbody > tr:hover > td {
+  background: #f9fafb;
+}
+
+.users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
+  background: #eef2ff;
+}
+
+/* ====== GRIDLINES (showGridlines) ====== */
+.users-datatable.p-datatable-gridlines .p-datatable-thead > tr > th,
+.users-datatable.p-datatable-gridlines .p-datatable-tbody > tr > td {
+  border-right: 1px solid #e5e7eb;
+}
+
+/* ====== DARK MODE: tabla completa ====== */
+.dashboard-shell.dark .users-datatable .p-datatable-table {
+  color: var(--color-text-inverse);
+  background: var(--color-surface-dark);
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-header {
+  background: var(--color-surface-dark);
+}
+
+/* THEAD dark */
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th {
   background: rgba(255, 255, 255, 0.04);
   color: var(--color-text-inverse);
   border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
+/* Filter row background */
 .dashboard-shell.dark .users-datatable .p-column-filter-row > th {
   background: rgba(255, 255, 255, 0.02);
 }
 
+/* TBODY dark (aquí estaba el bug más común) */
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-inverse);
+  background: var(--color-surface-dark); /* FIX CLAVE */
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr:hover > td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
+  background: rgba(0, 144, 187, 0.18);
+}
+
+/* Gridlines dark */
+.dashboard-shell.dark .users-datatable.p-datatable-gridlines .p-datatable-thead > tr > th,
+.dashboard-shell.dark .users-datatable.p-datatable-gridlines .p-datatable-tbody > tr > td {
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ====== FROZEN COLUMN (checkbox column) ====== */
+/* PrimeReact usa sticky/frozen y suele quedar con fondo blanco si no lo fuerzas */
+.users-datatable .p-frozen-column {
+  background: inherit;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-frozen-column,
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td.p-frozen-column {
+  background: var(--color-surface-dark); /* FIX: frozen en dark */
+}
+
+/* También aplica cuando PrimeReact envuelve con clases internas */
+.dashboard-shell.dark .users-datatable .p-datatable-scrollable-header-box .p-frozen-column {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ====== Inputs / Dropdowns dentro de filtros ====== */
 .dashboard-shell.dark .users-datatable .p-inputtext {
   background: var(--color-surface-darker);
   border-color: rgba(255, 255, 255, 0.12);
   color: var(--color-text-inverse);
 }
 
-.users-datatable .p-datatable-tbody > tr > td {
-  border: none;
-  border-bottom: 1px solid #f1f5f9;
-  padding: 9px 10px;
-  color: #111827;
-}
-
-.users-datatable .p-datatable-tbody > tr:hover {
-  background: #f9fafb;
-}
-
-.users-datatable .p-datatable-tbody > tr.selected-row-shadow {
-  background: #eef2ff;
-}
-
-.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+.dashboard-shell.dark .users-datatable .p-dropdown {
+  background: var(--color-surface-darker);
+  border-color: rgba(255, 255, 255, 0.12);
   color: var(--color-text-inverse);
 }
 
-.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr:hover {
-  background: rgba(255, 255, 255, 0.04);
+.dashboard-shell.dark .p-dropdown-panel {
+  background: var(--color-surface-darker);
+  color: var(--color-text-inverse);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow {
-  background: rgba(0, 144, 187, 0.18);
+.dashboard-shell.dark .p-dropdown-panel .p-dropdown-items .p-dropdown-item {
+  color: var(--color-text-inverse);
 }
 
-/* Paginador centrado como el screenshot */
+.dashboard-shell.dark .p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight {
+  background: rgba(0, 144, 187, 0.22);
+}
+
+/* ====== Paginador centrado como el screenshot ====== */
 .users-datatable .p-paginator {
   border: none;
   padding: 12px 10px;
@@ -319,10 +383,24 @@
   background: transparent;
 }
 
+/* Botones del paginador (para que no se “pierdan” en dark) */
 .dashboard-shell.dark .users-datatable .p-paginator {
   color: var(--color-text-inverse);
   background: rgba(255, 255, 255, 0.02);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dashboard-shell.dark .users-datatable .p-paginator .p-paginator-pages .p-paginator-page,
+.dashboard-shell.dark .users-datatable .p-paginator .p-paginator-first,
+.dashboard-shell.dark .users-datatable .p-paginator .p-paginator-prev,
+.dashboard-shell.dark .users-datatable .p-paginator .p-paginator-next,
+.dashboard-shell.dark .users-datatable .p-paginator .p-paginator-last {
+  color: var(--color-text-inverse);
+}
+
+.dashboard-shell.dark .users-datatable .p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
+  background: rgba(0, 144, 187, 0.22);
+  border-color: rgba(0, 144, 187, 0.35);
 }
 
 /* Column widths */
@@ -394,6 +472,7 @@
   background: #c2410c;
 }
 
+/* ====== OverlayPanel (Columnas) en dark ====== */
 .table-options-list {
   padding: 12px;
 }
@@ -404,6 +483,18 @@
 
 .table-options-list .p-field-checkbox label {
   font-size: var(--font-size-base);
+}
+
+.dashboard-shell.dark .p-overlaypanel.table-options-list,
+.dashboard-shell.dark .p-overlaypanel {
+  background: var(--color-surface-darker);
+  color: var(--color-text-inverse);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.dashboard-shell.dark .p-overlaypanel:before,
+.dashboard-shell.dark .p-overlaypanel:after {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
 /* ====== Responsive ====== */
@@ -432,4 +523,8 @@
   .search-input-container {
     max-width: unset;
   }
+}
+
+.p-datatable.p-datatable-gridlines .p-datatable-header {
+    border-width: 0px;
 }
