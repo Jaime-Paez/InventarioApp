@@ -100,7 +100,6 @@ function UsersTable({
       }
     }
     initFilters()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const clearFilter = () => {

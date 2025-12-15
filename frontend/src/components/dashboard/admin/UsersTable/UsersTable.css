@@ -2,6 +2,8 @@
 .users-page {
   width: 100%;
   height: 100%;
+  min-height: 0;
+  flex: 1;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -34,8 +36,9 @@
   border-radius: 10px;
   font-weight: 700;
   padding: 0.55rem 0.95rem;
-  background: #4f46e5;
-  border: 1px solid #4f46e5;
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  color: var(--color-text-inverse);
 }
 
 .users-topbtn.p-button:hover {
@@ -47,6 +50,12 @@
   font-size: 0.9rem;
 }
 
+.dashboard-shell.dark .users-topbtn.p-button {
+  background: var(--color-primary-contrast);
+  border-color: var(--color-primary-contrast);
+  color: var(--color-text-primary);
+}
+
 /* ====== TU CONTENEDOR (ahora como card) ====== */
 .users-table {
   background: #ffffff;
@@ -55,6 +64,8 @@
   flex-direction: column;
   gap: 10px;
   position: relative;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* NUEVO: card wrapper que contiene la tabla y permite scroll flex */
@@ -63,6 +74,16 @@
   overflow: hidden;
   flex: 1;                 /* ocupa el espacio disponible */
   min-height: 520px;       /* evita que se “aplane” */
+}
+
+.dashboard-shell.dark .users-table {
+  background: var(--color-surface-dark);
+  color: var(--color-text-inverse);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.dashboard-shell.dark .users-table--card {
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 /* ====== Header de la tabla (igual screenshot, barra interna) ====== */
@@ -95,6 +116,10 @@
   margin-right: 4px;
 }
 
+.dashboard-shell.dark .users-header__count {
+  color: var(--color-text-inverse);
+}
+
 .search-input-container {
   display: flex;
   align-items: center;
@@ -106,6 +131,11 @@
   flex: 1;
   min-width: 260px;
   max-width: 440px;
+}
+
+.dashboard-shell.dark .search-input-container {
+  background: var(--color-surface-darker);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .search-input {
@@ -126,6 +156,15 @@
   font-size: 0.95rem;
 }
 
+.dashboard-shell.dark .search-input {
+  color: var(--color-text-inverse);
+}
+
+.dashboard-shell.dark .search-input::placeholder,
+.dashboard-shell.dark .search-input-icon {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .rounded-icon-btn {
   width: 32px;
   height: 32px;
@@ -144,6 +183,18 @@
   background: #eef2ff;
   border-color: #d1d5db;
   color: #111827;
+}
+
+.dashboard-shell.dark .rounded-icon-btn {
+  background: var(--color-surface-darker);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--color-text-inverse);
+}
+
+.dashboard-shell.dark .rounded-icon-btn:hover:not(:disabled) {
+  background: rgba(0, 144, 187, 0.16);
+  border-color: rgba(0, 144, 187, 0.4);
+  color: var(--color-primary-contrast-strong);
 }
 
 .rounded-icon-btn:disabled {
@@ -190,6 +241,14 @@
   font-size: var(--font-size-base);
 }
 
+.dashboard-shell.dark .users-datatable .p-datatable-wrapper {
+  background: transparent;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-table {
+  color: var(--color-text-inverse);
+}
+
 .users-datatable .p-datatable-thead > tr > th {
   background: #f7f7f7;
   color: #111827;
@@ -197,6 +256,12 @@
   border: none;
   border-bottom: 1px solid #e5e7eb;
   padding: 8px 10px;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-inverse);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .users-datatable .p-datatable-tbody > tr > td {
@@ -212,6 +277,19 @@
 
 .users-datatable .p-datatable-tbody > tr.selected-row-shadow {
   background: #eef2ff;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-inverse);
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow {
+  background: rgba(0, 144, 187, 0.18);
 }
 
 /* Paginador centrado como el screenshot */
@@ -256,6 +334,10 @@
   z-index: 3;
 }
 
+.dashboard-shell.dark .spinner-container {
+  background: rgba(24, 24, 24, 0.7);
+}
+
 .spinner {
   width: 32px;
   height: 32px;
@@ -281,6 +363,10 @@
   border-radius: 10px;
   font-weight: 700;
   margin: 10px;
+}
+
+.dashboard-shell.dark .stale-data-msg {
+  background: #c2410c;
 }
 
 .table-options-list {
