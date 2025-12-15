@@ -1,212 +1,20 @@
 .users-table {
   background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 14px;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.08);
   padding: 12px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   gap: 10px;
-  color: #111827;
+  position: relative;
 }
 
-.users-table__toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 4px 0 2px;
-}
-
-.users-table__search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 8px 12px;
-  min-width: 240px;
-}
-
-.users-table__search span {
-  font-size: 14px;
-  color: #6b7280;
-}
-
-.users-table__search input {
-  border: none;
-  background: transparent;
-  outline: none;
-  width: 100%;
-  color: #111827;
-  font-size: 14px;
-}
-
-.users-table__toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.toolbar-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 9999px;
-  display: inline-flex;
-}
-
-.toolbar-dot--red {
-  background: #f87171;
-}
-
-.toolbar-dot--amber {
-  background: #fbbf24;
-}
-
-.toolbar-dot--green {
-  background: #34d399;
-}
-
-.toolbar-button {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  color: #111827;
-  padding: 8px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  box-shadow: none;
-}
-
-.toolbar-button.primary {
-  background: #6b7280;
-  border-color: #6b7280;
-  color: #ffffff;
-}
-
-.toolbar-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.users-table__meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 4px 0;
-  border-bottom: 1px solid #e5e7eb;
-  color: #4b5563;
-  font-size: 14px;
-}
-
-.users-table .table-meta {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.users-table .table-meta .error {
-  color: #b91c1c;
-}
-
-.users-table .table-meta .success {
-  color: #16a34a;
-}
-
-.users-table .table-wrapper {
-  overflow: auto;
-}
-
-.users-table table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 900px;
-}
-
-.users-table thead th {
-  background: #f3f4f6;
-  color: #111827;
-  font-weight: 600;
-  text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid #e5e7eb;
-  font-size: 14px;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.users-table thead th .sort-icons {
-  display: inline-flex;
-  flex-direction: column;
-  margin-left: 6px;
-  gap: 2px;
-}
-
-.users-table thead th .caret {
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-}
-
-.users-table thead th .caret.up {
-  border-bottom: 6px solid #9ca3af;
-}
-
-.users-table thead th .caret.down {
-  border-top: 6px solid #9ca3af;
-}
-
-.users-table thead th.asc .caret.up {
-  border-bottom-color: #111827;
-}
-
-.users-table thead th.desc .caret.down {
-  border-top-color: #111827;
-}
-
-.users-table tbody tr {
-  transition: background 0.15s ease;
-}
-
-.users-table tbody tr:hover {
-  background: #f9fafb;
-}
-
-.users-table tbody tr.selected {
-  background: #eef2ff;
-}
-
-.users-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid #e5e7eb;
-  font-size: 14px;
-  color: #111827;
-  vertical-align: middle;
-}
-
-.users-table td.empty {
-  text-align: center;
-  color: #6b7280;
-}
-
-.users-table .checkbox-cell {
-  width: 46px;
-  text-align: center;
-}
-
-/* Header estilo MarcasTable (como en tu screenshot) */
 .users-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  width: 100%;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .users-header__left {
@@ -220,16 +28,71 @@
 .users-header__right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .users-header__count {
   font-weight: 700;
-  color: var(--text-color, #111827);
+  color: #4b5563;
   margin-right: 4px;
 }
 
-/* Botones circulares del lado derecho (excel/pdf/email/carpeta) */
+.search-input-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 8px 12px;
+  flex: 1;
+  min-width: 260px;
+  max-width: 420px;
+}
+
+.search-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+}
+
+.search-input::placeholder {
+  color: #9ca3af;
+}
+
+.search-input-icon {
+  color: #9ca3af;
+  font-size: 0.95rem;
+}
+
+.rounded-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #111827;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.rounded-icon-btn:hover:not(:disabled) {
+  background: #eef2ff;
+  border-color: #d1d5db;
+  color: #111827;
+}
+
+.rounded-icon-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .users-circle {
   width: 34px;
   height: 34px;
@@ -252,14 +115,136 @@
 .users-circle--mail { background: #3b82f6; }
 .users-circle--folder { background: #14b8a6; }
 
+.users-datatable .p-datatable-wrapper {
+  border-radius: 10px;
+}
 
-@media (max-width: 900px) {
-  .users-table__toolbar {
+.users-datatable .p-datatable-table {
+  font-size: var(--font-size-base);
+}
+
+.users-datatable .p-datatable-thead > tr > th {
+  background: #f7f7f7;
+  color: #111827;
+  font-weight: 700;
+  border: none;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 10px;
+}
+
+.users-datatable .p-datatable-tbody > tr > td {
+  border: none;
+  border-bottom: 1px solid #f1f5f9;
+  padding: 9px 10px;
+  color: #111827;
+}
+
+.users-datatable .p-datatable-tbody > tr:hover {
+  background: #f9fafb;
+}
+
+.users-datatable .p-datatable-tbody > tr.selected-row-shadow {
+  background: #eef2ff;
+}
+
+.users-datatable .p-datatable-filter-row > td {
+  padding: 8px 10px;
+  background: #f7f7f7;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.users-datatable .p-datatable-filter-row .p-inputtext {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: var(--font-size-base);
+}
+
+.users-datatable .p-column-header-content {
+  gap: 6px;
+}
+
+.users-datatable .p-datatable-scrollable-body {
+  scrollbar-width: thin;
+}
+
+.column-max-min-width {
+  min-width: 150px;
+  max-width: 260px;
+}
+
+.column-max-min-width--small {
+  min-width: 120px;
+  text-align: center;
+}
+
+.row-selection-column {
+  width: 52px;
+  text-align: center;
+}
+
+.cell-tooltip {
+  display: inline-block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spinner-container {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.55);
+  z-index: 3;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid #e5e7eb;
+  border-top-color: #111827;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.stale-data-msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f97316;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.table-options-list {
+  padding: 12px;
+}
+
+.table-options-list strong {
+  font-size: var(--font-size-md);
+}
+
+.table-options-list .p-field-checkbox label {
+  font-size: var(--font-size-base);
+}
+
+@media (max-width: 700px) {
+  .users-header {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .users-table__toolbar-actions {
+  .users-header__right {
+    width: 100%;
     justify-content: flex-end;
   }
 }
