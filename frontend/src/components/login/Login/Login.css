@@ -103,7 +103,7 @@
 }
 
 .brand-divider {
-  width: 4px;
+  width: 2x;
   height: 30px;
   border-radius: 99px;
   background: var(--color-divider-light);
