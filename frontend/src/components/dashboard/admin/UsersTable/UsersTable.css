@@ -229,12 +229,14 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 /* CRÍTICO: para scrollHeight="flex" */
 .users-datatable .p-datatable-wrapper {
   border-radius: 10px;
   flex: 1;
+  min-height: 0;
 }
 
 .users-datatable .p-datatable-table {
@@ -247,6 +249,12 @@
 
 .dashboard-shell.dark .users-datatable .p-datatable-table {
   color: var(--color-text-inverse);
+  background: var(--color-surface-dark);
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-header {
+  background: var(--color-surface-dark);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .users-datatable .p-datatable-thead > tr > th {
@@ -262,6 +270,16 @@
   background: rgba(255, 255, 255, 0.04);
   color: var(--color-text-inverse);
   border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-shell.dark .users-datatable .p-column-filter-row > th {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dashboard-shell.dark .users-datatable .p-inputtext {
+  background: var(--color-surface-darker);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--color-text-inverse);
 }
 
 .users-datatable .p-datatable-tbody > tr > td {
@@ -298,6 +316,13 @@
   padding: 12px 10px;
   display: flex;
   justify-content: center;
+  background: transparent;
+}
+
+.dashboard-shell.dark .users-datatable .p-paginator {
+  color: var(--color-text-inverse);
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* Column widths */
