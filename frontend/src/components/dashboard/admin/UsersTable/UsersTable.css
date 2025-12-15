@@ -1,20 +1,78 @@
+/* ====== NUEVO: wrapper general (layout igual a la imagen) ====== */
+.users-page {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.users-page__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.users-page__title {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.02em;
+}
+
+.users-page__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.users-topbtn.p-button {
+  border-radius: 10px;
+  font-weight: 700;
+  padding: 0.55rem 0.95rem;
+  background: #4f46e5;
+  border: 1px solid #4f46e5;
+}
+
+.users-topbtn.p-button:hover {
+  filter: brightness(0.98);
+}
+
+.users-topbtn--create.p-button .p-button-icon,
+.users-topbtn--search.p-button .p-button-icon {
+  font-size: 0.9rem;
+}
+
+/* ====== TU CONTENEDOR (ahora como card) ====== */
 .users-table {
   background: #ffffff;
   border-radius: 14px;
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.08);
-  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   position: relative;
 }
 
+/* NUEVO: card wrapper que contiene la tabla y permite scroll flex */
+.users-table--card {
+  border: 1px solid #eef2f7;
+  overflow: hidden;
+  flex: 1;                 /* ocupa el espacio disponible */
+  min-height: 520px;       /* evita que se “aplane” */
+}
+
+/* ====== Header de la tabla (igual screenshot, barra interna) ====== */
 .users-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  padding: 10px 10px 6px 10px; /* NUEVO: padding tipo barra */
 }
 
 .users-header__left {
@@ -32,7 +90,7 @@
 }
 
 .users-header__count {
-  font-weight: 700;
+  font-weight: 800;
   color: #4b5563;
   margin-right: 4px;
 }
@@ -43,11 +101,11 @@
   gap: 8px;
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 999px; /* NUEVO: pill como la imagen */
   padding: 8px 12px;
   flex: 1;
   min-width: 260px;
-  max-width: 420px;
+  max-width: 440px;
 }
 
 .search-input {
@@ -115,8 +173,17 @@
 .users-circle--mail { background: #3b82f6; }
 .users-circle--folder { background: #14b8a6; }
 
+/* ====== PrimeReact DataTable ====== */
+.users-datatable {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* CRÍTICO: para scrollHeight="flex" */
 .users-datatable .p-datatable-wrapper {
   border-radius: 10px;
+  flex: 1;
 }
 
 .users-datatable .p-datatable-table {
@@ -126,7 +193,7 @@
 .users-datatable .p-datatable-thead > tr > th {
   background: #f7f7f7;
   color: #111827;
-  font-weight: 700;
+  font-weight: 800;
   border: none;
   border-bottom: 1px solid #e5e7eb;
   padding: 8px 10px;
@@ -147,26 +214,15 @@
   background: #eef2ff;
 }
 
-.users-datatable .p-datatable-filter-row > td {
-  padding: 8px 10px;
-  background: #f7f7f7;
-  border-bottom: 1px solid #e5e7eb;
+/* Paginador centrado como el screenshot */
+.users-datatable .p-paginator {
+  border: none;
+  padding: 12px 10px;
+  display: flex;
+  justify-content: center;
 }
 
-.users-datatable .p-datatable-filter-row .p-inputtext {
-  width: 100%;
-  padding: 6px 10px;
-  font-size: var(--font-size-base);
-}
-
-.users-datatable .p-column-header-content {
-  gap: 6px;
-}
-
-.users-datatable .p-datatable-scrollable-body {
-  scrollbar-width: thin;
-}
-
+/* Column widths */
 .column-max-min-width {
   min-width: 150px;
   max-width: 260px;
@@ -190,6 +246,7 @@
   white-space: nowrap;
 }
 
+/* Loading overlay */
 .spinner-container {
   position: absolute;
   inset: 0;
@@ -221,8 +278,9 @@
   background: #f97316;
   color: #fff;
   padding: 8px 12px;
-  border-radius: 8px;
-  font-weight: 600;
+  border-radius: 10px;
+  font-weight: 700;
+  margin: 10px;
 }
 
 .table-options-list {
@@ -237,14 +295,30 @@
   font-size: var(--font-size-base);
 }
 
+/* ====== Responsive ====== */
+@media (max-width: 900px) {
+  .users-page__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 700px) {
   .users-header {
     flex-direction: column;
     align-items: stretch;
   }
 
+  .users-header__left {
+    min-width: unset;
+  }
+
   .users-header__right {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .search-input-container {
+    max-width: unset;
   }
 }
