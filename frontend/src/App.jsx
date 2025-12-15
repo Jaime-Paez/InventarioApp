@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import DashboardLayout from './components/dashboard/DashboardLayout'
-import Login from './components/login/Login'
+import DashboardLayout from './components/dashboard/DashboardLayout/DashboardLayout'
+import Login from './components/login/Login/Login'
 
 const getSystemThemePreference = () =>
   typeof window !== 'undefined' && window.matchMedia

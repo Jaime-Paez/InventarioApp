@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { PanelLeftOpen } from 'lucide-react'
-import kavaDark from '../../assets/login/kava(dark).png'
-import kavaLight from '../../assets/login/kava(light).png'
-import jpaezDark from '../../assets/login/jpaez(dark).png'
-import jpaezLight from '../../assets/login/jpaez(light).png'
+import kavaDark from '../../../assets/login/kava(dark).png'
+import kavaLight from '../../../assets/login/kava(light).png'
+import jpaezDark from '../../../assets/login/jpaez(dark).png'
+import jpaezLight from '../../../assets/login/jpaez(light).png'
 import './DashboardLayout.css'
-import Sidebar from './Sidebar'
-import Workspace from './Workspace'
+import Sidebar from '../Sidebar/Sidebar'
+import Workspace from '../Workspace/Workspace'
 
 function DashboardLayout({ user, token, darkMode, onLogout, isEntering, onToggleTheme }) {
   const [openTabs, setOpenTabs] = useState([])
