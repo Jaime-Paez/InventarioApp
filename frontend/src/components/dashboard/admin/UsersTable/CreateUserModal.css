@@ -1,0 +1,235 @@
+.create-user__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 15, 30, 0.7);
+  backdrop-filter: blur(6px);
+  z-index: 50;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.create-user__modal {
+  position: absolute;
+  width: min(960px, calc(100% - 24px));
+  background: #0f172a;
+  border: 1px solid #1f2937;
+  border-radius: 14px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  padding: 12px 20px 22px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  cursor: default;
+}
+
+.create-user__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #1f2937;
+  padding: 10px 0 12px;
+  margin: 0 -8px;
+  padding-inline: 8px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), transparent);
+  border-radius: 10px 10px 0 0;
+  cursor: move;
+  user-select: none;
+}
+
+.create-user__modal .ghost {
+  background: transparent;
+  border: 1px solid #1f2937;
+  color: #cbd5e1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.create-user__eyebrow {
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  margin: 0;
+}
+
+.create-user__header h3 {
+  margin: 4px 0 2px;
+  color: #e2e8f0;
+}
+
+.create-user__subtitle {
+  margin: 0;
+  color: #cbd5e1;
+  max-width: 58ch;
+}
+
+.create-user__form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.create-user__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.create-user__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #cbd5e1;
+}
+
+.create-user__field--password {
+  grid-column: span 2;
+  min-width: 320px;
+}
+
+.create-user__field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.create-user__password-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.create-user__password-actions .ghost {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.create-user__field small {
+  color: #94a3b8;
+}
+
+.create-user__field input {
+  background: #0b1220;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #e2e8f0;
+}
+
+.create-user__checkbox {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  background: rgba(99, 102, 241, 0.07);
+  border: 1px dashed #4f46e5;
+  border-radius: 12px;
+  color: #e2e8f0;
+}
+
+.create-user__checkbox input {
+  width: 18px;
+  height: 18px;
+}
+
+.create-user__checkbox p {
+  margin: 2px 0 0;
+  color: #94a3b8;
+}
+
+.create-user__roles {
+  padding: 14px;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  background: #0b1220;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.create-user__roles-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #e2e8f0;
+}
+
+.create-user__roles p {
+  margin: 2px 0 0;
+  color: #94a3b8;
+}
+
+.create-user__roles-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.create-user__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid #1f2937;
+  border-radius: 999px;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.create-user__chip input {
+  width: 16px;
+  height: 16px;
+}
+
+.create-user__error {
+  color: #fca5a5;
+  margin: 0;
+}
+
+.create-user__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 6px;
+  border-top: 1px solid #1f2937;
+}
+
+.create-user__footer button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  color: #fff;
+  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.35);
+}
+
+.create-user__footer .ghost {
+  background: transparent;
+  border: 1px solid #1f2937;
+  color: #cbd5e1;
+  box-shadow: none;
+}
+
+.create-user__footer button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.muted {
+  color: #94a3b8;
+}
+
+@media (max-width: 640px) {
+  .create-user__modal {
+    padding: 16px;
+  }
+
+  .create-user__header {
+    flex-direction: column;
+  }
+}
