@@ -233,8 +233,7 @@
 }
 
 .create-user__field--password {
-  grid-column: span 2;
-  min-width: 320px;
+  min-width: 260px;
 }
 
 .create-user__field-label {
@@ -272,11 +271,11 @@
   background: var(--color-input-bg);
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 0.35rem 0.75rem;
   color: var(--color-text-primary);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   width: 100%;
-  height: 36px;
+  min-height: 30px;
 }
 
 .create-user__field input::placeholder {
@@ -305,6 +304,12 @@
   border-color: var(--color-primary-contrast);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-contrast) 32%, transparent);
 }
+.create-user__password-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  width: 100%;
+}
 
 /* Checkbox block: make it simple like reference */
 .create-user__checkbox {
@@ -312,6 +317,7 @@
   display: flex;
   gap: 12px;
   align-items: flex-start;
+  width: 100%;
 
   padding: 10px 12px;
   background: var(--color-surface);
