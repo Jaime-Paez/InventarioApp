@@ -304,11 +304,25 @@
   border-color: var(--color-primary-contrast);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-contrast) 32%, transparent);
 }
-.create-user__password-grid {
+.create-user__access-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 14px;
+  gap: 12px 14px;
+  align-items: start;
   width: 100%;
+}
+
+.create-user__access-left,
+.create-user__access-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (max-width: 920px) {
+  .create-user__access-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Checkbox block: make it simple like reference */
