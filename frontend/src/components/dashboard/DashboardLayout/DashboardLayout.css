@@ -49,7 +49,7 @@
 
 .dashboard-shell.dark .sidebar__reopen {
   background: #111827;
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: var(--color-border-dark);
 }
 
 @keyframes dashboard-slide-in {

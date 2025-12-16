@@ -7,6 +7,7 @@
   --color-text-primary: #0f172a;
   --color-text-inverse: #f5f7fb;
   --color-border: #cbd5e1;
+  --color-border-dark: #bbbbbb;
   --color-border-subtle: #FFFFFF;
   --color-divider-light: #181818;
   --color-divider-dark: #ffffff;
@@ -48,6 +49,10 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.theme-dark {
+  --color-border: var(--color-border-dark);
 }
 
 * {
