@@ -73,7 +73,7 @@
   border: 1px solid #eef2f7;
   overflow: hidden;
   flex: 1;
-  min-height: 520px;
+  min-height: 200px;
 }
 
 .dashboard-shell.dark .users-table {
