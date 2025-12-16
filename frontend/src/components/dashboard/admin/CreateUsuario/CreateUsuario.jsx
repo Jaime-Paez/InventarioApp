@@ -27,7 +27,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
   const [loading, setLoading] = useState(false)
   const modalRef = useRef(null)
   const [position, setPosition] = useState({ x: 0, y: 0 })
-  const [size, setSize] = useState({ width: 920, height: 640 })
+  const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -71,8 +71,8 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
     if (!open) return
     const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
     const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING * 2)
-    const nextWidth = clamp(Math.min(960, maxWidth), MIN_WIDTH, maxWidth)
-    const nextHeight = clamp(Math.min(680, maxHeight), MIN_HEIGHT, maxHeight)
+    const nextWidth = clamp(MIN_WIDTH, MIN_WIDTH, maxWidth)
+    const nextHeight = clamp(MIN_HEIGHT, MIN_HEIGHT, maxHeight)
     setSize({ width: nextWidth, height: nextHeight })
 
     const centeredX = (window.innerWidth - nextWidth) / 2
