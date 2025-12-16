@@ -10,15 +10,19 @@
 
 .create-user__modal {
   position: absolute;
-  width: min(960px, calc(100% - 24px));
+  max-width: calc(100% - 24px);
+  max-height: calc(100vh - 24px);
+  min-width: 720px;
+  min-height: 520px;
   background: #0f172a;
   border: 1px solid #1f2937;
   border-radius: 14px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
   padding: 12px 20px 22px;
-  max-height: calc(100vh - 32px);
-  overflow: auto;
+  overflow: hidden;
   cursor: default;
+  display: flex;
+  flex-direction: column;
 }
 
 .create-user__header {
@@ -69,6 +73,9 @@
   flex-direction: column;
   gap: 18px;
   margin-top: 16px;
+  overflow: auto;
+  padding-right: 8px;
+  flex: 1;
 }
 
 .create-user__grid {
@@ -195,6 +202,25 @@
   gap: 10px;
   padding-top: 6px;
   border-top: 1px solid #1f2937;
+}
+
+.create-user__resize-handle {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(56, 189, 248, 0.5));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: se-resize;
+  opacity: 0.8;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.create-user__resize-handle:hover {
+  opacity: 1;
+  transform: scale(1.05);
 }
 
 .create-user__footer button {
