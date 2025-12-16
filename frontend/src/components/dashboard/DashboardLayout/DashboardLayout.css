@@ -16,18 +16,18 @@
 }
 
 .dashboard-shell.enter .sidebar:not(.sidebar--hidden) {
-  animation: sidebar-slide-in 1.15s ease forwards;
+  animation: sidebar-slide-in 1.6s ease forwards;
 }
 
 .dashboard-shell.enter .quick-actions {
-  animation: quick-actions-slide-in 1.05s ease forwards;
-  animation-delay: 0.35s;
+  animation: quick-actions-slide-in 1.45s ease forwards;
+  animation-delay: 0.65s;
   animation-fill-mode: both;
 }
 
 .dashboard-shell.enter .workspace__hero {
-  animation: welcome-fade-in 1.35s ease forwards;
-  animation-delay: 0.9s;
+  animation: welcome-fade-in 1.8s ease forwards;
+  animation-delay: 1.45s;
   animation-fill-mode: both;
 }
 
