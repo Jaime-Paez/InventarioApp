@@ -20,16 +20,16 @@
 }
 
 .dashboard-shell.dark .sidebar {
-  --sidebar-color-border: rgba(255, 255, 255, 0.1);
-  --sidebar-color-border-strong: rgba(255, 255, 255, 0.12);
-  --sidebar-color-divider: rgba(255, 255, 255, 0.12);
+  --sidebar-color-border: var(--color-border-dark);
+  --sidebar-color-border-strong: var(--color-border-dark);
+  --sidebar-color-divider: var(--color-border-dark);
   --sidebar-color-section: rgba(255, 255, 255, 0.48);
   --sidebar-color-text: rgba(255, 255, 255, 0.86);
   --sidebar-color-subtext: rgba(255, 255, 255, 0.8);
   --sidebar-color-muted: rgba(255, 255, 255, 0.7);
   --sidebar-color-hover: rgba(255, 255, 255, 0.05);
   --sidebar-profile-hover: rgba(0, 144, 187, 0.14);
-  --sidebar-profile-border: rgba(255, 255, 255, 0.12);
+  --sidebar-profile-border: var(--color-border-dark);
   background: var(--color-surface-dark);
   border-color: var(--sidebar-color-border-strong);
 }
