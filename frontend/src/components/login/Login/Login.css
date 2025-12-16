@@ -307,11 +307,11 @@ input:focus {
 }
 
 .login-page.collapse .login-panel {
-  animation: login-panel-slide-left 0.6s ease forwards;
+  animation: login-panel-slide-left 0.9s ease forwards;
 }
 
 .login-page.collapse .wallpaper-layer {
-  animation: login-wallpaper-slide-right 0.6s ease forwards;
+  animation: login-wallpaper-slide-right 0.9s ease forwards;
 }
 
 @keyframes login-panel-slide-left {

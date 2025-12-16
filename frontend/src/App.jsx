@@ -58,8 +58,8 @@ function App() {
     setToken(incomingToken)
     setLoginTransitioning(true)
 
-    setTimeout(() => setShowApp(true), 550)
-    setTimeout(() => setLoginTransitioning(false), 900)
+    setTimeout(() => setShowApp(true), 850)
+    setTimeout(() => setLoginTransitioning(false), 1400)
   }
 
   const handleLogout = () => {

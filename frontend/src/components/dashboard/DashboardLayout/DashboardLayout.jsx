@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PanelLeftOpen } from 'lucide-react'
 import kavaDark from '../../../assets/login/kava(dark).png'
 import kavaLight from '../../../assets/login/kava(light).png'
@@ -12,10 +12,15 @@ function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme }) {
   const [openTabs, setOpenTabs] = useState([])
   const [activeItem, setActiveItem] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [hasEntered, setHasEntered] = useState(false)
 
   const heroLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const brandLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const partnerLogo = useMemo(() => (darkMode ? jpaezDark : jpaezLight), [darkMode])
+
+  useEffect(() => {
+    setHasEntered(true)
+  }, [])
 
   const handleSelect = (label) => {
     setActiveItem(label)
@@ -35,7 +40,9 @@ function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme }) {
   }
 
   return (
-    <div className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isSidebarOpen ? '' : 'collapsed'}`}>
+    <div
+      className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isSidebarOpen ? '' : 'collapsed'} ${hasEntered ? 'enter' : ''}`}
+    >
       <Sidebar
         activeItem={activeItem}
         onSelect={handleSelect}
