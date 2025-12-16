@@ -75,7 +75,7 @@
 }
 
 .dashboard-shell.dark .workspace__panel {
-  background: rgba(24, 24, 24, 0.92);
+  background: #212121;
 }
 
 .workspace__view-title {
