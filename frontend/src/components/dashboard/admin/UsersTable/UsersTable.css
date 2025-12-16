@@ -332,8 +332,12 @@
   background: var(--color-surface-dark); /* FIX CLAVE */
 }
 
-.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr:hover > td {
-  background: rgba(255, 255, 255, 0.04);
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr:hover > td,
+.dashboard-shell.dark .users-datatable.p-datatable-hoverable-rows .p-selectable-row:not(.p-highlight):hover > td,
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.p-highlight:hover > td {
+  background: #13161d;
+  color: var(--color-text-inverse);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
