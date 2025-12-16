@@ -315,175 +315,208 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
         style={{ top: position.y, left: position.x, width: size.width, height: size.height }}
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
-          <div>
+          <div className="create-user__progress">
+            <span className="create-user__progress-line" />
+            <span className="create-user__progress-dot" />
+          </div>
+          <div className="create-user__header-text">
+            <p className="create-user__eyebrow">Gestión de usuarios</p>
             <h3>Crear cuenta interna</h3>
+            <p className="create-user__subtitle">
+              Completa la información para invitar al usuario y asignarle sus accesos.
+            </p>
           </div>
           <button
             type="button"
-            className="ghost"
+            className="create-user__icon-button"
             onMouseDown={(event) => event.stopPropagation()}
             onClick={onClose}
+            aria-label="Cerrar"
           >
-            x
+            ×
           </button>
         </header>
 
         <form className="create-user__form" onSubmit={handleSubmit}>
-          <div className="create-user__grid">
-            <label className="create-user__field">
-              <span>Nombres</span>
-              <input
-                name="nombres"
-                type="text"
-                placeholder="Ana María"
-                value={formData.nombres}
-                onChange={handleChange}
-                required
-              />
-            </label>
-
-            <label className="create-user__field">
-              <span>Apellidos</span>
-              <input
-                name="apellidos"
-                type="text"
-                placeholder="Pérez Ruiz"
-                value={formData.apellidos}
-                onChange={handleChange}
-                required
-              />
-            </label>
-
-            <label className="create-user__field">
-              <span>Correo</span>
-              <input
-                name="correo"
-                type="email"
-                placeholder="usuario@empresa.com"
-                value={formData.correo}
-                onChange={handleChange}
-                required
-              />
-            </label>
-
-            <label className="create-user__field">
-              <span>Teléfono</span>
-              <input
-                name="telefono"
-                type="tel"
-                placeholder="099 999 9999"
-                value={formData.telefono}
-                onChange={handleChange}
-              />
-            </label>
-
-            <label className="create-user__field">
-              <span>Cargo</span>
-              <input
-                name="cargo"
-                type="text"
-                placeholder="Coordinador de inventario"
-                value={formData.cargo}
-                onChange={handleChange}
-              />
-            </label>
-
-            <label className="create-user__field create-user__field--password">
-              <div className="create-user__field-label">
-                <span>Contraseña</span>
-                <div className="create-user__password-actions">
-                  <button type="button" className="ghost" onClick={generatePassword}>
-                    Generar
-                  </button>
-                  <button type="button" className="ghost" onClick={copyPassword}>
-                    {passwordCopied ? 'Copiada' : 'Copiar'}
-                  </button>
+          <div className="create-user__body">
+            <section className="create-user__section">
+              <div className="create-user__section-header">
+                <div>
+                  <p className="create-user__eyebrow">Datos del usuario</p>
+                  <h4>Información personal y de contacto</h4>
+                  <p className="create-user__hint">Estos datos se usarán para identificar al usuario en el sistema.</p>
                 </div>
               </div>
-              <input
-                name="password"
-                type="text"
-                placeholder="Contraseña temporal"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-              <small>Se enviará esta clave para que el usuario pueda iniciar sesión.</small>
-            </label>
 
-            <label className="create-user__field">
-              <span>Confirmar contraseña</span>
-              <input
-                name="confirmPassword"
-                type="text"
-                placeholder="Repite la contraseña"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                required
-              />
-            </label>
+              <div className="create-user__grid create-user__grid--two">
+                <label className="create-user__field">
+                  <span>Nombres</span>
+                  <input
+                    name="nombres"
+                    type="text"
+                    placeholder="Ana María"
+                    value={formData.nombres}
+                    onChange={handleChange}
+                    required
+                  />
+                </label>
 
-            <label className="create-user__checkbox">
-              <input
-                type="checkbox"
-                name="activo"
-                checked={formData.activo}
-                onChange={handleChange}
-              />
-              <div>
-                <span>Cuenta activa</span>
-                <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                <label className="create-user__field">
+                  <span>Apellidos</span>
+                  <input
+                    name="apellidos"
+                    type="text"
+                    placeholder="Pérez Ruiz"
+                    value={formData.apellidos}
+                    onChange={handleChange}
+                    required
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Correo</span>
+                  <input
+                    name="correo"
+                    type="email"
+                    placeholder="usuario@empresa.com"
+                    value={formData.correo}
+                    onChange={handleChange}
+                    required
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Teléfono</span>
+                  <input
+                    name="telefono"
+                    type="tel"
+                    placeholder="099 999 9999"
+                    value={formData.telefono}
+                    onChange={handleChange}
+                  />
+                </label>
+
+                <label className="create-user__field create-user__field--full">
+                  <span>Cargo</span>
+                  <input
+                    name="cargo"
+                    type="text"
+                    placeholder="Coordinador de inventario"
+                    value={formData.cargo}
+                    onChange={handleChange}
+                  />
+                </label>
               </div>
-            </label>
-          </div>
+            </section>
 
-          <div className="create-user__roles">
-            <div className="create-user__roles-header">
-              <div>
-                <span>Roles</span>
-                <p>Selecciona uno o más roles para definir los permisos.</p>
+            <section className="create-user__section">
+              <div className="create-user__section-header">
+                <div>
+                  <p className="create-user__eyebrow">Acceso y permisos</p>
+                  <h4>Credenciales y roles</h4>
+                  <p className="create-user__hint">Define la contraseña inicial y los permisos que tendrá el usuario.</p>
+                </div>
               </div>
-              {rolesLoading && <small className="muted">Cargando roles...</small>}
-            </div>
 
-            <div className="create-user__roles-list">
-              {!rolesLoading && !roles.length && (
-                <p className="muted">No hay roles configurados todavía.</p>
-              )}
+              <div className="create-user__grid create-user__grid--two">
+                <label className="create-user__field create-user__field--password">
+                  <div className="create-user__field-label">
+                    <span>Contraseña</span>
+                    <div className="create-user__password-actions">
+                      <button type="button" className="create-user__ghost" onClick={generatePassword}>
+                        Generar
+                      </button>
+                      <button type="button" className="create-user__ghost" onClick={copyPassword}>
+                        {passwordCopied ? 'Copiada' : 'Copiar'}
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    name="password"
+                    type="text"
+                    placeholder="Contraseña temporal"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required
+                  />
+                  <small>Se enviará esta clave para que el usuario pueda iniciar sesión.</small>
+                </label>
 
-              {roles.map((role) => (
-                <label key={role.id} className="create-user__chip">
+                <label className="create-user__field">
+                  <span>Confirmar contraseña</span>
+                  <input
+                    name="confirmPassword"
+                    type="text"
+                    placeholder="Repite la contraseña"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    required
+                  />
+                </label>
+
+                <label className="create-user__checkbox">
                   <input
                     type="checkbox"
-                    checked={formData.roles.includes(role.id)}
-                    onChange={() => handleToggleRole(role.id)}
+                    name="activo"
+                    checked={formData.activo}
+                    onChange={handleChange}
                   />
-                  <span>{role.nombre}</span>
+                  <div>
+                    <span>Cuenta activa</span>
+                    <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                  </div>
                 </label>
-              ))}
-            </div>
+              </div>
+
+              <div className="create-user__roles">
+                <div className="create-user__roles-header">
+                  <div>
+                    <span>Roles</span>
+                    <p>Selecciona uno o más roles para definir los permisos.</p>
+                  </div>
+                  {rolesLoading && <small className="muted">Cargando roles...</small>}
+                </div>
+
+                <div className="create-user__roles-list">
+                  {!rolesLoading && !roles.length && (
+                    <p className="muted">No hay roles configurados todavía.</p>
+                  )}
+
+                  {roles.map((role) => (
+                    <label key={role.id} className="create-user__chip">
+                      <input
+                        type="checkbox"
+                        checked={formData.roles.includes(role.id)}
+                        onChange={() => handleToggleRole(role.id)}
+                      />
+                      <span>{role.nombre}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </section>
           </div>
 
           {error && <p className="create-user__error">{error}</p>}
 
-        <div className="create-user__footer">
-          <button type="button" className="ghost" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="submit" disabled={loading}>
-            {loading ? 'Guardando...' : 'Crear usuario'}
-          </button>
-        </div>
-      </form>
+          <div className="create-user__footer">
+            <button type="button" className="create-user__ghost" onClick={onClose}>
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading}>
+              {loading ? 'Guardando...' : 'Crear usuario'}
+            </button>
+          </div>
+        </form>
 
-      <button
-        type="button"
-        aria-label="Cambiar tamaño de ventana"
-        className="create-user__resize-handle"
-        onMouseDown={handleResizeMouseDown}
-      />
+        <button
+          type="button"
+          aria-label="Cambiar tamaño de ventana"
+          className="create-user__resize-handle"
+          onMouseDown={handleResizeMouseDown}
+        />
+      </div>
     </div>
-  </div>
   )
 }
 
