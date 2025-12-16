@@ -40,12 +40,8 @@
   flex-direction: column;
   align-items: center;
   gap: 0;
-
-  padding: 14px 18px 10px;
   cursor: move;
   user-select: none;
-
-  border-bottom: 1px solid var(--color-border);
   background: var(--color-border-subtle);
 }
 
@@ -65,14 +61,15 @@
 
 .create-user__header h3 {
   margin: 0;
-  padding: 10px 26px;
-  border-radius: 999px;
+  padding: 5px;
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
   background: var(--color-primary);
   color: var(--color-text-inverse);
-  font-size: var(--font-size-lg);
-  font-weight: 700;
+  font-size: var(--font-size-md);
+  font-weight: 500;
   letter-spacing: 0;
-  min-width: 260px;
+  min-width: 250px;
 }
 
 .create-user__subtitle {
@@ -162,7 +159,6 @@
 
 /* A thin separator line between form blocks */
 .create-user__section + .create-user__section {
-  border-top: 1px solid var(--color-border);
   padding-top: 18px;
 }
 

@@ -336,7 +336,6 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                 <div>
                   <p className="create-user__eyebrow">Datos del usuario</p>
                   <h4>Información personal y de contacto</h4>
-                  <p className="create-user__hint">Estos datos se usarán para identificar al usuario en el sistema.</p>
                 </div>
               </div>
 
@@ -406,7 +405,6 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                 <div>
                   <p className="create-user__eyebrow">Acceso y permisos</p>
                   <h4>Credenciales y roles</h4>
-                  <p className="create-user__hint">Define la contraseña inicial y los permisos que tendrá el usuario.</p>
                 </div>
               </div>
 
@@ -431,7 +429,6 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                     onChange={(event) => setPassword(event.target.value)}
                     required
                   />
-                  <small>Se enviará esta clave para que el usuario pueda iniciar sesión.</small>
                 </label>
 
                 <label className="create-user__field">
