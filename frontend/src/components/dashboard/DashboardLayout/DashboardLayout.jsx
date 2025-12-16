@@ -8,7 +8,7 @@ import './DashboardLayout.css'
 import Sidebar from '../Sidebar/Sidebar'
 import Workspace from '../Workspace/Workspace'
 
-function DashboardLayout({ user, token, darkMode, onLogout, isEntering, onToggleTheme }) {
+function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme }) {
   const [openTabs, setOpenTabs] = useState([])
   const [activeItem, setActiveItem] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -35,11 +35,7 @@ function DashboardLayout({ user, token, darkMode, onLogout, isEntering, onToggle
   }
 
   return (
-    <div
-      className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${
-        isEntering ? 'entering' : ''
-      } ${isSidebarOpen ? '' : 'collapsed'}`}
-    >
+    <div className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isSidebarOpen ? '' : 'collapsed'}`}>
       <Sidebar
         activeItem={activeItem}
         onSelect={handleSelect}
