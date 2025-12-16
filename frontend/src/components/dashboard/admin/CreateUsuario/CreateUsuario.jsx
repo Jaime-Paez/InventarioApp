@@ -408,7 +408,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                 </div>
               </div>
 
-              <div className="create-user__grid create-user__grid--two">
+              <div className="create-user__password-grid">
                 <label className="create-user__field create-user__field--password">
                   <div className="create-user__field-label">
                     <span>Contraseña</span>
@@ -431,8 +431,10 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                   />
                 </label>
 
-                <label className="create-user__field">
-                  <span>Confirmar contraseña</span>
+                <label className="create-user__field create-user__field--password-confirm">
+                  <div className="create-user__field-label">
+                    <span>Confirmar contraseña</span>
+                  </div>
                   <input
                     name="confirmPassword"
                     type="text"
@@ -442,20 +444,15 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                     required
                   />
                 </label>
-
-                <label className="create-user__checkbox">
-                  <input
-                    type="checkbox"
-                    name="activo"
-                    checked={formData.activo}
-                    onChange={handleChange}
-                  />
-                  <div>
-                    <span>Cuenta activa</span>
-                    <p>El usuario podrá iniciar sesión y operar el sistema.</p>
-                  </div>
-                </label>
               </div>
+
+              <label className="create-user__checkbox">
+                <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} />
+                <div>
+                  <span>Cuenta activa</span>
+                  <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                </div>
+              </label>
 
               <div className="create-user__roles">
                 <div className="create-user__roles-header">
