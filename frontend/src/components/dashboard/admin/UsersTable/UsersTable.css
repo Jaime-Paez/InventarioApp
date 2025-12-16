@@ -79,11 +79,11 @@
 .dashboard-shell.dark .users-table {
   background: var(--color-surface-dark);
   color: var(--color-text-inverse);
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--color-border-dark);
 }
 
 .dashboard-shell.dark .users-table--card {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--color-border-dark);
 }
 
 /* ====== Header de la tabla (igual screenshot, barra interna) ====== */
@@ -135,7 +135,7 @@
 
 .dashboard-shell.dark .search-input-container {
   background: var(--color-surface-darker);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-border-dark);
 }
 
 .search-input {
@@ -187,7 +187,7 @@
 
 .dashboard-shell.dark .rounded-icon-btn {
   background: var(--color-surface-darker);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-border-dark);
   color: var(--color-text-inverse);
 }
 
@@ -271,15 +271,19 @@
   border-bottom: 1px solid #f1f5f9;
   padding: 3px;
   color: #111827;
-  background: #ffffff; /* IMPORTANTE: en light explícito */
+  background: #ffffff;
 }
 
 .users-datatable .p-datatable-tbody > tr:hover > td {
   background: #f9fafb;
 }
 
+/* ✅ Seleccionado por checkbox (light) */
 .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
   background: #eef2ff;
+}
+.users-datatable .p-datatable-tbody > tr.selected-row-shadow:hover > td {
+  background: #e0e7ff;
 }
 
 /* ====== GRIDLINES (showGridlines) ====== */
@@ -302,7 +306,7 @@
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th {
   background: rgba(255, 255, 255, 0.04);
   color: var(--color-text-inverse);
-  border-bottom-color: rgba(255, 255, 255, 0.1);
+  border-bottom-color: var(--color-border-dark);
 }
 
 /* THEAD dark (sortable/resizable/reorderable cells) */
@@ -325,11 +329,11 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
-/* TBODY dark (aquí estaba el bug más común) */
+/* TBODY dark */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+  border-bottom-color: var(--color-border-dark);
   color: var(--color-text-inverse);
-  background: var(--color-surface-dark); /* FIX CLAVE */
+  background: var(--color-surface-dark);
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr:hover > td,
@@ -337,17 +341,21 @@
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.p-highlight:hover > td {
   background: #13161d;
   color: var(--color-text-inverse);
-  border-bottom-color: rgba(255, 255, 255, 0.1);
+  border-bottom-color: var(--color-border-dark);
 }
 
+/* ✅ Seleccionado por checkbox (dark) */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
-  background: rgba(0, 144, 187, 0.18);
+  background: rgba(0, 144, 187, 0.16);
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow:hover > td {
+  background: rgba(0, 144, 187, 0.22);
 }
 
-/* Row-selection checkboxes (dark) */
+/* Row-selection checkboxes (base dark) */
 .dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box {
   background: #1f242d;
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: var(--color-border-dark);
 }
 
 .dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box:hover {
@@ -355,34 +363,35 @@
   background: #262c37;
 }
 
-.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box.p-highlight {
-  background: #2f3644;
-  border-color: rgba(0, 144, 187, 0.7);
-  color: var(--color-text-inverse);
+/* ====== ✅ FIX: CHECK AZUL (igual header) ====== */
+.users-datatable .p-checkbox .p-checkbox-box.p-highlight {
+  background: #0090bb !important;
+  border-color: #0090bb !important;
 }
-
-.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box .p-checkbox-icon {
-  color: var(--color-text-inverse);
+.users-datatable .p-checkbox .p-checkbox-box.p-highlight .p-checkbox-icon {
+  color: #ffffff !important;
+}
+.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box.p-highlight {
+  background: #0090bb !important;
+  border-color: #0090bb !important;
 }
 
 /* Gridlines dark */
 .dashboard-shell.dark .users-datatable.p-datatable-gridlines .p-datatable-thead > tr > th,
 .dashboard-shell.dark .users-datatable.p-datatable-gridlines .p-datatable-tbody > tr > td {
-  border-right-color: rgba(255, 255, 255, 0.08);
+  border-right-color: var(--color-border-dark);
 }
 
 /* ====== FROZEN COLUMN (checkbox column) ====== */
-/* PrimeReact usa sticky/frozen y suele quedar con fondo blanco si no lo fuerzas */
 .users-datatable .p-frozen-column {
   background: inherit;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-frozen-column,
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td.p-frozen-column {
-  background: var(--color-surface-dark); /* FIX: frozen en dark */
+  background: var(--color-surface-dark);
 }
 
-/* También aplica cuando PrimeReact envuelve con clases internas */
 .dashboard-shell.dark .users-datatable .p-datatable-scrollable-header-box .p-frozen-column {
   background: rgba(255, 255, 255, 0.04);
 }
@@ -390,20 +399,20 @@
 /* ====== Inputs / Dropdowns dentro de filtros ====== */
 .dashboard-shell.dark .users-datatable .p-inputtext {
   background: var(--color-surface-darker);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-border-dark);
   color: var(--color-text-inverse);
 }
 
 .dashboard-shell.dark .users-datatable .p-dropdown {
   background: var(--color-surface-darker);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-border-dark);
   color: var(--color-text-inverse);
 }
 
 .dashboard-shell.dark .p-dropdown-panel {
   background: var(--color-surface-darker);
   color: var(--color-text-inverse);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--color-border-dark);
 }
 
 .dashboard-shell.dark .p-dropdown-panel .p-dropdown-items .p-dropdown-item {
@@ -414,7 +423,7 @@
   background: rgba(0, 144, 187, 0.22);
 }
 
-/* ====== Paginador centrado como el screenshot ====== */
+/* ====== Paginador centrado ====== */
 .users-datatable .p-paginator {
   border: none;
   padding: 12px 10px;
@@ -423,11 +432,10 @@
   background: transparent;
 }
 
-/* Botones del paginador (para que no se “pierdan” en dark) */
 .dashboard-shell.dark .users-datatable .p-paginator {
   color: var(--color-text-inverse);
   background: rgba(255, 255, 255, 0.02);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--color-border-dark);
 }
 
 .dashboard-shell.dark .users-datatable .p-paginator .p-paginator-pages .p-paginator-page,
@@ -529,7 +537,7 @@
 .dashboard-shell.dark .p-overlaypanel {
   background: var(--color-surface-darker);
   color: var(--color-text-inverse);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--color-border-dark);
 }
 
 .dashboard-shell.dark .p-overlaypanel:before,
@@ -566,5 +574,5 @@
 }
 
 .p-datatable.p-datatable-gridlines .p-datatable-header {
-    border-width: 0px;
+  border-width: 0px;
 }

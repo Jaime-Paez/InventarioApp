@@ -52,6 +52,10 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.theme-dark {
+  --color-border: var(--color-border-dark);
+}
+
 * {
   box-sizing: border-box;
 }

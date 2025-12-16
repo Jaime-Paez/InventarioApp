@@ -154,7 +154,7 @@ input {
 
 .login-page.dark input {
   background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: var(--color-border-dark);
   color: var(--color-text-inverse);
 }
 
@@ -239,7 +239,7 @@ input:focus {
 .login-page.dark .theme-toggle {
   background: linear-gradient(135deg, rgba(20, 24, 33, 0.75), rgba(20, 24, 33, 0.4));
   color: var(--color-text-inverse);
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: var(--color-border-dark);
 }
 
 .panel-footer {
