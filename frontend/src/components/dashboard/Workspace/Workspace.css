@@ -1,7 +1,7 @@
 .workspace {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 5px;
   height: 100%;
   overflow: hidden;
   padding: 12px;
