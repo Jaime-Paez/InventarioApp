@@ -32,7 +32,7 @@
 
 .dashboard-shell.dark .create-user__modal {
   background: var(--color-surface-dark);
-  border-color: var(--color-border-dark);
+  border-color: var(--color-border-modal-dark);
   color: var(--color-text-inverse);
 }
 
@@ -49,7 +49,7 @@
 
 .dashboard-shell.dark .create-user__header {
   background: var(--color-surface-dark);
-  border-bottom-color: var(--color-border-dark);
+  border-bottom-color: var(--color-border-modal-dark);
 }
 
 /* The centered purple "pill" title */
@@ -151,7 +151,7 @@
 }
 
 .dashboard-shell.dark .create-user__section + .create-user__section {
-  border-top-color: var(--color-border-dark);
+  border-top-color: var(--color-border-modal-dark);
 }
 
 .create-user__section-header {
@@ -164,7 +164,7 @@
 }
 
 .dashboard-shell.dark .create-user__section-header {
-  border-bottom-color: var(--color-border-dark);
+  border-bottom-color: var(--color-border-modal-dark);
 }
 
 .create-user__section h4 {
@@ -279,7 +279,7 @@
 
 .dashboard-shell.dark .create-user__field input {
   background: var(--color-surface-darker);
-  border-color: var(--color-border-dark);
+  border-color: var(--color-border-modal-dark);
   color: var(--color-text-inverse);
 }
 
@@ -345,7 +345,7 @@
 
 .dashboard-shell.dark .create-user__checkbox {
   background: var(--color-surface-darker);
-  border-color: var(--color-border-dark);
+  border-color: var(--color-border-modal-dark);
 }
 
 .dashboard-shell.dark .create-user__checkbox p {
@@ -365,7 +365,7 @@
 }
 
 .dashboard-shell.dark .create-user__roles {
-  border-color: var(--color-border-dark);
+  border-color: var(--color-border-modal-dark);
   background: var(--color-surface-darker);
 }
 
@@ -420,7 +420,7 @@
 
 .dashboard-shell.dark .create-user__chip {
   background: var(--color-surface-darker);
-  border-color: var(--color-border-dark);
+  border-color: var(--color-border-modal-dark);
 }
 
 .dashboard-shell.dark .create-user__chip:hover {
@@ -466,7 +466,7 @@
 
 .dashboard-shell.dark .create-user__footer {
   background: var(--color-surface-dark);
-  border-top-color: var(--color-border-dark);
+  border-top-color: var(--color-border-modal-dark);
 }
 
 /* Default buttons: make primary look like "Crear" purple in reference */
