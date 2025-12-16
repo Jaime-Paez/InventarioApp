@@ -136,7 +136,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
                 type="email"
                 value={loginData.email}
                 onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
-                placeholder="usuario@correo.com"
+                placeholder="Email"
                 required
               />
             </div>
@@ -148,7 +148,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
                 type="password"
                 value={loginData.password}
                 onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                placeholder="Tu contraseña"
+                placeholder="Contraseña"
                 required
               />
             </div>

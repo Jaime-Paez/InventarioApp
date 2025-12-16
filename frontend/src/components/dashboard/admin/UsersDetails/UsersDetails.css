@@ -12,7 +12,6 @@
 .user-details__edit-toggle--active {
   background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface-alt));
   border: 1px solid var(--color-primary);
-  box-shadow: none;
 }
 
 .user-details__delete {
