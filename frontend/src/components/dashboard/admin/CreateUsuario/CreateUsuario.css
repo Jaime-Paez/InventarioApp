@@ -4,9 +4,6 @@
   z-index: 50;
   padding: 12px;
   overflow: hidden;
-  background: radial-gradient(circle at 20% 20%, rgba(0, 144, 187, 0.05), transparent 22%),
-    radial-gradient(circle at 80% 0%, rgba(99, 102, 241, 0.08), transparent 25%),
-    rgba(0, 0, 0, 0.3);
 }
 
 .create-user__modal {
