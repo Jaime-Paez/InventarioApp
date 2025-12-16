@@ -316,11 +316,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div>
-            <p className="create-user__eyebrow">Nuevo usuario</p>
             <h3>Crear cuenta interna</h3>
-            <p className="create-user__subtitle">
-              Completa la información requerida para registrar a la persona en el sistema.
-            </p>
           </div>
           <button
             type="button"
@@ -328,7 +324,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
             onMouseDown={(event) => event.stopPropagation()}
             onClick={onClose}
           >
-            Cerrar
+            x
           </button>
         </header>
 
