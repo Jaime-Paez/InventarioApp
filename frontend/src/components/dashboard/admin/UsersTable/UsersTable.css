@@ -271,15 +271,19 @@
   border-bottom: 1px solid #f1f5f9;
   padding: 3px;
   color: #111827;
-  background: #ffffff; /* IMPORTANTE: en light explícito */
+  background: #ffffff;
 }
 
 .users-datatable .p-datatable-tbody > tr:hover > td {
   background: #f9fafb;
 }
 
+/* ✅ Seleccionado por checkbox (light) */
 .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
   background: #eef2ff;
+}
+.users-datatable .p-datatable-tbody > tr.selected-row-shadow:hover > td {
+  background: #e0e7ff;
 }
 
 /* ====== GRIDLINES (showGridlines) ====== */
@@ -325,11 +329,11 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
-/* TBODY dark (aquí estaba el bug más común) */
+/* TBODY dark */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td {
   border-bottom-color: rgba(255, 255, 255, 0.08);
   color: var(--color-text-inverse);
-  background: var(--color-surface-dark); /* FIX CLAVE */
+  background: var(--color-surface-dark);
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr:hover > td,
@@ -340,11 +344,15 @@
   border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
+/* ✅ Seleccionado por checkbox (dark) */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
-  background: rgba(0, 144, 187, 0.18);
+  background: rgba(0, 144, 187, 0.16);
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow:hover > td {
+  background: rgba(0, 144, 187, 0.22);
 }
 
-/* Row-selection checkboxes (dark) */
+/* Row-selection checkboxes (base dark) */
 .dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box {
   background: #1f242d;
   border-color: rgba(255, 255, 255, 0.25);
@@ -355,14 +363,17 @@
   background: #262c37;
 }
 
-.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box.p-highlight {
-  background: #2f3644;
-  border-color: rgba(0, 144, 187, 0.7);
-  color: var(--color-text-inverse);
+/* ====== ✅ FIX: CHECK AZUL (igual header) ====== */
+.users-datatable .p-checkbox .p-checkbox-box.p-highlight {
+  background: #0090bb !important;
+  border-color: #0090bb !important;
 }
-
-.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box .p-checkbox-icon {
-  color: var(--color-text-inverse);
+.users-datatable .p-checkbox .p-checkbox-box.p-highlight .p-checkbox-icon {
+  color: #ffffff !important;
+}
+.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box.p-highlight {
+  background: #0090bb !important;
+  border-color: #0090bb !important;
 }
 
 /* Gridlines dark */
@@ -372,17 +383,15 @@
 }
 
 /* ====== FROZEN COLUMN (checkbox column) ====== */
-/* PrimeReact usa sticky/frozen y suele quedar con fondo blanco si no lo fuerzas */
 .users-datatable .p-frozen-column {
   background: inherit;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-frozen-column,
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td.p-frozen-column {
-  background: var(--color-surface-dark); /* FIX: frozen en dark */
+  background: var(--color-surface-dark);
 }
 
-/* También aplica cuando PrimeReact envuelve con clases internas */
 .dashboard-shell.dark .users-datatable .p-datatable-scrollable-header-box .p-frozen-column {
   background: rgba(255, 255, 255, 0.04);
 }
@@ -414,7 +423,7 @@
   background: rgba(0, 144, 187, 0.22);
 }
 
-/* ====== Paginador centrado como el screenshot ====== */
+/* ====== Paginador centrado ====== */
 .users-datatable .p-paginator {
   border: none;
   padding: 12px 10px;
@@ -423,7 +432,6 @@
   background: transparent;
 }
 
-/* Botones del paginador (para que no se “pierdan” en dark) */
 .dashboard-shell.dark .users-datatable .p-paginator {
   color: var(--color-text-inverse);
   background: rgba(255, 255, 255, 0.02);
@@ -566,5 +574,5 @@
 }
 
 .p-datatable.p-datatable-gridlines .p-datatable-header {
-    border-width: 0px;
+  border-width: 0px;
 }

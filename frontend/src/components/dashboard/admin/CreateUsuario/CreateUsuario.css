@@ -478,7 +478,6 @@
   cursor: pointer;
   background: var(--color-primary);
   color: var(--color-text-inverse);
-  box-shadow: 0 10px 20px color-mix(in srgb, var(--color-primary) 25%, transparent);
   letter-spacing: 0;
   min-width: 120px;
 }

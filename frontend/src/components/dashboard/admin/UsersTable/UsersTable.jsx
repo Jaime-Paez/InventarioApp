@@ -18,6 +18,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const formatFullName = (u) =>
   [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || '—'
 
+const normId = (v) => (v == null ? null : String(v))
+
 function UsersTable({
   token,
   onSelect,
@@ -103,9 +105,7 @@ function UsersTable({
     initFilters()
   }, [])
 
-  const clearFilter = () => {
-    initFilters()
-  }
+  const clearFilter = () => initFilters()
 
   const onGlobalFilterChange = (e) => {
     const value = e.target.value
@@ -115,7 +115,6 @@ function UsersTable({
     setGlobalFilterValue(value)
   }
 
-  // templates Apply/Clear
   const filterClearTemplate = (options) => (
     <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
       <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
@@ -129,11 +128,9 @@ function UsersTable({
   )
 
   // ---------------- Row selection checkboxes ----------------
-  const [selectedRowIds, setSelectedRowIds] = useState([])
-  const [selectedUserId, setSelectedUserId] = useState(null)
-  const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [selectedRowIds, setSelectedRowIds] = useState([]) // strings
 
-  const allRowIds = useMemo(() => users.map((u) => u?.id).filter((id) => id != null), [users])
+  const allRowIds = useMemo(() => users.map((u) => normId(u?.id)).filter(Boolean), [users])
   const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
 
   useEffect(() => {
@@ -141,55 +138,65 @@ function UsersTable({
       if (selectedRowIds.length) setSelectedRowIds([])
       return
     }
-
-    const filteredSelection = selectedRowIds.filter((id) => allRowIds.includes(id))
-
-    if (filteredSelection.length !== selectedRowIds.length) setSelectedRowIds(filteredSelection)
+    const filtered = selectedRowIds.filter((id) => allRowIds.includes(id))
+    if (filtered.length !== selectedRowIds.length) setSelectedRowIds(filtered)
   }, [allRowIds, selectedRowIds])
 
   useEffect(() => {
     const saved = sessionStorage.getItem('usuarios-table-selected-rows')
     if (saved) {
       const parsed = JSON.parse(saved)
-      setSelectedRowIds(parsed.selectedRowIds || [])
+      setSelectedRowIds((parsed.selectedRowIds || []).map(normId).filter(Boolean))
     }
   }, [])
 
   useEffect(() => {
-    sessionStorage.setItem('usuarios-table-selected-rows', JSON.stringify({
-      selectedRowIds,
-      allRowsSelected,
-    }))
+    sessionStorage.setItem(
+      'usuarios-table-selected-rows',
+      JSON.stringify({
+        selectedRowIds,
+        allRowsSelected,
+      })
+    )
   }, [selectedRowIds, allRowsSelected])
 
   const rowSelectionTemplate = (rowData) => {
-    const id = rowData?.id
-    const onCheckboxChange = (e) => {
-      e.originalEvent?.stopPropagation?.()
-      if (id == null) return
-
-      if (e.checked)
-        setSelectedRowIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
-      else setSelectedRowIds((prev) => prev.filter((x) => x !== id))
-    }
+    const id = normId(rowData?.id)
 
     return (
-      <span style={{ display: 'flex', justifyContent: 'center' }}>
-        <Checkbox binary onChange={onCheckboxChange} checked={selectedRowIds.includes(id)} />
+      <span
+        className="row-selection-click-block"
+        style={{ display: 'flex', justifyContent: 'center' }}
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <Checkbox
+          binary
+          checked={selectedRowIds.includes(id)}
+          onChange={(e) => {
+            e.originalEvent?.stopPropagation?.()
+            // ✅ TOGGLE robusto (no depende de e.checked)
+            setSelectedRowIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+          }}
+        />
       </span>
     )
   }
 
   const rowSelectionHeaderTemplate = () => {
-    const onCheckboxChange = (e) => {
-      e.originalEvent?.stopPropagation?.()
-      const next = e.checked
-      setSelectedRowIds(next ? allRowIds : [])
-    }
-
     return (
-      <span style={{ display: 'flex', justifyContent: 'center' }}>
-        <Checkbox binary onChange={onCheckboxChange} checked={allRowsSelected} />
+      <span
+        className="row-selection-click-block"
+        style={{ display: 'flex', justifyContent: 'center' }}
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <Checkbox
+          binary
+          checked={allRowsSelected}
+          onChange={(e) => {
+            e.originalEvent?.stopPropagation?.()
+            setSelectedRowIds(allRowsSelected ? [] : allRowIds)
+          }}
+        />
       </span>
     )
   }
@@ -232,10 +239,8 @@ function UsersTable({
 
   const handleOrderChange = (e) => {
     const columnOrder = e.columns.map((col) => col.props.field)
-    const sortedSelectedColumns = columnOrder
-      .map((orderName) => selectedColumns.find((col) => col.nombrevar === orderName))
-      .filter(Boolean)
-    setSelectedColumns(sortedSelectedColumns)
+    const sorted = columnOrder.map((f) => selectedColumns.find((c) => c.nombrevar === f)).filter(Boolean)
+    setSelectedColumns(sorted)
   }
 
   // ---------------- Body templates ----------------
@@ -297,22 +302,22 @@ function UsersTable({
     )
   }
 
-  // ---------------- Single selection (row click) ----------------
-  const [selectedObject, setSelectedObject] = useState(null)
+  // ---------------- Row click -> detalles ----------------
+  const [selectedUserId, setSelectedUserId] = useState(null)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
 
   const handleRowClick = (event) => {
+    // Si el click viene del checkbox, no abrir detalles
+    const t = event?.originalEvent?.target
+    if (t?.closest?.('.row-selection-click-block')) return
+
     const id = event?.data?.id
     if (id == null) return
-    setSelectedObject(event.data)
-    setSelectedUserId(id)
-    setShowDetailsModal(true)
-  }
 
-  const onRowSelect = (event) => {
-    const id = event?.data?.id
     setSelectedUserId(id)
     setShowDetailsModal(true)
-    if (typeof onSelect === 'function' && id != null) onSelect(id)
+
+    if (typeof onSelect === 'function') onSelect(id)
   }
 
   const handleUserUpdated = () => {
@@ -323,7 +328,6 @@ function UsersTable({
   const handleUserDeleted = () => {
     setShowDetailsModal(false)
     setSelectedUserId(null)
-    setSelectedObject(null)
     refreshData()
     toast.current?.show({ severity: 'success', summary: 'Eliminado', detail: 'Usuario eliminado', life: 2500 })
   }
@@ -389,9 +393,7 @@ function UsersTable({
     toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario creado correctamente', life: 2500 })
   }
 
-  const focusSearch = () => {
-    globalSearchRef.current?.focus?.()
-  }
+  const focusSearch = () => globalSearchRef.current?.focus?.()
 
   return (
     <div className="users-page">
@@ -445,13 +447,8 @@ function UsersTable({
           onColReorder={handleOrderChange}
           resizableColumns
           columnResizeMode="expand"
-          selectionMode="single"
-          selection={selectedObject}
-          onSelectionChange={(e) => setSelectedObject(e.value)}
-          onRowSelect={onRowSelect}
           onRowClick={handleRowClick}
-          metaKeySelection={false}
-          rowClassName={(rowData) => (selectedRowIds.includes(rowData?.id) ? 'selected-row-shadow' : '')}
+          rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
         >
           <Column className="row-selection-column" frozen header={rowSelectionHeaderTemplate} body={rowSelectionTemplate} />
 
@@ -535,12 +532,7 @@ function UsersTable({
           ))}
         </OverlayPanel>
 
-        <CreateUsuario
-          open={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-          onCreated={handleUserCreated}
-          token={token}
-        />
+        <CreateUsuario open={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={handleUserCreated} token={token} />
 
         <UsersDetails
           open={showDetailsModal}
