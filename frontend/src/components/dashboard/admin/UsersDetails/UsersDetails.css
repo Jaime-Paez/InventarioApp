@@ -1,0 +1,40 @@
+.user-details__footer-left,
+.user-details__footer-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-details__edit-toggle {
+  min-width: 130px;
+}
+
+.user-details__edit-toggle--active {
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface-alt));
+  border: 1px solid var(--color-primary);
+  box-shadow: none;
+}
+
+.user-details__delete {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
+  min-width: 110px;
+}
+
+.dashboard-shell.dark .user-details__delete {
+  background: var(--color-error-bg-dark);
+  color: var(--color-error-text-dark);
+  border-color: var(--color-error-border-dark);
+}
+
+.create-user__field input:disabled,
+.create-user__checkbox input:disabled,
+.create-user__chip input:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.create-user__chip input:disabled + span {
+  opacity: 0.8;
+}
