@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import './CreateUserModal.css'
+import './CreateUsuario.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const MIN_WIDTH = 720
+const MIN_HEIGHT = 520
+const VIEWPORT_PADDING = 12
 
 const initialForm = {
   nombres: '',
@@ -13,7 +16,7 @@ const initialForm = {
   roles: [],
 }
 
-function CreateUserModal({ open, onClose, onCreated, token }) {
+function CreateUsuario({ open, onClose, onCreated, token }) {
   const [formData, setFormData] = useState(initialForm)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -24,7 +27,12 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
   const [loading, setLoading] = useState(false)
   const modalRef = useRef(null)
   const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [size, setSize] = useState({ width: 920, height: 640 })
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
+  const sizeRef = useRef(size)
+  const positionRef = useRef(position)
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
   const fetchRoles = useCallback(async () => {
     setRolesLoading(true)
@@ -60,12 +68,25 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
   }, [open, fetchRoles])
 
   useLayoutEffect(() => {
-    if (!open || !modalRef.current) return
-    const rect = modalRef.current.getBoundingClientRect()
-    const centeredX = (window.innerWidth - rect.width) / 2
-    const centeredY = (window.innerHeight - rect.height) / 2
-    setPosition({ x: Math.max(centeredX, 12), y: Math.max(centeredY, 12) })
+    if (!open) return
+    const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
+    const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING * 2)
+    const nextWidth = clamp(Math.min(960, maxWidth), MIN_WIDTH, maxWidth)
+    const nextHeight = clamp(Math.min(680, maxHeight), MIN_HEIGHT, maxHeight)
+    setSize({ width: nextWidth, height: nextHeight })
+
+    const centeredX = (window.innerWidth - nextWidth) / 2
+    const centeredY = (window.innerHeight - nextHeight) / 2
+    setPosition({ x: Math.max(centeredX, VIEWPORT_PADDING), y: Math.max(centeredY, VIEWPORT_PADDING) })
   }, [open])
+
+  useEffect(() => {
+    sizeRef.current = size
+  }, [size])
+
+  useEffect(() => {
+    positionRef.current = position
+  }, [position])
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
@@ -182,17 +203,49 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
     }
   }
 
+  const handleResizeMouseDown = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    resizeData.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: sizeRef.current.width,
+      startHeight: sizeRef.current.height,
+    }
+
+    const handleResizeMove = (moveEvent) => {
+      if (!resizeData.current.active) return
+      const deltaX = moveEvent.clientX - resizeData.current.startX
+      const deltaY = moveEvent.clientY - resizeData.current.startY
+      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - positionRef.current.x - VIEWPORT_PADDING)
+      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - positionRef.current.y - VIEWPORT_PADDING)
+      const width = clamp(resizeData.current.startWidth + deltaX, MIN_WIDTH, maxWidth)
+      const height = clamp(resizeData.current.startHeight + deltaY, MIN_HEIGHT, maxHeight)
+      setSize({ width, height })
+    }
+
+    const handleResizeUp = () => {
+      resizeData.current.active = false
+      window.removeEventListener('mousemove', handleResizeMove)
+      window.removeEventListener('mouseup', handleResizeUp)
+    }
+
+    window.addEventListener('mousemove', handleResizeMove)
+    window.addEventListener('mouseup', handleResizeUp)
+  }
+
   useEffect(() => {
     const handleMouseMove = (event) => {
       if (!dragData.current.active) return
       event.preventDefault()
       const newX = event.clientX - dragData.current.offsetX
       const newY = event.clientY - dragData.current.offsetY
-      const maxX = window.innerWidth - (modalRef.current?.offsetWidth || 0) - 12
-      const maxY = window.innerHeight - (modalRef.current?.offsetHeight || 0) - 12
+      const maxX = window.innerWidth - sizeRef.current.width - VIEWPORT_PADDING
+      const maxY = window.innerHeight - sizeRef.current.height - VIEWPORT_PADDING
       setPosition({
-        x: Math.min(Math.max(newX, 12), Math.max(maxX, 12)),
-        y: Math.min(Math.max(newY, 12), Math.max(maxY, 12)),
+        x: Math.min(Math.max(newX, VIEWPORT_PADDING), Math.max(maxX, VIEWPORT_PADDING)),
+        y: Math.min(Math.max(newY, VIEWPORT_PADDING), Math.max(maxY, VIEWPORT_PADDING)),
       })
     }
 
@@ -206,6 +259,28 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
+  }, [])
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
+      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING * 2)
+
+      setSize((prev) => {
+        const width = clamp(prev.width, MIN_WIDTH, maxWidth)
+        const height = clamp(prev.height, MIN_HEIGHT, maxHeight)
+
+        setPosition((prevPosition) => ({
+          x: Math.min(Math.max(prevPosition.x, VIEWPORT_PADDING), Math.max(window.innerWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+          y: Math.min(Math.max(prevPosition.y, VIEWPORT_PADDING), Math.max(window.innerHeight - height - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+        }))
+
+        return { width, height }
+      })
+    }
+
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
   }, [])
 
   const generatePassword = () => {
@@ -237,7 +312,7 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
       <div
         className="create-user__modal"
         ref={modalRef}
-        style={{ top: position.y, left: position.x }}
+        style={{ top: position.y, left: position.x, width: size.width, height: size.height }}
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div>
@@ -395,18 +470,25 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
 
           {error && <p className="create-user__error">{error}</p>}
 
-          <div className="create-user__footer">
-            <button type="button" className="ghost" onClick={onClose}>
-              Cancelar
-            </button>
-            <button type="submit" disabled={loading}>
-              {loading ? 'Guardando...' : 'Crear usuario'}
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="create-user__footer">
+          <button type="button" className="ghost" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="submit" disabled={loading}>
+            {loading ? 'Guardando...' : 'Crear usuario'}
+          </button>
+        </div>
+      </form>
+
+      <button
+        type="button"
+        aria-label="Cambiar tamaño de ventana"
+        className="create-user__resize-handle"
+        onMouseDown={handleResizeMouseDown}
+      />
     </div>
+  </div>
   )
 }
 
-export default CreateUserModal
+export default CreateUsuario
