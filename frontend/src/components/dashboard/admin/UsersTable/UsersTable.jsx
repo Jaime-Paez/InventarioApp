@@ -10,6 +10,7 @@ import { Button } from 'primereact/button'
 import { Dropdown } from 'primereact/dropdown'
 
 import CreateUsuario from '../CreateUsuario/CreateUsuario'
+import UsersDetails from '../UsersDetails/UsersDetails'
 import './UsersTable.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -129,6 +130,8 @@ function UsersTable({
 
   // ---------------- Row selection checkboxes ----------------
   const [selectedRowIds, setSelectedRowIds] = useState([])
+  const [selectedUserId, setSelectedUserId] = useState(null)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
 
   const allRowIds = useMemo(() => users.map((u) => u?.id).filter((id) => id != null), [users])
   const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
@@ -297,9 +300,32 @@ function UsersTable({
   // ---------------- Single selection (row click) ----------------
   const [selectedObject, setSelectedObject] = useState(null)
 
+  const handleRowClick = (event) => {
+    const id = event?.data?.id
+    if (id == null) return
+    setSelectedObject(event.data)
+    setSelectedUserId(id)
+    setShowDetailsModal(true)
+  }
+
   const onRowSelect = (event) => {
     const id = event?.data?.id
+    setSelectedUserId(id)
+    setShowDetailsModal(true)
     if (typeof onSelect === 'function' && id != null) onSelect(id)
+  }
+
+  const handleUserUpdated = () => {
+    refreshData()
+    toast.current?.show({ severity: 'success', summary: 'Actualizado', detail: 'Usuario actualizado correctamente', life: 2500 })
+  }
+
+  const handleUserDeleted = () => {
+    setShowDetailsModal(false)
+    setSelectedUserId(null)
+    setSelectedObject(null)
+    refreshData()
+    toast.current?.show({ severity: 'success', summary: 'Eliminado', detail: 'Usuario eliminado', life: 2500 })
   }
 
   // ---------------- Header (de la tabla) ----------------
@@ -423,6 +449,7 @@ function UsersTable({
           selection={selectedObject}
           onSelectionChange={(e) => setSelectedObject(e.value)}
           onRowSelect={onRowSelect}
+          onRowClick={handleRowClick}
           metaKeySelection={false}
           rowClassName={(rowData) => (selectedRowIds.includes(rowData?.id) ? 'selected-row-shadow' : '')}
         >
@@ -513,6 +540,15 @@ function UsersTable({
           onClose={() => setShowCreateModal(false)}
           onCreated={handleUserCreated}
           token={token}
+        />
+
+        <UsersDetails
+          open={showDetailsModal}
+          userId={selectedUserId}
+          token={token}
+          onClose={() => setShowDetailsModal(false)}
+          onUpdated={handleUserUpdated}
+          onDeleted={handleUserDeleted}
         />
       </div>
     </div>
