@@ -11,19 +11,12 @@
   height: 100vh;
   background: var(--color-background);
   color: #0f172a;
-  transition: background-color 0.4s ease, color 0.4s ease, opacity 0.5s ease,
-    transform 0.55s ease;
+  transition: background-color 0.4s ease, color 0.4s ease;
   transform: translateX(0);
 }
 
 .dashboard-shell.collapsed {
   grid-template-columns: 0 1fr;
-}
-
-.dashboard-shell.entering {
-  opacity: 0.98;
-  transform: translateX(-120%);
-  animation: dashboard-slide-in 0.55s ease-out 0.2s forwards;
 }
 
 .dashboard-shell.dark {
@@ -50,18 +43,6 @@
 .dashboard-shell.dark .sidebar__reopen {
   background: #111827;
   border-color: var(--color-border-dark);
-}
-
-@keyframes dashboard-slide-in {
-  0% {
-    opacity: 0.6;
-    transform: translateX(-120%);
-  }
-
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 
 @media (max-width: 1040px) {

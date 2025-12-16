@@ -58,8 +58,8 @@ function App() {
     setToken(incomingToken)
     setLoginTransitioning(true)
 
-    setTimeout(() => setShowApp(true), 420)
-    setTimeout(() => setLoginTransitioning(false), 1050)
+    setTimeout(() => setShowApp(true), 550)
+    setTimeout(() => setLoginTransitioning(false), 900)
   }
 
   const handleLogout = () => {
@@ -90,7 +90,6 @@ function App() {
           token={token}
           darkMode={darkMode}
           onLogout={handleLogout}
-          isEntering={loginTransitioning}
           onToggleTheme={() => setDarkMode((value) => !value)}
         />
       )}
