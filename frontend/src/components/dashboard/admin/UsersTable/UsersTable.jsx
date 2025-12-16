@@ -134,6 +134,22 @@ function UsersTable({
   const allRowIds = useMemo(() => users.map((u) => u?.id).filter((id) => id != null), [users])
 
   useEffect(() => {
+    if (!allRowIds.length) {
+      if (selectedRowIds.length || allRowsSelected) {
+        setSelectedRowIds([])
+        setAllRowsSelected(false)
+      }
+      return
+    }
+
+    const filteredSelection = selectedRowIds.filter((id) => allRowIds.includes(id))
+    const shouldMarkAllSelected = filteredSelection.length === allRowIds.length
+
+    if (filteredSelection.length !== selectedRowIds.length) setSelectedRowIds(filteredSelection)
+    if (allRowsSelected !== shouldMarkAllSelected) setAllRowsSelected(shouldMarkAllSelected)
+  }, [allRowIds, selectedRowIds, allRowsSelected])
+
+  useEffect(() => {
     const saved = sessionStorage.getItem('usuarios-table-selected-rows')
     if (saved) {
       const parsed = JSON.parse(saved)
@@ -143,10 +159,7 @@ function UsersTable({
   }, [])
 
   useEffect(() => {
-    const saveState = () => {
-      sessionStorage.setItem('usuarios-table-selected-rows', JSON.stringify({ selectedRowIds, allRowsSelected }))
-    }
-    return saveState
+    sessionStorage.setItem('usuarios-table-selected-rows', JSON.stringify({ selectedRowIds, allRowsSelected }))
   }, [selectedRowIds, allRowsSelected])
 
   useEffect(() => {
@@ -183,7 +196,11 @@ function UsersTable({
 
     return (
       <span style={{ display: 'flex', justifyContent: 'center' }}>
-        <Checkbox onChange={onCheckboxChange} checked={allRowsSelected ? true : selectedRowIds.includes(id)} />
+        <Checkbox
+          binary
+          onChange={onCheckboxChange}
+          checked={allRowsSelected ? true : selectedRowIds.includes(id)}
+        />
       </span>
     )
   }
@@ -198,7 +215,7 @@ function UsersTable({
 
     return (
       <span style={{ display: 'flex', justifyContent: 'center' }}>
-        <Checkbox onChange={onCheckboxChange} checked={allRowsSelected} />
+        <Checkbox binary onChange={onCheckboxChange} checked={allRowsSelected} />
       </span>
     )
   }
