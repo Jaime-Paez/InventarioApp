@@ -10,8 +10,6 @@
   --sidebar-color-submenu-hover: rgba(255, 255, 255, 0.06);
   --sidebar-profile-hover: rgba(0, 69, 112, 0.1);
   --sidebar-profile-border: rgba(15, 23, 42, 0.08);
-  --sidebar-font-size: var(--font-size-sidebar);
-  --sidebar-font-size-sub: var(--font-size-sidebar-sub);
   color: var(--sidebar-color-text);
   background: var(--color-input-bg);
   display: grid;
@@ -88,7 +86,7 @@
   letter-spacing: 1px;
   font-weight: 800;
   color: var(--sidebar-color-section);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
 }
 
 .sidebar__nav ul {
@@ -123,7 +121,7 @@
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease,
     transform 0.2s ease;
-  font-size: var(--sidebar-font-size);
+  font-size: var(--font-size-md);
 }
 
 .sidebar__link,
@@ -221,7 +219,7 @@
   color: var(--sidebar-color-subtext);
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-  font-size: var(--sidebar-font-size-sub);
+  font-size: var(--font-size-md);
 }
 
 .sidebar__link.open + .sidebar__submenu .sidebar__sublink,
@@ -271,7 +269,7 @@
   background: transparent;
   cursor: pointer;
   color: inherit;
-  font-size: var(--sidebar-font-size);
+  font-size: var(--font-size-md);
 }
 
 .sidebar__avatar {
@@ -302,7 +300,7 @@
 
 .sidebar__user-role {
   color: var(--sidebar-color-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
 }
 
 .dashboard-shell.dark .sidebar__user {
@@ -328,7 +326,7 @@
   color: inherit;
   text-align: left;
   font-weight: 400;
-  font-size: var(--sidebar-font-size);
+  font-size: var(--font-size-md);
   cursor: pointer;
 }
 
@@ -354,13 +352,13 @@
   color: inherit;
   cursor: pointer;
   font-weight: 400;
-  font-size: var(--sidebar-font-size);
+  font-size: var(--font-size-md);
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease,
     transform 0.2s ease;
 }
 
 .sidebar__user-name {
-  font-size: var(--sidebar-font-size);
+  font-size: var(--font-size-md);
   font-weight: 400;
   color: inherit;
 }
