@@ -27,7 +27,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
   const [loading, setLoading] = useState(false)
   const modalRef = useRef(null)
   const [position, setPosition] = useState({ x: 0, y: 0 })
-  const [size, setSize] = useState({ width: 920, height: 640 })
+  const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -71,8 +71,8 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
     if (!open) return
     const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
     const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING * 2)
-    const nextWidth = clamp(Math.min(960, maxWidth), MIN_WIDTH, maxWidth)
-    const nextHeight = clamp(Math.min(680, maxHeight), MIN_HEIGHT, maxHeight)
+    const nextWidth = clamp(MIN_WIDTH, MIN_WIDTH, maxWidth)
+    const nextHeight = clamp(MIN_HEIGHT, MIN_HEIGHT, maxHeight)
     setSize({ width: nextWidth, height: nextHeight })
 
     const centeredX = (window.innerWidth - nextWidth) / 2
@@ -408,76 +408,80 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                 </div>
               </div>
 
-              <div className="create-user__password-grid">
-                <label className="create-user__field create-user__field--password">
-                  <div className="create-user__field-label">
-                    <span>Contraseña</span>
-                    <div className="create-user__password-actions">
-                      <button type="button" className="create-user__ghost" onClick={generatePassword}>
-                        Generar
-                      </button>
-                      <button type="button" className="create-user__ghost" onClick={copyPassword}>
-                        {passwordCopied ? 'Copiada' : 'Copiar'}
-                      </button>
+              <div className="create-user__access-grid">
+                <div className="create-user__access-left">
+                  <label className="create-user__field create-user__field--password">
+                    <div className="create-user__field-label">
+                      <span>Contraseña</span>
+                      <div className="create-user__password-actions">
+                        <button type="button" className="create-user__ghost" onClick={generatePassword}>
+                          Generar
+                        </button>
+                        <button type="button" className="create-user__ghost" onClick={copyPassword}>
+                          {passwordCopied ? 'Copiada' : 'Copiar'}
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      name="password"
+                      type="text"
+                      placeholder="Contraseña temporal"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <label className="create-user__field create-user__field--password-confirm">
+                    <div className="create-user__field-label">
+                      <span>Confirmar contraseña</span>
+                    </div>
+                    <input
+                      name="confirmPassword"
+                      type="text"
+                      placeholder="Repite la contraseña"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      required
+                    />
+                  </label>
+                </div>
+
+                <div className="create-user__access-right">
+                  <label className="create-user__checkbox">
+                    <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} />
+                    <div>
+                      <span>Cuenta activa</span>
+                      <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                    </div>
+                  </label>
+
+                  <div className="create-user__roles">
+                    <div className="create-user__roles-header">
+                      <div>
+                        <span>Roles</span>
+                        <p>Selecciona uno o más roles para definir los permisos.</p>
+                      </div>
+                      {rolesLoading && <small className="muted">Cargando roles...</small>}
+                    </div>
+
+                    <div className="create-user__roles-list">
+                      {!rolesLoading && !roles.length && (
+                        <p className="muted">No hay roles configurados todavía.</p>
+                      )}
+
+                      {roles.map((role) => (
+                        <label key={role.id} className="create-user__chip">
+                          <input
+                            type="checkbox"
+                            checked={formData.roles.includes(role.id)}
+                            onChange={() => handleToggleRole(role.id)}
+                          />
+                          <span>{role.nombre}</span>
+                        </label>
+                      ))}
                     </div>
                   </div>
-                  <input
-                    name="password"
-                    type="text"
-                    placeholder="Contraseña temporal"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    required
-                  />
-                </label>
-
-                <label className="create-user__field create-user__field--password-confirm">
-                  <div className="create-user__field-label">
-                    <span>Confirmar contraseña</span>
-                  </div>
-                  <input
-                    name="confirmPassword"
-                    type="text"
-                    placeholder="Repite la contraseña"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    required
-                  />
-                </label>
-              </div>
-
-              <label className="create-user__checkbox">
-                <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} />
-                <div>
-                  <span>Cuenta activa</span>
-                  <p>El usuario podrá iniciar sesión y operar el sistema.</p>
-                </div>
-              </label>
-
-              <div className="create-user__roles">
-                <div className="create-user__roles-header">
-                  <div>
-                    <span>Roles</span>
-                    <p>Selecciona uno o más roles para definir los permisos.</p>
-                  </div>
-                  {rolesLoading && <small className="muted">Cargando roles...</small>}
-                </div>
-
-                <div className="create-user__roles-list">
-                  {!rolesLoading && !roles.length && (
-                    <p className="muted">No hay roles configurados todavía.</p>
-                  )}
-
-                  {roles.map((role) => (
-                    <label key={role.id} className="create-user__chip">
-                      <input
-                        type="checkbox"
-                        checked={formData.roles.includes(role.id)}
-                        onChange={() => handleToggleRole(role.id)}
-                      />
-                      <span>{role.nombre}</span>
-                    </label>
-                  ))}
                 </div>
               </div>
             </section>
