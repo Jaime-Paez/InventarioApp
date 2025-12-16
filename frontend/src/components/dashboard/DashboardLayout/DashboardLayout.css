@@ -11,24 +11,63 @@
   height: 100vh;
   background: var(--color-background);
   color: #0f172a;
-  transition: background-color 0.4s ease, color 0.4s ease, opacity 0.5s ease,
-    transform 0.55s ease;
+  transition: background-color 0.4s ease, color 0.4s ease;
   transform: translateX(0);
+}
+
+.dashboard-shell.enter .sidebar:not(.sidebar--hidden) {
+  animation: sidebar-slide-in 1.15s ease forwards;
+}
+
+.dashboard-shell.enter .quick-actions {
+  animation: quick-actions-slide-in 1.05s ease forwards;
+  animation-delay: 0.35s;
+  animation-fill-mode: both;
+}
+
+.dashboard-shell.enter .workspace__hero {
+  animation: welcome-fade-in 1.35s ease forwards;
+  animation-delay: 0.9s;
+  animation-fill-mode: both;
 }
 
 .dashboard-shell.collapsed {
   grid-template-columns: 0 1fr;
 }
 
-.dashboard-shell.entering {
-  opacity: 0.98;
-  transform: translateX(-120%);
-  animation: dashboard-slide-in 0.55s ease-out 0.2s forwards;
-}
-
 .dashboard-shell.dark {
   background: var(--color-surface-darker);
   color: #e7e8ed;
+}
+
+@keyframes sidebar-slide-in {
+  0% {
+    transform: translateX(-48px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes quick-actions-slide-in {
+  0% {
+    transform: translateX(32px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes welcome-fade-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
 }
 
 .sidebar__reopen {
@@ -50,18 +89,6 @@
 .dashboard-shell.dark .sidebar__reopen {
   background: #111827;
   border-color: var(--color-border-dark);
-}
-
-@keyframes dashboard-slide-in {
-  0% {
-    opacity: 0.6;
-    transform: translateX(-120%);
-  }
-
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 
 @media (max-width: 1040px) {
