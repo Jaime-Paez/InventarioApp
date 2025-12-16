@@ -330,7 +330,8 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
         </header>
 
         <form className="create-user__form" onSubmit={handleSubmit}>
-          <div className="create-user__body">
+          <div className="create-user__content">
+            <div className="create-user__body">
             <section className="create-user__section">
               <div className="create-user__section-header">
                 <div>
@@ -487,6 +488,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                 </div>
               </div>
             </section>
+          </div>
           </div>
 
           {error && <p className="create-user__error">{error}</p>}

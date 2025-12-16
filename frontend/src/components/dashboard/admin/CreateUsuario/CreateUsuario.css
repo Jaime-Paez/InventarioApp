@@ -8,10 +8,10 @@
 
 .create-user__modal {
   position: absolute;
-  max-width: calc(100% - 24px);
-  max-height: calc(100vh - 24px);
+  width: min(1100px, calc(100% - 24px));
+  height: min(820px, calc(100vh - 24px));
   min-width: 720px;
-  min-height: 520px;
+  min-height: 560px;
   background: var(--color-surface);
   border: 1px solid #eef2f7;
   border-radius: 16px;
@@ -38,10 +38,12 @@
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  padding: 10px 6px 18px;
+  padding: 14px 12px 18px;
   cursor: move;
   user-select: none;
   border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(27, 168, 212, 0.12));
+  border-radius: 12px 12px 8px 8px;
 }
 
 .dashboard-shell.dark .create-user__header {
@@ -147,25 +149,35 @@
   flex-direction: column;
   gap: 16px;
   margin-top: 4px;
-  overflow: auto;
-  padding-right: 6px;
   flex: 1;
+  min-height: 0;
+}
+
+.create-user__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
 }
 
 .create-user__body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  overflow: auto;
+  padding-right: 6px;
+  padding-left: 2px;
 }
 
 .create-user__section {
   background: #fff;
   border: 1px solid #eef2f7;
   border-radius: 14px;
-  padding: 14px 14px 18px;
+  padding: 16px 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
@@ -180,6 +192,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 .create-user__section h4 {
@@ -198,17 +212,18 @@
 
 .create-user__grid {
   display: grid;
-  gap: 12px;
+  gap: 14px 18px;
+  width: 100%;
 }
 
 .create-user__grid--two {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .create-user__field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   color: #111827;
 }
 
@@ -235,6 +250,7 @@
 .create-user__password-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
 .create-user__password-actions .create-user__ghost {
@@ -257,6 +273,7 @@
   padding: 12px 12px;
   color: #111827;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  width: 100%;
 }
 
 .create-user__field input:focus {
@@ -279,11 +296,11 @@
 .create-user__checkbox {
   grid-column: span 2;
   display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 12px 14px;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
   background: linear-gradient(135deg, rgba(0, 144, 187, 0.08), rgba(124, 58, 237, 0.08));
-  border: 1px dashed rgba(0, 144, 187, 0.5);
+  border: 1px dashed rgba(0, 144, 187, 0.35);
   border-radius: 14px;
   color: #0f172a;
 }
@@ -483,6 +500,10 @@
 @media (max-width: 1024px) {
   .create-user__modal {
     min-width: 0;
+  }
+
+  .create-user__grid--two {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   }
 
   .create-user__progress-line {
