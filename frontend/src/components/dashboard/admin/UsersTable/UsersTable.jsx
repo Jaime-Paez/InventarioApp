@@ -9,7 +9,7 @@ import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
 import { Dropdown } from 'primereact/dropdown'
 
-import CreateUserModal from './CreateUserModal'
+import CreateUsuario from '../CreateUsuario/CreateUsuario'
 import './UsersTable.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -508,7 +508,12 @@ function UsersTable({
           ))}
         </OverlayPanel>
 
-        <CreateUserModal open={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={handleUserCreated} token={token} />
+        <CreateUsuario
+          open={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleUserCreated}
+          token={token}
+        />
       </div>
     </div>
   )

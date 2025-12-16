@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import './CreateUserModal.css'
+import './CreateUsuario.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MIN_WIDTH = 720
@@ -16,7 +16,7 @@ const initialForm = {
   roles: [],
 }
 
-function CreateUserModal({ open, onClose, onCreated, token }) {
+function CreateUsuario({ open, onClose, onCreated, token }) {
   const [formData, setFormData] = useState(initialForm)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -316,11 +316,7 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div>
-            <p className="create-user__eyebrow">Nuevo usuario</p>
             <h3>Crear cuenta interna</h3>
-            <p className="create-user__subtitle">
-              Completa la información requerida para registrar a la persona en el sistema.
-            </p>
           </div>
           <button
             type="button"
@@ -328,7 +324,7 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
             onMouseDown={(event) => event.stopPropagation()}
             onClick={onClose}
           >
-            Cerrar
+            x
           </button>
         </header>
 
@@ -491,4 +487,4 @@ function CreateUserModal({ open, onClose, onCreated, token }) {
   )
 }
 
-export default CreateUserModal
+export default CreateUsuario
