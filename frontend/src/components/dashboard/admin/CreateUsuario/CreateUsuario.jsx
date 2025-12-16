@@ -315,16 +315,8 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
         style={{ top: position.y, left: position.x, width: size.width, height: size.height }}
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
-          <div className="create-user__progress">
-            <span className="create-user__progress-line" />
-            <span className="create-user__progress-dot" />
-          </div>
           <div className="create-user__header-text">
-            <p className="create-user__eyebrow">Gestión de usuarios</p>
             <h3>Crear cuenta interna</h3>
-            <p className="create-user__subtitle">
-              Completa la información para invitar al usuario y asignarle sus accesos.
-            </p>
           </div>
           <button
             type="button"
