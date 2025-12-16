@@ -13,10 +13,10 @@
   min-width: 720px;
   min-height: 560px;
 
-  background: #ffffff;
-  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: var(--color-border-subtle);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
-  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.22);
+  box-shadow: var(--shadow-panel);
 
   padding: 0; /* reference has clean container */
   overflow: hidden;
@@ -25,14 +25,13 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  color: #111827;
+  color: var(--color-text-primary);
 }
 
 .dashboard-shell.dark .create-user__modal {
-  background: #0b1220;
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.45);
-  color: rgba(255, 255, 255, 0.92);
+  background: var(--color-surface-dark);
+  border-color: var(--color-divider-light);
+  color: var(--color-text-inverse);
 }
 
 .create-user__header {
@@ -46,13 +45,13 @@
   cursor: move;
   user-select: none;
 
-  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
-  background: #ffffff;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-border-subtle);
 }
 
 .dashboard-shell.dark .create-user__header {
-  background: #0b1220;
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: var(--color-surface-dark);
+  border-bottom-color: var(--color-divider-light);
 }
 
 /* The centered purple "pill" title */
@@ -68,9 +67,9 @@
   margin: 0;
   padding: 10px 26px;
   border-radius: 999px;
-  background: #4f46e5; /* purple like reference */
-  color: #ffffff;
-  font-size: 15px;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-lg);
   font-weight: 700;
   letter-spacing: 0;
   min-width: 260px;
@@ -94,16 +93,16 @@
   border-radius: 999px;
   border: none;
 
-  background: #4f46e5;
-  color: #ffffff;
-  font-size: 18px;
+  background: var(--color-primary-contrast);
+  color: var(--color-text-inverse);
+  font-size: calc(var(--font-size-lg) + 2px);
   line-height: 1;
 
   cursor: pointer;
   display: grid;
   place-items: center;
 
-  box-shadow: 0 10px 20px rgba(79, 70, 229, 0.35);
+  box-shadow: 0 10px 20px color-mix(in srgb, var(--color-primary-contrast) 35%, transparent);
   transition: transform 0.15s ease, filter 0.15s ease;
 }
 
@@ -113,9 +112,9 @@
 }
 
 .dashboard-shell.dark .create-user__icon-button {
-  background: #4f46e5;
-  color: #fff;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  background: var(--color-primary-contrast);
+  color: var(--color-text-inverse);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--color-primary-contrast) 35%, transparent);
 }
 
 .create-user__form {
@@ -163,12 +162,12 @@
 
 /* A thin separator line between form blocks */
 .create-user__section + .create-user__section {
-  border-top: 1px solid rgba(17, 24, 39, 0.08);
+  border-top: 1px solid var(--color-border);
   padding-top: 18px;
 }
 
 .dashboard-shell.dark .create-user__section + .create-user__section {
-  border-top-color: rgba(255, 255, 255, 0.08);
+  border-top-color: var(--color-divider-light);
 }
 
 .create-user__section-header {
@@ -177,28 +176,30 @@
   justify-content: space-between;
   gap: 10px;
   padding: 0 0 10px;
-  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .dashboard-shell.dark .create-user__section-header {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+  border-bottom-color: var(--color-divider-light);
 }
 
 .create-user__section h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: 700;
   color: inherit;
 }
 
 .create-user__hint {
   margin: 6px 0 0;
-  font-size: 12px;
-  color: rgba(17, 24, 39, 0.6);
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  opacity: 0.7;
 }
 
 .dashboard-shell.dark .create-user__hint {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--color-text-inverse);
+  opacity: 0.72;
 }
 
 .create-user__grid {
@@ -220,13 +221,15 @@
 }
 
 .create-user__field span {
-  font-size: 11px;
+  font-size: var(--font-size-base);
   font-weight: 700;
-  color: rgba(17, 24, 39, 0.75);
+  color: var(--color-text-primary);
+  opacity: 0.75;
 }
 
 .dashboard-shell.dark .create-user__field span {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--color-text-inverse);
+  opacity: 0.78;
 }
 
 .create-user__field--full {
@@ -253,54 +256,58 @@
 
 .create-user__password-actions .create-user__ghost {
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-base);
   border-radius: 10px;
 }
 
 .create-user__field small {
-  font-size: 11px;
-  color: rgba(17, 24, 39, 0.55);
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  opacity: 0.65;
 }
 
 .dashboard-shell.dark .create-user__field small {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--color-text-inverse);
+  opacity: 0.7;
 }
 
 /* Inputs: like reference (thin border, subtle radius, clean) */
 .create-user__field input {
-  background: #ffffff;
-  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 10px 12px;
-  color: #111827;
+  color: var(--color-text-primary);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   width: 100%;
   height: 36px;
 }
 
 .create-user__field input::placeholder {
-  color: rgba(17, 24, 39, 0.35);
+  color: var(--color-text-primary);
+  opacity: 0.35;
 }
 
 .create-user__field input:focus {
   outline: none;
-  border-color: rgba(79, 70, 229, 0.55);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
+  border-color: var(--color-primary-contrast);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-contrast) 35%, transparent);
 }
 
 .dashboard-shell.dark .create-user__field input {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.92);
+  background: var(--color-surface-darker);
+  border-color: var(--color-divider-light);
+  color: var(--color-text-inverse);
 }
 
 .dashboard-shell.dark .create-user__field input::placeholder {
-  color: rgba(255, 255, 255, 0.38);
+  color: var(--color-text-inverse);
+  opacity: 0.38;
 }
 
 .dashboard-shell.dark .create-user__field input:focus {
-  border-color: rgba(79, 70, 229, 0.7);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+  border-color: var(--color-primary-contrast);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-contrast) 32%, transparent);
 }
 
 /* Checkbox block: make it simple like reference */
@@ -311,8 +318,8 @@
   align-items: flex-start;
 
   padding: 10px 12px;
-  background: rgba(17, 24, 39, 0.02);
-  border: 1px solid rgba(17, 24, 39, 0.10);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 
   color: inherit;
@@ -321,39 +328,41 @@
 .create-user__checkbox input {
   width: 16px;
   height: 16px;
-  accent-color: #4f46e5;
+  accent-color: var(--color-primary-contrast);
   margin-top: 2px;
 }
 
 .create-user__checkbox p {
   margin: 2px 0 0;
-  color: rgba(17, 24, 39, 0.6);
-  font-size: 12px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  opacity: 0.65;
 }
 
 .dashboard-shell.dark .create-user__checkbox {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--color-surface-darker);
+  border-color: var(--color-divider-light);
 }
 
 .dashboard-shell.dark .create-user__checkbox p {
-  color: rgba(255, 255, 255, 0.74);
+  color: var(--color-text-inverse);
+  opacity: 0.74;
 }
 
 /* Roles box: neutral like reference */
 .create-user__roles {
   padding: 10px 12px;
-  border: 1px solid rgba(17, 24, 39, 0.10);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: rgba(17, 24, 39, 0.02);
+  background: var(--color-surface);
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
 .dashboard-shell.dark .create-user__roles {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--color-divider-light);
+  background: var(--color-surface-darker);
 }
 
 .create-user__roles-header {
@@ -364,18 +373,20 @@
 }
 
 .create-user__roles-header span {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 800;
 }
 
 .create-user__roles p {
   margin: 2px 0 0;
-  color: rgba(17, 24, 39, 0.6);
-  font-size: 12px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  opacity: 0.65;
 }
 
 .dashboard-shell.dark .create-user__roles p {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--color-text-inverse);
+  opacity: 0.72;
 }
 
 .create-user__roles-list {
@@ -389,8 +400,8 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: #ffffff;
-  border: 1px solid rgba(17, 24, 39, 0.14);
+  background: var(--color-border-subtle);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   color: inherit;
   cursor: pointer;
@@ -398,42 +409,42 @@
 }
 
 .create-user__chip:hover {
-  background: rgba(79, 70, 229, 0.06);
-  border-color: rgba(79, 70, 229, 0.35);
+  background: color-mix(in srgb, var(--color-primary-contrast) 8%, transparent);
+  border-color: var(--color-primary-contrast);
   transform: translateY(-1px);
 }
 
 .dashboard-shell.dark .create-user__chip {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--color-surface-darker);
+  border-color: var(--color-divider-light);
 }
 
 .dashboard-shell.dark .create-user__chip:hover {
-  background: rgba(79, 70, 229, 0.14);
-  border-color: rgba(79, 70, 229, 0.45);
+  background: color-mix(in srgb, var(--color-primary-contrast) 18%, transparent);
+  border-color: var(--color-primary-contrast);
 }
 
 .create-user__chip input {
   width: 14px;
   height: 14px;
-  accent-color: #4f46e5;
+  accent-color: var(--color-primary-contrast);
 }
 
 /* Error stays visible but cleaner */
 .create-user__error {
-  color: #b42318;
-  background: rgba(180, 35, 24, 0.08);
-  border: 1px solid rgba(180, 35, 24, 0.22);
+  color: var(--color-error-text);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
   padding: 10px 12px;
   border-radius: 10px;
   margin: 10px 18px 0;
-  font-size: 13px;
+  font-size: var(--font-size-md);
 }
 
 .dashboard-shell.dark .create-user__error {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.35);
-  color: #fecdd3;
+  background: var(--color-error-bg-dark);
+  border-color: var(--color-error-border-dark);
+  color: var(--color-error-text-dark);
 }
 
 /* Footer: like reference (bottom bar, left cancel, right create) */
@@ -444,16 +455,16 @@
   gap: 10px;
 
   padding: 14px 18px;
-  border-top: 1px solid rgba(17, 24, 39, 0.10);
+  border-top: 1px solid var(--color-border);
 
-  background: #ffffff;
-  box-shadow: 0 -14px 30px rgba(15, 23, 42, 0.08);
+  background: var(--color-border-subtle);
+  box-shadow: 0 -14px 30px color-mix(in srgb, var(--color-text-primary) 8%, transparent);
 }
 
 .dashboard-shell.dark .create-user__footer {
-  background: #0b1220;
-  border-top-color: rgba(255, 255, 255, 0.10);
-  box-shadow: 0 -14px 30px rgba(0, 0, 0, 0.35);
+  background: var(--color-surface-dark);
+  border-top-color: var(--color-divider-light);
+  box-shadow: 0 -14px 30px color-mix(in srgb, var(--color-divider-light) 35%, transparent);
 }
 
 /* Default buttons: make primary look like "Crear" purple in reference */
@@ -463,9 +474,9 @@
   border: none;
   font-weight: 700;
   cursor: pointer;
-  background: #4f46e5;
-  color: #fff;
-  box-shadow: 0 10px 20px rgba(79, 70, 229, 0.25);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  box-shadow: 0 10px 20px color-mix(in srgb, var(--color-primary) 25%, transparent);
   letter-spacing: 0;
   min-width: 120px;
 }
@@ -478,9 +489,9 @@
 
 /* Ghost button: "Cancelar" grey pill like reference */
 .create-user__ghost {
-  background: #e5e7eb;
+  background: var(--color-surface-alt);
   border: none;
-  color: #111827;
+  color: var(--color-text-primary);
   padding: 10px 18px;
   border-radius: 12px;
   cursor: pointer;
@@ -490,16 +501,16 @@
 }
 
 .create-user__ghost:hover {
-  background: #d1d5db;
+  background: var(--color-border);
 }
 
 .dashboard-shell.dark .create-user__ghost {
-  background: rgba(255, 255, 255, 0.10);
-  color: rgba(255, 255, 255, 0.92);
+  background: var(--color-surface-darker);
+  color: var(--color-text-inverse);
 }
 
 .dashboard-shell.dark .create-user__ghost:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: color-mix(in srgb, var(--color-primary-contrast) 16%, transparent);
 }
 
 /* Resize handle: subtle like reference (keep function) */
@@ -510,8 +521,8 @@
   width: 18px;
   height: 18px;
   border-radius: 6px;
-  background: rgba(79, 70, 229, 0.35);
-  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: color-mix(in srgb, var(--color-primary-contrast) 35%, transparent);
+  border: 1px solid var(--color-border);
   cursor: se-resize;
   opacity: 0.9;
   transition: transform 0.15s ease, opacity 0.15s ease;
@@ -523,12 +534,14 @@
 }
 
 .muted {
-  color: rgba(17, 24, 39, 0.55);
-  font-size: 12px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  opacity: 0.65;
 }
 
 .dashboard-shell.dark .muted {
-  color: rgba(255, 255, 255, 0.76);
+  color: var(--color-text-inverse);
+  opacity: 0.76;
 }
 
 /* Responsive */
