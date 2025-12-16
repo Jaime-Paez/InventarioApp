@@ -131,6 +131,8 @@ function UsersTable({
   const [selectedRowIds, setSelectedRowIds] = useState([])
   const [allRowsSelected, setAllRowsSelected] = useState(false)
 
+  const allRowIds = useMemo(() => users.map((u) => u?.id).filter((id) => id != null), [users])
+
   useEffect(() => {
     const saved = sessionStorage.getItem('usuarios-table-selected-rows')
     if (saved) {
@@ -147,11 +149,32 @@ function UsersTable({
     return saveState
   }, [selectedRowIds, allRowsSelected])
 
+  useEffect(() => {
+    if (!allRowsSelected) return
+
+    if (!allRowIds.length) {
+      if (selectedRowIds.length) setSelectedRowIds([])
+      return
+    }
+
+    const isSameSelection =
+      selectedRowIds.length === allRowIds.length && selectedRowIds.every((id, idx) => id === allRowIds[idx])
+
+    if (!isSameSelection) setSelectedRowIds(allRowIds)
+  }, [allRowsSelected, allRowIds, selectedRowIds])
+
   const rowSelectionTemplate = (rowData) => {
     const id = rowData?.id
     const onCheckboxChange = (e) => {
       e.originalEvent?.stopPropagation?.()
-      if (e.checked) setSelectedRowIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+      if (id == null) return
+
+      if (e.checked)
+        setSelectedRowIds((prev) => {
+          const next = prev.includes(id) ? prev : [...prev, id]
+          if (next.length === allRowIds.length) setAllRowsSelected(true)
+          return next
+        })
       else {
         setSelectedRowIds((prev) => prev.filter((x) => x !== id))
         setAllRowsSelected(false)
@@ -170,7 +193,7 @@ function UsersTable({
       e.originalEvent?.stopPropagation?.()
       const next = e.checked
       setAllRowsSelected(next)
-      if (!next) setSelectedRowIds([])
+      setSelectedRowIds(next ? allRowIds : [])
     }
 
     return (

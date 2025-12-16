@@ -344,6 +344,28 @@
   background: rgba(0, 144, 187, 0.18);
 }
 
+/* Row-selection checkboxes (dark) */
+.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box {
+  background: #1f242d;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: none;
+}
+
+.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box:hover {
+  border-color: rgba(0, 144, 187, 0.55);
+  background: #262c37;
+}
+
+.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box.p-highlight {
+  background: #2f3644;
+  border-color: rgba(0, 144, 187, 0.7);
+  color: var(--color-text-inverse);
+}
+
+.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box .p-checkbox-icon {
+  color: var(--color-text-inverse);
+}
+
 /* Gridlines dark */
 .dashboard-shell.dark .users-datatable.p-datatable-gridlines .p-datatable-thead > tr > th,
 .dashboard-shell.dark .users-datatable.p-datatable-gridlines .p-datatable-tbody > tr > td {
