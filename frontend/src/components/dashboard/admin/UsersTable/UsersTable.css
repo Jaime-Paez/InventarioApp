@@ -22,7 +22,7 @@
   margin: 0;
   font-size: 1.55rem;
   font-weight: 800;
-  color: #111827;
+  color: var(--color-text-primary);
   letter-spacing: -0.02em;
 }
 
@@ -38,7 +38,7 @@
   padding: 0.55rem 0.95rem;
   background: var(--color-primary);
   border: 1px solid var(--color-primary);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .users-topbtn.p-button:hover {
@@ -51,14 +51,14 @@
 }
 
 .dashboard-shell.dark .users-topbtn.p-button {
-  background: var(--color-primary-contrast);
-  border-color: var(--color-primary-contrast);
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
   color: var(--color-text-primary);
 }
 
 /* ====== TU CONTENEDOR (ahora como card) ====== */
 .users-table {
-  background: #ffffff;
+  background: var(--table-color);
   border-radius: 14px;
   display: flex;
   flex-direction: column;
@@ -70,7 +70,7 @@
 
 /* NUEVO: card wrapper que contiene la tabla y permite scroll flex */
 .users-table--card {
-  border: 1px solid #eef2f7;
+  border: 1px solid var(--color-border);
   overflow: hidden;
   flex: 1;
   min-height: 200px;
@@ -78,7 +78,7 @@
 
 .dashboard-shell.dark .users-table {
   background: var(--color-surface-dark);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   border-color: var(--color-border-dark);
 }
 
@@ -112,20 +112,20 @@
 
 .users-header__count {
   font-weight: 800;
-  color: #4b5563;
+  color: var(--color-text-primary);
   margin-right: 4px;
 }
 
 .dashboard-shell.dark .users-header__count {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .search-input-container {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
+  background: var(--table-color-search);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 8px 12px;
   flex: 1;
@@ -134,8 +134,8 @@
 }
 
 .dashboard-shell.dark .search-input-container {
-  background: var(--color-surface-darker);
-  border-color: var(--color-border-dark);
+  background: var(--table-color-search-dark);
+  border-color: var(--color-border);
 }
 
 .search-input {
@@ -148,30 +148,30 @@
 }
 
 .search-input::placeholder {
-  color: #9ca3af;
+  color: var(--color-border);
 }
 
 .search-input-icon {
-  color: #9ca3af;
+  color: var(--color-border);
   font-size: 0.95rem;
 }
 
 .dashboard-shell.dark .search-input {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .search-input::placeholder,
 .dashboard-shell.dark .search-input-icon {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--color-border);;
 }
 
 .rounded-icon-btn {
   width: 32px;
   height: 32px;
   border-radius: 999px;
-  border: 1px solid #e5e7eb;
-  background: #f8fafc;
-  color: #111827;
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-button-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -180,21 +180,21 @@
 }
 
 .rounded-icon-btn:hover:not(:disabled) {
-  background: #eef2ff;
-  border-color: #d1d5db;
-  color: #111827;
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary);
+  color: var(--color-button-primary);
 }
 
 .dashboard-shell.dark .rounded-icon-btn {
   background: var(--color-surface-darker);
   border-color: var(--color-border-dark);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .rounded-icon-btn:hover:not(:disabled) {
   background: rgba(0, 144, 187, 0.16);
   border-color: rgba(0, 144, 187, 0.4);
-  color: var(--color-primary-contrast-strong);
+  color: var(--color-primary-dark-strong);
 }
 
 .rounded-icon-btn:disabled {
@@ -211,7 +211,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #fff;
+  color: var(--color-button-primary);
 }
 
 .users-circle:disabled {
@@ -219,10 +219,8 @@
   cursor: not-allowed;
 }
 
-.users-circle--excel { background: #22c55e; }
-.users-circle--pdf { background: #ef4444; }
-.users-circle--mail { background: #3b82f6; }
-.users-circle--folder { background: #14b8a6; }
+.users-circle--excel { background: var(--color-success-text); }
+.users-circle--pdf { background: var(--color-error-text); }
 
 /* ====== PrimeReact DataTable ====== */
 .users-datatable {
@@ -252,49 +250,49 @@
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-wrapper {
-  background: transparent;
+  background: var(--table-color-dark);
 }
 
 /* ====== THEAD ====== */
 .users-datatable .p-datatable-thead > tr > th {
-  background: #f7f7f7;
-  color: #111827;
+  background: var(--table-color);
+  color: var(--color-text-primary);
   font-weight: 800;
   border: none;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: none;
   padding: 8px 10px;
 }
 
 /* ====== TBODY ====== */
 .users-datatable .p-datatable-tbody > tr > td {
   border: none;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--table-color-border);
   padding: 3px;
-  color: #111827;
-  background: #ffffff;
+  color: var(--color-text-primary);
+  background: var(--table-color);
 }
 
 .users-datatable .p-datatable-tbody > tr:hover > td {
-  background: #f9fafb;
+  background: var(--table-color-hover)
 }
 
 /* ✅ Seleccionado por checkbox (light) */
 .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
-  background: #eef2ff;
+  background: var(--table-color-selected)
 }
 .users-datatable .p-datatable-tbody > tr.selected-row-shadow:hover > td {
-  background: #e0e7ff;
+  background: var(--table-color-selected-hover)
 }
 
 /* ====== GRIDLINES (showGridlines) ====== */
 .users-datatable.p-datatable-gridlines .p-datatable-thead > tr > th,
 .users-datatable.p-datatable-gridlines .p-datatable-tbody > tr > td {
-  border-right: 1px solid #e5e7eb;
+  border-right: none;
 }
 
 /* ====== DARK MODE: tabla completa ====== */
 .dashboard-shell.dark .users-datatable .p-datatable-table {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   background: var(--color-surface-dark);
 }
 
@@ -305,7 +303,7 @@
 /* THEAD dark */
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th {
   background: rgba(255, 255, 255, 0.04);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   border-bottom-color: var(--color-border-dark);
 }
 
@@ -313,34 +311,29 @@
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-sortable-column,
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-resizable-column,
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-reorderable-column {
-  background: #0f1115;
-  color: var(--color-text-inverse);
+  background: var(--table-color-dark);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-sortable-column:not(.p-highlight):hover,
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-resizable-column:not(.p-highlight):hover,
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-reorderable-column:not(.p-highlight):hover {
-  background: #1a1d24;
-  color: var(--color-text-inverse);
-}
-
-/* Filter row background */
-.dashboard-shell.dark .users-datatable .p-column-filter-row > th {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--table-color-dark-hover);
+  color: var(--color-text-dark);
 }
 
 /* TBODY dark */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td {
   border-bottom-color: var(--color-border-dark);
-  color: var(--color-text-inverse);
-  background: var(--color-surface-dark);
+  color: var(--color-text-dark);
+  background: var(--table-color-dark);
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr:hover > td,
 .dashboard-shell.dark .users-datatable.p-datatable-hoverable-rows .p-selectable-row:not(.p-highlight):hover > td,
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.p-highlight:hover > td {
-  background: #13161d;
-  color: var(--color-text-inverse);
+  background: var(--table-color-dark-hover);
+  color: var(--color-text-dark);
   border-bottom-color: var(--color-border-dark);
 }
 
@@ -400,23 +393,23 @@
 .dashboard-shell.dark .users-datatable .p-inputtext {
   background: var(--color-surface-darker);
   border-color: var(--color-border-dark);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .users-datatable .p-dropdown {
   background: var(--color-surface-darker);
   border-color: var(--color-border-dark);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .p-dropdown-panel {
   background: var(--color-surface-darker);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   border: 1px solid var(--color-border-dark);
 }
 
 .dashboard-shell.dark .p-dropdown-panel .p-dropdown-items .p-dropdown-item {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight {
@@ -433,7 +426,7 @@
 }
 
 .dashboard-shell.dark .users-datatable .p-paginator {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   background: rgba(255, 255, 255, 0.02);
   border-top: 1px solid var(--color-border-dark);
 }
@@ -443,7 +436,7 @@
 .dashboard-shell.dark .users-datatable .p-paginator .p-paginator-prev,
 .dashboard-shell.dark .users-datatable .p-paginator .p-paginator-next,
 .dashboard-shell.dark .users-datatable .p-paginator .p-paginator-last {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .users-datatable .p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
@@ -536,7 +529,7 @@
 .dashboard-shell.dark .p-overlaypanel.table-options-list,
 .dashboard-shell.dark .p-overlaypanel {
   background: var(--color-surface-darker);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   border: 1px solid var(--color-border-dark);
 }
 

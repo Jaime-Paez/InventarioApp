@@ -1,24 +1,43 @@
 :root {
-  --color-background: #e9ecef;
-  --color-surface: #f4f6fa;
-  --color-surface-alt: #d9e0ea;
+  /* ================GENERAL================= */
+  --color-surface: #E9ECEF;
   --color-surface-dark: #181818;
   --color-surface-darker: #212121;
-  --color-text-primary: #0f172a;
-  --color-text-inverse: #f5f7fb;
-  --color-border: #cbd5e1;
-  --color-border-dark: #181818;
-  --color-border-modal-dark: #bbbbbb;
-  --color-border-subtle: #FFFFFF;
+
+  /* ================SIDEBAR================= */
+  --sidebar-backgorund-color: #F8F9FA;
+  --sidebar-backgorund-color-dark: #181818;
   --color-divider-light: #181818;
   --color-divider-dark: #ffffff;
-  --color-input-bg: #f8f9fa;
-  --color-link: #2563eb;
-  --color-link-contrast: #cbd5e1;
+  --sidebar-color-hover: #98a3ac6a;
+
+  /* ================TABLES================== */
+  --table-color: #F8F9FA;
+  --table-color-border: #f1f5f9;
+  --table-color-hover: #00457050;
+  --table-color-selected: #eef2ff;
+  --table-color-selected-hover: #e0e7ff;
+  --table-color-search: #FFFFFF;
+  --table-color-dark: #232324;
+  --table-color-dark-hover: #2b2a2a;
+  --table-color-search-dark: #3D3D3D;
+
+  /* ================TEXT================== */
+  --color-text-primary: #181818;
+  --color-button-primary: #FFFFFF;
+  --color-text-dark: #B6BFC8;
+  --color-button-dark: #FFFFFF;
+  --color-border: #BBBBBB;
+  --color-border-dark: #181818;
+
+  /* ================BOTONES================== */
   --color-primary: #004570;
   --color-primary-strong: #0b568d;
-  --color-primary-contrast: #0090bb;
-  --color-primary-contrast-strong: #1ba8d4;
+  --color-primary-dark: #0090bb;
+  --color-primary-dark-strong: #1ba8d4;
+  --color-primary-hover: rgba(255, 255, 255, 0.25);
+
+
   --color-success-bg: #ecfdf3;
   --color-success-text: #15803d;
   --color-success-border: #bbf7d0;
@@ -36,7 +55,7 @@
   --font-size-sm: 9px;
   --font-size-base: 11px;
   --font-size-md: 13px;
-  --font-size-lg: 16px;
+  --font-size-lg: 20px;
   --font-size-sidebar: 14px;
   --font-size-sidebar-sub: var(--font-size-md);
 
@@ -45,15 +64,10 @@
   line-height: 1.5;
   font-weight: 400;
   color: var(--color-text-primary);
-  background-color: var(--color-background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-.theme-dark {
-  --color-border: var(--color-border-dark);
 }
 
 * {
@@ -71,7 +85,6 @@ a:hover {
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: var(--color-background);
   overflow: hidden;
 }
 

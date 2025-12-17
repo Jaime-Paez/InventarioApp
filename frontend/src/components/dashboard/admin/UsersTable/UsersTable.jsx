@@ -373,14 +373,7 @@ function UsersTable({
         <button className="users-circle users-circle--pdf" type="button" title="PDF" onClick={onExportPdf} disabled={!onExportPdf}>
           <i className="pi pi-file-pdf" />
         </button>
-
-        <button className="users-circle users-circle--mail" type="button" title="Email" onClick={onEmail} disabled={!onEmail}>
-          <i className="pi pi-envelope" />
-        </button>
-
-        <button className="users-circle users-circle--folder" type="button" title="Carpeta" onClick={onOpenFolder} disabled={!onOpenFolder}>
-          <i className="pi pi-folder" />
-        </button>
+        
       </div>
     </div>
   )

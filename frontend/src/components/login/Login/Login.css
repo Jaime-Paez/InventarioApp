@@ -4,7 +4,7 @@
   display: flex;
   align-items: stretch;
   justify-content: flex-start;
-  background: var(--color-surface-alt);
+  background: var(--color-surface);
   color: var(--color-text-primary);
   overflow: hidden;
   transition: background-color 0.4s ease, color 0.4s ease, transform 0.6s ease;
@@ -12,7 +12,7 @@
 
 .login-page.dark {
   background: var(--color-surface-darker);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .wallpaper-layer {
@@ -48,7 +48,7 @@
   gap: 1rem;
   padding: 2.75rem 2.75rem 2.75rem;
   background: var(--color-surface);
-  border-right: 1px solid var(--color-border-subtle);
+  border-right: 1px solid var(--color-border);
   border-radius: 0 28px 0 0;
   max-width: 350px;
   width: min(350px, 100vw);
@@ -58,7 +58,6 @@
 
 .login-page.dark .login-panel {
   background: var(--color-surface-dark);
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .panel-header {
@@ -137,14 +136,13 @@ label {
 }
 
 .login-page.dark label {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 input {
   padding: 0.2rem 0.65rem;
   border-radius: 8px;
   border: 1px solid var(--color-border);
-  background: var(--color-input-bg);
   font-size: var(--font-size-base);
   line-height: 1.2;
   min-height: 22px;
@@ -153,23 +151,23 @@ input {
 }
 
 .login-page.dark input {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-surface-darker);
   border-color: var(--color-border-dark);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 input:focus {
   outline: none;
-  border-color: var(--color-link);
+  border-color: var(--color-primary-dark);
 }
 
 .login-page.dark input:focus {
-  border-color: #93c5fd;
+  border-color: var(--color-primary-dark);
 }
 
 .primary-button {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-button-primary);
   border: none;
   border-radius: 10px;
   padding: 0.55rem 0.9rem;
@@ -191,11 +189,11 @@ input:focus {
 }
 
 .login-page.dark .primary-button {
-  background: var(--color-primary-contrast);
+  background: var(--color-primary-dark);
 }
 
 .login-page.dark .primary-button:hover:not(:disabled) {
-  background: var(--color-primary-contrast-strong);
+  background: var(--color-primary-dark-strong);
 }
 
 .helper-row {
@@ -210,14 +208,14 @@ input:focus {
 .link-button {
   background: none;
   border: none;
-  color: var(--color-link);
+  color: var(--color-primary);
   font-weight: 700;
   padding: 0;
   cursor: pointer;
 }
 
 .login-page.dark .link-button {
-  color: var(--color-link-contrast);
+  color: var(--color-text-dark);
 }
 
 .theme-toggle {
@@ -227,9 +225,7 @@ input:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.35));
   color: var(--color-text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 50%;
   padding: 0.55rem;
   cursor: pointer;
@@ -237,8 +233,7 @@ input:focus {
 }
 
 .login-page.dark .theme-toggle {
-  background: linear-gradient(135deg, rgba(20, 24, 33, 0.75), rgba(20, 24, 33, 0.4));
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   border-color: var(--color-border-dark);
 }
 

@@ -1,17 +1,6 @@
 .sidebar {
-  --sidebar-color-border: rgba(15, 23, 42, 0.08);
-  --sidebar-color-border-strong: rgba(15, 23, 42, 0.12);
-  --sidebar-color-divider: rgba(15, 23, 42, 0.12);
-  --sidebar-color-section: rgba(15, 23, 42, 0.48);
-  --sidebar-color-text: rgba(15, 23, 42, 0.82);
-  --sidebar-color-subtext: rgba(15, 23, 42, 0.76);
-  --sidebar-color-muted: rgba(15, 23, 42, 0.7);
-  --sidebar-color-hover: rgba(15, 23, 42, 0.04);
-  --sidebar-color-submenu-hover: rgba(255, 255, 255, 0.06);
-  --sidebar-profile-hover: rgba(0, 69, 112, 0.1);
-  --sidebar-profile-border: rgba(15, 23, 42, 0.08);
   color: var(--sidebar-color-text);
-  background: var(--color-input-bg);
+  background: var(--sidebar-backgorund-color);
   display: grid;
   grid-template-rows: auto 1fr auto;
   padding: 20px 16px 24px;
@@ -20,16 +9,6 @@
 }
 
 .dashboard-shell.dark .sidebar {
-  --sidebar-color-border: var(--color-border-dark);
-  --sidebar-color-border-strong: var(--color-border-dark);
-  --sidebar-color-divider: var(--color-border-dark);
-  --sidebar-color-section: rgba(255, 255, 255, 0.48);
-  --sidebar-color-text: rgba(255, 255, 255, 0.86);
-  --sidebar-color-subtext: rgba(255, 255, 255, 0.8);
-  --sidebar-color-muted: rgba(255, 255, 255, 0.7);
-  --sidebar-color-hover: rgba(255, 255, 255, 0.05);
-  --sidebar-profile-hover: rgba(0, 144, 187, 0.14);
-  --sidebar-profile-border: var(--color-border-dark);
   background: var(--color-surface-dark);
   border-color: var(--sidebar-color-border-strong);
 }
@@ -197,7 +176,7 @@
 }
 
 .sidebar__submenu.open {
-  background: var(--color-surface-alt);
+  background: var(--color-surface);
   border-radius: 12px;
   padding: 0.35rem 0.25rem;
 }
@@ -229,7 +208,7 @@
 
 .dashboard-shell.dark .sidebar__link.open + .sidebar__submenu .sidebar__sublink,
 .dashboard-shell.dark .sidebar__submenu.open .sidebar__sublink {
-  color: var(--color-text-inverse);
+  color: var(--color-button-dark);
 }
 
 .sidebar__sublink:hover {
@@ -287,8 +266,8 @@
 .dashboard-shell.dark .sidebar__avatar {
   background: linear-gradient(
     135deg,
-    var(--color-primary-contrast),
-    var(--color-primary-contrast-strong)
+    var(--color-primary-dark),
+    var(--color-primary-dark-strong)
   );
 }
 
@@ -312,7 +291,7 @@
   left: 0;
   right: 0;
   bottom: calc(100% + 8px);
-  background: var(--color-surface, #ffffff);
+  background: var(--color-surface);
   border: 1px solid var(--sidebar-profile-border);
   border-radius: 12px;
   overflow: hidden;

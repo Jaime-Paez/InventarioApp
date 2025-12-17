@@ -14,7 +14,7 @@
   min-width: 720px;
   min-height: 560px;
 
-  background: var(--color-border-subtle);
+  background: var(--color-border);
   border: 1px solid var(--color-border);
   border-radius: 18px;
   box-shadow: var(--shadow-panel);
@@ -32,8 +32,8 @@
 
 .dashboard-shell.dark .create-user__modal {
   background: var(--color-surface-dark);
-  border-color: var(--color-border-modal-dark);
-  color: var(--color-text-inverse);
+  border-color: var(--color-border);
+  color: var(--color-text-dark);
 }
 
 .create-user__header {
@@ -44,12 +44,12 @@
   gap: 0;
   cursor: move;
   user-select: none;
-  background: var(--color-border-subtle);
+  background: var(--color-border);
 }
 
 .dashboard-shell.dark .create-user__header {
   background: var(--color-surface-dark);
-  border-bottom-color: var(--color-border-modal-dark);
+  border-bottom-color: var(--color-border);
 }
 
 /* The centered purple "pill" title */
@@ -67,7 +67,7 @@
   border-bottom-left-radius: 14px;
   border-bottom-right-radius: 14px;
   background: var(--color-primary);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   font-size: var(--font-size-md);
   font-weight: 500;
   letter-spacing: 0;
@@ -94,7 +94,7 @@
   height: 20px;
   border: none;
   background: var(--color-primary);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   font-size: calc(var(--font-size-md));
   cursor: pointer;
   display: grid;
@@ -151,7 +151,7 @@
 }
 
 .dashboard-shell.dark .create-user__section + .create-user__section {
-  border-top-color: var(--color-border-modal-dark);
+  border-top-color: var(--color-border);
 }
 
 .create-user__section-header {
@@ -164,7 +164,7 @@
 }
 
 .dashboard-shell.dark .create-user__section-header {
-  border-bottom-color: var(--color-border-modal-dark);
+  border-bottom-color: var(--color-border);
 }
 
 .create-user__section h4 {
@@ -182,7 +182,7 @@
 }
 
 .dashboard-shell.dark .create-user__hint {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   opacity: 0.72;
 }
 
@@ -212,7 +212,7 @@
 }
 
 .dashboard-shell.dark .create-user__field span {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   opacity: 0.78;
 }
 
@@ -250,13 +250,12 @@
 }
 
 .dashboard-shell.dark .create-user__field small {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   opacity: 0.7;
 }
 
 /* Inputs: like reference (thin border, subtle radius, clean) */
 .create-user__field input {
-  background: var(--color-input-bg);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 0.35rem 0.75rem;
@@ -273,24 +272,24 @@
 
 .create-user__field input:focus {
   outline: none;
-  border-color: var(--color-primary-contrast);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-contrast) 35%, transparent);
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
 }
 
 .dashboard-shell.dark .create-user__field input {
   background: var(--color-surface-darker);
-  border-color: var(--color-border-modal-dark);
-  color: var(--color-text-inverse);
+  border-color: var(--color-border);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .create-user__field input::placeholder {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   opacity: 0.38;
 }
 
 .dashboard-shell.dark .create-user__field input:focus {
-  border-color: var(--color-primary-contrast);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-contrast) 32%, transparent);
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 32%, transparent);
 }
 .create-user__access-grid {
   display: grid;
@@ -332,7 +331,7 @@
 .create-user__checkbox input {
   width: 16px;
   height: 16px;
-  accent-color: var(--color-primary-contrast);
+  accent-color: var(--color-primary-dark);
   margin-top: 2px;
 }
 
@@ -345,11 +344,11 @@
 
 .dashboard-shell.dark .create-user__checkbox {
   background: var(--color-surface-darker);
-  border-color: var(--color-border-modal-dark);
+  border-color: var(--color-border);
 }
 
 .dashboard-shell.dark .create-user__checkbox p {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   opacity: 0.74;
 }
 
@@ -365,7 +364,7 @@
 }
 
 .dashboard-shell.dark .create-user__roles {
-  border-color: var(--color-border-modal-dark);
+  border-color: var(--color-border);
   background: var(--color-surface-darker);
 }
 
@@ -389,7 +388,7 @@
 }
 
 .dashboard-shell.dark .create-user__roles p {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   opacity: 0.72;
 }
 
@@ -404,7 +403,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: var(--color-border-subtle);
+  background: var(--color-border);
   border: 1px solid var(--color-border);
   border-radius: 999px;
   color: inherit;
@@ -413,25 +412,25 @@
 }
 
 .create-user__chip:hover {
-  background: color-mix(in srgb, var(--color-primary-contrast) 8%, transparent);
-  border-color: var(--color-primary-contrast);
+  background: color-mix(in srgb, var(--color-primary-dark) 8%, transparent);
+  border-color: var(--color-primary-dark);
   transform: translateY(-1px);
 }
 
 .dashboard-shell.dark .create-user__chip {
   background: var(--color-surface-darker);
-  border-color: var(--color-border-modal-dark);
+  border-color: var(--color-border);
 }
 
 .dashboard-shell.dark .create-user__chip:hover {
-  background: color-mix(in srgb, var(--color-primary-contrast) 18%, transparent);
-  border-color: var(--color-primary-contrast);
+  background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
+  border-color: var(--color-primary-dark);
 }
 
 .create-user__chip input {
   width: 14px;
   height: 14px;
-  accent-color: var(--color-primary-contrast);
+  accent-color: var(--color-primary-dark);
 }
 
 /* Error stays visible but cleaner */
@@ -461,12 +460,12 @@
   padding: 14px 18px;
   border-top: 1px solid var(--color-border);
 
-  background: var(--color-border-subtle);
+  background: var(--color-border);
 }
 
 .dashboard-shell.dark .create-user__footer {
   background: var(--color-surface-dark);
-  border-top-color: var(--color-border-modal-dark);
+  border-top-color: var(--color-border);
 }
 
 /* Default buttons: make primary look like "Crear" purple in reference */
@@ -477,7 +476,7 @@
   font-weight: 700;
   cursor: pointer;
   background: var(--color-primary);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   letter-spacing: 0;
   min-width: 120px;
 }
@@ -490,7 +489,7 @@
 
 /* Ghost button: "Cancelar" grey pill like reference */
 .create-user__ghost {
-  background: var(--color-surface-alt);
+  background: var(--color-surface);
   border: none;
   color: var(--color-text-primary);
   padding: 10px 18px;
@@ -507,11 +506,11 @@
 
 .dashboard-shell.dark .create-user__ghost {
   background: var(--color-surface-darker);
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .create-user__ghost:hover {
-  background: color-mix(in srgb, var(--color-primary-contrast) 16%, transparent);
+  background: color-mix(in srgb, var(--color-primary-dark) 16%, transparent);
 }
 
 /* Resize handle: subtle like reference (keep function) */
@@ -522,7 +521,7 @@
   width: 18px;
   height: 18px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--color-primary-contrast) 35%, transparent);
+  background: color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
   border: 1px solid var(--color-border);
   cursor: se-resize;
   opacity: 0.9;
@@ -541,7 +540,7 @@
 }
 
 .dashboard-shell.dark .muted {
-  color: var(--color-text-inverse);
+  color: var(--color-text-dark);
   opacity: 0.76;
 }
 
