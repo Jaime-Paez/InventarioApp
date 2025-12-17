@@ -144,7 +144,6 @@
 .sidebar__link.open:hover,
 .sidebar__link.open:focus-visible {
   background: var(--sidebar-color-hover);
-  border-color: var(--sidebar-color-border);
 }
 
 .sidebar__bullet {

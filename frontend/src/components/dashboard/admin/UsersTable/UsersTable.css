@@ -23,18 +23,12 @@
 
 .dashboard-shell.dark .users-page__actions {
   background-color: var(--color-surface-dark);
-  padding: 8px;
-  border-radius: 14px;
   border: 1px solid var(--color-border-dark);
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 .users-topbtn.p-button {
-  border-radius: 10px;
-  font-weight: 700;
-  padding: 0.55rem 0.95rem;
+  border-radius: 5px;
+  padding: 5px 10px;
   background: var(--color-primary);
   border: 1px solid var(--color-primary);
   color: var(--color-button-primary);
