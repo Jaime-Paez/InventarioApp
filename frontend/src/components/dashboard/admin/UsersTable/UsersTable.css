@@ -38,7 +38,7 @@
   padding: 0.55rem 0.95rem;
   background: var(--color-primary);
   border: 1px solid var(--color-primary);
-  color: var(--color-text-dark);
+  color: var(--color-button-primary);
 }
 
 .users-topbtn.p-button:hover {
@@ -53,7 +53,7 @@
 .dashboard-shell.dark .users-topbtn.p-button {
   background: var(--color-primary-dark);
   border-color: var(--color-primary-dark);
-  color: var(--color-text-primary);
+  color: var(--color-button-primary);
 }
 
 /* ====== TU CONTENEDOR (ahora como card) ====== */
@@ -123,14 +123,14 @@
 .search-input-container {
   display: flex;
   align-items: center;
-  gap: 8px;
   background: var(--table-color-search);
   border: 1px solid var(--color-border);
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 7px 11px;
   flex: 1;
-  min-width: 260px;
-  max-width: 440px;
+  height: 28px;
+  min-width: 168px;
+  max-width: 168px;
 }
 
 .dashboard-shell.dark .search-input-container {
@@ -166,8 +166,8 @@
 }
 
 .rounded-icon-btn {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   border: none;
   background: var(--color-primary);
@@ -321,6 +321,7 @@
   background: var(--table-color-dark-hover);
   color: var(--color-text-dark);
 }
+
 
 /* TBODY dark */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td {
