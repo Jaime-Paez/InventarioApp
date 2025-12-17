@@ -345,7 +345,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                   <input
                     name="nombres"
                     type="text"
-                    placeholder="Ana María"
+                    placeholder="Nombres"
                     value={formData.nombres}
                     onChange={handleChange}
                     required
@@ -357,7 +357,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                   <input
                     name="apellidos"
                     type="text"
-                    placeholder="Pérez Ruiz"
+                    placeholder="Apellidos"
                     value={formData.apellidos}
                     onChange={handleChange}
                     required
@@ -369,7 +369,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                   <input
                     name="correo"
                     type="email"
-                    placeholder="usuario@empresa.com"
+                    placeholder="Correo"
                     value={formData.correo}
                     onChange={handleChange}
                     required
@@ -381,7 +381,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                   <input
                     name="telefono"
                     type="tel"
-                    placeholder="099 999 9999"
+                    placeholder="Teléfono"
                     value={formData.telefono}
                     onChange={handleChange}
                   />
@@ -392,7 +392,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                   <input
                     name="cargo"
                     type="text"
-                    placeholder="Coordinador de inventario"
+                    placeholder="Cargo"
                     value={formData.cargo}
                     onChange={handleChange}
                   />
@@ -425,7 +425,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                     <input
                       name="password"
                       type="text"
-                      placeholder="Contraseña temporal"
+                      placeholder="Contraseña"
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       required

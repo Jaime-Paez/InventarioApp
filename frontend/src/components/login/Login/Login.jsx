@@ -56,6 +56,8 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
   const [authError, setAuthError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const [isTogglingTheme, setIsTogglingTheme] = useState(false)
+
   const [loginData, setLoginData] = useState({
     email: '',
     password: '',
@@ -92,35 +94,26 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
     }
   }
 
+  const handleToggleTheme = () => {
+    // “splash” liquid del botón
+    setIsTogglingTheme(true)
+    onToggleTheme?.()
+    window.setTimeout(() => setIsTogglingTheme(false), 360)
+  }
+
   return (
     <div className={`login-page ${darkMode ? 'dark' : ''} ${isCollapsing ? 'collapse' : ''}`}>
       <div className="wallpaper-layer" aria-hidden>
-        <img
-          src={wallpaperLight}
-          className={`wallpaper ${darkMode ? '' : 'active'}`}
-          alt=""
-        />
-        <img
-          src={wallpaperDark}
-          className={`wallpaper ${darkMode ? 'active' : ''}`}
-          alt=""
-        />
+        <img src={wallpaperLight} className={`wallpaper ${darkMode ? '' : 'active'}`} alt="" />
+        <img src={wallpaperDark} className={`wallpaper ${darkMode ? 'active' : ''}`} alt="" />
       </div>
 
       <section className="login-panel">
         <div className="panel-header">
           <div className="brand-row">
-            <img
-              src={darkMode ? kavaDark : kavaLight}
-              alt="Logo Kava"
-              className="kava-logo"
-            />
+            <img src={darkMode ? kavaDark : kavaLight} alt="Logo Kava" className="kava-logo" />
             <span className="brand-divider" aria-hidden />
-            <img
-              src={darkMode ? jpaezDark : jpaezLight}
-              alt="Logo JPaez"
-              className="brand-logo"
-            />
+            <img src={darkMode ? jpaezDark : jpaezLight} alt="Logo JPaez" className="brand-logo" />
           </div>
         </div>
 
@@ -140,6 +133,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
                 required
               />
             </div>
+
             <div className="form-row">
               <label htmlFor="password">Contraseña</label>
               <input
@@ -152,6 +146,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
                 required
               />
             </div>
+
             <button type="submit" className="primary-button" disabled={loading}>
               {loading ? 'Validando...' : 'Iniciar Sesión'}
             </button>
@@ -170,11 +165,13 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
 
           <button
             type="button"
-            className="theme-toggle"
-            onClick={onToggleTheme}
-            aria-label="Cambiar tema"
+            className={`theme-toggle ${isTogglingTheme ? 'is-toggling' : ''}`}
+            onClick={handleToggleTheme}
+            aria-label={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
           >
-            {darkMode ? <SunIcon /> : <MoonIcon />}
+            <span className="theme-icon" key={darkMode ? 'sun' : 'moon'}>
+              {darkMode ? <SunIcon /> : <MoonIcon />}
+            </span>
           </button>
         </div>
       </section>

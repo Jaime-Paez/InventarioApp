@@ -98,7 +98,7 @@
 }
 
 .brand-divider {
-  width: 2x;
+  width: 2px;
   height: 30px;
   border-radius: 99px;
   background: var(--color-divider-light);
@@ -217,25 +217,6 @@ input:focus {
   color: var(--color-text-dark);
 }
 
-.theme-toggle {
-  position: relative;
-  width: 48px;
-  height: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-primary);
-  border-radius: 50%;
-  padding: 0.55rem;
-  cursor: pointer;
-  backdrop-filter: blur(14px);
-}
-
-.login-page.dark .theme-toggle {
-  color: var(--color-text-dark);
-  border-color: var(--color-border-dark);
-}
-
 .panel-footer {
   width: 100%;
   display: flex;
@@ -275,6 +256,192 @@ input:focus {
   background: var(--color-error-bg-dark);
   color: var(--color-error-text-dark);
   border-color: var(--color-error-border-dark);
+}
+
+/* =========================
+   THEME TOGGLE (100% círculo, sin “pill”)
+   ========================= */
+
+.theme-toggle {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  overflow: hidden;
+
+  display: grid;
+  place-items: center;
+
+  /* reset UA button para evitar “cajas raras” */
+  padding: 0;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.75),
+    rgba(255, 255, 255, 0.35)
+  );
+
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease,
+    background 0.35s ease;
+}
+
+.login-page:not(.dark) .theme-toggle {
+  border-color: rgba(93, 72, 232, 0.22);
+}
+
+.login-page.dark .theme-toggle {
+  background: linear-gradient(
+    180deg,
+    rgba(28, 32, 44, 0.75),
+    rgba(28, 32, 44, 0.35)
+  );
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* liquid layer (clipped to circle) */
+.theme-toggle::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  border-radius: 50%;
+
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255,255,255,0.65), transparent 48%),
+    radial-gradient(circle at 74% 72%, rgba(255,255,255,0.22), transparent 56%),
+    radial-gradient(circle at 45% 88%, rgba(93,72,232,0.24), transparent 58%);
+
+  filter: blur(12px);
+  transform: translate(-10%, -8%) rotate(6deg);
+  opacity: 0.92;
+
+  transition:
+    transform 0.6s cubic-bezier(0.2, 0.9, 0.2, 1),
+    opacity 0.35s ease;
+
+  pointer-events: none;
+}
+
+/* ✅ REEMPLAZO del “pill” por brillo circular (NO rectangular) */
+.theme-toggle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255,255,255,0.45), transparent 40%),
+    radial-gradient(circle at 55% 18%, rgba(255,255,255,0.18), transparent 46%);
+  opacity: 0.95;
+
+  pointer-events: none;
+}
+
+/* hover motion for liquid */
+.theme-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.login-page.dark .theme-toggle:hover {
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.theme-toggle:hover::before {
+  transform: translate(14%, 18%) rotate(-12deg) scale(1.05);
+}
+
+/* press (iOS feel) */
+.theme-toggle:active {
+  transform: translateY(0px) scale(0.96);
+}
+
+/* splash when toggling */
+.theme-toggle.is-toggling::before {
+  transform: translate(22%, -18%) rotate(18deg) scale(1.1);
+  opacity: 1;
+}
+
+/* icon wrapper: no fondo, no caja, solo centra */
+.theme-icon {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+
+  background: none;
+  border-radius: 50%;
+  pointer-events: none;
+
+  color: var(--color-text-primary);
+}
+
+.login-page.dark .theme-icon {
+  color: var(--color-text-dark);
+}
+
+/* icon animation */
+.theme-icon svg {
+  width: 22px;
+  height: 22px;
+
+  will-change: transform, opacity;
+  animation: theme-icon-pop 420ms cubic-bezier(0.2, 0.9, 0.2, 1);
+
+  /* ✅ sin drop-shadow para que NUNCA se vea “caja” */
+  filter: none;
+}
+
+@keyframes theme-icon-pop {
+  0% {
+    transform: translateY(2px) scale(0.86) rotate(-8deg);
+    opacity: 0;
+  }
+  45% {
+    transform: translateY(-1px) scale(1.06) rotate(6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle,
+  .theme-toggle::before,
+  .theme-toggle::after,
+  .theme-icon svg {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 @media (max-width: 960px) {
@@ -328,4 +495,48 @@ input:focus {
   100% {
     transform: translateX(110%);
   }
+}
+
+/* =========================
+   DARK MODE – glass control
+   ========================= */
+
+/* liquid layer: versión oscura */
+.login-page.dark .theme-toggle::before {
+  background:
+    radial-gradient(
+      circle at 30% 25%,
+      rgba(255, 255, 255, 0.12),
+      transparent 46%
+    ),
+    radial-gradient(
+      circle at 70% 75%,
+      rgba(255, 255, 255, 0.06),
+      transparent 58%
+    ),
+    radial-gradient(
+      circle at 45% 85%,
+      rgba(88, 102, 255, 0.22),
+      transparent 60%
+    );
+
+  opacity: 0.75;
+  filter: blur(14px);
+}
+
+/* brillo superficial: MUY sutil, no blanco */
+.login-page.dark .theme-toggle::after {
+  background:
+    radial-gradient(
+      circle at 35% 28%,
+      rgba(255, 255, 255, 0.12),
+      transparent 42%
+    ),
+    radial-gradient(
+      circle at 55% 18%,
+      rgba(255, 255, 255, 0.05),
+      transparent 48%
+    );
+
+  opacity: 0.55;
 }
