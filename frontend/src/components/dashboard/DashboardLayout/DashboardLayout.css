@@ -20,18 +20,18 @@
 }
 
 .dashboard-shell.enter .sidebar:not(.sidebar--hidden) {
-  animation: sidebar-slide-in 1.6s ease forwards;
+  animation: sidebar-slide-in 1.2s cubic-bezier(.81,.39,.27,.84);
 }
 
 .dashboard-shell.enter .quick-actions {
-  animation: quick-actions-slide-in 1.45s ease forwards;
-  animation-delay: 0.65s;
+  animation: quick-actions-slide-in 0.6s cubic-bezier(.81,.39,.27,.84);
+  animation-delay: 0.6s;
   animation-fill-mode: both;
 }
 
 .dashboard-shell.enter .workspace__hero {
-  animation: welcome-fade-in 1.8s ease forwards;
-  animation-delay: 1.45s;
+  animation: welcome-fade-in 1s cubic-bezier(.81,.39,.27,.84);
+  animation-delay: 1.2s;
   animation-fill-mode: both;
 }
 
