@@ -59,6 +59,11 @@
   justify-content: center;
   max-width: none;
   text-align: center;
+  cursor: grab;
+}
+
+.create-user__header-text:active {
+  cursor: grabbing;
 }
 
 .create-user__header h3 {
