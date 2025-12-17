@@ -22,6 +22,9 @@
   --table-color-dark-hover: #2b2a2a;
   --table-color-search-dark: #3D3D3D;
 
+    /* ================MODALS================== */
+  --modal-color: #FFFFFF;
+
   /* ================TEXT================== */
   --color-text-primary: #181818;
   --color-button-primary: #FFFFFF;
