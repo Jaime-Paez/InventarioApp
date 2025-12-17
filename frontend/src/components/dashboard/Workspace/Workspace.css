@@ -76,6 +76,7 @@
 
 .workspace__view-title {
   margin: 0px;
+  margin-top: 10px;
   margin-left: 5px;
   font-size: calc(var(--font-size-lg));
   font-weight: 600;
