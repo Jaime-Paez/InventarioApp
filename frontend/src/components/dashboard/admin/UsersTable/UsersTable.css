@@ -420,7 +420,7 @@
 
 .dashboard-shell.dark .users-datatable .p-paginator {
   color: var(--color-text-dark);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--table-color-dark);
   border-top: 1px solid var(--color-border-dark);
 }
 
