@@ -60,6 +60,7 @@
 .users-table {
   background: var(--table-color);
   border-radius: 14px;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -228,12 +229,23 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  width: 100%;
 }
 
 /* CRÍTICO: para scrollHeight="flex" */
 .users-datatable .p-datatable-wrapper {
   flex: 1;
   min-height: 0;
+}
+
+/* Fuerza a la tabla a ocupar todo el ancho disponible aun con pocas columnas */
+.users-datatable .p-datatable-table,
+.users-datatable .p-datatable-scrollable-body table,
+.users-datatable .p-datatable-scrollable-header-box table,
+.users-datatable .p-datatable-scrollable-footer-box table {
+  width: 100%;
+  min-width: 100%;
+  table-layout: fixed;
 }
 
 /* --- FIX: que la tabla y su wrapper hereden bien el fondo en dark --- */

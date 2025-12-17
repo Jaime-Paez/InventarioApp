@@ -134,8 +134,8 @@ function Sidebar({
                   )}
                 </button>
 
-                {isGroup && isOpenGroup && (
-                  <ul className="sidebar__submenu open">
+                {isGroup && (
+                  <ul className={`sidebar__submenu ${isOpenGroup ? 'open' : ''}`}>
                     {item.children.map((child) => {
                       const ChildIcon = child.icon || Icon
                       const childActive = activeItem === child.label
@@ -146,6 +146,8 @@ function Sidebar({
                             type="button"
                             className={`sidebar__sublink ${childActive ? 'active' : ''}`}
                             onClick={() => onSelect(child.label)}
+                            disabled={!isOpenGroup}
+                            tabIndex={isOpenGroup ? 0 : -1}
                           >
                             <ChildIcon />
                             <span>{child.label}</span>
