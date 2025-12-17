@@ -1,5 +1,7 @@
 .quick-actions {
   position: relative;
+  margin-right: 12px;
+  margin-top: 12px;
   display: inline-flex;
   align-items: center;
   border-radius: 999px;

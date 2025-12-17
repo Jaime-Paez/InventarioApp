@@ -22,13 +22,14 @@
   --table-color-dark-hover: #2b2a2a;
   --table-color-search-dark: #3D3D3D;
 
-    /* ================MODALS================== */
+  /* ================MODALS================== */
   --modal-color: #FFFFFF;
 
   /* ================TEXT================== */
   --color-text-primary: #181818;
   --color-button-primary: #FFFFFF;
   --color-text-dark: #B6BFC8;
+  --color-text-title-dark: #FFFFFF;
   --color-button-dark: #FFFFFF;
   --color-border: #BBBBBB;
   --color-border-dark: #181818;
