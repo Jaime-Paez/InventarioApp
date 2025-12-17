@@ -582,3 +582,8 @@
 .p-datatable.p-datatable-gridlines .p-datatable-header {
   border-width: 0px;
 }
+
+
+.dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-frozen-column, .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td.p-frozen-column{
+  background: var(--table-color-dark);
+}
