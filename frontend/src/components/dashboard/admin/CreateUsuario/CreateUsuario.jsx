@@ -51,7 +51,6 @@ const initialForm = {
   telefono: '',
   cargo: '',
   activo: true,
-  roles: [],
 }
 
 function CreateUsuario({ open, onClose, onCreated, token }) {
@@ -59,8 +58,6 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordCopied, setPasswordCopied] = useState(false)
-  const [roles, setRoles] = useState([])
-  const [rolesLoading, setRolesLoading] = useState(false)
   const [permissionOptions, setPermissionOptions] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [permissionsLoading, setPermissionsLoading] = useState(false)
@@ -75,10 +72,10 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
   const positionRef = useRef(position)
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
-  const fetchRoles = useCallback(async () => {
-    setRolesLoading(true)
+  const fetchPermissionOptions = useCallback(async () => {
+    setPermissionsLoading(true)
     try {
-      const response = await fetch(`${API_URL}/usuarios/roles/`, {
+      const response = await fetch(`${API_URL}/usuarios/permisos/opciones/`, {
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Token ${token}` } : {}),
@@ -86,15 +83,16 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
       })
 
       if (!response.ok) {
-        throw new Error('No se pudieron cargar los roles disponibles.')
+        throw new Error('No se pudieron cargar los permisos disponibles.')
       }
 
-      const data = await response.json()
-      setRoles(Array.isArray(data) ? data : data.results || [])
+      const data = await response.json().catch(() => ({}))
+      const modulos = Array.isArray(data?.modulos) ? data.modulos : []
+      setPermissionOptions(modulos)
     } catch (err) {
-      setError(err.message || 'Ocurrió un problema al cargar los roles.')
+      setError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
-      setRolesLoading(false)
+      setPermissionsLoading(false)
     }
   }, [token])
 
@@ -129,10 +127,9 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
     setPassword('')
     setConfirmPassword('')
     setPasswordCopied(false)
-    fetchRoles()
     setPermissionsMatrix({})
     fetchPermissionOptions()
-  }, [open, fetchRoles, fetchPermissionOptions])
+  }, [open, fetchPermissionOptions])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -161,14 +158,6 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }))
-  }
-
-  const handleToggleRole = (roleId) => {
-    setFormData((prev) => {
-      const exists = prev.roles.includes(roleId)
-      const roles = exists ? prev.roles.filter((id) => id !== roleId) : [...prev.roles, roleId]
-      return { ...prev, roles }
-    })
   }
 
   const togglePermission = (moduleKey, actionKey, submoduleKey = '') => {
@@ -575,35 +564,8 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
                       <p>El usuario podrá iniciar sesión y operar el sistema.</p>
                     </div>
                   </label>
-
-                <div className="create-user__roles">
-                  <div className="create-user__roles-header">
-                    <div>
-                      <span>Roles</span>
-                      <p>Selecciona uno o más roles para definir los permisos.</p>
-                    </div>
-                    {rolesLoading && <small className="muted">Cargando roles...</small>}
-                  </div>
-
-                  <div className="create-user__roles-list">
-                    {!rolesLoading && !roles.length && (
-                      <p className="muted">No hay roles configurados todavía.</p>
-                    )}
-
-                    {roles.map((role) => (
-                      <label key={role.id} className="create-user__chip">
-                        <input
-                          type="checkbox"
-                          checked={formData.roles.includes(role.id)}
-                          onChange={() => handleToggleRole(role.id)}
-                        />
-                        <span>{role.nombre}</span>
-                      </label>
-                    ))}
-                  </div>
                 </div>
               </div>
-            </div>
 
             <div className="permissions-matrix">
               <div className="permissions-matrix__header">

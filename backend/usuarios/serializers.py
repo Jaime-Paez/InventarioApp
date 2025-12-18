@@ -149,12 +149,6 @@ class RolSerializer(serializers.ModelSerializer):
 class UsuarioSerializer(serializers.ModelSerializer):
     """Serializa usuarios internos."""
 
-    roles = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=Rol.objects.all(),
-        required=False,
-    )
-    roles_detalle = RolSerializer(source="roles", many=True, read_only=True)
     permisos_personalizados = RolPermisoSerializer(many=True, required=False)
     permisos_resumen = serializers.SerializerMethodField()
 
@@ -168,33 +162,23 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "telefono",
             "cargo",
             "activo",
-            "roles",
-            "roles_detalle",
             "permisos_personalizados",
             "permisos_resumen",
         ]
 
     def create(self, validated_data):
-        roles_data = validated_data.pop("roles", [])
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
         usuario = Usuario.objects.create(**validated_data)
-
-        if roles_data:
-            usuario.roles.set(roles_data)
 
         self._sync_personalized_permissions(usuario, permisos_personalizados)
         return usuario
 
     def update(self, instance, validated_data):
-        roles_data = validated_data.pop("roles", None)
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-
-        if roles_data is not None:
-            instance.roles.set(roles_data)
 
         self._sync_personalized_permissions(instance, permisos_personalizados)
         return instance
@@ -226,10 +210,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             created_role = True
 
         self._replace_permissions(role, permisos_data)
-        usuario.roles.add(role)
-
         if created_role:
-            usuario.refresh_from_db(fields=["roles"])
+            usuario.refresh_from_db(fields=["rol_personalizado"])
 
     def _replace_permissions(self, rol, permisos_data):
         rol.permisos.all().delete()
@@ -250,7 +232,6 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     def _remove_personalized_role(self, usuario):
         if usuario.rol_personalizado:
-            usuario.roles.remove(usuario.rol_personalizado)
             usuario.rol_personalizado.permisos.all().delete()
             usuario.rol_personalizado.delete()
             usuario.rol_personalizado = None

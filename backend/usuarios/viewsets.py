@@ -33,7 +33,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
     queryset = (
         Usuario.objects.prefetch_related(
-            "roles__permisos",
             "rol_personalizado__permisos",
         )
         .all()
@@ -50,7 +49,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     def permisos_resumen(self, request, pk=None):
         usuario = self.get_object()
         permisos = build_permissions_summary(
-            usuario.roles.all(), extra_roles=[usuario.rol_personalizado]
+            [], extra_roles=[usuario.rol_personalizado]
         )
         return Response({"permisos": permisos})
 
@@ -115,7 +114,7 @@ class LoginAPIView(APIView):
 
         usuario_interno = (
             Usuario.objects.prefetch_related(
-                "roles__permisos", "rol_personalizado__permisos"
+                "rol_personalizado__permisos"
             )
             .filter(correo__iexact=email)
             .first()
@@ -123,7 +122,7 @@ class LoginAPIView(APIView):
         permisos = []
         if usuario_interno:
             permisos = build_permissions_summary(
-                usuario_interno.roles.all(),
+                [],
                 extra_roles=[usuario_interno.rol_personalizado],
             )
 
@@ -145,7 +144,7 @@ class PerfilAPIView(APIView):
     def get(self, request):
         usuario_interno = (
             Usuario.objects.prefetch_related(
-                "roles__permisos", "rol_personalizado__permisos"
+                "rol_personalizado__permisos"
             )
             .filter(correo__iexact=request.user.email)
             .first()
@@ -153,7 +152,7 @@ class PerfilAPIView(APIView):
         permisos = []
         if usuario_interno:
             permisos = build_permissions_summary(
-                usuario_interno.roles.all(),
+                [],
                 extra_roles=[usuario_interno.rol_personalizado],
             )
 

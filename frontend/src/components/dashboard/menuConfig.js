@@ -4,7 +4,7 @@ import {
   CircleArrowDown,
   CircleArrowUp,
   Tag,
-  Map,
+  Map as MapIcon,
   Compass,
   Box,
   Truck,
@@ -22,14 +22,14 @@ export const MENU_STRUCTURE = [
     icon: ArrowRightLeft,
     moduleKey: 'movimientos',
     children: [
-      { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos' },
-      { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos' },
+      { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos', submoduleKey: 'mov_entrada_traslado' },
+      { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos', submoduleKey: 'mov_salida_traslado' },
     ],
   },
   { label: 'Productos', icon: Tag, moduleKey: 'productos' },
   {
     label: 'Sucursales',
-    icon: Map,
+    icon: MapIcon,
     moduleKey: 'inventario',
     children: [
       { label: 'Sucursales', icon: Compass, moduleKey: 'inventario' },
@@ -75,18 +75,15 @@ export const buildPermissionIndex = (permissions) => {
 const hasActions = (permiso) =>
   permiso && (permiso.puede_crear || permiso.puede_leer || permiso.puede_actualizar || permiso.puede_eliminar)
 
-export const hasPermissionForModule = (moduleKey, permissionIndex) => {
-  if (!moduleKey) return true
-  if (!permissionIndex) return true
+const hasPermissionForTarget = (moduleKey, submoduleKey, permissionIndex) => {
+  if (!permissionIndex || !moduleKey) return true
+  const key = `${moduleKey}:${submoduleKey || ''}`
+  const specific = permissionIndex.get(key)
+  if (hasActions(specific)) return true
 
-  let allowed = false
-  permissionIndex.forEach((value, key) => {
-    const [module] = key.split(':')
-    if (module === moduleKey && hasActions(value)) {
-      allowed = true
-    }
-  })
-  return allowed
+  const generalKey = `${moduleKey}:`
+  const general = permissionIndex.get(generalKey)
+  return hasActions(general)
 }
 
 export const itemHasAccess = (item, permissionIndex) => {
@@ -94,7 +91,7 @@ export const itemHasAccess = (item, permissionIndex) => {
   if (item.children?.length) {
     return item.children.some((child) => itemHasAccess(child, permissionIndex))
   }
-  return hasPermissionForModule(item.moduleKey, permissionIndex)
+  return hasPermissionForTarget(item.moduleKey, item.submoduleKey, permissionIndex)
 }
 
 export const filterMenuByPermissions = (menu, permissionIndex) => {

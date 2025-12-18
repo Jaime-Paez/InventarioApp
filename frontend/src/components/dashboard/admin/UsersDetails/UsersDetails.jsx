@@ -52,15 +52,12 @@ const emptyForm = {
   telefono: '',
   cargo: '',
   activo: false,
-  roles: [],
   permisos_personalizados: [],
 }
 
 function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
-  const [roles, setRoles] = useState([])
-  const [rolesLoading, setRolesLoading] = useState(false)
   const [permissionOptions, setPermissionOptions] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [permissionsLoading, setPermissionsLoading] = useState(false)
@@ -87,7 +84,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
     telefono: data?.telefono ?? '',
     cargo: data?.cargo ?? '',
     activo: Boolean(data?.activo),
-    roles: Array.isArray(data?.roles) ? data.roles : [],
     permisos_personalizados: Array.isArray(data?.permisos_personalizados)
       ? data.permisos_personalizados
       : [],
@@ -100,15 +96,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }))
-  }
-
-  const handleToggleRole = (roleId) => {
-    if (!isEditing) return
-    setFormData((prev) => {
-      const exists = prev.roles.includes(roleId)
-      const roles = exists ? prev.roles.filter((id) => id !== roleId) : [...prev.roles, roleId]
-      return { ...prev, roles }
-    })
   }
 
   const togglePermission = (moduleKey, actionKey, submoduleKey = '') => {
@@ -163,24 +150,25 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
     )
   }
 
-  const fetchRoles = useCallback(async () => {
-    setRolesLoading(true)
+  const fetchPermissionOptions = useCallback(async () => {
+    setPermissionsLoading(true)
     try {
-      const response = await fetch(`${API_URL}/usuarios/roles/`, {
+      const response = await fetch(`${API_URL}/usuarios/permisos/opciones/`, {
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Token ${token}` } : {}),
         },
       })
 
-      if (!response.ok) throw new Error('No se pudieron cargar los roles disponibles.')
+      if (!response.ok) throw new Error('No se pudieron cargar los permisos disponibles.')
 
-      const data = await response.json()
-      setRoles(Array.isArray(data) ? data : data.results || [])
+      const data = await response.json().catch(() => ({}))
+      const modulos = Array.isArray(data?.modulos) ? data.modulos : []
+      setPermissionOptions(modulos)
     } catch (err) {
-      setError(err.message || 'Ocurrió un problema al cargar los roles.')
+      setError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
-      setRolesLoading(false)
+      setPermissionsLoading(false)
     }
   }, [token])
 
@@ -243,10 +231,9 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
     setFormData(emptyForm)
     setOriginalData(emptyForm)
     setPermissionsMatrix({})
-    fetchRoles()
     fetchUser()
     fetchPermissionOptions()
-  }, [open, fetchRoles, fetchUser, fetchPermissionOptions])
+  }, [open, fetchUser, fetchPermissionOptions])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -581,33 +568,39 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                     <p>El usuario podrá iniciar sesión y operar el sistema.</p>
                   </div>
                 </label>
+              </div>
 
-                <div className="create-user__roles">
-                  <div className="create-user__roles-header">
-                    <div>
-                      <span>Roles</span>
-                      <p>Selecciona uno o más roles para definir los permisos.</p>
-                    </div>
-                    {rolesLoading && <small className="muted">Cargando roles...</small>}
+              <div className="permissions-matrix">
+                <div className="permissions-matrix__header">
+                  <div>
+                    <span>Matriz de permisos</span>
+                    <p>Activa las acciones permitidas para este usuario en cada sección.</p>
                   </div>
+                  {(permissionsLoading || !permissionOptions.length) && (
+                    <small className="muted">
+                      {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
+                    </small>
+                  )}
+                </div>
 
-                  <div className="create-user__roles-list">
-                    {!rolesLoading && !roles.length && (
-                      <p className="muted">No hay roles configurados todavía.</p>
-                    )}
-
-                    {roles.map((role) => (
-                      <label key={role.id} className="create-user__chip">
-                        <input
-                          type="checkbox"
-                          checked={formData.roles.includes(role.id)}
-                          onChange={() => handleToggleRole(role.id)}
-                          disabled={!isEditing || loadingData || saving}
-                        />
-                        <span>{role.nombre}</span>
-                      </label>
+                <div className="permissions-matrix__table" role="grid">
+                  <div className="permissions-matrix__row permissions-matrix__row--head">
+                    <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
+                    {ACTIONS.map((action) => (
+                      <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
+                        {action.label}
+                      </div>
                     ))}
                   </div>
+
+                  {permissionOptions.map((module) => (
+                    <div key={module.key}>
+                      {renderPermissionRow(module)}
+                      {module.submodulos?.map((submodule) =>
+                        submodule.key ? renderPermissionRow(module, submodule) : null
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
 
