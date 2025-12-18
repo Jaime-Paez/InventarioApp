@@ -64,6 +64,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [error, setError] = useState('')
   const [isEditing, setIsEditing] = useState(false)
+  const [activeTab, setActiveTab] = useState('general')
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
@@ -204,6 +205,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
     setFormData(emptyForm)
     setOriginalData(emptyForm)
     setPermissionsMatrix({})
+    setActiveTab('general')
     fetchUser()
     loadPermissionOptions()
   }, [open, fetchUser, loadPermissionOptions])
@@ -443,13 +445,35 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
             onMouseDown={(event) => event.stopPropagation()}
             onClick={handleClose}
             aria-label="Cerrar"
-          >
-            ×
-          </button>
-        </header>
+        >
+          ×
+        </button>
+      </header>
 
-        <form className="create-user__form" onSubmit={handleSubmit}>
-          <div className="create-user__body">
+      <form className="create-user__form" onSubmit={handleSubmit}>
+        <div className="create-user__tabs" role="tablist" aria-label="Secciones del usuario">
+          <button
+            type="button"
+            className={`create-user__tab${activeTab === 'general' ? ' create-user__tab--active' : ''}`}
+            onClick={() => setActiveTab('general')}
+            role="tab"
+            aria-selected={activeTab === 'general'}
+          >
+            General
+          </button>
+          <button
+            type="button"
+            className={`create-user__tab${activeTab === 'permisos' ? ' create-user__tab--active' : ''}`}
+            onClick={() => setActiveTab('permisos')}
+            role="tab"
+            aria-selected={activeTab === 'permisos'}
+          >
+            Permisos
+          </button>
+        </div>
+
+        <div className="create-user__body">
+          {activeTab === 'general' && (
             <section className="create-user__section">
               <div className="create-user__section-header">
                 <div>
@@ -524,13 +548,20 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                 </label>
               </div>
             </section>
+          )}
 
+          {activeTab === 'permisos' && (
             <section className="create-user__section">
               <div className="create-user__section-header">
                 <div>
                   <p className="create-user__eyebrow">Acceso y permisos</p>
                   <h4>Permisos</h4>
                 </div>
+                {(permissionsLoading || !permissionOptions.length) && (
+                  <small className="muted">
+                    {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
+                  </small>
+                )}
               </div>
 
               <div className="create-user__access-grid">
@@ -549,11 +580,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                     <span>Matriz de permisos</span>
                     <p>Activa las acciones permitidas para este usuario en cada sección.</p>
                   </div>
-                  {(permissionsLoading || !permissionOptions.length) && (
-                    <small className="muted">
-                      {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
-                    </small>
-                  )}
                 </div>
 
                 <div className="permissions-matrix__table" role="grid">
@@ -572,7 +598,8 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                 </div>
               </div>
             </section>
-          </div>
+          )}
+        </div>
 
           {error && <p className="create-user__error">{error}</p>}
 
