@@ -2,6 +2,7 @@ import WorkspaceTabs from '../tabs/WorkspaceTabs/WorkspaceTabs'
 import QuickActions from '../QuickActions/QuickActions'
 import UsersTable from '../admin/UsersTable/UsersTable'
 import './Workspace.css'
+import { labelHasAccess } from '../menuConfig'
 
 function Workspace({
   activeItem,
@@ -13,6 +14,7 @@ function Workspace({
   darkMode,
   onToggleTheme,
   token,
+  permissionIndex,
 }) {
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
@@ -20,8 +22,17 @@ function Workspace({
     .trim() || 'usuario'
 
   const showWelcome = !activeItem
+  const hasAccess = !activeItem || labelHasAccess(activeItem, permissionIndex)
 
   const renderContent = () => {
+    if (!hasAccess) {
+      return (
+        <p className="workspace__subtitle">
+          No tienes permisos para acceder a este módulo. Solicita acceso a un administrador.
+        </p>
+      )
+    }
+
     if (activeItem === 'Administrar') {
       return <UsersTable token={token} />
     }
