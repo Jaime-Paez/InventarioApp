@@ -1,55 +1,7 @@
 import { useMemo, useState } from 'react'
 import './Sidebar.css'
-import {
-  Layers,
-  ArrowRightLeft,
-  CircleArrowDown,
-  CircleArrowUp,
-  Tag,
-  Map,
-  Compass,
-  Box,
-  Truck,
-  Hexagon,
-  Building,
-  Hand,
-  UsersRound,
-  IdCard,
-  Settings,
-  PanelLeftClose,
-} from 'lucide-react'
-
-const MENU_STRUCTURE = [
-  { label: 'Inventario', icon: Layers },
-  {
-    label: 'Movimientos',
-    icon: ArrowRightLeft,
-    children: [
-      { label: 'Entradas', icon: CircleArrowDown },
-      { label: 'Salidas', icon: CircleArrowUp },
-    ],
-  },
-  { label: 'Productos', icon: Tag },
-  {
-    label: 'Sucursales',
-    icon: Map,
-    children: [
-      { label: 'Sucursales', icon: Compass },
-      { label: 'Bodegas', icon: Box },
-    ],
-  },
-  {
-    label: 'Proovedores',
-    icon: Truck,
-    children: [
-      { label: 'Marcas', icon: Hexagon },
-      { label: 'Casas comerciales', icon: Building },
-    ],
-  },
-  { label: 'Solicitudes', icon: Hand },
-  { label: 'Clientes', icon: UsersRound },
-  { label: 'Administrar', icon: IdCard },
-]
+import { Settings, PanelLeftClose } from 'lucide-react'
+import { MENU_STRUCTURE, filterMenuByPermissions } from '../menuConfig'
 
 function Sidebar({
   activeItem,
@@ -61,11 +13,15 @@ function Sidebar({
   partnerLogo,
   isOpen,
   onToggleSidebar,
+  permissionIndex,
 }) {
   const [openGroups, setOpenGroups] = useState({})
   const [profileOpen, setProfileOpen] = useState(false)
 
-  const menuItems = useMemo(() => MENU_STRUCTURE, [])
+  const menuItems = useMemo(
+    () => filterMenuByPermissions(MENU_STRUCTURE, permissionIndex),
+    [permissionIndex]
+  )
   const openTabSet = useMemo(() => new Set(openTabs), [openTabs])
 
   const toggleGroup = (label) => {
