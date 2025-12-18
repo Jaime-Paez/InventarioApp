@@ -7,8 +7,9 @@ import jpaezLight from '../../../assets/login/jpaez(light).png'
 import './DashboardLayout.css'
 import Sidebar from '../Sidebar/Sidebar'
 import Workspace from '../Workspace/Workspace'
+import { buildPermissionIndex, labelHasAccess } from '../menuConfig'
 
-function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme }) {
+function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme, permissions }) {
   const [openTabs, setOpenTabs] = useState([])
   const [activeItem, setActiveItem] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -17,12 +18,21 @@ function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme }) {
   const heroLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const brandLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const partnerLogo = useMemo(() => (darkMode ? jpaezDark : jpaezLight), [darkMode])
+  const permissionIndex = useMemo(() => buildPermissionIndex(permissions), [permissions])
 
   useEffect(() => {
     setHasEntered(true)
   }, [])
 
+  useEffect(() => {
+    setOpenTabs((prev) => prev.filter((tab) => labelHasAccess(tab, permissionIndex)))
+    if (activeItem && !labelHasAccess(activeItem, permissionIndex)) {
+      setActiveItem('')
+    }
+  }, [permissionIndex, activeItem])
+
   const handleSelect = (label) => {
+    if (!labelHasAccess(label, permissionIndex)) return
     setActiveItem(label)
     setOpenTabs((prev) => (prev.includes(label) ? prev : [...prev, label]))
   }
@@ -53,6 +63,7 @@ function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme }) {
         partnerLogo={partnerLogo}
         isOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((value) => !value)}
+        permissionIndex={permissionIndex}
       />
 
       <Workspace
@@ -65,6 +76,7 @@ function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme }) {
         token={token}
         darkMode={darkMode}
         onToggleTheme={onToggleTheme}
+        permissionIndex={permissionIndex}
       />
 
       {!isSidebarOpen && (
