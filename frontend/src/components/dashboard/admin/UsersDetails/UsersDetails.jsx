@@ -529,7 +529,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
               <div className="create-user__section-header">
                 <div>
                   <p className="create-user__eyebrow">Acceso y permisos</p>
-                  <h4>Estado y roles</h4>
+                  <h4>Permisos</h4>
                 </div>
               </div>
 
