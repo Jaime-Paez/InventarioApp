@@ -10,6 +10,8 @@ import 'primereact/resources/themes/lara-light-cyan/theme.css';
 // opcional (si usas utilidades)
 import 'primeflex/primeflex.css';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
 
 const getSystemThemePreference = () =>
   typeof window !== 'undefined' && window.matchMedia
@@ -24,13 +26,10 @@ function App() {
     return getSystemThemePreference()
   })
 
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('user')
-    return saved ? JSON.parse(saved) : null
-  })
+  const [user, setUser] = useState(null)
 
   const [token, setToken] = useState(() => localStorage.getItem('token') || '')
-  const [showApp, setShowApp] = useState(() => Boolean(token && user))
+  const [showApp, setShowApp] = useState(false)
   const [loginTransitioning, setLoginTransitioning] = useState(false)
 
   useEffect(() => {
@@ -46,15 +45,51 @@ function App() {
   }, [token])
 
   useEffect(() => {
-    if (user) {
-      localStorage.setItem('user', JSON.stringify(user))
-    } else {
-      localStorage.removeItem('user')
-    }
-  }, [user])
+    const fetchProfile = async () => {
+      if (!token) {
+        setUser(null)
+        setShowApp(false)
+        return
+      }
 
-  const handleLoginSuccess = (incomingUser, incomingToken) => {
-    setUser(incomingUser)
+      try {
+        const response = await fetch(`${API_URL}/auth/me/`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Token ${token}`,
+          },
+        })
+
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data?.detail || 'No se pudo obtener el perfil.')
+
+        const userData = {
+          ...data.usuario,
+          permisos: Array.isArray(data.permisos) ? data.permisos : null,
+          usuarioInternoId: data.usuario_interno_id,
+        }
+
+        setUser(userData)
+        setShowApp(true)
+      } catch (err) {
+        setUser(null)
+        setShowApp(false)
+        setToken('')
+        localStorage.removeItem('token')
+      }
+    }
+
+    fetchProfile()
+  }, [token])
+
+  const handleLoginSuccess = (incomingUser, incomingToken, incomingPermissions = null, usuarioInternoId = null) => {
+    const userWithPermissions = {
+      ...incomingUser,
+      permisos: incomingPermissions,
+      usuarioInternoId,
+    }
+
+    setUser(userWithPermissions)
     setToken(incomingToken)
     setLoginTransitioning(true)
 
@@ -91,6 +126,7 @@ function App() {
           darkMode={darkMode}
           onLogout={handleLogout}
           onToggleTheme={() => setDarkMode((value) => !value)}
+          permissions={user?.permisos ?? null}
         />
       )}
     </div>
