@@ -179,8 +179,14 @@ class PermisosDisponiblesAPIView(APIView):
         ]
 
         modulos = []
+        submodule_enabled = {
+            RolPermiso.Modulos.MOVIMIENTOS,
+            RolPermiso.Modulos.SUCURSALES,
+            RolPermiso.Modulos.PROVEEDORES,
+        }
+
         for modulo_key, modulo_label in RolPermiso.Modulos.choices:
-            if modulo_key == RolPermiso.Modulos.MOVIMIENTOS:
+            if modulo_key in submodule_enabled:
                 submodulos = [
                     {"key": key, "label": label}
                     for key, label in RolPermiso.SubModulos.choices

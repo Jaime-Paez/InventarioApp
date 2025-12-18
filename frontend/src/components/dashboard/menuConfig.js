@@ -22,30 +22,31 @@ export const MENU_STRUCTURE = [
     icon: ArrowRightLeft,
     moduleKey: 'movimientos',
     children: [
-      { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos', submoduleKey: 'mov_entrada_traslado' },
-      { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos', submoduleKey: 'mov_salida_traslado' },
+      { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos', submoduleKey: 'mov_entradas' },
+      { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos', submoduleKey: 'mov_salidas' },
     ],
   },
   { label: 'Productos', icon: Tag, moduleKey: 'productos' },
   {
     label: 'Sucursales',
     icon: MapIcon,
-    moduleKey: 'inventario',
+    moduleKey: 'sucursales',
     children: [
-      { label: 'Sucursales', icon: Compass, moduleKey: 'inventario' },
-      { label: 'Bodegas', icon: Box, moduleKey: 'inventario' },
+      { label: 'Sucursales', icon: Compass, moduleKey: 'sucursales', submoduleKey: 'suc_sucursales' },
+      { label: 'Bodegas', icon: Box, moduleKey: 'sucursales', submoduleKey: 'suc_bodegas' },
     ],
   },
   {
-    label: 'Proovedores',
+    label: 'Proveedores',
     icon: Truck,
+    moduleKey: 'proveedores',
     children: [
-      { label: 'Marcas', icon: Hexagon, moduleKey: 'marcas' },
-      { label: 'Casas comerciales', icon: Building, moduleKey: 'casa_comercial' },
+      { label: 'Marcas', icon: Hexagon, moduleKey: 'proveedores', submoduleKey: 'prov_marcas' },
+      { label: 'Casas comerciales', icon: Building, moduleKey: 'proveedores', submoduleKey: 'prov_casas' },
     ],
   },
   { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
-  { label: 'Clientes', icon: UsersRound, moduleKey: 'solicitudes' },
+  { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
 ]
 

@@ -32,6 +32,42 @@ class UsuarioAdmin(admin.ModelAdmin):
     list_display = ("nombres", "apellidos", "correo", "cargo", "activo")
     search_fields = ("nombres", "apellidos", "correo", "cargo")
     list_filter = ("activo",)
+    readonly_fields = ("permisos_personalizados_admin",)
+
+    fieldsets = (
+        (None, {"fields": ("nombres", "apellidos", "correo", "telefono", "cargo", "activo")}),
+        (
+            "Permisos personalizados",
+            {
+                "fields": ("permisos_personalizados_admin",),
+                "description": "Resumen de acciones otorgadas al usuario mediante su rol personalizado.",
+            },
+        ),
+    )
+
+    def permisos_personalizados_admin(self, obj):
+        if not obj.rol_personalizado:
+            return "—"
+        permisos = obj.rol_personalizado.permisos.all().order_by("modulo", "submodulo")
+        if not permisos.exists():
+            return "—"
+        lines = []
+        for permiso in permisos:
+            acciones = []
+            if permiso.puede_crear:
+                acciones.append("crear")
+            if permiso.puede_leer:
+                acciones.append("ver")
+            if permiso.puede_actualizar:
+                acciones.append("editar")
+            if permiso.puede_eliminar:
+                acciones.append("eliminar")
+            acciones_str = ", ".join(acciones) or "sin acciones"
+            sub = f" / {permiso.get_submodulo_display()}" if permiso.submodulo else ""
+            lines.append(f"{permiso.get_modulo_display()}{sub}: {acciones_str}")
+        return "; ".join(lines)
+
+    permisos_personalizados_admin.short_description = "Permisos personalizados"
 
 
 @admin.register(UsuarioSucursal)

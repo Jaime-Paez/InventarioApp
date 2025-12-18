@@ -17,38 +17,29 @@ class Rol(models.Model):
 
     def __str__(self) -> str:
         return self.nombre
-
-
 class RolPermiso(models.Model):
     """Permisos específicos asignados a un rol para un módulo."""
 
     class Modulos(models.TextChoices):
-        CASA_COMERCIAL = "casa_comercial", "Casa comercial"
         INVENTARIO = "inventario", "Inventario"
-        MARCAS = "marcas", "Marcas"
         MOVIMIENTOS = "movimientos", "Movimientos"
         PRODUCTOS = "productos", "Productos"
+        SUCURSALES = "sucursales", "Sucursales"
+        PROVEEDORES = "proveedores", "Proveedores"
         SOLICITUDES = "solicitudes", "Solicitudes"
-        TIPOS = "tipos", "Tipos"
-        USUARIOS = "usuarios", "Usuarios"
+        CLIENTES = "clientes", "Clientes"
+        USUARIOS = "usuarios", "Administrar"
 
     class SubModulos(models.TextChoices):
         """Submódulos disponibles para permisos específicos."""
 
         GENERAL = "", "General"
-        MOV_SALIDA_VENTA = "mov_salida_venta", "Salidas por venta"
-        MOV_SALIDA_TRASLADO = "mov_salida_traslado", "Salidas por traslado"
-        MOV_SALIDA_DEVOLUCION = "mov_salida_devolucion", "Salidas por devolución"
-        MOV_ENTRADA_TRASLADO = "mov_entrada_traslado", "Entradas por traslado"
-        MOV_ENTRADA_DEVOLUCION = "mov_entrada_devolucion", "Entradas por devolución"
-        MOV_ENTRADA_COMPRA_LOCAL = (
-            "mov_entrada_compra_local",
-            "Entradas por compra local",
-        )
-        MOV_ENTRADA_IMPORTACION = (
-            "mov_entrada_importacion",
-            "Entradas por importación",
-        )
+        MOV_ENTRADAS = "mov_entradas", "Entradas"
+        MOV_SALIDAS = "mov_salidas", "Salidas"
+        SUC_SUCURSALES = "suc_sucursales", "Sucursales"
+        SUC_BODEGAS = "suc_bodegas", "Bodegas"
+        PROV_MARCAS = "prov_marcas", "Marcas"
+        PROV_CASAS = "prov_casas", "Casas comerciales"
 
     rol = models.ForeignKey(
         Rol,
@@ -75,8 +66,14 @@ class RolPermiso(models.Model):
         constraints = [
             models.CheckConstraint(
                 check=models.Q(submodulo="")
-                | models.Q(modulo="movimientos"),
-                name="rol_permiso_submodulo_movimientos",
+                | models.Q(
+                    modulo__in=[
+                        "movimientos",
+                        "sucursales",
+                        "proveedores",
+                    ]
+                ),
+                name="rol_permiso_submodulo_modulos_limitados",
             )
         ]
 
@@ -90,11 +87,15 @@ class RolPermiso(models.Model):
 
     def clean(self):
         super().clean()
-        if self.submodulo and self.modulo != self.Modulos.MOVIMIENTOS:
+        if self.submodulo and self.modulo not in {
+            self.Modulos.MOVIMIENTOS,
+            self.Modulos.SUCURSALES,
+            self.Modulos.PROVEEDORES,
+        }:
             raise ValidationError(
                 {
-                    "submodulo": "Solo los permisos de Movimientos pueden tener una subcategoría.",
-                    "modulo": "El módulo debe ser Movimientos cuando se especifica una subcategoría.",
+                    "submodulo": "Solo los módulos con secciones internas aceptan submódulos.",
+                    "modulo": "El módulo debe permitir submódulos cuando se especifica uno.",
                 }
             )
 
