@@ -40,6 +40,17 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   }, [updateScrollControls])
 
   useEffect(() => {
+    const element = listRef.current
+
+    if (!element || typeof ResizeObserver === 'undefined') return undefined
+
+    const resizeObserver = new ResizeObserver(() => updateScrollControls())
+    resizeObserver.observe(element)
+
+    return () => resizeObserver.disconnect()
+  }, [updateScrollControls])
+
+  useEffect(() => {
     const activeTab = listRef.current?.querySelector('.workspace__tab.active')
     activeTab?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
   }, [activeItem])
