@@ -9,6 +9,64 @@ from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
 User = get_user_model()
 
 
+def _normalize_submodule(value):
+    return value or ""
+
+
+def validate_permissions_uniqueness(permisos):
+    combos = set()
+    for permiso in permisos:
+        modulo = permiso.get("modulo")
+        submodulo = _normalize_submodule(permiso.get("submodulo"))
+        key = (modulo, submodulo)
+        if key in combos:
+            raise serializers.ValidationError(
+                "No se pueden repetir permisos con el mismo módulo y submódulo."
+            )
+        combos.add(key)
+    return permisos
+
+
+def build_permissions_summary(roles, extra_roles=None):
+    """Agrupa los permisos de una colección de roles en una lista consolidada."""
+
+    roles_to_process = list(roles) + [r for r in extra_roles or [] if r]
+    summary = {}
+
+    for role in roles_to_process:
+        for permiso in role.permisos.all():
+            key = (permiso.modulo, _normalize_submodule(permiso.submodulo))
+            if key not in summary:
+                summary[key] = {
+                    "modulo": permiso.modulo,
+                    "submodulo": _normalize_submodule(permiso.submodulo),
+                    "puede_crear": False,
+                    "puede_leer": False,
+                    "puede_actualizar": False,
+                    "puede_eliminar": False,
+                }
+
+            summary[key]["puede_crear"] = (
+                summary[key]["puede_crear"] or permiso.puede_crear
+            )
+            summary[key]["puede_leer"] = summary[key]["puede_leer"] or permiso.puede_leer
+            summary[key]["puede_actualizar"] = (
+                summary[key]["puede_actualizar"] or permiso.puede_actualizar
+            )
+            summary[key]["puede_eliminar"] = (
+                summary[key]["puede_eliminar"] or permiso.puede_eliminar
+            )
+
+    return [
+        value
+        for value in summary.values()
+        if value["puede_crear"]
+        or value["puede_leer"]
+        or value["puede_actualizar"]
+        or value["puede_eliminar"]
+    ]
+
+
 class RolPermisoSerializer(serializers.ModelSerializer):
     """Serializa los permisos de un rol por módulo."""
 
@@ -41,7 +99,15 @@ class RolSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Rol
-        fields = ["id", "nombre", "descripcion", "activo", "permisos"]
+        fields = [
+            "id",
+            "nombre",
+            "descripcion",
+            "activo",
+            "es_personalizado",
+            "permisos",
+        ]
+        read_only_fields = ["es_personalizado"]
 
     def create(self, validated_data):
         permisos_data = validated_data.pop("permisos", [])
@@ -66,7 +132,7 @@ class RolSerializer(serializers.ModelSerializer):
         for permiso in permisos_data:
             permiso_data = permiso.copy()
             permiso_data.pop("id", None)
-            submodulo = permiso_data.get("submodulo") or ""
+            submodulo = _normalize_submodule(permiso_data.get("submodulo"))
             permiso_instance = RolPermiso(
                 rol=rol,
                 submodulo=submodulo,
@@ -77,17 +143,7 @@ class RolSerializer(serializers.ModelSerializer):
         RolPermiso.objects.bulk_create(permisos_instances)
 
     def validate_permisos(self, value):
-        combos = set()
-        for permiso in value:
-            modulo = permiso.get("modulo")
-            submodulo = permiso.get("submodulo") or ""
-            key = (modulo, submodulo)
-            if key in combos:
-                raise serializers.ValidationError(
-                    "No se pueden repetir permisos con el mismo módulo y submódulo."
-                )
-            combos.add(key)
-        return value
+        return validate_permissions_uniqueness(value)
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
@@ -99,6 +155,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         required=False,
     )
     roles_detalle = RolSerializer(source="roles", many=True, read_only=True)
+    permisos_personalizados = RolPermisoSerializer(many=True, required=False)
+    permisos_resumen = serializers.SerializerMethodField()
 
     class Meta:
         model = Usuario
@@ -112,7 +170,107 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "activo",
             "roles",
             "roles_detalle",
+            "permisos_personalizados",
+            "permisos_resumen",
         ]
+
+    def create(self, validated_data):
+        roles_data = validated_data.pop("roles", [])
+        permisos_personalizados = validated_data.pop("permisos_personalizados", None)
+        usuario = Usuario.objects.create(**validated_data)
+
+        if roles_data:
+            usuario.roles.set(roles_data)
+
+        self._sync_personalized_permissions(usuario, permisos_personalizados)
+        return usuario
+
+    def update(self, instance, validated_data):
+        roles_data = validated_data.pop("roles", None)
+        permisos_personalizados = validated_data.pop("permisos_personalizados", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if roles_data is not None:
+            instance.roles.set(roles_data)
+
+        self._sync_personalized_permissions(instance, permisos_personalizados)
+        return instance
+
+    def validate_permisos_personalizados(self, value):
+        return validate_permissions_uniqueness(value)
+
+    def _sync_personalized_permissions(self, usuario, permisos_data):
+        """Crea o actualiza el rol personalizado asociado al usuario."""
+
+        if permisos_data is None:
+            return
+
+        if not permisos_data:
+            self._remove_personalized_role(usuario)
+            return
+
+        role = usuario.rol_personalizado
+        created_role = False
+        if role is None:
+            role = Rol.objects.create(
+                nombre=f"Permisos - {usuario.correo}",
+                descripcion="Permisos personalizados del usuario",
+                activo=True,
+                es_personalizado=True,
+            )
+            usuario.rol_personalizado = role
+            usuario.save(update_fields=["rol_personalizado"])
+            created_role = True
+
+        self._replace_permissions(role, permisos_data)
+        usuario.roles.add(role)
+
+        if created_role:
+            usuario.refresh_from_db(fields=["roles"])
+
+    def _replace_permissions(self, rol, permisos_data):
+        rol.permisos.all().delete()
+        permisos_instances = []
+        for permiso in permisos_data:
+            permiso_data = permiso.copy()
+            permiso_data.pop("id", None)
+            submodulo = _normalize_submodule(permiso_data.get("submodulo"))
+            permiso_instance = RolPermiso(
+                rol=rol,
+                submodulo=submodulo,
+                **{k: v for k, v in permiso_data.items() if k != "submodulo"},
+            )
+            permiso_instance.full_clean()
+            permisos_instances.append(permiso_instance)
+
+        RolPermiso.objects.bulk_create(permisos_instances)
+
+    def _remove_personalized_role(self, usuario):
+        if usuario.rol_personalizado:
+            usuario.roles.remove(usuario.rol_personalizado)
+            usuario.rol_personalizado.permisos.all().delete()
+            usuario.rol_personalizado.delete()
+            usuario.rol_personalizado = None
+            usuario.save(update_fields=["rol_personalizado"])
+
+    def get_permisos_resumen(self, obj):
+        return build_permissions_summary(
+            obj.roles.all(),
+            extra_roles=[obj.rol_personalizado],
+        )
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.rol_personalizado:
+            data["permisos_personalizados"] = RolPermisoSerializer(
+                instance.rol_personalizado.permisos.all(), many=True
+            ).data
+        else:
+            data["permisos_personalizados"] = []
+        return data
 
 
 class UsuarioSucursalSerializer(serializers.ModelSerializer):
