@@ -19,7 +19,7 @@
   border-radius: 10px;
   box-shadow: var(--shadow-panel);
 
-  padding: 0; /* reference has clean container */
+  padding: 0;
   overflow: hidden;
   cursor: default;
 
@@ -80,11 +80,11 @@
 }
 
 .create-user__subtitle {
-  display: none; /* reference header is clean */
+  display: none;
 }
 
 .create-user__eyebrow {
-  display: none; /* reference header doesn't show eyebrow */
+  display: none;
 }
 
 .create-user__icon-button {
@@ -129,50 +129,87 @@
   width: 100%;
 }
 
+/* =========================
+   TABS – SEGMENTED CONTROL
+   ========================= */
+
 .create-user__tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  padding: 12px 18px 0;
-}
+  display: flex;
+  align-items: stretch;
 
-.create-user__tab {
+  width: min(720px, calc(100% - 400px));
+  margin: 12px auto 0;
+
   border: 1px solid var(--color-border);
+  border-radius: 10px;
+
   background: var(--color-surface);
+  overflow: hidden;
+}
+
+.dashboard-shell.dark .create-user__tabs {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+/* Botones unidos */
+.create-user__tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+
+  padding: 5px; /* compacto */
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+
   color: var(--color-text-primary);
-  padding: 10px 12px;
-  border-radius: 999px;
-  font-weight: 800;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.create-user__tab:hover {
-  transform: translateY(-1px);
+/* Línea divisoria entre tabs */
+.create-user__tab + .create-user__tab {
+  border-left: 1px solid var(--color-border);
 }
 
+/* Activo */
 .create-user__tab--active {
   background: var(--color-primary);
   color: var(--color-button-primary);
-  border-color: color-mix(in srgb, var(--color-primary) 65%, var(--color-border));
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
 
+/* Dark mode */
 .dashboard-shell.dark .create-user__tab {
-  background: var(--color-surface-darker);
-  color: var(--color-button-primary);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .create-user__tab--active {
   background: var(--color-primary-dark);
-  border-color: color-mix(in srgb, var(--color-primary-dark) 62%, var(--color-border));
-  box-shadow: 0 2px 12px color-mix(in srgb, var(--color-primary-dark) 26%, transparent);
+  color: var(--color-button-primary);
 }
 
-/* Main scroll area, like reference (top content scroll, footer fixed) */
+/* Hover SOLO para inactivos */
+.create-user__tab:not(.create-user__tab--active):hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.dashboard-shell.dark .create-user__tab:not(.create-user__tab--active):hover {
+  background: color-mix(in srgb, var(--color-primary-dark) 16%, transparent);
+}
+
+/* Accesibilidad */
+.create-user__tab:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px
+    color-mix(in srgb, var(--color-primary-dark) 40%, transparent);
+}
+
+/* ========================= */
+
 .create-user__body {
   display: grid;
-  grid-template-columns: 1fr; /* stack sections (cleaner like reference) */
+  grid-template-columns: 1fr;
   gap: 0;
   overflow: auto;
   padding: 10px 18px 0;
@@ -182,7 +219,6 @@
   min-height: 0;
 }
 
-/* Sections look like simple form blocks (no cards) */
 .create-user__section {
   background: transparent;
   border: none;
@@ -298,7 +334,7 @@
   opacity: 0.7;
 }
 
-/* Inputs: like reference (thin border, subtle radius, clean) */
+/* Inputs */
 .create-user__field input {
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -335,6 +371,7 @@
   border-color: var(--color-primary-dark);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 32%, transparent);
 }
+
 .create-user__access-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -356,7 +393,7 @@
   }
 }
 
-/* Checkbox block: make it simple like reference */
+/* Checkbox block */
 .create-user__checkbox {
   grid-column: span 2;
   display: flex;
@@ -396,88 +433,7 @@
   opacity: 0.74;
 }
 
-/* Roles box: neutral like reference */
-.create-user__roles {
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dashboard-shell.dark .create-user__roles {
-  border-color: var(--color-border);
-  background: var(--color-surface-darker);
-}
-
-.create-user__roles-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: inherit;
-}
-
-.create-user__roles-header span {
-  font-size: var(--font-size-md);
-  font-weight: 800;
-}
-
-.create-user__roles p {
-  margin: 2px 0 0;
-  color: var(--color-text-primary);
-  font-size: var(--font-size-base);
-  opacity: 0.65;
-}
-
-.dashboard-shell.dark .create-user__roles p {
-  color: var(--color-text-dark);
-  opacity: 0.72;
-}
-
-.create-user__roles-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.create-user__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--color-border);
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  color: inherit;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-}
-
-.create-user__chip:hover {
-  background: color-mix(in srgb, var(--color-primary-dark) 8%, transparent);
-  border-color: var(--color-primary-dark);
-  transform: translateY(-1px);
-}
-
-.dashboard-shell.dark .create-user__chip {
-  background: var(--color-surface-darker);
-  border-color: var(--color-border);
-}
-
-.dashboard-shell.dark .create-user__chip:hover {
-  background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
-  border-color: var(--color-primary-dark);
-}
-
-.create-user__chip input {
-  width: 14px;
-  height: 14px;
-  accent-color: var(--color-primary-dark);
-}
-
-/* Error stays visible but cleaner */
+/* Error */
 .create-user__error {
   color: var(--color-error-text);
   background: var(--color-error-bg);
@@ -494,7 +450,7 @@
   color: var(--color-error-text-dark);
 }
 
-/* Footer: like reference (bottom bar, left cancel, right create) */
+/* Footer */
 .create-user__footer {
   display: flex;
   justify-content: space-between;
@@ -503,7 +459,6 @@
 
   padding: 14px 18px;
   border-top: 1px solid var(--color-border);
-
   background: var(--modal-color);
 }
 
@@ -512,7 +467,6 @@
   border-top-color: var(--color-border);
 }
 
-/* Default buttons: make primary look like "Crear" purple in reference */
 .create-user__footer button {
   padding: 10px 18px;
   border-radius: 12px;
@@ -531,7 +485,7 @@
   box-shadow: none;
 }
 
-/* Ghost button: "Cancelar" grey pill like reference */
+/* Ghost button */
 .create-user__ghost {
   background: var(--color-surface);
   border: none;
@@ -557,7 +511,7 @@
   background: color-mix(in srgb, var(--color-primary-dark) 16%, transparent);
 }
 
-/* Resize handle: subtle like reference (keep function) */
+/* Resize handle */
 .create-user__resize-handle {
   position: absolute;
   right: 10px;
@@ -588,6 +542,7 @@
   opacity: 0.76;
 }
 
+/* Permissions matrix */
 .permissions-matrix {
   margin-top: 18px;
   border: 1px solid #e5e7eb;
@@ -723,5 +678,14 @@
   .create-user__footer button,
   .create-user__ghost {
     min-width: 110px;
+  }
+
+  .create-user__tabs {
+    width: calc(100% - 24px);
+  }
+
+  .create-user__tab {
+    font-size: 0.9rem;
+    padding: 7px 8px;
   }
 }

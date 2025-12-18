@@ -547,6 +547,25 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                   />
                 </label>
               </div>
+
+              <div className="create-user__section-header">
+                <div>
+                  <p className="create-user__eyebrow">Perfil</p>
+                  <h4>Activación</h4>
+                </div>
+                {loadingData && <small className="muted">Cargando datos...</small>}
+              </div>
+
+              <div className="create-user__access-grid">
+                <label className="create-user__checkbox">
+                  <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} disabled={!isEditing || loadingData || saving} />
+                  <div>
+                    <span>Cuenta activa</span>
+                    <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                  </div>
+                </label>
+              </div>
+
             </section>
           )}
 
@@ -564,38 +583,19 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                 )}
               </div>
 
-              <div className="create-user__access-grid">
-                <label className="create-user__checkbox">
-                  <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} disabled={!isEditing || loadingData || saving} />
-                  <div>
-                    <span>Cuenta activa</span>
-                    <p>El usuario podrá iniciar sesión y operar el sistema.</p>
-                  </div>
-                </label>
-              </div>
-
-              <div className="permissions-matrix">
-                <div className="permissions-matrix__header">
-                  <div>
-                    <span>Matriz de permisos</span>
-                    <p>Activa las acciones permitidas para este usuario en cada sección.</p>
-                  </div>
-                </div>
-
-                <div className="permissions-matrix__table" role="grid">
-                  <div className="permissions-matrix__row permissions-matrix__row--head">
-                    <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
-                    {ACTIONS.map((action) => (
-                      <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
-                        {action.label}
-                      </div>
-                    ))}
-                  </div>
-
-                  {permissionOptions.map((module) => (
-                    renderPermissionRow(module)
+              <div className="permissions-matrix__table" role="grid">
+                <div className="permissions-matrix__row permissions-matrix__row--head">
+                  <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
+                  {ACTIONS.map((action) => (
+                    <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
+                      {action.label}
+                    </div>
                   ))}
                 </div>
+
+                {permissionOptions.map((module) => (
+                  renderPermissionRow(module)
+                ))}
               </div>
             </section>
           )}
