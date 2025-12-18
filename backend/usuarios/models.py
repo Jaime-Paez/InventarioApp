@@ -22,24 +22,21 @@ class RolPermiso(models.Model):
 
     class Modulos(models.TextChoices):
         INVENTARIO = "inventario", "Inventario"
-        MOVIMIENTOS = "movimientos", "Movimientos"
+        MOVIMIENTOS_ENTRADAS = "movimientos_entradas", "Movimientos - Entradas"
+        MOVIMIENTOS_SALIDAS = "movimientos_salidas", "Movimientos - Salidas"
         PRODUCTOS = "productos", "Productos"
-        SUCURSALES = "sucursales", "Sucursales"
-        PROVEEDORES = "proveedores", "Proveedores"
+        SUCURSALES_SUCURSALES = "sucursales_sucursales", "Sucursales - Sucursales"
+        SUCURSALES_BODEGAS = "sucursales_bodegas", "Sucursales - Bodegas"
+        PROVEEDORES_MARCAS = "proveedores_marcas", "Proveedores - Marcas"
+        PROVEEDORES_CASAS = "proveedores_casas", "Proveedores - Casas comerciales"
         SOLICITUDES = "solicitudes", "Solicitudes"
         CLIENTES = "clientes", "Clientes"
         USUARIOS = "usuarios", "Administrar"
 
     class SubModulos(models.TextChoices):
-        """Submódulos disponibles para permisos específicos."""
+        """Submódulos disponibles para permisos específicos (solo general)."""
 
         GENERAL = "", "General"
-        MOV_ENTRADAS = "mov_entradas", "Entradas"
-        MOV_SALIDAS = "mov_salidas", "Salidas"
-        SUC_SUCURSALES = "suc_sucursales", "Sucursales"
-        SUC_BODEGAS = "suc_bodegas", "Bodegas"
-        PROV_MARCAS = "prov_marcas", "Marcas"
-        PROV_CASAS = "prov_casas", "Casas comerciales"
 
     rol = models.ForeignKey(
         Rol,
@@ -65,15 +62,8 @@ class RolPermiso(models.Model):
         verbose_name_plural = "Permisos de rol"
         constraints = [
             models.CheckConstraint(
-                check=models.Q(submodulo="")
-                | models.Q(
-                    modulo__in=[
-                        "movimientos",
-                        "sucursales",
-                        "proveedores",
-                    ]
-                ),
-                name="rol_permiso_submodulo_modulos_limitados",
+                check=models.Q(submodulo=""),
+                name="rol_permiso_sin_submodulos",
             )
         ]
 
@@ -87,15 +77,10 @@ class RolPermiso(models.Model):
 
     def clean(self):
         super().clean()
-        if self.submodulo and self.modulo not in {
-            self.Modulos.MOVIMIENTOS,
-            self.Modulos.SUCURSALES,
-            self.Modulos.PROVEEDORES,
-        }:
+        if self.submodulo:
             raise ValidationError(
                 {
-                    "submodulo": "Solo los módulos con secciones internas aceptan submódulos.",
-                    "modulo": "El módulo debe permitir submódulos cuando se especifica uno.",
+                    "submodulo": "Los submódulos están deshabilitados; usa solo 'General'.",
                 }
             )
 
