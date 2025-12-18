@@ -47,10 +47,44 @@ export const MENU_STRUCTURE = [
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
 ]
 
+const collectPermissionEntries = (permissionSource) => {
+  const collected = []
+
+  const visit = (entry) => {
+    if (!entry) return
+
+    if (Array.isArray(entry)) {
+      entry.forEach(visit)
+      return
+    }
+
+    if (Array.isArray(entry.results)) {
+      visit(entry.results)
+    }
+
+    if (Array.isArray(entry.permisos)) {
+      visit(entry.permisos)
+    }
+
+    if (entry.modulo) {
+      collected.push(entry)
+    }
+  }
+
+  visit(permissionSource)
+  return collected
+}
+
 export const buildPermissionIndex = (permissions) => {
-  if (!Array.isArray(permissions)) return null
+  const hasPermissionData =
+    Array.isArray(permissions) || Array.isArray(permissions?.results) || Array.isArray(permissions?.permisos)
+
+  if (!hasPermissionData) return null
+
+  const permissionEntries = collectPermissionEntries(permissions)
   const index = new Map()
-  permissions.forEach((permiso) => {
+
+  permissionEntries.forEach((permiso) => {
     if (!permiso?.modulo) return
     const key = permiso.modulo
     const current = index.get(key) || {
@@ -67,6 +101,7 @@ export const buildPermissionIndex = (permissions) => {
       puede_eliminar: current.puede_eliminar || Boolean(permiso.puede_eliminar),
     })
   })
+
   return index
 }
 
