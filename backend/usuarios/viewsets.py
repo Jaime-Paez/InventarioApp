@@ -185,6 +185,32 @@ class PerfilAPIView(APIView):
             }
         )
 
+    @staticmethod
+    def _get_effective_permissions(usuario_interno, email):
+        """Devuelve los permisos consolidados para el usuario autenticado.
+
+        Prioriza el usuario interno asociado; si no existe, intenta localizar un rol
+        personalizado con el patrón "Permisos - <correo>" para no devolver una lista vacía.
+        """
+
+        roles = []
+        extra_roles = []
+
+        if usuario_interno:
+            roles = list(usuario_interno.roles.all())
+            if usuario_interno.rol_personalizado:
+                extra_roles.append(usuario_interno.rol_personalizado)
+        else:
+            fallback_role = (
+                Rol.objects.prefetch_related("permisos")
+                .filter(es_personalizado=True, nombre__iexact=f"Permisos - {email}")
+                .first()
+            )
+            if fallback_role:
+                extra_roles.append(fallback_role)
+
+        return build_permissions_summary(roles, extra_roles=extra_roles)
+
 
 class PermisosDisponiblesAPIView(APIView):
     """Entrega la estructura de módulos y acciones disponibles para permisos."""
