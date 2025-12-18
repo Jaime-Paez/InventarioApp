@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
+from .permissions import UsuariosModulePermission
 from .serializers import (
     AuthUserSerializer,
     LoginSerializer,
@@ -16,32 +17,7 @@ from .serializers import (
     UsuarioSucursalSerializer,
     build_permissions_summary,
 )
-
-
-def _get_effective_permissions(usuario_interno, email):
-    """Devuelve los permisos consolidados para el usuario autenticado.
-
-    Prioriza el usuario interno asociado; si no existe, intenta localizar un rol
-    personalizado con el patrón "Permisos - <correo>" para no devolver una lista vacía.
-    """
-
-    roles = []
-    extra_roles = []
-
-    if usuario_interno:
-        roles = list(usuario_interno.roles.all())
-        if usuario_interno.rol_personalizado:
-            extra_roles.append(usuario_interno.rol_personalizado)
-    else:
-        fallback_role = (
-            Rol.objects.prefetch_related("permisos")
-            .filter(es_personalizado=True, nombre__iexact=f"Permisos - {email}")
-            .first()
-        )
-        if fallback_role:
-            extra_roles.append(fallback_role)
-
-    return build_permissions_summary(roles, extra_roles=extra_roles)
+from .utils import get_permisos_efectivos, get_usuario_interno_por_correo
 
 
 class RolViewSet(viewsets.ModelViewSet):
@@ -49,6 +25,7 @@ class RolViewSet(viewsets.ModelViewSet):
 
     queryset = Rol.objects.prefetch_related("permisos").all().order_by("nombre")
     serializer_class = RolSerializer
+    permission_classes = [IsAuthenticated, UsuariosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre"]
     ordering_fields = ["nombre"]
@@ -65,7 +42,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         .order_by("apellidos", "nombres")
     )
     serializer_class = UsuarioSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, UsuariosModulePermission]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombres", "apellidos", "correo", "cargo", "roles__nombre"]
@@ -89,6 +66,7 @@ class UsuarioSucursalViewSet(viewsets.ModelViewSet):
         .order_by("sucursal__nombre", "usuario__apellidos")
     )
     serializer_class = UsuarioSucursalSerializer
+    permission_classes = [IsAuthenticated, UsuariosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "usuario__nombres",
@@ -138,16 +116,8 @@ class LoginAPIView(APIView):
 
         token, _ = Token.objects.get_or_create(user=user)
 
-        usuario_interno = (
-            Usuario.objects.prefetch_related(
-                "rol_personalizado__permisos",
-                "roles__permisos",
-            )
-            .filter(correo__iexact=email)
-            .first()
-        )
-
-        permisos = _get_effective_permissions(usuario_interno, email)
+        usuario_interno = get_usuario_interno_por_correo(email)
+        permisos = get_permisos_efectivos(usuario_interno, email)
 
         return Response(
             {
@@ -166,16 +136,8 @@ class PerfilAPIView(APIView):
 
     def get(self, request):
         email = request.user.email
-        usuario_interno = (
-            Usuario.objects.prefetch_related(
-                "rol_personalizado__permisos",
-                "roles__permisos",
-            )
-            .filter(correo__iexact=email)
-            .first()
-        )
-
-        permisos = _get_effective_permissions(usuario_interno, email)
+        usuario_interno = get_usuario_interno_por_correo(email)
+        permisos = get_permisos_efectivos(usuario_interno, email)
 
         return Response(
             {
@@ -185,37 +147,11 @@ class PerfilAPIView(APIView):
             }
         )
 
-    @staticmethod
-    def _get_effective_permissions(usuario_interno, email):
-        """Devuelve los permisos consolidados para el usuario autenticado.
-
-        Prioriza el usuario interno asociado; si no existe, intenta localizar un rol
-        personalizado con el patrón "Permisos - <correo>" para no devolver una lista vacía.
-        """
-
-        roles = []
-        extra_roles = []
-
-        if usuario_interno:
-            roles = list(usuario_interno.roles.all())
-            if usuario_interno.rol_personalizado:
-                extra_roles.append(usuario_interno.rol_personalizado)
-        else:
-            fallback_role = (
-                Rol.objects.prefetch_related("permisos")
-                .filter(es_personalizado=True, nombre__iexact=f"Permisos - {email}")
-                .first()
-            )
-            if fallback_role:
-                extra_roles.append(fallback_role)
-
-        return build_permissions_summary(roles, extra_roles=extra_roles)
-
 
 class PermisosDisponiblesAPIView(APIView):
     """Entrega la estructura de módulos y acciones disponibles para permisos."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, UsuariosModulePermission]
 
     def get(self, request):
         acciones = [
