@@ -1,4 +1,7 @@
 from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.models import Group, Permission
 
 from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
 
@@ -41,3 +44,43 @@ class UsuarioSucursalAdmin(admin.ModelAdmin):
         "rol",
     )
     list_filter = ("es_responsable", "sucursal")
+
+
+# ---- Ocultar grupos/permisos del admin nativo de Django ----
+User = get_user_model()
+
+
+class UserAdmin(DjangoUserAdmin):
+    """User admin sin gestión de grupos ni permisos nativos."""
+
+    exclude = ("groups", "user_permissions")
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        # Filtra cualquier sección que involucre grupos/permisos
+        filtered = []
+        for title, fields in fieldsets:
+            if not fields:
+                continue
+            if any(field in ("groups", "user_permissions") for field in fields):
+                continue
+            filtered.append((title, fields))
+        return tuple(filtered)
+
+
+try:
+    admin.site.unregister(Group)
+except admin.sites.NotRegistered:
+    pass
+
+try:
+    admin.site.unregister(Permission)
+except admin.sites.NotRegistered:
+    pass
+
+try:
+    admin.site.unregister(User)
+except admin.sites.NotRegistered:
+    pass
+
+admin.site.register(User, UserAdmin)
