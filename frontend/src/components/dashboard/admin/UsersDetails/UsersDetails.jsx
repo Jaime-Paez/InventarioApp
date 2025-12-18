@@ -17,8 +17,7 @@ const buildMatrixFromList = (permisos = []) => {
   const matrix = {}
   permisos.forEach((permiso) => {
     if (!permiso?.modulo) return
-    const key = `${permiso.modulo}:${permiso.submodulo || ''}`
-    matrix[key] = {
+    matrix[permiso.modulo] = {
       puede_crear: Boolean(permiso.puede_crear),
       puede_leer: Boolean(permiso.puede_leer),
       puede_actualizar: Boolean(permiso.puede_actualizar),
@@ -30,11 +29,10 @@ const buildMatrixFromList = (permisos = []) => {
 
 const serializeMatrix = (matrix) =>
   Object.entries(matrix)
-    .map(([key, value]) => {
-      const [modulo, submodulo] = key.split(':')
+    .map(([modulo, value]) => {
       const payload = {
         modulo,
-        submodulo,
+        submodulo: '',
         puede_crear: Boolean(value?.puede_crear),
         puede_leer: Boolean(value?.puede_leer),
         puede_actualizar: Boolean(value?.puede_actualizar),
@@ -98,11 +96,10 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
     }))
   }
 
-  const togglePermission = (moduleKey, actionKey, submoduleKey = '') => {
+  const togglePermission = (moduleKey, actionKey) => {
     if (!isEditing) return
     setPermissionsMatrix((prev) => {
-      const key = `${moduleKey}:${submoduleKey || ''}`
-      const current = prev[key] || {
+      const current = prev[moduleKey] || {
         puede_crear: false,
         puede_leer: false,
         puede_actualizar: false,
@@ -114,33 +111,31 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
       const hasAction = ACTIONS.some((action) => updatedEntry[action.key])
 
       if (!hasAction) {
-        const { [key]: _ignored, ...rest } = prev
+        const { [moduleKey]: _ignored, ...rest } = prev
         return rest
       }
 
-      return { ...prev, [key]: updatedEntry }
+      return { ...prev, [moduleKey]: updatedEntry }
     })
   }
 
-  const renderPermissionRow = (module, submodule = null) => {
-    const submoduleKey = submodule?.key ?? ''
-    const label = submodule ? `${module.label} — ${submodule.label}` : module.label
-    const entryKey = `${module.key}:${submoduleKey}`
+  const renderPermissionRow = (module) => {
+    const entryKey = module.key
     const current = permissionsMatrix[entryKey] || {}
     const isDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading
 
     return (
       <div
         key={entryKey}
-        className={`permissions-matrix__row${submodule ? ' permissions-matrix__row--sub' : ''}`}
+        className="permissions-matrix__row"
       >
-        <div className="permissions-matrix__cell permissions-matrix__cell--label">{label}</div>
+        <div className="permissions-matrix__cell permissions-matrix__cell--label">{module.label}</div>
         {ACTIONS.map((action) => (
           <label key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
             <input
               type="checkbox"
               checked={Boolean(current?.[action.key])}
-              onChange={() => togglePermission(module.key, action.key, submoduleKey)}
+              onChange={() => togglePermission(module.key, action.key)}
               disabled={isDisabled}
             />
             <span>{action.label}</span>
@@ -572,12 +567,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                   </div>
 
                   {permissionOptions.map((module) => (
-                    <div key={module.key}>
-                      {renderPermissionRow(module)}
-                      {module.submodulos?.map((submodule) =>
-                        submodule.key ? renderPermissionRow(module, submodule) : null
-                      )}
-                    </div>
+                    renderPermissionRow(module)
                   ))}
                 </div>
               </div>

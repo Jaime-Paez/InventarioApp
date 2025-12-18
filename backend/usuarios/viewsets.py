@@ -178,28 +178,9 @@ class PermisosDisponiblesAPIView(APIView):
             {"key": "puede_eliminar", "label": "Eliminar"},
         ]
 
-        modulos = []
-        submodule_enabled = {
-            RolPermiso.Modulos.MOVIMIENTOS,
-            RolPermiso.Modulos.SUCURSALES,
-            RolPermiso.Modulos.PROVEEDORES,
-        }
-
-        for modulo_key, modulo_label in RolPermiso.Modulos.choices:
-            if modulo_key in submodule_enabled:
-                submodulos = [
-                    {"key": key, "label": label}
-                    for key, label in RolPermiso.SubModulos.choices
-                ]
-            else:
-                submodulos = [{"key": "", "label": "General"}]
-
-            modulos.append(
-                {
-                    "key": modulo_key,
-                    "label": modulo_label,
-                    "submodulos": submodulos,
-                }
-            )
+        modulos = [
+            {"key": modulo_key, "label": modulo_label}
+            for modulo_key, modulo_label in RolPermiso.Modulos.choices
+        ]
 
         return Response({"modulos": modulos, "acciones": acciones})
