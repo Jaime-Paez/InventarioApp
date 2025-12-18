@@ -96,6 +96,30 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
     }
   }, [token])
 
+  const fetchPermissionOptions = useCallback(async () => {
+    setPermissionsLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/usuarios/permisos/opciones/`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Token ${token}` } : {}),
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error('No se pudieron cargar los permisos disponibles.')
+      }
+
+      const data = await response.json().catch(() => ({}))
+      const modulos = Array.isArray(data?.modulos) ? data.modulos : []
+      setPermissionOptions(modulos)
+    } catch (err) {
+      setError(err.message || 'Ocurrió un problema al cargar los permisos.')
+    } finally {
+      setPermissionsLoading(false)
+    }
+  }, [token])
+
   useEffect(() => {
     if (!open) return
     setError('')

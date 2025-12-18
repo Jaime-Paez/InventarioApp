@@ -172,6 +172,28 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
     }
   }, [token])
 
+  const fetchPermissionOptions = useCallback(async () => {
+    setPermissionsLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/usuarios/permisos/opciones/`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Token ${token}` } : {}),
+        },
+      })
+
+      if (!response.ok) throw new Error('No se pudieron cargar los permisos disponibles.')
+
+      const data = await response.json().catch(() => ({}))
+      const modulos = Array.isArray(data?.modulos) ? data.modulos : []
+      setPermissionOptions(modulos)
+    } catch (err) {
+      setError(err.message || 'Ocurrió un problema al cargar los permisos.')
+    } finally {
+      setPermissionsLoading(false)
+    }
+  }, [token])
+
   const fetchUser = useCallback(async () => {
     if (!userId) return
     setLoadingData(true)
@@ -546,6 +568,40 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                     <p>El usuario podrá iniciar sesión y operar el sistema.</p>
                   </div>
                 </label>
+              </div>
+
+              <div className="permissions-matrix">
+                <div className="permissions-matrix__header">
+                  <div>
+                    <span>Matriz de permisos</span>
+                    <p>Activa las acciones permitidas para este usuario en cada sección.</p>
+                  </div>
+                  {(permissionsLoading || !permissionOptions.length) && (
+                    <small className="muted">
+                      {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
+                    </small>
+                  )}
+                </div>
+
+                <div className="permissions-matrix__table" role="grid">
+                  <div className="permissions-matrix__row permissions-matrix__row--head">
+                    <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
+                    {ACTIONS.map((action) => (
+                      <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
+                        {action.label}
+                      </div>
+                    ))}
+                  </div>
+
+                  {permissionOptions.map((module) => (
+                    <div key={module.key}>
+                      {renderPermissionRow(module)}
+                      {module.submodulos?.map((submodule) =>
+                        submodule.key ? renderPermissionRow(module, submodule) : null
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="permissions-matrix">
