@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import DashboardLayout from './components/dashboard/DashboardLayout/DashboardLayout'
 import Login from './components/login/Login/Login'
 import 'primereact/resources/primereact.min.css';
@@ -44,19 +44,20 @@ function App() {
     }
   }, [token])
 
-  useEffect(() => {
-    const fetchProfile = async () => {
-      if (!token) {
+  const fetchProfile = useCallback(
+    async (overrideToken) => {
+      const effectiveToken = overrideToken ?? token
+      if (!effectiveToken) {
         setUser(null)
         setShowApp(false)
-        return
+        return null
       }
 
       try {
         const response = await fetch(`${API_URL}/auth/me/`, {
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Token ${token}`,
+            Authorization: `Token ${effectiveToken}`,
           },
         })
 
@@ -71,30 +72,31 @@ function App() {
 
         setUser(userData)
         setShowApp(true)
+        return userData
       } catch (err) {
         setUser(null)
         setShowApp(false)
         setToken('')
         localStorage.removeItem('token')
+        return null
       }
-    }
+    },
+    [token]
+  )
 
+  useEffect(() => {
     fetchProfile()
-  }, [token])
+  }, [fetchProfile])
 
-  const handleLoginSuccess = (incomingUser, incomingToken, incomingPermissions = null, usuarioInternoId = null) => {
-    const userWithPermissions = {
-      ...incomingUser,
-      permisos: incomingPermissions,
-      usuarioInternoId,
-    }
-
-    setUser(userWithPermissions)
-    setToken(incomingToken)
+  const handleLoginSuccess = async (incomingUser, incomingToken, incomingPermissions = null, usuarioInternoId = null) => {
     setLoginTransitioning(true)
 
-    setTimeout(() => setShowApp(true), 850)
-    setTimeout(() => setLoginTransitioning(false), 1400)
+    setToken(incomingToken)
+    await fetchProfile(incomingToken)
+
+    // mantiene compatibilidad con la data de login mientras se carga el perfil
+    setUser({ ...incomingUser, permisos: incomingPermissions, usuarioInternoId })
+    setLoginTransitioning(false)
   }
 
   const handleLogout = () => {
