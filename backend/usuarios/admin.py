@@ -53,19 +53,34 @@ User = get_user_model()
 class UserAdmin(DjangoUserAdmin):
     """User admin sin gestión de grupos ni permisos nativos."""
 
-    exclude = ("groups", "user_permissions")
+    fieldsets = (
+        (None, {"fields": ("username", "password")}),
+        ("Información personal", {"fields": ("first_name", "last_name", "email")}),
+        (
+            "Permisos",
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                )
+            },
+        ),
+        ("Fechas importantes", {"fields": ("last_login", "date_joined")}),
+    )
 
-    def get_fieldsets(self, request, obj=None):
-        fieldsets = super().get_fieldsets(request, obj)
-        # Filtra cualquier sección que involucre grupos/permisos
-        filtered = []
-        for title, fields in fieldsets:
-            if not fields:
-                continue
-            if any(field in ("groups", "user_permissions") for field in fields):
-                continue
-            filtered.append((title, fields))
-        return tuple(filtered)
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": ("username", "password1", "password2", "first_name", "last_name", "email", "is_active", "is_staff", "is_superuser"),
+            },
+        ),
+    )
+
+    list_filter = ("is_staff", "is_superuser", "is_active")
+    filter_horizontal = ()
 
 
 try:
