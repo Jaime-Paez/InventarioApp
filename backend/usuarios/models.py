@@ -1,5 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 
 class Rol(models.Model):
@@ -140,3 +142,12 @@ class UsuarioSucursal(models.Model):
     def __str__(self) -> str:
         rol = f" - {self.rol}" if self.rol else ""
         return f"{self.usuario} @ {self.sucursal}{rol}"
+
+
+@receiver(post_delete, sender=Usuario)
+def eliminar_rol_personalizado(sender, instance, **kwargs):
+    """Elimina el rol/permisos personalizados al borrar el usuario."""
+
+    if instance.rol_personalizado:
+        instance.rol_personalizado.permisos.all().delete()
+        instance.rol_personalizado.delete()
