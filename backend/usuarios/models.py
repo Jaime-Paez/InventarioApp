@@ -8,6 +8,7 @@ class Rol(models.Model):
     nombre = models.CharField(max_length=150, unique=True)
     descripcion = models.TextField(blank=True)
     activo = models.BooleanField(default=True)
+    es_personalizado = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["nombre"]
@@ -16,38 +17,26 @@ class Rol(models.Model):
 
     def __str__(self) -> str:
         return self.nombre
-
-
 class RolPermiso(models.Model):
     """Permisos específicos asignados a un rol para un módulo."""
 
     class Modulos(models.TextChoices):
-        CASA_COMERCIAL = "casa_comercial", "Casa comercial"
         INVENTARIO = "inventario", "Inventario"
-        MARCAS = "marcas", "Marcas"
-        MOVIMIENTOS = "movimientos", "Movimientos"
+        MOVIMIENTOS_ENTRADAS = "movimientos_entradas", "Movimientos - Entradas"
+        MOVIMIENTOS_SALIDAS = "movimientos_salidas", "Movimientos - Salidas"
         PRODUCTOS = "productos", "Productos"
+        SUCURSALES_SUCURSALES = "sucursales_sucursales", "Sucursales - Sucursales"
+        SUCURSALES_BODEGAS = "sucursales_bodegas", "Sucursales - Bodegas"
+        PROVEEDORES_MARCAS = "proveedores_marcas", "Proveedores - Marcas"
+        PROVEEDORES_CASAS = "proveedores_casas", "Proveedores - Casas comerciales"
         SOLICITUDES = "solicitudes", "Solicitudes"
-        TIPOS = "tipos", "Tipos"
-        USUARIOS = "usuarios", "Usuarios"
+        CLIENTES = "clientes", "Clientes"
+        USUARIOS = "usuarios", "Administrar"
 
     class SubModulos(models.TextChoices):
-        """Submódulos disponibles para permisos específicos."""
+        """Submódulos disponibles para permisos específicos (solo general)."""
 
         GENERAL = "", "General"
-        MOV_SALIDA_VENTA = "mov_salida_venta", "Salidas por venta"
-        MOV_SALIDA_TRASLADO = "mov_salida_traslado", "Salidas por traslado"
-        MOV_SALIDA_DEVOLUCION = "mov_salida_devolucion", "Salidas por devolución"
-        MOV_ENTRADA_TRASLADO = "mov_entrada_traslado", "Entradas por traslado"
-        MOV_ENTRADA_DEVOLUCION = "mov_entrada_devolucion", "Entradas por devolución"
-        MOV_ENTRADA_COMPRA_LOCAL = (
-            "mov_entrada_compra_local",
-            "Entradas por compra local",
-        )
-        MOV_ENTRADA_IMPORTACION = (
-            "mov_entrada_importacion",
-            "Entradas por importación",
-        )
 
     rol = models.ForeignKey(
         Rol,
@@ -73,9 +62,8 @@ class RolPermiso(models.Model):
         verbose_name_plural = "Permisos de rol"
         constraints = [
             models.CheckConstraint(
-                check=models.Q(submodulo="")
-                | models.Q(modulo="movimientos"),
-                name="rol_permiso_submodulo_movimientos",
+                check=models.Q(submodulo=""),
+                name="rol_permiso_sin_submodulos",
             )
         ]
 
@@ -89,11 +77,10 @@ class RolPermiso(models.Model):
 
     def clean(self):
         super().clean()
-        if self.submodulo and self.modulo != self.Modulos.MOVIMIENTOS:
+        if self.submodulo:
             raise ValidationError(
                 {
-                    "submodulo": "Solo los permisos de Movimientos pueden tener una subcategoría.",
-                    "modulo": "El módulo debe ser Movimientos cuando se especifica una subcategoría.",
+                    "submodulo": "Los submódulos están deshabilitados; usa solo 'General'.",
                 }
             )
 
@@ -110,6 +97,13 @@ class Usuario(models.Model):
     roles = models.ManyToManyField(
         Rol,
         related_name="usuarios",
+        blank=True,
+    )
+    rol_personalizado = models.OneToOneField(
+        Rol,
+        on_delete=models.SET_NULL,
+        related_name="usuario_personalizado",
+        null=True,
         blank=True,
     )
 
