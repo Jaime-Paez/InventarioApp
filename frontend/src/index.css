@@ -18,8 +18,11 @@
   --table-color-selected: #eef2ff;
   --table-color-selected-hover: #e0e7ff;
   --table-color-search: #FFFFFF;
+
   --table-color-dark: #232324;
   --table-color-dark-hover: #2b2a2a;
+  --table-color-selected-dark: #434343;
+  --table-color-selected-hover-dark: #343434;
   --table-color-search-dark: #3D3D3D;
 
   /* ================MODALS================== */

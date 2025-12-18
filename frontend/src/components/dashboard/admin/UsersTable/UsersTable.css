@@ -185,12 +185,6 @@
   color: var(--color-button-primary);
 }
 
-.dashboard-shell.dark .rounded-icon-btn:hover:not(:disabled) {
-  background: rgba(0, 144, 187, 0.16);
-  border-color: rgba(0, 144, 187, 0.4);
-  color: var(--color-primary-dark-strong);
-}
-
 .rounded-icon-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -305,13 +299,6 @@
   background: var(--table-color-dark);
 }
 
-/* THEAD dark */
-.dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--color-text-dark);
-  border-bottom-color: var(--color-border-dark);
-}
-
 /* THEAD dark (sortable/resizable/reorderable cells) */
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-sortable-column,
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-resizable-column,
@@ -343,23 +330,21 @@
   border-bottom-color: var(--color-border-dark);
 }
 
-/* ✅ Seleccionado por checkbox (dark) */
+/* ✅ Seleccionado por checkbox (dark) usando variables */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
-  background: rgba(0, 144, 187, 0.16);
+  background: var(--table-color-selected-dark);
 }
+
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow:hover > td {
-  background: rgba(0, 144, 187, 0.22);
+  background: var(--table-color-selected-hover-dark);
 }
+
+
 
 /* Row-selection checkboxes (base dark) */
 .dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box {
-  background: #1f242d;
-  border-color: var(--color-border-dark);
-}
-
-.dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box:hover {
-  border-color: rgba(0, 144, 187, 0.55);
-  background: #262c37;
+  background: var(--table-color-dark);
+  border-color: var(--color-border);
 }
 
 /* Gridlines dark */
@@ -376,10 +361,6 @@
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-frozen-column,
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td.p-frozen-column {
   background: var(--color-surface-dark);
-}
-
-.dashboard-shell.dark .users-datatable .p-datatable-scrollable-header-box .p-frozen-column {
-  background: rgba(255, 255, 255, 0.04);
 }
 
 /* ====== Inputs / Dropdowns dentro de filtros ====== */
@@ -403,10 +384,6 @@
 
 .dashboard-shell.dark .p-dropdown-panel .p-dropdown-items .p-dropdown-item {
   color: var(--color-text-dark);
-}
-
-.dashboard-shell.dark .p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight {
-  background: rgba(0, 144, 187, 0.22);
 }
 
 /* ====== Paginador centrado ====== */
@@ -433,8 +410,8 @@
 }
 
 .dashboard-shell.dark .users-datatable .p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
-  background: rgba(0, 144, 187, 0.22);
-  border-color: rgba(0, 144, 187, 0.35);
+  background: var(--color-primary);
+  border-color: var(--color-primary-strong);
 }
 
 /* Column widths */
@@ -467,20 +444,20 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--sidebar-backgorund-color);
   z-index: 3;
 }
 
 .dashboard-shell.dark .spinner-container {
-  background: rgba(24, 24, 24, 0.7);
+  background: var(--table-color-dark-hover);
 }
 
 .spinner {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 3px solid #e5e7eb;
-  border-top-color: #111827;
+  border: 3px solid var(--color-text-dark);
+  border-top-color: var(--color-primary);
   animation: spin 0.9s linear infinite;
 }
 
@@ -488,22 +465,6 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-.stale-data-msg {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #f97316;
-  color: #fff;
-  padding: 8px 12px;
-  border-radius: 10px;
-  font-weight: 700;
-  margin: 10px;
-}
-
-.dashboard-shell.dark .stale-data-msg {
-  background: #c2410c;
 }
 
 /* ====== OverlayPanel (Columnas) en dark ====== */
@@ -524,11 +485,6 @@
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
   border: 1px solid var(--color-border-dark);
-}
-
-.dashboard-shell.dark .p-overlaypanel:before,
-.dashboard-shell.dark .p-overlaypanel:after {
-  border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
 /* ====== Responsive ====== */

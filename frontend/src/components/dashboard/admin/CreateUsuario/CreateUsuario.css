@@ -31,9 +31,9 @@
 }
 
 .dashboard-shell.dark .create-user__modal {
-  background: var(--color-surface-dark);
+  background: var(--table-color-dark);
   border-color: var(--color-border);
-  color: var(--color-text-dark);
+  color: var(--color-button-primary);
 }
 
 .create-user__header {
@@ -48,7 +48,7 @@
 }
 
 .dashboard-shell.dark .create-user__header {
-  background: var(--color-surface-dark);
+  background: var(--table-color-dark);
   border-bottom-color: var(--color-border);
 }
 
@@ -176,7 +176,6 @@
   margin: 0;
   font-size: var(--font-size-md);
   font-weight: 700;
-  color: inherit;
 }
 
 .create-user__hint {
@@ -217,7 +216,7 @@
 }
 
 .dashboard-shell.dark .create-user__field span {
-  color: var(--color-text-dark);
+  color: var(--color-button-primary);
   opacity: 0.78;
 }
 
@@ -284,7 +283,7 @@
 .dashboard-shell.dark .create-user__field input {
   background: var(--color-surface-darker);
   border-color: var(--color-border);
-  color: var(--color-text-dark);
+  color: var(--color-button-primary);
 }
 
 .dashboard-shell.dark .create-user__field input::placeholder {
@@ -469,7 +468,7 @@
 }
 
 .dashboard-shell.dark .create-user__footer {
-  background: var(--color-surface-dark);
+  background: var(--table-color-dark);
   border-top-color: var(--color-border);
 }
 
