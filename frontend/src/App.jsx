@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import DashboardLayout from './components/dashboard/DashboardLayout/DashboardLayout'
 import Login from './components/login/Login/Login'
 import 'primereact/resources/primereact.min.css';
@@ -9,6 +9,8 @@ import 'primereact/resources/themes/lara-light-cyan/theme.css';
 
 // opcional (si usas utilidades)
 import 'primeflex/primeflex.css';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 
 const getSystemThemePreference = () =>
@@ -24,13 +26,10 @@ function App() {
     return getSystemThemePreference()
   })
 
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('user')
-    return saved ? JSON.parse(saved) : null
-  })
+  const [user, setUser] = useState(null)
 
   const [token, setToken] = useState(() => localStorage.getItem('token') || '')
-  const [showApp, setShowApp] = useState(() => Boolean(token && user))
+  const [showApp, setShowApp] = useState(false)
   const [loginTransitioning, setLoginTransitioning] = useState(false)
 
   useEffect(() => {
@@ -45,21 +44,59 @@ function App() {
     }
   }, [token])
 
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('user', JSON.stringify(user))
-    } else {
-      localStorage.removeItem('user')
-    }
-  }, [user])
+  const fetchProfile = useCallback(
+    async (overrideToken) => {
+      const effectiveToken = overrideToken ?? token
+      if (!effectiveToken) {
+        setUser(null)
+        setShowApp(false)
+        return null
+      }
 
-  const handleLoginSuccess = (incomingUser, incomingToken) => {
-    setUser(incomingUser)
-    setToken(incomingToken)
+      try {
+        const response = await fetch(`${API_URL}/auth/me/`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Token ${effectiveToken}`,
+          },
+        })
+
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data?.detail || 'No se pudo obtener el perfil.')
+
+        const userData = {
+          ...data.usuario,
+          permisos: Array.isArray(data.permisos) ? data.permisos : null,
+          usuarioInternoId: data.usuario_interno_id,
+        }
+
+        setUser(userData)
+        setShowApp(true)
+        return userData
+      } catch (err) {
+        setUser(null)
+        setShowApp(false)
+        setToken('')
+        localStorage.removeItem('token')
+        return null
+      }
+    },
+    [token]
+  )
+
+  useEffect(() => {
+    fetchProfile()
+  }, [fetchProfile])
+
+  const handleLoginSuccess = async (incomingUser, incomingToken, incomingPermissions = null, usuarioInternoId = null) => {
     setLoginTransitioning(true)
 
-    setTimeout(() => setShowApp(true), 850)
-    setTimeout(() => setLoginTransitioning(false), 1400)
+    setToken(incomingToken)
+    await fetchProfile(incomingToken)
+
+    // mantiene compatibilidad con la data de login mientras se carga el perfil
+    setUser({ ...incomingUser, permisos: incomingPermissions, usuarioInternoId })
+    setLoginTransitioning(false)
   }
 
   const handleLogout = () => {
@@ -91,6 +128,7 @@ function App() {
           darkMode={darkMode}
           onLogout={handleLogout}
           onToggleTheme={() => setDarkMode((value) => !value)}
+          permissions={user?.permisos ?? null}
         />
       )}
     </div>
