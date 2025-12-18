@@ -83,7 +83,8 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
         return
       }
 
-      onLoginSuccess(data.usuario, data.token)
+      const permisos = Array.isArray(data.permisos) ? data.permisos : null
+      onLoginSuccess(data.usuario, data.token, permisos, data.usuario_interno_id)
       setStatusMessage('¡Bienvenido de nuevo!')
       setLoginData({ email: '', password: '' })
     } catch (error) {
