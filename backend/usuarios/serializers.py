@@ -195,16 +195,26 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
         role = usuario.rol_personalizado
         created_role = False
+
         if role is None:
-            role = Rol.objects.create(
-                nombre=f"Permisos - {usuario.correo}",
-                descripcion="Permisos personalizados del usuario",
-                activo=True,
-                es_personalizado=True,
+            role_name = f"Permisos - {usuario.correo}"
+            role = (
+                Rol.objects.filter(es_personalizado=True, nombre__iexact=role_name)
+                .order_by("id")
+                .first()
             )
+
+            if role is None:
+                role = Rol.objects.create(
+                    nombre=role_name,
+                    descripcion="Permisos personalizados del usuario",
+                    activo=True,
+                    es_personalizado=True,
+                )
+                created_role = True
+
             usuario.rol_personalizado = role
             usuario.save(update_fields=["rol_personalizado"])
-            created_role = True
 
         self._replace_permissions(role, permisos_data)
         if created_role:
