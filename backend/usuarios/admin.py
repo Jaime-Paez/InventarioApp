@@ -18,8 +18,8 @@ class RolPermisoInline(admin.TabularInline):
 
 @admin.register(Rol)
 class RolAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "activo")
-    list_filter = ("activo",)
+    list_display = ("nombre", "activo", "es_personalizado")
+    list_filter = ("activo", "es_personalizado")
     search_fields = ("nombre",)
     inlines = [RolPermisoInline]
 

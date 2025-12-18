@@ -8,6 +8,7 @@ class Rol(models.Model):
     nombre = models.CharField(max_length=150, unique=True)
     descripcion = models.TextField(blank=True)
     activo = models.BooleanField(default=True)
+    es_personalizado = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["nombre"]
@@ -110,6 +111,13 @@ class Usuario(models.Model):
     roles = models.ManyToManyField(
         Rol,
         related_name="usuarios",
+        blank=True,
+    )
+    rol_personalizado = models.OneToOneField(
+        Rol,
+        on_delete=models.SET_NULL,
+        related_name="usuario_personalizado",
+        null=True,
         blank=True,
     )
 

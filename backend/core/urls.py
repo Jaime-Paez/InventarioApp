@@ -29,6 +29,7 @@ from tipos.viewsets import (
 )
 from usuarios.viewsets import (
     LoginAPIView,
+    PermisosDisponiblesAPIView,
     PerfilAPIView,
     RegistroAPIView,
     RolViewSet,
@@ -108,5 +109,10 @@ urlpatterns = [
     path("auth/register/", RegistroAPIView.as_view(), name="auth-register"),
     path("auth/login/", LoginAPIView.as_view(), name="auth-login"),
     path("auth/me/", PerfilAPIView.as_view(), name="auth-profile"),
+    path(
+        "usuarios/permisos/opciones/",
+        PermisosDisponiblesAPIView.as_view(),
+        name="usuarios-permisos-opciones",
+    ),
     path("", include(router.urls)),
 ]
