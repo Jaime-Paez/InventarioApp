@@ -73,9 +73,7 @@ class RolPermisoSerializer(serializers.ModelSerializer):
     modulo_display = serializers.CharField(
         source="get_modulo_display", read_only=True
     )
-    submodulo_display = serializers.CharField(
-        source="get_submodulo_display", read_only=True
-    )
+    submodulo = serializers.CharField(write_only=True, required=False, allow_blank=True, default="")
 
     class Meta:
         model = RolPermiso
@@ -84,7 +82,6 @@ class RolPermisoSerializer(serializers.ModelSerializer):
             "modulo",
             "modulo_display",
             "submodulo",
-            "submodulo_display",
             "puede_crear",
             "puede_leer",
             "puede_actualizar",
