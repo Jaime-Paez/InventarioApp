@@ -156,7 +156,7 @@
 
 .dashboard-shell.dark .search-input::placeholder,
 .dashboard-shell.dark .search-input-icon {
-  color: var(--color-border);;
+  color: var(--color-border);
 }
 
 .rounded-icon-btn {
@@ -272,15 +272,15 @@
 }
 
 .users-datatable .p-datatable-tbody > tr:hover > td {
-  background: var(--table-color-hover)
+  background: var(--table-color-hover);
 }
 
 /* ✅ Seleccionado por checkbox (light) */
 .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
-  background: var(--table-color-selected)
+  background: var(--table-color-selected);
 }
 .users-datatable .p-datatable-tbody > tr.selected-row-shadow:hover > td {
-  background: var(--table-color-selected-hover)
+  background: var(--table-color-selected-hover);
 }
 
 /* ====== GRIDLINES (showGridlines) ====== */
@@ -314,7 +314,6 @@
   color: var(--color-text-dark);
 }
 
-
 /* TBODY dark */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td {
   border-bottom-color: var(--color-border-dark);
@@ -330,16 +329,13 @@
   border-bottom-color: var(--color-border-dark);
 }
 
-/* ✅ Seleccionado por checkbox (dark) usando variables */
+/* ✅ Seleccionado por checkbox (dark) */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow > td {
   background: var(--table-color-selected-dark);
 }
-
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.selected-row-shadow:hover > td {
   background: var(--table-color-selected-hover-dark);
 }
-
-
 
 /* Row-selection checkboxes (base dark) */
 .dashboard-shell.dark .users-datatable .p-checkbox .p-checkbox-box {
@@ -360,7 +356,7 @@
 
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-frozen-column,
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td.p-frozen-column {
-  background: var(--color-surface-dark);
+  background: var(--table-color-dark);
 }
 
 /* ====== Inputs / Dropdowns dentro de filtros ====== */
@@ -422,11 +418,6 @@
 
 .column-max-min-width--small {
   min-width: 120px;
-  text-align: center;
-}
-
-.row-selection-column {
-  width: 52px;
   text-align: center;
 }
 
@@ -519,7 +510,113 @@
   border-width: 0px;
 }
 
+/* =========================================================
+   ✅ FIX REAL: CLAVAR ANCHO DE LA COLUMNA DE CHECKBOXES
+   (scrollable + frozen renderiza en header/body separados)
+   ========================================================= */
 
-.dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th.p-frozen-column, .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td.p-frozen-column{
-  background: var(--table-color-dark);
+/* NO uses display: flow; acá. Esto es lo normal en Prime. */
+.p-datatable .p-column-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
 }
+
+/* Fuerza ancho en TH y TD de esa columna (con !important) */
+.users-datatable .p-datatable-thead > tr > th.row-selection-column,
+.users-datatable .p-datatable-tbody > tr > td.row-selection-column {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 0 !important; /* 🔥 este es el que usualmente infla */
+  text-align: center;
+}
+
+/* Asegura que el frozen no invente ancho */
+.users-datatable .p-datatable-thead > tr > th.row-selection-column.p-frozen-column,
+.users-datatable .p-datatable-tbody > tr > td.row-selection-column.p-frozen-column {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+}
+
+/* Contenedor clickeable centrado (sin inline styles) */
+.row-selection-click-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 100%;
+  user-select: none;
+}
+
+/* Por si el checkbox mete margin/padding extra */
+.users-datatable .row-selection-click-block .p-checkbox {
+  margin: 0 !important;
+}
+
+/* Si quieres aún más pequeño, cambia a 36px aquí y en JSX selectionColStyle */
+.row-selection-column {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+}
+
+
+/* ✅ Fijar ancho del área FROZEN (la parte izquierda) */
+.users-datatable .p-datatable-frozen-view,
+.users-datatable .p-datatable-frozen-view table,
+.users-datatable .p-datatable-frozen-view colgroup col {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+}
+
+/* ✅ Fijar ancho del TH/TD de la columna de selección */
+.users-datatable th.row-selection-column,
+.users-datatable td.row-selection-column {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 0 !important;
+  text-align: center;
+  overflow: hidden; /* clave para que no “empuje” */
+}
+
+/* Contenedor del checkbox centrado */
+.row-selection-click-block {
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Evita que el contenido del header se vuelva más ancho que la celda */
+.users-datatable th.row-selection-column .p-column-header-content {
+  width: 40px !important;
+  justify-content: center;
+}
+
+/* =========================================================
+   ✅ OVERRIDE EXACTO del rule que fija 240px (pr_id_55)
+   ========================================================= */
+
+[data-pc-name="datatable"][pr_id_55] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th:nth-child(1),
+[data-pc-name="datatable"][pr_id_55] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td:nth-child(1),
+[data-pc-name="datatable"][pr_id_55] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tfoot"] > tr > td:nth-child(1) {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 0 !important;
+}
+
+/* Por si el frozen-view está tomando ancho del primer col */
+[data-pc-name="datatable"][pr_id_55] .p-datatable-frozen-view,
+[data-pc-name="datatable"][pr_id_55] .p-datatable-frozen-view table {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+}
+

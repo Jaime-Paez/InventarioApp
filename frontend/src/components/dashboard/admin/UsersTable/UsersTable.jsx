@@ -164,17 +164,12 @@ function UsersTable({
     const id = normId(rowData?.id)
 
     return (
-      <span
-        className="row-selection-click-block"
-        style={{ display: 'flex', justifyContent: 'center' }}
-        onClick={(ev) => ev.stopPropagation()}
-      >
+      <span className="row-selection-click-block" onClick={(ev) => ev.stopPropagation()}>
         <Checkbox
           binary
           checked={selectedRowIds.includes(id)}
           onChange={(e) => {
             e.originalEvent?.stopPropagation?.()
-            // ✅ TOGGLE robusto (no depende de e.checked)
             setSelectedRowIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
           }}
         />
@@ -182,24 +177,29 @@ function UsersTable({
     )
   }
 
-  const rowSelectionHeaderTemplate = () => {
-    return (
-      <span
-        className="row-selection-click-block"
-        style={{ display: 'flex', justifyContent: 'center' }}
-        onClick={(ev) => ev.stopPropagation()}
-      >
-        <Checkbox
-          binary
-          checked={allRowsSelected}
-          onChange={(e) => {
-            e.originalEvent?.stopPropagation?.()
-            setSelectedRowIds(allRowsSelected ? [] : allRowIds)
-          }}
-        />
-      </span>
-    )
-  }
+  const rowSelectionHeaderTemplate = () => (
+    <span className="row-selection-click-block" onClick={(ev) => ev.stopPropagation()}>
+      <Checkbox
+        binary
+        checked={allRowsSelected}
+        onChange={(e) => {
+          e.originalEvent?.stopPropagation?.()
+          setSelectedRowIds(allRowsSelected ? [] : allRowIds)
+        }}
+      />
+    </span>
+  )
+
+  // ✅ Estilos duros para clavar el ancho (header + body)
+  const selectionColStyle = useMemo(
+    () => ({
+      width: '40px',
+      minWidth: '40px',
+      maxWidth: '40px',
+      textAlign: 'center',
+    }),
+    []
+  )
 
   // ---------------- Columns ----------------
   const columnsData = useMemo(
@@ -307,7 +307,6 @@ function UsersTable({
   const [showDetailsModal, setShowDetailsModal] = useState(false)
 
   const handleRowClick = (event) => {
-    // Si el click viene del checkbox, no abrir detalles
     const t = event?.originalEvent?.target
     if (t?.closest?.('.row-selection-click-block')) return
 
@@ -373,7 +372,6 @@ function UsersTable({
         <button className="users-circle users-circle--pdf" type="button" title="PDF" onClick={onExportPdf} disabled={!onExportPdf}>
           <i className="pi pi-file-pdf" />
         </button>
-        
       </div>
     </div>
   )
@@ -427,6 +425,7 @@ function UsersTable({
           size="small"
           scrollable
           scrollHeight="flex"
+          frozenWidth="40px"
           paginator
           rows={25}
           rowsPerPageOptions={[5, 10, 25, 50]}
@@ -439,11 +438,23 @@ function UsersTable({
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
-          columnResizeMode="expand"
+          columnResizeMode="fit"
           onRowClick={handleRowClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
         >
-          <Column className="row-selection-column" frozen header={rowSelectionHeaderTemplate} body={rowSelectionTemplate} />
+          <Column
+            frozen
+            header={rowSelectionHeaderTemplate}
+            body={rowSelectionTemplate}
+            headerClassName="row-selection-column"
+            bodyClassName="row-selection-column"
+            style={selectionColStyle}
+            headerStyle={selectionColStyle}
+            bodyStyle={selectionColStyle}
+            exportable={false}
+            reorderable={false}
+          />
+
 
           {selectedColumns.map((column, index) => {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
