@@ -53,8 +53,14 @@ function App() {
     }
   }, [user])
 
-  const handleLoginSuccess = (incomingUser, incomingToken) => {
-    setUser(incomingUser)
+  const handleLoginSuccess = (incomingUser, incomingToken, incomingPermissions = null, usuarioInternoId = null) => {
+    const userWithPermissions = {
+      ...incomingUser,
+      permisos: incomingPermissions,
+      usuarioInternoId,
+    }
+
+    setUser(userWithPermissions)
     setToken(incomingToken)
     setLoginTransitioning(true)
 
@@ -91,6 +97,7 @@ function App() {
           darkMode={darkMode}
           onLogout={handleLogout}
           onToggleTheme={() => setDarkMode((value) => !value)}
+          permissions={user?.permisos ?? null}
         />
       )}
     </div>
