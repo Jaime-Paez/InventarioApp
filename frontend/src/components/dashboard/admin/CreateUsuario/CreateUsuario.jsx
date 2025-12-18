@@ -61,6 +61,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
   const [permissionsLoading, setPermissionsLoading] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('general')
   const modalRef = useRef(null)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -102,6 +103,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
     setConfirmPassword('')
     setPasswordCopied(false)
     setPermissionsMatrix({})
+    setActiveTab('general')
     fetchPermissionOptions()
   }, [open, fetchPermissionOptions])
 
@@ -410,164 +412,200 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
         </header>
 
         <form className="create-user__form" onSubmit={handleSubmit}>
+          <div className="create-user__tabs" role="tablist" aria-label="Secciones del usuario">
+            <button
+              type="button"
+              className={`create-user__tab${activeTab === 'general' ? ' create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('general')}
+              role="tab"
+              aria-selected={activeTab === 'general'}
+            >
+              General
+            </button>
+            <button
+              type="button"
+              className={`create-user__tab${activeTab === 'permisos' ? ' create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('permisos')}
+              role="tab"
+              aria-selected={activeTab === 'permisos'}
+            >
+              Permisos
+            </button>
+          </div>
+
           <div className="create-user__body">
-            <section className="create-user__section">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">Datos del usuario</p>
-                  <h4>Información personal y de contacto</h4>
-                </div>
-              </div>
-
-              <div className="create-user__grid create-user__grid--two">
-                <label className="create-user__field">
-                  <span>Nombres</span>
-                  <input
-                    name="nombres"
-                    type="text"
-                    placeholder="Nombres"
-                    value={formData.nombres}
-                    onChange={handleChange}
-                    required
-                  />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Apellidos</span>
-                  <input
-                    name="apellidos"
-                    type="text"
-                    placeholder="Apellidos"
-                    value={formData.apellidos}
-                    onChange={handleChange}
-                    required
-                  />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Correo</span>
-                  <input
-                    name="correo"
-                    type="email"
-                    placeholder="Correo"
-                    value={formData.correo}
-                    onChange={handleChange}
-                    required
-                  />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Teléfono</span>
-                  <input
-                    name="telefono"
-                    type="tel"
-                    placeholder="Teléfono"
-                    value={formData.telefono}
-                    onChange={handleChange}
-                  />
-                </label>
-
-                <label className="create-user__field create-user__field--full">
-                  <span>Cargo</span>
-                  <input
-                    name="cargo"
-                    type="text"
-                    placeholder="Cargo"
-                    value={formData.cargo}
-                    onChange={handleChange}
-                  />
-                </label>
-              </div>
-            </section>
-
-            <section className="create-user__section">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">Acceso y permisos</p>
-                  <h4>Credenciales y roles</h4>
-                </div>
-              </div>
-
-              <div className="create-user__access-grid">
-                <div className="create-user__access-left">
-                  <label className="create-user__field create-user__field--password">
-                    <div className="create-user__field-label">
-                      <span>Contraseña</span>
-                      <div className="create-user__password-actions">
-                        <button type="button" className="create-user__ghost" onClick={generatePassword}>
-                          Generar
-                        </button>
-                        <button type="button" className="create-user__ghost" onClick={copyPassword}>
-                          {passwordCopied ? 'Copiada' : 'Copiar'}
-                        </button>
-                      </div>
-                    </div>
-                    <input
-                      name="password"
-                      type="text"
-                      placeholder="Contraseña"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      required
-                    />
-                  </label>
-
-                  <label className="create-user__field create-user__field--password-confirm">
-                    <div className="create-user__field-label">
-                      <span>Confirmar contraseña</span>
-                    </div>
-                    <input
-                      name="confirmPassword"
-                      type="text"
-                      placeholder="Repite la contraseña"
-                      value={confirmPassword}
-                      onChange={(event) => setConfirmPassword(event.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-
-                <div className="create-user__access-right">
-                  <label className="create-user__checkbox">
-                    <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} />
+            {activeTab === 'general' && (
+              <>
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
                     <div>
-                      <span>Cuenta activa</span>
-                      <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                      <p className="create-user__eyebrow">Datos del usuario</p>
+                      <h4>Información personal y de contacto</h4>
                     </div>
-                  </label>
-                </div>
-              </div>
+                  </div>
 
-            <div className="permissions-matrix">
-              <div className="permissions-matrix__header">
-                <div>
-                  <span>Matriz de permisos</span>
-                  <p>Activa las acciones permitidas para este usuario en cada sección.</p>
-                </div>
-                {(permissionsLoading || !permissionOptions.length) && (
-                  <small className="muted">
-                    {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
-                  </small>
-                )}
-              </div>
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Nombres</span>
+                      <input
+                        name="nombres"
+                        type="text"
+                        placeholder="Nombres"
+                        value={formData.nombres}
+                        onChange={handleChange}
+                        required
+                      />
+                    </label>
 
-              <div className="permissions-matrix__table" role="grid">
-                <div className="permissions-matrix__row permissions-matrix__row--head">
-                  <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
-                  {ACTIONS.map((action) => (
-                    <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
-                      {action.label}
+                    <label className="create-user__field">
+                      <span>Apellidos</span>
+                      <input
+                        name="apellidos"
+                        type="text"
+                        placeholder="Apellidos"
+                        value={formData.apellidos}
+                        onChange={handleChange}
+                        required
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Correo</span>
+                      <input
+                        name="correo"
+                        type="email"
+                        placeholder="Correo"
+                        value={formData.correo}
+                        onChange={handleChange}
+                        required
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Teléfono</span>
+                      <input
+                        name="telefono"
+                        type="tel"
+                        placeholder="Teléfono"
+                        value={formData.telefono}
+                        onChange={handleChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field create-user__field--full">
+                      <span>Cargo</span>
+                      <input
+                        name="cargo"
+                        type="text"
+                        placeholder="Cargo"
+                        value={formData.cargo}
+                        onChange={handleChange}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Acceso y permisos</p>
+                      <h4>Credenciales y roles</h4>
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="create-user__access-grid">
+                    <div className="create-user__access-left">
+                      <label className="create-user__field create-user__field--password">
+                        <div className="create-user__field-label">
+                          <span>Contraseña</span>
+                          <div className="create-user__password-actions">
+                            <button type="button" className="create-user__ghost" onClick={generatePassword}>
+                              Generar
+                            </button>
+                            <button type="button" className="create-user__ghost" onClick={copyPassword}>
+                              {passwordCopied ? 'Copiada' : 'Copiar'}
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          name="password"
+                          type="text"
+                          placeholder="Contraseña"
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                          required
+                        />
+                      </label>
+
+                      <label className="create-user__field create-user__field--password-confirm">
+                        <div className="create-user__field-label">
+                          <span>Confirmar contraseña</span>
+                        </div>
+                        <input
+                          name="confirmPassword"
+                          type="text"
+                          placeholder="Repite la contraseña"
+                          value={confirmPassword}
+                          onChange={(event) => setConfirmPassword(event.target.value)}
+                          required
+                        />
+                      </label>
+                    </div>
+
+                    <div className="create-user__access-right">
+                      <label className="create-user__checkbox">
+                        <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} />
+                        <div>
+                          <span>Cuenta activa</span>
+                          <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {activeTab === 'permisos' && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <div>
+                    <p className="create-user__eyebrow">Acceso y permisos</p>
+                    <h4>Matriz de permisos</h4>
+                  </div>
+                  {(permissionsLoading || !permissionOptions.length) && (
+                    <small className="muted">
+                      {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
+                    </small>
+                  )}
                 </div>
 
-                {permissionOptions.map((module) => (
-                  renderPermissionRow(module)
-                ))}
-              </div>
-            </div>
-          </section>
-        </div>
+                <div className="permissions-matrix">
+                  <div className="permissions-matrix__header">
+                    <div>
+                      <span>Matriz de permisos</span>
+                      <p>Activa las acciones permitidas para este usuario en cada sección.</p>
+                    </div>
+                  </div>
+
+                  <div className="permissions-matrix__table" role="grid">
+                    <div className="permissions-matrix__row permissions-matrix__row--head">
+                      <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
+                      {ACTIONS.map((action) => (
+                        <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
+                          {action.label}
+                        </div>
+                      ))}
+                    </div>
+
+                    {permissionOptions.map((module) => (
+                      renderPermissionRow(module)
+                    ))}
+                  </div>
+                </div>
+              </section>
+            )}
+          </div>
 
           {error && <p className="create-user__error">{error}</p>}
 

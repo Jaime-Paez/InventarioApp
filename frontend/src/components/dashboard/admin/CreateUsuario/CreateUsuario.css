@@ -129,6 +129,46 @@
   width: 100%;
 }
 
+.create-user__tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 12px 18px 0;
+}
+
+.create-user__tab {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 10px 12px;
+  border-radius: 999px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.create-user__tab:hover {
+  transform: translateY(-1px);
+}
+
+.create-user__tab--active {
+  background: var(--color-primary);
+  color: var(--color-button-primary);
+  border-color: color-mix(in srgb, var(--color-primary) 65%, var(--color-border));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+.dashboard-shell.dark .create-user__tab {
+  background: var(--color-surface-darker);
+  color: var(--color-button-primary);
+}
+
+.dashboard-shell.dark .create-user__tab--active {
+  background: var(--color-primary-dark);
+  border-color: color-mix(in srgb, var(--color-primary-dark) 62%, var(--color-border));
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--color-primary-dark) 26%, transparent);
+}
+
 /* Main scroll area, like reference (top content scroll, footer fixed) */
 .create-user__body {
   display: grid;
