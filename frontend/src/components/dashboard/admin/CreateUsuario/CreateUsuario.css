@@ -548,6 +548,108 @@
   opacity: 0.76;
 }
 
+.permissions-matrix {
+  margin-top: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 14px 10px;
+  background: #f9fafb;
+}
+
+.dashboard-shell.dark .permissions-matrix {
+  background: #0d1117;
+  border-color: #1f2937;
+}
+
+.permissions-matrix__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.permissions-matrix__header span {
+  font-weight: 600;
+  color: inherit;
+}
+
+.permissions-matrix__header p {
+  margin: 2px 0 0;
+  color: #6b7280;
+}
+
+.dashboard-shell.dark .permissions-matrix__header p {
+  color: #9ca3af;
+}
+
+.permissions-matrix__table {
+  margin-top: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dashboard-shell.dark .permissions-matrix__table {
+  border-color: #1f2937;
+}
+
+.permissions-matrix__row {
+  display: grid;
+  grid-template-columns: 2.4fr repeat(4, 1fr);
+  align-items: center;
+  gap: 0;
+  background: #fff;
+}
+
+.dashboard-shell.dark .permissions-matrix__row {
+  background: #0b0e13;
+}
+
+.permissions-matrix__row + .permissions-matrix__row {
+  border-top: 1px solid #e5e7eb;
+}
+
+.dashboard-shell.dark .permissions-matrix__row + .permissions-matrix__row {
+  border-color: #1f2937;
+}
+
+.permissions-matrix__row--head {
+  background: #f3f4f6;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.dashboard-shell.dark .permissions-matrix__row--head {
+  background: #111827;
+}
+
+.permissions-matrix__row--sub .permissions-matrix__cell--label {
+  padding-left: 18px;
+  font-weight: 500;
+}
+
+.permissions-matrix__cell {
+  padding: 12px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.94rem;
+}
+
+.permissions-matrix__cell--label {
+  justify-content: flex-start;
+  font-weight: 600;
+}
+
+.permissions-matrix__cell--action {
+  justify-content: center;
+}
+
+.permissions-matrix__cell--action input {
+  margin: 0;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .create-user__modal {
