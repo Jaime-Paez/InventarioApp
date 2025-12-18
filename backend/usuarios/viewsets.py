@@ -114,7 +114,8 @@ class LoginAPIView(APIView):
 
         usuario_interno = (
             Usuario.objects.prefetch_related(
-                "rol_personalizado__permisos"
+                "rol_personalizado__permisos",
+                "roles__permisos",
             )
             .filter(correo__iexact=email)
             .first()
@@ -122,7 +123,7 @@ class LoginAPIView(APIView):
         permisos = []
         if usuario_interno:
             permisos = build_permissions_summary(
-                [],
+                usuario_interno.roles.all(),
                 extra_roles=[usuario_interno.rol_personalizado],
             )
 
@@ -144,7 +145,8 @@ class PerfilAPIView(APIView):
     def get(self, request):
         usuario_interno = (
             Usuario.objects.prefetch_related(
-                "rol_personalizado__permisos"
+                "rol_personalizado__permisos",
+                "roles__permisos",
             )
             .filter(correo__iexact=request.user.email)
             .first()
@@ -152,7 +154,7 @@ class PerfilAPIView(APIView):
         permisos = []
         if usuario_interno:
             permisos = build_permissions_summary(
-                [],
+                usuario_interno.roles.all(),
                 extra_roles=[usuario_interno.rol_personalizado],
             )
 
