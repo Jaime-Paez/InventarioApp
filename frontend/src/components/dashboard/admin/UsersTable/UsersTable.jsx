@@ -127,29 +127,65 @@ function UsersTable({
     </Button>
   )
 
-  // ---------------- Row selection checkboxes ----------------
-  const [selectedRowIds, setSelectedRowIds] = useState([]) // strings
+  // =========================================================
+  // ✅ Row selection (Prime nativo) + persistencia por IDs
+  // =========================================================
+  const [selectedUsers, setSelectedUsers] = useState([]) // rows completos
+
+  const selectedRowIds = useMemo(
+    () => (selectedUsers || []).map((u) => normId(u?.id)).filter(Boolean),
+    [selectedUsers]
+  )
 
   const allRowIds = useMemo(() => users.map((u) => normId(u?.id)).filter(Boolean), [users])
   const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
 
-  useEffect(() => {
-    if (!allRowIds.length) {
-      if (selectedRowIds.length) setSelectedRowIds([])
-      return
-    }
-    const filtered = selectedRowIds.filter((id) => allRowIds.includes(id))
-    if (filtered.length !== selectedRowIds.length) setSelectedRowIds(filtered)
-  }, [allRowIds, selectedRowIds])
-
+  // Restore selección (IDs) al iniciar
   useEffect(() => {
     const saved = sessionStorage.getItem('usuarios-table-selected-rows')
-    if (saved) {
+    if (!saved) return
+    try {
       const parsed = JSON.parse(saved)
-      setSelectedRowIds((parsed.selectedRowIds || []).map(normId).filter(Boolean))
-    }
+      const ids = (parsed.selectedRowIds || []).map(normId).filter(Boolean)
+      // guardamos IDs pendientes; los convertimos a rows cuando exista `users`
+      sessionStorage.setItem('usuarios-table-selected-rows-pending', JSON.stringify({ ids }))
+    } catch {}
   }, [])
 
+  // Cuando cambia users, aplica la selección pendiente (ids -> rows)
+  useEffect(() => {
+    const pending = sessionStorage.getItem('usuarios-table-selected-rows-pending')
+    if (!pending) return
+    try {
+      const parsed = JSON.parse(pending)
+      const ids = (parsed.ids || []).map(normId).filter(Boolean)
+      if (!ids.length) {
+        setSelectedUsers([])
+        sessionStorage.removeItem('usuarios-table-selected-rows-pending')
+        return
+      }
+      const map = new Map(users.map((u) => [normId(u?.id), u]))
+      const rows = ids.map((id) => map.get(id)).filter(Boolean)
+      setSelectedUsers(rows)
+      sessionStorage.removeItem('usuarios-table-selected-rows-pending')
+    } catch {
+      sessionStorage.removeItem('usuarios-table-selected-rows-pending')
+    }
+  }, [users])
+
+  // Limpia selección si ya no existe en la data
+  useEffect(() => {
+    if (!users?.length) {
+      if (selectedUsers?.length) setSelectedUsers([])
+      return
+    }
+    const idsSet = new Set(allRowIds)
+    const filtered = (selectedUsers || []).filter((u) => idsSet.has(normId(u?.id)))
+    if (filtered.length !== (selectedUsers || []).length) setSelectedUsers(filtered)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users])
+
+  // Persistir IDs
   useEffect(() => {
     sessionStorage.setItem(
       'usuarios-table-selected-rows',
@@ -159,36 +195,6 @@ function UsersTable({
       })
     )
   }, [selectedRowIds, allRowsSelected])
-
-  const rowSelectionTemplate = (rowData) => {
-    const id = normId(rowData?.id)
-
-    return (
-      <span className="row-selection-click-block" onClick={(ev) => ev.stopPropagation()}>
-        <Checkbox
-          binary
-          checked={selectedRowIds.includes(id)}
-          onChange={(e) => {
-            e.originalEvent?.stopPropagation?.()
-            setSelectedRowIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-          }}
-        />
-      </span>
-    )
-  }
-
-  const rowSelectionHeaderTemplate = () => (
-    <span className="row-selection-click-block" onClick={(ev) => ev.stopPropagation()}>
-      <Checkbox
-        binary
-        checked={allRowsSelected}
-        onChange={(e) => {
-          e.originalEvent?.stopPropagation?.()
-          setSelectedRowIds(allRowsSelected ? [] : allRowIds)
-        }}
-      />
-    </span>
-  )
 
   // ✅ Estilos duros para clavar el ancho (header + body)
   const selectionColStyle = useMemo(
@@ -308,7 +314,8 @@ function UsersTable({
 
   const handleRowClick = (event) => {
     const t = event?.originalEvent?.target
-    if (t?.closest?.('.row-selection-click-block')) return
+    // ✅ No abrir modal si hicieron click en el checkbox/columna de selección
+    if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
 
     const id = event?.data?.id
     if (id == null) return
@@ -441,11 +448,14 @@ function UsersTable({
           columnResizeMode="fit"
           onRowClick={handleRowClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
+          // ✅ selección nativa
+          selection={selectedUsers}
+          onSelectionChange={(e) => setSelectedUsers(e.value || [])}
         >
+          {/* ✅ Columna de selección nativa (checkbox + header checkbox) */}
           <Column
+            selectionMode="multiple"
             frozen
-            header={rowSelectionHeaderTemplate}
-            body={rowSelectionTemplate}
             headerClassName="row-selection-column"
             bodyClassName="row-selection-column"
             style={selectionColStyle}
@@ -454,7 +464,6 @@ function UsersTable({
             exportable={false}
             reorderable={false}
           />
-
 
           {selectedColumns.map((column, index) => {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)

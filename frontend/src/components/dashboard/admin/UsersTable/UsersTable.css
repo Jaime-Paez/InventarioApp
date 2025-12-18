@@ -259,7 +259,6 @@
   font-weight: 800;
   border: none;
   border-bottom: none;
-  padding: 8px 10px;
 }
 
 /* ====== TBODY ====== */
@@ -520,7 +519,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
   width: 100%;
 }
 
