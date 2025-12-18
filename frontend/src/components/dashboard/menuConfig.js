@@ -20,29 +20,26 @@ export const MENU_STRUCTURE = [
   {
     label: 'Movimientos',
     icon: ArrowRightLeft,
-    moduleKey: 'movimientos',
     children: [
-      { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos', submoduleKey: 'mov_entradas' },
-      { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos', submoduleKey: 'mov_salidas' },
+      { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos_entradas' },
+      { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos_salidas' },
     ],
   },
   { label: 'Productos', icon: Tag, moduleKey: 'productos' },
   {
     label: 'Sucursales',
     icon: MapIcon,
-    moduleKey: 'sucursales',
     children: [
-      { label: 'Sucursales', icon: Compass, moduleKey: 'sucursales', submoduleKey: 'suc_sucursales' },
-      { label: 'Bodegas', icon: Box, moduleKey: 'sucursales', submoduleKey: 'suc_bodegas' },
+      { label: 'Sucursales', icon: Compass, moduleKey: 'sucursales_sucursales' },
+      { label: 'Bodegas', icon: Box, moduleKey: 'sucursales_bodegas' },
     ],
   },
   {
     label: 'Proveedores',
     icon: Truck,
-    moduleKey: 'proveedores',
     children: [
-      { label: 'Marcas', icon: Hexagon, moduleKey: 'proveedores', submoduleKey: 'prov_marcas' },
-      { label: 'Casas comerciales', icon: Building, moduleKey: 'proveedores', submoduleKey: 'prov_casas' },
+      { label: 'Marcas', icon: Hexagon, moduleKey: 'proveedores_marcas' },
+      { label: 'Casas comerciales', icon: Building, moduleKey: 'proveedores_casas' },
     ],
   },
   { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
@@ -55,7 +52,7 @@ export const buildPermissionIndex = (permissions) => {
   const index = new Map()
   permissions.forEach((permiso) => {
     if (!permiso?.modulo) return
-    const key = `${permiso.modulo}:${permiso.submodulo || ''}`
+    const key = permiso.modulo
     const current = index.get(key) || {
       puede_crear: false,
       puede_leer: false,
@@ -76,15 +73,10 @@ export const buildPermissionIndex = (permissions) => {
 const hasActions = (permiso) =>
   permiso && (permiso.puede_crear || permiso.puede_leer || permiso.puede_actualizar || permiso.puede_eliminar)
 
-const hasPermissionForTarget = (moduleKey, submoduleKey, permissionIndex) => {
+const hasPermissionForTarget = (moduleKey, permissionIndex) => {
   if (!permissionIndex || !moduleKey) return true
-  const key = `${moduleKey}:${submoduleKey || ''}`
-  const specific = permissionIndex.get(key)
-  if (hasActions(specific)) return true
-
-  const generalKey = `${moduleKey}:`
-  const general = permissionIndex.get(generalKey)
-  return hasActions(general)
+  const permiso = permissionIndex.get(moduleKey)
+  return Boolean(permiso?.puede_leer)
 }
 
 export const itemHasAccess = (item, permissionIndex) => {
@@ -92,7 +84,7 @@ export const itemHasAccess = (item, permissionIndex) => {
   if (item.children?.length) {
     return item.children.some((child) => itemHasAccess(child, permissionIndex))
   }
-  return hasPermissionForTarget(item.moduleKey, item.submoduleKey, permissionIndex)
+  return hasPermissionForTarget(item.moduleKey, permissionIndex)
 }
 
 export const filterMenuByPermissions = (menu, permissionIndex) => {
