@@ -653,7 +653,38 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
               </button>
             </div>
           </div>
-        </form>
+      </form>
+
+      {showDeleteDialog && (
+        <div className="user-details__confirm-overlay" role="alertdialog" aria-modal="true" aria-label="Confirmar eliminación">
+          <div className="user-details__confirm-dialog">
+            <div className="user-details__confirm-icon" aria-hidden="true">
+              <Info size={22} />
+            </div>
+            <div className="user-details__confirm-content">
+              <h4>¿Estás seguro?</h4>
+              <p>Esta acción es irreversible</p>
+            </div>
+            <div className="user-details__confirm-actions">
+              <button
+                type="button"
+                className="create-user__ghost create-user__cancel"
+                onClick={() => setShowDeleteDialog(false)}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="user-details__confirm-danger"
+                onClick={handleDelete}
+                disabled={deleteLoading}
+              >
+                Sí
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDeleteDialog && (
         <div className="user-details__confirm-overlay" role="alertdialog" aria-modal="true" aria-label="Confirmar eliminación">
