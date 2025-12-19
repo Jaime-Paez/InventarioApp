@@ -449,6 +449,7 @@ function UsersTable({
           onRowClick={handleRowClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
           // ✅ selección nativa
+          selectionMode="checkbox"
           selection={selectedUsers}
           onSelectionChange={(e) => setSelectedUsers(e.value || [])}
         >
