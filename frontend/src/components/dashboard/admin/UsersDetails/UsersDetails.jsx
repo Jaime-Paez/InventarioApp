@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Eye, Info, Pencil } from 'lucide-react'
 import '../CreateUsuario/CreateUsuario.css'
 import './UsersDetails.css'
 
@@ -64,6 +65,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [error, setError] = useState('')
   const [isEditing, setIsEditing] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -391,9 +393,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
 
   const handleDelete = async () => {
     if (!isEditing || deleteLoading || !userId) return
-    const confirmed = window.confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.')
-    if (!confirmed) return
-
+    setShowDeleteDialog(false)
     setDeleteLoading(true)
     setError('')
     try {
@@ -423,6 +423,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
   const handleClose = () => {
     onClose?.()
     setIsEditing(false)
+    setShowDeleteDialog(false)
     setError('')
   }
 
@@ -605,7 +606,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
 
           <div className="create-user__footer">
             <div className="user-details__footer-left">
-              <button type="button" className="create-user__ghost" onClick={handleClose}>
+              <button type="button" className="create-user__ghost create-user__cancel" onClick={handleClose}>
                 Cancelar
               </button>
               <button
@@ -614,7 +615,21 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                 onClick={handleToggleEdit}
                 disabled={loadingData || saving || deleteLoading}
               >
-                {isEditing ? 'Solo lectura' : 'Editar'}
+                {isEditing ? (
+                  <>
+                    <span className="user-details__toggle-icon" aria-hidden="true">
+                      <Eye size={16} />
+                    </span>
+                    <span>Solo lectura</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="user-details__toggle-icon" aria-hidden="true">
+                      <Pencil size={16} />
+                    </span>
+                    <span>Editar</span>
+                  </>
+                )}
               </button>
             </div>
 
@@ -623,7 +638,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
                 <button
                   type="button"
                   className="create-user__ghost user-details__delete"
-                  onClick={handleDelete}
+                  onClick={() => setShowDeleteDialog(true)}
                   disabled={deleteLoading || saving || loadingData}
                 >
                   {deleteLoading ? 'Eliminando...' : 'Eliminar'}
@@ -634,12 +649,43 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
               </button>
             </div>
           </div>
-        </form>
+      </form>
 
-        <button
-          type="button"
-          aria-label="Cambiar tamaño de ventana"
-          className="create-user__resize-handle"
+      {showDeleteDialog && (
+        <div className="user-details__confirm-overlay" role="alertdialog" aria-modal="true" aria-label="Confirmar eliminación">
+          <div className="user-details__confirm-dialog">
+            <div className="user-details__confirm-icon" aria-hidden="true">
+              <Info size={22} />
+            </div>
+            <div className="user-details__confirm-content">
+              <h4>¿Estás seguro?</h4>
+              <p>Esta acción es irreversible</p>
+            </div>
+            <div className="user-details__confirm-actions">
+              <button
+                type="button"
+                className="create-user__ghost create-user__cancel"
+                onClick={() => setShowDeleteDialog(false)}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="user-details__confirm-danger"
+                onClick={handleDelete}
+                disabled={deleteLoading}
+              >
+                Sí
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        aria-label="Cambiar tamaño de ventana"
+        className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />
       </div>
