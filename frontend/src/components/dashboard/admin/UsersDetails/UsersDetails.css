@@ -14,7 +14,7 @@
 }
 
 .create-user__action--edit {
-  background: var(--color-surface);
+  background: transparent;
   border-color: var(--color-border);
   color: var(--color-text-primary);
 }
@@ -22,19 +22,19 @@
 .dashboard-shell.dark .create-user__action--edit {
   background: var(--color-surface-darker);
   border-color: var(--color-border);
-  color: var(--color-text-dark);
+  color: var(---color-border);
 }
 
 .user-details__edit-toggle--active {
-  background: color-mix(in srgb, var(--color-primary) 20%, var(--color-surface));
-  border-color: var(--color-primary);
-  color: var(--color-text-primary);
+  background: var(--color-primary);
+  border-color: var(--color-primary-strong);
+  color: var(--color-button-primary);
 }
 
 .dashboard-shell.dark .user-details__edit-toggle--active {
-  background: color-mix(in srgb, var(--color-primary-dark) 20%, var(--color-surface-darker));
-  border-color: var(--color-primary-dark);
-  color: var(--color-text-dark);
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark-strong);
+  color: var(--color-button-primary);
 }
 
 .user-details__delete {

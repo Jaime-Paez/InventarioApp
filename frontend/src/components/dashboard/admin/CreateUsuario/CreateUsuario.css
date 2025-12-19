@@ -476,7 +476,7 @@
 }
 
 .create-user__action {
-  border-radius: 5px;
+  border-radius: 10px;
   padding: 5px 10px;
   border: 1px solid transparent;
   font-weight: 700;
@@ -510,7 +510,7 @@
 .create-user__action--cancel {
   background: var(--color-cancel);
   border-color: var(--color-cancel);
-  color: var(--color-text-primary);
+  color: var(--color-button-primary);
 }
 
 .create-user__action--cancel:hover {
@@ -518,7 +518,7 @@
 }
 
 .dashboard-shell.dark .create-user__action--cancel {
-  color: #1f2937;
+  color: var(--color-button-primary);
 }
 
 .create-user__ghost {
@@ -557,17 +557,23 @@
 /* Resize handle */
 .create-user__resize-handle {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  right: 4px;
+  bottom: 4px;
   width: 18px;
   height: 18px;
-  border-radius: 6px;
+  border-radius: 5px;
+
   background: color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
-  border: 1px solid var(--color-border);
+  border: none;
+
+  /* 🔺 corta el cuadrado en diagonal */
+  clip-path: polygon(100% 0%, 100% 100%, 0% 100%);
+
   cursor: se-resize;
   opacity: 0.9;
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
+
 
 .create-user__resize-handle:hover {
   opacity: 1;
