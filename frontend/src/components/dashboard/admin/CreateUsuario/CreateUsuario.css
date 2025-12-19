@@ -475,52 +475,70 @@
   border-top-color: var(--color-border);
 }
 
-.create-user__footer button {
-  padding: 10px 18px;
-  border-radius: 12px;
-  border: none;
+.create-user__action {
+  border-radius: 5px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
   font-weight: 700;
   cursor: pointer;
-  background: var(--color-primary);
-  color: var(--color-button-primary);
   letter-spacing: 0;
-  min-width: 120px;
+  min-width: 110px;
 }
 
-.dashboard-shell.dark .create-user__footer button {
-  background: var(--color-primary-dark);
+.create-user__action:hover:not(:disabled) {
+  filter: brightness(0.98);
 }
 
-.create-user__footer button:disabled {
+.create-user__action:disabled {
   opacity: 0.7;
   cursor: not-allowed;
   box-shadow: none;
 }
 
-/* Ghost button */
-.create-user__ghost {
-  background: var(--color-surface);
-  border: none;
+.create-user__action--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-button-primary);
+}
+
+.dashboard-shell.dark .create-user__action--primary {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+  color: var(--color-button-primary);
+}
+
+.create-user__action--cancel {
+  background: var(--color-cancel);
+  border-color: var(--color-cancel);
   color: var(--color-text-primary);
-  padding: 10px 18px;
-  border-radius: 12px;
+}
+
+.create-user__action--cancel:hover {
+  filter: brightness(0.98);
+}
+
+.dashboard-shell.dark .create-user__action--cancel {
+  color: #1f2937;
+}
+
+.create-user__ghost {
+  border-radius: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   cursor: pointer;
   font-weight: 700;
-  min-width: 120px;
-  box-shadow: none;
 }
 
 .create-user__ghost:hover {
-  background: var(--color-border);
+  filter: brightness(0.98);
 }
 
 .dashboard-shell.dark .create-user__ghost {
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
-}
-
-.dashboard-shell.dark .create-user__ghost:hover {
-  background: color-mix(in srgb, var(--color-primary-dark) 16%, transparent);
+  border-color: var(--color-border);
 }
 
 /* Resize handle */

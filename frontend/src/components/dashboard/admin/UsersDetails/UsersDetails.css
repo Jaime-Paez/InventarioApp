@@ -7,29 +7,129 @@
 
 .user-details__edit-toggle {
   min-width: 130px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.create-user__action--edit {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.dashboard-shell.dark .create-user__action--edit {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: var(--color-text-dark);
 }
 
 .user-details__edit-toggle--active {
-  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
-  border: 1px solid var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 20%, var(--color-surface));
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
 }
 
 .dashboard-shell.dark .user-details__edit-toggle--active {
-  background: color-mix(in srgb, var(--color-primary-dark) 16%, var(--color-surface-darker));
+  background: color-mix(in srgb, var(--color-primary-dark) 20%, var(--color-surface-darker));
   border-color: var(--color-primary-dark);
+  color: var(--color-text-dark);
 }
 
 .user-details__delete {
-  background: var(--color-error-bg);
-  color: var(--color-error-text);
-  border: 1px solid var(--color-error-border);
+  background: var(--color-error-text);
+  color: #fff;
+  border-color: var(--color-error-text);
   min-width: 110px;
 }
 
 .dashboard-shell.dark .user-details__delete {
-  background: var(--color-error-bg-dark);
-  color: var(--color-error-text-dark);
-  border-color: var(--color-error-border-dark);
+  background: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+}
+
+.user-details__toggle-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.user-details__confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.user-details__confirm-dialog {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 16px 18px;
+  min-width: 280px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  box-shadow: var(--shadow-panel);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.user-details__confirm-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-primary);
+  color: var(--color-primary);
+}
+
+.dashboard-shell.dark .user-details__confirm-dialog {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.dashboard-shell.dark .user-details__confirm-icon {
+  border-color: var(--color-primary-dark);
+  color: var(--color-primary-dark);
+}
+
+.user-details__confirm-content h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.user-details__confirm-content p {
+  margin: 2px 0 0;
+  color: rgba(100, 116, 139, 0.9);
+  font-size: 0.92rem;
+}
+
+.dashboard-shell.dark .user-details__confirm-content p {
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.user-details__confirm-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.user-details__confirm-danger {
+  background: var(--color-error-text);
+  color: #fff;
+  border-color: var(--color-error-text);
+}
+
+.dashboard-shell.dark .user-details__confirm-danger {
+  background: #ef4444;
+  border-color: #ef4444;
 }
 
 .create-user__field input:disabled,
