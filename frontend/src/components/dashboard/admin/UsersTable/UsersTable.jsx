@@ -451,7 +451,12 @@ function UsersTable({
           // ✅ selección nativa
           selectionMode="checkbox"
           selection={selectedUsers}
-          onSelectionChange={(e) => setSelectedUsers(e.value || [])}
+          onSelectionChange={(e) => {
+            const value = e.value || []
+            setSelectedUsers(value)
+            const ids = value.map((user) => normId(user?.id)).filter(Boolean)
+            console.log('Usuarios seleccionados:', ids)
+          }}
         >
           {/* ✅ Columna de selección nativa (checkbox + header checkbox) */}
           <Column
