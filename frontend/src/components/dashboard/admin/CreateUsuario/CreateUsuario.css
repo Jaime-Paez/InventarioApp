@@ -79,6 +79,10 @@
   min-width: 250px;
 }
 
+.dashboard-shell.dark .create-user__header h3 {
+  background: var(--color-primary-dark);
+}
+
 .create-user__subtitle {
   display: none;
 }
@@ -104,6 +108,10 @@
   cursor: pointer;
   display: grid;
   place-items: center;
+}
+
+.dashboard-shell.dark .create-user__icon-button {
+  background: var(--color-primary-dark);
 }
 
 .create-user__icon-button:hover {
@@ -477,6 +485,10 @@
   color: var(--color-button-primary);
   letter-spacing: 0;
   min-width: 120px;
+}
+
+.dashboard-shell.dark .create-user__footer button {
+  background: var(--color-primary-dark);
 }
 
 .create-user__footer button:disabled {
