@@ -618,3 +618,28 @@
   max-width: 40px !important;
 }
 
+/* =========================================
+   ✅ CHECKBOX (PrimeReact) - LIGHT + DARK
+   ========================================= */
+
+/* Seleccionado (light) */
+.p-checkbox.p-highlight .p-checkbox-box{
+  border-color: var(--color-primary-strong);
+  background-color: var(--color-primary);
+}
+
+/* Hover SOLO cuando NO está seleccionado (light) */
+.p-checkbox:not(.p-highlight):hover .p-checkbox-box {
+  border-color: var(--color-primary-strong);
+}
+
+/* Seleccionado (dark) */
+.dashboard-shell.dark .p-checkbox.p-highlight .p-checkbox-box{
+  border-color: var(--color-primary-dark-strong);
+  background-color: var(--color-primary-dark);
+}
+
+/* Hover SOLO cuando NO está seleccionado (dark) */
+.dashboard-shell.dark .p-checkbox:not(.p-highlight):hover .p-checkbox-box{
+  border-color: var(--color-primary-dark-strong);
+}
