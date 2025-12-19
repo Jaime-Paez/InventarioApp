@@ -594,10 +594,10 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
           {error && <p className="create-user__error">{error}</p>}
 
           <div className="create-user__footer">
-            <button type="button" className="create-user__ghost create-user__cancel" onClick={onClose}>
+            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>
               Cancelar
             </button>
-            <button type="submit" disabled={loading}>
+            <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>
               {loading ? 'Guardando...' : 'Crear usuario'}
             </button>
           </div>

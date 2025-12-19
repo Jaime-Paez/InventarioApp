@@ -606,12 +606,12 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
 
           <div className="create-user__footer">
             <div className="user-details__footer-left">
-              <button type="button" className="create-user__ghost create-user__cancel" onClick={handleClose}>
+              <button type="button" className="create-user__action create-user__action--cancel" onClick={handleClose}>
                 Cancelar
               </button>
               <button
                 type="button"
-                className={`create-user__ghost user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
+                className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
                 onClick={handleToggleEdit}
                 disabled={loadingData || saving || deleteLoading}
               >
@@ -637,14 +637,18 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
               {isEditing && (
                 <button
                   type="button"
-                  className="create-user__ghost user-details__delete"
+                  className="create-user__action user-details__delete"
                   onClick={() => setShowDeleteDialog(true)}
                   disabled={deleteLoading || saving || loadingData}
                 >
                   {deleteLoading ? 'Eliminando...' : 'Eliminar'}
                 </button>
               )}
-              <button type="submit" disabled={!isEditing || saving || loadingData}>
+              <button
+                type="submit"
+                className="create-user__action create-user__action--primary"
+                disabled={!isEditing || saving || loadingData}
+              >
                 {saving ? 'Guardando...' : 'Editar'}
               </button>
             </div>
@@ -672,6 +676,37 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
               <button
                 type="button"
                 className="user-details__confirm-danger"
+                onClick={handleDelete}
+                disabled={deleteLoading}
+              >
+                Sí
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteDialog && (
+        <div className="user-details__confirm-overlay" role="alertdialog" aria-modal="true" aria-label="Confirmar eliminación">
+          <div className="user-details__confirm-dialog">
+            <div className="user-details__confirm-icon" aria-hidden="true">
+              <Info size={22} />
+            </div>
+            <div className="user-details__confirm-content">
+              <h4>¿Estás seguro?</h4>
+              <p>Esta acción es irreversible</p>
+            </div>
+            <div className="user-details__confirm-actions">
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={() => setShowDeleteDialog(false)}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="create-user__action user-details__confirm-danger"
                 onClick={handleDelete}
                 disabled={deleteLoading}
               >
