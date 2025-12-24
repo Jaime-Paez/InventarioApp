@@ -699,16 +699,11 @@
 }
 
 .permissions-matrix__cell--action input:checked {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
   transform: translateZ(0) scale(1.02);
 }
 
 .dashboard-shell.dark .permissions-matrix__cell--action input {
   accent-color: var(--color-primary-dark);
-}
-
-.dashboard-shell.dark .permissions-matrix__cell--action input:checked {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 30%, transparent);
 }
 
 /* Responsive */
