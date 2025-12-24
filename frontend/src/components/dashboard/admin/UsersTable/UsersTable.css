@@ -76,6 +76,10 @@
   border-color: var(--color-border-dark);
 }
 
+.users-datatable .p-paginator{
+  padding: 5px !important;
+}
+
 .dashboard-shell.dark .users-table--card {
   border-color: var(--color-border-dark);
 }
