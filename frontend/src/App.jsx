@@ -11,6 +11,7 @@ import 'primereact/resources/themes/lara-light-cyan/theme.css';
 import 'primeflex/primeflex.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const LOGIN_EXIT_ANIMATION_MS = 900
 
 
 const getSystemThemePreference = () =>
@@ -88,15 +89,24 @@ function App() {
     fetchProfile()
   }, [fetchProfile])
 
-  const handleLoginSuccess = async (incomingUser, incomingToken, incomingPermissions = null, usuarioInternoId = null) => {
+  const handleLoginSuccess = async (
+    incomingUser,
+    incomingToken,
+    incomingPermissions = null,
+    usuarioInternoId = null
+  ) => {
     setLoginTransitioning(true)
 
-    setToken(incomingToken)
-    await fetchProfile(incomingToken)
-
-    // mantiene compatibilidad con la data de login mientras se carga el perfil
+    // muestra el dashboard de inmediato mientras se completa el perfil
     setUser({ ...incomingUser, permisos: incomingPermissions, usuarioInternoId })
-    setLoginTransitioning(false)
+    setShowApp(true)
+    setToken(incomingToken)
+
+    try {
+      await fetchProfile(incomingToken)
+    } finally {
+      window.setTimeout(() => setLoginTransitioning(false), LOGIN_EXIT_ANIMATION_MS)
+    }
   }
 
   const handleLogout = () => {
