@@ -47,7 +47,7 @@
   align-items: center;
   gap: 1rem;
   padding: 2.75rem 2.75rem 2.75rem;
-  background: var(--color-surface);
+  background: var(--sidebar-backgorund-color);
   border-radius: 0 28px 0 0;
   max-width: 350px;
   width: min(350px, 100vw);
