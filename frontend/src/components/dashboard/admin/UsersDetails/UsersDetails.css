@@ -6,7 +6,7 @@
 }
 
 .user-details__edit-toggle {
-  min-width: 130px;
+  min-width: 80px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -41,7 +41,7 @@
   background: var(--color-error-text);
   color: #fff;
   border-color: var(--color-error-text);
-  min-width: 110px;
+  min-width: 80px;
 }
 
 .dashboard-shell.dark .user-details__delete {

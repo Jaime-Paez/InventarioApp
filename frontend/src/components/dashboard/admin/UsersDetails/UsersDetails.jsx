@@ -141,7 +141,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
               onChange={() => togglePermission(module.key, action.key)}
               disabled={isDisabled}
             />
-            <span>{action.label}</span>
           </label>
         ))}
       </div>
@@ -436,16 +435,21 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
         ref={modalRef}
         style={{ top: position.y, left: position.x, width: size.width, height: size.height }}
       >
-        <header className="create-user__header" onMouseDown={handleMouseDown}>
-          <div className="create-user__header-text">
-            <h3>Detalles del usuario</h3>
-          </div>
-          <button
-            type="button"
-            className="create-user__icon-button"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={handleClose}
-            aria-label="Cerrar"
+      <header className="create-user__header" onMouseDown={handleMouseDown}>
+        <div className="create-user__header-text">
+          {/* Mostramos el ID y el nombre completo del estado originalData */}
+          <h3>
+            {userId && originalData.nombres 
+              ? `${userId} : ${originalData.nombres} ${originalData.apellidos}` 
+              : 'Cargando usuario...'}
+          </h3>
+        </div>
+        <button
+          type="button"
+          className="create-user__icon-button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={handleClose}
+          aria-label="Cerrar"
         >
           ×
         </button>
@@ -635,22 +639,25 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
 
             <div className="user-details__footer-right">
               {isEditing && (
-                <button
-                  type="button"
-                  className="create-user__action user-details__delete"
-                  onClick={() => setShowDeleteDialog(true)}
-                  disabled={deleteLoading || saving || loadingData}
-                >
-                  {deleteLoading ? 'Eliminando...' : 'Eliminar'}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="create-user__action user-details__delete"
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={deleteLoading || saving || loadingData}
+                  >
+                    {deleteLoading ? 'Eliminando...' : 'Eliminar'}
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="create-user__action create-user__action--primary"
+                    disabled={saving || loadingData}
+                  >
+                    {saving ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </>
               )}
-              <button
-                type="submit"
-                className="create-user__action create-user__action--primary"
-                disabled={!isEditing || saving || loadingData}
-              >
-                {saving ? 'Guardando...' : 'Editar'}
-              </button>
             </div>
           </div>
       </form>

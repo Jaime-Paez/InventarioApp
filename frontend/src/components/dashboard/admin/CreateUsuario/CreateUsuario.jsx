@@ -166,7 +166,9 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
 
     return (
       <div key={entryKey} className="permissions-matrix__row">
-        <div className="permissions-matrix__cell permissions-matrix__cell--label">{module.label}</div>
+        <div className="permissions-matrix__cell permissions-matrix__cell--label">
+          {module.label}
+        </div>
         {ACTIONS.map((action) => (
           <label key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
             <input
@@ -175,7 +177,6 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
               onChange={() => togglePermission(module.key, action.key)}
               disabled={isDisabled}
             />
-            <span>{action.label}</span>
           </label>
         ))}
       </div>
