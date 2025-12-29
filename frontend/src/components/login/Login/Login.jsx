@@ -51,7 +51,7 @@ const MoonIcon = () => (
   </svg>
 )
 
-function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
+function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpanding }) {
   const [statusMessage, setStatusMessage] = useState('')
   const [authError, setAuthError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -102,8 +102,16 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing }) {
     window.setTimeout(() => setIsTogglingTheme(false), 360)
   }
 
+  const pageClassName = useMemo(
+    () =>
+      `login-page ${darkMode ? 'dark' : ''} ${isCollapsing ? 'collapse' : ''} ${
+        isExpanding ? 'expand' : ''
+      }`,
+    [darkMode, isCollapsing, isExpanding]
+  )
+
   return (
-    <div className={`login-page ${darkMode ? 'dark' : ''} ${isCollapsing ? 'collapse' : ''}`}>
+    <div className={pageClassName}>
       <div className="wallpaper-layer" aria-hidden>
         <img src={wallpaperLight} className={`wallpaper ${darkMode ? '' : 'active'}`} alt="" />
         <img src={wallpaperDark} className={`wallpaper ${darkMode ? 'active' : ''}`} alt="" />

@@ -9,7 +9,15 @@ import Sidebar from '../Sidebar/Sidebar'
 import Workspace from '../Workspace/Workspace'
 import { buildPermissionIndex, labelHasAccess } from '../menuConfig'
 
-function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme, permissions }) {
+function DashboardLayout({
+  user,
+  token,
+  darkMode,
+  onLogout,
+  onToggleTheme,
+  permissions,
+  isLeaving = false,
+}) {
   const [openTabs, setOpenTabs] = useState([])
   const [activeItem, setActiveItem] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -51,7 +59,7 @@ function DashboardLayout({ user, token, darkMode, onLogout, onToggleTheme, permi
 
   return (
     <div
-      className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isSidebarOpen ? '' : 'collapsed'} ${hasEntered ? 'enter' : ''}`}
+      className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isSidebarOpen ? '' : 'collapsed'} ${isLeaving ? 'leaving' : hasEntered ? 'enter' : ''}`}
     >
       <Sidebar
         activeItem={activeItem}
