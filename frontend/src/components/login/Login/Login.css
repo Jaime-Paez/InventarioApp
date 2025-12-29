@@ -497,6 +497,43 @@ input:focus {
   }
 }
 
+.login-page.expand {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  z-index: 5;
+}
+
+.login-page.expand .login-panel {
+  animation: login-panel-slide-right 0.9s ease forwards;
+}
+
+.login-page.expand .wallpaper-layer {
+  animation: login-wallpaper-slide-left 0.9s ease forwards;
+}
+
+@keyframes login-panel-slide-right {
+  0% {
+    transform: translateX(-110%);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes login-wallpaper-slide-left {
+  0% {
+    transform: translateX(110%);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
 /* =========================
    DARK MODE – glass control
    ========================= */
