@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import DashboardLayout from './components/dashboard/DashboardLayout/DashboardLayout'
 import Login from './components/login/Login/Login'
 import 'primereact/resources/primereact.min.css';
@@ -12,6 +12,8 @@ import 'primeflex/primeflex.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const LOGIN_EXIT_ANIMATION_MS = 900
+const DASHBOARD_EXIT_ANIMATION_MS = 3500
+const LOGIN_ENTER_ANIMATION_MS = LOGIN_EXIT_ANIMATION_MS
 
 
 const getSystemThemePreference = () =>
@@ -32,6 +34,11 @@ function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token') || '')
   const [showApp, setShowApp] = useState(false)
   const [loginTransitioning, setLoginTransitioning] = useState(false)
+  const [logoutTransitioning, setLogoutTransitioning] = useState(false)
+  const [loginReturning, setLoginReturning] = useState(false)
+
+  const logoutTimeoutRef = useRef(null)
+  const loginReturnTimeoutRef = useRef(null)
 
   useEffect(() => {
     localStorage.setItem('theme', darkMode ? 'dark' : 'light')
@@ -110,9 +117,22 @@ function App() {
   }
 
   const handleLogout = () => {
-    setToken('')
-    setUser(null)
-    setShowApp(false)
+    window.clearTimeout(logoutTimeoutRef.current)
+    window.clearTimeout(loginReturnTimeoutRef.current)
+
+    setLogoutTransitioning(true)
+
+    loginReturnTimeoutRef.current = window.setTimeout(() => {
+      setLoginReturning(true)
+      setToken('')
+      setUser(null)
+      setShowApp(false)
+    }, DASHBOARD_EXIT_ANIMATION_MS)
+
+    logoutTimeoutRef.current = window.setTimeout(() => {
+      setLogoutTransitioning(false)
+      setLoginReturning(false)
+    }, DASHBOARD_EXIT_ANIMATION_MS + LOGIN_ENTER_ANIMATION_MS)
   }
 
   const appClassName = useMemo(
@@ -120,14 +140,29 @@ function App() {
     [darkMode]
   )
 
+  const loginTransitionState = useMemo(() => {
+    if (loginTransitioning) return 'collapse'
+    if (loginReturning) return 'expand'
+    return null
+  }, [loginReturning, loginTransitioning])
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(logoutTimeoutRef.current)
+      window.clearTimeout(loginReturnTimeoutRef.current)
+    },
+    []
+  )
+
   return (
     <div className={appClassName}>
-      {(!showApp || loginTransitioning) && (
+      {(!showApp || loginTransitioning || loginReturning) && (
         <Login
           darkMode={darkMode}
           onToggleTheme={() => setDarkMode((value) => !value)}
           onLoginSuccess={handleLoginSuccess}
           isCollapsing={loginTransitioning}
+          isExpanding={loginTransitionState === 'expand'}
         />
       )}
 
@@ -139,6 +174,7 @@ function App() {
           onLogout={handleLogout}
           onToggleTheme={() => setDarkMode((value) => !value)}
           permissions={user?.permisos ?? null}
+          isLeaving={logoutTransitioning}
         />
       )}
     </div>
