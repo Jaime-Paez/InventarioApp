@@ -42,6 +42,35 @@ def get_permisos_efectivos(usuario_interno, email):
     return build_permissions_summary(roles, extra_roles=extra_roles)
 
 
+def ensure_personalized_role(usuario):
+    """Garantiza que el usuario tenga un rol personalizado creado y enlazado."""
+
+    if not usuario or not usuario.correo:
+        return None
+
+    if usuario.rol_personalizado:
+        return usuario.rol_personalizado
+
+    role_name = f"Permisos - {usuario.correo}"
+    role = (
+        Rol.objects.filter(es_personalizado=True, nombre__iexact=role_name)
+        .order_by("id")
+        .first()
+    )
+
+    if role is None:
+        role = Rol.objects.create(
+            nombre=role_name,
+            descripcion="Permisos personalizados del usuario",
+            activo=True,
+            es_personalizado=True,
+        )
+
+    usuario.rol_personalizado = role
+    usuario.save(update_fields=["rol_personalizado"])
+    return role
+
+
 def sync_auth_user_from_usuario(usuario, *, password=None, create_if_missing=True):
     """Crea o sincroniza la cuenta de autenticación asociada a un usuario interno.
 
