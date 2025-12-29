@@ -1,4 +1,5 @@
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
+from django.db import transaction
 from rest_framework import filters, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
@@ -17,7 +18,11 @@ from .serializers import (
     UsuarioSucursalSerializer,
     build_permissions_summary,
 )
-from .utils import get_permisos_efectivos, get_usuario_interno_por_correo
+from .utils import (
+    get_permisos_efectivos,
+    get_usuario_interno_por_correo,
+    sync_auth_user_from_usuario,
+)
 
 
 class RolViewSet(viewsets.ModelViewSet):
@@ -47,6 +52,24 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombres", "apellidos", "correo", "cargo", "roles__nombre"]
     ordering_fields = ["apellidos", "nombres", "correo"]
+
+    def perform_create(self, serializer):
+        usuario = serializer.save()
+        # En el flujo regular ya existe la cuenta de auth, pero si falta solo se sincroniza sin crear.
+        sync_auth_user_from_usuario(usuario, create_if_missing=False)
+
+    def perform_update(self, serializer):
+        usuario = serializer.save()
+        sync_auth_user_from_usuario(usuario, create_if_missing=False)
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        auth_user = get_user_model().objects.filter(email__iexact=instance.correo).first()
+
+        instance.delete()
+
+        if auth_user:
+            auth_user.delete()
 
     @action(detail=True, methods=["get"], url_path="permisos-resumen")
     def permisos_resumen(self, request, pk=None):
