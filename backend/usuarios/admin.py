@@ -1,9 +1,11 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.models import Group, Permission
+from django.utils.crypto import get_random_string
 
 from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
+from .utils import sync_auth_user_from_usuario
 
 
 class RolPermisoInline(admin.TabularInline):
@@ -68,6 +70,30 @@ class UsuarioAdmin(admin.ModelAdmin):
         return "; ".join(lines)
 
     permisos_personalizados_admin.short_description = "Permisos personalizados"
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+
+        generated_password = None
+        if not change:
+            generated_password = get_random_string(length=12)
+
+        auth_user, created = sync_auth_user_from_usuario(
+            obj,
+            password=generated_password,
+            create_if_missing=True,
+        )
+
+        if created and generated_password:
+            messages.info(
+                request,
+                f"Se creó la cuenta de acceso para {obj.correo} con una contraseña temporal: {generated_password}",
+            )
+        elif auth_user:
+            messages.info(
+                request,
+                f"La cuenta de acceso vinculada a {obj.correo} se sincronizó correctamente.",
+            )
 
 
 @admin.register(UsuarioSucursal)
