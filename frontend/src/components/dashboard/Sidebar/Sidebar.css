@@ -320,7 +320,7 @@
 
 .dashboard-shell.dark .sidebar__profile-menu {
   background: var(--color-surface-dark);
-  border-color: var(--sidebar-profile-border, var(--color-border-dark));
+  border: 1px solid var(--sidebar-profile-border, var(--color-border));
 }
 
 .sidebar__profile-action {
