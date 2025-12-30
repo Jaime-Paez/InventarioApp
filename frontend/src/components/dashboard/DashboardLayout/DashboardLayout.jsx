@@ -22,6 +22,7 @@ function DashboardLayout({
   const [activeItem, setActiveItem] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [hasEntered, setHasEntered] = useState(false)
+  const [entryAnimationDone, setEntryAnimationDone] = useState(false)
 
   const heroLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const brandLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
@@ -30,6 +31,9 @@ function DashboardLayout({
 
   useEffect(() => {
     setHasEntered(true)
+    const timeout = setTimeout(() => setEntryAnimationDone(true), 2600)
+
+    return () => clearTimeout(timeout)
   }, [])
 
   useEffect(() => {
@@ -59,7 +63,7 @@ function DashboardLayout({
 
   return (
     <div
-      className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isSidebarOpen ? '' : 'collapsed'} ${isLeaving ? 'leaving' : hasEntered ? 'enter' : ''}`}
+      className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isSidebarOpen ? '' : 'collapsed'} ${isLeaving ? 'leaving' : hasEntered && !entryAnimationDone ? 'enter' : ''}`}
     >
       <Sidebar
         activeItem={activeItem}
