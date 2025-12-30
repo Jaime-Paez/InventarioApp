@@ -317,11 +317,30 @@
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
 }
 
 .dashboard-shell.dark .sidebar__profile-menu {
   background: var(--color-surface-dark);
   border: 1px solid var(--sidebar-profile-border, var(--color-border));
+}
+
+.sidebar__profile-menu.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.sidebar__profile-menu.closed {
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .sidebar__profile-action {

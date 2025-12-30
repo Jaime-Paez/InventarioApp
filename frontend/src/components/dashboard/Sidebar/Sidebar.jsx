@@ -51,6 +51,8 @@ function Sidebar({
   const lastNameInitial = lastName ? `${lastName[0].toUpperCase()}.` : ''
   const userName = `${firstName || 'Usuario'}${lastNameInitial ? ` ${lastNameInitial}` : ''}`.trim()
 
+  const profileMenuId = 'sidebar-profile-menu'
+
   return (
     <aside className={`sidebar ${isOpen ? '' : 'sidebar--hidden'}`}>
       <div className="sidebar__brand">
@@ -140,22 +142,29 @@ function Sidebar({
             type="button"
             className={`sidebar__user ${profileOpen ? 'open' : ''}`}
             onClick={() => setProfileOpen((value) => !value)}
+            aria-expanded={profileOpen}
+            aria-controls={profileMenuId}
           >
             <div className="sidebar__avatar minimal">{userInitial}</div>
             <span className="sidebar__user-name">{userName}</span>
           </button>
 
-          {profileOpen && (
-            <div className="sidebar__profile-menu">
-              <button
-                type="button"
-                className="sidebar__profile-action sidebar__profile-action--logout"
-                onClick={onLogout}
-              >
-                <span>Cerrar sesión</span>
-              </button>
-            </div>
-          )}
+          <div
+            id={profileMenuId}
+            className={`sidebar__profile-menu ${profileOpen ? 'open' : 'closed'}`}
+            role="menu"
+            aria-hidden={!profileOpen}
+          >
+            <button
+              type="button"
+              className="sidebar__profile-action sidebar__profile-action--logout"
+              onClick={onLogout}
+              role="menuitem"
+              tabIndex={profileOpen ? 0 : -1}
+            >
+              <span>Cerrar sesión</span>
+            </button>
+          </div>
         </div>
       </footer>
     </aside>
