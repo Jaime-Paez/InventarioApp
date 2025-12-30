@@ -146,8 +146,13 @@ function Sidebar({
 
           {profileOpen && (
             <div className="sidebar__profile-menu">
-              <button type="button" className="sidebar__profile-action" onClick={onLogout}>
-                Cerrar sesión
+              <button
+                type="button"
+                className="sidebar__profile-action sidebar__profile-action--logout"
+                onClick={onLogout}
+              >
+                <LogOut />
+                <span>Cerrar sesión</span>
               </button>
             </div>
           )}
