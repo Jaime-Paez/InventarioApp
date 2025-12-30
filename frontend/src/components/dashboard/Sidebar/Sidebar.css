@@ -312,9 +312,15 @@
   right: 0;
   bottom: calc(100% + 8px);
   background: var(--color-surface);
-  border: 1px solid var(--sidebar-profile-border);
+  border: 1px solid var(--sidebar-profile-border, var(--color-border));
   border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+.dashboard-shell.dark .sidebar__profile-menu {
+  background: var(--color-surface-dark);
+  border-color: var(--sidebar-profile-border, var(--color-border-dark));
 }
 
 .sidebar__profile-action {
@@ -327,10 +333,29 @@
   font-weight: 400;
   font-size: var(--font-size-md);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
 }
 
 .sidebar__profile-action:hover {
   background: var(--sidebar-profile-hover);
+}
+
+.sidebar__profile-action--logout {
+  color: var(--color-error-text);
+}
+
+.dashboard-shell.dark .sidebar__profile-action--logout {
+  color: var(--color-error-text-dark);
+}
+
+.sidebar__profile-action--logout:hover {
+  background: var(--color-error-bg);
+}
+
+.dashboard-shell.dark .sidebar__profile-action--logout:hover {
+  background: var(--color-error-bg-dark);
 }
 
 .sidebar__actions {
