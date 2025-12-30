@@ -5,7 +5,7 @@ from rest_framework import serializers
 from inventario.models import Sucursal
 
 from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
-from .utils import sync_auth_user_from_usuario
+from .utils import build_permissions_summary, sync_auth_user_from_usuario
 
 
 User = get_user_model()
@@ -27,46 +27,6 @@ def validate_permissions_uniqueness(permisos):
             )
         combos.add(key)
     return permisos
-
-
-def build_permissions_summary(roles, extra_roles=None):
-    """Agrupa los permisos de una colección de roles en una lista consolidada."""
-
-    roles_to_process = list(roles) + [r for r in extra_roles or [] if r]
-    summary = {}
-
-    for role in roles_to_process:
-        for permiso in role.permisos.all():
-            key = (permiso.modulo, _normalize_submodule(permiso.submodulo))
-            if key not in summary:
-                summary[key] = {
-                    "modulo": permiso.modulo,
-                    "submodulo": _normalize_submodule(permiso.submodulo),
-                    "puede_crear": False,
-                    "puede_leer": False,
-                    "puede_actualizar": False,
-                    "puede_eliminar": False,
-                }
-
-            summary[key]["puede_crear"] = (
-                summary[key]["puede_crear"] or permiso.puede_crear
-            )
-            summary[key]["puede_leer"] = summary[key]["puede_leer"] or permiso.puede_leer
-            summary[key]["puede_actualizar"] = (
-                summary[key]["puede_actualizar"] or permiso.puede_actualizar
-            )
-            summary[key]["puede_eliminar"] = (
-                summary[key]["puede_eliminar"] or permiso.puede_eliminar
-            )
-
-    return [
-        value
-        for value in summary.values()
-        if value["puede_crear"]
-        or value["puede_leer"]
-        or value["puede_actualizar"]
-        or value["puede_eliminar"]
-    ]
 
 
 class RolPermisoSerializer(serializers.ModelSerializer):
