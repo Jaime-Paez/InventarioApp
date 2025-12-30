@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Bell, Moon, Search, SunMedium } from 'lucide-react'
 import './QuickActions.css'
 
@@ -63,7 +63,6 @@ function QuickActions({ darkMode, onToggleTheme }) {
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
