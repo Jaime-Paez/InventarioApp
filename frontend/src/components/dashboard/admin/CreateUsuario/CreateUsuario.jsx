@@ -212,37 +212,13 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     }
 
     try {
-      const registerResponse = await fetch(`${API_URL}/auth/register/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          first_name: payload.nombres,
-          last_name: payload.apellidos,
-          email: payload.correo,
-          password,
-        }),
-      })
-
-      const registerData = await registerResponse.json().catch(() => ({}))
-      if (!registerResponse.ok) {
-        const detail =
-          registerData?.detail ||
-          registerData?.email?.[0] ||
-          registerData?.password?.[0] ||
-          'No se pudo crear la cuenta de acceso. Verifica la información enviada.'
-        throw new Error(detail)
-      }
-
       const response = await fetch(`${API_URL}/usuarios/listado/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Token ${token}` } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, password }),
       })
 
       const data = await response.json().catch(() => ({}))
@@ -250,6 +226,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
         const detail =
           data?.detail ||
           data?.correo?.[0] ||
+          data?.password?.[0] ||
           data?.nombres?.[0] ||
           'No se pudo crear el usuario. Verifica la información enviada.'
         throw new Error(detail)

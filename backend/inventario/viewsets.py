@@ -1,4 +1,11 @@
 from rest_framework import filters, viewsets
+from rest_framework.permissions import IsAuthenticated
+
+from usuarios.permissions import (
+    BodegasModulePermission,
+    InventarioModulePermission,
+    SucursalesModulePermission,
+)
 
 from .models import Bodega, Division, Inventario, SubDivision, Sucursal
 from .serializers import (
@@ -13,6 +20,7 @@ from .serializers import (
 class SucursalViewSet(viewsets.ModelViewSet):
     queryset = Sucursal.objects.all().order_by("nombre")
     serializer_class = SucursalSerializer
+    permission_classes = [IsAuthenticated, SucursalesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre"]
     ordering_fields = ["nombre"]
@@ -23,6 +31,7 @@ class BodegaViewSet(viewsets.ModelViewSet):
         "sucursal__nombre", "nombre"
     )
     serializer_class = BodegaSerializer
+    permission_classes = [IsAuthenticated, BodegasModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "sucursal__nombre"]
     ordering_fields = ["nombre", "sucursal__nombre"]
@@ -35,6 +44,7 @@ class DivisionViewSet(viewsets.ModelViewSet):
         .order_by("bodega__nombre", "nombre")
     )
     serializer_class = DivisionSerializer
+    permission_classes = [IsAuthenticated, BodegasModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "nombre",
@@ -57,6 +67,7 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
         .order_by("division__nombre", "nombre")
     )
     serializer_class = SubDivisionSerializer
+    permission_classes = [IsAuthenticated, BodegasModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "division__nombre", "division__bodega__nombre"]
     ordering_fields = ["nombre", "division__nombre"]
@@ -75,6 +86,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
         .order_by("subdivision__division__bodega__nombre", "producto__nombre")
     )
     serializer_class = InventarioSerializer
+    permission_classes = [IsAuthenticated, InventarioModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "producto__codigo",

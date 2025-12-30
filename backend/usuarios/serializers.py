@@ -1,9 +1,11 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from rest_framework import serializers
 
 from inventario.models import Sucursal
 
 from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
+from .utils import sync_auth_user_from_usuario
 
 
 User = get_user_model()
@@ -148,6 +150,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     permisos_personalizados = RolPermisoSerializer(many=True, required=False)
     permisos_resumen = serializers.SerializerMethodField()
+    password = serializers.CharField(
+        write_only=True, required=False, allow_blank=False, min_length=8
+    )
+    roles = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Rol.objects.filter(activo=True), required=False
+    )
 
     class Meta:
         model = Usuario
@@ -159,26 +167,50 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "telefono",
             "cargo",
             "activo",
+            "roles",
             "permisos_personalizados",
             "permisos_resumen",
+            "password",
         ]
+        extra_kwargs = {"password": {"write_only": True}}
 
     def create(self, validated_data):
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
-        usuario = Usuario.objects.create(**validated_data)
+        roles = validated_data.pop("roles", [])
+        password = validated_data.pop("password", None)
 
-        self._sync_personalized_permissions(usuario, permisos_personalizados)
+        with transaction.atomic():
+            usuario = Usuario.objects.create(**validated_data)
+            if roles is not None:
+                usuario.roles.set(roles)
+
+            self._sync_personalized_permissions(usuario, permisos_personalizados)
+            sync_auth_user_from_usuario(usuario, password=password, create_if_missing=True)
         return usuario
 
     def update(self, instance, validated_data):
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
+        roles = validated_data.pop("roles", None)
+        password = validated_data.pop("password", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
+        if roles is not None:
+            instance.roles.set(roles)
+
         self._sync_personalized_permissions(instance, permisos_personalizados)
+        if password:
+            sync_auth_user_from_usuario(instance, password=password, create_if_missing=True)
         return instance
+
+    def validate(self, attrs):
+        if self.instance is None and not attrs.get("password"):
+            raise serializers.ValidationError(
+                {"password": "Debes definir una contraseña para el usuario."}
+            )
+        return super().validate(attrs)
 
     def validate_permisos_personalizados(self, value):
         return validate_permissions_uniqueness(value)
