@@ -82,6 +82,7 @@ function App() {
         setShowApp(true)
         return userData
       } catch (err) {
+        console.error('Error al obtener el perfil', err)
         setUser(null)
         setShowApp(false)
         setToken('')

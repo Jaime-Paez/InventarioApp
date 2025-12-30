@@ -54,7 +54,7 @@ const emptyForm = {
   permisos_personalizados: [],
 }
 
-function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
+function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onError }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [permissionOptions, setPermissionOptions] = useState([])
@@ -63,7 +63,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [error, setError] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
@@ -77,6 +76,17 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
   const positionRef = useRef(position)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+  const notifyError = useCallback(
+    (message) => {
+      if (!message) return
+      if (onError) {
+        onError(message)
+        return
+      }
+      console.error(message)
+    },
+    [onError]
+  )
 
   const normalizeUser = (data) => ({
     nombres: data?.nombres ?? '',
@@ -163,16 +173,15 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
       const modulos = Array.isArray(data?.modulos) ? data.modulos : []
       setPermissionOptions(modulos)
     } catch (err) {
-      setError(err.message || 'Ocurrió un problema al cargar los permisos.')
+      notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
       setPermissionsLoading(false)
     }
-  }, [token])
+  }, [notifyError, token])
 
   const fetchUser = useCallback(async () => {
     if (!userId) return
     setLoadingData(true)
-    setError('')
     try {
       const response = await fetch(`${API_URL}/usuarios/listado/${userId}/`, {
         headers: {
@@ -193,15 +202,14 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
       setPermissionsMatrix(buildMatrixFromList(normalized.permisos_personalizados))
       setIsEditing(false)
     } catch (err) {
-      setError(err.message || 'Ocurrió un error al obtener la información del usuario.')
+      notifyError(err.message || 'Ocurrió un error al obtener la información del usuario.')
     } finally {
       setLoadingData(false)
     }
-  }, [token, userId])
+  }, [notifyError, token, userId])
 
   useEffect(() => {
     if (!open) return
-    setError('')
     setIsEditing(false)
     setFormData(emptyForm)
     setOriginalData(emptyForm)
@@ -332,14 +340,12 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
       }
       return next
     })
-    setError('')
   }
 
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!isEditing || loadingData) return
     setSaving(true)
-    setError('')
 
     const payload = {
       ...formData,
@@ -353,7 +359,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
 
     if (!payload.nombres || !payload.apellidos || !payload.correo) {
       setSaving(false)
-      setError('Completa los campos de nombres, apellidos y correo para continuar.')
+      notifyError('Completa los campos de nombres, apellidos y correo para continuar.')
       return
     }
 
@@ -384,7 +390,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
-      setError(err.message || 'Ocurrió un error al actualizar el usuario.')
+      notifyError(err.message || 'Ocurrió un error al actualizar el usuario.')
     } finally {
       setSaving(false)
     }
@@ -394,7 +400,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
     if (!isEditing || deleteLoading || !userId) return
     setShowDeleteDialog(false)
     setDeleteLoading(true)
-    setError('')
     try {
       const response = await fetch(`${API_URL}/usuarios/listado/${userId}/`, {
         method: 'DELETE',
@@ -413,7 +418,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
       onDeleted?.(userId)
       onClose?.()
     } catch (err) {
-      setError(err.message || 'Ocurrió un error al eliminar el usuario.')
+      notifyError(err.message || 'Ocurrió un error al eliminar el usuario.')
     } finally {
       setDeleteLoading(false)
     }
@@ -423,7 +428,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
     onClose?.()
     setIsEditing(false)
     setShowDeleteDialog(false)
-    setError('')
   }
 
   if (!open) return null
@@ -605,8 +609,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted }) {
             </section>
           )}
         </div>
-
-          {error && <p className="create-user__error">{error}</p>}
 
           <div className="create-user__footer">
             <div className="user-details__footer-left">
