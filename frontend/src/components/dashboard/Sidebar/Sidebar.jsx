@@ -44,11 +44,12 @@ function Sidebar({
     onSelect(item.label)
   }
 
-  const userInitial = (user?.nombre || user?.first_name || 'U')[0]?.toUpperCase()
-  const userName = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
-    .filter(Boolean)
-    .join(' ')
-    .trim() || 'Usuario'
+  const firstName = (user?.nombre || user?.first_name || '').trim()
+  const lastName = (user?.apellido || user?.last_name || '').trim()
+
+  const userInitial = (firstName[0] || lastName[0] || 'U').toUpperCase()
+  const lastNameInitial = lastName ? `${lastName[0].toUpperCase()}.` : ''
+  const userName = `${firstName || 'Usuario'}${lastNameInitial ? ` ${lastNameInitial}` : ''}`.trim()
 
   return (
     <aside className={`sidebar ${isOpen ? '' : 'sidebar--hidden'}`}>

@@ -281,6 +281,7 @@
   place-items: center;
   font-weight: 600;
   text-transform: uppercase;
+  flex: 0 0 34px;
 }
 
 .dashboard-shell.dark .sidebar__avatar {
@@ -385,6 +386,10 @@
   font-size: var(--font-size-md);
   font-weight: 400;
   color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
 }
 
 .sidebar__action.ghost {
