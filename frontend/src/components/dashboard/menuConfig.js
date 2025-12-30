@@ -105,9 +105,6 @@ export const buildPermissionIndex = (permissions) => {
   return index
 }
 
-const hasActions = (permiso) =>
-  permiso && (permiso.puede_crear || permiso.puede_leer || permiso.puede_actualizar || permiso.puede_eliminar)
-
 const hasPermissionForTarget = (moduleKey, permissionIndex) => {
   if (!permissionIndex || !moduleKey) return true
   const permiso = permissionIndex.get(moduleKey)

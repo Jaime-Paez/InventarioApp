@@ -13,20 +13,6 @@ const ACTIONS = [
   { key: 'puede_eliminar', label: 'Eliminar' },
 ]
 
-const buildMatrixFromList = (permisos = []) => {
-  const matrix = {}
-  permisos.forEach((permiso) => {
-    if (!permiso?.modulo) return
-    matrix[permiso.modulo] = {
-      puede_crear: Boolean(permiso.puede_crear),
-      puede_leer: Boolean(permiso.puede_leer),
-      puede_actualizar: Boolean(permiso.puede_actualizar),
-      puede_eliminar: Boolean(permiso.puede_eliminar),
-    }
-  })
-  return matrix
-}
-
 const serializeMatrix = (matrix) =>
   Object.entries(matrix)
     .map(([modulo, value]) => {
@@ -52,7 +38,7 @@ const initialForm = {
   activo: true,
 }
 
-function CreateUsuario({ open, onClose, onCreated, token }) {
+function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -60,7 +46,6 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
   const [permissionOptions, setPermissionOptions] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [permissionsLoading, setPermissionsLoading] = useState(false)
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
 
@@ -73,6 +58,18 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
   const positionRef = useRef(position)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+
+  const notifyError = useCallback(
+    (message) => {
+      if (!message) return
+      if (onError) {
+        onError(message)
+        return
+      }
+      console.error(message)
+    },
+    [onError]
+  )
 
   const fetchPermissionOptions = useCallback(async () => {
     setPermissionsLoading(true)
@@ -90,15 +87,14 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
       const modulos = Array.isArray(data?.modulos) ? data.modulos : []
       setPermissionOptions(modulos)
     } catch (err) {
-      setError(err.message || 'Ocurrió un problema al cargar los permisos.')
+      notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
       setPermissionsLoading(false)
     }
-  }, [token])
+  }, [notifyError, token])
 
   useEffect(() => {
     if (!open) return
-    setError('')
     setFormData(initialForm)
     setPassword('')
     setConfirmPassword('')
@@ -186,7 +182,6 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
   const handleSubmit = async (event) => {
     event.preventDefault()
     setLoading(true)
-    setError('')
 
     const payload = {
       ...formData,
@@ -200,19 +195,19 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
 
     if (!payload.nombres || !payload.apellidos || !payload.correo) {
       setLoading(false)
-      setError('Completa los campos de nombres, apellidos y correo para continuar.')
+      notifyError('Completa los campos de nombres, apellidos y correo para continuar.')
       return
     }
 
     if (!password || password.length < 8) {
       setLoading(false)
-      setError('Define una contraseña de al menos 8 caracteres para el usuario.')
+      notifyError('Define una contraseña de al menos 8 caracteres para el usuario.')
       return
     }
 
     if (password !== confirmPassword) {
       setLoading(false)
-      setError('La confirmación de contraseña no coincide.')
+      notifyError('La confirmación de contraseña no coincide.')
       return
     }
 
@@ -267,7 +262,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
       setPermissionsMatrix({})
       onCreated?.({ ...data, password })
     } catch (err) {
-      setError(err.message || 'Ocurrió un error al crear el usuario.')
+      notifyError(err.message || 'Ocurrió un error al crear el usuario.')
     } finally {
       setLoading(false)
     }
@@ -381,7 +376,7 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
       setPasswordCopied(true)
       setTimeout(() => setPasswordCopied(false), 2500)
     } catch {
-      setError('No se pudo copiar la contraseña. Intenta nuevamente.')
+      notifyError('No se pudo copiar la contraseña. Intenta nuevamente.')
     }
   }
 
@@ -591,8 +586,6 @@ function CreateUsuario({ open, onClose, onCreated, token }) {
               </section>
             )}
           </div>
-
-          {error && <p className="create-user__error">{error}</p>}
 
           <div className="create-user__footer">
             <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>

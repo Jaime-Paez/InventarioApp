@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import './Sidebar.css'
-import { Layers, LogOut, PanelLeftClose, Settings } from 'lucide-react'
+import { Settings, PanelLeftClose, Layers } from 'lucide-react'
 import { MENU_STRUCTURE, filterMenuByPermissions } from '../menuConfig'
 
 function Sidebar({

@@ -26,12 +26,20 @@ function UsersTable({
 
   onExportExcel,
   onExportPdf,
-  onEmail,
-  onOpenFolder,
 }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const globalSearchRef = useRef(null)
+  const showErrorToast = useCallback(
+    (detail, summary = 'Error') =>
+      toast.current?.show({
+        severity: 'error',
+        summary,
+        detail,
+        life: 4000,
+      }),
+    []
+  )
 
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
@@ -149,7 +157,10 @@ function UsersTable({
       const ids = (parsed.selectedRowIds || []).map(normId).filter(Boolean)
       // guardamos IDs pendientes; los convertimos a rows cuando exista `users`
       sessionStorage.setItem('usuarios-table-selected-rows-pending', JSON.stringify({ ids }))
-    } catch {}
+    } catch {
+      sessionStorage.removeItem('usuarios-table-selected-rows')
+      sessionStorage.removeItem('usuarios-table-selected-rows-pending')
+    }
   }, [])
 
   // Cuando cambia users, aplica la selección pendiente (ids -> rows)
@@ -551,7 +562,13 @@ function UsersTable({
           ))}
         </OverlayPanel>
 
-        <CreateUsuario open={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={handleUserCreated} token={token} />
+        <CreateUsuario
+          open={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleUserCreated}
+          token={token}
+          onError={showErrorToast}
+        />
 
         <UsersDetails
           open={showDetailsModal}
@@ -560,6 +577,7 @@ function UsersTable({
           onClose={() => setShowDetailsModal(false)}
           onUpdated={handleUserUpdated}
           onDeleted={handleUserDeleted}
+          onError={showErrorToast}
         />
       </div>
     </div>
