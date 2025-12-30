@@ -42,6 +42,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     queryset = (
         Usuario.objects.prefetch_related(
             "rol_personalizado__permisos",
+            "roles",
         )
         .all()
         .order_by("apellidos", "nombres")
@@ -52,15 +53,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombres", "apellidos", "correo", "cargo", "roles__nombre"]
     ordering_fields = ["apellidos", "nombres", "correo"]
-
-    def perform_create(self, serializer):
-        usuario = serializer.save()
-        # En el flujo regular ya existe la cuenta de auth, pero si falta solo se sincroniza sin crear.
-        sync_auth_user_from_usuario(usuario, create_if_missing=False)
-
-    def perform_update(self, serializer):
-        usuario = serializer.save()
-        sync_auth_user_from_usuario(usuario, create_if_missing=False)
 
     @transaction.atomic
     def perform_destroy(self, instance):

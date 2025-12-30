@@ -1,4 +1,7 @@
 from rest_framework import filters, viewsets
+from rest_framework.permissions import IsAuthenticated
+
+from usuarios.permissions import MovimientoInventarioModulePermission
 
 from .models import MovimientoInventario
 from .serializers import MovimientoInventarioSerializer
@@ -24,6 +27,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         .order_by("-fecha", "no_documento")
     )
     serializer_class = MovimientoInventarioSerializer
+    permission_classes = [IsAuthenticated, MovimientoInventarioModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "no_documento",

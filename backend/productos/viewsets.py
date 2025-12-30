@@ -1,4 +1,7 @@
 from rest_framework import filters, viewsets
+from rest_framework.permissions import IsAuthenticated
+
+from usuarios.permissions import ProductosModulePermission
 
 from .models import OEM, OEMProducto, Producto, ProductoAlterno
 from .serializers import (
@@ -17,6 +20,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         .order_by("nombre")
     )
     serializer_class = ProductoSerializer
+    permission_classes = [IsAuthenticated, ProductosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "codigo",
@@ -35,6 +39,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
 class OEMViewSet(viewsets.ModelViewSet):
     queryset = OEM.objects.all().order_by("codigo")
     serializer_class = OEMSerializer
+    permission_classes = [IsAuthenticated, ProductosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["codigo"]
     ordering_fields = ["codigo"]
@@ -47,6 +52,7 @@ class OEMProductoViewSet(viewsets.ModelViewSet):
         .order_by("producto__nombre", "oem__codigo")
     )
     serializer_class = OEMProductoSerializer
+    permission_classes = [IsAuthenticated, ProductosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "producto__codigo",
@@ -63,6 +69,7 @@ class ProductoAlternoViewSet(viewsets.ModelViewSet):
         .order_by("producto__nombre", "alterno__nombre")
     )
     serializer_class = ProductoAlternoSerializer
+    permission_classes = [IsAuthenticated, ProductosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "producto__codigo",
