@@ -151,7 +151,6 @@ function Sidebar({
                 className="sidebar__profile-action sidebar__profile-action--logout"
                 onClick={onLogout}
               >
-                <LogOut />
                 <span>Cerrar sesión</span>
               </button>
             </div>
