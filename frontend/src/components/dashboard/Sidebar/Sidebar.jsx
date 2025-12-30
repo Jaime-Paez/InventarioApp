@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import './Sidebar.css'
-import { Settings, PanelLeftClose } from 'lucide-react'
+import { Layers, LogOut, PanelLeftClose, Settings } from 'lucide-react'
 import { MENU_STRUCTURE, filterMenuByPermissions } from '../menuConfig'
 
 function Sidebar({
@@ -146,8 +146,13 @@ function Sidebar({
 
           {profileOpen && (
             <div className="sidebar__profile-menu">
-              <button type="button" className="sidebar__profile-action" onClick={onLogout}>
-                Cerrar sesión
+              <button
+                type="button"
+                className="sidebar__profile-action sidebar__profile-action--logout"
+                onClick={onLogout}
+              >
+                <LogOut />
+                <span>Cerrar sesión</span>
               </button>
             </div>
           )}
