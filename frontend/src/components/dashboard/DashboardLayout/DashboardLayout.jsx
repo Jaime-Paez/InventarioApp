@@ -43,6 +43,13 @@ function DashboardLayout({
     }
   }, [permissionIndex, activeItem])
 
+  useEffect(() => {
+    if (isLeaving) {
+      setOpenTabs([])
+      setActiveItem('')
+    }
+  }, [isLeaving])
+
   const handleSelect = (label) => {
     if (!labelHasAccess(label, permissionIndex)) return
     setActiveItem(label)
@@ -89,6 +96,7 @@ function DashboardLayout({
         darkMode={darkMode}
         onToggleTheme={onToggleTheme}
         permissionIndex={permissionIndex}
+        isLeaving={isLeaving}
       />
 
       {!isSidebarOpen && (

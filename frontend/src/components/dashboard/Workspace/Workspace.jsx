@@ -15,6 +15,7 @@ function Workspace({
   onToggleTheme,
   token,
   permissionIndex,
+  isLeaving = false,
 }) {
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
@@ -23,6 +24,7 @@ function Workspace({
 
   const showWelcome = !activeItem
   const hasAccess = !activeItem || labelHasAccess(activeItem, permissionIndex)
+  const farewellTitle = `Hasta luego, ${username}.`
 
   const renderContent = () => {
     if (!hasAccess) {
@@ -62,9 +64,11 @@ function Workspace({
             <img src={logo} alt="Logotipo Kava" />
           </div>
           <div className="workspace__copy">
-            <h2>¡Qué gusto tenerte de vuelta, {username}!</h2>
+            <h2>{isLeaving ? farewellTitle : `¡Qué gusto tenerte de vuelta, ${username}!`}</h2>
             <p className="workspace__subtitle">
-              Para comenzar, selecciona una opción del menú
+              {isLeaving
+                ? 'Nos vemos pronto.'
+                : 'Para comenzar, selecciona una opción del menú'}
             </p>
           </div>
         </section>
