@@ -590,6 +590,59 @@
   opacity: 0.76;
 }
 
+.create-user__branches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.create-user__branch-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.create-user__branch-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary-dark);
+  margin-top: 3px;
+}
+
+.create-user__branch-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--color-text-primary);
+}
+
+.create-user__branch-info span {
+  font-weight: 700;
+}
+
+.create-user__branch-info small {
+  color: var(--color-text-primary);
+  opacity: 0.7;
+}
+
+.dashboard-shell.dark .create-user__branch-option {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__branch-info {
+  color: var(--color-button-primary);
+}
+
+.dashboard-shell.dark .create-user__branch-info small {
+  color: var(--color-text-dark);
+}
+
 /* Permissions matrix */
 .permissions-matrix {
   margin-top: 18px;
