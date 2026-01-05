@@ -6,6 +6,7 @@ import jpaezDark from '../../../assets/login/jpaez(dark).png'
 import jpaezLight from '../../../assets/login/jpaez(light).png'
 import kavaDark from '../../../assets/login/kava(dark).png'
 import kavaLight from '../../../assets/login/kava(light).png'
+import { authFetch } from '../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -71,11 +72,15 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
     setAuthError('')
     setStatusMessage('')
     try {
-      const response = await fetch(`${API_URL}/auth/login/`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(loginData),
-      })
+      const response = await authFetch(
+        `${API_URL}/auth/login/`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(loginData),
+        },
+        null
+      )
       const data = await response.json().catch(() => ({}))
 
       if (!response.ok) {
