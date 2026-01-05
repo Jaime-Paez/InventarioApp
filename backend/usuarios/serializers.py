@@ -117,6 +117,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
         many=True, queryset=Rol.objects.filter(activo=True), required=False
     )
 
+    sucursales_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Sucursal.objects.all(),
+        required=False,
+        write_only=True,
+    )
+    sucursales = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = Usuario
         fields = [
@@ -128,6 +136,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "cargo",
             "activo",
             "roles",
+            "sucursales",
+            "sucursales_ids",
             "permisos_personalizados",
             "permisos_resumen",
             "password",
@@ -138,6 +148,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
         roles = validated_data.pop("roles", [])
         password = validated_data.pop("password", None)
+        sucursales = validated_data.pop("sucursales_ids", None)
 
         with transaction.atomic():
             usuario = Usuario.objects.create(**validated_data)
@@ -145,6 +156,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 usuario.roles.set(roles)
 
             self._sync_personalized_permissions(usuario, permisos_personalizados)
+            self._sync_sucursales(usuario, sucursales)
             sync_auth_user_from_usuario(usuario, password=password, create_if_missing=True)
         return usuario
 
@@ -152,6 +164,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
         roles = validated_data.pop("roles", None)
         password = validated_data.pop("password", None)
+        sucursales = validated_data.pop("sucursales_ids", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -161,6 +174,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             instance.roles.set(roles)
 
         self._sync_personalized_permissions(instance, permisos_personalizados)
+        self._sync_sucursales(instance, sucursales)
         if password:
             sync_auth_user_from_usuario(instance, password=password, create_if_missing=True)
         return instance
@@ -236,6 +250,32 @@ class UsuarioSerializer(serializers.ModelSerializer):
             usuario.rol_personalizado = None
             usuario.save(update_fields=["rol_personalizado"])
 
+    def _sync_sucursales(self, usuario, sucursales):
+        """Crea o elimina las asignaciones de sucursales para el usuario."""
+
+        if sucursales is None:
+            return
+
+        target_ids = set(str(sucursal.id) for sucursal in sucursales)
+        current_ids = set(
+            str(sucursal_id)
+            for sucursal_id in usuario.asignaciones.values_list("sucursal_id", flat=True)
+        )
+
+        # Remover asignaciones que ya no aplican
+        remove_ids = current_ids - target_ids
+        if remove_ids:
+            UsuarioSucursal.objects.filter(usuario=usuario, sucursal_id__in=remove_ids).delete()
+
+        # Crear nuevas asignaciones
+        create_ids = target_ids - current_ids
+        UsuarioSucursal.objects.bulk_create(
+            [
+                UsuarioSucursal(usuario=usuario, sucursal_id=sucursal_id)
+                for sucursal_id in create_ids
+            ]
+        )
+
     def get_permisos_resumen(self, obj):
         return build_permissions_summary(
             obj.roles.all(),
@@ -250,7 +290,16 @@ class UsuarioSerializer(serializers.ModelSerializer):
             ).data
         else:
             data["permisos_personalizados"] = []
+
+        data["sucursales"] = self.get_sucursales(instance)
         return data
+
+    def get_sucursales(self, obj):
+        asignaciones = obj.asignaciones.select_related("sucursal").all()
+        return [
+            {"id": asignacion.sucursal.id, "nombre": asignacion.sucursal.nombre}
+            for asignacion in asignaciones
+        ]
 
 
 class UsuarioSucursalSerializer(serializers.ModelSerializer):
