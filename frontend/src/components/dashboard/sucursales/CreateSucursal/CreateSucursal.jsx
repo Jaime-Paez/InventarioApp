@@ -78,17 +78,10 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     if (!mapContainerRef.current || mapRef.current) return
     const L = await import('leaflet')
 
-    const map = L.map(mapContainerRef.current, { zoomControl: false }).setView(
+    const map = L.map(mapContainerRef.current).setView(
       [location.latitud, location.longitud],
       13
     )
-    map.dragging.disable()
-    map.scrollWheelZoom.disable()
-    map.doubleClickZoom.disable()
-    map.touchZoom.disable()
-    map.boxZoom.disable()
-    map.keyboard.disable()
-    map.tap?.disable()
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
