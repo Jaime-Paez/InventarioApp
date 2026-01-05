@@ -9,6 +9,7 @@ import 'primereact/resources/themes/lara-light-cyan/theme.css';
 
 // opcional (si usas utilidades)
 import 'primeflex/primeflex.css';
+import { authFetch } from './utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const LOGIN_EXIT_ANIMATION_MS = 900
@@ -62,12 +63,15 @@ function App() {
       }
 
       try {
-        const response = await fetch(`${API_URL}/auth/me/`, {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Token ${effectiveToken}`,
+        const response = await authFetch(
+          `${API_URL}/auth/me/`,
+          {
+            headers: {
+              Authorization: `Token ${effectiveToken}`,
+            },
           },
-        })
+          effectiveToken
+        )
 
         const data = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(data?.detail || 'No se pudo obtener el perfil.')

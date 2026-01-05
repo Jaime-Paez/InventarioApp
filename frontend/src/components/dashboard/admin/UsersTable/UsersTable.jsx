@@ -12,6 +12,7 @@ import { Dropdown } from 'primereact/dropdown'
 import CreateUsuario from '../CreateUsuario/CreateUsuario'
 import UsersDetails from '../UsersDetails/UsersDetails'
 import './UsersTable.css'
+import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -50,12 +51,11 @@ function UsersTable({
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/usuarios/listado/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const res = await authFetch(
+        `${API_URL}/usuarios/listado/`,
+        {},
+        token
+      )
 
       if (!res.ok) throw new Error('No se pudo obtener la lista de usuarios.')
 
