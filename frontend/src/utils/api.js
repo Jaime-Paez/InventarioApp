@@ -19,7 +19,6 @@ export const buildAuthHeaders = (token, extraHeaders = {}) => {
 export const authFetch = (url, options = {}, token) => {
   const { headers: customHeaders, ...rest } = options || {}
   return fetch(url, {
-    credentials: 'include',
     ...rest,
     headers: buildAuthHeaders(token, customHeaders),
   })

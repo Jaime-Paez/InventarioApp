@@ -186,8 +186,12 @@ STATICFILES_DIRS = [
 # ============================================================
 # CORS / CSRF CONFIG
 # ============================================================
-# Permitir todas las conexiones CORS (solo en desarrollo)
-CORS_ALLOW_ALL_ORIGINS = True
+# Permitir conexiones CORS desde orígenes conocidos (desarrollo)
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+CORS_ALLOW_CREDENTIALS = True
 
 # Permitir CSRF desde el frontend local (ajusta según tu puerto o dominio)
 CSRF_TRUSTED_ORIGINS = [
