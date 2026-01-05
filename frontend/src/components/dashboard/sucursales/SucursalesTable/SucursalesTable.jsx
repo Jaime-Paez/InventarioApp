@@ -200,6 +200,8 @@ function SucursalesTable({ token, onSelect }) {
     () => [
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
       { nombrevar: 'direccion', header: 'Dirección', filterPlaceholder: 'Buscar por dirección' },
+      { nombrevar: 'latitud', header: 'Latitud', filterPlaceholder: 'Filtrar por latitud' },
+      { nombrevar: 'longitud', header: 'Longitud', filterPlaceholder: 'Filtrar por longitud' },
     ],
     []
   )
@@ -249,6 +251,17 @@ function SucursalesTable({ token, onSelect }) {
     return (
       <span className="cell-tooltip" data-pr-tooltip={name}>
         {name}
+      </span>
+    )
+  }
+
+  const coordBodyTemplate = (rowData, field) => {
+    const value = Number(rowData?.[field])
+    if (!Number.isFinite(value)) return <span className="cell-tooltip">—</span>
+    const text = value.toFixed(6)
+    return (
+      <span className="cell-tooltip" data-pr-tooltip={text}>
+        {text}
       </span>
     )
   }
@@ -375,7 +388,7 @@ function SucursalesTable({ token, onSelect }) {
           removableSort
           filters={filters}
           onFilter={(e) => setFilters(e.filters)}
-          globalFilterFields={['nombre', 'direccion']}
+          globalFilterFields={['nombre', 'direccion', 'latitud', 'longitud']}
           stateStorage="session"
           stateKey="sucursales-table-state"
           reorderableColumns
@@ -416,6 +429,12 @@ function SucursalesTable({ token, onSelect }) {
               case 'nombre':
                 bodyTemplate = (rowData) => nombreBodyTemplate(rowData)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
+                break
+              case 'latitud':
+              case 'longitud':
+                bodyTemplate = (rowData) => coordBodyTemplate(rowData, column.nombrevar)
+                filterMatchMode = FilterMatchMode.STARTS_WITH
+                className = 'column-max-min-width--small'
                 break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)

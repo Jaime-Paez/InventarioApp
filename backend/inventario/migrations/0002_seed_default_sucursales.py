@@ -3,10 +3,10 @@ from django.db import migrations
 
 DEFAULT_SUCURSALES = [
     ("9 de Octubre (Matriz)", "9 de Octubre (Matriz)"),
-    ("Norte", "Norte"),
-    ("Sur", "Sur"),
-    ("Tumbaco", "Tumbaco"),
-    ("Valle", "Valle"),
+    ("Norte", "Sucursal Norte"),
+    ("Sur", "Sucursal Sur"),
+    ("Tumbaco", "Sucursal Tumbaco"),
+    ("Valle", "Sucursal Valle"),
 ]
 
 

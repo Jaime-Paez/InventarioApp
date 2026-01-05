@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
+import '../SucursalMap.css'
+import 'leaflet/dist/leaflet.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MIN_WIDTH = 620
@@ -11,9 +13,12 @@ const initialForm = {
   direccion: '',
 }
 
+const DEFAULT_CENTER = { latitud: -0.204404, longitud: -78.496283 }
+
 function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
+  const [location, setLocation] = useState(DEFAULT_CENTER)
 
   const modalRef = useRef(null)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -22,6 +27,9 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
   const positionRef = useRef(position)
+  const mapRef = useRef(null)
+  const markerRef = useRef(null)
+  const mapContainerRef = useRef(null)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -41,6 +49,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     if (!open) return
     setFormData(initialForm)
     setLoading(false)
+    setLocation(DEFAULT_CENTER)
   }, [open])
 
   useLayoutEffect(() => {
@@ -64,6 +73,58 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     positionRef.current = position
   }, [position])
 
+  const initializeMap = useCallback(async () => {
+    if (!mapContainerRef.current || mapRef.current) return
+    const L = await import('leaflet')
+
+    const map = L.map(mapContainerRef.current).setView(
+      [location.latitud, location.longitud],
+      13
+    )
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map)
+
+    const setMarker = (lat, lng) => {
+      setLocation({ latitud: lat, longitud: lng })
+      if (markerRef.current) {
+        markerRef.current.setLatLng([lat, lng])
+      } else {
+        markerRef.current = L.marker([lat, lng]).addTo(map)
+      }
+    }
+
+    map.on('click', (event) => {
+      const { lat, lng } = event.latlng
+      setMarker(lat, lng)
+    })
+
+    setMarker(location.latitud, location.longitud)
+
+    mapRef.current = map
+  }, [location.latitud, location.longitud])
+
+  useEffect(() => {
+    if (open) {
+      initializeMap()
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markerRef.current = null
+      }
+    }
+  }, [open, initializeMap])
+
+  useEffect(() => {
+    if (!mapRef.current || !markerRef.current) return
+    markerRef.current.setLatLng([location.latitud, location.longitud])
+    mapRef.current.setView([location.latitud, location.longitud])
+  }, [location])
+
   const handleChange = (event) => {
     const { name, value } = event.target
     setFormData((prev) => ({
@@ -79,11 +140,19 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     const payload = {
       nombre: formData.nombre.trim(),
       direccion: formData.direccion.trim(),
+      latitud: Number(location.latitud),
+      longitud: Number(location.longitud),
     }
 
     if (!payload.nombre) {
       setLoading(false)
       notifyError('Define un nombre para la sucursal.')
+      return
+    }
+
+    if (!Number.isFinite(payload.latitud) || !Number.isFinite(payload.longitud)) {
+      setLoading(false)
+      notifyError('Selecciona un punto en el mapa para guardar la sucursal.')
       return
     }
 
@@ -271,6 +340,22 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
                     disabled={loading}
                   />
                 </label>
+              </div>
+
+              <div className="create-user__section-header">
+                <div>
+                  <p className="create-user__eyebrow">Ubicación</p>
+                  <h4>Selecciona la ubicación en el mapa</h4>
+                </div>
+              </div>
+
+              <div className="sucursal-map__container">
+                <div ref={mapContainerRef} className="sucursal-map__canvas" role="presentation" />
+                <div className="sucursal-map__coords">
+                  <span>Latitud: {Number(location.latitud).toFixed(6)}</span>
+                  <span>Longitud: {Number(location.longitud).toFixed(6)}</span>
+                  <small>Haz clic en el mapa para mover el marcador.</small>
+                </div>
               </div>
             </section>
           </div>

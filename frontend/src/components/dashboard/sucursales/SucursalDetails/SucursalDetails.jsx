@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Eye, Info, Pencil } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
+import '../SucursalMap.css'
+import 'leaflet/dist/leaflet.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MIN_WIDTH = 620
@@ -11,6 +13,8 @@ const VIEWPORT_PADDING = 12
 const emptyForm = {
   nombre: '',
   direccion: '',
+  latitud: 0,
+  longitud: 0,
 }
 
 function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDeleted, onError }) {
@@ -30,6 +34,10 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
   const positionRef = useRef(position)
+  const mapRef = useRef(null)
+  const markerRef = useRef(null)
+  const mapContainerRef = useRef(null)
+  const isEditingRef = useRef(false)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const notifyError = useCallback(
@@ -47,6 +55,8 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const normalizeSucursal = (data) => ({
     nombre: data?.nombre ?? '',
     direccion: data?.direccion ?? '',
+    latitud: Number(data?.latitud ?? 0),
+    longitud: Number(data?.longitud ?? 0),
   })
 
   const handleChange = (event) => {
@@ -93,6 +103,13 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     setOriginalData(emptyForm)
     setActiveTab('general')
     fetchSucursal()
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markerRef.current = null
+      }
+    }
   }, [open, fetchSucursal])
 
   useLayoutEffect(() => {
@@ -115,6 +132,55 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   useEffect(() => {
     positionRef.current = position
   }, [position])
+
+  useEffect(() => {
+    isEditingRef.current = isEditing
+  }, [isEditing])
+
+  const initializeMap = useCallback(async () => {
+    if (!mapContainerRef.current || mapRef.current) return
+    const L = await import('leaflet')
+
+    const startLat = formData.latitud || 0
+    const startLng = formData.longitud || 0
+
+    const map = L.map(mapContainerRef.current).setView([startLat, startLng], 13)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map)
+
+    const setMarker = (lat, lng) => {
+      if (!isEditingRef.current) return
+      setFormData((prev) => ({ ...prev, latitud: lat, longitud: lng }))
+      if (markerRef.current) {
+        markerRef.current.setLatLng([lat, lng])
+      } else {
+        markerRef.current = L.marker([lat, lng]).addTo(map)
+      }
+    }
+
+    map.on('click', (event) => {
+      if (!isEditingRef.current) return
+      const { lat, lng } = event.latlng
+      setMarker(lat, lng)
+    })
+
+    markerRef.current = L.marker([startLat, startLng]).addTo(map)
+    mapRef.current = map
+  }, [formData.latitud, formData.longitud, isEditing])
+
+  useEffect(() => {
+    if (open) {
+      initializeMap()
+    }
+  }, [open, initializeMap])
+
+  useEffect(() => {
+    if (!mapRef.current || !markerRef.current) return
+    markerRef.current.setLatLng([formData.latitud, formData.longitud])
+    mapRef.current.setView([formData.latitud, formData.longitud])
+  }, [formData.latitud, formData.longitud])
 
   const handleMouseDown = (event) => {
     if (!modalRef.current) return
@@ -226,11 +292,18 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
       ...formData,
       nombre: formData.nombre.trim(),
       direccion: formData.direccion.trim(),
+      latitud: Number(formData.latitud),
+      longitud: Number(formData.longitud),
     }
 
     if (!payload.nombre) {
       setSaving(false)
       notifyError('Define un nombre para la sucursal.')
+      return
+    }
+    if (!Number.isFinite(payload.latitud) || !Number.isFinite(payload.longitud)) {
+      setSaving(false)
+      notifyError('Selecciona un punto en el mapa para guardar la sucursal.')
       return
     }
 
@@ -369,6 +442,23 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
                       disabled={!isEditing || loadingData || saving}
                     />
                   </label>
+                </div>
+
+                <div className="create-user__section-header">
+                  <div>
+                    <p className="create-user__eyebrow">Ubicación</p>
+                    <h4>Mapa</h4>
+                  </div>
+                  {loadingData && <small className="muted">Cargando ubicación...</small>}
+                </div>
+
+                <div className="sucursal-map__container">
+                  <div ref={mapContainerRef} className="sucursal-map__canvas" role="presentation" />
+                  <div className="sucursal-map__coords">
+                    <span>Latitud: {Number(formData.latitud).toFixed(6)}</span>
+                    <span>Longitud: {Number(formData.longitud).toFixed(6)}</span>
+                    {isEditing ? <small>Haz clic en el mapa para mover el marcador.</small> : <small>Visualización de la ubicación.</small>}
+                  </div>
                 </div>
               </section>
             )}
