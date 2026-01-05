@@ -144,7 +144,14 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     const startLat = formData.latitud || 0
     const startLng = formData.longitud || 0
 
-    const map = L.map(mapContainerRef.current).setView([startLat, startLng], 13)
+    const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([startLat, startLng], 13)
+    map.dragging.disable()
+    map.scrollWheelZoom.disable()
+    map.doubleClickZoom.disable()
+    map.touchZoom.disable()
+    map.boxZoom.disable()
+    map.keyboard.disable()
+    map.tap?.disable()
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
