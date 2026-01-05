@@ -6,6 +6,8 @@ class Sucursal(models.Model):
 
     nombre = models.CharField(max_length=120)
     direccion = models.CharField(max_length=255)
+    latitud = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    longitud = models.DecimalField(max_digits=9, decimal_places=6, default=0)
 
     class Meta:
         ordering = ["nombre"]

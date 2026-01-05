@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Eye, Info, Pencil } from 'lucide-react'
 import '../CreateUsuario/CreateUsuario.css'
 import './UsersDetails.css'
+import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MIN_WIDTH = 720
@@ -52,6 +53,7 @@ const emptyForm = {
   cargo: '',
   activo: false,
   permisos_personalizados: [],
+  sucursales: [],
 }
 
 function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onError }) {
@@ -60,6 +62,9 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const [permissionOptions, setPermissionOptions] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [permissionsLoading, setPermissionsLoading] = useState(false)
+  const [branches, setBranches] = useState([])
+  const [branchesLoading, setBranchesLoading] = useState(false)
+  const [selectedBranches, setSelectedBranches] = useState([])
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -98,6 +103,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     permisos_personalizados: Array.isArray(data?.permisos_personalizados)
       ? data.permisos_personalizados
       : [],
+    sucursales: Array.isArray(data?.sucursales) ? data.sucursales : [],
   })
 
   const handleChange = (event) => {
@@ -160,12 +166,11 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const loadPermissionOptions = useCallback(async () => {
     setPermissionsLoading(true)
     try {
-      const response = await fetch(`${API_URL}/usuarios/permisos/opciones/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const response = await authFetch(
+        `${API_URL}/usuarios/permisos/opciones/`,
+        {},
+        token
+      )
 
       if (!response.ok) throw new Error('No se pudieron cargar los permisos disponibles.')
 
@@ -179,16 +184,45 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     }
   }, [notifyError, token])
 
+  const fetchBranches = useCallback(async () => {
+    setBranchesLoading(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/inventario/sucursales/`,
+        {},
+        token
+      )
+
+      if (!response.ok) throw new Error('No se pudieron cargar las sucursales.')
+
+      const data = await response.json().catch(() => [])
+      const items = Array.isArray(data) ? data : data?.results || []
+      setBranches(items)
+    } catch (err) {
+      notifyError(err.message || 'Ocurrió un problema al cargar las sucursales.')
+    } finally {
+      setBranchesLoading(false)
+    }
+  }, [notifyError, token])
+
+  const toggleBranch = (branchId) => {
+    if (!isEditing) return
+    setSelectedBranches((prev) => {
+      const exists = prev.includes(branchId)
+      if (exists) return prev.filter((id) => id !== branchId)
+      return [...prev, branchId]
+    })
+  }
+
   const fetchUser = useCallback(async () => {
     if (!userId) return
     setLoadingData(true)
     try {
-      const response = await fetch(`${API_URL}/usuarios/listado/${userId}/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const response = await authFetch(
+        `${API_URL}/usuarios/listado/${userId}/`,
+        {},
+        token
+      )
       const data = await response.json().catch(() => ({}))
 
       if (!response.ok) {
@@ -200,6 +234,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       setFormData(normalized)
       setOriginalData(normalized)
       setPermissionsMatrix(buildMatrixFromList(normalized.permisos_personalizados))
+      setSelectedBranches(normalized.sucursales.map((branch) => branch.id))
       setIsEditing(false)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al obtener la información del usuario.')
@@ -214,10 +249,13 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setFormData(emptyForm)
     setOriginalData(emptyForm)
     setPermissionsMatrix({})
+    setBranches([])
+    setSelectedBranches([])
     setActiveTab('general')
     fetchUser()
     loadPermissionOptions()
-  }, [open, fetchUser, loadPermissionOptions])
+    fetchBranches()
+  }, [open, fetchUser, loadPermissionOptions, fetchBranches])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -337,6 +375,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       if (!next) {
         setFormData(originalData)
         setPermissionsMatrix(buildMatrixFromList(originalData.permisos_personalizados))
+        setSelectedBranches(originalData.sucursales.map((branch) => branch.id))
       }
       return next
     })
@@ -355,6 +394,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       telefono: formData.telefono.trim(),
       cargo: formData.cargo.trim(),
       permisos_personalizados: serializeMatrix(permissionsMatrix),
+      sucursales_ids: selectedBranches,
     }
 
     if (!payload.nombres || !payload.apellidos || !payload.correo) {
@@ -364,14 +404,14 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     }
 
     try {
-      const response = await fetch(`${API_URL}/usuarios/listado/${userId}/`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
+      const response = await authFetch(
+        `${API_URL}/usuarios/listado/${userId}/`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      })
+        token
+      )
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -387,6 +427,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       setFormData(normalized)
       setOriginalData(normalized)
       setPermissionsMatrix(buildMatrixFromList(normalized.permisos_personalizados))
+      setSelectedBranches(normalized.sucursales.map((branch) => branch.id))
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
@@ -401,13 +442,13 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setShowDeleteDialog(false)
     setDeleteLoading(true)
     try {
-      const response = await fetch(`${API_URL}/usuarios/listado/${userId}/`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
+      const response = await authFetch(
+        `${API_URL}/usuarios/listado/${userId}/`,
+        {
+          method: 'DELETE',
         },
-      })
+        token
+      )
 
       if (!response.ok && response.status !== 204) {
         const data = await response.json().catch(() => ({}))
@@ -478,6 +519,15 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
             aria-selected={activeTab === 'permisos'}
           >
             Permisos
+          </button>
+          <button
+            type="button"
+            className={`create-user__tab${activeTab === 'sucursales' ? ' create-user__tab--active' : ''}`}
+            onClick={() => setActiveTab('sucursales')}
+            role="tab"
+            aria-selected={activeTab === 'sucursales'}
+          >
+            Sucursales
           </button>
         </div>
 
@@ -606,8 +656,41 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
                   renderPermissionRow(module)
                 ))}
               </div>
-            </section>
-          )}
+              </section>
+            )}
+
+            {activeTab === 'sucursales' && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <div>
+                    <p className="create-user__eyebrow">Sucursales</p>
+                    <h4>Acceso por sucursal</h4>
+                  </div>
+                  {(branchesLoading || !branches.length) && (
+                    <small className="muted">
+                      {branchesLoading ? 'Cargando sucursales...' : 'No hay sucursales registradas.'}
+                    </small>
+                  )}
+                </div>
+
+                <div className="create-user__branches">
+                  {branches.map((branch) => (
+                    <label key={branch.id} className="create-user__branch-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedBranches.includes(branch.id)}
+                        onChange={() => toggleBranch(branch.id)}
+                        disabled={!isEditing || loadingData || saving || branchesLoading}
+                      />
+                      <div className="create-user__branch-info">
+                        <span>{branch.nombre}</span>
+                        {branch.direccion ? <small>{branch.direccion}</small> : null}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            )}
         </div>
 
           <div className="create-user__footer">

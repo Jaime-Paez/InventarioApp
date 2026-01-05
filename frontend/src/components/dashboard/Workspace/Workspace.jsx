@@ -1,6 +1,7 @@
 import WorkspaceTabs from '../tabs/WorkspaceTabs/WorkspaceTabs'
 import QuickActions from '../QuickActions/QuickActions'
 import UsersTable from '../admin/UsersTable/UsersTable'
+import SucursalesTable from '../sucursales/SucursalesTable/SucursalesTable'
 import './Workspace.css'
 import { labelHasAccess } from '../menuConfig'
 
@@ -37,6 +38,10 @@ function Workspace({
 
     if (activeItem === 'Administrar') {
       return <UsersTable token={token} />
+    }
+
+    if (activeItem === 'Sucursales') {
+      return <SucursalesTable token={token} />
     }
 
     return (
