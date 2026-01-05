@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.559.0",
     "primeflex": "^4.0.0",
     "primeicons": "^7.0.0",

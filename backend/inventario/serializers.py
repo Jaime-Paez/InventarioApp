@@ -9,7 +9,7 @@ from tipos.models import TipoDivision
 class SucursalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sucursal
-        fields = ["id", "nombre", "direccion"]
+        fields = ["id", "nombre", "direccion", "latitud", "longitud"]
 
 
 class BodegaSerializer(serializers.ModelSerializer):
