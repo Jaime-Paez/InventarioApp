@@ -4,6 +4,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import '../SucursalMap.css'
 import 'leaflet/dist/leaflet.css'
+import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MIN_WIDTH = 620
@@ -72,12 +73,11 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     if (!sucursalId) return
     setLoadingData(true)
     try {
-      const response = await fetch(`${API_URL}/inventario/sucursales/${sucursalId}/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const response = await authFetch(
+        `${API_URL}/inventario/sucursales/${sucursalId}/`,
+        {},
+        token
+      )
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -308,14 +308,14 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     }
 
     try {
-      const response = await fetch(`${API_URL}/inventario/sucursales/${sucursalId}/`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
+      const response = await authFetch(
+        `${API_URL}/inventario/sucursales/${sucursalId}/`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      })
+        token
+      )
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -340,13 +340,13 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     setShowDeleteDialog(false)
     setDeleteLoading(true)
     try {
-      const response = await fetch(`${API_URL}/inventario/sucursales/${sucursalId}/`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
+      const response = await authFetch(
+        `${API_URL}/inventario/sucursales/${sucursalId}/`,
+        {
+          method: 'DELETE',
         },
-      })
+        token
+      )
 
       if (!response.ok && response.status !== 204) {
         const data = await response.json().catch(() => ({}))

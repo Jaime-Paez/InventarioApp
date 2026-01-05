@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Eye, Info, Pencil } from 'lucide-react'
 import '../CreateUsuario/CreateUsuario.css'
 import './UsersDetails.css'
+import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MIN_WIDTH = 720
@@ -165,12 +166,11 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const loadPermissionOptions = useCallback(async () => {
     setPermissionsLoading(true)
     try {
-      const response = await fetch(`${API_URL}/usuarios/permisos/opciones/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const response = await authFetch(
+        `${API_URL}/usuarios/permisos/opciones/`,
+        {},
+        token
+      )
 
       if (!response.ok) throw new Error('No se pudieron cargar los permisos disponibles.')
 
@@ -187,12 +187,11 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const fetchBranches = useCallback(async () => {
     setBranchesLoading(true)
     try {
-      const response = await fetch(`${API_URL}/inventario/sucursales/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const response = await authFetch(
+        `${API_URL}/inventario/sucursales/`,
+        {},
+        token
+      )
 
       if (!response.ok) throw new Error('No se pudieron cargar las sucursales.')
 
@@ -219,12 +218,11 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     if (!userId) return
     setLoadingData(true)
     try {
-      const response = await fetch(`${API_URL}/usuarios/listado/${userId}/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const response = await authFetch(
+        `${API_URL}/usuarios/listado/${userId}/`,
+        {},
+        token
+      )
       const data = await response.json().catch(() => ({}))
 
       if (!response.ok) {
@@ -406,14 +404,14 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     }
 
     try {
-      const response = await fetch(`${API_URL}/usuarios/listado/${userId}/`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
+      const response = await authFetch(
+        `${API_URL}/usuarios/listado/${userId}/`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      })
+        token
+      )
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -444,13 +442,13 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setShowDeleteDialog(false)
     setDeleteLoading(true)
     try {
-      const response = await fetch(`${API_URL}/usuarios/listado/${userId}/`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
+      const response = await authFetch(
+        `${API_URL}/usuarios/listado/${userId}/`,
+        {
+          method: 'DELETE',
         },
-      })
+        token
+      )
 
       if (!response.ok && response.status !== 204) {
         const data = await response.json().catch(() => ({}))

@@ -12,6 +12,7 @@ import { Dropdown } from 'primereact/dropdown'
 import CreateSucursal from '../CreateSucursal/CreateSucursal'
 import SucursalDetails from '../SucursalDetails/SucursalDetails'
 import '../../admin/UsersTable/UsersTable.css'
+import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -41,12 +42,11 @@ function SucursalesTable({ token, onSelect }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/inventario/sucursales/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const res = await authFetch(
+        `${API_URL}/inventario/sucursales/`,
+        {},
+        token
+      )
 
       if (!res.ok) throw new Error('No se pudo obtener la lista de sucursales.')
 

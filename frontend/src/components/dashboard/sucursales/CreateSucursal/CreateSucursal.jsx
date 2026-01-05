@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../SucursalMap.css'
 import 'leaflet/dist/leaflet.css'
+import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MIN_WIDTH = 620
@@ -157,14 +158,14 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     }
 
     try {
-      const response = await fetch(`${API_URL}/inventario/sucursales/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
+      const response = await authFetch(
+        `${API_URL}/inventario/sucursales/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      })
+        token
+      )
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {

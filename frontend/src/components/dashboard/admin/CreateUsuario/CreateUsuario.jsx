@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import './CreateUsuario.css'
+import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MIN_WIDTH = 720
@@ -77,12 +78,11 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const fetchPermissionOptions = useCallback(async () => {
     setPermissionsLoading(true)
     try {
-      const response = await fetch(`${API_URL}/usuarios/permisos/opciones/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const response = await authFetch(
+        `${API_URL}/usuarios/permisos/opciones/`,
+        {},
+        token
+      )
 
       if (!response.ok) throw new Error('No se pudieron cargar los permisos disponibles.')
 
@@ -99,12 +99,11 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const fetchBranches = useCallback(async () => {
     setBranchesLoading(true)
     try {
-      const response = await fetch(`${API_URL}/inventario/sucursales/`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
-      })
+      const response = await authFetch(
+        `${API_URL}/inventario/sucursales/`,
+        {},
+        token
+      )
 
       if (!response.ok) throw new Error('No se pudieron cargar las sucursales.')
 
@@ -249,14 +248,14 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     }
 
     try {
-      const response = await fetch(`${API_URL}/usuarios/listado/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Token ${token}` } : {}),
+      const response = await authFetch(
+        `${API_URL}/usuarios/listado/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ ...payload, password }),
         },
-        body: JSON.stringify({ ...payload, password }),
-      })
+        token
+      )
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
