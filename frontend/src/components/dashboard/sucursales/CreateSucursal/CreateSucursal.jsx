@@ -300,12 +300,22 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
   if (!open) return null
 
+  const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
+  const modalStyle = {
+    top: position.y,
+    left: position.x,
+    width: size.width,
+    height: size.height,
+    maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
+    maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+  }
+
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true">
+    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
       <div
         className="create-user__modal"
         ref={modalRef}
-        style={{ top: position.y, left: position.x, width: size.width, height: size.height }}
+        style={modalStyle}
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
