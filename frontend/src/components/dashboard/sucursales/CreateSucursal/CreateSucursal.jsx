@@ -6,8 +6,8 @@ import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MAP_ZOOM = 16
-const MIN_WIDTH = 620
-const MIN_HEIGHT = 420
+const MIN_WIDTH = 650
+const MIN_HEIGHT = 500
 const VIEWPORT_PADDING = 12
 
 const initialForm = {
