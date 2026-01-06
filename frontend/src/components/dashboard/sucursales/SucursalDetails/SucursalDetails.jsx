@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css'
 import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const MAP_ZOOM = 16
 const MIN_WIDTH = 620
 const MIN_HEIGHT = 420
 const VIEWPORT_PADDING = 12
@@ -39,6 +40,8 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const markerRef = useRef(null)
   const mapContainerRef = useRef(null)
   const isEditingRef = useRef(false)
+  const addressLookupTimeoutRef = useRef(null)
+  const isMountedRef = useRef(false)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const notifyError = useCallback(
@@ -63,6 +66,36 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const handleChange = (event) => {
     if (!isEditing) return
     const { name, value } = event.target
+
+    if (name === 'direccion') {
+      setFormData((prev) => ({
+        ...prev,
+        direccion: value,
+      }))
+
+      if (addressLookupTimeoutRef.current) {
+        clearTimeout(addressLookupTimeoutRef.current)
+      }
+
+      addressLookupTimeoutRef.current = setTimeout(async () => {
+        const result = await geocodeAddress(value)
+        if (!result || !isMountedRef.current) return
+        setFormData((prev) => ({
+          ...prev,
+          latitud: result.lat,
+          longitud: result.lng,
+          direccion: result.displayName || prev.direccion,
+        }))
+        if (markerRef.current) {
+          markerRef.current.setLatLng([result.lat, result.lng])
+        }
+        if (mapRef.current) {
+          mapRef.current.setView([result.lat, result.lng], MAP_ZOOM)
+        }
+      }, 400)
+      return
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -98,6 +131,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
 
   useEffect(() => {
     if (!open) return
+    isMountedRef.current = true
     setIsEditing(false)
     setFormData(emptyForm)
     setOriginalData(emptyForm)
@@ -108,6 +142,10 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
         mapRef.current.remove()
         mapRef.current = null
         markerRef.current = null
+      }
+      isMountedRef.current = false
+      if (addressLookupTimeoutRef.current) {
+        clearTimeout(addressLookupTimeoutRef.current)
       }
     }
   }, [open, fetchSucursal])
@@ -137,6 +175,61 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     isEditingRef.current = isEditing
   }, [isEditing])
 
+  const toggleMapInteractions = useCallback((enabled) => {
+    if (!mapRef.current) return
+    const map = mapRef.current
+    if (enabled) {
+      map.dragging.enable()
+      map.scrollWheelZoom.enable()
+      map.doubleClickZoom.enable()
+      map.touchZoom.enable()
+      map.boxZoom.enable()
+      map.keyboard.enable()
+      map.tap?.enable?.()
+    } else {
+      map.dragging.disable()
+      map.scrollWheelZoom.disable()
+      map.doubleClickZoom.disable()
+      map.touchZoom.disable()
+      map.boxZoom.disable()
+      map.keyboard.disable()
+      map.tap?.disable?.()
+    }
+  }, [])
+
+  const reverseGeocode = useCallback(async (lat, lng) => {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`)
+      if (!response.ok) return null
+      const data = await response.json()
+      return {
+        displayName: data?.display_name,
+      }
+    } catch (error) {
+      console.error('Error al obtener la dirección:', error)
+      return null
+    }
+  }, [])
+
+  const geocodeAddress = useCallback(async (query) => {
+    const search = query?.trim()
+    if (!search) return null
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(search)}&limit=1`)
+      if (!response.ok) return null
+      const data = await response.json()
+      if (!Array.isArray(data) || !data.length) return null
+      return {
+        lat: Number(data[0].lat),
+        lng: Number(data[0].lon),
+        displayName: data[0].display_name,
+      }
+    } catch (error) {
+      console.error('Error al buscar la dirección:', error)
+      return null
+    }
+  }, [])
+
   const initializeMap = useCallback(async () => {
     if (!mapContainerRef.current || mapRef.current) return
     const L = await import('leaflet')
@@ -144,14 +237,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     const startLat = formData.latitud || 0
     const startLng = formData.longitud || 0
 
-    const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([startLat, startLng], 13)
-    map.dragging.disable()
-    map.scrollWheelZoom.disable()
-    map.doubleClickZoom.disable()
-    map.touchZoom.disable()
-    map.boxZoom.disable()
-    map.keyboard.disable()
-    map.tap?.disable()
+    const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([startLat, startLng], MAP_ZOOM)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
@@ -165,6 +251,15 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
       } else {
         markerRef.current = L.marker([lat, lng]).addTo(map)
       }
+      reverseGeocode(lat, lng).then((result) => {
+        if (!result || !isMountedRef.current) return
+        setFormData((prev) => ({
+          ...prev,
+          direccion: result.displayName || prev.direccion,
+          latitud: lat,
+          longitud: lng,
+        }))
+      })
     }
 
     map.on('click', (event) => {
@@ -174,8 +269,9 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     })
 
     markerRef.current = L.marker([startLat, startLng]).addTo(map)
+    toggleMapInteractions(isEditingRef.current)
     mapRef.current = map
-  }, [formData.latitud, formData.longitud, isEditing])
+  }, [formData.latitud, formData.longitud, isEditing, reverseGeocode, toggleMapInteractions])
 
   useEffect(() => {
     if (open) {
@@ -186,8 +282,12 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   useEffect(() => {
     if (!mapRef.current || !markerRef.current) return
     markerRef.current.setLatLng([formData.latitud, formData.longitud])
-    mapRef.current.setView([formData.latitud, formData.longitud])
+    mapRef.current.setView([formData.latitud, formData.longitud], MAP_ZOOM)
   }, [formData.latitud, formData.longitud])
+
+  useEffect(() => {
+    toggleMapInteractions(isEditing)
+  }, [isEditing, toggleMapInteractions])
 
   const handleMouseDown = (event) => {
     if (!modalRef.current) return
