@@ -32,6 +32,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   const mapRef = useRef(null)
   const markerRef = useRef(null)
   const mapContainerRef = useRef(null)
+  const isMountedRef = useRef(false)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -52,6 +53,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     setFormData(initialForm)
     setLoading(false)
     setLocation(DEFAULT_CENTER)
+    isMountedRef.current = true
   }, [open])
 
   useLayoutEffect(() => {
@@ -75,6 +77,20 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     positionRef.current = position
   }, [position])
 
+  const reverseGeocode = useCallback(async (lat, lng) => {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`)
+      if (!response.ok) return null
+      const data = await response.json()
+      return {
+        displayName: data?.display_name,
+      }
+    } catch (error) {
+      console.error('Error al obtener la dirección:', error)
+      return null
+    }
+  }, [])
+
   const initializeMap = useCallback(async () => {
     if (!mapContainerRef.current || mapRef.current) return
     const L = await import('leaflet')
@@ -95,6 +111,13 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
       } else {
         markerRef.current = L.marker([lat, lng]).addTo(map)
       }
+      reverseGeocode(lat, lng).then((result) => {
+        if (!result || !isMountedRef.current) return
+        setFormData((prev) => ({
+          ...prev,
+          direccion: result.displayName || prev.direccion,
+        }))
+      })
     }
 
     map.on('click', (event) => {
@@ -118,6 +141,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
         mapRef.current = null
         markerRef.current = null
       }
+      isMountedRef.current = false
     }
   }, [open, initializeMap])
 
@@ -129,6 +153,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
   const handleChange = (event) => {
     const { name, value } = event.target
+    if (name === 'direccion') return
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -340,6 +365,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
                     value={formData.direccion}
                     onChange={handleChange}
                     disabled={loading}
+                    readOnly
                   />
                 </label>
               </div>

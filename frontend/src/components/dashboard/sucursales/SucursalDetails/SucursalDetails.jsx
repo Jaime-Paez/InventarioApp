@@ -40,7 +40,6 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const markerRef = useRef(null)
   const mapContainerRef = useRef(null)
   const isEditingRef = useRef(false)
-  const addressLookupTimeoutRef = useRef(null)
   const isMountedRef = useRef(false)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
@@ -66,36 +65,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const handleChange = (event) => {
     if (!isEditing) return
     const { name, value } = event.target
-
-    if (name === 'direccion') {
-      setFormData((prev) => ({
-        ...prev,
-        direccion: value,
-      }))
-
-      if (addressLookupTimeoutRef.current) {
-        clearTimeout(addressLookupTimeoutRef.current)
-      }
-
-      addressLookupTimeoutRef.current = setTimeout(async () => {
-        const result = await geocodeAddress(value)
-        if (!result || !isMountedRef.current) return
-        setFormData((prev) => ({
-          ...prev,
-          latitud: result.lat,
-          longitud: result.lng,
-          direccion: result.displayName || prev.direccion,
-        }))
-        if (markerRef.current) {
-          markerRef.current.setLatLng([result.lat, result.lng])
-        }
-        if (mapRef.current) {
-          mapRef.current.setView([result.lat, result.lng], MAP_ZOOM)
-        }
-      }, 400)
-      return
-    }
-
+    if (name === 'direccion') return
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -144,9 +114,6 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
         markerRef.current = null
       }
       isMountedRef.current = false
-      if (addressLookupTimeoutRef.current) {
-        clearTimeout(addressLookupTimeoutRef.current)
-      }
     }
   }, [open, fetchSucursal])
 
@@ -207,25 +174,6 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
       }
     } catch (error) {
       console.error('Error al obtener la dirección:', error)
-      return null
-    }
-  }, [])
-
-  const geocodeAddress = useCallback(async (query) => {
-    const search = query?.trim()
-    if (!search) return null
-    try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(search)}&limit=1`)
-      if (!response.ok) return null
-      const data = await response.json()
-      if (!Array.isArray(data) || !data.length) return null
-      return {
-        lat: Number(data[0].lat),
-        lng: Number(data[0].lon),
-        displayName: data[0].display_name,
-      }
-    } catch (error) {
-      console.error('Error al buscar la dirección:', error)
       return null
     }
   }, [])
@@ -541,14 +489,15 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
                   <label className="create-user__field create-user__field--full">
                     <span>Dirección</span>
                     <input
-                      name="direccion"
-                      type="text"
-                      placeholder="Dirección"
-                      value={formData.direccion}
-                      onChange={handleChange}
-                      disabled={!isEditing || loadingData || saving}
-                    />
-                  </label>
+                    name="direccion"
+                    type="text"
+                    placeholder="Dirección"
+                    value={formData.direccion}
+                    onChange={handleChange}
+                    disabled={!isEditing || loadingData || saving}
+                    readOnly
+                  />
+                </label>
                 </div>
 
                 <div className="create-user__section-header">
