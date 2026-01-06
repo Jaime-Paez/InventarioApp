@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const MAP_ZOOM = 16
 const MIN_WIDTH = 620
 const MIN_HEIGHT = 420
 const VIEWPORT_PADDING = 12
@@ -80,7 +81,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
     const map = L.map(mapContainerRef.current).setView(
       [location.latitud, location.longitud],
-      13
+      MAP_ZOOM
     )
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
