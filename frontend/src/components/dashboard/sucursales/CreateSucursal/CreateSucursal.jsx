@@ -379,11 +379,6 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
               <div className="sucursal-map__container">
                 <div ref={mapContainerRef} className="sucursal-map__canvas" role="presentation" />
-                <div className="sucursal-map__coords">
-                  <span>Latitud: {Number(location.latitud).toFixed(6)}</span>
-                  <span>Longitud: {Number(location.longitud).toFixed(6)}</span>
-                  <small>Haz clic en el mapa para mover el marcador.</small>
-                </div>
               </div>
             </section>
           </div>

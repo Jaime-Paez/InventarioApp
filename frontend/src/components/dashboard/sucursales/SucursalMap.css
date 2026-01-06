@@ -6,7 +6,7 @@
 
 .sucursal-map__canvas {
   width: 100%;
-  min-height: 260px;
+  min-height: 160px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   overflow: hidden;

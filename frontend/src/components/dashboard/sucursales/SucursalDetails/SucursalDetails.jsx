@@ -510,11 +510,6 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
 
                 <div className="sucursal-map__container">
                   <div ref={mapContainerRef} className="sucursal-map__canvas" role="presentation" />
-                  <div className="sucursal-map__coords">
-                    <span>Latitud: {Number(formData.latitud).toFixed(6)}</span>
-                    <span>Longitud: {Number(formData.longitud).toFixed(6)}</span>
-                    {isEditing ? <small>Haz clic en el mapa para mover el marcador.</small> : <small>Visualización de la ubicación.</small>}
-                  </div>
                 </div>
               </section>
             )}
