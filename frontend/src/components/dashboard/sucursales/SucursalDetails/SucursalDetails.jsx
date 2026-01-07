@@ -8,8 +8,8 @@ import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MAP_ZOOM = 16
-const MIN_WIDTH = 620
-const MIN_HEIGHT = 420
+const MIN_WIDTH = 650
+const MIN_HEIGHT = 500
 const VIEWPORT_PADDING = 12
 
 const emptyForm = {
@@ -43,6 +43,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const isMountedRef = useRef(false)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+  const formatCoordinate = (value) => (Number.isFinite(value) ? Number(value.toFixed(6)) : value)
   const notifyError = useCallback(
     (message) => {
       if (!message) return
@@ -58,8 +59,8 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const normalizeSucursal = (data) => ({
     nombre: data?.nombre ?? '',
     direccion: data?.direccion ?? '',
-    latitud: Number(data?.latitud ?? 0),
-    longitud: Number(data?.longitud ?? 0),
+    latitud: formatCoordinate(Number(data?.latitud ?? 0)),
+    longitud: formatCoordinate(Number(data?.longitud ?? 0)),
   })
 
   const handleChange = (event) => {
@@ -192,20 +193,23 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     }).addTo(map)
 
     const setMarker = (lat, lng) => {
+      const formattedLat = formatCoordinate(lat)
+      const formattedLng = formatCoordinate(lng)
+
       if (!isEditingRef.current) return
-      setFormData((prev) => ({ ...prev, latitud: lat, longitud: lng }))
+      setFormData((prev) => ({ ...prev, latitud: formattedLat, longitud: formattedLng }))
       if (markerRef.current) {
-        markerRef.current.setLatLng([lat, lng])
+        markerRef.current.setLatLng([formattedLat, formattedLng])
       } else {
-        markerRef.current = L.marker([lat, lng]).addTo(map)
+        markerRef.current = L.marker([formattedLat, formattedLng]).addTo(map)
       }
-      reverseGeocode(lat, lng).then((result) => {
+      reverseGeocode(formattedLat, formattedLng).then((result) => {
         if (!result || !isMountedRef.current) return
         setFormData((prev) => ({
           ...prev,
           direccion: result.displayName || prev.direccion,
-          latitud: lat,
-          longitud: lng,
+          latitud: formattedLat,
+          longitud: formattedLng,
         }))
       })
     }
@@ -347,8 +351,8 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
       ...formData,
       nombre: formData.nombre.trim(),
       direccion: formData.direccion.trim(),
-      latitud: Number(formData.latitud),
-      longitud: Number(formData.longitud),
+      latitud: formatCoordinate(Number(formData.latitud)),
+      longitud: formatCoordinate(Number(formData.longitud)),
     }
 
     if (!payload.nombre) {

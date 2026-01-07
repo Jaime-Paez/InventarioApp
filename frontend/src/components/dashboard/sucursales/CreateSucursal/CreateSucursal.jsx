@@ -6,8 +6,8 @@ import { authFetch } from '../../../../utils/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MAP_ZOOM = 16
-const MIN_WIDTH = 620
-const MIN_HEIGHT = 420
+const MIN_WIDTH = 650
+const MIN_HEIGHT = 500
 const VIEWPORT_PADDING = 12
 
 const initialForm = {
@@ -35,6 +35,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   const isMountedRef = useRef(false)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+  const formatCoordinate = (value) => (Number.isFinite(value) ? Number(value.toFixed(6)) : value)
 
   const notifyError = useCallback(
     (message) => {
@@ -105,13 +106,16 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     }).addTo(map)
 
     const setMarker = (lat, lng) => {
-      setLocation({ latitud: lat, longitud: lng })
+      const formattedLat = formatCoordinate(lat)
+      const formattedLng = formatCoordinate(lng)
+
+      setLocation({ latitud: formattedLat, longitud: formattedLng })
       if (markerRef.current) {
-        markerRef.current.setLatLng([lat, lng])
+        markerRef.current.setLatLng([formattedLat, formattedLng])
       } else {
-        markerRef.current = L.marker([lat, lng]).addTo(map)
+        markerRef.current = L.marker([formattedLat, formattedLng]).addTo(map)
       }
-      reverseGeocode(lat, lng).then((result) => {
+      reverseGeocode(formattedLat, formattedLng).then((result) => {
         if (!result || !isMountedRef.current) return
         setFormData((prev) => ({
           ...prev,
@@ -167,8 +171,8 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     const payload = {
       nombre: formData.nombre.trim(),
       direccion: formData.direccion.trim(),
-      latitud: Number(location.latitud),
-      longitud: Number(location.longitud),
+      latitud: formatCoordinate(Number(location.latitud)),
+      longitud: formatCoordinate(Number(location.longitud)),
     }
 
     if (!payload.nombre) {
