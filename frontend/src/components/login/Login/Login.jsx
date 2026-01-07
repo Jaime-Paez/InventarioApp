@@ -138,12 +138,10 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
 
   return (
     <div className={pageClassName}>
-      {!isMobile && (
-        <div className="wallpaper-layer" aria-hidden>
-          <img src={wallpaperLight} className={`wallpaper ${darkMode ? '' : 'active'}`} alt="" />
-          <img src={wallpaperDark} className={`wallpaper ${darkMode ? 'active' : ''}`} alt="" />
-        </div>
-      )}
+      <div className="wallpaper-layer" aria-hidden>
+        <img src={wallpaperLight} className={`wallpaper ${darkMode ? '' : 'active'}`} alt="" />
+        <img src={wallpaperDark} className={`wallpaper ${darkMode ? 'active' : ''}`} alt="" />
+      </div>
       <section className="login-panel">
         <div className="panel-header">
           <div className="brand-row">
