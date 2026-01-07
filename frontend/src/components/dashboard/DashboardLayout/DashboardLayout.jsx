@@ -85,6 +85,15 @@ function DashboardLayout({
         permissionIndex={permissionIndex}
       />
 
+      {isSidebarOpen && (
+        <button
+          type="button"
+          className="sidebar__backdrop"
+          aria-label="Cerrar panel de navegación"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       <Workspace
         activeItem={activeItem}
         openTabs={openTabs}
