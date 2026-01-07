@@ -186,7 +186,16 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     const startLat = formData.latitud || 0
     const startLng = formData.longitud || 0
 
-    const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([startLat, startLng], MAP_ZOOM)
+    const map = L.map(mapContainerRef.current, {
+      zoomControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      tap: false,
+    }).setView([startLat, startLng], MAP_ZOOM)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
