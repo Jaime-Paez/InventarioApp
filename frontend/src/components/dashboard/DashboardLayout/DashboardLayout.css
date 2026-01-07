@@ -156,6 +156,10 @@
     grid-template-columns: 1fr;
   }
 
+  .dashboard-shell.collapsed {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar__reopen {
     left: 16px;
     top: 16px;
