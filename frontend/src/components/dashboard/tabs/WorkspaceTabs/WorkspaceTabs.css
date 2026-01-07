@@ -120,3 +120,18 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+@media (max-width: 900px) {
+  .workspace__tabs {
+    gap: 6px;
+  }
+
+  .workspace__tablist {
+    padding: 0 8px;
+  }
+
+  .workspace__tab {
+    width: 120px;
+    flex: 0 0 120px;
+  }
+}

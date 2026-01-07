@@ -112,8 +112,8 @@
    BOTONES (tamaño EXACTO como tú lo tenías)
 ------------------------------------------------------- */
 .quick-actions__button {
-  width: 35px;
-  height: 35px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -150,8 +150,8 @@
 }
 
 .quick-actions__button svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   stroke-width: 2.1;
 }
 
