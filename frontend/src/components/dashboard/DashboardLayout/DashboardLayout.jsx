@@ -26,6 +26,10 @@ function DashboardLayout({
   })
   const [hasEntered, setHasEntered] = useState(false)
   const [entryAnimationDone, setEntryAnimationDone] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false
+    return window.matchMedia('(max-width: 900px)').matches
+  })
 
   const heroLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const brandLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
@@ -37,6 +41,14 @@ function DashboardLayout({
     const timeout = setTimeout(() => setEntryAnimationDone(true), 2600)
 
     return () => clearTimeout(timeout)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined
+    const mediaQuery = window.matchMedia('(max-width: 900px)')
+    const handleChange = (event) => setIsMobileViewport(event.matches)
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
   }, [])
 
   useEffect(() => {
@@ -57,7 +69,9 @@ function DashboardLayout({
     if (!labelHasAccess(label, permissionIndex)) return
     setActiveItem(label)
     setOpenTabs((prev) => (prev.includes(label) ? prev : [...prev, label]))
-    setIsSidebarOpen(false)
+    if (isMobileViewport) {
+      setIsSidebarOpen(false)
+    }
   }
 
   const handleCloseTab = (label) => {
@@ -89,7 +103,7 @@ function DashboardLayout({
         permissionIndex={permissionIndex}
       />
 
-      {isSidebarOpen && (
+      {isSidebarOpen && isMobileViewport && (
         <button
           type="button"
           className="sidebar__backdrop"
