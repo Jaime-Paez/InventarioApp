@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './Login.css'
+import wallpaperLight from '../../../assets/login/login_wallpaper(light).png'
+import wallpaperDark from '../../../assets/login/login_wallpaper(dark).png'
 import jpaezDark from '../../../assets/login/jpaez(dark).png'
 import jpaezLight from '../../../assets/login/jpaez(light).png'
 import kavaDark from '../../../assets/login/kava(dark).png'
@@ -138,10 +140,12 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
 
   return (
     <div className={pageClassName}>
-      <div className="wallpaper-layer" aria-hidden>
-        <img src={wallpaperLight} className={`wallpaper ${darkMode ? '' : 'active'}`} alt="" />
-        <img src={wallpaperDark} className={`wallpaper ${darkMode ? 'active' : ''}`} alt="" />
-      </div>
+      {!isMobile && (
+        <div className="wallpaper-layer" aria-hidden>
+          <img src={wallpaperLight} className={`wallpaper ${darkMode ? '' : 'active'}`} alt="" />
+          <img src={wallpaperDark} className={`wallpaper ${darkMode ? 'active' : ''}`} alt="" />
+        </div>
+      )}
       <section className="login-panel">
         <div className="panel-header">
           <div className="brand-row">
