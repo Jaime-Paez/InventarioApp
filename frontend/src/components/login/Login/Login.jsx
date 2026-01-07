@@ -1,7 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './Login.css'
-import wallpaperLight from '../../../assets/login/login_wallpaper(light).png'
-import wallpaperDark from '../../../assets/login/login_wallpaper(dark).png'
 import jpaezDark from '../../../assets/login/jpaez(dark).png'
 import jpaezLight from '../../../assets/login/jpaez(light).png'
 import kavaDark from '../../../assets/login/kava(dark).png'
@@ -58,6 +56,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
   const [loading, setLoading] = useState(false)
 
   const [isTogglingTheme, setIsTogglingTheme] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
 
   const [loginData, setLoginData] = useState({
     email: '',
@@ -106,6 +105,28 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
     onToggleTheme?.()
     window.setTimeout(() => setIsTogglingTheme(false), 360)
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined
+    const mediaQuery = window.matchMedia('(max-width: 960px)')
+    const handleMediaChange = (event) => setIsMobile(event.matches)
+
+    setIsMobile(mediaQuery.matches)
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleMediaChange)
+    } else {
+      mediaQuery.addListener(handleMediaChange)
+    }
+
+    return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener('change', handleMediaChange)
+      } else {
+        mediaQuery.removeListener(handleMediaChange)
+      }
+    }
+  }, [])
 
   const pageClassName = useMemo(
     () =>
