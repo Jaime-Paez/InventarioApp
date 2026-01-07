@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './Login.css'
 import wallpaperLight from '../../../assets/login/login_wallpaper(light).png'
 import wallpaperDark from '../../../assets/login/login_wallpaper(dark).png'
@@ -58,6 +58,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
   const [loading, setLoading] = useState(false)
 
   const [isTogglingTheme, setIsTogglingTheme] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
 
   const [loginData, setLoginData] = useState({
     email: '',
@@ -107,6 +108,28 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
     window.setTimeout(() => setIsTogglingTheme(false), 360)
   }
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined
+    const mediaQuery = window.matchMedia('(max-width: 960px)')
+    const handleMediaChange = (event) => setIsMobile(event.matches)
+
+    setIsMobile(mediaQuery.matches)
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleMediaChange)
+    } else {
+      mediaQuery.addListener(handleMediaChange)
+    }
+
+    return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener('change', handleMediaChange)
+      } else {
+        mediaQuery.removeListener(handleMediaChange)
+      }
+    }
+  }, [])
+
   const pageClassName = useMemo(
     () =>
       `login-page ${darkMode ? 'dark' : ''} ${isCollapsing ? 'collapse' : ''} ${
@@ -117,11 +140,12 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
 
   return (
     <div className={pageClassName}>
-      <div className="wallpaper-layer" aria-hidden>
-        <img src={wallpaperLight} className={`wallpaper ${darkMode ? '' : 'active'}`} alt="" />
-        <img src={wallpaperDark} className={`wallpaper ${darkMode ? 'active' : ''}`} alt="" />
-      </div>
-
+      {!isMobile && (
+        <div className="wallpaper-layer" aria-hidden>
+          <img src={wallpaperLight} className={`wallpaper ${darkMode ? '' : 'active'}`} alt="" />
+          <img src={wallpaperDark} className={`wallpaper ${darkMode ? 'active' : ''}`} alt="" />
+        </div>
+      )}
       <section className="login-panel">
         <div className="panel-header">
           <div className="brand-row">
