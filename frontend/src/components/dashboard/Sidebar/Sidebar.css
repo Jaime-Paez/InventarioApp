@@ -6,6 +6,7 @@
   padding: 20px 16px 24px;
   gap: 1rem;
   transition: transform 0.3s ease, opacity 0.3s ease;
+  z-index: 20;
 }
 
 .dashboard-shell.dark .sidebar {
@@ -418,4 +419,15 @@
 
 .sidebar__action:hover {
   background: var(--sidebar-color-hover);
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(78vw, 320px);
+    box-shadow: 12px 0 32px rgba(15, 23, 42, 0.18);
+  }
 }

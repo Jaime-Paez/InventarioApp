@@ -20,7 +20,7 @@ function DashboardLayout({
 }) {
   const [openTabs, setOpenTabs] = useState([])
   const [activeItem, setActiveItem] = useState('')
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [hasEntered, setHasEntered] = useState(false)
   const [entryAnimationDone, setEntryAnimationDone] = useState(false)
 
@@ -84,6 +84,15 @@ function DashboardLayout({
         onToggleSidebar={() => setIsSidebarOpen((value) => !value)}
         permissionIndex={permissionIndex}
       />
+
+      {isSidebarOpen && (
+        <button
+          type="button"
+          className="sidebar__backdrop"
+          aria-label="Cerrar panel de navegación"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
       <Workspace
         activeItem={activeItem}
