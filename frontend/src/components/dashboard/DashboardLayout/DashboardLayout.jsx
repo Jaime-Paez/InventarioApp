@@ -20,7 +20,10 @@ function DashboardLayout({
 }) {
   const [openTabs, setOpenTabs] = useState([])
   const [activeItem, setActiveItem] = useState('')
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return true
+    return !window.matchMedia('(max-width: 900px)').matches
+  })
   const [hasEntered, setHasEntered] = useState(false)
   const [entryAnimationDone, setEntryAnimationDone] = useState(false)
 
