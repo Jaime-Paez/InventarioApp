@@ -15,29 +15,6 @@
   color: var(--color-text-dark);
 }
 
-.wallpaper-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-}
-
-.wallpaper {
-  position: absolute;
-  inset: 0;
-  padding-left: 320px;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  opacity: 0;
-  transition: opacity 0.6s ease;
-}
-
-.wallpaper.active {
-  opacity: 1;
-}
-
 .login-panel {
   position: relative;
   z-index: 1;
@@ -471,10 +448,6 @@ input:focus {
   animation: login-panel-slide-left 0.9s ease forwards;
 }
 
-.login-page.collapse .wallpaper-layer {
-  animation: login-wallpaper-slide-right 0.9s ease forwards;
-}
-
 @keyframes login-panel-slide-left {
   0% {
     transform: translateX(0);
@@ -484,16 +457,6 @@ input:focus {
   100% {
     transform: translateX(-110%);
     opacity: 1;
-  }
-}
-
-@keyframes login-wallpaper-slide-right {
-  0% {
-    transform: translateX(0);
-  }
-
-  100% {
-    transform: translateX(110%);
   }
 }
 
@@ -508,10 +471,6 @@ input:focus {
   animation: login-panel-slide-right 0.9s ease forwards;
 }
 
-.login-page.expand .wallpaper-layer {
-  animation: login-wallpaper-slide-left 0.9s ease forwards;
-}
-
 @keyframes login-panel-slide-right {
   0% {
     transform: translateX(-110%);
@@ -521,16 +480,6 @@ input:focus {
   100% {
     transform: translateX(0);
     opacity: 1;
-  }
-}
-
-@keyframes login-wallpaper-slide-left {
-  0% {
-    transform: translateX(110%);
-  }
-
-  100% {
-    transform: translateX(0);
   }
 }
 
