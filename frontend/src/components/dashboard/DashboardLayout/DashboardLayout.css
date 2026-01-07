@@ -162,8 +162,8 @@
 
   .sidebar__reopen {
     left: 16px;
-    top: 16px;
-    bottom: auto;
+    top: auto;
+    bottom: 16px;
     padding: 0.6rem 0.85rem;
     border-radius: 12px;
   }

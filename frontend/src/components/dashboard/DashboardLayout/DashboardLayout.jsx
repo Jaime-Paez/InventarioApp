@@ -54,6 +54,7 @@ function DashboardLayout({
     if (!labelHasAccess(label, permissionIndex)) return
     setActiveItem(label)
     setOpenTabs((prev) => (prev.includes(label) ? prev : [...prev, label]))
+    setIsSidebarOpen(false)
   }
 
   const handleCloseTab = (label) => {
