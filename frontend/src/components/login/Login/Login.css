@@ -448,6 +448,12 @@ input:focus {
   animation: login-panel-slide-left 0.9s ease forwards;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .login-page.collapse .wallpaper-layer {
+    animation: login-wallpaper-slide-right 0.9s ease forwards;
+  }
+}
+
 @keyframes login-panel-slide-left {
   0% {
     transform: translateX(0);
@@ -469,6 +475,12 @@ input:focus {
 
 .login-page.expand .login-panel {
   animation: login-panel-slide-right 0.9s ease forwards;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .login-page.expand .wallpaper-layer {
+    animation: login-wallpaper-slide-left 0.9s ease forwards;
+  }
 }
 
 @keyframes login-panel-slide-right {
