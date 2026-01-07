@@ -9,9 +9,7 @@ import 'primereact/resources/themes/lara-light-cyan/theme.css';
 
 // opcional (si usas utilidades)
 import 'primeflex/primeflex.css';
-import { authFetch } from './utils/api'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { API_URL, authFetch } from './utils/api'
 const LOGIN_EXIT_ANIMATION_MS = 900
 const DASHBOARD_EXIT_ANIMATION_MS = 3500
 const LOGIN_ENTER_ANIMATION_MS = LOGIN_EXIT_ANIMATION_MS

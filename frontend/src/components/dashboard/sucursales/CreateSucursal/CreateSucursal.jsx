@@ -2,9 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../SucursalMap.css'
 import 'leaflet/dist/leaflet.css'
-import { authFetch } from '../../../../utils/api'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { API_URL, authFetch } from '../../../../utils/api'
 const MAP_ZOOM = 16
 const MIN_WIDTH = 650
 const MIN_HEIGHT = 500

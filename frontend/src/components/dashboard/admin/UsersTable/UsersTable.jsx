@@ -12,9 +12,7 @@ import { Dropdown } from 'primereact/dropdown'
 import CreateUsuario from '../CreateUsuario/CreateUsuario'
 import UsersDetails from '../UsersDetails/UsersDetails'
 import './UsersTable.css'
-import { authFetch } from '../../../../utils/api'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { API_URL, authFetch } from '../../../../utils/api'
 
 const formatFullName = (u) =>
   [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || '—'

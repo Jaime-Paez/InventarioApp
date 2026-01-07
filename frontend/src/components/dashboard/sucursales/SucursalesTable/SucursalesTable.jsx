@@ -12,9 +12,7 @@ import { Dropdown } from 'primereact/dropdown'
 import CreateSucursal from '../CreateSucursal/CreateSucursal'
 import SucursalDetails from '../SucursalDetails/SucursalDetails'
 import '../../admin/UsersTable/UsersTable.css'
-import { authFetch } from '../../../../utils/api'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { API_URL, authFetch } from '../../../../utils/api'
 
 const normId = (v) => (v == null ? null : String(v))
 
