@@ -20,7 +20,7 @@ function DashboardLayout({
 }) {
   const [openTabs, setOpenTabs] = useState([])
   const [activeItem, setActiveItem] = useState('')
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [hasEntered, setHasEntered] = useState(false)
   const [entryAnimationDone, setEntryAnimationDone] = useState(false)
 
