@@ -22,7 +22,15 @@ class BodegaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Bodega
-        fields = ["id", "nombre", "sucursal", "sucursal_id"]
+        fields = [
+            "id",
+            "nombre",
+            "sucursal",
+            "sucursal_id",
+            "ancho_metros",
+            "alto_metros",
+            "ubicaciones",
+        ]
 
 
 class DivisionSerializer(serializers.ModelSerializer):

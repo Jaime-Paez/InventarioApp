@@ -354,7 +354,8 @@
 }
 
 /* Inputs */
-.create-user__field input {
+.create-user__field input,
+.create-user__field select {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 0.35rem 0.75rem;
@@ -369,13 +370,15 @@
   opacity: 0.35;
 }
 
-.create-user__field input:focus {
+.create-user__field input:focus,
+.create-user__field select:focus {
   outline: none;
   border-color: var(--color-primary-dark);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
 }
 
-.dashboard-shell.dark .create-user__field input {
+.dashboard-shell.dark .create-user__field input,
+.dashboard-shell.dark .create-user__field select {
   background: var(--color-surface-darker);
   border-color: var(--color-border);
   color: var(--color-button-primary);
@@ -386,7 +389,8 @@
   opacity: 0.38;
 }
 
-.dashboard-shell.dark .create-user__field input:focus {
+.dashboard-shell.dark .create-user__field input:focus,
+.dashboard-shell.dark .create-user__field select:focus {
   border-color: var(--color-primary-dark);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 32%, transparent);
 }
