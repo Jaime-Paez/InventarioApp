@@ -13,6 +13,7 @@ const normalizeNumber = (value) => {
 const DEFAULT_COLOR = '#4f8df8'
 const MIN_SIZE_METERS = 0.5
 const PLAN_MAX_HEIGHT = 520
+const VERTICAL_LABEL_RATIO = 1.6
 
 function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, disabled }) {
   const safeWidth = useMemo(() => Math.max(widthMeters || 0, 0), [widthMeters])
@@ -30,6 +31,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const [selectedId, setSelectedId] = useState(null)
   const planRef = useRef(null)
   const dragStateRef = useRef(null)
+  const [resizeOverlay, setResizeOverlay] = useState(null)
 
   const handleAddLocation = (coords) => {
     if (disabled) return
@@ -137,11 +139,18 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
           ancho: Number(nextWidth.toFixed(2)),
           alto: Number(nextHeight.toFixed(2)),
         })
+        setResizeOverlay({
+          x: event.clientX,
+          y: event.clientY,
+          ancho: Number(nextWidth.toFixed(2)),
+          alto: Number(nextHeight.toFixed(2)),
+        })
       }
     }
 
     const handleMouseUp = () => {
       dragStateRef.current = null
+      setResizeOverlay(null)
     }
 
     window.addEventListener('mousemove', handleMouseMove)
@@ -183,11 +192,12 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
             const width = safeWidth ? (location.ancho / safeWidth) * 100 : 10
             const height = safeHeight ? (location.alto / safeHeight) * 100 : 10
             const isSelected = selectedId === location.id
+            const isVertical = location.alto > location.ancho * VERTICAL_LABEL_RATIO
             const locationColor = location.color || DEFAULT_COLOR
             return (
               <div
                 key={location.id}
-                className={`bodega-layout__location${isSelected ? ' bodega-layout__location--selected' : ''}`}
+                className={`bodega-layout__location${isSelected ? ' bodega-layout__location--selected' : ''}${isVertical ? ' bodega-layout__location--vertical' : ''}`}
                 style={{
                   left: `${left}%`,
                   top: `${top}%`,
@@ -210,9 +220,6 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                   onClick={(event) => event.stopPropagation()}
                   disabled={disabled}
                 />
-                <span className="bodega-layout__location-size">
-                  {location.ancho?.toFixed?.(1) ?? 0}m x {location.alto?.toFixed?.(1) ?? 0}m
-                </span>
                 <button
                   type="button"
                   className="bodega-layout__resize-handle"
@@ -224,6 +231,17 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
             )
           })}
         </div>
+        {resizeOverlay && (
+          <div
+            className="bodega-layout__resize-tooltip"
+            style={{
+              left: `${resizeOverlay.x + 12}px`,
+              top: `${resizeOverlay.y + 12}px`,
+            }}
+          >
+            {resizeOverlay.ancho}m x {resizeOverlay.alto}m
+          </div>
+        )}
         <p className="bodega-layout__hint">
           {safeWidth && safeHeight
             ? `Plano: ${safeWidth}m x ${safeHeight}m`

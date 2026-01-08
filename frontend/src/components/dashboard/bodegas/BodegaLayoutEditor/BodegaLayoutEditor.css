@@ -78,15 +78,35 @@
   min-width: 0;
 }
 
-.bodega-layout__location-size {
-  font-size: 0.6rem;
-  opacity: 0.85;
-  white-space: nowrap;
-}
-
 .bodega-layout__location-input:focus {
   outline: 1px dashed color-mix(in srgb, var(--color-primary) 60%, transparent);
   border-radius: 4px;
+}
+
+.bodega-layout__location--vertical {
+  align-items: center;
+  justify-content: center;
+}
+
+.bodega-layout__location--vertical .bodega-layout__location-input {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  text-align: center;
+  width: auto;
+}
+
+.bodega-layout__resize-tooltip {
+  position: fixed;
+  z-index: 20;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: var(--color-button-primary);
+  font-size: 0.65rem;
+  font-weight: 600;
+  pointer-events: none;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
 }
 
 .bodega-layout__resize-handle {
