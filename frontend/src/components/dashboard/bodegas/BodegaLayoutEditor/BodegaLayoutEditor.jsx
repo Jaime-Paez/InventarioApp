@@ -12,10 +12,21 @@ const normalizeNumber = (value) => {
 
 const DEFAULT_COLOR = '#4f8df8'
 const MIN_SIZE_METERS = 0.5
+const PLAN_MAX_HEIGHT = 520
 
 function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, disabled }) {
   const safeWidth = useMemo(() => Math.max(widthMeters || 0, 0), [widthMeters])
   const safeHeight = useMemo(() => Math.max(heightMeters || 0, 0), [heightMeters])
+  const planStyle = useMemo(() => {
+    if (!safeWidth || !safeHeight) return undefined
+    const ratio = safeWidth / safeHeight
+    return {
+      aspectRatio: `${safeWidth} / ${safeHeight}`,
+      maxWidth: `min(100%, ${PLAN_MAX_HEIGHT * ratio}px)`,
+      maxHeight: `${PLAN_MAX_HEIGHT}px`,
+      minHeight: 0,
+    }
+  }, [safeWidth, safeHeight])
   const [selectedId, setSelectedId] = useState(null)
   const planRef = useRef(null)
   const dragStateRef = useRef(null)
@@ -164,7 +175,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
           role="presentation"
           onClick={handlePlanClick}
           ref={planRef}
-          style={safeWidth && safeHeight ? { aspectRatio: `${safeWidth} / ${safeHeight}` } : undefined}
+          style={planStyle}
         >
           {locations.map((location) => {
             const left = safeWidth ? (location.x / safeWidth) * 100 : 0
