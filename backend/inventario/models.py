@@ -27,6 +27,9 @@ class Bodega(models.Model):
         related_name="bodegas",
     )
     nombre = models.CharField(max_length=120)
+    ancho_metros = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    alto_metros = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    ubicaciones = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["sucursal__nombre", "nombre"]
