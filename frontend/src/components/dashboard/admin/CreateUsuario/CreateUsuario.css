@@ -96,9 +96,6 @@
   border-radius: 50%;
   font-weight: 900;
   line-height: 1;
-  position: absolute;
-  right: 10px;
-  top: 2px;
   width: 20px;
   height: 20px;
   border: none;
@@ -108,6 +105,20 @@
   cursor: pointer;
   display: grid;
   place-items: center;
+}
+
+.create-user__header-actions {
+  position: absolute;
+  right: 10px;
+  top: 2px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.create-user__icon-button--maximize {
+  font-size: calc(var(--font-size-sm));
+  font-weight: 700;
 }
 
 .dashboard-shell.dark .create-user__icon-button {
@@ -770,9 +781,17 @@
   }
 }
 
+@media (max-width: 768px) {
+  .create-user__icon-button--maximize {
+    display: none;
+  }
+}
+
 @media (max-width: 640px) {
   .create-user__modal {
     padding: 0;
+    min-width: 0;
+    min-height: 0;
   }
 
   .create-user__body {

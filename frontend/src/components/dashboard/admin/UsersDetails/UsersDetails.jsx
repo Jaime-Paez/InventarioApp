@@ -69,6 +69,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
+  const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
@@ -77,8 +78,19 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
   const positionRef = useRef(position)
+  const restoreRef = useRef(null)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+  const getViewportMetrics = () => {
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+    return {
+      availableWidth,
+      availableHeight,
+      minWidth: Math.min(MIN_WIDTH, availableWidth),
+      minHeight: Math.min(MIN_HEIGHT, availableHeight),
+    }
+  }
   const notifyError = useCallback(
     (message) => {
       if (!message) return
@@ -250,6 +262,8 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setBranches([])
     setSelectedBranches([])
     setActiveTab('general')
+    setIsMaximized(false)
+    restoreRef.current = null
     fetchUser()
     loadPermissionOptions()
     fetchBranches()
@@ -257,10 +271,9 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
 
   useLayoutEffect(() => {
     if (!open) return
-    const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
-    const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING * 2)
-    const nextWidth = clamp(MIN_WIDTH, MIN_WIDTH, maxWidth)
-    const nextHeight = clamp(MIN_HEIGHT, MIN_HEIGHT, maxHeight)
+    const { availableWidth, availableHeight } = getViewportMetrics()
+    const nextWidth = Math.min(MIN_WIDTH, availableWidth)
+    const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
     setSize({ width: nextWidth, height: nextHeight })
 
     const centeredX = (window.innerWidth - nextWidth) / 2
@@ -277,6 +290,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   }, [position])
 
   const handleMouseDown = (event) => {
+    if (isMaximized) return
     if (!modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
     dragData.current = {
@@ -287,8 +301,10 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   }
 
   const handleResizeMouseDown = (event) => {
+    if (isMaximized) return
     event.preventDefault()
     event.stopPropagation()
+    const { minWidth, minHeight } = getViewportMetrics()
     resizeData.current = {
       active: true,
       startX: event.clientX,
@@ -301,10 +317,10 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       if (!resizeData.current.active) return
       const deltaX = moveEvent.clientX - resizeData.current.startX
       const deltaY = moveEvent.clientY - resizeData.current.startY
-      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - positionRef.current.x - VIEWPORT_PADDING)
-      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - positionRef.current.y - VIEWPORT_PADDING)
-      const width = clamp(resizeData.current.startWidth + deltaX, MIN_WIDTH, maxWidth)
-      const height = clamp(resizeData.current.startHeight + deltaY, MIN_HEIGHT, maxHeight)
+      const maxWidth = Math.max(minWidth, window.innerWidth - positionRef.current.x - VIEWPORT_PADDING)
+      const maxHeight = Math.max(minHeight, window.innerHeight - positionRef.current.y - VIEWPORT_PADDING)
+      const width = clamp(resizeData.current.startWidth + deltaX, minWidth, maxWidth)
+      const height = clamp(resizeData.current.startHeight + deltaY, minHeight, maxHeight)
       setSize({ width, height })
     }
 
@@ -346,12 +362,17 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
 
   useEffect(() => {
     const handleWindowResize = () => {
-      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
-      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING * 2)
+      const { minWidth, minHeight, availableWidth, availableHeight } = getViewportMetrics()
+
+      if (isMaximized) {
+        setSize({ width: availableWidth, height: availableHeight })
+        setPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+        return
+      }
 
       setSize((prev) => {
-        const width = clamp(prev.width, MIN_WIDTH, maxWidth)
-        const height = clamp(prev.height, MIN_HEIGHT, maxHeight)
+        const width = clamp(prev.width, minWidth, availableWidth)
+        const height = clamp(prev.height, minHeight, availableHeight)
 
         setPosition((prevPosition) => ({
           x: Math.min(Math.max(prevPosition.x, VIEWPORT_PADDING), Math.max(window.innerWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING)),
@@ -364,7 +385,28 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
 
     window.addEventListener('resize', handleWindowResize)
     return () => window.removeEventListener('resize', handleWindowResize)
-  }, [])
+  }, [isMaximized])
+
+  const toggleMaximize = () => {
+    if (isMaximized) {
+      const restore = restoreRef.current
+      if (restore) {
+        setSize(restore.size)
+        setPosition(restore.position)
+      }
+      setIsMaximized(false)
+      return
+    }
+
+    restoreRef.current = {
+      size: sizeRef.current,
+      position: positionRef.current,
+    }
+    const { availableWidth, availableHeight } = getViewportMetrics()
+    setSize({ width: availableWidth, height: availableHeight })
+    setPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+    setIsMaximized(true)
+  }
 
   const handleToggleEdit = () => {
     if (loadingData || saving || deleteLoading) return
@@ -482,20 +524,31 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
         <div className="create-user__header-text">
           {/* Mostramos el ID y el nombre completo del estado originalData */}
           <h3>
-            {userId && originalData.nombres 
-              ? `${userId} : ${originalData.nombres} ${originalData.apellidos}` 
+            {userId && originalData.nombres
+              ? `${userId} : ${originalData.nombres} ${originalData.apellidos}`
               : 'Cargando usuario...'}
           </h3>
         </div>
-        <button
-          type="button"
-          className="create-user__icon-button"
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={handleClose}
-          aria-label="Cerrar"
-        >
-          ×
-        </button>
+        <div className="create-user__header-actions">
+          <button
+            type="button"
+            className="create-user__icon-button create-user__icon-button--maximize"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={toggleMaximize}
+            aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+          >
+            {isMaximized ? '🗗' : '🗖'}
+          </button>
+          <button
+            type="button"
+            className="create-user__icon-button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={handleClose}
+            aria-label="Cerrar"
+          >
+            ×
+          </button>
+        </div>
       </header>
 
       <form className="create-user__form" onSubmit={handleSubmit}>
