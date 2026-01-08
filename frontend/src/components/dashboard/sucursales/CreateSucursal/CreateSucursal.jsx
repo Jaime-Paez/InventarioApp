@@ -19,6 +19,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [location, setLocation] = useState(DEFAULT_CENTER)
+  const [isMaximized, setIsMaximized] = useState(false)
 
   const modalRef = useRef(null)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -27,12 +28,23 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
   const positionRef = useRef(position)
+  const restoreRef = useRef(null)
   const mapRef = useRef(null)
   const markerRef = useRef(null)
   const mapContainerRef = useRef(null)
   const isMountedRef = useRef(false)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+  const getViewportMetrics = () => {
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+    return {
+      availableWidth,
+      availableHeight,
+      minWidth: Math.min(MIN_WIDTH, availableWidth),
+      minHeight: Math.min(MIN_HEIGHT, availableHeight),
+    }
+  }
   const formatCoordinate = (value) => (Number.isFinite(value) ? Number(value.toFixed(6)) : value)
 
   const notifyError = useCallback(
@@ -52,15 +64,16 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     setFormData(initialForm)
     setLoading(false)
     setLocation(DEFAULT_CENTER)
+    setIsMaximized(false)
+    restoreRef.current = null
     isMountedRef.current = true
   }, [open])
 
   useLayoutEffect(() => {
     if (!open) return
-    const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
-    const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING * 2)
-    const nextWidth = clamp(MIN_WIDTH, MIN_WIDTH, maxWidth)
-    const nextHeight = clamp(MIN_HEIGHT, MIN_HEIGHT, maxHeight)
+    const { availableWidth, availableHeight } = getViewportMetrics()
+    const nextWidth = Math.min(MIN_WIDTH, availableWidth)
+    const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
     setSize({ width: nextWidth, height: nextHeight })
 
     const centeredX = (window.innerWidth - nextWidth) / 2
@@ -211,6 +224,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   }
 
   const handleMouseDown = (event) => {
+    if (isMaximized) return
     if (!modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
     dragData.current = {
@@ -221,8 +235,10 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   }
 
   const handleResizeMouseDown = (event) => {
+    if (isMaximized) return
     event.preventDefault()
     event.stopPropagation()
+    const { minWidth, minHeight } = getViewportMetrics()
     resizeData.current = {
       active: true,
       startX: event.clientX,
@@ -235,10 +251,10 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
       if (!resizeData.current.active) return
       const deltaX = moveEvent.clientX - resizeData.current.startX
       const deltaY = moveEvent.clientY - resizeData.current.startY
-      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - positionRef.current.x - VIEWPORT_PADDING)
-      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - positionRef.current.y - VIEWPORT_PADDING)
-      const width = clamp(resizeData.current.startWidth + deltaX, MIN_WIDTH, maxWidth)
-      const height = clamp(resizeData.current.startHeight + deltaY, MIN_HEIGHT, maxHeight)
+      const maxWidth = Math.max(minWidth, window.innerWidth - positionRef.current.x - VIEWPORT_PADDING)
+      const maxHeight = Math.max(minHeight, window.innerHeight - positionRef.current.y - VIEWPORT_PADDING)
+      const width = clamp(resizeData.current.startWidth + deltaX, minWidth, maxWidth)
+      const height = clamp(resizeData.current.startHeight + deltaY, minHeight, maxHeight)
       setSize({ width, height })
     }
 
@@ -280,12 +296,17 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
   useEffect(() => {
     const handleWindowResize = () => {
-      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
-      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING * 2)
+      const { minWidth, minHeight, availableWidth, availableHeight } = getViewportMetrics()
+
+      if (isMaximized) {
+        setSize({ width: availableWidth, height: availableHeight })
+        setPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+        return
+      }
 
       setSize((prev) => {
-        const width = clamp(prev.width, MIN_WIDTH, maxWidth)
-        const height = clamp(prev.height, MIN_HEIGHT, maxHeight)
+        const width = clamp(prev.width, minWidth, availableWidth)
+        const height = clamp(prev.height, minHeight, availableHeight)
 
         setPosition((prevPosition) => ({
           x: Math.min(Math.max(prevPosition.x, VIEWPORT_PADDING), Math.max(window.innerWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING)),
@@ -298,7 +319,28 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
     window.addEventListener('resize', handleWindowResize)
     return () => window.removeEventListener('resize', handleWindowResize)
-  }, [])
+  }, [isMaximized])
+
+  const toggleMaximize = () => {
+    if (isMaximized) {
+      const restore = restoreRef.current
+      if (restore) {
+        setSize(restore.size)
+        setPosition(restore.position)
+      }
+      setIsMaximized(false)
+      return
+    }
+
+    restoreRef.current = {
+      size: sizeRef.current,
+      position: positionRef.current,
+    }
+    const { availableWidth, availableHeight } = getViewportMetrics()
+    setSize({ width: availableWidth, height: availableHeight })
+    setPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+    setIsMaximized(true)
+  }
 
   if (!open) return null
 
@@ -323,15 +365,26 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
           <div className="create-user__header-text">
             <h3>Crear sucursal</h3>
           </div>
-          <button
-            type="button"
-            className="create-user__icon-button"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={onClose}
-            aria-label="Cerrar"
-          >
-            ×
-          </button>
+          <div className="create-user__header-actions">
+            <button
+              type="button"
+              className="create-user__icon-button create-user__icon-button--maximize"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={toggleMaximize}
+              aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+            >
+              {isMaximized ? '🗗' : '🗖'}
+            </button>
+            <button
+              type="button"
+              className="create-user__icon-button"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={onClose}
+              aria-label="Cerrar"
+            >
+              ×
+            </button>
+          </div>
         </header>
 
         <form className="create-user__form" onSubmit={handleSubmit}>
