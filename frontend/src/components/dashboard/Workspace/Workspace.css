@@ -87,6 +87,18 @@
   color: var(--color-text-title-dark);
 }
 
+.workspace__tab-panel {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
+}
+
+.workspace__tab-panel.active {
+  display: flex;
+}
+
 @media (max-width: 900px) {
   .workspace {
     overflow-y: auto;

@@ -24,32 +24,54 @@ function Workspace({
     .trim() || 'usuario'
 
   const showWelcome = !activeItem
-  const hasAccess = !activeItem || labelHasAccess(activeItem, permissionIndex)
   const farewellTitle = `Hasta luego, ${username}.`
 
-  const renderContent = () => {
-    if (!hasAccess) {
-      return (
-        <p className="workspace__subtitle">
-          No tienes permisos para acceder a este módulo. Solicita acceso a un administrador.
-        </p>
-      )
-    }
-
-    if (activeItem === 'Administrar') {
-      return <UsersTable token={token} />
-    }
-
-    if (activeItem === 'Sucursales') {
-      return <SucursalesTable token={token} />
-    }
-
-    return (
-      <p className="workspace__subtitle">
-        El módulo "{activeItem}" todavía no tiene contenido disponible.
-      </p>
-    )
+  const tabContentMap = {
+    Administrar: <UsersTable token={token} />,
+    Sucursales: <SucursalesTable token={token} />,
   }
+
+  const renderContent = () => (
+    <>
+      {openTabs.map((tab) => {
+        const isActive = tab === activeItem
+        const hasAccess = labelHasAccess(tab, permissionIndex)
+        const content = tabContentMap[tab]
+
+        if (!content) {
+          if (!isActive) return null
+          return (
+            <div key={tab} className="workspace__tab-panel active">
+              <p className="workspace__subtitle">
+                El módulo "{activeItem}" todavía no tiene contenido disponible.
+              </p>
+            </div>
+          )
+        }
+
+        if (!hasAccess) {
+          if (!isActive) return null
+          return (
+            <div key={tab} className="workspace__tab-panel active">
+              <p className="workspace__subtitle">
+                No tienes permisos para acceder a este módulo. Solicita acceso a un administrador.
+              </p>
+            </div>
+          )
+        }
+
+        return (
+          <div
+            key={tab}
+            className={`workspace__tab-panel${isActive ? ' active' : ''}`}
+            aria-hidden={!isActive}
+          >
+            {content}
+          </div>
+        )
+      })}
+    </>
+  )
 
   return (
     <main className="workspace">
