@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './BodegaLayoutEditor.css'
 
 const buildId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -14,6 +14,8 @@ const DEFAULT_COLOR = '#4f8df8'
 const MIN_SIZE_METERS = 0.5
 const PLAN_MAX_HEIGHT = 520
 const VERTICAL_LABEL_RATIO = 1.6
+const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles']
+const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14b8a6']
 
 function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, disabled }) {
   const safeWidth = useMemo(() => Math.max(widthMeters || 0, 0), [widthMeters])
@@ -32,6 +34,43 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const planRef = useRef(null)
   const dragStateRef = useRef(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
+  const [types, setTypes] = useState(DEFAULT_TYPES)
+  const [typeColors, setTypeColors] = useState(() =>
+    DEFAULT_TYPES.reduce((acc, type, index) => {
+      acc[type] = TYPE_COLORS[index % TYPE_COLORS.length]
+      return acc
+    }, {})
+  )
+  const [newType, setNewType] = useState('')
+
+  useEffect(() => {
+    const incomingTypes = new Set(types)
+    let updated = false
+    locations.forEach((location) => {
+      if (location?.tipo && !incomingTypes.has(location.tipo)) {
+        incomingTypes.add(location.tipo)
+        updated = true
+      }
+    })
+    if (updated) {
+      const merged = Array.from(incomingTypes)
+      setTypes(merged)
+      setTypeColors((prev) => {
+        const next = { ...prev }
+        merged.forEach((type, index) => {
+          if (!next[type]) {
+            next[type] = TYPE_COLORS[index % TYPE_COLORS.length]
+          }
+        })
+        return next
+      })
+    }
+  }, [locations, types])
+
+  const resolveTypeColor = useCallback(
+    (type) => typeColors[type] || DEFAULT_COLOR,
+    [typeColors]
+  )
 
   const handleAddLocation = (coords) => {
     if (disabled) return
@@ -41,11 +80,11 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     const next = {
       id: buildId(),
       nombre: `Ubicación ${locations.length + 1}`,
+      tipo: types[0] || DEFAULT_TYPES[0],
       x: coords?.x ?? 0,
       y: coords?.y ?? 0,
       ancho: defaultSize,
       alto: defaultSize,
-      color: DEFAULT_COLOR,
     }
     onChange([...locations, next])
     setSelectedId(next.id)
@@ -76,6 +115,29 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const updateNumericField = (id, field, value) => {
     const nextValue = normalizeNumber(value)
     updateLocation(id, { [field]: nextValue })
+  }
+
+  const ensureType = (rawType) => {
+    const trimmed = rawType.trim()
+    if (!trimmed) return null
+    if (types.includes(trimmed)) return trimmed
+    const nextTypes = [...types, trimmed]
+    setTypes(nextTypes)
+    setTypeColors((prev) => ({
+      ...prev,
+      [trimmed]: TYPE_COLORS[(nextTypes.length - 1) % TYPE_COLORS.length],
+    }))
+    return trimmed
+  }
+
+  const handleTypeChange = (locationId, value) => {
+    updateLocation(locationId, { tipo: value })
+  }
+
+  const handleAddType = () => {
+    const created = ensureType(newType)
+    if (!created) return
+    setNewType('')
   }
 
   const removeLocation = (id) => {
@@ -193,7 +255,8 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
             const height = safeHeight ? (location.alto / safeHeight) * 100 : 10
             const isSelected = selectedId === location.id
             const isVertical = location.alto > location.ancho * VERTICAL_LABEL_RATIO
-            const locationColor = location.color || DEFAULT_COLOR
+            const locationType = location.tipo || types[0] || DEFAULT_TYPES[0]
+            const locationColor = resolveTypeColor(locationType)
             return (
               <div
                 key={location.id}
@@ -249,6 +312,27 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
         </p>
       </div>
 
+      <div className="bodega-layout__type-row">
+        <label className="create-user__field">
+          <span>Nuevo tipo</span>
+          <input
+            type="text"
+            value={newType}
+            onChange={(event) => setNewType(event.target.value)}
+            placeholder="Ej: Rack frío"
+            disabled={disabled}
+          />
+        </label>
+        <button
+          type="button"
+          className="create-user__action create-user__action--primary"
+          onClick={handleAddType}
+          disabled={disabled || !newType.trim()}
+        >
+          Crear tipo
+        </button>
+      </div>
+
       <div className="bodega-layout__list">
         {locations.length === 0 && (
           <div className="bodega-layout__card">
@@ -277,6 +361,20 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                   onChange={(event) => updateLocation(location.id, { nombre: event.target.value })}
                   disabled={disabled}
                 />
+              </label>
+              <label className="create-user__field">
+                <span>Tipo</span>
+                <select
+                  value={location.tipo || types[0] || DEFAULT_TYPES[0]}
+                  onChange={(event) => handleTypeChange(location.id, event.target.value)}
+                  disabled={disabled}
+                >
+                  {types.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="create-user__field">
                 <span>X (m)</span>
@@ -319,15 +417,6 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                   step="0.1"
                   value={location.alto}
                   onChange={(event) => updateNumericField(location.id, 'alto', event.target.value)}
-                  disabled={disabled}
-                />
-              </label>
-              <label className="create-user__field">
-                <span>Color</span>
-                <input
-                  type="color"
-                  value={location.color || DEFAULT_COLOR}
-                  onChange={(event) => updateLocation(location.id, { color: event.target.value })}
                   disabled={disabled}
                 />
               </label>

@@ -157,6 +157,18 @@
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
+.bodega-layout__type-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.bodega-layout__type-row .create-user__action {
+  height: 36px;
+}
+
 .bodega-layout__hint {
   margin-top: 8px;
   color: var(--color-text-secondary);
