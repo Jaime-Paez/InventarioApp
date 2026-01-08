@@ -17,6 +17,103 @@ const VERTICAL_LABEL_RATIO = 1.6
 const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles']
 const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14b8a6']
 
+const TypeSelect = ({
+  value,
+  options,
+  disabled,
+  placeholder,
+  onSelect,
+  onCreate,
+}) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen])
+
+  const filtered = options.filter((option) =>
+    option.toLowerCase().includes(query.toLowerCase())
+  )
+
+  const handleSelect = (option) => {
+    onSelect(option)
+    setQuery('')
+    setIsOpen(false)
+  }
+
+  const handleCreate = () => {
+    const created = onCreate(query)
+    if (created) {
+      setQuery('')
+      setIsOpen(false)
+    }
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className={`bodega-type-select${isOpen ? ' is-open' : ''}${disabled ? ' is-disabled' : ''}`}
+    >
+      <button
+        type="button"
+        className="bodega-type-select__control"
+        onClick={() => setIsOpen((prev) => !prev)}
+        disabled={disabled}
+      >
+        <span>{value || placeholder}</span>
+        <i className={`pi pi-chevron-${isOpen ? 'up' : 'down'}`} />
+      </button>
+
+      {isOpen && (
+        <div className="bodega-type-select__menu">
+          <div className="bodega-type-select__search">
+            <i className="pi pi-search" />
+            <input
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={placeholder}
+              autoFocus
+            />
+          </div>
+          <div className="bodega-type-select__options">
+            {filtered.length === 0 && (
+              <div className="bodega-type-select__empty">Sin resultados</div>
+            )}
+            {filtered.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={`bodega-type-select__option${option === value ? ' is-active' : ''}`}
+                onClick={() => handleSelect(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="bodega-type-select__create"
+            onClick={handleCreate}
+            disabled={!query.trim()}
+          >
+            Escribe para crear un tipo
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, disabled }) {
   const safeWidth = useMemo(() => Math.max(widthMeters || 0, 0), [widthMeters])
   const safeHeight = useMemo(() => Math.max(heightMeters || 0, 0), [heightMeters])
@@ -41,7 +138,6 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
       return acc
     }, {})
   )
-  const [newType, setNewType] = useState('')
 
   useEffect(() => {
     const incomingTypes = new Set(types)
@@ -134,11 +230,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     updateLocation(locationId, { tipo: value })
   }
 
-  const handleAddType = () => {
-    const created = ensureType(newType)
-    if (!created) return
-    setNewType('')
-  }
+  const handleAddType = (value) => ensureType(value)
 
   const removeLocation = (id) => {
     onChange(locations.filter((location) => location.id !== id))
@@ -312,27 +404,6 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
         </p>
       </div>
 
-      <div className="bodega-layout__type-row">
-        <label className="create-user__field">
-          <span>Nuevo tipo</span>
-          <input
-            type="text"
-            value={newType}
-            onChange={(event) => setNewType(event.target.value)}
-            placeholder="Ej: Rack frío"
-            disabled={disabled}
-          />
-        </label>
-        <button
-          type="button"
-          className="create-user__action create-user__action--primary"
-          onClick={handleAddType}
-          disabled={disabled || !newType.trim()}
-        >
-          Crear tipo
-        </button>
-      </div>
-
       <div className="bodega-layout__list">
         {locations.length === 0 && (
           <div className="bodega-layout__card">
@@ -364,17 +435,14 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
               </label>
               <label className="create-user__field">
                 <span>Tipo</span>
-                <select
+                <TypeSelect
                   value={location.tipo || types[0] || DEFAULT_TYPES[0]}
-                  onChange={(event) => handleTypeChange(location.id, event.target.value)}
+                  options={types}
+                  placeholder="Selecciona o escribe para crear un tipo"
+                  onSelect={(value) => handleTypeChange(location.id, value)}
+                  onCreate={handleAddType}
                   disabled={disabled}
-                >
-                  {types.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
               <label className="create-user__field">
                 <span>X (m)</span>

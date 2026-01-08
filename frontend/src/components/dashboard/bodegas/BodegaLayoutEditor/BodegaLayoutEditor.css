@@ -157,16 +157,127 @@
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
-.bodega-layout__type-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  margin-top: 12px;
-  flex-wrap: wrap;
+.bodega-type-select {
+  position: relative;
+  width: 100%;
 }
 
-.bodega-layout__type-row .create-user__action {
-  height: 36px;
+.bodega-type-select__control {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  min-height: 38px;
+}
+
+.bodega-type-select__control span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bodega-type-select__control i {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.bodega-type-select.is-disabled .bodega-type-select__control {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bodega-type-select__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 10px;
+  box-shadow: var(--shadow-panel);
+}
+
+.bodega-type-select__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.bodega-type-select__search input {
+  border: none;
+  background: transparent;
+  width: 100%;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.bodega-type-select__search input:focus {
+  outline: none;
+}
+
+.bodega-type-select__options {
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.bodega-type-select__option {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.bodega-type-select__option:hover {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.bodega-type-select__option.is-active {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  font-weight: 600;
+}
+
+.bodega-type-select__empty {
+  padding: 8px 10px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.bodega-type-select__create {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  color: var(--color-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bodega-type-select__create:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .bodega-layout__hint {
