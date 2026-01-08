@@ -2,6 +2,7 @@ import WorkspaceTabs from '../tabs/WorkspaceTabs/WorkspaceTabs'
 import QuickActions from '../QuickActions/QuickActions'
 import UsersTable from '../admin/UsersTable/UsersTable'
 import SucursalesTable from '../sucursales/SucursalesTable/SucursalesTable'
+import BodegasTable from '../bodegas/BodegasTable/BodegasTable'
 import './Workspace.css'
 import { labelHasAccess } from '../menuConfig'
 
@@ -29,6 +30,7 @@ function Workspace({
   const tabContentMap = {
     Administrar: <UsersTable token={token} />,
     Sucursales: <SucursalesTable token={token} />,
+    Bodegas: <BodegasTable token={token} />,
   }
 
   const renderContent = () => (
