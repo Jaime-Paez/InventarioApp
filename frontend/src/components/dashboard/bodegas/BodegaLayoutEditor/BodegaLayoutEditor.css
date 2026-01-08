@@ -29,6 +29,7 @@
   position: relative;
   width: 100%;
   min-height: 260px;
+  max-height: 520px;
   border-radius: 10px;
   border: 1px dashed var(--color-border);
   background-color: color-mix(in srgb, var(--color-surface) 80%, transparent);
@@ -73,6 +74,12 @@
   color: inherit;
   width: 100%;
   min-width: 0;
+}
+
+.bodega-layout__location-size {
+  font-size: 0.6rem;
+  opacity: 0.85;
+  white-space: nowrap;
 }
 
 .bodega-layout__location-input:focus {

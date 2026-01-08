@@ -164,6 +164,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
           role="presentation"
           onClick={handlePlanClick}
           ref={planRef}
+          style={safeWidth && safeHeight ? { aspectRatio: `${safeWidth} / ${safeHeight}` } : undefined}
         >
           {locations.map((location) => {
             const left = safeWidth ? (location.x / safeWidth) * 100 : 0
@@ -198,6 +199,9 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                   onClick={(event) => event.stopPropagation()}
                   disabled={disabled}
                 />
+                <span className="bodega-layout__location-size">
+                  {location.ancho?.toFixed?.(1) ?? 0}m x {location.alto?.toFixed?.(1) ?? 0}m
+                </span>
                 <button
                   type="button"
                   className="bodega-layout__resize-handle"
