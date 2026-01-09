@@ -27,6 +27,47 @@
   justify-content: center;
 }
 
+.bodega-layout__plan-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 16px;
+  align-items: start;
+}
+
+.bodega-layout__legend {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--color-surface);
+}
+
+.bodega-layout__legend h5 {
+  margin: 0 0 10px;
+  font-size: var(--font-size-sm);
+}
+
+.bodega-layout__legend ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.bodega-layout__legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+}
+
+.bodega-layout__legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+
 .bodega-layout__plan {
   position: relative;
   width: 100%;
@@ -178,6 +219,12 @@
   min-height: 24px;
 }
 
+.bodega-type-select__control-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .bodega-type-select__control span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -267,6 +314,10 @@
   font-size: var(--font-size-sm);
   color: var(--color-text-primary);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .bodega-type-select__option:hover {
@@ -298,6 +349,35 @@
 .bodega-type-select__create:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.bodega-type-select__color {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.bodega-type-select__color input {
+  display: none;
+}
+
+.bodega-type-select__color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+
+.dashboard-shell.dark .bodega-layout__legend {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+@media (max-width: 900px) {
+  .bodega-layout__plan-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .bodega-layout__hint {

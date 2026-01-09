@@ -20,10 +20,12 @@ const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14
 const TypeSelect = ({
   value,
   options,
+  colors,
   disabled,
   placeholder,
   onSelect,
   onCreate,
+  onColorChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -70,7 +72,25 @@ const TypeSelect = ({
         disabled={disabled}
       >
         <span>{value || placeholder}</span>
-        <i className={`pi pi-chevron-${isOpen ? 'up' : 'down'}`} />
+        <div className="bodega-type-select__control-actions">
+          <label
+            className="bodega-type-select__color"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <input
+              type="color"
+              value={colors?.[value] || DEFAULT_COLOR}
+              onChange={(event) => onColorChange?.(value, event.target.value)}
+              aria-label={`Color para ${value}`}
+              disabled={!value}
+            />
+            <span
+              className="bodega-type-select__color-dot"
+              style={{ backgroundColor: colors?.[value] || DEFAULT_COLOR }}
+            />
+          </label>
+          <i className={`pi pi-chevron-${isOpen ? 'up' : 'down'}`} />
+        </div>
       </button>
 
       {isOpen && (
@@ -96,7 +116,22 @@ const TypeSelect = ({
                 className={`bodega-type-select__option${option === value ? ' is-active' : ''}`}
                 onClick={() => handleSelect(option)}
               >
-                {option}
+                <span>{option}</span>
+                <label
+                  className="bodega-type-select__color"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <input
+                    type="color"
+                    value={colors?.[option] || DEFAULT_COLOR}
+                    onChange={(event) => onColorChange?.(option, event.target.value)}
+                    aria-label={`Color para ${option}`}
+                  />
+                  <span
+                    className="bodega-type-select__color-dot"
+                    style={{ backgroundColor: colors?.[option] || DEFAULT_COLOR }}
+                  />
+                </label>
               </button>
             ))}
           </div>
@@ -167,6 +202,14 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     (type) => typeColors[type] || DEFAULT_COLOR,
     [typeColors]
   )
+
+  const handleTypeColorChange = (type, color) => {
+    if (!type) return
+    setTypeColors((prev) => ({
+      ...prev,
+      [type]: color,
+    }))
+  }
 
   const handleAddLocation = (coords) => {
     if (disabled) return
@@ -332,76 +375,102 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
         </button>
       </div>
 
-      <div className="bodega-layout__plan-wrapper">
-        <div
-          className={`bodega-layout__plan${disabled || !safeWidth || !safeHeight ? ' bodega-layout__plan--disabled' : ''}`}
-          role="presentation"
-          onClick={handlePlanClick}
-          ref={planRef}
-          style={planStyle}
-        >
-          {locations.map((location) => {
-            const left = safeWidth ? (location.x / safeWidth) * 100 : 0
-            const top = safeHeight ? (location.y / safeHeight) * 100 : 0
-            const width = safeWidth ? (location.ancho / safeWidth) * 100 : 10
-            const height = safeHeight ? (location.alto / safeHeight) * 100 : 10
-            const isSelected = selectedId === location.id
-            const isVertical = location.alto > location.ancho * VERTICAL_LABEL_RATIO
-            const locationType = location.tipo || types[0] || DEFAULT_TYPES[0]
-            const locationColor = resolveTypeColor(locationType)
-            return (
-              <div
-                key={location.id}
-                className={`bodega-layout__location${isSelected ? ' bodega-layout__location--selected' : ''}${isVertical ? ' bodega-layout__location--vertical' : ''}`}
-                style={{
-                  left: `${left}%`,
-                  top: `${top}%`,
-                  width: `${width}%`,
-                  height: `${height}%`,
-                  borderColor: locationColor,
-                  backgroundColor: `${locationColor}22`,
-                }}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setSelectedId(location.id)
-                }}
-                onMouseDown={(event) => handleDragStart(event, location, 'move')}
-              >
-                <input
-                  className="bodega-layout__location-input"
-                  type="text"
-                  value={location.nombre}
-                  onChange={(event) => updateLocation(location.id, { nombre: event.target.value })}
-                  onClick={(event) => event.stopPropagation()}
-                  disabled={disabled}
-                />
-                <button
-                  type="button"
-                  className="bodega-layout__resize-handle"
-                  onMouseDown={(event) => handleDragStart(event, location, 'resize')}
-                  aria-label="Cambiar tamaño de ubicación"
-                  disabled={disabled}
-                />
-              </div>
-            )
-          })}
-        </div>
-        {resizeOverlay && (
+      <div className="bodega-layout__plan-row">
+        <div className="bodega-layout__plan-wrapper">
           <div
-            className="bodega-layout__resize-tooltip"
-            style={{
-              left: `${resizeOverlay.x + 12}px`,
-              top: `${resizeOverlay.y + 12}px`,
-            }}
+            className={`bodega-layout__plan${disabled || !safeWidth || !safeHeight ? ' bodega-layout__plan--disabled' : ''}`}
+            role="presentation"
+            onClick={handlePlanClick}
+            ref={planRef}
+            style={planStyle}
           >
-            {resizeOverlay.ancho}m x {resizeOverlay.alto}m
+            {locations.map((location) => {
+              const left = safeWidth ? (location.x / safeWidth) * 100 : 0
+              const top = safeHeight ? (location.y / safeHeight) * 100 : 0
+              const width = safeWidth ? (location.ancho / safeWidth) * 100 : 10
+              const height = safeHeight ? (location.alto / safeHeight) * 100 : 10
+              const isSelected = selectedId === location.id
+              const isVertical = location.alto > location.ancho * VERTICAL_LABEL_RATIO
+              const locationType = location.tipo || types[0] || DEFAULT_TYPES[0]
+              const locationColor = resolveTypeColor(locationType)
+              return (
+                <div
+                  key={location.id}
+                  className={`bodega-layout__location${isSelected ? ' bodega-layout__location--selected' : ''}${isVertical ? ' bodega-layout__location--vertical' : ''}`}
+                  style={{
+                    left: `${left}%`,
+                    top: `${top}%`,
+                    width: `${width}%`,
+                    height: `${height}%`,
+                    borderColor: locationColor,
+                    backgroundColor: `${locationColor}22`,
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setSelectedId(location.id)
+                  }}
+                  onMouseDown={(event) => handleDragStart(event, location, 'move')}
+                >
+                  <input
+                    className="bodega-layout__location-input"
+                    type="text"
+                    value={location.nombre}
+                    onChange={(event) => updateLocation(location.id, { nombre: event.target.value })}
+                    onClick={(event) => event.stopPropagation()}
+                    disabled={disabled}
+                  />
+                  <button
+                    type="button"
+                    className="bodega-layout__resize-handle"
+                    onMouseDown={(event) => handleDragStart(event, location, 'resize')}
+                    aria-label="Cambiar tamaño de ubicación"
+                    disabled={disabled}
+                  />
+                </div>
+              )
+            })}
           </div>
-        )}
-        <p className="bodega-layout__hint">
-          {safeWidth && safeHeight
-            ? `Plano: ${safeWidth}m x ${safeHeight}m`
-            : 'Define las medidas de la bodega para habilitar el plano.'}
-        </p>
+          {resizeOverlay && (
+            <div
+              className="bodega-layout__resize-tooltip"
+              style={{
+                left: `${resizeOverlay.x + 12}px`,
+                top: `${resizeOverlay.y + 12}px`,
+              }}
+            >
+              {resizeOverlay.ancho}m x {resizeOverlay.alto}m
+            </div>
+          )}
+          <p className="bodega-layout__hint">
+            {safeWidth && safeHeight
+              ? `Plano: ${safeWidth}m x ${safeHeight}m`
+              : 'Define las medidas de la bodega para habilitar el plano.'}
+          </p>
+        </div>
+
+        <div className="bodega-layout__legend">
+          <h5>Leyenda</h5>
+          {locations.length === 0 && (
+            <p className="bodega-layout__hint">Sin ubicaciones registradas.</p>
+          )}
+          <ul>
+            {Array.from(
+              new Set(
+                locations
+                  .map((loc) => loc.tipo || types[0] || DEFAULT_TYPES[0])
+                  .filter(Boolean)
+              )
+            ).map((type) => (
+              <li key={type}>
+                <span
+                  className="bodega-layout__legend-dot"
+                  style={{ backgroundColor: resolveTypeColor(type) }}
+                />
+                <span>{type}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       <div className="bodega-layout__list">
@@ -438,9 +507,11 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                 <TypeSelect
                   value={location.tipo || types[0] || DEFAULT_TYPES[0]}
                   options={types}
+                  colors={typeColors}
                   placeholder="Selecciona o escribe para crear un tipo"
                   onSelect={(value) => handleTypeChange(location.id, value)}
                   onCreate={handleAddType}
+                  onColorChange={handleTypeColorChange}
                   disabled={disabled}
                 />
               </label>
