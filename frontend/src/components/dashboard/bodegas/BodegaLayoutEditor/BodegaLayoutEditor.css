@@ -396,8 +396,8 @@
 }
 
 .dashboard-shell.dark .bodega-layout__plan {
-  background-color: color-mix(in srgb, var(--color-surface-darker) 85%, transparent);
+  background-color: color-mix(in srgb, var(--color-surface-darker) 92%, transparent);
   background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--color-text-dark) 12%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--color-text-dark) 12%, transparent) 1px, transparent 1px);
+    linear-gradient(to right, color-mix(in srgb, var(--color-text-dark) 24%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-text-dark) 24%, transparent) 1px, transparent 1px);
 }
