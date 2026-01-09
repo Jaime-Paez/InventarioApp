@@ -154,7 +154,7 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
 
   const parseMeasure = (value) => {
     const numeric = Number(value)
-    return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : 0
+    return Number.isFinite(numeric) ? Number(numeric.toFixed(1)) : 0
   }
 
   const handleSave = async () => {

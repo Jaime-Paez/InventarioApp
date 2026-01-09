@@ -7,7 +7,7 @@ const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
 const normalizeNumber = (value) => {
   const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : 0
+  return Number.isFinite(numeric) ? Number(numeric.toFixed(1)) : 0
 }
 
 const DEFAULT_COLOR = '#4f8df8'
@@ -219,10 +219,10 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     const clampedHeight = clamp(location.alto, MIN_SIZE_METERS, Math.max(MIN_SIZE_METERS, safeHeight - clampedY))
     return {
       ...location,
-      x: Number(clampedX.toFixed(2)),
-      y: Number(clampedY.toFixed(2)),
-      ancho: Number(clampedWidth.toFixed(2)),
-      alto: Number(clampedHeight.toFixed(2)),
+      x: Number(clampedX.toFixed(1)),
+      y: Number(clampedY.toFixed(1)),
+      ancho: Number(clampedWidth.toFixed(1)),
+      alto: Number(clampedHeight.toFixed(1)),
     }
   }
 
@@ -257,7 +257,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     const x = clamp(xRatio * safeWidth, 0, safeWidth)
     const y = clamp(yRatio * safeHeight, 0, safeHeight)
 
-    handleAddLocation({ x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) })
+    handleAddLocation({ x: Number(x.toFixed(1)), y: Number(y.toFixed(1)) })
   }
 
   const updateLocation = (id, updates) => {
@@ -333,8 +333,8 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
         const nextX = clamp(dragState.originX + deltaX, 0, Math.max(0, safeWidth - dragState.originWidth))
         const nextY = clamp(dragState.originY + deltaY, 0, Math.max(0, safeHeight - dragState.originHeight))
         updateLocation(dragState.id, {
-          x: Number(nextX.toFixed(2)),
-          y: Number(nextY.toFixed(2)),
+          x: Number(nextX.toFixed(1)),
+          y: Number(nextY.toFixed(1)),
         })
         return
       }
@@ -351,14 +351,14 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
           Math.max(MIN_SIZE_METERS, safeHeight - dragState.originY)
         )
         updateLocation(dragState.id, {
-          ancho: Number(nextWidth.toFixed(2)),
-          alto: Number(nextHeight.toFixed(2)),
+          ancho: Number(nextWidth.toFixed(1)),
+          alto: Number(nextHeight.toFixed(1)),
         })
         setResizeOverlay({
           x: event.clientX,
           y: event.clientY,
-          ancho: Number(nextWidth.toFixed(2)),
-          alto: Number(nextHeight.toFixed(2)),
+          ancho: Number(nextWidth.toFixed(1)),
+          alto: Number(nextHeight.toFixed(1)),
         })
       }
     }
