@@ -417,6 +417,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                     value={location.nombre}
                     onChange={(event) => updateLocation(location.id, { nombre: event.target.value })}
                     onClick={(event) => event.stopPropagation()}
+                    title={location.nombre}
                     disabled={disabled}
                   />
                   <button

@@ -117,6 +117,9 @@
   color: inherit;
   width: 100%;
   min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .bodega-layout__location-input:focus {
@@ -135,6 +138,10 @@
   transform: rotate(180deg);
   text-align: center;
   width: auto;
+}
+
+.dashboard-shell.dark .bodega-layout__location {
+  color: var(--color-button-primary);
 }
 
 .bodega-layout__resize-tooltip {
