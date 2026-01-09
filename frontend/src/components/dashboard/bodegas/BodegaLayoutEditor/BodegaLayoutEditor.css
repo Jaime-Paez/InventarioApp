@@ -352,6 +352,7 @@
 }
 
 .bodega-type-select__color {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -359,7 +360,10 @@
 }
 
 .bodega-type-select__color input {
-  display: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .bodega-type-select__color-dot {

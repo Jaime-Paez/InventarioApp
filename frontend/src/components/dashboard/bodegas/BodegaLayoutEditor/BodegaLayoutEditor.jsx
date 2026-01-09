@@ -441,11 +441,6 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
               {resizeOverlay.ancho}m x {resizeOverlay.alto}m
             </div>
           )}
-          <p className="bodega-layout__hint">
-            {safeWidth && safeHeight
-              ? `Plano: ${safeWidth}m x ${safeHeight}m`
-              : 'Define las medidas de la bodega para habilitar el plano.'}
-          </p>
         </div>
 
         <div className="bodega-layout__legend">
@@ -472,6 +467,11 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
           </ul>
         </div>
       </div>
+      <p className="bodega-layout__hint">
+        {safeWidth && safeHeight
+          ? `Plano: ${safeWidth}m x ${safeHeight}m`
+          : 'Define las medidas de la bodega para habilitar el plano.'}
+      </p>
 
       <div className="bodega-layout__list">
         {locations.length === 0 && (
