@@ -166,6 +166,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const planRef = useRef(null)
   const dragStateRef = useRef(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
+  const [isAdding, setIsAdding] = useState(false)
   const [types, setTypes] = useState(DEFAULT_TYPES)
   const [typeColors, setTypeColors] = useState(() =>
     DEFAULT_TYPES.reduce((acc, type, index) => {
@@ -211,9 +212,24 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     }))
   }
 
+  const clampLocation = (location) => {
+    const clampedX = clamp(location.x, 0, Math.max(0, safeWidth - location.ancho))
+    const clampedY = clamp(location.y, 0, Math.max(0, safeHeight - location.alto))
+    const clampedWidth = clamp(location.ancho, MIN_SIZE_METERS, Math.max(MIN_SIZE_METERS, safeWidth - clampedX))
+    const clampedHeight = clamp(location.alto, MIN_SIZE_METERS, Math.max(MIN_SIZE_METERS, safeHeight - clampedY))
+    return {
+      ...location,
+      x: Number(clampedX.toFixed(2)),
+      y: Number(clampedY.toFixed(2)),
+      ancho: Number(clampedWidth.toFixed(2)),
+      alto: Number(clampedHeight.toFixed(2)),
+    }
+  }
+
   const handleAddLocation = (coords) => {
     if (disabled) return
     if (!safeWidth || !safeHeight) return
+    if (!isAdding) return
 
     const defaultSize = Math.min(2, safeWidth || 1, safeHeight || 1)
     const next = {
@@ -225,8 +241,9 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
       ancho: defaultSize,
       alto: defaultSize,
     }
-    onChange([...locations, next])
+    onChange([...locations, clampLocation(next)])
     setSelectedId(next.id)
+    setIsAdding(false)
   }
 
   const handlePlanClick = (event) => {
@@ -246,14 +263,15 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const updateLocation = (id, updates) => {
     const updated = locations.map((location) => {
       if (location.id !== id) return location
-      return { ...location, ...updates }
+      const next = typeof updates === 'function' ? updates(location) : { ...location, ...updates }
+      return clampLocation(next)
     })
     onChange(updated)
   }
 
   const updateNumericField = (id, field, value) => {
     const nextValue = normalizeNumber(value)
-    updateLocation(id, { [field]: nextValue })
+    updateLocation(id, (prev) => ({ ...prev, [field]: nextValue }))
   }
 
   const ensureType = (rawType) => {
@@ -368,10 +386,10 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
         <button
           type="button"
           className="create-user__action create-user__action--cancel"
-          onClick={() => handleAddLocation({ x: 0, y: 0 })}
+          onClick={() => setIsAdding((prev) => !prev)}
           disabled={disabled || !safeWidth || !safeHeight}
         >
-          Agregar ubicación
+          {isAdding ? 'Haz clic en el plano...' : 'Agregar ubicación'}
         </button>
       </div>
 
