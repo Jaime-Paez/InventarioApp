@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
+from .models import Rol, RolPermiso, UsuarioSucursal
 from .permissions import UsuariosModulePermission
 from .serializers import (
     AuthUserSerializer,
@@ -21,7 +21,6 @@ from .serializers import (
 from .utils import (
     get_permisos_efectivos,
     get_usuario_interno_por_correo,
-    sync_auth_user_from_usuario,
 )
 
 
@@ -37,37 +36,32 @@ class RolViewSet(viewsets.ModelViewSet):
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):
-    """Gestión de usuarios internos."""
+    """Gestión de usuarios autenticados."""
 
     queryset = (
-        Usuario.objects.prefetch_related(
-            "rol_personalizado__permisos",
-            "roles",
-        )
+        get_user_model()
+        .objects.select_related("perfil", "perfil__rol_personalizado")
+        .prefetch_related("roles", "roles__permisos")
         .all()
-        .order_by("apellidos", "nombres")
+        .order_by("last_name", "first_name")
     )
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombres", "apellidos", "correo", "cargo", "roles__nombre"]
-    ordering_fields = ["apellidos", "nombres", "correo"]
+    search_fields = ["first_name", "last_name", "email", "perfil__cargo", "roles__nombre"]
+    ordering_fields = ["last_name", "first_name", "email"]
 
     @transaction.atomic
     def perform_destroy(self, instance):
-        auth_user = get_user_model().objects.filter(email__iexact=instance.correo).first()
-
         instance.delete()
-
-        if auth_user:
-            auth_user.delete()
 
     @action(detail=True, methods=["get"], url_path="permisos-resumen")
     def permisos_resumen(self, request, pk=None):
         usuario = self.get_object()
+        perfil = getattr(usuario, "perfil", None)
         permisos = build_permissions_summary(
-            [], extra_roles=[usuario.rol_personalizado]
+            [], extra_roles=[perfil.rol_personalizado if perfil else None]
         )
         return Response({"permisos": permisos})
 
@@ -78,18 +72,18 @@ class UsuarioSucursalViewSet(viewsets.ModelViewSet):
     queryset = (
         UsuarioSucursal.objects.select_related("usuario", "sucursal")
         .all()
-        .order_by("sucursal__nombre", "usuario__apellidos")
+        .order_by("sucursal__nombre", "usuario__last_name")
     )
     serializer_class = UsuarioSucursalSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
-        "usuario__nombres",
-        "usuario__apellidos",
+        "usuario__first_name",
+        "usuario__last_name",
         "sucursal__nombre",
         "rol",
     ]
-    ordering_fields = ["sucursal__nombre", "usuario__apellidos"]
+    ordering_fields = ["sucursal__nombre", "usuario__last_name"]
 
 
 class RegistroAPIView(APIView):
@@ -123,9 +117,9 @@ class LoginAPIView(APIView):
         email = serializer.validated_data["email"].lower()
         password = serializer.validated_data["password"]
         user = authenticate(username=email, password=password)
-        if not user:
+        if not user or not user.is_active:
             return Response(
-                {"detail": "Credenciales inválidas."},
+                {"detail": "Credenciales inválidas o usuario inactivo."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
