@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
 from django.db import migrations, models
 import django.db.models.deletion
 
@@ -33,8 +34,8 @@ def asegurar_usuario_auth(apps, schema_editor):
                 last_name=usuario.apellidos or "",
                 is_active=usuario.activo,
             )
-            user.set_unusable_password()
-            user.save()
+            user.password = make_password(None)
+            user.save(update_fields=["password"])
 
         perfil, _ = UsuarioPerfil.objects.get_or_create(usuario=user)
         perfil_updates = []
