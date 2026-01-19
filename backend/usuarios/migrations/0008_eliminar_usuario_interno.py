@@ -5,20 +5,52 @@ import django.db.models.deletion
 
 def asegurar_usuario_auth(apps, schema_editor):
     UsuarioSucursal = apps.get_model("usuarios", "UsuarioSucursal")
+    Usuario = apps.get_model("usuarios", "Usuario")
+    UsuarioPerfil = apps.get_model("usuarios", "UsuarioPerfil")
+    User = apps.get_model("auth", "User")
     table = UsuarioSucursal._meta.db_table
     with schema_editor.connection.cursor() as cursor:
-        columns = {
-            col.name
-            for col in schema_editor.connection.introspection.get_table_description(
-                cursor, table
-            )
-        }
+        introspection = schema_editor.connection.introspection
+        columns = {col.name for col in introspection.get_table_description(cursor, table)}
+        existing_tables = set(introspection.table_names(cursor))
+
+    if UsuarioPerfil._meta.db_table not in existing_tables:
+        schema_editor.create_model(UsuarioPerfil)
+
     if "usuario_auth_id" not in columns:
         field = UsuarioSucursal._meta.get_field("usuario_auth")
         schema_editor.add_field(UsuarioSucursal, field)
-    schema_editor.execute(
-        f"UPDATE {table} SET usuario_auth_id = usuario_id WHERE usuario_auth_id IS NULL"
-    )
+
+    for usuario in Usuario.objects.all():
+        email = (usuario.correo or "").strip().lower()
+        user = User.objects.filter(email__iexact=email).first() if email else None
+        if user is None:
+            username = email or f"usuario-{usuario.pk}"
+            user = User(
+                username=username,
+                email=email,
+                first_name=usuario.nombres or "",
+                last_name=usuario.apellidos or "",
+                is_active=usuario.activo,
+            )
+            user.set_unusable_password()
+            user.save()
+
+        perfil, _ = UsuarioPerfil.objects.get_or_create(usuario=user)
+        perfil_updates = []
+        if perfil.telefono != (usuario.telefono or ""):
+            perfil.telefono = usuario.telefono or ""
+            perfil_updates.append("telefono")
+        if perfil.cargo != (usuario.cargo or ""):
+            perfil.cargo = usuario.cargo or ""
+            perfil_updates.append("cargo")
+        if usuario.rol_personalizado_id and perfil.rol_personalizado_id != usuario.rol_personalizado_id:
+            perfil.rol_personalizado_id = usuario.rol_personalizado_id
+            perfil_updates.append("rol_personalizado")
+        if perfil_updates:
+            perfil.save(update_fields=perfil_updates)
+
+        UsuarioSucursal.objects.filter(usuario=usuario).update(usuario_auth_id=user.id)
 
 
 class Migration(migrations.Migration):
