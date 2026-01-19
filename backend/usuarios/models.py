@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.signals import post_delete
@@ -11,6 +12,11 @@ class Rol(models.Model):
     descripcion = models.TextField(blank=True)
     activo = models.BooleanField(default=True)
     es_personalizado = models.BooleanField(default=False)
+    usuarios = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="roles",
+        blank=True,
+    )
 
     class Meta:
         ordering = ["nombre"]
@@ -19,6 +25,8 @@ class Rol(models.Model):
 
     def __str__(self) -> str:
         return self.nombre
+
+
 class RolPermiso(models.Model):
     """Permisos específicos asignados a un rol para un módulo."""
 
@@ -87,42 +95,39 @@ class RolPermiso(models.Model):
             )
 
 
-class Usuario(models.Model):
-    """Usuario interno que puede operar el sistema."""
+class UsuarioPerfil(models.Model):
+    """Perfil extendido para usuarios autenticados."""
 
-    nombres = models.CharField(max_length=150)
-    apellidos = models.CharField(max_length=150)
-    correo = models.EmailField(unique=True)
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="perfil",
+    )
     telefono = models.CharField(max_length=30, blank=True)
     cargo = models.CharField(max_length=120, blank=True)
-    activo = models.BooleanField(default=True)
-    roles = models.ManyToManyField(
-        Rol,
-        related_name="usuarios",
-        blank=True,
-    )
     rol_personalizado = models.OneToOneField(
         Rol,
         on_delete=models.SET_NULL,
-        related_name="usuario_personalizado",
+        related_name="perfil_personalizado",
         null=True,
         blank=True,
     )
 
     class Meta:
-        ordering = ["apellidos", "nombres"]
-        verbose_name = "Usuario"
-        verbose_name_plural = "Usuarios"
+        ordering = ["usuario__last_name", "usuario__first_name"]
+        verbose_name = "Perfil de usuario"
+        verbose_name_plural = "Perfiles de usuario"
 
     def __str__(self) -> str:
-        return f"{self.nombres} {self.apellidos}".strip()
+        nombre = self.usuario.get_full_name().strip()
+        return nombre or self.usuario.email or self.usuario.username
 
 
 class UsuarioSucursal(models.Model):
     """Asignación de un usuario a una sucursal específica."""
 
     usuario = models.ForeignKey(
-        Usuario,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="asignaciones",
     )
@@ -144,7 +149,7 @@ class UsuarioSucursal(models.Model):
         return f"{self.usuario} @ {self.sucursal}{rol}"
 
 
-@receiver(post_delete, sender=Usuario)
+@receiver(post_delete, sender=UsuarioPerfil)
 def eliminar_rol_personalizado(sender, instance, **kwargs):
     """Elimina el rol/permisos personalizados al borrar el usuario."""
 
