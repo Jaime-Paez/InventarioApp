@@ -1,23 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db import connection
-
-from .models import Rol, UsuarioPerfil
-
-
-def _table_exists(model):
-    table_name = model._meta.db_table
-    with connection.cursor() as cursor:
-        existing_tables = connection.introspection.table_names(cursor)
-    return table_name in existing_tables
-
-
-def _perfil_table_exists():
-    return _table_exists(UsuarioPerfil)
-
-
-def _roles_m2m_table_exists():
-    through_model = Rol.usuarios.through
-    return _table_exists(through_model)
+from .models import Rol
 
 
 def get_usuario_interno_por_correo(email):
@@ -27,34 +9,18 @@ def get_usuario_interno_por_correo(email):
         return None
 
     User = get_user_model()
-    queryset = User.objects.all()
-    if _roles_m2m_table_exists():
-        queryset = queryset.prefetch_related("roles__permisos")
-    if _perfil_table_exists():
-        queryset = queryset.select_related("perfil", "perfil__rol_personalizado")
-    return queryset.filter(email__iexact=email).first()
+    return (
+        User.objects.prefetch_related("roles__permisos")
+        .filter(email__iexact=email)
+        .first()
+    )
 
 
 def get_permisos_efectivos(usuario_interno, email):
     """Consolida los permisos disponibles para un usuario autenticado."""
 
-    roles = []
-    extra_roles = []
-
-    if usuario_interno and _roles_m2m_table_exists():
-        roles = list(usuario_interno.roles.all())
-        perfil = getattr(usuario_interno, "perfil", None)
-        if perfil and perfil.rol_personalizado:
-            extra_roles.append(perfil.rol_personalizado)
-    else:
-        fallback_role = (
-            Rol.objects.prefetch_related("permisos")
-            .filter(es_personalizado=True, nombre__iexact=f"Permisos - {email}")
-            .first()
-        )
-        if fallback_role:
-            extra_roles.append(fallback_role)
-
+    roles = list(usuario_interno.roles.all()) if usuario_interno else []
+    extra_roles = [get_personalized_role_for_email(email)]
     return build_permissions_summary(roles, extra_roles=extra_roles)
 
 
@@ -94,17 +60,22 @@ def build_permissions_summary(roles, extra_roles=None):
     ]
 
 
+def get_personalized_role_for_email(email):
+    if not email:
+        return None
+    role_name = f"Permisos - {email}"
+    return (
+        Rol.objects.prefetch_related("permisos")
+        .filter(es_personalizado=True, nombre__iexact=role_name)
+        .first()
+    )
+
+
 def ensure_personalized_role(usuario):
-    """Garantiza que el usuario tenga un rol personalizado creado y enlazado."""
+    """Garantiza que el usuario tenga un rol personalizado creado."""
 
     if not usuario or not usuario.email:
         return None
-    if not _perfil_table_exists():
-        return None
-
-    perfil, _ = UsuarioPerfil.objects.get_or_create(usuario=usuario)
-    if perfil.rol_personalizado:
-        return perfil.rol_personalizado
 
     role_name = f"Permisos - {usuario.email}"
     role = (
@@ -121,6 +92,4 @@ def ensure_personalized_role(usuario):
             es_personalizado=True,
         )
 
-    perfil.rol_personalizado = role
-    perfil.save(update_fields=["rol_personalizado"])
     return role

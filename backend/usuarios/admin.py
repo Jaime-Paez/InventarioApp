@@ -2,9 +2,7 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.models import Group, Permission
-from django.db import connection
-
-from .models import Rol, RolPermiso, UsuarioPerfil, UsuarioSucursal
+from .models import Rol, RolPermiso, UsuarioSucursal
 
 
 class RolPermisoInline(admin.TabularInline):
@@ -28,13 +26,6 @@ class RolAdmin(admin.ModelAdmin):
     inlines = [RolPermisoInline]
 
 
-class UsuarioPerfilInline(admin.StackedInline):
-    model = UsuarioPerfil
-    can_delete = False
-    extra = 0
-    fields = ("telefono", "cargo", "rol_personalizado")
-
-
 User = get_user_model()
 
 
@@ -56,18 +47,6 @@ class UserAdmin(DjangoUserAdmin):
     )
     list_filter = ("is_active", "is_staff", "is_superuser")
     search_fields = ("username", "email", "first_name", "last_name")
-    inlines = [UsuarioPerfilInline]
-
-    def get_inline_instances(self, request, obj=None):
-        if not self._perfil_table_exists():
-            return []
-        return super().get_inline_instances(request, obj)
-
-    def _perfil_table_exists(self):
-        table_name = UsuarioPerfil._meta.db_table
-        with connection.cursor() as cursor:
-            existing_tables = connection.introspection.table_names(cursor)
-        return table_name in existing_tables
 
 
 admin.site.register(User, UserAdmin)
