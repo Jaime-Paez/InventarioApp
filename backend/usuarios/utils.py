@@ -20,6 +20,14 @@ def _roles_m2m_table_exists():
     return _table_exists(through_model)
 
 
+def perfil_table_exists():
+    return _perfil_table_exists()
+
+
+def roles_m2m_table_exists():
+    return _roles_m2m_table_exists()
+
+
 def get_usuario_interno_por_correo(email):
     """Devuelve el usuario autenticado asociado a un correo (si existe)."""
 

@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Rol, RolPermiso, UsuarioSucursal
+from .models import Rol, RolPermiso
 from .permissions import UsuariosModulePermission
 from .serializers import (
     AuthUserSerializer,
@@ -15,12 +15,13 @@ from .serializers import (
     RegistroSerializer,
     RolSerializer,
     UsuarioSerializer,
-    UsuarioSucursalSerializer,
     build_permissions_summary,
 )
 from .utils import (
     get_permisos_efectivos,
     get_usuario_interno_por_correo,
+    perfil_table_exists,
+    roles_m2m_table_exists,
 )
 
 
@@ -38,19 +39,28 @@ class RolViewSet(viewsets.ModelViewSet):
 class UsuarioViewSet(viewsets.ModelViewSet):
     """Gestión de usuarios autenticados."""
 
-    queryset = (
-        get_user_model()
-        .objects.select_related("perfil", "perfil__rol_personalizado")
-        .prefetch_related("roles", "roles__permisos")
-        .all()
-        .order_by("last_name", "first_name")
-    )
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["first_name", "last_name", "email", "perfil__cargo", "roles__nombre"]
+    search_fields = ["first_name", "last_name", "email"]
     ordering_fields = ["last_name", "first_name", "email"]
+
+    def get_queryset(self):
+        queryset = get_user_model().objects.all().order_by("last_name", "first_name")
+        if perfil_table_exists():
+            queryset = queryset.select_related("perfil", "perfil__rol_personalizado")
+        if roles_m2m_table_exists():
+            queryset = queryset.prefetch_related("roles", "roles__permisos")
+        return queryset
+
+    def get_search_fields(self, view=None):
+        fields = list(self.search_fields)
+        if perfil_table_exists():
+            fields.append("perfil__cargo")
+        if roles_m2m_table_exists():
+            fields.append("roles__nombre")
+        return fields
 
     @transaction.atomic
     def perform_destroy(self, instance):
@@ -64,26 +74,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             [], extra_roles=[perfil.rol_personalizado if perfil else None]
         )
         return Response({"permisos": permisos})
-
-
-class UsuarioSucursalViewSet(viewsets.ModelViewSet):
-    """Gestión de asignaciones de usuarios a sucursales."""
-
-    queryset = (
-        UsuarioSucursal.objects.select_related("usuario", "sucursal")
-        .all()
-        .order_by("sucursal__nombre", "usuario__last_name")
-    )
-    serializer_class = UsuarioSucursalSerializer
-    permission_classes = [IsAuthenticated, UsuariosModulePermission]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = [
-        "usuario__first_name",
-        "usuario__last_name",
-        "sucursal__nombre",
-        "rol",
-    ]
-    ordering_fields = ["sucursal__nombre", "usuario__last_name"]
 
 
 class RegistroAPIView(APIView):
