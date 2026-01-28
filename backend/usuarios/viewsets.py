@@ -14,12 +14,14 @@ from .serializers import (
     LoginSerializer,
     RegistroSerializer,
     RolSerializer,
+    UsuarioListadoSerializer,
     UsuarioSerializer,
     UsuarioSucursalSerializer,
     build_permissions_summary,
 )
 from .utils import (
     get_permisos_efectivos,
+    get_personalized_role_for_email,
     get_usuario_interno_por_correo,
 )
 
@@ -40,8 +42,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
     queryset = (
         get_user_model()
-        .objects.select_related("perfil", "perfil__rol_personalizado")
-        .prefetch_related("roles", "roles__permisos")
+        .objects.prefetch_related("roles", "roles__permisos")
         .all()
         .order_by("last_name", "first_name")
     )
@@ -49,8 +50,19 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["first_name", "last_name", "email", "perfil__cargo", "roles__nombre"]
+    search_fields = ["first_name", "last_name", "email", "cargo", "roles__nombre"]
     ordering_fields = ["last_name", "first_name", "email"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return UsuarioListadoSerializer
+        return super().get_serializer_class()
+
+    @action(detail=False, methods=["get"], url_path="todos")
+    def todos(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = UsuarioListadoSerializer(queryset, many=True)
+        return Response(serializer.data)
 
     @transaction.atomic
     def perform_destroy(self, instance):
@@ -59,9 +71,9 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="permisos-resumen")
     def permisos_resumen(self, request, pk=None):
         usuario = self.get_object()
-        perfil = getattr(usuario, "perfil", None)
+        role = get_personalized_role_for_email(usuario.email)
         permisos = build_permissions_summary(
-            [], extra_roles=[perfil.rol_personalizado if perfil else None]
+            [], extra_roles=[role]
         )
         return Response({"permisos": permisos})
 
