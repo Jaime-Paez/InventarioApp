@@ -33,7 +33,6 @@ from usuarios.viewsets import (
     PerfilAPIView,
     RegistroAPIView,
     RolViewSet,
-    UsuarioSucursalViewSet,
     UsuarioViewSet,
 )
 from solicitudes.viewsets import (
@@ -87,7 +86,6 @@ router.register(
 
 # Usuarios
 router.register(r"usuarios/listado", UsuarioViewSet, basename="usuarios-listado")
-router.register(r"usuarios/asignaciones", UsuarioSucursalViewSet, basename="usuarios-asignaciones")
 router.register(r"usuarios/roles", RolViewSet, basename="usuarios-roles")
 
 # Solicitudes
