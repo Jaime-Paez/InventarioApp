@@ -45,9 +45,6 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const [permissionOptions, setPermissionOptions] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [permissionsLoading, setPermissionsLoading] = useState(false)
-  const [branches, setBranches] = useState([])
-  const [branchesLoading, setBranchesLoading] = useState(false)
-  const [selectedBranches, setSelectedBranches] = useState([])
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [isMaximized, setIsMaximized] = useState(false)
@@ -106,27 +103,6 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     }
   }, [notifyError, token])
 
-  const fetchBranches = useCallback(async () => {
-    setBranchesLoading(true)
-    try {
-      const response = await authFetch(
-        `${API_URL}/inventario/sucursales/`,
-        {},
-        token
-      )
-
-      if (!response.ok) throw new Error('No se pudieron cargar las sucursales.')
-
-      const data = await response.json().catch(() => [])
-      const items = Array.isArray(data) ? data : data?.results || []
-      setBranches(items)
-    } catch (err) {
-      notifyError(err.message || 'Ocurrió un problema al cargar las sucursales.')
-    } finally {
-      setBranchesLoading(false)
-    }
-  }, [notifyError, token])
-
   useEffect(() => {
     if (!open) return
     setFormData(initialForm)
@@ -134,14 +110,11 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     setConfirmPassword('')
     setPasswordCopied(false)
     setPermissionsMatrix({})
-    setBranches([])
-    setSelectedBranches([])
     setActiveTab('general')
     setIsMaximized(false)
     restoreRef.current = null
     fetchPermissionOptions()
-    fetchBranches()
-  }, [open, fetchPermissionOptions, fetchBranches])
+  }, [open, fetchPermissionOptions])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -193,14 +166,6 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     })
   }
 
-  const toggleBranch = (branchId) => {
-    setSelectedBranches((prev) => {
-      const exists = prev.includes(branchId)
-      if (exists) return prev.filter((id) => id !== branchId)
-      return [...prev, branchId]
-    })
-  }
-
   const renderPermissionRow = (module) => {
     const entryKey = module.key
     const current = permissionsMatrix[entryKey] || {}
@@ -237,7 +202,6 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       telefono: formData.telefono.trim(),
       cargo: formData.cargo.trim(),
       permisos_personalizados: serializeMatrix(permissionsMatrix),
-      sucursales_ids: selectedBranches,
     }
 
     if (!payload.nombres || !payload.apellidos || !payload.correo) {
@@ -488,15 +452,6 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
             >
               Permisos
             </button>
-            <button
-              type="button"
-              className={`create-user__tab${activeTab === 'sucursales' ? ' create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('sucursales')}
-              role="tab"
-              aria-selected={activeTab === 'sucursales'}
-            >
-              Sucursales
-            </button>
           </div>
 
           <div className="create-user__body">
@@ -659,36 +614,6 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
               </section>
             )}
 
-            {activeTab === 'sucursales' && (
-              <section className="create-user__section">
-                <div className="create-user__section-header">
-                  <div>
-                    <p className="create-user__eyebrow">Sucursales</p>
-                    <h4>Acceso por sucursal</h4>
-                  </div>
-                  {(branchesLoading || !branches.length) && (
-                    <small className="muted">{branchesLoading ? 'Cargando sucursales...' : 'No hay sucursales registradas.'}</small>
-                  )}
-                </div>
-
-                <div className="create-user__branches">
-                  {branches.map((branch) => (
-                    <label key={branch.id} className="create-user__branch-option">
-                      <input
-                        type="checkbox"
-                        checked={selectedBranches.includes(branch.id)}
-                        onChange={() => toggleBranch(branch.id)}
-                        disabled={loading || branchesLoading}
-                      />
-                      <div className="create-user__branch-info">
-                        <span>{branch.nombre}</span>
-                        {branch.direccion ? <small>{branch.direccion}</small> : null}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </section>
-            )}
           </div>
 
           <div className="create-user__footer">
