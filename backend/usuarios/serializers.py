@@ -3,12 +3,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .models import Rol, RolPermiso, UsuarioPerfil
-from .utils import (
-    build_permissions_summary,
-    ensure_personalized_role,
-    perfil_table_exists,
-    roles_m2m_table_exists,
-)
+from .utils import build_permissions_summary, ensure_personalized_role
 
 
 User = get_user_model()
@@ -283,8 +278,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             perfil.save(update_fields=["rol_personalizado"])
 
     def get_permisos_resumen(self, obj):
-        roles = obj.roles.all() if roles_m2m_table_exists() else []
-        perfil = getattr(obj, "perfil", None) if perfil_table_exists() else None
+        roles = obj.roles.all()
+        perfil = getattr(obj, "perfil", None)
         return build_permissions_summary(
             roles,
             extra_roles=[
