@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Rol, RolPermiso, UsuarioSucursal
+from .models import Rol, RolPermiso
 from .permissions import UsuariosModulePermission
 from .serializers import (
     AuthUserSerializer,
@@ -15,7 +15,6 @@ from .serializers import (
     RegistroSerializer,
     RolSerializer,
     UsuarioSerializer,
-    UsuarioSucursalSerializer,
     build_permissions_summary,
 )
 from .utils import (
@@ -64,26 +63,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             [], extra_roles=[perfil.rol_personalizado if perfil else None]
         )
         return Response({"permisos": permisos})
-
-
-class UsuarioSucursalViewSet(viewsets.ModelViewSet):
-    """Gestión de asignaciones de usuarios a sucursales."""
-
-    queryset = (
-        UsuarioSucursal.objects.select_related("usuario", "sucursal")
-        .all()
-        .order_by("sucursal__nombre", "usuario__last_name")
-    )
-    serializer_class = UsuarioSucursalSerializer
-    permission_classes = [IsAuthenticated, UsuariosModulePermission]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = [
-        "usuario__first_name",
-        "usuario__last_name",
-        "sucursal__nombre",
-        "rol",
-    ]
-    ordering_fields = ["sucursal__nombre", "usuario__last_name"]
 
 
 class RegistroAPIView(APIView):
