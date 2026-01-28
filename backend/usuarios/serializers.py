@@ -129,6 +129,15 @@ class UsuarioSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {"password": {"write_only": True}}
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not perfil_table_exists():
+            self.fields.pop("telefono", None)
+            self.fields.pop("cargo", None)
+            self.fields.pop("permisos_personalizados", None)
+        if not roles_m2m_table_exists():
+            self.fields.pop("roles", None)
+
     def create(self, validated_data):
         password = validated_data.pop("password", None)
         email = validated_data.get("email", "").strip().lower()
@@ -180,6 +189,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         return obj.id
 
     def get_permisos_resumen(self, obj):
+        roles = obj.roles.all()
+        perfil = getattr(obj, "perfil", None)
         return build_permissions_summary(
             [],
             extra_roles=[],
