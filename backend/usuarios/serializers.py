@@ -421,5 +421,5 @@ class RegistroSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     """Valida las credenciales de acceso."""
 
-    email = serializers.EmailField()
+    email = serializers.CharField()
     password = serializers.CharField(write_only=True)

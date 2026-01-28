@@ -158,14 +158,14 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
 
           <form onSubmit={handleLogin}>
             <div className="form-row">
-              <label htmlFor="email">Email</label>
+              <label htmlFor="email">Usuario o email</label>
               <input
                 id="email"
                 name="email"
-                type="email"
+                type="text"
                 value={loginData.email}
                 onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
-                placeholder="Email"
+                placeholder="Usuario o email"
                 required
               />
             </div>
