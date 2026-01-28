@@ -1,6 +1,18 @@
 from django.conf import settings
+from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
+
+
+class Usuario(AbstractUser):
+    telefono = models.CharField(max_length=30, blank=True)
+    cargo = models.CharField(max_length=120, blank=True)
+
+    class Meta(AbstractUser.Meta):
+        db_table = "auth_user"
+        managed = False
+        verbose_name = "Usuario"
+        verbose_name_plural = "Usuarios"
 
 
 class Rol(models.Model):
@@ -119,4 +131,3 @@ class UsuarioSucursal(models.Model):
     def __str__(self) -> str:
         rol = f" - {self.rol}" if self.rol else ""
         return f"{self.usuario} @ {self.sucursal}{rol}"
-

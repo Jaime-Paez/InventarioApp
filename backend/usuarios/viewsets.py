@@ -58,6 +58,12 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             return UsuarioListadoSerializer
         return super().get_serializer_class()
 
+    @action(detail=False, methods=["get"], url_path="todos")
+    def todos(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = UsuarioListadoSerializer(queryset, many=True)
+        return Response(serializer.data)
+
     @transaction.atomic
     def perform_destroy(self, instance):
         instance.delete()

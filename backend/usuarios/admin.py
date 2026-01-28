@@ -41,12 +41,17 @@ class UserAdmin(DjangoUserAdmin):
         "email",
         "first_name",
         "last_name",
+        "telefono",
+        "cargo",
         "is_active",
         "is_staff",
         "is_superuser",
     )
     list_filter = ("is_active", "is_staff", "is_superuser")
     search_fields = ("username", "email", "first_name", "last_name")
+    fieldsets = DjangoUserAdmin.fieldsets + (
+        ("Información adicional", {"fields": ("telefono", "cargo")}),
+    )
 
 
 admin.site.register(User, UserAdmin)
