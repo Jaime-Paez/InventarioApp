@@ -4,8 +4,12 @@ from rest_framework import serializers
 
 from inventario.models import Sucursal
 
-from .models import Rol, RolPermiso, UsuarioPerfil, UsuarioSucursal
-from .utils import build_permissions_summary, ensure_personalized_role
+from .models import Rol, RolPermiso, UsuarioSucursal
+from .utils import (
+    build_permissions_summary,
+    ensure_personalized_role,
+    get_personalized_role_for_email,
+)
 
 
 User = get_user_model()
@@ -113,12 +117,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
     apellidos = serializers.CharField(source="last_name")
     correo = serializers.EmailField(source="email")
     activo = serializers.BooleanField(source="is_active", required=False)
-    telefono = serializers.CharField(
-        source="perfil.telefono", required=False, allow_blank=True
-    )
-    cargo = serializers.CharField(
-        source="perfil.cargo", required=False, allow_blank=True
-    )
+    telefono = serializers.CharField(required=False, allow_blank=True)
+    cargo = serializers.CharField(required=False, allow_blank=True)
     permisos_personalizados = RolPermisoSerializer(many=True, required=False)
     permisos_resumen = serializers.SerializerMethodField()
     password = serializers.CharField(
@@ -161,7 +161,6 @@ class UsuarioSerializer(serializers.ModelSerializer):
         roles = validated_data.pop("roles", [])
         password = validated_data.pop("password", None)
         sucursales = validated_data.pop("sucursales_ids", None)
-        perfil_data = validated_data.pop("perfil", {})
         email = validated_data.get("email", "").strip().lower()
         if email:
             validated_data["email"] = email
@@ -175,8 +174,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             if roles is not None:
                 usuario.roles.set(roles)
 
-            perfil = self._sync_profile(usuario, perfil_data)
-            self._sync_personalized_permissions(usuario, perfil, permisos_personalizados)
+            self._sync_personalized_permissions(usuario, permisos_personalizados)
             self._sync_sucursales(usuario, sucursales)
         return usuario
 
@@ -185,7 +183,6 @@ class UsuarioSerializer(serializers.ModelSerializer):
         roles = validated_data.pop("roles", None)
         password = validated_data.pop("password", None)
         sucursales = validated_data.pop("sucursales_ids", None)
-        perfil_data = validated_data.pop("perfil", {})
         email = validated_data.get("email")
 
         for attr, value in validated_data.items():
@@ -197,8 +194,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         if roles is not None:
             instance.roles.set(roles)
 
-        perfil = self._sync_profile(instance, perfil_data)
-        self._sync_personalized_permissions(instance, perfil, permisos_personalizados)
+        self._sync_personalized_permissions(instance, permisos_personalizados)
         self._sync_sucursales(instance, sucursales)
         if password:
             instance.set_password(password)
@@ -229,30 +225,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def validate_permisos_personalizados(self, value):
         return validate_permissions_uniqueness(value)
 
-    def _sync_profile(self, usuario, perfil_data):
-        perfil, _ = UsuarioPerfil.objects.get_or_create(usuario=usuario)
-        if perfil_data:
-            telefono = perfil_data.get("telefono", perfil.telefono)
-            cargo = perfil_data.get("cargo", perfil.cargo)
-            updates = []
-            if telefono != perfil.telefono:
-                perfil.telefono = telefono
-                updates.append("telefono")
-            if cargo != perfil.cargo:
-                perfil.cargo = cargo
-                updates.append("cargo")
-            if updates:
-                perfil.save(update_fields=updates)
-        return perfil
-
-    def _sync_personalized_permissions(self, usuario, perfil, permisos_data):
+    def _sync_personalized_permissions(self, usuario, permisos_data):
         """Crea o actualiza el rol personalizado asociado al usuario."""
 
         if permisos_data is None:
             return
 
         if not permisos_data:
-            self._remove_personalized_role(perfil)
+            self._remove_personalized_role(usuario)
             return
 
         role = ensure_personalized_role(usuario)
@@ -275,12 +255,13 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
         RolPermiso.objects.bulk_create(permisos_instances)
 
-    def _remove_personalized_role(self, perfil):
-        if perfil and perfil.rol_personalizado:
-            perfil.rol_personalizado.permisos.all().delete()
-            perfil.rol_personalizado.delete()
-            perfil.rol_personalizado = None
-            perfil.save(update_fields=["rol_personalizado"])
+    def _remove_personalized_role(self, usuario):
+        if not usuario or not usuario.email:
+            return
+        role = get_personalized_role_for_email(usuario.email)
+        if role:
+            role.permisos.all().delete()
+            role.delete()
 
     def _sync_sucursales(self, usuario, sucursales):
         """Crea o elimina las asignaciones de sucursales para el usuario."""
@@ -311,19 +292,15 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def get_permisos_resumen(self, obj):
         return build_permissions_summary(
             obj.roles.all(),
-            extra_roles=[
-                getattr(obj.perfil, "rol_personalizado", None)
-                if hasattr(obj, "perfil")
-                else None
-            ],
+            extra_roles=[get_personalized_role_for_email(obj.email)],
         )
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        perfil = getattr(instance, "perfil", None)
-        if perfil and perfil.rol_personalizado:
+        role = get_personalized_role_for_email(instance.email)
+        if role:
             data["permisos_personalizados"] = RolPermisoSerializer(
-                perfil.rol_personalizado.permisos.all(), many=True
+                role.permisos.all(), many=True
             ).data
         else:
             data["permisos_personalizados"] = []
@@ -337,6 +314,38 @@ class UsuarioSerializer(serializers.ModelSerializer):
             {"id": asignacion.sucursal.id, "nombre": asignacion.sucursal.nombre}
             for asignacion in asignaciones
         ]
+
+
+class UsuarioListadoSerializer(serializers.ModelSerializer):
+    """Serializa usuarios para el listado de la tabla."""
+
+    codigo = serializers.IntegerField(source="id", read_only=True)
+    nombre = serializers.SerializerMethodField()
+    correo = serializers.EmailField(source="email", read_only=True)
+    telefono = serializers.SerializerMethodField()
+    cargo = serializers.SerializerMethodField()
+    estado = serializers.BooleanField(source="is_active", read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "codigo",
+            "nombre",
+            "correo",
+            "telefono",
+            "cargo",
+            "estado",
+        ]
+
+    def get_nombre(self, obj):
+        nombre = obj.get_full_name().strip()
+        return nombre or obj.email or obj.username
+
+    def get_telefono(self, obj):
+        return obj.telefono or ""
+
+    def get_cargo(self, obj):
+        return obj.cargo or ""
 
 
 class UsuarioSucursalSerializer(serializers.ModelSerializer):
