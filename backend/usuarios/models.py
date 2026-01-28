@@ -123,32 +123,6 @@ class UsuarioPerfil(models.Model):
         return nombre or self.usuario.email or self.usuario.username
 
 
-class UsuarioSucursal(models.Model):
-    """Asignación de un usuario a una sucursal específica."""
-
-    usuario = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="asignaciones",
-    )
-    sucursal = models.ForeignKey(
-        "inventario.Sucursal",
-        on_delete=models.CASCADE,
-        related_name="usuarios",
-    )
-    rol = models.CharField(max_length=120, blank=True)
-    es_responsable = models.BooleanField(default=False)
-
-    class Meta:
-        verbose_name = "Usuario por sucursal"
-        verbose_name_plural = "Usuarios por sucursal"
-        unique_together = ("usuario", "sucursal")
-
-    def __str__(self) -> str:
-        rol = f" - {self.rol}" if self.rol else ""
-        return f"{self.usuario} @ {self.sucursal}{rol}"
-
-
 @receiver(post_delete, sender=UsuarioPerfil)
 def eliminar_rol_personalizado(sender, instance, **kwargs):
     """Elimina el rol/permisos personalizados al borrar el usuario."""

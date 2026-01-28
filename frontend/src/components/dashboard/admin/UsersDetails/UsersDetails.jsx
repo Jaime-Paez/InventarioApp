@@ -51,7 +51,6 @@ const emptyForm = {
   cargo: '',
   activo: false,
   permisos_personalizados: [],
-  sucursales: [],
 }
 
 function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onError }) {
@@ -60,9 +59,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const [permissionOptions, setPermissionOptions] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [permissionsLoading, setPermissionsLoading] = useState(false)
-  const [branches, setBranches] = useState([])
-  const [branchesLoading, setBranchesLoading] = useState(false)
-  const [selectedBranches, setSelectedBranches] = useState([])
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -113,7 +109,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     permisos_personalizados: Array.isArray(data?.permisos_personalizados)
       ? data.permisos_personalizados
       : [],
-    sucursales: Array.isArray(data?.sucursales) ? data.sucursales : [],
   })
 
   const handleChange = (event) => {
@@ -194,36 +189,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     }
   }, [notifyError, token])
 
-  const fetchBranches = useCallback(async () => {
-    setBranchesLoading(true)
-    try {
-      const response = await authFetch(
-        `${API_URL}/inventario/sucursales/`,
-        {},
-        token
-      )
-
-      if (!response.ok) throw new Error('No se pudieron cargar las sucursales.')
-
-      const data = await response.json().catch(() => [])
-      const items = Array.isArray(data) ? data : data?.results || []
-      setBranches(items)
-    } catch (err) {
-      notifyError(err.message || 'Ocurrió un problema al cargar las sucursales.')
-    } finally {
-      setBranchesLoading(false)
-    }
-  }, [notifyError, token])
-
-  const toggleBranch = (branchId) => {
-    if (!isEditing) return
-    setSelectedBranches((prev) => {
-      const exists = prev.includes(branchId)
-      if (exists) return prev.filter((id) => id !== branchId)
-      return [...prev, branchId]
-    })
-  }
-
   const fetchUser = useCallback(async () => {
     if (!userId) return
     setLoadingData(true)
@@ -244,7 +209,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       setFormData(normalized)
       setOriginalData(normalized)
       setPermissionsMatrix(buildMatrixFromList(normalized.permisos_personalizados))
-      setSelectedBranches(normalized.sucursales.map((branch) => branch.id))
       setIsEditing(false)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al obtener la información del usuario.')
@@ -259,15 +223,12 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setFormData(emptyForm)
     setOriginalData(emptyForm)
     setPermissionsMatrix({})
-    setBranches([])
-    setSelectedBranches([])
     setActiveTab('general')
     setIsMaximized(false)
     restoreRef.current = null
     fetchUser()
     loadPermissionOptions()
-    fetchBranches()
-  }, [open, fetchUser, loadPermissionOptions, fetchBranches])
+  }, [open, fetchUser, loadPermissionOptions])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -415,7 +376,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       if (!next) {
         setFormData(originalData)
         setPermissionsMatrix(buildMatrixFromList(originalData.permisos_personalizados))
-        setSelectedBranches(originalData.sucursales.map((branch) => branch.id))
       }
       return next
     })
@@ -434,7 +394,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       telefono: formData.telefono.trim(),
       cargo: formData.cargo.trim(),
       permisos_personalizados: serializeMatrix(permissionsMatrix),
-      sucursales_ids: selectedBranches,
     }
 
     if (!payload.nombres || !payload.apellidos || !payload.correo) {
@@ -467,7 +426,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       setFormData(normalized)
       setOriginalData(normalized)
       setPermissionsMatrix(buildMatrixFromList(normalized.permisos_personalizados))
-      setSelectedBranches(normalized.sucursales.map((branch) => branch.id))
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
@@ -570,15 +528,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
             aria-selected={activeTab === 'permisos'}
           >
             Permisos
-          </button>
-          <button
-            type="button"
-            className={`create-user__tab${activeTab === 'sucursales' ? ' create-user__tab--active' : ''}`}
-            onClick={() => setActiveTab('sucursales')}
-            role="tab"
-            aria-selected={activeTab === 'sucursales'}
-          >
-            Sucursales
           </button>
         </div>
 
@@ -710,38 +659,6 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
               </section>
             )}
 
-            {activeTab === 'sucursales' && (
-              <section className="create-user__section">
-                <div className="create-user__section-header">
-                  <div>
-                    <p className="create-user__eyebrow">Sucursales</p>
-                    <h4>Acceso por sucursal</h4>
-                  </div>
-                  {(branchesLoading || !branches.length) && (
-                    <small className="muted">
-                      {branchesLoading ? 'Cargando sucursales...' : 'No hay sucursales registradas.'}
-                    </small>
-                  )}
-                </div>
-
-                <div className="create-user__branches">
-                  {branches.map((branch) => (
-                    <label key={branch.id} className="create-user__branch-option">
-                      <input
-                        type="checkbox"
-                        checked={selectedBranches.includes(branch.id)}
-                        onChange={() => toggleBranch(branch.id)}
-                        disabled={!isEditing || loadingData || saving || branchesLoading}
-                      />
-                      <div className="create-user__branch-info">
-                        <span>{branch.nombre}</span>
-                        {branch.direccion ? <small>{branch.direccion}</small> : null}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </section>
-            )}
         </div>
 
           <div className="create-user__footer">
