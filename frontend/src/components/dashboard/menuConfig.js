@@ -1,49 +1,6 @@
-import {
-  Layers,
-  ArrowRightLeft,
-  CircleArrowDown,
-  CircleArrowUp,
-  Tag,
-  Map as MapIcon,
-  Compass,
-  Box,
-  Truck,
-  Hexagon,
-  Building,
-  Hand,
-  UsersRound,
-  IdCard,
-} from 'lucide-react'
+import { IdCard } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
-  { label: 'Inventario', icon: Layers, moduleKey: 'inventario' },
-  {
-    label: 'Movimientos',
-    icon: ArrowRightLeft,
-    children: [
-      { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos_entradas' },
-      { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos_salidas' },
-    ],
-  },
-  { label: 'Productos', icon: Tag, moduleKey: 'productos' },
-  {
-    label: 'Sucursales',
-    icon: MapIcon,
-    children: [
-      { label: 'Sucursales', icon: Compass, moduleKey: 'sucursales_sucursales' },
-      { label: 'Bodegas', icon: Box, moduleKey: 'sucursales_bodegas' },
-    ],
-  },
-  {
-    label: 'Proveedores',
-    icon: Truck,
-    children: [
-      { label: 'Marcas', icon: Hexagon, moduleKey: 'proveedores_marcas' },
-      { label: 'Casas comerciales', icon: Building, moduleKey: 'proveedores_casas' },
-    ],
-  },
-  { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
-  { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
 ]
 
