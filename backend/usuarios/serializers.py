@@ -3,7 +3,12 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .models import Rol, RolPermiso, UsuarioPerfil
-from .utils import build_permissions_summary, ensure_personalized_role
+from .utils import (
+    build_permissions_summary,
+    ensure_personalized_role,
+    perfil_table_exists,
+    roles_m2m_table_exists,
+)
 
 
 User = get_user_model()
