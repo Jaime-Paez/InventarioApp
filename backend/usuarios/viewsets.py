@@ -38,7 +38,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["first_name", "last_name", "email", "perfil__cargo", "roles__nombre"]
+    search_fields = ["first_name", "last_name", "email"]
     ordering_fields = ["last_name", "first_name", "email"]
 
     def get_queryset(self):

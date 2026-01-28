@@ -149,6 +149,15 @@ class UsuarioSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {"password": {"write_only": True}}
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not perfil_table_exists():
+            self.fields.pop("telefono", None)
+            self.fields.pop("cargo", None)
+            self.fields.pop("permisos_personalizados", None)
+        if not roles_m2m_table_exists():
+            self.fields.pop("roles", None)
+
     def create(self, validated_data):
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
         roles = validated_data.pop("roles", [])
@@ -164,7 +173,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             if password:
                 usuario.set_password(password)
                 usuario.save(update_fields=["password"])
-            if roles is not None:
+            if roles is not None and roles_m2m_table_exists():
                 usuario.roles.set(roles)
 
             perfil = self._sync_profile(usuario, perfil_data)
@@ -184,7 +193,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             instance.username = email
         instance.save()
 
-        if roles is not None:
+        if roles is not None and roles_m2m_table_exists():
             instance.roles.set(roles)
 
         perfil = self._sync_profile(instance, perfil_data)
@@ -219,6 +228,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         return validate_permissions_uniqueness(value)
 
     def _sync_profile(self, usuario, perfil_data):
+        if not perfil_table_exists():
+            return None
         perfil, _ = UsuarioPerfil.objects.get_or_create(usuario=usuario)
         if perfil_data:
             telefono = perfil_data.get("telefono", perfil.telefono)
@@ -237,7 +248,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def _sync_personalized_permissions(self, usuario, perfil, permisos_data):
         """Crea o actualiza el rol personalizado asociado al usuario."""
 
-        if permisos_data is None:
+        if permisos_data is None or not perfil_table_exists():
             return
 
         if not permisos_data:
@@ -283,13 +294,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        perfil = getattr(instance, "perfil", None)
-        if perfil and perfil.rol_personalizado:
-            data["permisos_personalizados"] = RolPermisoSerializer(
-                perfil.rol_personalizado.permisos.all(), many=True
-            ).data
-        else:
-            data["permisos_personalizados"] = []
+        if perfil_table_exists():
+            perfil = getattr(instance, "perfil", None)
+            if perfil and perfil.rol_personalizado:
+                data["permisos_personalizados"] = RolPermisoSerializer(
+                    perfil.rol_personalizado.permisos.all(), many=True
+                ).data
+            else:
+                data["permisos_personalizados"] = []
 
         return data
 
