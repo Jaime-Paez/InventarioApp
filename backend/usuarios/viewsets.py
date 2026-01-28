@@ -23,6 +23,7 @@ from .utils import (
     _perfil_table_exists,
     _roles_m2m_table_exists,
     get_permisos_efectivos,
+    get_personalized_role_for_email,
     get_usuario_interno_por_correo,
 )
 
@@ -75,7 +76,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         usuario = self.get_object()
         perfil = getattr(usuario, "perfil", None) if _perfil_table_exists() else None
         permisos = build_permissions_summary(
-            [], extra_roles=[perfil.rol_personalizado if perfil else None]
+            [], extra_roles=[role]
         )
         return Response({"permisos": permisos})
 

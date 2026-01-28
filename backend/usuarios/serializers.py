@@ -262,7 +262,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             return
 
         if not permisos_data:
-            self._remove_personalized_role(perfil)
+            self._remove_personalized_role(usuario)
             return
 
         role = ensure_personalized_role(usuario)
@@ -285,12 +285,13 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
         RolPermiso.objects.bulk_create(permisos_instances)
 
-    def _remove_personalized_role(self, perfil):
-        if perfil and perfil.rol_personalizado:
-            perfil.rol_personalizado.permisos.all().delete()
-            perfil.rol_personalizado.delete()
-            perfil.rol_personalizado = None
-            perfil.save(update_fields=["rol_personalizado"])
+    def _remove_personalized_role(self, usuario):
+        if not usuario or not usuario.email:
+            return
+        role = get_personalized_role_for_email(usuario.email)
+        if role:
+            role.permisos.all().delete()
+            role.delete()
 
     def _sync_sucursales(self, usuario, sucursales):
         """Crea o elimina las asignaciones de sucursales para el usuario."""
