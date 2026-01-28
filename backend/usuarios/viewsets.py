@@ -114,9 +114,18 @@ class LoginAPIView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data["email"].lower()
+        identifier = serializer.validated_data["email"].strip()
         password = serializer.validated_data["password"]
-        user = authenticate(username=email, password=password)
+        user = authenticate(username=identifier, password=password)
+        if not user:
+            user_by_email = (
+                get_user_model().objects.filter(email__iexact=identifier).first()
+            )
+            if user_by_email:
+                user = authenticate(
+                    username=user_by_email.username,
+                    password=password,
+                )
         if not user or not user.is_active:
             return Response(
                 {"detail": "Credenciales inválidas o usuario inactivo."},
@@ -125,6 +134,7 @@ class LoginAPIView(APIView):
 
         token, _ = Token.objects.get_or_create(user=user)
 
+        email = user.email.lower() if user.email else identifier.lower()
         usuario_interno = get_usuario_interno_por_correo(email)
         permisos = get_permisos_efectivos(usuario_interno, email)
 
