@@ -1,8 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models.signals import post_delete
-from django.dispatch import receiver
 
 
 class Rol(models.Model):
@@ -95,32 +93,6 @@ class RolPermiso(models.Model):
             )
 
 
-class UsuarioPerfil(models.Model):
-    """Perfil extendido para usuarios autenticados."""
-
-    usuario = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="perfil",
-    )
-    telefono = models.CharField(max_length=30, blank=True)
-    cargo = models.CharField(max_length=120, blank=True)
-    rol_personalizado = models.OneToOneField(
-        Rol,
-        on_delete=models.SET_NULL,
-        related_name="perfil_personalizado",
-        null=True,
-        blank=True,
-    )
-
-    class Meta:
-        ordering = ["usuario__last_name", "usuario__first_name"]
-        verbose_name = "Perfil de usuario"
-        verbose_name_plural = "Perfiles de usuario"
-
-    def __str__(self) -> str:
-        nombre = self.usuario.get_full_name().strip()
-        return nombre or self.usuario.email or self.usuario.username
 
 
 class UsuarioSucursal(models.Model):
@@ -148,11 +120,3 @@ class UsuarioSucursal(models.Model):
         rol = f" - {self.rol}" if self.rol else ""
         return f"{self.usuario} @ {self.sucursal}{rol}"
 
-
-@receiver(post_delete, sender=UsuarioPerfil)
-def eliminar_rol_personalizado(sender, instance, **kwargs):
-    """Elimina el rol/permisos personalizados al borrar el usuario."""
-
-    if instance.rol_personalizado:
-        instance.rol_personalizado.permisos.all().delete()
-        instance.rol_personalizado.delete()
