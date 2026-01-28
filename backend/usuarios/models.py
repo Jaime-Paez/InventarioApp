@@ -31,16 +31,6 @@ class RolPermiso(models.Model):
     """Permisos específicos asignados a un rol para un módulo."""
 
     class Modulos(models.TextChoices):
-        INVENTARIO = "inventario", "Inventario"
-        MOVIMIENTOS_ENTRADAS = "movimientos_entradas", "Movimientos - Entradas"
-        MOVIMIENTOS_SALIDAS = "movimientos_salidas", "Movimientos - Salidas"
-        PRODUCTOS = "productos", "Productos"
-        SUCURSALES_SUCURSALES = "sucursales_sucursales", "Sucursales - Sucursales"
-        SUCURSALES_BODEGAS = "sucursales_bodegas", "Sucursales - Bodegas"
-        PROVEEDORES_MARCAS = "proveedores_marcas", "Proveedores - Marcas"
-        PROVEEDORES_CASAS = "proveedores_casas", "Proveedores - Casas comerciales"
-        SOLICITUDES = "solicitudes", "Solicitudes"
-        CLIENTES = "clientes", "Clientes"
         USUARIOS = "usuarios", "Administrar"
 
     class SubModulos(models.TextChoices):

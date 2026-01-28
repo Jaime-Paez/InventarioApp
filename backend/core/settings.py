@@ -64,16 +64,8 @@ INSTALLED_APPS = [
     "corsheaders",
 
     # Tus aplicaciones locales
-    "inventario",
-    "tipos",
-    "casa_comercial",
-    "marcas",
-    "productos",
-    "movimientos",
     "usuarios",
-    "solicitudes",
     "app",
-    "auditoria",
 ]
 
 # Configuración de Django REST Framework
