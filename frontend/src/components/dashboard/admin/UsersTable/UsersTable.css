@@ -56,7 +56,6 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
   position: relative;
   min-height: 0;
   overflow: hidden;
@@ -82,6 +81,11 @@
 
 .dashboard-shell.dark .users-table--card {
   border-color: var(--color-border-dark);
+}
+
+
+.stale-data-msg{
+  margin: 4px;
 }
 
 /* ====== Header de la tabla (igual screenshot, barra interna) ====== */

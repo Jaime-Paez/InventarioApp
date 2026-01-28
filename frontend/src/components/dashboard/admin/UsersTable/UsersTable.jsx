@@ -423,7 +423,7 @@ function UsersTable({
 
         {error && (
           <div className="stale-data-msg">
-            <i className="pi pi-exclamation-circle" style={{ fontSize: '0.8rem', margin: 0, color: 'white' }} />
+            <i className="pi pi-exclamation-circle" style={{ fontSize: '0.8rem', margin: 5, color: 'white' }} />
             <span>
               <strong>Los datos pueden estar desactualizados</strong> | intenta recargar la tabla
             </span>
