@@ -2,13 +2,8 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import Rol, RolPermiso, UsuarioPerfil
-from .utils import (
-    build_permissions_summary,
-    ensure_personalized_role,
-    perfil_table_exists,
-    roles_m2m_table_exists,
-)
+from .models import Rol, RolPermiso
+from .utils import build_permissions_summary
 
 
 User = get_user_model()
@@ -116,21 +111,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
     apellidos = serializers.CharField(source="last_name")
     correo = serializers.EmailField(source="email")
     activo = serializers.BooleanField(source="is_active", required=False)
-    telefono = serializers.CharField(
-        source="perfil.telefono", required=False, allow_blank=True
-    )
-    cargo = serializers.CharField(
-        source="perfil.cargo", required=False, allow_blank=True
-    )
-    permisos_personalizados = RolPermisoSerializer(many=True, required=False)
     permisos_resumen = serializers.SerializerMethodField()
     password = serializers.CharField(
         write_only=True, required=False, allow_blank=False, min_length=8
     )
-    roles = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=Rol.objects.filter(activo=True), required=False
-    )
-
     class Meta:
         model = User
         fields = [
@@ -139,11 +123,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "nombres",
             "apellidos",
             "correo",
-            "telefono",
-            "cargo",
             "activo",
-            "roles",
-            "permisos_personalizados",
             "permisos_resumen",
             "password",
         ]
@@ -159,10 +139,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             self.fields.pop("roles", None)
 
     def create(self, validated_data):
-        permisos_personalizados = validated_data.pop("permisos_personalizados", None)
-        roles = validated_data.pop("roles", [])
         password = validated_data.pop("password", None)
-        perfil_data = validated_data.pop("perfil", {})
         email = validated_data.get("email", "").strip().lower()
         if email:
             validated_data["email"] = email
@@ -173,18 +150,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
             if password:
                 usuario.set_password(password)
                 usuario.save(update_fields=["password"])
-            if roles is not None and roles_m2m_table_exists():
-                usuario.roles.set(roles)
-
-            perfil = self._sync_profile(usuario, perfil_data)
-            self._sync_personalized_permissions(usuario, perfil, permisos_personalizados)
         return usuario
 
     def update(self, instance, validated_data):
-        permisos_personalizados = validated_data.pop("permisos_personalizados", None)
-        roles = validated_data.pop("roles", None)
         password = validated_data.pop("password", None)
-        perfil_data = validated_data.pop("perfil", {})
         email = validated_data.get("email")
 
         for attr, value in validated_data.items():
@@ -193,11 +162,6 @@ class UsuarioSerializer(serializers.ModelSerializer):
             instance.username = email
         instance.save()
 
-        if roles is not None and roles_m2m_table_exists():
-            instance.roles.set(roles)
-
-        perfil = self._sync_profile(instance, perfil_data)
-        self._sync_personalized_permissions(instance, perfil, permisos_personalizados)
         if password:
             instance.set_password(password)
             instance.save(update_fields=["password"])
@@ -224,86 +188,16 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def get_codigo(self, obj):
         return obj.id
 
-    def validate_permisos_personalizados(self, value):
-        return validate_permissions_uniqueness(value)
-
-    def _sync_profile(self, usuario, perfil_data):
-        if not perfil_table_exists():
-            return None
-        perfil, _ = UsuarioPerfil.objects.get_or_create(usuario=usuario)
-        if perfil_data:
-            telefono = perfil_data.get("telefono", perfil.telefono)
-            cargo = perfil_data.get("cargo", perfil.cargo)
-            updates = []
-            if telefono != perfil.telefono:
-                perfil.telefono = telefono
-                updates.append("telefono")
-            if cargo != perfil.cargo:
-                perfil.cargo = cargo
-                updates.append("cargo")
-            if updates:
-                perfil.save(update_fields=updates)
-        return perfil
-
-    def _sync_personalized_permissions(self, usuario, perfil, permisos_data):
-        """Crea o actualiza el rol personalizado asociado al usuario."""
-
-        if permisos_data is None or not perfil_table_exists():
-            return
-
-        if not permisos_data:
-            self._remove_personalized_role(perfil)
-            return
-
-        role = ensure_personalized_role(usuario)
-        self._replace_permissions(role, permisos_data)
-
-    def _replace_permissions(self, rol, permisos_data):
-        rol.permisos.all().delete()
-        permisos_instances = []
-        for permiso in permisos_data:
-            permiso_data = permiso.copy()
-            permiso_data.pop("id", None)
-            submodulo = _normalize_submodule(permiso_data.get("submodulo"))
-            permiso_instance = RolPermiso(
-                rol=rol,
-                submodulo=submodulo,
-                **{k: v for k, v in permiso_data.items() if k != "submodulo"},
-            )
-            permiso_instance.full_clean()
-            permisos_instances.append(permiso_instance)
-
-        RolPermiso.objects.bulk_create(permisos_instances)
-
-    def _remove_personalized_role(self, perfil):
-        if perfil and perfil.rol_personalizado:
-            perfil.rol_personalizado.permisos.all().delete()
-            perfil.rol_personalizado.delete()
-            perfil.rol_personalizado = None
-            perfil.save(update_fields=["rol_personalizado"])
-
     def get_permisos_resumen(self, obj):
         roles = obj.roles.all()
         perfil = getattr(obj, "perfil", None)
         return build_permissions_summary(
-            roles,
-            extra_roles=[
-                getattr(perfil, "rol_personalizado", None) if perfil else None
-            ],
+            [],
+            extra_roles=[],
         )
 
     def to_representation(self, instance):
-        data = super().to_representation(instance)
-        if perfil_table_exists():
-            perfil = getattr(instance, "perfil", None)
-            if perfil and perfil.rol_personalizado:
-                data["permisos_personalizados"] = RolPermisoSerializer(
-                    perfil.rol_personalizado.permisos.all(), many=True
-                ).data
-            else:
-                data["permisos_personalizados"] = []
-
-        return data
+        return super().to_representation(instance)
 
 
 class AuthUserSerializer(serializers.ModelSerializer):

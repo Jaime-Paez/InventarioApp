@@ -42,13 +42,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     ordering_fields = ["last_name", "first_name", "email"]
 
     def get_queryset(self):
-        return (
-            get_user_model()
-            .objects.select_related("perfil", "perfil__rol_personalizado")
-            .prefetch_related("roles", "roles__permisos")
-            .all()
-            .order_by("last_name", "first_name")
-        )
+        return get_user_model().objects.all().order_by("last_name", "first_name")
 
     @transaction.atomic
     def perform_destroy(self, instance):
@@ -56,10 +50,8 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="permisos-resumen")
     def permisos_resumen(self, request, pk=None):
-        usuario = self.get_object()
-        perfil = getattr(usuario, "perfil", None)
         permisos = build_permissions_summary(
-            [], extra_roles=[perfil.rol_personalizado if perfil else None]
+            [], extra_roles=[]
         )
         return Response({"permisos": permisos})
 
