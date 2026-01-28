@@ -14,6 +14,7 @@ from .serializers import (
     LoginSerializer,
     RegistroSerializer,
     RolSerializer,
+    UsuarioListadoSerializer,
     UsuarioSerializer,
     UsuarioSucursalSerializer,
     build_permissions_summary,
@@ -51,6 +52,11 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["first_name", "last_name", "email", "perfil__cargo", "roles__nombre"]
     ordering_fields = ["last_name", "first_name", "email"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return UsuarioListadoSerializer
+        return super().get_serializer_class()
 
     @transaction.atomic
     def perform_destroy(self, instance):

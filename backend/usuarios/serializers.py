@@ -339,6 +339,40 @@ class UsuarioSerializer(serializers.ModelSerializer):
         ]
 
 
+class UsuarioListadoSerializer(serializers.ModelSerializer):
+    """Serializa usuarios para el listado de la tabla."""
+
+    codigo = serializers.IntegerField(source="id", read_only=True)
+    nombre = serializers.SerializerMethodField()
+    correo = serializers.EmailField(source="email", read_only=True)
+    telefono = serializers.SerializerMethodField()
+    cargo = serializers.SerializerMethodField()
+    estado = serializers.BooleanField(source="is_active", read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "codigo",
+            "nombre",
+            "correo",
+            "telefono",
+            "cargo",
+            "estado",
+        ]
+
+    def get_nombre(self, obj):
+        nombre = obj.get_full_name().strip()
+        return nombre or obj.email or obj.username
+
+    def get_telefono(self, obj):
+        perfil = getattr(obj, "perfil", None)
+        return perfil.telefono if perfil else ""
+
+    def get_cargo(self, obj):
+        perfil = getattr(obj, "perfil", None)
+        return perfil.cargo if perfil else ""
+
+
 class UsuarioSucursalSerializer(serializers.ModelSerializer):
     """Serializa la asignación de usuarios a sucursales."""
 
