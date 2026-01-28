@@ -1,6 +1,14 @@
 from django.contrib.auth import get_user_model
+from django.db import connection
 
 from .models import Rol, UsuarioPerfil
+
+
+def _perfil_table_exists():
+    table_name = UsuarioPerfil._meta.db_table
+    with connection.cursor() as cursor:
+        existing_tables = connection.introspection.table_names(cursor)
+    return table_name in existing_tables
 
 
 def get_usuario_interno_por_correo(email):
@@ -10,9 +18,10 @@ def get_usuario_interno_por_correo(email):
         return None
 
     User = get_user_model()
-    return User.objects.select_related("perfil", "perfil__rol_personalizado").prefetch_related(
-        "roles__permisos"
-    ).filter(email__iexact=email).first()
+    queryset = User.objects.prefetch_related("roles__permisos")
+    if _perfil_table_exists():
+        queryset = queryset.select_related("perfil", "perfil__rol_personalizado")
+    return queryset.filter(email__iexact=email).first()
 
 
 def get_permisos_efectivos(usuario_interno, email):
@@ -78,6 +87,8 @@ def ensure_personalized_role(usuario):
     """Garantiza que el usuario tenga un rol personalizado creado y enlazado."""
 
     if not usuario or not usuario.email:
+        return None
+    if not _perfil_table_exists():
         return None
 
     perfil, _ = UsuarioPerfil.objects.get_or_create(usuario=usuario)
