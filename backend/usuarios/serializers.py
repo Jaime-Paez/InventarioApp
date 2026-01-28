@@ -4,8 +4,13 @@ from rest_framework import serializers
 
 from inventario.models import Sucursal
 
-from .models import Rol, RolPermiso, UsuarioPerfil, UsuarioSucursal
-from .utils import build_permissions_summary, ensure_personalized_role
+from .models import Rol, RolPermiso, UsuarioSucursal
+from .utils import (
+    _perfil_table_exists,
+    _roles_m2m_table_exists,
+    build_permissions_summary,
+    ensure_personalized_role,
+)
 
 
 User = get_user_model()
@@ -27,6 +32,16 @@ def validate_permissions_uniqueness(permisos):
             )
         combos.add(key)
     return permisos
+
+
+class SafeCharField(serializers.CharField):
+    """Campo que tolera atributos inexistentes en el modelo."""
+
+    def get_attribute(self, instance):
+        try:
+            return super().get_attribute(instance)
+        except AttributeError:
+            return ""
 
 
 class RolPermisoSerializer(serializers.ModelSerializer):
@@ -113,12 +128,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
     apellidos = serializers.CharField(source="last_name")
     correo = serializers.EmailField(source="email")
     activo = serializers.BooleanField(source="is_active", required=False)
-    telefono = serializers.CharField(
-        source="perfil.telefono", required=False, allow_blank=True
-    )
-    cargo = serializers.CharField(
-        source="perfil.cargo", required=False, allow_blank=True
-    )
+    telefono = SafeCharField(required=False, allow_blank=True)
+    cargo = SafeCharField(required=False, allow_blank=True)
     permisos_personalizados = RolPermisoSerializer(many=True, required=False)
     permisos_resumen = serializers.SerializerMethodField()
     password = serializers.CharField(
@@ -161,7 +172,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         roles = validated_data.pop("roles", [])
         password = validated_data.pop("password", None)
         sucursales = validated_data.pop("sucursales_ids", None)
-        perfil_data = validated_data.pop("perfil", {})
+        telefono = validated_data.pop("telefono", "")
+        cargo = validated_data.pop("cargo", "")
         email = validated_data.get("email", "").strip().lower()
         if email:
             validated_data["email"] = email
@@ -172,11 +184,11 @@ class UsuarioSerializer(serializers.ModelSerializer):
             if password:
                 usuario.set_password(password)
                 usuario.save(update_fields=["password"])
+            self._sync_user_fields(usuario, telefono, cargo)
             if roles is not None:
                 usuario.roles.set(roles)
 
-            perfil = self._sync_profile(usuario, perfil_data)
-            self._sync_personalized_permissions(usuario, perfil, permisos_personalizados)
+            self._sync_personalized_permissions(usuario, None, permisos_personalizados)
             self._sync_sucursales(usuario, sucursales)
         return usuario
 
@@ -185,7 +197,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         roles = validated_data.pop("roles", None)
         password = validated_data.pop("password", None)
         sucursales = validated_data.pop("sucursales_ids", None)
-        perfil_data = validated_data.pop("perfil", {})
+        telefono = validated_data.pop("telefono", None)
+        cargo = validated_data.pop("cargo", None)
         email = validated_data.get("email")
 
         for attr, value in validated_data.items():
@@ -197,8 +210,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         if roles is not None:
             instance.roles.set(roles)
 
-        perfil = self._sync_profile(instance, perfil_data)
-        self._sync_personalized_permissions(instance, perfil, permisos_personalizados)
+        self._sync_user_fields(instance, telefono, cargo)
+        self._sync_personalized_permissions(instance, None, permisos_personalizados)
         self._sync_sucursales(instance, sucursales)
         if password:
             instance.set_password(password)
@@ -229,21 +242,18 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def validate_permisos_personalizados(self, value):
         return validate_permissions_uniqueness(value)
 
-    def _sync_profile(self, usuario, perfil_data):
-        perfil, _ = UsuarioPerfil.objects.get_or_create(usuario=usuario)
-        if perfil_data:
-            telefono = perfil_data.get("telefono", perfil.telefono)
-            cargo = perfil_data.get("cargo", perfil.cargo)
-            updates = []
-            if telefono != perfil.telefono:
-                perfil.telefono = telefono
+    def _sync_user_fields(self, usuario, telefono, cargo):
+        updates = []
+        if telefono is not None and hasattr(usuario, "telefono"):
+            if usuario.telefono != telefono:
+                usuario.telefono = telefono
                 updates.append("telefono")
-            if cargo != perfil.cargo:
-                perfil.cargo = cargo
+        if cargo is not None and hasattr(usuario, "cargo"):
+            if usuario.cargo != cargo:
+                usuario.cargo = cargo
                 updates.append("cargo")
-            if updates:
-                perfil.save(update_fields=updates)
-        return perfil
+        if updates:
+            usuario.save(update_fields=updates)
 
     def _sync_personalized_permissions(self, usuario, perfil, permisos_data):
         """Crea o actualiza el rol personalizado asociado al usuario."""
@@ -310,21 +320,24 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     def get_permisos_resumen(self, obj):
         return build_permissions_summary(
-            obj.roles.all(),
+            obj.roles.all() if _roles_m2m_table_exists() else [],
             extra_roles=[
                 getattr(obj.perfil, "rol_personalizado", None)
-                if hasattr(obj, "perfil")
+                if _perfil_table_exists() and hasattr(obj, "perfil")
                 else None
             ],
         )
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        perfil = getattr(instance, "perfil", None)
-        if perfil and perfil.rol_personalizado:
-            data["permisos_personalizados"] = RolPermisoSerializer(
-                perfil.rol_personalizado.permisos.all(), many=True
-            ).data
+        if _perfil_table_exists():
+            perfil = getattr(instance, "perfil", None)
+            if perfil and perfil.rol_personalizado:
+                data["permisos_personalizados"] = RolPermisoSerializer(
+                    perfil.rol_personalizado.permisos.all(), many=True
+                ).data
+            else:
+                data["permisos_personalizados"] = []
         else:
             data["permisos_personalizados"] = []
 
@@ -337,6 +350,48 @@ class UsuarioSerializer(serializers.ModelSerializer):
             {"id": asignacion.sucursal.id, "nombre": asignacion.sucursal.nombre}
             for asignacion in asignaciones
         ]
+
+
+class UsuarioListadoSerializer(serializers.ModelSerializer):
+    """Serializa usuarios para el listado de la tabla."""
+
+    codigo = serializers.IntegerField(source="id", read_only=True)
+    nombre = serializers.SerializerMethodField()
+    correo = serializers.EmailField(source="email", read_only=True)
+    telefono = serializers.SerializerMethodField()
+    cargo = serializers.SerializerMethodField()
+    estado = serializers.BooleanField(source="is_active", read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "codigo",
+            "nombre",
+            "correo",
+            "telefono",
+            "cargo",
+            "estado",
+        ]
+
+    def get_nombre(self, obj):
+        nombre = obj.get_full_name().strip()
+        return nombre or obj.email or obj.username
+
+    def get_telefono(self, obj):
+        if hasattr(obj, "telefono"):
+            return obj.telefono or ""
+        if _perfil_table_exists():
+            perfil = getattr(obj, "perfil", None)
+            return perfil.telefono if perfil else ""
+        return ""
+
+    def get_cargo(self, obj):
+        if hasattr(obj, "cargo"):
+            return obj.cargo or ""
+        if _perfil_table_exists():
+            perfil = getattr(obj, "perfil", None)
+            return perfil.cargo if perfil else ""
+        return ""
 
 
 class UsuarioSucursalSerializer(serializers.ModelSerializer):

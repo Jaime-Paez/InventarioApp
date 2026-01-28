@@ -14,11 +14,14 @@ from .serializers import (
     LoginSerializer,
     RegistroSerializer,
     RolSerializer,
+    UsuarioListadoSerializer,
     UsuarioSerializer,
     UsuarioSucursalSerializer,
     build_permissions_summary,
 )
 from .utils import (
+    _perfil_table_exists,
+    _roles_m2m_table_exists,
     get_permisos_efectivos,
     get_usuario_interno_por_correo,
 )
@@ -38,19 +41,30 @@ class RolViewSet(viewsets.ModelViewSet):
 class UsuarioViewSet(viewsets.ModelViewSet):
     """Gestión de usuarios autenticados."""
 
-    queryset = (
-        get_user_model()
-        .objects.select_related("perfil", "perfil__rol_personalizado")
-        .prefetch_related("roles", "roles__permisos")
-        .all()
-        .order_by("last_name", "first_name")
-    )
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["first_name", "last_name", "email", "perfil__cargo", "roles__nombre"]
     ordering_fields = ["last_name", "first_name", "email"]
+
+    def get_queryset(self):
+        queryset = get_user_model().objects.all().order_by("last_name", "first_name")
+        if _roles_m2m_table_exists():
+            queryset = queryset.prefetch_related("roles", "roles__permisos")
+        if _perfil_table_exists():
+            queryset = queryset.select_related("perfil", "perfil__rol_personalizado")
+        return queryset
+
+    def get_search_fields(self, request):
+        fields = ["first_name", "last_name", "email", "roles__nombre"]
+        if _perfil_table_exists():
+            fields.append("perfil__cargo")
+        return fields
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return UsuarioListadoSerializer
+        return super().get_serializer_class()
 
     @transaction.atomic
     def perform_destroy(self, instance):
@@ -59,7 +73,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="permisos-resumen")
     def permisos_resumen(self, request, pk=None):
         usuario = self.get_object()
-        perfil = getattr(usuario, "perfil", None)
+        perfil = getattr(usuario, "perfil", None) if _perfil_table_exists() else None
         permisos = build_permissions_summary(
             [], extra_roles=[perfil.rol_personalizado if perfil else None]
         )
