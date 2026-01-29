@@ -1,7 +1,9 @@
+from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from django.conf import settings
 
 
 class Rol(models.Model):
@@ -87,15 +89,12 @@ class RolPermiso(models.Model):
             )
 
 
-class Usuario(models.Model):
+class Usuario(AbstractUser):
     """Usuario interno que puede operar el sistema."""
 
-    nombres = models.CharField(max_length=150)
-    apellidos = models.CharField(max_length=150)
-    correo = models.EmailField(unique=True)
+    email = models.EmailField(unique=True)
     telefono = models.CharField(max_length=30, blank=True)
     cargo = models.CharField(max_length=120, blank=True)
-    activo = models.BooleanField(default=True)
     roles = models.ManyToManyField(
         Rol,
         related_name="usuarios",
@@ -110,19 +109,26 @@ class Usuario(models.Model):
     )
 
     class Meta:
-        ordering = ["apellidos", "nombres"]
+        ordering = ["last_name", "first_name"]
         verbose_name = "Usuario"
         verbose_name_plural = "Usuarios"
 
     def __str__(self) -> str:
-        return f"{self.nombres} {self.apellidos}".strip()
+        nombre = f"{self.first_name} {self.last_name}".strip()
+        return nombre or self.email or self.username
+
+    def save(self, *args, **kwargs):
+        if self.email:
+            self.email = self.email.strip().lower()
+            self.username = self.email
+        super().save(*args, **kwargs)
 
 
 class UsuarioSucursal(models.Model):
     """Asignación de un usuario a una sucursal específica."""
 
     usuario = models.ForeignKey(
-        Usuario,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="asignaciones",
     )
