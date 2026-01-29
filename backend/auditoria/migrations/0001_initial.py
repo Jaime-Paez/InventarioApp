@@ -1,4 +1,4 @@
-# Generated manually due to unavailable Django manage.py in this environment.
+from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
 
@@ -8,8 +8,8 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("usuarios", "0003_alter_rolpermiso_options_and_more"),
         ("contenttypes", "0002_remove_content_type_name"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
                 ("detalles", models.TextField(blank=True, help_text="Descripción adicional de la acción registrada.")),
                 ("registrado_en", models.DateTimeField(auto_now_add=True, help_text="Fecha y hora en la que se guardó el registro de auditoría.")),
                 ("content_type", models.ForeignKey(help_text="Modelo sobre el cual se ejecutó la acción.", on_delete=django.db.models.deletion.PROTECT, related_name="registros_auditoria", to="contenttypes.contenttype")),
-                ("usuario", models.ForeignKey(blank=True, help_text="Usuario responsable de la acción registrada.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="registros_auditoria", to="usuarios.usuario")),
+                ("usuario", models.ForeignKey(blank=True, help_text="Usuario responsable de la acción registrada.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="registros_auditoria", to=settings.AUTH_USER_MODEL)),
             ],
             options={
                 "verbose_name": "Registro de auditoría",
