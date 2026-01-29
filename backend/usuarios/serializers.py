@@ -5,7 +5,7 @@ from rest_framework import serializers
 from inventario.models import Sucursal
 
 from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
-from .utils import build_permissions_summary, sync_auth_user_from_usuario
+from .utils import build_permissions_summary
 
 
 User = get_user_model()
@@ -108,6 +108,10 @@ class RolSerializer(serializers.ModelSerializer):
 class UsuarioSerializer(serializers.ModelSerializer):
     """Serializa usuarios internos."""
 
+    nombres = serializers.CharField(source="first_name")
+    apellidos = serializers.CharField(source="last_name")
+    correo = serializers.EmailField(source="email")
+    activo = serializers.BooleanField(source="is_active")
     permisos_personalizados = RolPermisoSerializer(many=True, required=False)
     permisos_resumen = serializers.SerializerMethodField()
     password = serializers.CharField(
@@ -151,13 +155,18 @@ class UsuarioSerializer(serializers.ModelSerializer):
         sucursales = validated_data.pop("sucursales_ids", None)
 
         with transaction.atomic():
-            usuario = Usuario.objects.create(**validated_data)
+            email = (validated_data.pop("email", "") or "").strip().lower()
+            usuario = Usuario.objects.create_user(
+                username=email,
+                email=email,
+                password=password,
+                **validated_data,
+            )
             if roles is not None:
                 usuario.roles.set(roles)
 
             self._sync_personalized_permissions(usuario, permisos_personalizados)
             self._sync_sucursales(usuario, sucursales)
-            sync_auth_user_from_usuario(usuario, password=password, create_if_missing=True)
         return usuario
 
     def update(self, instance, validated_data):
@@ -168,6 +177,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        if "email" in validated_data:
+            instance.email = (instance.email or "").strip().lower()
+            instance.username = instance.email
         instance.save()
 
         if roles is not None:
@@ -176,7 +188,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         self._sync_personalized_permissions(instance, permisos_personalizados)
         self._sync_sucursales(instance, sucursales)
         if password:
-            sync_auth_user_from_usuario(instance, password=password, create_if_missing=True)
+            instance.set_password(password)
+            instance.save(update_fields=["password"])
         return instance
 
     def validate(self, attrs):
@@ -203,7 +216,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         created_role = False
 
         if role is None:
-            role_name = f"Permisos - {usuario.correo}"
+            role_name = f"Permisos - {usuario.email}"
             role = (
                 Rol.objects.filter(es_personalizado=True, nombre__iexact=role_name)
                 .order_by("id")
