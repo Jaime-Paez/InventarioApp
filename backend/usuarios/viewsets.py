@@ -7,28 +7,14 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Rol, RolPermiso
 from .permissions import UsuariosModulePermission
 from .serializers import (
     AuthUserSerializer,
     LoginSerializer,
     RegistroSerializer,
-    RolSerializer,
     UsuarioSerializer,
-    build_permissions_summary,
 )
 from .utils import get_permisos_efectivos, get_usuario_interno_por_correo
-
-
-class RolViewSet(viewsets.ModelViewSet):
-    """Gestión de roles y permisos."""
-
-    queryset = Rol.objects.prefetch_related("permisos").all().order_by("nombre")
-    serializer_class = RolSerializer
-    permission_classes = [IsAuthenticated, UsuariosModulePermission]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombre"]
-    ordering_fields = ["nombre"]
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):
@@ -50,9 +36,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="permisos-resumen")
     def permisos_resumen(self, request, pk=None):
-        permisos = build_permissions_summary(
-            [], extra_roles=[]
-        )
+        permisos = []
         return Response({"permisos": permisos})
 
 
@@ -136,23 +120,3 @@ class PerfilAPIView(APIView):
             }
         )
 
-
-class PermisosDisponiblesAPIView(APIView):
-    """Entrega la estructura de módulos y acciones disponibles para permisos."""
-
-    permission_classes = [IsAuthenticated, UsuariosModulePermission]
-
-    def get(self, request):
-        acciones = [
-            {"key": "puede_leer", "label": "Ver"},
-            {"key": "puede_crear", "label": "Crear"},
-            {"key": "puede_actualizar", "label": "Editar"},
-            {"key": "puede_eliminar", "label": "Eliminar"},
-        ]
-
-        modulos = [
-            {"key": modulo_key, "label": modulo_label}
-            for modulo_key, modulo_label in RolPermiso.Modulos.choices
-        ]
-
-        return Response({"modulos": modulos, "acciones": acciones})
