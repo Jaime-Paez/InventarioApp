@@ -6,7 +6,13 @@ import sys
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
+    if len(sys.argv) > 1 and sys.argv[1] == "runserver":
+        import django
+        from django.core.management import call_command
+
+        django.setup()
+        call_command("migrate", interactive=False)
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

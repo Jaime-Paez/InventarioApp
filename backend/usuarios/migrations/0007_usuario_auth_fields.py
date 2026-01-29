@@ -5,7 +5,7 @@ from django.utils import timezone
 
 def populate_user_credentials(apps, schema_editor):
     Usuario = apps.get_model("usuarios", "Usuario")
-    for usuario in Usuario.objects.all():
+    for usuario in Usuario.objects.all().order_by("id"):
         updates = []
         if not usuario.username:
             usuario.username = (usuario.email or "").strip()
