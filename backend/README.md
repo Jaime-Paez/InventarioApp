@@ -12,6 +12,11 @@ La capa de autenticación ahora usa `rest_framework.authtoken` para emitir token
    ```bash
    python manage.py migrate
    ```
+   Si vienes de una base existente y ves errores como `column usuarios_usuario.password does not exist`,
+   asegúrate de aplicar todas las migraciones nuevas para el modelo de usuario personalizado:
+   ```bash
+   python manage.py migrate usuarios
+   ```
    Si ya tienes la base creada, puedes aplicar solo el componente de tokens:
    ```bash
    python manage.py migrate authtoken
