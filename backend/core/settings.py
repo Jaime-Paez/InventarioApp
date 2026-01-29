@@ -65,6 +65,7 @@ INSTALLED_APPS = [
 
     # Tus aplicaciones locales
     "usuarios",
+    "auditoria",
     "app",
 ]
 
