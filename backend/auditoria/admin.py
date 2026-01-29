@@ -16,8 +16,9 @@ class RegistroAuditoriaAdmin(admin.ModelAdmin):
     search_fields = (
         "object_id",
         "representacion_objeto",
-        "usuario__nombres",
-        "usuario__apellidos",
+        "usuario__first_name",
+        "usuario__last_name",
+        "usuario__email",
     )
     readonly_fields = (
         "usuario",
