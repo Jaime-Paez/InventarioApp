@@ -1,5 +1,4 @@
-from django.contrib.auth import authenticate, get_user_model
-from django.db import transaction
+from django.contrib.auth import authenticate
 from rest_framework import filters, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
@@ -18,11 +17,7 @@ from .serializers import (
     UsuarioSucursalSerializer,
     build_permissions_summary,
 )
-from .utils import (
-    get_permisos_efectivos,
-    get_usuario_interno_por_correo,
-    sync_auth_user_from_usuario,
-)
+from .utils import get_permisos_efectivos, get_usuario_interno_por_correo
 
 
 class RolViewSet(viewsets.ModelViewSet):
@@ -45,23 +40,14 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             "roles",
         )
         .all()
-        .order_by("apellidos", "nombres")
+        .order_by("last_name", "first_name")
     )
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombres", "apellidos", "correo", "cargo", "roles__nombre"]
-    ordering_fields = ["apellidos", "nombres", "correo"]
-
-    @transaction.atomic
-    def perform_destroy(self, instance):
-        auth_user = get_user_model().objects.filter(email__iexact=instance.correo).first()
-
-        instance.delete()
-
-        if auth_user:
-            auth_user.delete()
+    search_fields = ["first_name", "last_name", "email", "cargo", "roles__nombre"]
+    ordering_fields = ["last_name", "first_name", "email"]
 
     @action(detail=True, methods=["get"], url_path="permisos-resumen")
     def permisos_resumen(self, request, pk=None):
@@ -78,18 +64,18 @@ class UsuarioSucursalViewSet(viewsets.ModelViewSet):
     queryset = (
         UsuarioSucursal.objects.select_related("usuario", "sucursal")
         .all()
-        .order_by("sucursal__nombre", "usuario__apellidos")
+        .order_by("sucursal__nombre", "usuario__last_name")
     )
     serializer_class = UsuarioSucursalSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
-        "usuario__nombres",
-        "usuario__apellidos",
+        "usuario__first_name",
+        "usuario__last_name",
         "sucursal__nombre",
         "rol",
     ]
-    ordering_fields = ["sucursal__nombre", "usuario__apellidos"]
+    ordering_fields = ["sucursal__nombre", "usuario__last_name"]
 
 
 class RegistroAPIView(APIView):
