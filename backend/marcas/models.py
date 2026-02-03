@@ -1,9 +1,21 @@
 from django.db import models
 
+from tipos.models import Pais
+
 
 class Marca(models.Model):
-    nombre = models.CharField(max_length=150, unique=True)
+    nombre = models.CharField(max_length=150)
+    codigo = models.CharField(max_length=50, unique=True)
     descripcion = models.TextField(blank=True)
+    pais = models.ForeignKey(
+        Pais,
+        on_delete=models.SET_NULL,
+        related_name="marcas",
+        null=True,
+        blank=True,
+    )
+    telefono = models.CharField(max_length=30, blank=True)
+    correo = models.EmailField(blank=True)
 
     class Meta:
         ordering = ["nombre"]
@@ -11,4 +23,4 @@ class Marca(models.Model):
         verbose_name_plural = "Marcas"
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
-        return self.nombre
+        return f"{self.nombre} ({self.codigo})"

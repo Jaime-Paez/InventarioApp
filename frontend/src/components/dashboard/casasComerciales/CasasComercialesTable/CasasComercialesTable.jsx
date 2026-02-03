@@ -289,6 +289,11 @@ function CasasComercialesTable({ token, onSelect }) {
     toast.current?.show({ severity: 'success', summary: 'Eliminada', detail: 'Casa comercial eliminada', life: 2500 })
   }
 
+  const handleDuplicated = (message) => {
+    refreshData()
+    toast.current?.show({ severity: 'success', summary: 'Duplicado', detail: message || 'Duplicacion completada.', life: 2500 })
+  }
+
   // ---------------- Header ----------------
   const dataLength = companies?.length ?? 0
 
@@ -486,6 +491,7 @@ function CasasComercialesTable({ token, onSelect }) {
         token={token}
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}
+        onDuplicated={handleDuplicated}
         onError={showErrorToast}
       />
     </div>

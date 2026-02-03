@@ -2,18 +2,23 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 
-const MIN_WIDTH = 640
-const MIN_HEIGHT = 460
+const MIN_WIDTH = 720
+const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
 
 const initialForm = {
   nombre: '',
+  codigo: '',
   descripcion: '',
+  paisId: '',
+  telefono: '',
+  correo: '',
 }
 
 function CreateMarca({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
+  const [countries, setCountries] = useState([])
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -49,13 +54,26 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
     [onError]
   )
 
+  const fetchCountries = useCallback(async () => {
+    try {
+      const response = await authFetch(`${API_URL}/tipos/paises/`, {}, token)
+      if (!response.ok) throw new Error('No se pudieron cargar los paises.')
+      const data = await response.json()
+      const list = Array.isArray(data) ? data : data?.results || []
+      setCountries(list)
+    } catch (err) {
+      notifyError(err.message || 'Ocurrio un error al cargar los paises.')
+    }
+  }, [notifyError, token])
+
   useEffect(() => {
     if (!open) return
     setFormData(initialForm)
     setLoading(false)
     setIsMaximized(false)
     restoreRef.current = null
-  }, [open])
+    fetchCountries()
+  }, [open, fetchCountries])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -91,12 +109,22 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
 
     const payload = {
       nombre: formData.nombre.trim(),
+      codigo: formData.codigo.trim(),
       descripcion: formData.descripcion.trim(),
+      telefono: formData.telefono.trim(),
+      correo: formData.correo.trim(),
+      pais_id: formData.paisId ? Number(formData.paisId) : null,
     }
 
     if (!payload.nombre) {
       setLoading(false)
       notifyError('Define un nombre para la marca.')
+      return
+    }
+
+    if (!payload.codigo) {
+      setLoading(false)
+      notifyError('Define un codigo para la marca.')
       return
     }
 
@@ -112,7 +140,7 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || data?.nombre?.[0] || 'No se pudo crear la marca.'
+        const detail = data?.detail || data?.nombre?.[0] || data?.codigo?.[0] || 'No se pudo crear la marca.'
         throw new Error(detail)
       }
 
@@ -271,7 +299,7 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              {isMaximized ? '[ ]' : '[]'}
+              {isMaximized ? '🗕' : '🗖'}
             </button>
             <button
               type="button"
@@ -311,6 +339,55 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
                     value={formData.nombre}
                     onChange={handleChange}
                     required
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Codigo</span>
+                  <input
+                    name="codigo"
+                    type="text"
+                    placeholder="Codigo"
+                    value={formData.codigo}
+                    onChange={handleChange}
+                    required
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Pais</span>
+                  <select name="paisId" value={formData.paisId} onChange={handleChange} disabled={loading}>
+                    <option value="">Selecciona un pais</option>
+                    {countries.map((country) => (
+                      <option key={country.id} value={country.id}>
+                        {country.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="create-user__field">
+                  <span>Telefono</span>
+                  <input
+                    name="telefono"
+                    type="text"
+                    placeholder="Telefono"
+                    value={formData.telefono}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Correo</span>
+                  <input
+                    name="correo"
+                    type="email"
+                    placeholder="correo@empresa.com"
+                    value={formData.correo}
+                    onChange={handleChange}
                     disabled={loading}
                   />
                 </label>

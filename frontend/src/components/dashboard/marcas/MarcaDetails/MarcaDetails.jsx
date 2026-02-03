@@ -4,21 +4,27 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 
-const MIN_WIDTH = 640
-const MIN_HEIGHT = 460
+const MIN_WIDTH = 720
+const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
 
 const emptyForm = {
   nombre: '',
+  codigo: '',
   descripcion: '',
+  paisId: '',
+  telefono: '',
+  correo: '',
 }
 
-function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onError }) {
+function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onDuplicated, onError }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
+  const [countries, setCountries] = useState([])
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [duplicateLoading, setDuplicateLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -58,7 +64,11 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
 
   const normalizeMarca = (data) => ({
     nombre: data?.nombre ?? '',
+    codigo: data?.codigo ?? '',
     descripcion: data?.descripcion ?? '',
+    paisId: data?.pais?.id ?? '',
+    telefono: data?.telefono ?? '',
+    correo: data?.correo ?? '',
   })
 
   const handleChange = (event) => {
@@ -91,6 +101,18 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
     }
   }, [notifyError, token, marcaId])
 
+  const fetchCountries = useCallback(async () => {
+    try {
+      const response = await authFetch(`${API_URL}/tipos/paises/`, {}, token)
+      if (!response.ok) throw new Error('No se pudieron cargar los paises.')
+      const data = await response.json()
+      const list = Array.isArray(data) ? data : data?.results || []
+      setCountries(list)
+    } catch (err) {
+      notifyError(err.message || 'Ocurrio un error al cargar los paises.')
+    }
+  }, [notifyError, token])
+
   useEffect(() => {
     if (!open) return
     setIsEditing(false)
@@ -98,8 +120,9 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
     setOriginalData(emptyForm)
     setIsMaximized(false)
     restoreRef.current = null
+    fetchCountries()
     fetchMarca()
-  }, [open, fetchMarca])
+  }, [open, fetchMarca, fetchCountries])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -127,12 +150,22 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
 
     const payload = {
       nombre: formData.nombre.trim(),
+      codigo: formData.codigo.trim(),
       descripcion: formData.descripcion.trim(),
+      telefono: formData.telefono.trim(),
+      correo: formData.correo.trim(),
+      pais_id: formData.paisId ? Number(formData.paisId) : null,
     }
 
     if (!payload.nombre) {
       setSaving(false)
       notifyError('Define un nombre para la marca.')
+      return
+    }
+
+    if (!payload.codigo) {
+      setSaving(false)
+      notifyError('Define un codigo para la marca.')
       return
     }
 
@@ -148,7 +181,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || data?.nombre?.[0] || 'No se pudo actualizar la marca.'
+        const detail = data?.detail || data?.nombre?.[0] || data?.codigo?.[0] || 'No se pudo actualizar la marca.'
         throw new Error(detail)
       }
 
@@ -186,6 +219,55 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
       notifyError(err.message || 'Ocurrio un error al eliminar la marca.')
     } finally {
       setDeleteLoading(false)
+    }
+  }
+
+  const handleDuplicateToCasaComercial = async () => {
+    if (!isEditing || duplicateLoading) return
+    setDuplicateLoading(true)
+
+    const payload = {
+      nombre: formData.nombre.trim(),
+      codigo: formData.codigo.trim(),
+      descripcion: formData.descripcion.trim(),
+      telefono: formData.telefono.trim(),
+      correo: formData.correo.trim(),
+      pais_id: formData.paisId ? Number(formData.paisId) : null,
+    }
+
+    if (!payload.nombre) {
+      setDuplicateLoading(false)
+      notifyError('Define un nombre para la marca.')
+      return
+    }
+
+    if (!payload.codigo) {
+      setDuplicateLoading(false)
+      notifyError('Define un codigo para la marca.')
+      return
+    }
+
+    try {
+      const response = await authFetch(
+        `${API_URL}/casa-comercial/casas/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        },
+        token
+      )
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = data?.detail || data?.nombre?.[0] || data?.codigo?.[0] || 'No se pudo duplicar a casa comercial.'
+        throw new Error(detail)
+      }
+
+      onDuplicated?.('Casa comercial creada a partir de esta marca.')
+    } catch (err) {
+      notifyError(err.message || 'Ocurrio un error al duplicar la marca.')
+    } finally {
+      setDuplicateLoading(false)
     }
   }
 
@@ -343,7 +425,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              {isMaximized ? '[ ]' : '[]'}
+              {isMaximized ? '🗕' : '🗖'}
             </button>
             <button
               type="button"
@@ -384,6 +466,56 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
                     name="nombre"
                     type="text"
                     value={formData.nombre}
+                    onChange={handleChange}
+                    disabled={editorDisabled}
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Codigo</span>
+                  <input
+                    name="codigo"
+                    type="text"
+                    value={formData.codigo}
+                    onChange={handleChange}
+                    disabled={editorDisabled}
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Pais</span>
+                  <select
+                    name="paisId"
+                    value={formData.paisId}
+                    onChange={handleChange}
+                    disabled={editorDisabled}
+                  >
+                    <option value="">Selecciona un pais</option>
+                    {countries.map((country) => (
+                      <option key={country.id} value={country.id}>
+                        {country.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="create-user__field">
+                  <span>Telefono</span>
+                  <input
+                    name="telefono"
+                    type="text"
+                    value={formData.telefono}
+                    onChange={handleChange}
+                    disabled={editorDisabled}
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Correo</span>
+                  <input
+                    name="correo"
+                    type="email"
+                    value={formData.correo}
                     onChange={handleChange}
                     disabled={editorDisabled}
                   />
@@ -431,9 +563,17 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
           <div className="user-details__footer-right">
             <button
               type="button"
+              className="create-user__action"
+              onClick={handleDuplicateToCasaComercial}
+              disabled={!isEditing || saving || duplicateLoading}
+            >
+              {duplicateLoading ? 'Duplicando...' : 'Duplicar a casa comercial'}
+            </button>
+            <button
+              type="button"
               className="create-user__action user-details__delete"
               onClick={() => setShowDeleteDialog(true)}
-              disabled={!isEditing || saving}
+              disabled={!isEditing || saving || duplicateLoading}
             >
               Eliminar
             </button>
@@ -441,7 +581,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onE
               type="button"
               className="create-user__action create-user__action--primary"
               onClick={handleSave}
-              disabled={isViewMode || saving}
+              disabled={isViewMode || saving || duplicateLoading}
             >
               {saving ? 'Guardando...' : 'Guardar cambios'}
             </button>

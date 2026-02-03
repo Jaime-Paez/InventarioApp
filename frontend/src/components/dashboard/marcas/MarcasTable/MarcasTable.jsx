@@ -35,6 +35,13 @@ function MarcasTable({ token, onSelect }) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
 
+  const normalizeList = useCallback((list) => {
+    return list.map((item) => ({
+      ...item,
+      pais_nombre: item?.pais?.nombre ?? '-',
+    }))
+  }, [])
+
   const fetchBrands = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -45,7 +52,7 @@ function MarcasTable({ token, onSelect }) {
 
       const data = await res.json()
       const list = Array.isArray(data) ? data : data?.results || []
-      setBrands(list)
+      setBrands(normalizeList(list))
     } catch (e) {
       const msg = e?.message || 'Ocurrio un error al cargar las marcas.'
       setError(msg)
@@ -54,7 +61,7 @@ function MarcasTable({ token, onSelect }) {
       setLoading(false)
       setIsRefreshing(false)
     }
-  }, [token])
+  }, [token, normalizeList])
 
   useEffect(() => {
     fetchBrands()
@@ -73,6 +80,10 @@ function MarcasTable({ token, onSelect }) {
     setFilters({
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      pais_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       descripcion: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
     })
     setGlobalFilterValue('')
@@ -191,6 +202,10 @@ function MarcasTable({ token, onSelect }) {
   const columnsData = useMemo(
     () => [
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
+      { nombrevar: 'codigo', header: 'Codigo', filterPlaceholder: 'Buscar por codigo' },
+      { nombrevar: 'pais_nombre', header: 'Pais', filterPlaceholder: 'Buscar por pais' },
+      { nombrevar: 'telefono', header: 'Telefono', filterPlaceholder: 'Buscar por telefono' },
+      { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
       { nombrevar: 'descripcion', header: 'Descripcion', filterPlaceholder: 'Buscar por descripcion' },
     ],
     []
@@ -272,6 +287,11 @@ function MarcasTable({ token, onSelect }) {
     setSelectedId(null)
     refreshData()
     toast.current?.show({ severity: 'success', summary: 'Eliminada', detail: 'Marca eliminada', life: 2500 })
+  }
+
+  const handleDuplicated = (message) => {
+    refreshData()
+    toast.current?.show({ severity: 'success', summary: 'Duplicado', detail: message || 'Duplicacion completada.', life: 2500 })
   }
 
   // ---------------- Header ----------------
@@ -367,7 +387,7 @@ function MarcasTable({ token, onSelect }) {
           removableSort
           filters={filters}
           onFilter={(e) => setFilters(e.filters)}
-          globalFilterFields={['nombre', 'descripcion']}
+          globalFilterFields={['nombre', 'codigo', 'pais_nombre', 'telefono', 'correo', 'descripcion']}
           stateStorage="session"
           stateKey="marcas-table-state"
           reorderableColumns
@@ -471,6 +491,7 @@ function MarcasTable({ token, onSelect }) {
         token={token}
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}
+        onDuplicated={handleDuplicated}
         onError={showErrorToast}
       />
     </div>

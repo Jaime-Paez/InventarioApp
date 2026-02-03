@@ -17,13 +17,14 @@ const emptyForm = {
   correo: '',
 }
 
-function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated, onDeleted, onError }) {
+function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated, onDeleted, onDuplicated, onError }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [countries, setCountries] = useState([])
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [duplicateLoading, setDuplicateLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -218,6 +219,55 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
       notifyError(err.message || 'Ocurrio un error al eliminar la casa comercial.')
     } finally {
       setDeleteLoading(false)
+    }
+  }
+
+  const handleDuplicateToMarca = async () => {
+    if (!isEditing || duplicateLoading) return
+    setDuplicateLoading(true)
+
+    const payload = {
+      nombre: formData.nombre.trim(),
+      codigo: formData.codigo.trim(),
+      descripcion: formData.descripcion.trim(),
+      telefono: formData.telefono.trim(),
+      correo: formData.correo.trim(),
+      pais_id: formData.paisId ? Number(formData.paisId) : null,
+    }
+
+    if (!payload.nombre) {
+      setDuplicateLoading(false)
+      notifyError('Define un nombre para la casa comercial.')
+      return
+    }
+
+    if (!payload.codigo) {
+      setDuplicateLoading(false)
+      notifyError('Define un codigo para la casa comercial.')
+      return
+    }
+
+    try {
+      const response = await authFetch(
+        `${API_URL}/marcas/listado/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        },
+        token
+      )
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = data?.detail || data?.nombre?.[0] || data?.codigo?.[0] || 'No se pudo duplicar a marca.'
+        throw new Error(detail)
+      }
+
+      onDuplicated?.('Marca creada a partir de esta casa comercial.')
+    } catch (err) {
+      notifyError(err.message || 'Ocurrio un error al duplicar la casa comercial.')
+    } finally {
+      setDuplicateLoading(false)
     }
   }
 
@@ -513,9 +563,17 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
           <div className="user-details__footer-right">
             <button
               type="button"
+              className="create-user__action"
+              onClick={handleDuplicateToMarca}
+              disabled={!isEditing || saving || duplicateLoading}
+            >
+              {duplicateLoading ? 'Duplicando...' : 'Duplicar a marca'}
+            </button>
+            <button
+              type="button"
               className="create-user__action user-details__delete"
               onClick={() => setShowDeleteDialog(true)}
-              disabled={!isEditing || saving}
+              disabled={!isEditing || saving || duplicateLoading}
             >
               Eliminar
             </button>
@@ -523,7 +581,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
               type="button"
               className="create-user__action create-user__action--primary"
               onClick={handleSave}
-              disabled={isViewMode || saving}
+              disabled={isViewMode || saving || duplicateLoading}
             >
               {saving ? 'Guardando...' : 'Guardar cambios'}
             </button>
