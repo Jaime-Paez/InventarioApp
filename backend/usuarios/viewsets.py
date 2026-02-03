@@ -19,6 +19,7 @@ from .serializers import (
     build_permissions_summary,
 )
 from .utils import (
+    build_full_permissions,
     get_permisos_efectivos,
     get_personalized_role_for_email,
     get_usuario_interno_por_correo,
@@ -29,7 +30,11 @@ from .utils import (
 class RolViewSet(viewsets.ModelViewSet):
     """Gestión de roles y permisos."""
 
-    queryset = Rol.objects.prefetch_related("permisos").all().order_by("nombre")
+    queryset = (
+        Rol.objects.prefetch_related("permisos")
+        .filter(es_personalizado=False)
+        .order_by("nombre")
+    )
     serializer_class = RolSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -121,6 +126,17 @@ class LoginAPIView(APIView):
 
         email = serializer.validated_data["email"].lower()
         password = serializer.validated_data["password"]
+        User = get_user_model()
+        existing_user = User.objects.filter(email__iexact=email).first()
+        if existing_user and not existing_user.is_active:
+            if existing_user.check_password(password):
+                return Response(
+                    {
+                        "detail": "Su cuenta está inactiva, comuníquese con el administrador."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         user = authenticate(username=email, password=password)
         if not user:
             return Response(
@@ -130,8 +146,12 @@ class LoginAPIView(APIView):
 
         token, _ = Token.objects.get_or_create(user=user)
 
-        usuario_interno = get_usuario_interno_por_correo(email)
-        permisos = get_permisos_efectivos(usuario_interno, email)
+        if user.is_staff or user.is_superuser:
+            permisos = build_full_permissions()
+            usuario_interno = get_usuario_interno_por_correo(email)
+        else:
+            usuario_interno = get_usuario_interno_por_correo(email)
+            permisos = get_permisos_efectivos(usuario_interno, email)
 
         return Response(
             {
@@ -150,8 +170,12 @@ class PerfilAPIView(APIView):
 
     def get(self, request):
         email = request.user.email
-        usuario_interno = get_usuario_interno_por_correo(email)
-        permisos = get_permisos_efectivos(usuario_interno, email)
+        if request.user.is_staff or request.user.is_superuser:
+            permisos = build_full_permissions()
+            usuario_interno = get_usuario_interno_por_correo(email)
+        else:
+            usuario_interno = get_usuario_interno_por_correo(email)
+            permisos = get_permisos_efectivos(usuario_interno, email)
 
         return Response(
             {

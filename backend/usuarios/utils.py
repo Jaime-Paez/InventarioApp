@@ -3,6 +3,24 @@ from django.contrib.auth import get_user_model
 from .models import Rol
 
 
+def build_full_permissions():
+    """Devuelve permisos completos (crear/leer/actualizar/eliminar) por módulo."""
+
+    from .models import RolPermiso  # import tardío para evitar ciclos
+
+    return [
+        {
+            "modulo": modulo_key,
+            "submodulo": "",
+            "puede_crear": True,
+            "puede_leer": True,
+            "puede_actualizar": True,
+            "puede_eliminar": True,
+        }
+        for modulo_key, _ in RolPermiso.Modulos.choices
+    ]
+
+
 def get_usuario_interno_por_correo(email):
     """Devuelve el usuario de Django asociado a un correo (si existe)."""
 

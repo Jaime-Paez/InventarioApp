@@ -52,6 +52,7 @@ const emptyForm = {
   activo: false,
   permisos_personalizados: [],
   sucursales: [],
+  roles: [],
 }
 
 function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onError }) {
@@ -447,7 +448,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       const response = await authFetch(
         `${API_URL}/usuarios/listado/${userId}/`,
         {
-          method: 'PUT',
+          method: 'PATCH',
           body: JSON.stringify(payload),
         },
         token
@@ -459,6 +460,9 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
           data?.detail ||
           data?.correo?.[0] ||
           data?.nombres?.[0] ||
+          data?.roles?.[0] ||
+          data?.sucursales_ids?.[0] ||
+          data?.permisos_personalizados?.[0] ||
           'No se pudo actualizar el usuario. Verifica la información enviada.'
         throw new Error(detail)
       }

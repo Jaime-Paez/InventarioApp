@@ -275,6 +275,9 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
           data?.correo?.[0] ||
           data?.password?.[0] ||
           data?.nombres?.[0] ||
+          data?.roles?.[0] ||
+          data?.sucursales_ids?.[0] ||
+          data?.permisos_personalizados?.[0] ||
           'No se pudo crear el usuario. Verifica la información enviada.'
         throw new Error(detail)
       }

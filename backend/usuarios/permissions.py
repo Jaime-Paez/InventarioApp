@@ -1,7 +1,11 @@
 from rest_framework.permissions import BasePermission
 
 from .models import RolPermiso
-from .utils import get_permisos_efectivos, get_usuario_interno_por_correo
+from .utils import (
+    build_full_permissions,
+    get_permisos_efectivos,
+    get_usuario_interno_por_correo,
+)
 
 
 class ModulePermission(BasePermission):
@@ -22,9 +26,6 @@ class ModulePermission(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-
-        if request.user.is_staff or request.user.is_superuser:
-            return True
 
         action_key = self.METHOD_TO_ACTION.get(request.method)
         if not action_key:
@@ -53,9 +54,12 @@ class ModulePermission(BasePermission):
         if hasattr(request, "_module_permission_index"):
             return request._module_permission_index
 
-        email = request.user.email
-        usuario_interno = get_usuario_interno_por_correo(email)
-        permisos = get_permisos_efectivos(usuario_interno, email)
+        if request.user.is_staff or request.user.is_superuser:
+            permisos = build_full_permissions()
+        else:
+            email = request.user.email
+            usuario_interno = get_usuario_interno_por_correo(email)
+            permisos = get_permisos_efectivos(usuario_interno, email)
 
         index = {}
         for permiso in permisos:

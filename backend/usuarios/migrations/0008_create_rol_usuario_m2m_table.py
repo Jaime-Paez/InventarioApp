@@ -34,15 +34,29 @@ def copy_old_role_assignments(apps, schema_editor):
     if "usuarios_rol_usuarios" not in existing_tables:
         return
 
+    usuario_table = "usuarios_usuario"
+    if usuario_table not in existing_tables:
+        return
+
+    # Skip legacy copy if the expected legacy column is missing.
+    with connection.cursor() as cursor:
+        try:
+            columns = [
+                col.name
+                for col in connection.introspection.get_table_description(
+                    cursor, usuario_table
+                )
+            ]
+        except Exception:
+            return
+    if "correo" not in columns:
+        return
+
     app_label, model_name = settings.AUTH_USER_MODEL.split(".")
     User = apps.get_model(app_label, model_name)
     auth_table = User._meta.db_table
-    usuario_table = "usuarios_usuario"
     roles_table = "usuarios_usuario_roles"
     target_table = "usuarios_rol_usuarios"
-
-    if usuario_table not in existing_tables:
-        return
 
     quote = connection.ops.quote_name
     sql = f"""
