@@ -3,6 +3,16 @@
 from django.db import migrations
 
 
+def ensure_registroauditoria_table(apps, schema_editor):
+    table_name = "auditoria_registroauditoria"
+    existing_tables = schema_editor.connection.introspection.table_names()
+    if table_name in existing_tables:
+        return
+
+    RegistroAuditoria = apps.get_model("auditoria", "RegistroAuditoria")
+    schema_editor.create_model(RegistroAuditoria)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,6 +20,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(ensure_registroauditoria_table, migrations.RunPython.noop),
         migrations.RenameIndex(
             model_name='registroauditoria',
             new_name='auditoria_r_registr_cc14eb_idx',
