@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Rol, RolPermiso, Usuario, UsuarioSucursal
+from .models import Rol, RolPermiso, UsuarioSucursal
 from .permissions import UsuariosModulePermission
 from .serializers import (
     AuthUserSerializer,
@@ -20,8 +20,9 @@ from .serializers import (
 )
 from .utils import (
     get_permisos_efectivos,
+    get_personalized_role_for_email,
     get_usuario_interno_por_correo,
-    sync_auth_user_from_usuario,
+    remove_personalized_role_for_email,
 )
 
 
@@ -37,37 +38,35 @@ class RolViewSet(viewsets.ModelViewSet):
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):
-    """Gestión de usuarios internos."""
+    """Gestión de usuarios usando el modelo de Django."""
 
     queryset = (
-        Usuario.objects.prefetch_related(
-            "rol_personalizado__permisos",
-            "roles",
+        get_user_model().objects.prefetch_related(
+            "roles__permisos",
+            "asignaciones__sucursal",
         )
         .all()
-        .order_by("apellidos", "nombres")
+        .order_by("last_name", "first_name")
     )
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombres", "apellidos", "correo", "cargo", "roles__nombre"]
-    ordering_fields = ["apellidos", "nombres", "correo"]
+    search_fields = ["first_name", "last_name", "email", "roles__nombre"]
+    ordering_fields = ["last_name", "first_name", "email"]
 
     @transaction.atomic
     def perform_destroy(self, instance):
-        auth_user = get_user_model().objects.filter(email__iexact=instance.correo).first()
-
+        email = instance.email
         instance.delete()
-
-        if auth_user:
-            auth_user.delete()
+        remove_personalized_role_for_email(email)
 
     @action(detail=True, methods=["get"], url_path="permisos-resumen")
     def permisos_resumen(self, request, pk=None):
         usuario = self.get_object()
         permisos = build_permissions_summary(
-            [], extra_roles=[usuario.rol_personalizado]
+            usuario.roles.all(),
+            extra_roles=[get_personalized_role_for_email(usuario.email)],
         )
         return Response({"permisos": permisos})
 
@@ -78,18 +77,18 @@ class UsuarioSucursalViewSet(viewsets.ModelViewSet):
     queryset = (
         UsuarioSucursal.objects.select_related("usuario", "sucursal")
         .all()
-        .order_by("sucursal__nombre", "usuario__apellidos")
+        .order_by("sucursal__nombre", "usuario__last_name")
     )
     serializer_class = UsuarioSucursalSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
-        "usuario__nombres",
-        "usuario__apellidos",
+        "usuario__first_name",
+        "usuario__last_name",
         "sucursal__nombre",
         "rol",
     ]
-    ordering_fields = ["sucursal__nombre", "usuario__apellidos"]
+    ordering_fields = ["sucursal__nombre", "usuario__last_name"]
 
 
 class RegistroAPIView(APIView):
