@@ -365,6 +365,16 @@
   min-height: 24px;
 }
 
+.create-user__field select {
+  background: #fff;
+  border-radius: 6px;
+  font: inherit;
+  font-size: var(--font-size-base);
+  line-height: 1.2;
+  font-weight: 400;
+}
+
+
 .create-user__field input::placeholder {
   color: var(--color-text-primary);
   opacity: 0.35;
@@ -382,6 +392,16 @@
   background: var(--color-surface-darker);
   border-color: var(--color-border);
   color: var(--color-button-primary);
+}
+
+.create-user__field select option {
+  background: #fff;
+  color: var(--color-text-primary);
+}
+
+.dashboard-shell.dark .create-user__field select option {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .create-user__field input::placeholder {

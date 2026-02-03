@@ -14,6 +14,12 @@ const initialForm = {
 }
 
 const DEFAULT_CENTER = { latitud: -0.204404, longitud: -78.496283 }
+const ECUADOR_BOUNDS = {
+  minLat: -5.015,
+  maxLat: 1.5,
+  minLng: -92.2,
+  maxLng: -75.2,
+}
 
 function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
@@ -32,7 +38,6 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   const mapRef = useRef(null)
   const markerRef = useRef(null)
   const mapContainerRef = useRef(null)
-  const isMountedRef = useRef(false)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const getViewportMetrics = () => {
@@ -46,6 +51,14 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     }
   }
   const formatCoordinate = (value) => (Number.isFinite(value) ? Number(value.toFixed(6)) : value)
+  const isWithinEcuador = (lat, lng) =>
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= ECUADOR_BOUNDS.minLat &&
+    lat <= ECUADOR_BOUNDS.maxLat &&
+    lng >= ECUADOR_BOUNDS.minLng &&
+    lng <= ECUADOR_BOUNDS.maxLng
+
 
   const notifyError = useCallback(
     (message) => {
@@ -66,7 +79,6 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     setLocation(DEFAULT_CENTER)
     setIsMaximized(false)
     restoreRef.current = null
-    isMountedRef.current = true
   }, [open])
 
   useLayoutEffect(() => {
@@ -89,76 +101,60 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     positionRef.current = position
   }, [position])
 
-  const reverseGeocode = useCallback(async (lat, lng) => {
-    try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`)
-      if (!response.ok) return null
-      const data = await response.json()
-      return {
-        displayName: data?.display_name,
-      }
-    } catch (error) {
-      console.error('Error al obtener la dirección:', error)
-      return null
-    }
-  }, [])
-
-  const initializeMap = useCallback(async () => {
-    if (!mapContainerRef.current || mapRef.current) return
-    const L = await import('leaflet')
-
-    const map = L.map(mapContainerRef.current).setView(
-      [location.latitud, location.longitud],
-      MAP_ZOOM
-    )
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map)
-
-    const setMarker = (lat, lng) => {
-      const formattedLat = formatCoordinate(lat)
-      const formattedLng = formatCoordinate(lng)
-
-      setLocation({ latitud: formattedLat, longitud: formattedLng })
-      if (markerRef.current) {
-        markerRef.current.setLatLng([formattedLat, formattedLng])
-      } else {
-        markerRef.current = L.marker([formattedLat, formattedLng]).addTo(map)
-      }
-      reverseGeocode(formattedLat, formattedLng).then((result) => {
-        if (!result || !isMountedRef.current) return
-        setFormData((prev) => ({
-          ...prev,
-          direccion: result.displayName || prev.direccion,
-        }))
-      })
-    }
-
-    map.on('click', (event) => {
-      const { lat, lng } = event.latlng
-      setMarker(lat, lng)
-    })
-
-    setMarker(location.latitud, location.longitud)
-
-    mapRef.current = map
-  }, [location.latitud, location.longitud])
-
   useEffect(() => {
-    if (open) {
-      initializeMap()
+    if (!open || !mapContainerRef.current || mapRef.current) return
+    let isActive = true
+
+    const setupMap = async () => {
+      const L = await import('leaflet')
+      if (!isActive || mapRef.current || !mapContainerRef.current) return
+
+      const map = L.map(mapContainerRef.current).setView(
+        [DEFAULT_CENTER.latitud, DEFAULT_CENTER.longitud],
+        MAP_ZOOM
+      )
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors',
+      }).addTo(map)
+
+      const setMarker = (lat, lng) => {
+        if (!isWithinEcuador(lat, lng)) {
+          notifyError('Selecciona una ubicación dentro de Ecuador.')
+          return
+        }
+        const formattedLat = formatCoordinate(lat)
+        const formattedLng = formatCoordinate(lng)
+
+        setLocation({ latitud: formattedLat, longitud: formattedLng })
+        if (markerRef.current) {
+          markerRef.current.setLatLng([formattedLat, formattedLng])
+        } else {
+          markerRef.current = L.marker([formattedLat, formattedLng]).addTo(map)
+        }
+      }
+
+      map.on('click', (event) => {
+        const { lat, lng } = event.latlng
+        setMarker(lat, lng)
+      })
+
+      setMarker(DEFAULT_CENTER.latitud, DEFAULT_CENTER.longitud)
+
+      mapRef.current = map
     }
+
+    setupMap()
 
     return () => {
+      isActive = false
       if (mapRef.current) {
         mapRef.current.remove()
         mapRef.current = null
         markerRef.current = null
       }
-      isMountedRef.current = false
     }
-  }, [open, initializeMap])
+  }, [open])
 
   useEffect(() => {
     if (!mapRef.current || !markerRef.current) return
@@ -168,7 +164,6 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
   const handleChange = (event) => {
     const { name, value } = event.target
-    if (name === 'direccion') return
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -430,7 +425,6 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
                     value={formData.direccion}
                     onChange={handleChange}
                     disabled={loading}
-                    readOnly
                   />
                 </label>
               </div>

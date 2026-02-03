@@ -17,6 +17,14 @@ const emptyForm = {
   longitud: 0,
 }
 
+const DEFAULT_CENTER = { latitud: -0.204404, longitud: -78.496283 }
+const ECUADOR_BOUNDS = {
+  minLat: -5.015,
+  maxLat: 1.5,
+  minLng: -92.2,
+  maxLng: -75.2,
+}
+
 function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDeleted, onError }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
@@ -40,7 +48,6 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const markerRef = useRef(null)
   const mapContainerRef = useRef(null)
   const isEditingRef = useRef(false)
-  const isMountedRef = useRef(false)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const getViewportMetrics = () => {
@@ -54,6 +61,20 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     }
   }
   const formatCoordinate = (value) => (Number.isFinite(value) ? Number(value.toFixed(6)) : value)
+  const isWithinEcuador = (lat, lng) =>
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= ECUADOR_BOUNDS.minLat &&
+    lat <= ECUADOR_BOUNDS.maxLat &&
+    lng >= ECUADOR_BOUNDS.minLng &&
+    lng <= ECUADOR_BOUNDS.maxLng
+
+  const ensureEcuadorLocation = (lat, lng) => {
+    if (isWithinEcuador(lat, lng)) {
+      return { latitud: formatCoordinate(lat), longitud: formatCoordinate(lng) }
+    }
+    return DEFAULT_CENTER
+  }
   const notifyError = useCallback(
     (message) => {
       if (!message) return
@@ -66,22 +87,71 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     [onError]
   )
 
-  const normalizeSucursal = (data) => ({
-    nombre: data?.nombre ?? '',
-    direccion: data?.direccion ?? '',
-    latitud: formatCoordinate(Number(data?.latitud ?? 0)),
-    longitud: formatCoordinate(Number(data?.longitud ?? 0)),
-  })
+  const normalizeSucursal = (data) => {
+    const safeLocation = ensureEcuadorLocation(
+      Number(data?.latitud ?? 0),
+      Number(data?.longitud ?? 0)
+    )
+    return {
+      nombre: data?.nombre ?? '',
+      direccion: data?.direccion ?? '',
+      latitud: safeLocation.latitud,
+      longitud: safeLocation.longitud,
+    }
+  }
 
   const handleChange = (event) => {
     if (!isEditing) return
     const { name, value } = event.target
-    if (name === 'direccion') return
     setFormData((prev) => ({
       ...prev,
       [name]: value,
     }))
   }
+
+  const geocodeAddress = useCallback(async (address) => {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=ec&q=${encodeURIComponent(address)}`
+      const response = await fetch(url, {
+        headers: {
+          'Accept-Language': 'es',
+        },
+      })
+      if (!response.ok) return null
+      const data = await response.json()
+      const match = Array.isArray(data) ? data[0] : null
+      if (!match) return null
+      const lat = Number(match.lat)
+      const lng = Number(match.lon)
+      return { lat, lng }
+    } catch (error) {
+      console.error('Error al buscar la ubicación:', error)
+      return null
+    }
+  }, [])
+
+  const handleAddressCommit = useCallback(async () => {
+    if (!isEditing) return
+    const address = formData.direccion.trim()
+    if (!address) return
+    const result = await geocodeAddress(address)
+    if (!result || !isWithinEcuador(result.lat, result.lng)) {
+      notifyError('La dirección debe estar dentro de Ecuador.')
+      return
+    }
+    const nextLocation = {
+      latitud: formatCoordinate(result.lat),
+      longitud: formatCoordinate(result.lng),
+    }
+    setFormData((prev) => ({
+      ...prev,
+      latitud: nextLocation.latitud,
+      longitud: nextLocation.longitud,
+    }))
+    if (mapRef.current) {
+      mapRef.current.setView([nextLocation.latitud, nextLocation.longitud], MAP_ZOOM)
+    }
+  }, [formData.direccion, geocodeAddress, isEditing, isWithinEcuador, notifyError])
 
   const fetchSucursal = useCallback(async () => {
     if (!sucursalId) return
@@ -112,7 +182,6 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
 
   useEffect(() => {
     if (!open) return
-    isMountedRef.current = true
     setIsEditing(false)
     setFormData(emptyForm)
     setOriginalData(emptyForm)
@@ -126,7 +195,6 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
         mapRef.current = null
         markerRef.current = null
       }
-      isMountedRef.current = false
     }
   }, [open, fetchSucursal])
 
@@ -176,20 +244,6 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     }
   }, [])
 
-  const reverseGeocode = useCallback(async (lat, lng) => {
-    try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`)
-      if (!response.ok) return null
-      const data = await response.json()
-      return {
-        displayName: data?.display_name,
-      }
-    } catch (error) {
-      console.error('Error al obtener la dirección:', error)
-      return null
-    }
-  }, [])
-
   const initializeMap = useCallback(async () => {
     if (!mapContainerRef.current || mapRef.current) return
     const L = await import('leaflet')
@@ -213,6 +267,10 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     }).addTo(map)
 
     const setMarker = (lat, lng) => {
+      if (!isWithinEcuador(lat, lng)) {
+        notifyError('Selecciona una ubicación dentro de Ecuador.')
+        return
+      }
       const formattedLat = formatCoordinate(lat)
       const formattedLng = formatCoordinate(lng)
 
@@ -223,15 +281,6 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
       } else {
         markerRef.current = L.marker([formattedLat, formattedLng]).addTo(map)
       }
-      reverseGeocode(formattedLat, formattedLng).then((result) => {
-        if (!result || !isMountedRef.current) return
-        setFormData((prev) => ({
-          ...prev,
-          direccion: result.displayName || prev.direccion,
-          latitud: formattedLat,
-          longitud: formattedLng,
-        }))
-      })
     }
 
     map.on('click', (event) => {
@@ -243,7 +292,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     markerRef.current = L.marker([startLat, startLng]).addTo(map)
     toggleMapInteractions(isEditingRef.current)
     mapRef.current = map
-  }, [formData.latitud, formData.longitud, isEditing, reverseGeocode, toggleMapInteractions])
+  }, [formData.latitud, formData.longitud, isEditing, isWithinEcuador, notifyError, toggleMapInteractions])
 
   useEffect(() => {
     if (open) {
@@ -563,15 +612,21 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
                   <label className="create-user__field create-user__field--full">
                     <span>Dirección</span>
                     <input
-                    name="direccion"
-                    type="text"
-                    placeholder="Dirección"
-                    value={formData.direccion}
-                    onChange={handleChange}
-                    disabled={!isEditing || loadingData || saving}
-                    readOnly
-                  />
-                </label>
+                      name="direccion"
+                      type="text"
+                      placeholder="Dirección"
+                      value={formData.direccion}
+                      onChange={handleChange}
+                      disabled={!isEditing || loadingData || saving}
+                      onBlur={handleAddressCommit}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          handleAddressCommit()
+                        }
+                      }}
+                    />
+                  </label>
                 </div>
 
                 <div className="create-user__section-header">
