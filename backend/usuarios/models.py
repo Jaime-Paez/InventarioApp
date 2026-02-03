@@ -1,7 +1,6 @@
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models.signals import post_delete
-from django.dispatch import receiver
 
 
 class Rol(models.Model):
@@ -11,6 +10,11 @@ class Rol(models.Model):
     descripcion = models.TextField(blank=True)
     activo = models.BooleanField(default=True)
     es_personalizado = models.BooleanField(default=False)
+    usuarios = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="roles",
+        blank=True,
+    )
 
     class Meta:
         ordering = ["nombre"]
@@ -87,42 +91,11 @@ class RolPermiso(models.Model):
             )
 
 
-class Usuario(models.Model):
-    """Usuario interno que puede operar el sistema."""
-
-    nombres = models.CharField(max_length=150)
-    apellidos = models.CharField(max_length=150)
-    correo = models.EmailField(unique=True)
-    telefono = models.CharField(max_length=30, blank=True)
-    cargo = models.CharField(max_length=120, blank=True)
-    activo = models.BooleanField(default=True)
-    roles = models.ManyToManyField(
-        Rol,
-        related_name="usuarios",
-        blank=True,
-    )
-    rol_personalizado = models.OneToOneField(
-        Rol,
-        on_delete=models.SET_NULL,
-        related_name="usuario_personalizado",
-        null=True,
-        blank=True,
-    )
-
-    class Meta:
-        ordering = ["apellidos", "nombres"]
-        verbose_name = "Usuario"
-        verbose_name_plural = "Usuarios"
-
-    def __str__(self) -> str:
-        return f"{self.nombres} {self.apellidos}".strip()
-
-
 class UsuarioSucursal(models.Model):
     """Asignación de un usuario a una sucursal específica."""
 
     usuario = models.ForeignKey(
-        Usuario,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="asignaciones",
     )
@@ -142,12 +115,3 @@ class UsuarioSucursal(models.Model):
     def __str__(self) -> str:
         rol = f" - {self.rol}" if self.rol else ""
         return f"{self.usuario} @ {self.sucursal}{rol}"
-
-
-@receiver(post_delete, sender=Usuario)
-def eliminar_rol_personalizado(sender, instance, **kwargs):
-    """Elimina el rol/permisos personalizados al borrar el usuario."""
-
-    if instance.rol_personalizado:
-        instance.rol_personalizado.permisos.all().delete()
-        instance.rol_personalizado.delete()

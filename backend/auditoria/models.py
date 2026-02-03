@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -13,7 +14,7 @@ class RegistroAuditoria(models.Model):
         OTRO = "otro", "Otro"
 
     usuario = models.ForeignKey(
-        "usuarios.Usuario",
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         related_name="registros_auditoria",
         null=True,
