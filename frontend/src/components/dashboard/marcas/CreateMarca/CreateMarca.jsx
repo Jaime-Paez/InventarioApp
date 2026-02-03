@@ -15,6 +15,13 @@ const initialForm = {
   correo: '',
 }
 
+const getFlagUrl = (code) => {
+  if (!code) return ''
+  const clean = String(code).trim().toLowerCase()
+  if (clean.length !== 2) return ''
+  return `https://flagsapi.com/${clean.toUpperCase()}/flat/64.png`
+}
+
 function CreateMarca({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
@@ -56,11 +63,24 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
 
   const fetchCountries = useCallback(async () => {
     try {
-      const response = await authFetch(`${API_URL}/tipos/paises/`, {}, token)
-      if (!response.ok) throw new Error('No se pudieron cargar los paises.')
-      const data = await response.json()
-      const list = Array.isArray(data) ? data : data?.results || []
-      setCountries(list)
+      let url = `${API_URL}/tipos/paises/`
+      const all = []
+
+      while (url) {
+        const response = await authFetch(url, {}, token)
+        if (!response.ok) throw new Error('No se pudieron cargar los paises.')
+        const data = await response.json()
+        if (Array.isArray(data)) {
+          all.push(...data)
+          url = null
+        } else {
+          const list = data?.results || []
+          all.push(...list)
+          url = data?.next || null
+        }
+      }
+
+      setCountries(all)
     } catch (err) {
       notifyError(err.message || 'Ocurrio un error al cargar los paises.')
     }
@@ -152,6 +172,9 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
       setLoading(false)
     }
   }
+
+  const selectedCountry = countries.find((country) => String(country.id) === String(formData.paisId))
+  const selectedFlagUrl = getFlagUrl(selectedCountry?.codigo_pais)
 
   const handleMouseDown = (event) => {
     if (isMaximized) return
@@ -358,14 +381,19 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
 
                 <label className="create-user__field">
                   <span>Pais</span>
-                  <select name="paisId" value={formData.paisId} onChange={handleChange} disabled={loading}>
-                    <option value="">Selecciona un pais</option>
-                    {countries.map((country) => (
-                      <option key={country.id} value={country.id}>
-                        {country.nombre}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="create-user__select-with-flag">
+                    <select name="paisId" value={formData.paisId} onChange={handleChange} disabled={loading}>
+                      <option value="">Selecciona un pais</option>
+                      {countries.map((country) => (
+                        <option key={country.id} value={country.id}>
+                          {country.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    <span className={`create-user__flag${selectedFlagUrl ? '' : ' is-empty'}`} aria-hidden="true">
+                      {selectedFlagUrl ? <img src={selectedFlagUrl} alt="" /> : '□'}
+                    </span>
+                  </div>
                 </label>
 
                 <label className="create-user__field">
