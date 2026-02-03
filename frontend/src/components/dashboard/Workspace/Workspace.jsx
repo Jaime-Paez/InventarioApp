@@ -3,6 +3,8 @@ import QuickActions from '../QuickActions/QuickActions'
 import UsersTable from '../admin/UsersTable/UsersTable'
 import SucursalesTable from '../sucursales/SucursalesTable/SucursalesTable'
 import BodegasTable from '../bodegas/BodegasTable/BodegasTable'
+import MarcasTable from '../marcas/MarcasTable/MarcasTable'
+import CasasComercialesTable from '../casasComerciales/CasasComercialesTable/CasasComercialesTable'
 import './Workspace.css'
 import { labelHasAccess } from '../menuConfig'
 
@@ -31,6 +33,8 @@ function Workspace({
     Administrar: <UsersTable token={token} />,
     Sucursales: <SucursalesTable token={token} />,
     Bodegas: <BodegasTable token={token} />,
+    Marcas: <MarcasTable token={token} />,
+    'Casas comerciales': <CasasComercialesTable token={token} />,
   }
 
   const renderContent = () => (
