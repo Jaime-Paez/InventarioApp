@@ -452,7 +452,7 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
                       onChange={handleChange}
                       disabled={editorDisabled}
                     >
-                      <option value="">Selecciona una sucursal</option>
+                      <option value="" />
                       {branches.map((branch) => (
                         <option key={branch.id} value={branch.id}>
                           {branch.nombre}

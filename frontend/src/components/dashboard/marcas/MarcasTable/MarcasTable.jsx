@@ -12,6 +12,7 @@ import CreateMarca from '../CreateMarca/CreateMarca'
 import MarcaDetails from '../MarcaDetails/MarcaDetails'
 import '../../admin/UsersTable/UsersTable.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (v) => (v == null ? null : String(v))
 
@@ -31,6 +32,7 @@ function MarcasTable({ token, onSelect }) {
   )
 
   const [brands, setBrands] = useState([])
+  const [allBrands, setAllBrands] = useState([])
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
@@ -42,7 +44,102 @@ function MarcasTable({ token, onSelect }) {
     }))
   }, [])
 
-  const fetchBrands = useCallback(async () => {
+  const initialSearchCriteria = {
+    nombre: '',
+    codigo: '',
+    pais: '',
+    telefono: '',
+    correo: '',
+    descripcion: '',
+    fecha_creacion: '',
+    usuario_creador: '',
+  }
+
+  const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
+  const [showSearchModal, setShowSearchModal] = useState(false)
+  const lastSearchRef = useRef(null)
+  const [countries, setCountries] = useState([])
+  const [creators, setCreators] = useState([])
+  const [loadingFilters, setLoadingFilters] = useState(false)
+  const [isSearchMaximized, setIsSearchMaximized] = useState(false)
+  const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
+  const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
+  const searchModalRef = useRef(null)
+  const searchDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const searchResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
+  const searchSizeRef = useRef(searchSize)
+  const searchPosRef = useRef(searchPosition)
+  const searchRestoreRef = useRef(null)
+  const SEARCH_MIN_WIDTH = 640
+  const SEARCH_MIN_HEIGHT = 480
+  const SEARCH_PADDING = 12
+
+  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+  const contains = (fieldValue, target) => {
+    const needle = normalizeValue(target)
+    if (!needle) return true
+    return normalizeValue(fieldValue).includes(needle)
+  }
+  const exact = (fieldValue, target) => {
+    const needle = normalizeValue(target)
+    if (!needle) return true
+    return normalizeValue(fieldValue) === needle
+  }
+  const pickValue = (row, keys) => {
+    for (const key of keys) {
+      const value = key.split('.').reduce((acc, part) => acc?.[part], row)
+      if (value != null && value !== '') return value
+    }
+    return ''
+  }
+
+  const applySearchFilters = useCallback(
+    (list, criteria) =>
+      list.filter((row) => {
+        const paisValue = pickValue(row, ['pais_nombre', 'pais.nombre', 'pais'])
+        const creatorValue = pickValue(row, [
+          'usuario_creador',
+          'usuario_creador.nombre',
+          'usuario_creador.correo',
+          'creado_por',
+          'creado_por.nombre',
+          'created_by',
+          'created_by.username',
+          'created_by.email',
+        ])
+        const dateValue = pickValue(row, ['fecha_creacion', 'created_at', 'creado_en', 'registrado_en'])
+
+        return (
+          contains(row?.nombre, criteria.nombre) &&
+          contains(row?.codigo, criteria.codigo) &&
+          exact(paisValue, criteria.pais) &&
+          contains(row?.telefono, criteria.telefono) &&
+          contains(row?.correo, criteria.correo) &&
+          contains(row?.descripcion, criteria.descripcion) &&
+          contains(dateValue, criteria.fecha_creacion) &&
+          exact(creatorValue, criteria.usuario_creador)
+        )
+      }),
+    []
+  )
+
+  const handleSearchInputChange = (event) => {
+    const { name, value } = event.target
+    setSearchCriteria((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const handleSearchSubmit = async (event) => {
+    event.preventDefault()
+    lastSearchRef.current = { ...searchCriteria }
+    setShowSearchModal(false)
+    setIsRefreshing(true)
+    await fetchBrands(lastSearchRef.current)
+  }
+
+  const fetchBrands = useCallback(async (criteria) => {
     setLoading(true)
     setError(null)
     try {
@@ -52,7 +149,10 @@ function MarcasTable({ token, onSelect }) {
 
       const data = await res.json()
       const list = Array.isArray(data) ? data : data?.results || []
-      setBrands(normalizeList(list))
+      const normalized = normalizeList(list)
+      setAllBrands(normalized)
+      const filtered = criteria ? applySearchFilters(normalized, criteria) : normalized
+      setBrands(filtered)
     } catch (e) {
       const msg = e?.message || 'Ocurrio un error al cargar las marcas.'
       setError(msg)
@@ -61,15 +161,15 @@ function MarcasTable({ token, onSelect }) {
       setLoading(false)
       setIsRefreshing(false)
     }
-  }, [token, normalizeList])
-
-  useEffect(() => {
-    fetchBrands()
-  }, [fetchBrands])
+  }, [token, normalizeList, applySearchFilters])
 
   const refreshData = () => {
+    if (!lastSearchRef.current) {
+      setShowSearchModal(true)
+      return
+    }
     setIsRefreshing(true)
-    fetchBrands()
+    fetchBrands(lastSearchRef.current)
   }
 
   // ---------------- Filters ----------------
@@ -102,7 +202,11 @@ function MarcasTable({ token, onSelect }) {
     initFilters()
   }, [])
 
-  const clearFilter = () => initFilters()
+  const clearFilter = () => {
+    initFilters()
+    setSearchCriteria(initialSearchCriteria)
+    if (allBrands.length) setBrands(allBrands)
+  }
 
   const onGlobalFilterChange = (e) => {
     const value = e.target.value
@@ -213,6 +317,7 @@ function MarcasTable({ token, onSelect }) {
 
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
   const selectedColumnsRef = useRef(selectedColumns)
+  const [processedRows, setProcessedRows] = useState(null)
 
   useEffect(() => {
     selectedColumnsRef.current = selectedColumns
@@ -239,6 +344,66 @@ function MarcasTable({ token, onSelect }) {
     const sorted = columnOrder.map((f) => selectedColumns.find((c) => c.nombrevar === f)).filter(Boolean)
     setSelectedColumns(sorted)
   }
+
+  const exportColumns = useMemo(
+    () => selectedColumns.map((col) => ({ key: col.nombrevar, header: col.header })),
+    [selectedColumns]
+  )
+
+  const getExportValue = useCallback((row, field) => {
+    switch (field) {
+      case 'pais_nombre':
+        return row?.pais_nombre ?? row?.pais?.nombre ?? ''
+      default:
+        return row?.[field] ?? ''
+    }
+  }, [])
+
+  const getRowsToExport = useCallback(() => {
+    if (selectedRows?.length) return selectedRows
+    return processedRows === null ? brands : processedRows
+  }, [processedRows, selectedRows, brands])
+
+  const notifyExportWarning = useCallback((detail) => {
+    toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail, life: 3000 })
+  }, [])
+
+  const handleExportExcel = useCallback(async () => {
+    if (!exportColumns.length) {
+      notifyExportWarning('Selecciona al menos una columna para exportar.')
+      return
+    }
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
+      return
+    }
+    await exportToExcel({
+      rows,
+      columns: exportColumns,
+      valueGetter: getExportValue,
+      fileName: buildFileName('marcas'),
+    })
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+
+  const handleExportPdf = useCallback(async () => {
+    if (!exportColumns.length) {
+      notifyExportWarning('Selecciona al menos una columna para exportar.')
+      return
+    }
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
+      return
+    }
+    await exportToPdf({
+      rows,
+      columns: exportColumns,
+      valueGetter: getExportValue,
+      fileName: buildFileName('marcas'),
+      title: 'Reporte de Marcas',
+    })
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
@@ -306,7 +471,7 @@ function MarcasTable({ token, onSelect }) {
             ref={globalSearchRef}
             className="search-input"
             type="search"
-            placeholder="Buscar"
+            placeholder="Buscar en tabla"
             value={globalFilterValue}
             onChange={onGlobalFilterChange}
           />
@@ -320,13 +485,21 @@ function MarcasTable({ token, onSelect }) {
           <i className="pi pi-filter-slash" />
         </button>
 
-        <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Columnas">
+        <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Campos">
           <i className="pi pi-sliders-h" />
         </button>
       </div>
 
       <div className="users-header__right">
         <span className="users-header__count">Reg. {dataLength}</span>
+
+        <button className="users-circle users-circle--excel" type="button" title="Excel" onClick={handleExportExcel}>
+          <i className="pi pi-file-excel" />
+        </button>
+
+        <button className="users-circle users-circle--pdf" type="button" title="PDF" onClick={handleExportPdf}>
+          <i className="pi pi-file-pdf" />
+        </button>
       </div>
     </div>
   )
@@ -339,7 +512,188 @@ function MarcasTable({ token, onSelect }) {
     toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Marca creada correctamente', life: 2500 })
   }
 
-  const focusSearch = () => globalSearchRef.current?.focus?.()
+  const focusSearch = () => setShowSearchModal(true)
+
+  const fetchFilterOptions = useCallback(async () => {
+    if (!token) return
+    setLoadingFilters(true)
+    try {
+      const allCountries = []
+      let url = `${API_URL}/tipos/paises/`
+      while (url) {
+        const response = await authFetch(url, {}, token)
+        if (!response.ok) break
+        const data = await response.json()
+        if (Array.isArray(data)) {
+          allCountries.push(...data)
+          url = null
+        } else {
+          allCountries.push(...(data?.results || []))
+          url = data?.next || null
+        }
+      }
+      setCountries(allCountries)
+
+      const allUsers = []
+      let usersUrl = `${API_URL}/usuarios/listado/`
+      while (usersUrl) {
+        const response = await authFetch(usersUrl, {}, token)
+        if (!response.ok) break
+        const data = await response.json()
+        if (Array.isArray(data)) {
+          allUsers.push(...data)
+          usersUrl = null
+        } else {
+          allUsers.push(...(data?.results || []))
+          usersUrl = data?.next || null
+        }
+      }
+      setCreators(allUsers)
+    } finally {
+      setLoadingFilters(false)
+    }
+  }, [token])
+
+  useEffect(() => {
+    searchSizeRef.current = searchSize
+  }, [searchSize])
+
+  useEffect(() => {
+    searchPosRef.current = searchPosition
+  }, [searchPosition])
+
+  useEffect(() => {
+    if (!showSearchModal) return
+    if (!countries.length || !creators.length) {
+      fetchFilterOptions()
+    }
+    setIsSearchMaximized(false)
+    searchRestoreRef.current = null
+    const width = Math.min(720, window.innerWidth - SEARCH_PADDING * 2)
+    const height = Math.min(520, window.innerHeight - SEARCH_PADDING * 2)
+    setSearchSize({ width, height })
+    setSearchPosition({
+      x: Math.max((window.innerWidth - width) / 2, SEARCH_PADDING),
+      y: Math.max((window.innerHeight - height) / 2, SEARCH_PADDING),
+    })
+  }, [showSearchModal])
+
+  const handleSearchMouseDown = (event) => {
+    if (isSearchMaximized) return
+    if (!searchModalRef.current) return
+    const rect = searchModalRef.current.getBoundingClientRect()
+    searchDrag.current = {
+      active: true,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+  }
+
+  const handleSearchResizeMouseDown = (event) => {
+    if (isSearchMaximized) return
+    event.preventDefault()
+    event.stopPropagation()
+    searchResize.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: searchSizeRef.current.width,
+      startHeight: searchSizeRef.current.height,
+    }
+
+    const handleResizeMove = (moveEvent) => {
+      if (!searchResize.current.active) return
+      const deltaX = moveEvent.clientX - searchResize.current.startX
+      const deltaY = moveEvent.clientY - searchResize.current.startY
+      const maxWidth = Math.max(SEARCH_MIN_WIDTH, window.innerWidth - searchPosRef.current.x - SEARCH_PADDING)
+      const maxHeight = Math.max(SEARCH_MIN_HEIGHT, window.innerHeight - searchPosRef.current.y - SEARCH_PADDING)
+      const width = Math.min(Math.max(searchResize.current.startWidth + deltaX, SEARCH_MIN_WIDTH), maxWidth)
+      const height = Math.min(Math.max(searchResize.current.startHeight + deltaY, SEARCH_MIN_HEIGHT), maxHeight)
+      setSearchSize({ width, height })
+    }
+
+    const handleResizeUp = () => {
+      searchResize.current.active = false
+      window.removeEventListener('mousemove', handleResizeMove)
+      window.removeEventListener('mouseup', handleResizeUp)
+    }
+
+    window.addEventListener('mousemove', handleResizeMove)
+    window.addEventListener('mouseup', handleResizeUp)
+  }
+
+  useEffect(() => {
+    const handleMouseMove = (event) => {
+      if (!searchDrag.current.active) return
+      event.preventDefault()
+      const newX = event.clientX - searchDrag.current.offsetX
+      const newY = event.clientY - searchDrag.current.offsetY
+      const maxX = window.innerWidth - searchSizeRef.current.width - SEARCH_PADDING
+      const maxY = window.innerHeight - searchSizeRef.current.height - SEARCH_PADDING
+      setSearchPosition({
+        x: Math.min(Math.max(newX, SEARCH_PADDING), Math.max(maxX, SEARCH_PADDING)),
+        y: Math.min(Math.max(newY, SEARCH_PADDING), Math.max(maxY, SEARCH_PADDING)),
+      })
+    }
+
+    const handleMouseUp = () => {
+      searchDrag.current.active = false
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      if (!showSearchModal) return
+      if (isSearchMaximized) {
+        setSearchSize({
+          width: Math.max(0, window.innerWidth - SEARCH_PADDING * 2),
+          height: Math.max(0, window.innerHeight - SEARCH_PADDING * 2),
+        })
+        setSearchPosition({ x: SEARCH_PADDING, y: SEARCH_PADDING })
+        return
+      }
+      setSearchSize((prev) => {
+        const width = Math.min(Math.max(prev.width, SEARCH_MIN_WIDTH), window.innerWidth - SEARCH_PADDING * 2)
+        const height = Math.min(Math.max(prev.height, SEARCH_MIN_HEIGHT), window.innerHeight - SEARCH_PADDING * 2)
+        setSearchPosition((prevPos) => ({
+          x: Math.min(Math.max(prevPos.x, SEARCH_PADDING), Math.max(window.innerWidth - width - SEARCH_PADDING, SEARCH_PADDING)),
+          y: Math.min(Math.max(prevPos.y, SEARCH_PADDING), Math.max(window.innerHeight - height - SEARCH_PADDING, SEARCH_PADDING)),
+        }))
+        return { width, height }
+      })
+    }
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
+  }, [isSearchMaximized, showSearchModal])
+
+  const toggleSearchMaximize = () => {
+    if (isSearchMaximized) {
+      const restore = searchRestoreRef.current
+      if (restore) {
+        setSearchSize(restore.size)
+        setSearchPosition(restore.position)
+      }
+      setIsSearchMaximized(false)
+      return
+    }
+    searchRestoreRef.current = {
+      size: searchSizeRef.current,
+      position: searchPosRef.current,
+    }
+    setSearchSize({
+      width: Math.max(0, window.innerWidth - SEARCH_PADDING * 2),
+      height: Math.max(0, window.innerHeight - SEARCH_PADDING * 2),
+    })
+    setSearchPosition({ x: SEARCH_PADDING, y: SEARCH_PADDING })
+    setIsSearchMaximized(true)
+  }
 
   return (
     <div className="users-page">
@@ -348,8 +702,8 @@ function MarcasTable({ token, onSelect }) {
 
       <div className="users-page__top">
         <div className="users-page__actions">
-          <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
           <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
+          <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
         </div>
       </div>
 
@@ -387,6 +741,7 @@ function MarcasTable({ token, onSelect }) {
           removableSort
           filters={filters}
           onFilter={(e) => setFilters(e.filters)}
+          onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'codigo', 'pais_nombre', 'telefono', 'correo', 'descripcion']}
           stateStorage="session"
           stateKey="marcas-table-state"
@@ -396,7 +751,7 @@ function MarcasTable({ token, onSelect }) {
           columnResizeMode="fit"
           onRowClick={handleRowClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
-          selectionMode="checkbox"
+          selectionMode="multiple"
           selection={selectedRows}
           onSelectionChange={(e) => {
             const value = e.value || []
@@ -457,23 +812,25 @@ function MarcasTable({ token, onSelect }) {
           })}
         </DataTable>
 
-        <OverlayPanel ref={opColumns} showCloseIcon id="overlayPanel" style={{ width: '220px' }}>
-          <div className="op-column-title">Columnas</div>
-          <div className="op-column-body">
-            {columnsData.map((col) => (
-              <div key={col.nombrevar} className="op-column-item">
-                <Checkbox
-                  inputId={col.nombrevar}
-                  name="category"
-                  value={col}
-                  onChange={() => handleCheckboxChangeColumn(col)}
-                  checked={selectedColumns.some((c) => c.nombrevar === col.nombrevar)}
-                />
-                <label htmlFor={col.nombrevar}>{col.header}</label>
-              </div>
-            ))}
+        <OverlayPanel ref={opColumns} className="table-options-list">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <strong>Campos</strong>
           </div>
+
+          {columnsData.map((col) => (
+            <div key={col.nombrevar} className="p-field-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+              <Checkbox
+                inputId={col.nombrevar}
+                name="category"
+                value={col}
+                onChange={() => handleCheckboxChangeColumn(col)}
+                checked={selectedColumns.some((c) => c.nombrevar === col.nombrevar)}
+              />
+              <label htmlFor={col.nombrevar}>{col.header}</label>
+            </div>
+          ))}
         </OverlayPanel>
+
       </div>
 
       <CreateMarca
@@ -494,6 +851,156 @@ function MarcasTable({ token, onSelect }) {
         onDuplicated={handleDuplicated}
         onError={showErrorToast}
       />
+
+      {showSearchModal && (
+        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
+          <div
+            className="create-user__modal"
+            ref={searchModalRef}
+            style={{
+              top: searchPosition.y,
+              left: searchPosition.x,
+              width: searchSize.width,
+              height: searchSize.height,
+              maxWidth: `calc(100vw - ${SEARCH_PADDING * 2}px)`,
+              maxHeight: `calc(100vh - ${SEARCH_PADDING * 2}px)`,
+            }}
+          >
+            <header className="create-user__header" onMouseDown={handleSearchMouseDown}>
+              <div className="create-user__header-text">
+                <h3>Buscar marcas</h3>
+              </div>
+              <div className="create-user__header-actions">
+                <button
+                  type="button"
+                  className="create-user__icon-button create-user__icon-button--maximize"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={toggleSearchMaximize}
+                  aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
+                >
+                  {isSearchMaximized ? '🗕' : '🗖'}
+                </button>
+                <button
+                  type="button"
+                  className="create-user__icon-button"
+                  onClick={() => setShowSearchModal(false)}
+                  aria-label="Cerrar"
+                >
+                  ×
+                </button>
+              </div>
+            </header>
+
+            <form className="create-user__form" onSubmit={handleSearchSubmit}>
+              <div className="create-user__body">
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Filtros</p>
+                      <h4>Busqueda avanzada</h4>
+                    </div>
+                  </div>
+
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Codigo</span>
+                      <input name="codigo" type="text" placeholder="Ej: FRD" value={searchCriteria.codigo} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Nombre</span>
+                      <input name="nombre" type="text" placeholder="Ej: Ford" value={searchCriteria.nombre} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Pais</span>
+                      <select
+                        name="pais"
+                        value={searchCriteria.pais}
+                        onChange={handleSearchInputChange}
+                        className={!searchCriteria.pais ? 'is-placeholder' : undefined}
+                      >
+                        <option value="">Selecciona un pais</option>
+                        {countries.map((country) => (
+                          <option key={country.id} value={country.nombre}>
+                            {country.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Telefono</span>
+                      <input name="telefono" type="text" placeholder="Ej: 0991234567" value={searchCriteria.telefono} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Correo</span>
+                      <input name="correo" type="text" placeholder="Ej: marca@empresa.com" value={searchCriteria.correo} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Descripcion</span>
+                      <input name="descripcion" type="text" placeholder="Ej: Marca premium" value={searchCriteria.descripcion} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Fecha de creacion</span>
+                      <input name="fecha_creacion" type="text" placeholder="Ej: 2025-12-31" value={searchCriteria.fecha_creacion} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Usuario creador</span>
+                      <select
+                        name="usuario_creador"
+                        value={searchCriteria.usuario_creador}
+                        onChange={handleSearchInputChange}
+                        className={!searchCriteria.usuario_creador ? 'is-placeholder' : undefined}
+                      >
+                        <option value="">Selecciona un usuario</option>
+                        {creators.map((user) => {
+                          const label = `${user.nombres || ''} ${user.apellidos || ''}`.trim() || user.correo || user.email || `Usuario ${user.id}`
+                          return (
+                            <option key={user.id} value={label}>
+                              {label}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    </label>
+                  </div>
+                </section>
+              </div>
+
+              <div className="create-user__footer">
+                <div className="user-details__footer-left">
+                  <button
+                    type="button"
+                    className="create-user__action"
+                    onClick={() => setSearchCriteria(initialSearchCriteria)}
+                  >
+                    Limpiar filtros
+                  </button>
+                  <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowSearchModal(false)}>
+                    Cancelar
+                  </button>
+                </div>
+                <div className="user-details__footer-right">
+                  <button type="submit" className="create-user__action create-user__action--primary" disabled={loadingFilters}>
+                    Buscar
+                  </button>
+                </div>
+              </div>
+            </form>
+            <button
+              type="button"
+              aria-label="Cambiar tamano de ventana"
+              className="create-user__resize-handle"
+              onMouseDown={handleSearchResizeMouseDown}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

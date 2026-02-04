@@ -119,7 +119,7 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
     const { name, value } = event.target
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: name === 'codigo' ? value.toUpperCase() : value,
     }))
   }
 
@@ -312,7 +312,11 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
       <div className="create-user__modal" ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
-            <h3>Crear marca</h3>
+            <h3>
+              {formData.codigo && formData.nombre
+                ? `${formData.codigo}: ${formData.nombre}`
+                : (formData.codigo || formData.nombre || 'Crear marca')}
+            </h3>
           </div>
           <div className="create-user__header-actions">
             <button
@@ -331,7 +335,7 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
               onClick={onClose}
               aria-label="Cerrar"
             >
-              X
+              ×
             </button>
           </div>
         </header>
@@ -354,19 +358,6 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Nombre</span>
-                  <input
-                    name="nombre"
-                    type="text"
-                    placeholder="Nombre de la marca"
-                    value={formData.nombre}
-                    onChange={handleChange}
-                    required
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="create-user__field">
                   <span>Codigo</span>
                   <input
                     name="codigo"
@@ -380,10 +371,23 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
                 </label>
 
                 <label className="create-user__field">
+                  <span>Nombre</span>
+                  <input
+                    name="nombre"
+                    type="text"
+                    placeholder="Nombre de la marca"
+                    value={formData.nombre}
+                    onChange={handleChange}
+                    required
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="create-user__field">
                   <span>Pais</span>
                   <div className="create-user__select-with-flag">
                     <select name="paisId" value={formData.paisId} onChange={handleChange} disabled={loading}>
-                      <option value="">Selecciona un pais</option>
+                      <option value="" />
                       {countries.map((country) => (
                         <option key={country.id} value={country.id}>
                           {country.nombre}

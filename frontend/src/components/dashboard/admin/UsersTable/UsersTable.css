@@ -346,6 +346,18 @@
   border-color: var(--color-border);
 }
 
+/* Row-selection checkboxes (base light) */
+.users-datatable .p-checkbox .p-checkbox-box {
+  background: var(--table-color);
+  border-color: var(--color-border);
+}
+
+.users-datatable .row-selection-column .p-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Gridlines dark */
 .dashboard-shell.dark .users-datatable.p-datatable-gridlines .p-datatable-thead > tr > th,
 .dashboard-shell.dark .users-datatable.p-datatable-gridlines .p-datatable-tbody > tr > td {

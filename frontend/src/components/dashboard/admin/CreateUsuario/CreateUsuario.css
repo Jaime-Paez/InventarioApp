@@ -7,6 +7,10 @@
   pointer-events: none;
 }
 
+.create-user__overlay:focus-within {
+  z-index: 1000;
+}
+
 .create-user__modal {
   position: absolute;
   width: min(1100px, calc(100% - 24px));
@@ -418,6 +422,12 @@
   font-weight: 400;
 }
 
+.create-user__field select.is-placeholder {
+  color: var(--color-text-primary);
+  opacity: 0.35;
+  border-color: #292929;
+}
+
 
 .create-user__field input::placeholder {
   color: var(--color-text-primary);
@@ -446,6 +456,12 @@
 .dashboard-shell.dark .create-user__field select option {
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .create-user__field select.is-placeholder {
+  color: var(--color-text-dark);
+  opacity: 0.38;
+  border-color: var(--color-border);
 }
 
 .dashboard-shell.dark .create-user__field input::placeholder {
@@ -597,6 +613,18 @@
 
 .dashboard-shell.dark .create-user__action--cancel {
   color: var(--color-button-primary);
+}
+
+.create-user__action--secondary {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.dashboard-shell.dark .create-user__action--secondary {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: var(--color-text-dark);
 }
 
 .create-user__ghost {

@@ -83,7 +83,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
     const { name, value } = event.target
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: name === 'codigo' ? value.toUpperCase() : value,
     }))
   }
 
@@ -438,7 +438,11 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
       <div className="create-user__modal" ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
-            <h3>{casaComercialId ? `Casa comercial #${casaComercialId}` : 'Casa comercial'}</h3>
+            <h3>
+              {formData.codigo && formData.nombre
+                ? `${formData.codigo}: ${formData.nombre}`
+                : (formData.codigo || formData.nombre || (casaComercialId ? `Casa comercial #${casaComercialId}` : 'Casa comercial'))}
+            </h3>
           </div>
           <div className="create-user__header-actions">
             <button
@@ -448,7 +452,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              {isMaximized ? '[ ]' : '[]'}
+              {isMaximized ? '🗕' : '🗖'}
             </button>
             <button
               type="button"
@@ -457,7 +461,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
               onClick={onClose}
               aria-label="Cerrar"
             >
-              X
+              ×
             </button>
           </div>
         </header>
@@ -484,22 +488,22 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Nombre</span>
+                  <span>Codigo</span>
                   <input
-                    name="nombre"
+                    name="codigo"
                     type="text"
-                    value={formData.nombre}
+                    value={formData.codigo}
                     onChange={handleChange}
                     disabled={editorDisabled}
                   />
                 </label>
 
                 <label className="create-user__field">
-                  <span>Codigo</span>
+                  <span>Nombre</span>
                   <input
-                    name="codigo"
+                    name="nombre"
                     type="text"
-                    value={formData.codigo}
+                    value={formData.nombre}
                     onChange={handleChange}
                     disabled={editorDisabled}
                   />
@@ -514,7 +518,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
                       onChange={handleChange}
                       disabled={editorDisabled}
                     >
-                      <option value="">Selecciona un pais</option>
+                      <option value="" />
                       {countries.map((country) => (
                         <option key={country.id} value={country.id}>
                           {country.nombre}
@@ -568,51 +572,52 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
           <div className="user-details__footer-left">
             <button
               type="button"
+              className="create-user__action create-user__action--cancel"
+              onClick={isEditing ? handleCancelEdit : onClose}
+              disabled={saving}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
               className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
               onClick={() => setIsEditing((prev) => !prev)}
               disabled={loadingData || saving}
             >
               <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>
-              {isEditing ? 'Ver' : 'Editar'}
+              {isEditing ? 'Solo lectura' : 'Editar'}
             </button>
-
-            {isEditing && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--cancel"
-                onClick={handleCancelEdit}
-                disabled={saving}
-              >
-                Cancelar
-              </button>
-            )}
           </div>
 
           <div className="user-details__footer-right">
-            <button
-              type="button"
-              className="create-user__action"
-              onClick={handleDuplicateToMarca}
-              disabled={!isEditing || saving || duplicateLoading}
-            >
-              {duplicateLoading ? 'Duplicando...' : 'Duplicar a marca'}
-            </button>
-            <button
-              type="button"
-              className="create-user__action user-details__delete"
-              onClick={() => setShowDeleteDialog(true)}
-              disabled={!isEditing || saving || duplicateLoading}
-            >
-              Eliminar
-            </button>
-            <button
-              type="button"
-              className="create-user__action create-user__action--primary"
-              onClick={handleSave}
-              disabled={isViewMode || saving || duplicateLoading}
-            >
-              {saving ? 'Guardando...' : 'Guardar cambios'}
-            </button>
+            {isEditing && (
+              <>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={handleDuplicateToMarca}
+                  disabled={saving || duplicateLoading}
+                >
+                  {duplicateLoading ? 'Duplicando...' : 'Duplicar a marca'}
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action user-details__delete"
+                  onClick={() => setShowDeleteDialog(true)}
+                  disabled={saving || duplicateLoading}
+                >
+                  Eliminar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleSave}
+                  disabled={saving || duplicateLoading}
+                >
+                  {saving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </>
+            )}
           </div>
         </div>
 

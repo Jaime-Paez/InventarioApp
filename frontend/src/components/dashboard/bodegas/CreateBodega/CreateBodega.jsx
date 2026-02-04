@@ -367,7 +367,7 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
                     disabled={loading}
                     required
                   >
-                    <option value="">Selecciona una sucursal</option>
+                    <option value="" />
                     {branches.map((branch) => (
                       <option key={branch.id} value={branch.id}>
                         {branch.nombre}

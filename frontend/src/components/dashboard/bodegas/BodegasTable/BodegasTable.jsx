@@ -12,6 +12,7 @@ import CreateBodega from '../CreateBodega/CreateBodega'
 import BodegaDetails from '../BodegaDetails/BodegaDetails'
 import '../../admin/UsersTable/UsersTable.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (v) => (v == null ? null : String(v))
 
@@ -31,6 +32,7 @@ function BodegasTable({ token, onSelect }) {
   )
 
   const [warehouses, setWarehouses] = useState([])
+  const [allWarehouses, setAllWarehouses] = useState([])
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
@@ -54,6 +56,8 @@ function BodegasTable({ token, onSelect }) {
       const data = await res.json()
       const list = Array.isArray(data) ? data : data?.results || []
       setWarehouses(normalizeList(list))
+      setAllWarehouses(normalizeList(list))
+      return normalizeList(list)
     } catch (e) {
       const msg = e?.message || 'Ocurrió un error al cargar las bodegas.'
       setError(msg)
@@ -101,6 +105,84 @@ function BodegasTable({ token, onSelect }) {
   }, [])
 
   const clearFilter = () => initFilters()
+
+  const initialSearchCriteria = {
+    nombre: '',
+    sucursal: '',
+    ancho: '',
+    alto: '',
+    ubicaciones: '',
+    fecha_creacion: '',
+  }
+
+  const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
+  const [showSearchModal, setShowSearchModal] = useState(false)
+  const lastSearchRef = useRef(null)
+  const [isSearchMaximized, setIsSearchMaximized] = useState(false)
+  const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
+  const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
+  const searchModalRef = useRef(null)
+  const searchDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const searchResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
+  const searchSizeRef = useRef(searchSize)
+  const searchPosRef = useRef(searchPosition)
+  const searchRestoreRef = useRef(null)
+  const SEARCH_MIN_WIDTH = 640
+  const SEARCH_MIN_HEIGHT = 480
+  const SEARCH_PADDING = 12
+
+  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+  const contains = (fieldValue, target) => {
+    const needle = normalizeValue(target)
+    if (!needle) return true
+    return normalizeValue(fieldValue).includes(needle)
+  }
+  const exact = (fieldValue, target) => {
+    const needle = normalizeValue(target)
+    if (!needle) return true
+    return normalizeValue(fieldValue) === needle
+  }
+  const pickValue = (row, keys) => {
+    for (const key of keys) {
+      const value = key.split('.').reduce((acc, part) => acc?.[part], row)
+      if (value != null && value !== '') return value
+    }
+    return ''
+  }
+
+  const applySearchFilters = useCallback(
+    (list, criteria) =>
+      list.filter((row) => {
+        const dateValue = pickValue(row, ['fecha_creacion', 'created_at', 'creado_en', 'registrado_en'])
+
+        return (
+          contains(row?.nombre, criteria.nombre) &&
+          contains(row?.sucursal_nombre, criteria.sucursal) &&
+          contains(row?.ancho_metros, criteria.ancho) &&
+          contains(row?.alto_metros, criteria.alto) &&
+          contains(row?.ubicaciones_count, criteria.ubicaciones) &&
+          contains(dateValue, criteria.fecha_creacion)
+        )
+      }),
+    []
+  )
+
+  const handleSearchInputChange = (event) => {
+    const { name, value } = event.target
+    setSearchCriteria((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const handleSearchSubmit = async (event) => {
+    event.preventDefault()
+    lastSearchRef.current = { ...searchCriteria }
+    setShowSearchModal(false)
+    const source = allWarehouses.length ? allWarehouses : (await fetchWarehouses()) || []
+    setWarehouses(applySearchFilters(source, lastSearchRef.current))
+  }
+
 
   const onGlobalFilterChange = (e) => {
     const value = e.target.value
@@ -210,6 +292,7 @@ function BodegasTable({ token, onSelect }) {
 
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
   const selectedColumnsRef = useRef(selectedColumns)
+  const [processedRows, setProcessedRows] = useState(null)
 
   useEffect(() => {
     selectedColumnsRef.current = selectedColumns
@@ -236,6 +319,70 @@ function BodegasTable({ token, onSelect }) {
     const sorted = columnOrder.map((f) => selectedColumns.find((c) => c.nombrevar === f)).filter(Boolean)
     setSelectedColumns(sorted)
   }
+
+  const exportColumns = useMemo(
+    () => selectedColumns.map((col) => ({ key: col.nombrevar, header: col.header })),
+    [selectedColumns]
+  )
+
+  const getExportValue = useCallback((row, field) => {
+    const value = row?.[field]
+    if (field === 'ubicaciones_count') {
+      const num = Number(value)
+      return Number.isFinite(num) ? String(num) : ''
+    }
+    if (field === 'ancho_metros' || field === 'alto_metros') {
+      const num = Number(value)
+      return Number.isFinite(num) ? num.toFixed(2) : ''
+    }
+    return value ?? ''
+  }, [])
+
+  const getRowsToExport = useCallback(() => {
+    if (selectedRows?.length) return selectedRows
+    return processedRows === null ? warehouses : processedRows
+  }, [processedRows, selectedRows, warehouses])
+
+  const notifyExportWarning = useCallback((detail) => {
+    toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail, life: 3000 })
+  }, [])
+
+  const handleExportExcel = useCallback(async () => {
+    if (!exportColumns.length) {
+      notifyExportWarning('Selecciona al menos una columna para exportar.')
+      return
+    }
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
+      return
+    }
+    await exportToExcel({
+      rows,
+      columns: exportColumns,
+      valueGetter: getExportValue,
+      fileName: buildFileName('bodegas'),
+    })
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+
+  const handleExportPdf = useCallback(async () => {
+    if (!exportColumns.length) {
+      notifyExportWarning('Selecciona al menos una columna para exportar.')
+      return
+    }
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
+      return
+    }
+    await exportToPdf({
+      rows,
+      columns: exportColumns,
+      valueGetter: getExportValue,
+      fileName: buildFileName('bodegas'),
+      title: 'Reporte de Bodegas',
+    })
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
@@ -323,13 +470,21 @@ function BodegasTable({ token, onSelect }) {
           <i className="pi pi-filter-slash" />
         </button>
 
-        <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Columnas">
+        <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Campos">
           <i className="pi pi-sliders-h" />
         </button>
       </div>
 
       <div className="users-header__right">
         <span className="users-header__count">Reg. {dataLength}</span>
+
+        <button className="users-circle users-circle--excel" type="button" title="Excel" onClick={handleExportExcel}>
+          <i className="pi pi-file-excel" />
+        </button>
+
+        <button className="users-circle users-circle--pdf" type="button" title="PDF" onClick={handleExportPdf}>
+          <i className="pi pi-file-pdf" />
+        </button>
       </div>
     </div>
   )
@@ -342,7 +497,145 @@ function BodegasTable({ token, onSelect }) {
     toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Bodega creada correctamente', life: 2500 })
   }
 
-  const focusSearch = () => globalSearchRef.current?.focus?.()
+  const focusSearch = () => setShowSearchModal(true)
+
+  useEffect(() => {
+    searchSizeRef.current = searchSize
+  }, [searchSize])
+
+  useEffect(() => {
+    searchPosRef.current = searchPosition
+  }, [searchPosition])
+
+  useEffect(() => {
+    if (!showSearchModal) return
+    setIsSearchMaximized(false)
+    searchRestoreRef.current = null
+    const width = Math.min(720, window.innerWidth - SEARCH_PADDING * 2)
+    const height = Math.min(520, window.innerHeight - SEARCH_PADDING * 2)
+    setSearchSize({ width, height })
+    setSearchPosition({
+      x: Math.max((window.innerWidth - width) / 2, SEARCH_PADDING),
+      y: Math.max((window.innerHeight - height) / 2, SEARCH_PADDING),
+    })
+  }, [showSearchModal])
+
+  const handleSearchMouseDown = (event) => {
+    if (isSearchMaximized) return
+    if (!searchModalRef.current) return
+    const rect = searchModalRef.current.getBoundingClientRect()
+    searchDrag.current = {
+      active: true,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+  }
+
+  const handleSearchResizeMouseDown = (event) => {
+    if (isSearchMaximized) return
+    event.preventDefault()
+    event.stopPropagation()
+    searchResize.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: searchSizeRef.current.width,
+      startHeight: searchSizeRef.current.height,
+    }
+
+    const handleResizeMove = (moveEvent) => {
+      if (!searchResize.current.active) return
+      const deltaX = moveEvent.clientX - searchResize.current.startX
+      const deltaY = moveEvent.clientY - searchResize.current.startY
+      const maxWidth = Math.max(SEARCH_MIN_WIDTH, window.innerWidth - searchPosRef.current.x - SEARCH_PADDING)
+      const maxHeight = Math.max(SEARCH_MIN_HEIGHT, window.innerHeight - searchPosRef.current.y - SEARCH_PADDING)
+      const width = Math.min(Math.max(searchResize.current.startWidth + deltaX, SEARCH_MIN_WIDTH), maxWidth)
+      const height = Math.min(Math.max(searchResize.current.startHeight + deltaY, SEARCH_MIN_HEIGHT), maxHeight)
+      setSearchSize({ width, height })
+    }
+
+    const handleResizeUp = () => {
+      searchResize.current.active = false
+      window.removeEventListener('mousemove', handleResizeMove)
+      window.removeEventListener('mouseup', handleResizeUp)
+    }
+
+    window.addEventListener('mousemove', handleResizeMove)
+    window.addEventListener('mouseup', handleResizeUp)
+  }
+
+  useEffect(() => {
+    const handleMouseMove = (event) => {
+      if (!searchDrag.current.active) return
+      event.preventDefault()
+      const newX = event.clientX - searchDrag.current.offsetX
+      const newY = event.clientY - searchDrag.current.offsetY
+      const maxX = window.innerWidth - searchSizeRef.current.width - SEARCH_PADDING
+      const maxY = window.innerHeight - searchSizeRef.current.height - SEARCH_PADDING
+      setSearchPosition({
+        x: Math.min(Math.max(newX, SEARCH_PADDING), Math.max(maxX, SEARCH_PADDING)),
+        y: Math.min(Math.max(newY, SEARCH_PADDING), Math.max(maxY, SEARCH_PADDING)),
+      })
+    }
+
+    const handleMouseUp = () => {
+      searchDrag.current.active = false
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      if (!showSearchModal) return
+      if (isSearchMaximized) {
+        setSearchSize({
+          width: Math.max(0, window.innerWidth - SEARCH_PADDING * 2),
+          height: Math.max(0, window.innerHeight - SEARCH_PADDING * 2),
+        })
+        setSearchPosition({ x: SEARCH_PADDING, y: SEARCH_PADDING })
+        return
+      }
+      setSearchSize((prev) => {
+        const width = Math.min(Math.max(prev.width, SEARCH_MIN_WIDTH), window.innerWidth - SEARCH_PADDING * 2)
+        const height = Math.min(Math.max(prev.height, SEARCH_MIN_HEIGHT), window.innerHeight - SEARCH_PADDING * 2)
+        setSearchPosition((prevPos) => ({
+          x: Math.min(Math.max(prevPos.x, SEARCH_PADDING), Math.max(window.innerWidth - width - SEARCH_PADDING, SEARCH_PADDING)),
+          y: Math.min(Math.max(prevPos.y, SEARCH_PADDING), Math.max(window.innerHeight - height - SEARCH_PADDING, SEARCH_PADDING)),
+        }))
+        return { width, height }
+      })
+    }
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
+  }, [isSearchMaximized, showSearchModal])
+
+  const toggleSearchMaximize = () => {
+    if (isSearchMaximized) {
+      const restore = searchRestoreRef.current
+      if (restore) {
+        setSearchSize(restore.size)
+        setSearchPosition(restore.position)
+      }
+      setIsSearchMaximized(false)
+      return
+    }
+    searchRestoreRef.current = {
+      size: searchSizeRef.current,
+      position: searchPosRef.current,
+    }
+    setSearchSize({
+      width: Math.max(0, window.innerWidth - SEARCH_PADDING * 2),
+      height: Math.max(0, window.innerHeight - SEARCH_PADDING * 2),
+    })
+    setSearchPosition({ x: SEARCH_PADDING, y: SEARCH_PADDING })
+    setIsSearchMaximized(true)
+  }
 
   return (
     <div className="users-page">
@@ -351,8 +644,8 @@ function BodegasTable({ token, onSelect }) {
 
       <div className="users-page__top">
         <div className="users-page__actions">
-          <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
           <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
+          <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
         </div>
       </div>
 
@@ -390,6 +683,7 @@ function BodegasTable({ token, onSelect }) {
           removableSort
           filters={filters}
           onFilter={(e) => setFilters(e.filters)}
+          onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'sucursal_nombre', 'ancho_metros', 'alto_metros', 'ubicaciones_count']}
           stateStorage="session"
           stateKey="bodegas-table-state"
@@ -399,7 +693,7 @@ function BodegasTable({ token, onSelect }) {
           columnResizeMode="fit"
           onRowClick={handleRowClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
-          selectionMode="checkbox"
+          selectionMode="multiple"
           selection={selectedRows}
           onSelectionChange={(e) => {
             const value = e.value || []
@@ -467,23 +761,25 @@ function BodegasTable({ token, onSelect }) {
           })}
         </DataTable>
 
-        <OverlayPanel ref={opColumns} showCloseIcon id="overlayPanel" style={{ width: '220px' }}>
-          <div className="op-column-title">Columnas</div>
-          <div className="op-column-body">
-            {columnsData.map((col) => (
-              <div key={col.nombrevar} className="op-column-item">
-                <Checkbox
-                  inputId={col.nombrevar}
-                  name="category"
-                  value={col}
-                  onChange={() => handleCheckboxChangeColumn(col)}
-                  checked={selectedColumns.some((c) => c.nombrevar === col.nombrevar)}
-                />
-                <label htmlFor={col.nombrevar}>{col.header}</label>
-              </div>
-            ))}
+        <OverlayPanel ref={opColumns} className="table-options-list">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <strong>Campos</strong>
           </div>
+
+          {columnsData.map((col) => (
+            <div key={col.nombrevar} className="p-field-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+              <Checkbox
+                inputId={col.nombrevar}
+                name="category"
+                value={col}
+                onChange={() => handleCheckboxChangeColumn(col)}
+                checked={selectedColumns.some((c) => c.nombrevar === col.nombrevar)}
+              />
+              <label htmlFor={col.nombrevar}>{col.header}</label>
+            </div>
+          ))}
         </OverlayPanel>
+
       </div>
 
       <CreateBodega
@@ -503,6 +799,120 @@ function BodegasTable({ token, onSelect }) {
         onDeleted={handleDeleted}
         onError={showErrorToast}
       />
+
+      {showSearchModal && (
+        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
+          <div
+            className="create-user__modal"
+            ref={searchModalRef}
+            style={{
+              top: searchPosition.y,
+              left: searchPosition.x,
+              width: searchSize.width,
+              height: searchSize.height,
+              maxWidth: `calc(100vw - ${SEARCH_PADDING * 2}px)`,
+              maxHeight: `calc(100vh - ${SEARCH_PADDING * 2}px)`,
+            }}
+          >
+            <header className="create-user__header" onMouseDown={handleSearchMouseDown}>
+              <div className="create-user__header-text">
+                <h3>Buscar bodegas</h3>
+              </div>
+              <div className="create-user__header-actions">
+                <button
+                  type="button"
+                  className="create-user__icon-button create-user__icon-button--maximize"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={toggleSearchMaximize}
+                  aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
+                >
+                  {isSearchMaximized ? '🗕' : '🗖'}
+                </button>
+                <button
+                  type="button"
+                  className="create-user__icon-button"
+                  onClick={() => setShowSearchModal(false)}
+                  aria-label="Cerrar"
+                >
+                  ×
+                </button>
+              </div>
+            </header>
+
+            <form className="create-user__form" onSubmit={handleSearchSubmit}>
+              <div className="create-user__body">
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Filtros</p>
+                      <h4>Busqueda avanzada</h4>
+                    </div>
+                  </div>
+
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Nombre</span>
+                      <input name="nombre" type="text" placeholder="Ej: Bodega Norte" value={searchCriteria.nombre} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Sucursal</span>
+                      <input name="sucursal" type="text" placeholder="Ej: Sucursal Centro" value={searchCriteria.sucursal} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Ancho</span>
+                      <input name="ancho" type="text" placeholder="Ej: 25" value={searchCriteria.ancho} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Alto</span>
+                      <input name="alto" type="text" placeholder="Ej: 10" value={searchCriteria.alto} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Ubicaciones</span>
+                      <input name="ubicaciones" type="text" placeholder="Ej: 120" value={searchCriteria.ubicaciones} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Fecha de creacion</span>
+                      <input name="fecha_creacion" type="text" placeholder="Ej: 2025-12-31" value={searchCriteria.fecha_creacion} onChange={handleSearchInputChange} />
+                    </label>
+
+                  </div>
+                </section>
+              </div>
+
+              <div className="create-user__footer">
+                <div className="user-details__footer-left">
+                  <button
+                    type="button"
+                    className="create-user__action"
+                    onClick={() => setSearchCriteria(initialSearchCriteria)}
+                  >
+                    Limpiar filtros
+                  </button>
+                  <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowSearchModal(false)}>
+                    Cancelar
+                  </button>
+                </div>
+                <div className="user-details__footer-right">
+                  <button type="submit" className="create-user__action create-user__action--primary">
+                    Buscar
+                  </button>
+                </div>
+              </div>
+            </form>
+            <button
+              type="button"
+              aria-label="Cambiar tamano de ventana"
+              className="create-user__resize-handle"
+              onMouseDown={handleSearchResizeMouseDown}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

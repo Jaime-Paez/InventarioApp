@@ -119,7 +119,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
     const { name, value } = event.target
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: name === 'codigo' ? value.toUpperCase() : value,
     }))
   }
 
@@ -312,7 +312,11 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
       <div className="create-user__modal" ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
-            <h3>Crear casa comercial</h3>
+            <h3>
+              {formData.codigo && formData.nombre
+                ? `${formData.codigo}: ${formData.nombre}`
+                : (formData.codigo || formData.nombre || 'Crear casa comercial')}
+            </h3>
           </div>
           <div className="create-user__header-actions">
             <button
@@ -322,7 +326,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              {isMaximized ? '[ ]' : '[]'}
+              {isMaximized ? '🗕' : '🗖'}
             </button>
             <button
               type="button"
@@ -331,7 +335,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
               onClick={onClose}
               aria-label="Cerrar"
             >
-              X
+              ×
             </button>
           </div>
         </header>
@@ -354,12 +358,12 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Nombre</span>
+                  <span>Codigo</span>
                   <input
-                    name="nombre"
+                    name="codigo"
                     type="text"
-                    placeholder="Nombre de la casa comercial"
-                    value={formData.nombre}
+                    placeholder="Codigo"
+                    value={formData.codigo}
                     onChange={handleChange}
                     required
                     disabled={loading}
@@ -367,12 +371,12 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                 </label>
 
                 <label className="create-user__field">
-                  <span>Codigo</span>
+                  <span>Nombre</span>
                   <input
-                    name="codigo"
+                    name="nombre"
                     type="text"
-                    placeholder="Codigo"
-                    value={formData.codigo}
+                    placeholder="Nombre de la casa comercial"
+                    value={formData.nombre}
                     onChange={handleChange}
                     required
                     disabled={loading}
@@ -388,7 +392,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                       onChange={handleChange}
                       disabled={loading}
                     >
-                      <option value="">Selecciona un pais</option>
+                      <option value="" />
                       {countries.map((country) => (
                         <option key={country.id} value={country.id}>
                           {country.nombre}
