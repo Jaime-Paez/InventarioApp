@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FilterMatchMode, FilterOperator } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -102,8 +102,10 @@ function UsersTable({
     setGlobalFilterValue('')
   }
 
+  const USERS_TABLE_STATE_KEY = 'usuarios-table-state-v2'
+
   useEffect(() => {
-    const savedState = sessionStorage.getItem('usuarios-table-state')
+    const savedState = sessionStorage.getItem(USERS_TABLE_STATE_KEY)
     if (savedState) {
       const parsed = JSON.parse(savedState)
       if (parsed?.filters) {
@@ -575,7 +577,7 @@ function UsersTable({
     searchPosRef.current = searchPosition
   }, [searchPosition])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!showSearchModal) return
     setIsSearchMaximized(false)
     searchRestoreRef.current = null
@@ -754,7 +756,7 @@ function UsersTable({
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['codigo', 'nombre', 'correo', 'telefono', 'cargo', 'activo']}
           stateStorage="session"
-          stateKey="usuarios-table-state"
+          stateKey={USERS_TABLE_STATE_KEY}
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
@@ -826,6 +828,7 @@ function UsersTable({
                 filterClear={filterClearTemplate}
                 filterApply={filterApplyTemplate}
                 className={className}
+                headerClassName={className}
                 filterMatchMode={filterMatchMode}
                 filterElement={filterElement}
                 showFilterMatchModes={showFilterMatchModes}

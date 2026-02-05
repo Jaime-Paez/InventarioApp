@@ -5,6 +5,8 @@ import SucursalesTable from '../sucursales/SucursalesTable/SucursalesTable'
 import BodegasTable from '../bodegas/BodegasTable/BodegasTable'
 import MarcasTable from '../marcas/MarcasTable/MarcasTable'
 import CasasComercialesTable from '../casasComerciales/CasasComercialesTable/CasasComercialesTable'
+import ClientesTable from '../clientes/ClientesTable/ClientesTable'
+import ProductosTable from '../productos/ProductosTable/ProductosTable'
 import './Workspace.css'
 import { labelHasAccess } from '../menuConfig'
 
@@ -35,6 +37,8 @@ function Workspace({
     Bodegas: <BodegasTable token={token} />,
     Marcas: <MarcasTable token={token} />,
     'Casas comerciales': <CasasComercialesTable token={token} />,
+    Productos: <ProductosTable token={token} />,
+    Clientes: <ClientesTable token={token} />,
   }
 
   const renderContent = () => (

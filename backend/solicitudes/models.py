@@ -1,24 +1,53 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from marcas.models import Marca
+
 
 class Cliente(models.Model):
     """Información básica de los clientes que realizan solicitudes."""
 
-    nombre = models.CharField(max_length=255)
+    nombres = models.CharField(max_length=255)
+    apellidos = models.CharField(max_length=255)
     correo = models.EmailField(blank=True)
     telefono = models.CharField(max_length=50, blank=True)
     direccion = models.CharField(max_length=255, blank=True)
     cedula_ruc = models.CharField("Cédula/RUC", max_length=25, blank=True)
 
     class Meta:
-        ordering = ["nombre"]
+        ordering = ["nombres", "apellidos"]
         verbose_name = "Cliente"
         verbose_name_plural = "Clientes"
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
-        return self.nombre
+        full_name = f"{self.nombres} {self.apellidos}".strip()
+        return full_name or self.nombres
 
+class Auto(models.Model):
+    """Vehiculo asociado a un cliente."""
+
+    cliente = models.ForeignKey(
+        Cliente,
+        on_delete=models.CASCADE,
+        related_name="autos",
+    )
+    placa = models.CharField(max_length=20)
+    modelo = models.CharField(max_length=120)
+    anio = models.PositiveSmallIntegerField("Anio")
+    marca = models.ForeignKey(
+        Marca,
+        on_delete=models.PROTECT,
+        related_name="autos",
+    )
+    color = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        ordering = ["placa"]
+        verbose_name = "Auto"
+        verbose_name_plural = "Autos"
+
+    def __str__(self) -> str:  # pragma: no cover - representacion legible
+        return f"{self.placa} - {self.modelo}"
 
 class ProductoSolicitado(models.Model):
     """Producto solicitado por un cliente que aún no está en inventario."""
@@ -41,7 +70,6 @@ class ProductoSolicitado(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
         return self.nombre
-
 
 class Solicitud(models.Model):
     """Solicitud de productos realizada por un cliente."""

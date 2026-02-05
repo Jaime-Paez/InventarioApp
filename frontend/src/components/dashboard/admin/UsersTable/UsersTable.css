@@ -70,6 +70,48 @@
   min-height: 200px;
 }
 
+/* ====== Variante compacta (tabla mas pequena) ====== */
+.users-table--compact {
+  border-radius: 12px;
+}
+
+.users-table--compact .users-header {
+  padding: 6px 8px 4px 8px;
+  gap: 8px;
+}
+
+.users-table--compact .search-input-container {
+  height: 24px;
+  padding: 4px 8px;
+  max-width: 150px;
+}
+
+.users-table--compact .rounded-icon-btn,
+.users-table--compact .users-circle {
+  width: 24px;
+  height: 24px;
+}
+
+.users-table--compact .users-header__count {
+  font-size: 0.85rem;
+}
+
+.users-datatable--compact .p-datatable-table {
+  font-size: 0.82rem;
+}
+
+.users-datatable--compact .p-datatable-thead > tr > th {
+  padding: 6px 6px;
+}
+
+.users-datatable--compact .p-datatable-tbody > tr > td {
+  padding: 4px 6px;
+}
+
+.users-datatable--compact .p-paginator {
+  padding: 6px 8px;
+}
+
 .dashboard-shell.dark .users-table {
   background: var(--color-surface-dark);
   color: var(--color-text-dark);

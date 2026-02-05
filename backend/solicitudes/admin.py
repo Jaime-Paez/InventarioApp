@@ -5,8 +5,8 @@ from .models import Cliente, OEMProductoSolicitado, ProductoSolicitado, Solicitu
 
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "correo", "telefono", "cedula_ruc")
-    search_fields = ("nombre", "correo", "telefono", "cedula_ruc")
+    list_display = ("nombres", "apellidos", "correo", "telefono", "cedula_ruc")
+    search_fields = ("nombres", "apellidos", "correo", "telefono", "cedula_ruc")
 
 
 @admin.register(ProductoSolicitado)
@@ -21,7 +21,8 @@ class SolicitudAdmin(admin.ModelAdmin):
     list_display = ("id", "cliente", "tabla", "cantidad", "fecha", "sucursal")
     list_filter = ("tabla", "fecha", "sucursal")
     search_fields = (
-        "cliente__nombre",
+        "cliente__nombres",
+        "cliente__apellidos",
         "cliente__cedula_ruc",
         "producto__nombre",
         "producto_solicitado__nombre",

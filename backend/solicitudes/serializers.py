@@ -3,13 +3,50 @@ from rest_framework import serializers
 from inventario.models import Sucursal
 from productos.models import OEM, Producto
 
-from .models import Cliente, OEMProductoSolicitado, ProductoSolicitado, Solicitud
+from .models import Auto, Cliente, OEMProductoSolicitado, ProductoSolicitado, Solicitud
+from marcas.models import Marca
+
+
+class AutoSerializer(serializers.ModelSerializer):
+    marca = serializers.StringRelatedField(read_only=True)
+    marca_id = serializers.PrimaryKeyRelatedField(
+        source="marca",
+        queryset=Marca.objects.all(),
+        write_only=True,
+    )
+
+    class Meta:
+        model = Auto
+        fields = ["id", "placa", "modelo", "anio", "marca", "marca_id", "color"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["marca_id"] = instance.marca_id
+        return data
 
 
 class ClienteSerializer(serializers.ModelSerializer):
+    autos = AutoSerializer(many=True, required=False)
+
     class Meta:
         model = Cliente
-        fields = ["id", "nombre", "correo", "telefono", "direccion", "cedula_ruc"]
+        fields = ["id", "nombres", "apellidos", "correo", "telefono", "direccion", "cedula_ruc", "autos"]
+
+    def create(self, validated_data):
+        autos_data = validated_data.pop("autos", [])
+        cliente = super().create(validated_data)
+        for auto in autos_data:
+            Auto.objects.create(cliente=cliente, **auto)
+        return cliente
+
+    def update(self, instance, validated_data):
+        autos_data = validated_data.pop("autos", None)
+        cliente = super().update(instance, validated_data)
+        if autos_data is not None:
+            instance.autos.all().delete()
+            for auto in autos_data:
+                Auto.objects.create(cliente=cliente, **auto)
+        return cliente
 
 
 class ProductoSolicitadoSerializer(serializers.ModelSerializer):

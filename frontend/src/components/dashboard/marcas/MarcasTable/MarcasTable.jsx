@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FilterMatchMode, FilterOperator } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -461,6 +461,9 @@ function MarcasTable({ token, onSelect }) {
 
   // ---------------- Header ----------------
   const dataLength = brands?.length ?? 0
+  const emptyMessage = lastSearchRef.current
+    ? 'No se encontraron marcas'
+    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
 
   const header = (
     <div className="users-header">
@@ -562,7 +565,7 @@ function MarcasTable({ token, onSelect }) {
     searchPosRef.current = searchPosition
   }, [searchPosition])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!showSearchModal) return
     if (!countries.length || !creators.length) {
       fetchFilterOptions()
@@ -729,7 +732,7 @@ function MarcasTable({ token, onSelect }) {
           header={header}
           className="users-datatable"
           tableStyle={{ width: '100%' }}
-          emptyMessage="No se encontraron marcas"
+          emptyMessage={emptyMessage}
           showGridlines
           size="small"
           scrollable

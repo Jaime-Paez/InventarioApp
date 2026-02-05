@@ -13,12 +13,12 @@ from .serializers import (
 
 
 class ClienteViewSet(viewsets.ModelViewSet):
-    queryset = Cliente.objects.all().order_by("nombre")
+    queryset = Cliente.objects.all().order_by("nombres", "apellidos")
     serializer_class = ClienteSerializer
     permission_classes = [IsAuthenticated, ClientesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombre", "correo", "telefono", "cedula_ruc"]
-    ordering_fields = ["nombre", "correo", "telefono"]
+    search_fields = ["nombres", "apellidos", "correo", "telefono", "cedula_ruc"]
+    ordering_fields = ["nombres", "apellidos", "correo", "telefono"]
 
 
 class ProductoSolicitadoViewSet(viewsets.ModelViewSet):
@@ -62,10 +62,11 @@ class SolicitudViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
-        "cliente__nombre",
+        "cliente__nombres",
+        "cliente__apellidos",
         "cliente__cedula_ruc",
         "producto__nombre",
         "producto_solicitado__nombre",
         "sucursal__nombre",
     ]
-    ordering_fields = ["fecha", "cantidad", "cliente__nombre", "sucursal__nombre"]
+    ordering_fields = ["fecha", "cantidad", "cliente__nombres", "cliente__apellidos", "sucursal__nombre"]

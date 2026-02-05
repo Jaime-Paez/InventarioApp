@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FilterMatchMode, FilterOperator } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -507,7 +507,7 @@ function BodegasTable({ token, onSelect }) {
     searchPosRef.current = searchPosition
   }, [searchPosition])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!showSearchModal) return
     setIsSearchMaximized(false)
     searchRestoreRef.current = null
