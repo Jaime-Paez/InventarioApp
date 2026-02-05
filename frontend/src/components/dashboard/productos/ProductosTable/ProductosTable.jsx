@@ -171,6 +171,12 @@ function ProductosTable({ token, onSelect }) {
   const clearFilter = () => {
     initFilters()
     setSearchCriteria(initialSearchCriteria)
+    setSearchMarcaQuery('')
+    setSearchCasaQuery('')
+    setSearchMarcaOptions([])
+    setSearchCasaOptions([])
+    setShowSearchMarcaDropdown(false)
+    setShowSearchCasaDropdown(false)
     lastSearchRef.current = null
     setProducts([])
   }
@@ -189,12 +195,22 @@ function ProductosTable({ token, onSelect }) {
   }
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
+  const [searchMarcaQuery, setSearchMarcaQuery] = useState('')
+  const [searchCasaQuery, setSearchCasaQuery] = useState('')
+  const [searchMarcaOptions, setSearchMarcaOptions] = useState([])
+  const [searchCasaOptions, setSearchCasaOptions] = useState([])
+  const [searchMarcaLoading, setSearchMarcaLoading] = useState(false)
+  const [searchCasaLoading, setSearchCasaLoading] = useState(false)
+  const [showSearchMarcaDropdown, setShowSearchMarcaDropdown] = useState(false)
+  const [showSearchCasaDropdown, setShowSearchCasaDropdown] = useState(false)
   const [showSearchModal, setShowSearchModal] = useState(false)
   const lastSearchRef = useRef(null)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
   const searchModalRef = useRef(null)
+  const searchMarcaDropdownRef = useRef(null)
+  const searchCasaDropdownRef = useRef(null)
   const searchDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const searchResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const searchSizeRef = useRef(searchSize)
@@ -211,6 +227,114 @@ function ProductosTable({ token, onSelect }) {
       [name]: value,
     }))
   }
+
+  const searchMarcas = useCallback(
+    async (query) => {
+      const term = String(query ?? '').trim()
+      if (!term || !token) {
+        setSearchMarcaOptions([])
+        return
+      }
+      setSearchMarcaLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar las marcas.')
+        const data = await response.json()
+        const list = Array.isArray(data) ? data : data?.results || []
+        setSearchMarcaOptions(list)
+      } catch {
+        setSearchMarcaOptions([])
+      } finally {
+        setSearchMarcaLoading(false)
+      }
+    },
+    [token]
+  )
+
+  const searchCasas = useCallback(
+    async (query) => {
+      const term = String(query ?? '').trim()
+      if (!term || !token) {
+        setSearchCasaOptions([])
+        return
+      }
+      setSearchCasaLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/casa-comercial/casas/?search=${encodeURIComponent(term)}&page_size=20`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar las casas comerciales.')
+        const data = await response.json()
+        const list = Array.isArray(data) ? data : data?.results || []
+        setSearchCasaOptions(list)
+      } catch {
+        setSearchCasaOptions([])
+      } finally {
+        setSearchCasaLoading(false)
+      }
+    },
+    [token]
+  )
+
+  useEffect(() => {
+    if (!showSearchModal) return
+    const term = searchMarcaQuery.trim()
+    if (!term) {
+      setSearchMarcaOptions([])
+      return
+    }
+    const handle = setTimeout(() => {
+      searchMarcas(term)
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [searchMarcaQuery, searchMarcas, showSearchModal])
+
+  useEffect(() => {
+    if (!showSearchModal) return
+    const term = searchCasaQuery.trim()
+    if (!term) {
+      setSearchCasaOptions([])
+      return
+    }
+    const handle = setTimeout(() => {
+      searchCasas(term)
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [searchCasaQuery, searchCasas, showSearchModal])
+
+  useEffect(() => {
+    if (!showSearchModal) return
+    setSearchMarcaQuery(searchCriteria.marca || '')
+    setSearchCasaQuery(searchCriteria.casa_comercial || '')
+  }, [showSearchModal, searchCriteria.marca, searchCriteria.casa_comercial])
+
+  useEffect(() => {
+    if (!showSearchModal) return
+    const handleClick = (event) => {
+      if (
+        showSearchMarcaDropdown &&
+        searchMarcaDropdownRef.current &&
+        !searchMarcaDropdownRef.current.contains(event.target)
+      ) {
+        setShowSearchMarcaDropdown(false)
+      }
+      if (
+        showSearchCasaDropdown &&
+        searchCasaDropdownRef.current &&
+        !searchCasaDropdownRef.current.contains(event.target)
+      ) {
+        setShowSearchCasaDropdown(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [showSearchModal, showSearchMarcaDropdown, showSearchCasaDropdown])
 
   const handleSearchSubmit = async (event) => {
     event.preventDefault()
@@ -960,24 +1084,126 @@ function ProductosTable({ token, onSelect }) {
 
                     <label className="create-user__field">
                       <span>Marca</span>
-                      <input
-                        name="marca"
-                        type="text"
-                        placeholder="Escribe para buscar"
-                        value={searchCriteria.marca}
-                        onChange={handleSearchInputChange}
-                      />
+                      <div className="create-user__dropdown" ref={searchMarcaDropdownRef}>
+                        <button
+                          type="button"
+                          className="create-user__dropdown-trigger"
+                          onClick={() => {
+                            setShowSearchMarcaDropdown((prev) => !prev)
+                            setShowSearchCasaDropdown(false)
+                          }}
+                        >
+                          <span>{searchMarcaQuery.trim() ? searchMarcaQuery : 'Selecciona una marca'}</span>
+                          <i className={`pi pi-chevron-${showSearchMarcaDropdown ? 'up' : 'down'}`} />
+                        </button>
+
+                        {showSearchMarcaDropdown && (
+                          <div className="create-user__dropdown-panel">
+                            <div className="create-user__dropdown-search">
+                              <i className="pi pi-search" />
+                              <input
+                                type="text"
+                                placeholder="Buscar marcas"
+                                value={searchMarcaQuery}
+                                onChange={(event) => {
+                                  const value = event.target.value
+                                  setSearchMarcaQuery(value)
+                                  setSearchCriteria((prev) => ({ ...prev, marca: value }))
+                                }}
+                              />
+                            </div>
+
+                            <div className="create-user__dropdown-results">
+                              {searchMarcaLoading && <small className="muted">Buscando marcas...</small>}
+                              {!searchMarcaLoading && !searchMarcaQuery.trim() && (
+                                <small className="muted">Escribe para buscar.</small>
+                              )}
+                              {!searchMarcaLoading && searchMarcaQuery.trim() && !searchMarcaOptions.length && (
+                                <small className="muted">Sin resultados.</small>
+                              )}
+                              {searchMarcaOptions.map((marca) => (
+                                <button
+                                  key={marca.id}
+                                  type="button"
+                                  className="create-user__result-option"
+                                  onClick={() => {
+                                    setSearchMarcaQuery(marca.nombre)
+                                    setSearchCriteria((prev) => ({ ...prev, marca: marca.nombre }))
+                                    setShowSearchMarcaDropdown(false)
+                                  }}
+                                >
+                                  <div className="create-user__result-info">
+                                    <strong>{marca.nombre}</strong>
+                                    <small>{marca.codigo ? `Codigo: ${marca.codigo}` : `ID: ${marca.id}`}</small>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </label>
 
                     <label className="create-user__field">
                       <span>Casa comercial</span>
-                      <input
-                        name="casa_comercial"
-                        type="text"
-                        placeholder="Escribe para buscar"
-                        value={searchCriteria.casa_comercial}
-                        onChange={handleSearchInputChange}
-                      />
+                      <div className="create-user__dropdown" ref={searchCasaDropdownRef}>
+                        <button
+                          type="button"
+                          className="create-user__dropdown-trigger"
+                          onClick={() => {
+                            setShowSearchCasaDropdown((prev) => !prev)
+                            setShowSearchMarcaDropdown(false)
+                          }}
+                        >
+                          <span>{searchCasaQuery.trim() ? searchCasaQuery : 'Selecciona una casa comercial'}</span>
+                          <i className={`pi pi-chevron-${showSearchCasaDropdown ? 'up' : 'down'}`} />
+                        </button>
+
+                        {showSearchCasaDropdown && (
+                          <div className="create-user__dropdown-panel">
+                            <div className="create-user__dropdown-search">
+                              <i className="pi pi-search" />
+                              <input
+                                type="text"
+                                placeholder="Buscar casas comerciales"
+                                value={searchCasaQuery}
+                                onChange={(event) => {
+                                  const value = event.target.value
+                                  setSearchCasaQuery(value)
+                                  setSearchCriteria((prev) => ({ ...prev, casa_comercial: value }))
+                                }}
+                              />
+                            </div>
+
+                            <div className="create-user__dropdown-results">
+                              {searchCasaLoading && <small className="muted">Buscando casas...</small>}
+                              {!searchCasaLoading && !searchCasaQuery.trim() && (
+                                <small className="muted">Escribe para buscar.</small>
+                              )}
+                              {!searchCasaLoading && searchCasaQuery.trim() && !searchCasaOptions.length && (
+                                <small className="muted">Sin resultados.</small>
+                              )}
+                              {searchCasaOptions.map((casa) => (
+                                <button
+                                  key={casa.id}
+                                  type="button"
+                                  className="create-user__result-option"
+                                  onClick={() => {
+                                    setSearchCasaQuery(casa.nombre)
+                                    setSearchCriteria((prev) => ({ ...prev, casa_comercial: casa.nombre }))
+                                    setShowSearchCasaDropdown(false)
+                                  }}
+                                >
+                                  <div className="create-user__result-info">
+                                    <strong>{casa.nombre}</strong>
+                                    <small>{casa.codigo ? `Codigo: ${casa.codigo}` : `ID: ${casa.id}`}</small>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </label>
 
                     <label className="create-user__field">

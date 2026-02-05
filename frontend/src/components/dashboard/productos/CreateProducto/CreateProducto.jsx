@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { OrderList } from 'primereact/orderlist'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 
@@ -29,9 +29,17 @@ const parseNumber = (value) => {
 function CreateProducto({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('general')
+  const [alternoQuery, setAlternoQuery] = useState('')
+  const [alternoOptions, setAlternoOptions] = useState([])
+  const [alternoLoading, setAlternoLoading] = useState(false)
+  const [alternosSelected, setAlternosSelected] = useState([])
+  const [showAlternoDropdown, setShowAlternoDropdown] = useState(false)
+  const [showMarcaDropdown, setShowMarcaDropdown] = useState(false)
+  const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const [brands, setBrands] = useState([])
   const [suppliers, setSuppliers] = useState([])
-  const [selectedSuppliers, setSelectedSuppliers] = useState([])
+  const [selectedCasa, setSelectedCasa] = useState(null)
   const [marcaQuery, setMarcaQuery] = useState('')
   const [casaSearch, setCasaSearch] = useState('')
   const [isMaximized, setIsMaximized] = useState(false)
@@ -39,6 +47,9 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
   const modalRef = useRef(null)
+  const marcaDropdownRef = useRef(null)
+  const casaDropdownRef = useRef(null)
+  const alternoDropdownRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -73,9 +84,9 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
   const filteredSuppliers = useMemo(() => {
     const needle = normalizeValue(casaSearch)
-    if (!needle) return selectedSuppliers
+    if (!needle) return []
     return suppliers
-  }, [suppliers, casaSearch, selectedSuppliers])
+  }, [suppliers, casaSearch])
 
   const searchBrands = useCallback(
     async (query) => {
@@ -125,14 +136,49 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     [notifyError, token]
   )
 
+  const searchAlternos = useCallback(
+    async (query) => {
+      const term = String(query ?? '').trim()
+      if (!term || !token) {
+        setAlternoOptions([])
+        return
+      }
+      setAlternoLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar los productos.')
+        const data = await response.json()
+        const list = Array.isArray(data) ? data : data?.results || []
+        setAlternoOptions(list)
+      } catch (err) {
+        notifyError(err.message || 'Ocurrio un error al buscar productos.')
+      } finally {
+        setAlternoLoading(false)
+      }
+    },
+    [notifyError, token]
+  )
+
   useEffect(() => {
     if (!open) return
     setFormData(initialForm)
-    setSelectedSuppliers([])
     setMarcaQuery('')
     setCasaSearch('')
     setLoading(false)
+    setActiveTab('general')
+    setAlternoQuery('')
+    setAlternoOptions([])
+    setAlternosSelected([])
+    setAlternoLoading(false)
+    setShowAlternoDropdown(false)
+    setShowMarcaDropdown(false)
+    setShowCasaDropdown(false)
     setIsMaximized(false)
+    setSelectedCasa(null)
     restoreRef.current = null
     setBrands([])
     setSuppliers([])
@@ -161,6 +207,34 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     }, 300)
     return () => clearTimeout(handle)
   }, [casaSearch, searchSuppliers])
+
+  useEffect(() => {
+    const term = alternoQuery.trim()
+    if (!term) {
+      setAlternoOptions([])
+      return
+    }
+    const handle = setTimeout(() => {
+      searchAlternos(term)
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [alternoQuery, searchAlternos])
+
+  useEffect(() => {
+    const handleClick = (event) => {
+      if (showAlternoDropdown && alternoDropdownRef.current && !alternoDropdownRef.current.contains(event.target)) {
+        setShowAlternoDropdown(false)
+      }
+      if (showMarcaDropdown && marcaDropdownRef.current && !marcaDropdownRef.current.contains(event.target)) {
+        setShowMarcaDropdown(false)
+      }
+      if (showCasaDropdown && casaDropdownRef.current && !casaDropdownRef.current.contains(event.target)) {
+        setShowCasaDropdown(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [showAlternoDropdown, showMarcaDropdown, showCasaDropdown])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -200,10 +274,9 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
   const handleMarcaInputChange = (event) => {
     const value = event.target.value
     setMarcaQuery(value)
-    const match = brands.find((brand) => normalizeValue(brand?.nombre) === normalizeValue(value))
     setFormData((prev) => ({
       ...prev,
-      marcaId: match ? String(match.id) : '',
+      marcaId: '',
     }))
   }
 
@@ -214,26 +287,52 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       ...prev,
       marcaId: String(brand.id),
     }))
+    setShowMarcaDropdown(false)
   }
 
-  const handleCasaToggle = (id) => {
+  const handleCasaToggle = (supplier) => {
+    if (!supplier) return
+    const id = String(supplier.id)
+    if (!id) return
     setFormData((prev) => {
-      const next = new Set((prev.casasIds || []).map(String))
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
+      const current = (prev.casasIds || []).map(String)
+      if (current.includes(id)) {
+        setSelectedCasa(null)
+        return { ...prev, casasIds: [] }
       }
-      return { ...prev, casasIds: Array.from(next) }
+      setSelectedCasa({ id: supplier.id, nombre: supplier.nombre })
+      return { ...prev, casasIds: [id] }
     })
-    setSelectedSuppliers((prev) => {
-      const exists = prev.some((supplier) => String(supplier.id) === id)
-      if (exists) {
-        return prev.filter((supplier) => String(supplier.id) !== id)
-      }
-      const source = suppliers.find((supplier) => String(supplier.id) === id)
-      return source ? [...prev, source] : prev
+    setCasaSearch('')
+    setShowCasaDropdown(false)
+  }
+
+  const alternoIdSet = useMemo(
+    () => new Set(alternosSelected.map((item) => String(item?.id)).filter(Boolean)),
+    [alternosSelected]
+  )
+
+  const handleAddAlterno = (product) => {
+    if (!product) return
+    const id = String(product.id)
+    if (!id) return
+    setAlternosSelected((prev) => {
+      if (prev.some((item) => String(item?.id) === id)) return prev
+      return [
+        ...prev,
+        {
+          id: product.id,
+          codigo: product.codigo,
+          nombre: product.nombre,
+        },
+      ]
     })
+  }
+
+  const handleRemoveAlterno = (id) => {
+    const key = String(id)
+    if (!key) return
+    setAlternosSelected((prev) => prev.filter((item) => String(item?.id) !== key))
   }
 
   const handleSubmit = async (event) => {
@@ -291,7 +390,40 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
         throw new Error(detail)
       }
 
+      if (data?.id && alternosSelected.length) {
+        const uniqueIds = Array.from(
+          new Set(alternosSelected.map((item) => item?.id).filter(Boolean))
+        ).filter((id) => id !== data.id)
+        const errors = []
+        for (const alternoId of uniqueIds) {
+          try {
+            const alternoResponse = await authFetch(
+              `${API_URL}/productos/alternos/`,
+              {
+                method: 'POST',
+                body: JSON.stringify({
+                  producto_id: data.id,
+                  alterno_id: alternoId,
+                }),
+              },
+              token
+            )
+            if (!alternoResponse.ok) {
+              const alternoData = await alternoResponse.json().catch(() => ({}))
+              const detail = alternoData?.detail || 'No se pudo registrar un producto alterno.'
+              throw new Error(detail)
+            }
+          } catch (err) {
+            errors.push(err?.message || 'No se pudo registrar un producto alterno.')
+          }
+        }
+        if (errors.length) {
+          notifyError(`Se creo el producto, pero fallaron ${errors.length} alternos.`)
+        }
+      }
+
       setFormData(initialForm)
+      setAlternosSelected([])
       onCreated?.(data)
     } catch (err) {
       notifyError(err.message || 'Ocurrio un error al crear el producto.')
@@ -436,11 +568,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       <div className="create-user__modal" ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
-            <h3>
-              {formData.codigo && formData.nombre
-                ? `${formData.codigo}: ${formData.nombre}`
-                : (formData.codigo || formData.nombre || 'Crear producto')}
-            </h3>
+            <h3>Crear nuevo producto</h3>
           </div>
           <div className="create-user__header-actions">
             <button
@@ -466,179 +594,386 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
         <form className="create-user__form" onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones del producto">
-            <button type="button" className="create-user__tab create-user__tab--active" disabled>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'general' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('general')}
+              aria-selected={activeTab === 'general'}
+            >
               General
+            </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'alternos' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('alternos')}
+              aria-selected={activeTab === 'alternos'}
+            >
+              Alternos
             </button>
           </div>
 
           <div className="create-user__body">
-            <section className="create-user__section">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">Datos del producto</p>
-                  <h4>Informacion basica</h4>
+            {activeTab === 'general' && (
+              <>
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <h4>Datos del producto</h4>
+                    </div>
+                  </div>
+
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Nombre</span>
+                      <input
+                        name="nombre"
+                        type="text"
+                        placeholder="Nombre"
+                        value={formData.nombre}
+                        onChange={handleChange}
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Casa comercial</span>
+                      <div className="create-user__dropdown" ref={casaDropdownRef}>
+                        <button
+                          type="button"
+                          className="create-user__dropdown-trigger"
+                          onClick={() => {
+                            setShowCasaDropdown((prev) => !prev)
+                            setShowMarcaDropdown(false)
+                          }}
+                          disabled={loading}
+                        >
+                          <span>{selectedCasa?.nombre || 'Selecciona una casa comercial'}</span>
+                          <i className={`pi pi-chevron-${showCasaDropdown ? 'up' : 'down'}`} />
+                        </button>
+
+                        {showCasaDropdown && (
+                          <div className="create-user__dropdown-panel">
+                            <div className="create-user__dropdown-search">
+                              <i className="pi pi-search" />
+                              <input
+                                type="text"
+                                placeholder="Buscar casas comerciales"
+                                value={casaSearch}
+                                onChange={(event) => setCasaSearch(event.target.value)}
+                              />
+                            </div>
+
+                            <div className="create-user__dropdown-results">
+                              {!casaSearch.trim() && <small className="muted">Escribe para buscar.</small>}
+                              {casaSearch.trim() && !filteredSuppliers.length && (
+                                <small className="muted">Sin resultados.</small>
+                              )}
+                              {filteredSuppliers.map((supplier) => {
+                                const id = String(supplier.id)
+                                const isSelected = formData.casasIds.includes(id)
+                                return (
+                                  <button
+                                    key={supplier.id}
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onClick={() => handleCasaToggle(supplier)}
+                                    disabled={loading}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>{supplier.nombre}</strong>
+                                      <small>{supplier.codigo ? `Codigo: ${supplier.codigo}` : `ID: ${supplier.id}`}</small>
+                                    </div>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Referencia</span>
+                      <input
+                        name="codigo"
+                        type="text"
+                        placeholder="Referencia del producto"
+                        value={formData.codigo}
+                        onChange={handleChange}
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Marca</span>
+                      <div className="create-user__dropdown" ref={marcaDropdownRef}>
+                        <button
+                          type="button"
+                          className="create-user__dropdown-trigger"
+                          onClick={() => {
+                            setShowMarcaDropdown((prev) => !prev)
+                            setShowCasaDropdown(false)
+                          }}
+                          disabled={loading}
+                        >
+                          <span>{marcaQuery.trim() ? marcaQuery : 'Selecciona una marca'}</span>
+                          <i className={`pi pi-chevron-${showMarcaDropdown ? 'up' : 'down'}`} />
+                        </button>
+
+                        {showMarcaDropdown && (
+                          <div className="create-user__dropdown-panel">
+                            <div className="create-user__dropdown-search">
+                              <i className="pi pi-search" />
+                              <input
+                                type="text"
+                                placeholder="Buscar marcas"
+                                value={marcaQuery}
+                                onChange={handleMarcaInputChange}
+                              />
+                            </div>
+
+                            <div className="create-user__dropdown-results">
+                              {!marcaQuery.trim() && <small className="muted">Escribe para buscar.</small>}
+                              {marcaQuery.trim() && !brands.length && <small className="muted">Sin resultados.</small>}
+                              {brands.slice(0, 40).map((brand) => (
+                                <button
+                                  key={brand.id}
+                                  type="button"
+                                  className="create-user__result-option"
+                                  onClick={() => {
+                                    handleMarcaSelect(brand)
+                                    setShowMarcaDropdown(false)
+                                  }}
+                                  disabled={loading}
+                                >
+                                  <div className="create-user__result-info">
+                                    <strong>{brand.nombre}</strong>
+                                    <small>{brand.codigo ? `Codigo: ${brand.codigo}` : `ID: ${brand.id}`}</small>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+
+                    <label className="create-user__field create-user__field--full">
+                      <span>Descripcion</span>
+                      <textarea
+                        name="descripcion"
+                        placeholder="Describe el producto, su uso, diferentes nombres o caracteristicas importantes."
+                        value={formData.descripcion}
+                        onChange={handleChange}
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <h4>Datos comerciales del producto</h4>
+                  </div>
+
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Costo</span>
+                      <div className="create-user__money">
+                        <span>$</span>
+                        <input
+                          name="costo_minimo"
+                          type="number"
+                          step="0.01"
+                          placeholder="Costo al comprar"
+                          value={formData.costo_minimo}
+                          onChange={handleChange}
+                          disabled={loading}
+                        />
+                      </div>
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Precio</span>
+                      <div className="create-user__money">
+                        <span>$</span>
+                        <input
+                          name="precio"
+                          type="number"
+                          step="0.01"
+                          placeholder="Precio al que se pretende vender"
+                          value={formData.precio}
+                          onChange={handleChange}
+                          disabled={loading}
+                        />
+                      </div>
+                    </label>
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <h4>Ubicaciones del producto</h4>
+                    <button type="button" className="create-user__ghost create-user__location-action" disabled>
+                      Ingresar ubicacion
+                    </button>
+                  </div>
+
+                  <div className="create-user__locations-table">
+                    <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Sucursal</span>
+                      <span>Bodega</span>
+                      <span>Division</span>
+                      <span>Subdivision</span>
+                      <span>Cantidad</span>
+                    </div>
+                    <div className="create-user__locations-row create-user__locations-row--empty">
+                      <span>Sin ubicaciones registradas.</span>
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {activeTab === 'alternos' && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <h4>Alternos</h4>
                 </div>
-              </div>
 
-              <div className="create-user__grid create-user__grid--two">
-                <label className="create-user__field">
-                  <span>Codigo</span>
-                  <input
-                    name="codigo"
-                    type="text"
-                    placeholder="Codigo"
-                    value={formData.codigo}
-                    onChange={handleChange}
-                    required
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Nombre</span>
-                  <input
-                    name="nombre"
-                    type="text"
-                    placeholder="Nombre del producto"
-                    value={formData.nombre}
-                    onChange={handleChange}
-                    required
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Marca</span>
-                  <input
-                    name="marca"
-                    type="text"
-                    placeholder="Escribe para buscar"
-                    value={marcaQuery}
-                    onChange={handleMarcaInputChange}
-                    disabled={loading}
-                    required
-                  />
-                  <div className="create-user__branches" style={{ maxHeight: 180, overflow: 'auto', paddingRight: 4 }}>
-                    {brands.slice(0, 40).map((brand) => (
+                <div className="create-user__grid create-user__grid--two">
+                  <label className="create-user__field create-user__field--full">
+                    <span>Productos alternos</span>
+                    <div className="create-user__dropdown" ref={alternoDropdownRef}>
                       <button
-                        key={brand.id}
                         type="button"
-                        className="create-user__branch-option"
-                        style={{ cursor: 'pointer', textAlign: 'left' }}
-                        onClick={() => handleMarcaSelect(brand)}
+                        className="create-user__dropdown-trigger"
+                        onClick={() => {
+                          setShowAlternoDropdown((prev) => !prev)
+                          setShowMarcaDropdown(false)
+                          setShowCasaDropdown(false)
+                        }}
                         disabled={loading}
                       >
-                        <div className="create-user__branch-info">
-                          <span>{brand.nombre}</span>
-                          <small>{brand.codigo ? `Codigo: ${brand.codigo}` : `ID: ${brand.id}`}</small>
-                        </div>
+                        <span>
+                          {alternosSelected.length
+                            ? `${alternosSelected.length} seleccionados`
+                            : 'Selecciona productos alternos'}
+                        </span>
+                        <i className={`pi pi-chevron-${showAlternoDropdown ? 'up' : 'down'}`} />
                       </button>
-                    ))}
-                    {!brands.length && (
-                      <small className="muted">{marcaQuery.trim() ? 'Sin resultados.' : 'Escribe para buscar.'}</small>
-                    )}
-                  </div>
-                </label>
 
-                <label className="create-user__field">
-                  <span>Pieza original</span>
-                  <select name="pieza_original" value={formData.pieza_original ? 'true' : 'false'} onChange={handleChange} disabled={loading}>
-                    <option value="true">Si</option>
-                    <option value="false">No</option>
-                  </select>
-                </label>
-
-                <label className="create-user__field">
-                  <span>Costo minimo</span>
-                  <input
-                    name="costo_minimo"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.costo_minimo}
-                    onChange={handleChange}
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Costo maximo</span>
-                  <input
-                    name="costo_maximo"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.costo_maximo}
-                    onChange={handleChange}
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Precio sugerido</span>
-                  <input
-                    name="precio"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.precio}
-                    onChange={handleChange}
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="create-user__field create-user__field--full">
-                  <span>Casas comerciales</span>
-                  <input
-                    name="casa_search"
-                    type="text"
-                    placeholder="Buscar casa comercial"
-                    value={casaSearch}
-                    onChange={(event) => setCasaSearch(event.target.value)}
-                    disabled={loading}
-                  />
-                  <div className="create-user__branches" style={{ maxHeight: 220, overflow: 'auto', paddingRight: 4 }}>
-                    {filteredSuppliers.slice(0, 60).map((supplier) => {
-                      const id = String(supplier.id)
-                      const checked = formData.casasIds.includes(id)
-                      return (
-                        <label key={supplier.id} className="create-user__branch-option">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => handleCasaToggle(id)}
-                            disabled={loading}
-                          />
-                          <div className="create-user__branch-info">
-                            <span>{supplier.nombre}</span>
-                            <small>{supplier.codigo ? `Codigo: ${supplier.codigo}` : `ID: ${supplier.id}`}</small>
+                      {showAlternoDropdown && (
+                        <div className="create-user__dropdown-panel">
+                          <div className="create-user__dropdown-search">
+                            <i className="pi pi-search" />
+                            <input
+                              type="text"
+                              placeholder="Buscar productos"
+                              value={alternoQuery}
+                              onChange={(event) => setAlternoQuery(event.target.value)}
+                            />
                           </div>
-                        </label>
-                      )
-                    })}
-                    {!filteredSuppliers.length && (
-                      <small className="muted">{casaSearch.trim() ? 'Sin resultados.' : 'Escribe para buscar.'}</small>
-                    )}
-                  </div>
-                  {filteredSuppliers.length > 60 && (
-                    <small className="muted">Mostrando 60 de {filteredSuppliers.length} resultados.</small>
-                  )}
-                  <small className="muted">Seleccionadas: {formData.casasIds.length}</small>
-                </label>
 
-                <label className="create-user__field create-user__field--full">
-                  <span>Descripcion</span>
-                  <input
-                    name="descripcion"
-                    type="text"
-                    placeholder="Descripcion"
-                    value={formData.descripcion}
-                    onChange={handleChange}
-                    disabled={loading}
-                  />
-                </label>
-              </div>
-            </section>
+                          <div className="create-user__dropdown-results">
+                            {alternoLoading && <small className="muted">Buscando productos...</small>}
+                            {!alternoLoading && !alternoQuery.trim() && (
+                              <small className="muted">Escribe para buscar productos.</small>
+                            )}
+                            {!alternoLoading && alternoQuery.trim() && !alternoOptions.length && (
+                              <small className="muted">Sin resultados.</small>
+                            )}
+                            {alternoOptions.map((product) => {
+                              const isSelected = alternoIdSet.has(String(product?.id))
+                              return (
+                                <button
+                                  key={product.id}
+                                  type="button"
+                                  className="create-user__result-option"
+                                  onClick={() => handleAddAlterno(product)}
+                                  disabled={isSelected}
+                                >
+                                  <div className="create-user__result-info">
+                                    <strong>{product.nombre || 'Sin nombre'}</strong>
+                                    <small>{product.codigo ? `Codigo: ${product.codigo}` : `ID: ${product.id}`}</small>
+                                  </div>
+                                  <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
+                                    {isSelected ? 'Agregado' : 'Agregar'}
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+
+                          <div className="create-user__orderlist-wrapper">
+                            <OrderList
+                              value={alternosSelected}
+                              onChange={(event) => setAlternosSelected(event.value || [])}
+                              dataKey="id"
+                              className="create-user__orderlist"
+                              header="Seleccionados"
+                              listStyle={{ maxHeight: '200px' }}
+                              itemTemplate={(item) => (
+                                <div className="create-user__orderlist-item">
+                                  <div>
+                                    <strong>{item?.nombre || 'Sin nombre'}</strong>
+                                    <small>{item?.codigo ? `Codigo: ${item.codigo}` : `ID: ${item?.id}`}</small>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="create-user__orderlist-remove"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      handleRemoveAlterno(item?.id)
+                                    }}
+                                  >
+                                    Quitar
+                                  </button>
+                                </div>
+                              )}
+                            />
+                            {!alternosSelected.length && (
+                              <small className="muted">Aun no hay alternos seleccionados.</small>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  <label className="create-user__field">
+                    <span>Pieza original</span>
+                    <select
+                      name="pieza_original"
+                      value={formData.pieza_original ? 'true' : 'false'}
+                      onChange={handleChange}
+                      disabled={loading}
+                    >
+                      <option value="true">Si</option>
+                      <option value="false">No</option>
+                    </select>
+                  </label>
+
+                  <label className="create-user__field">
+                    <span>Costo maximo</span>
+                    <div className="create-user__money">
+                      <span>$</span>
+                      <input
+                        name="costo_maximo"
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.costo_maximo}
+                        onChange={handleChange}
+                        disabled={loading}
+                      />
+                    </div>
+                  </label>
+                </div>
+              </section>
+            )}
           </div>
 
           <div className="create-user__footer">

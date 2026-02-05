@@ -38,11 +38,13 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [marcas, setMarcas] = useState([])
   const [loadingMarcas, setLoadingMarcas] = useState(false)
+  const [activeAutoMarcaDropdown, setActiveAutoMarcaDropdown] = useState(null)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
   const modalRef = useRef(null)
+  const autoMarcaDropdownRefs = useRef({})
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -74,7 +76,6 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
     [onError]
   )
 
-  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
   const getMarcaLabel = useCallback(
     (marcaId) => marcas.find((marca) => String(marca.id) === String(marcaId))?.nombre || '',
     [marcas]
@@ -145,19 +146,34 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
 
   const handleAutoMarcaChange = (index, value) => {
     if (!isEditing) return
-    const match = marcas.find((marca) => normalizeValue(marca?.nombre) === normalizeValue(value))
     setAutos((prev) =>
       prev.map((auto, i) =>
         i === index
           ? {
               ...auto,
               marcaNombre: value,
-              marcaId: match ? String(match.id) : '',
+              marcaId: '',
             }
           : auto
       )
     )
     searchMarcas(value)
+  }
+
+  const handleAutoMarcaSelect = (index, marca) => {
+    if (!isEditing || !marca) return
+    setAutos((prev) =>
+      prev.map((auto, i) =>
+        i === index
+          ? {
+              ...auto,
+              marcaNombre: marca.nombre,
+              marcaId: String(marca.id),
+            }
+          : auto
+      )
+    )
+    setActiveAutoMarcaDropdown(null)
   }
 
   const canAddAuto = useCallback(() => {
@@ -212,6 +228,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
     setOriginalData(emptyForm)
     setAutos([])
     setOriginalAutos([])
+    setActiveAutoMarcaDropdown(null)
     setIsMaximized(false)
     restoreRef.current = null
     setMarcas([])
@@ -237,6 +254,18 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
   useEffect(() => {
     positionRef.current = position
   }, [position])
+
+  useEffect(() => {
+    if (activeAutoMarcaDropdown === null) return
+    const handleClick = (event) => {
+      const node = autoMarcaDropdownRefs.current[activeAutoMarcaDropdown]
+      if (node && !node.contains(event.target)) {
+        setActiveAutoMarcaDropdown(null)
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [activeAutoMarcaDropdown])
 
   const handleSave = async () => {
     if (!isEditing || saving || !clienteId) return
@@ -650,14 +679,63 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
 
                       <label className="create-user__field">
                         <span>Marca</span>
-                        <input
-                          type="text"
-                          list="cliente-details-marcas-list"
-                          placeholder="Escribe para buscar"
-                          value={auto.marcaNombre || getMarcaLabel(auto.marcaId)}
-                          onChange={(event) => handleAutoMarcaChange(index, event.target.value)}
-                          disabled={editorDisabled || loadingMarcas}
-                        />
+                        <div
+                          className="create-user__dropdown"
+                          ref={(node) => {
+                            autoMarcaDropdownRefs.current[index] = node
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="create-user__dropdown-trigger"
+                            onClick={() =>
+                              setActiveAutoMarcaDropdown((prev) => (prev === index ? null : index))
+                            }
+                            disabled={editorDisabled || loadingMarcas}
+                          >
+                            <span>{auto.marcaNombre || getMarcaLabel(auto.marcaId) || 'Selecciona una marca'}</span>
+                            <i className={`pi pi-chevron-${activeAutoMarcaDropdown === index ? 'up' : 'down'}`} />
+                          </button>
+
+                          {activeAutoMarcaDropdown === index && (
+                            <div className="create-user__dropdown-panel">
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar marcas"
+                                  value={auto.marcaNombre}
+                                  onChange={(event) => handleAutoMarcaChange(index, event.target.value)}
+                                  disabled={editorDisabled || loadingMarcas}
+                                />
+                              </div>
+
+                              <div className="create-user__dropdown-results">
+                                {loadingMarcas && <small className="muted">Buscando marcas...</small>}
+                                {!loadingMarcas && !auto.marcaNombre?.trim() && (
+                                  <small className="muted">Escribe para buscar.</small>
+                                )}
+                                {!loadingMarcas && auto.marcaNombre?.trim() && !marcas.length && (
+                                  <small className="muted">Sin resultados.</small>
+                                )}
+                                {marcas.map((marca) => (
+                                  <button
+                                    key={marca.id}
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onClick={() => handleAutoMarcaSelect(index, marca)}
+                                    disabled={editorDisabled}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>{marca.nombre}</strong>
+                                      <small>{marca.codigo ? `Codigo: ${marca.codigo}` : `ID: ${marca.id}`}</small>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </label>
 
                       <label className="create-user__field">
@@ -686,12 +764,6 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                   </div>
                 ))}
               </div>
-
-              <datalist id="cliente-details-marcas-list">
-                {marcas.map((marca) => (
-                  <option key={marca.id} value={marca.nombre} />
-                ))}
-              </datalist>
 
               {isEditing && (
                 <div style={{ marginTop: 10 }}>

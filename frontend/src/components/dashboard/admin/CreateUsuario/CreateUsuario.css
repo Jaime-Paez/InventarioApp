@@ -359,7 +359,8 @@
 
 /* Inputs */
 .create-user__field input,
-.create-user__field select {
+.create-user__field select,
+.create-user__field textarea {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 0.35rem 0.75rem;
@@ -428,21 +429,28 @@
   border-color: #292929;
 }
 
+.create-user__field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
 
-.create-user__field input::placeholder {
+.create-user__field input::placeholder,
+.create-user__field textarea::placeholder {
   color: var(--color-text-primary);
   opacity: 0.35;
 }
 
 .create-user__field input:focus,
-.create-user__field select:focus {
+.create-user__field select:focus,
+.create-user__field textarea:focus {
   outline: none;
   border-color: var(--color-primary-dark);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
 }
 
 .dashboard-shell.dark .create-user__field input,
-.dashboard-shell.dark .create-user__field select {
+.dashboard-shell.dark .create-user__field select,
+.dashboard-shell.dark .create-user__field textarea {
   background: var(--color-surface-darker);
   border-color: var(--color-border);
   color: var(--color-button-primary);
@@ -464,15 +472,56 @@
   border-color: var(--color-border);
 }
 
-.dashboard-shell.dark .create-user__field input::placeholder {
+.dashboard-shell.dark .create-user__field input::placeholder,
+.dashboard-shell.dark .create-user__field textarea::placeholder {
   color: var(--color-text-dark);
   opacity: 0.38;
 }
 
 .dashboard-shell.dark .create-user__field input:focus,
-.dashboard-shell.dark .create-user__field select:focus {
+.dashboard-shell.dark .create-user__field select:focus,
+.dashboard-shell.dark .create-user__field textarea:focus {
   border-color: var(--color-primary-dark);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 32%, transparent);
+}
+
+.create-user__money {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.2rem 0.6rem;
+  background: #fff;
+}
+
+.create-user__money span {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  opacity: 0.7;
+}
+
+.create-user__money input {
+  border: none;
+  padding: 0.15rem 0;
+  min-height: 24px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.create-user__money input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.dashboard-shell.dark .create-user__money {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__money span {
+  color: var(--color-text-dark);
 }
 
 .create-user__access-grid {
@@ -704,6 +753,15 @@
   width: 100%;
 }
 
+.create-user__branches--dropdown {
+  grid-template-columns: 1fr;
+  gap: 0;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
 .create-user__branch-option {
   display: flex;
   gap: 10px;
@@ -712,6 +770,30 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
+}
+
+.create-user__branches--dropdown .create-user__branch-option {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.create-user__branches--dropdown .create-user__branch-option + .create-user__branch-option {
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+}
+
+.create-user__branches--dropdown .create-user__branch-option:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.create-user__branches--dropdown .create-user__branch-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .create-user__branch-option input {
@@ -742,12 +824,316 @@
   border-color: var(--color-border);
 }
 
+.dashboard-shell.dark .create-user__branches--dropdown {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__branches--dropdown .create-user__branch-option + .create-user__branch-option {
+  border-top-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__branches--dropdown .create-user__branch-option:hover {
+  background: color-mix(in srgb, var(--color-primary-dark) 16%, transparent);
+}
+
 .dashboard-shell.dark .create-user__branch-info {
   color: var(--color-button-primary);
 }
 
 .dashboard-shell.dark .create-user__branch-info small {
   color: var(--color-text-dark);
+}
+
+.create-user__locations-table {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.create-user__locations-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: var(--font-size-base);
+}
+
+.create-user__locations-row + .create-user__locations-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.create-user__locations-row--head {
+  background: #f3f4f6;
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+}
+
+.create-user__locations-row--empty {
+  grid-template-columns: 1fr;
+  text-align: center;
+  color: var(--color-text-primary);
+  opacity: 0.65;
+}
+
+.create-user__location-action {
+  min-width: 140px;
+}
+
+.dashboard-shell.dark .create-user__locations-table {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__locations-row + .create-user__locations-row {
+  border-top-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__locations-row--head {
+  background: var(--table-color-dark);
+}
+
+.create-user__dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.create-user__dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  background: #fff;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+  min-height: 24px;
+}
+
+.create-user__dropdown-trigger i {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.create-user__dropdown-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dashboard-shell.dark .create-user__dropdown-trigger {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+  border-color: var(--color-border);
+}
+
+.create-user__dropdown-panel {
+  position: absolute;
+  z-index: 25;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  background: var(--modal-color);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-panel);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.dashboard-shell.dark .create-user__dropdown-panel {
+  background: var(--table-color-dark);
+  border-color: var(--color-border);
+}
+
+.create-user__dropdown-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: #fff;
+}
+
+.create-user__dropdown-search input {
+  border: none;
+  background: transparent;
+  width: 100%;
+  min-height: 20px;
+  font: inherit;
+  color: var(--color-text-primary);
+}
+
+.create-user__dropdown-search input:focus {
+  outline: none;
+}
+
+.dashboard-shell.dark .create-user__dropdown-search {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__dropdown-search input {
+  color: var(--color-text-dark);
+}
+
+.create-user__dropdown-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 150px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 6px;
+}
+
+.dashboard-shell.dark .create-user__dropdown-results {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.create-user__result-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.create-user__result-option:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.create-user__result-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.create-user__result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.create-user__result-info strong {
+  font-size: var(--font-size-base);
+}
+
+.create-user__result-info small {
+  color: var(--color-text-primary);
+  opacity: 0.7;
+}
+
+.create-user__result-tag {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-button-primary);
+  white-space: nowrap;
+}
+
+.create-user__result-tag.is-selected {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__result-tag.is-selected {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+  border-color: var(--color-border);
+}
+
+.create-user__orderlist-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.create-user__orderlist {
+  width: 100%;
+}
+
+.create-user__orderlist .p-orderlist-header {
+  background: transparent;
+  border: none;
+  padding: 0 0 4px;
+  font-weight: 700;
+}
+
+.create-user__orderlist .p-orderlist-list {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.create-user__orderlist .p-orderlist-item {
+  padding: 6px 8px;
+}
+
+.create-user__orderlist .p-orderlist-item + .p-orderlist-item {
+  border-top: 1px solid var(--color-border);
+}
+
+.create-user__orderlist-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.create-user__orderlist-item small {
+  color: var(--color-text-primary);
+  opacity: 0.7;
+}
+
+.create-user__orderlist-remove {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.create-user__orderlist-remove:hover {
+  filter: brightness(0.98);
+}
+
+.dashboard-shell.dark .create-user__orderlist .p-orderlist-list {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__orderlist-item small {
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .create-user__orderlist-remove {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+  border-color: var(--color-border);
 }
 
 /* Permissions matrix */
