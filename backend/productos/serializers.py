@@ -90,6 +90,17 @@ class ProductoSerializer(serializers.ModelSerializer):
             "creado_en",
             "actualizado_en",
         ]
+        extra_kwargs = {
+            "codigo": {
+                "required": True,
+                "allow_blank": False,
+                "error_messages": {
+                    "blank": "El codigo del producto es obligatorio.",
+                    "required": "El codigo del producto es obligatorio.",
+                    "unique": "Este codigo ya existe.",
+                },
+            }
+        }
 
     def get_alternativas(self, obj):
         alternativas = []

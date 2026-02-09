@@ -74,6 +74,7 @@ INSTALLED_APPS = [
     "solicitudes",
     "app",
     "auditoria",
+    "configuracion",
 ]
 
 # Configuración de Django REST Framework

@@ -2,6 +2,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from productos.models import Producto
+from configuracion.models import ConfiguracionSistema
 from tipos.models import (
     EstadoMovimiento,
     EstadoProducto,
@@ -117,6 +118,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "estado_movimiento",
             "estado_movimiento_id",
             "descuento",
+            "iva_rate",
             "fecha",
             "no_documento",
             "detalles",
@@ -126,6 +128,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         detalles_data = validated_data.pop("detalles", [])
         pagos_data = validated_data.pop("pagos", [])
+        if "iva_rate" not in validated_data or validated_data["iva_rate"] is None:
+            validated_data["iva_rate"] = ConfiguracionSistema.get_solo().iva_rate
         with transaction.atomic():
             movimiento = super().create(validated_data)
             self._replace_detalles(movimiento, detalles_data)

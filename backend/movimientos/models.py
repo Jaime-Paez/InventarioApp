@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -36,6 +38,12 @@ class MovimientoInventario(models.Model):
         related_name="movimientos",
     )
     descuento = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    iva_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        default=Decimal("0.15"),
+        help_text="IVA aplicado al movimiento, expresado como decimal (ej: 0.15).",
+    )
     fecha = models.DateField()
     no_documento = models.CharField(max_length=80)
     tipos_pago = models.ManyToManyField(

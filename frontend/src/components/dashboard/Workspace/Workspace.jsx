@@ -7,6 +7,8 @@ import MarcasTable from '../marcas/MarcasTable/MarcasTable'
 import CasasComercialesTable from '../casasComerciales/CasasComercialesTable/CasasComercialesTable'
 import ClientesTable from '../clientes/ClientesTable/ClientesTable'
 import ProductosTable from '../productos/ProductosTable/ProductosTable'
+import Configuracion from '../configuracion/Configuracion/Configuracion'
+import InventarioTable from '../inventario/InventarioTable/InventarioTable'
 import './Workspace.css'
 import { labelHasAccess } from '../menuConfig'
 
@@ -32,6 +34,7 @@ function Workspace({
   const farewellTitle = `Hasta luego, ${username}.`
 
   const tabContentMap = {
+    Inventario: <InventarioTable token={token} />,
     Administrar: <UsersTable token={token} />,
     Sucursales: <SucursalesTable token={token} />,
     Bodegas: <BodegasTable token={token} />,
@@ -39,6 +42,7 @@ function Workspace({
     'Casas comerciales': <CasasComercialesTable token={token} />,
     Productos: <ProductosTable token={token} />,
     Clientes: <ClientesTable token={token} />,
+    Configuraciones: <Configuracion token={token} darkMode={darkMode} onToggleTheme={onToggleTheme} />,
   }
 
   const renderContent = () => (

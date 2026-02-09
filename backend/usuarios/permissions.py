@@ -115,6 +115,10 @@ class ClientesModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.CLIENTES
 
 
+class ConfiguracionModulePermission(ModulePermission):
+    module_key = RolPermiso.Modulos.CONFIGURACION
+
+
 class MovimientoInventarioModulePermission(ModulePermission):
     """Valida permisos dependiendo del tipo de movimiento (entrada/salida)."""
 

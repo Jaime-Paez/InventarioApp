@@ -234,3 +234,93 @@
 .create-user__chip input:disabled + span {
   opacity: 0.8;
 }
+
+.producto-details__price-metrics {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+.producto-details__metric-card {
+  min-width: 140px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  padding: 8px 12px;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.producto-details__metric-label {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  opacity: 0.7;
+}
+
+.producto-details__metric-value {
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.producto-details__metric-note {
+  max-width: 320px;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  opacity: 0.65;
+}
+
+.producto-details__metric-note p {
+  margin: 0 0 4px;
+}
+
+.producto-details__alternos-list {
+  display: grid;
+  gap: 10px;
+}
+
+.producto-details__alterno-card {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.producto-details__alterno-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.producto-details__alterno-info small {
+  color: var(--color-text-primary);
+  opacity: 0.7;
+}
+
+.producto-details__alterno-note {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  opacity: 0.6;
+}
+
+.dashboard-shell.dark .producto-details__metric-card,
+.dashboard-shell.dark .producto-details__alterno-card {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .producto-details__metric-label,
+.dashboard-shell.dark .producto-details__metric-value,
+.dashboard-shell.dark .producto-details__metric-note,
+.dashboard-shell.dark .producto-details__alterno-info small,
+.dashboard-shell.dark .producto-details__alterno-note {
+  color: var(--color-text-dark);
+}

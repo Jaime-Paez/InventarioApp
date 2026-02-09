@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Eye, Info, Pencil } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
@@ -27,6 +27,14 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [branches, setBranches] = useState([])
+  const [divisions, setDivisions] = useState([])
+  const [subdivisions, setSubdivisions] = useState([])
+  const [loadingDivisions, setLoadingDivisions] = useState(false)
+  const [loadingSubdivisions, setLoadingSubdivisions] = useState(false)
+  const [subdivisionInputs, setSubdivisionInputs] = useState({})
+  const [subdivisionSaving, setSubdivisionSaving] = useState({})
+  const [divisionCreating, setDivisionCreating] = useState({})
+  const [subdivisionDeleting, setSubdivisionDeleting] = useState({})
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -99,6 +107,63 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
     }
   }, [notifyError, token])
 
+  const fetchAll = useCallback(
+    async (url) => {
+      let next = url
+      const all = []
+
+      while (next) {
+        const response = await authFetch(next, {}, token)
+        if (!response.ok) throw new Error('No se pudieron cargar los datos.')
+        const data = await response.json()
+        if (Array.isArray(data)) {
+          all.push(...data)
+          next = null
+        } else {
+          const list = data?.results || []
+          all.push(...list)
+          next = data?.next || null
+        }
+      }
+
+      return all
+    },
+    [token]
+  )
+
+  const fetchDivisions = useCallback(async () => {
+    if (!bodegaId) return
+    setLoadingDivisions(true)
+    try {
+      const list = await fetchAll(`${API_URL}/inventario/divisiones/`)
+      const filtered = list.filter(
+        (division) => Number(division?.bodega?.id) === Number(bodegaId)
+      )
+      setDivisions(filtered)
+    } catch (err) {
+      notifyError(err.message || 'Ocurrió un error al cargar las divisiones.')
+    } finally {
+      setLoadingDivisions(false)
+    }
+  }, [bodegaId, fetchAll, notifyError])
+
+  const fetchSubdivisions = useCallback(async () => {
+    if (!bodegaId) return
+    setLoadingSubdivisions(true)
+    try {
+      const list = await fetchAll(`${API_URL}/inventario/subdivisiones/`)
+      const filtered = list.filter(
+        (subdivision) =>
+          Number(subdivision?.division?.bodega?.id) === Number(bodegaId)
+      )
+      setSubdivisions(filtered)
+    } catch (err) {
+      notifyError(err.message || 'Ocurrió un error al cargar las subdivisiones.')
+    } finally {
+      setLoadingSubdivisions(false)
+    }
+  }, [bodegaId, fetchAll, notifyError])
+
   const fetchBodega = useCallback(async () => {
     if (!bodegaId) return
     setLoadingData(true)
@@ -128,9 +193,16 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
     setActiveTab('general')
     setIsMaximized(false)
     restoreRef.current = null
+    setDivisions([])
+    setSubdivisions([])
+    setSubdivisionInputs({})
+    setSubdivisionSaving({})
+    setDivisionCreating({})
     fetchBranches()
     fetchBodega()
-  }, [open, fetchBranches, fetchBodega])
+    fetchDivisions()
+    fetchSubdivisions()
+  }, [open, fetchBranches, fetchBodega, fetchDivisions, fetchSubdivisions])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -156,6 +228,300 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
     const numeric = Number(value)
     return Number.isFinite(numeric) ? Number(numeric.toFixed(1)) : 0
   }
+
+  const subdivisionsByDivision = useMemo(() => {
+    const map = new Map()
+    subdivisions.forEach((subdivision) => {
+      const divisionId = subdivision?.division?.id
+      if (!divisionId) return
+      if (!map.has(divisionId)) map.set(divisionId, [])
+      map.get(divisionId).push(subdivision)
+    })
+    return map
+  }, [subdivisions])
+
+  const normalizeDivisionKey = useCallback((value) => String(value ?? '').trim().toLowerCase(), [])
+
+  const divisionByName = useMemo(() => {
+    const map = new Map()
+    divisions.forEach((division) => {
+      const key = normalizeDivisionKey(division?.nombre)
+      if (!key || map.has(key)) return
+      map.set(key, division)
+    })
+    return map
+  }, [divisions, normalizeDivisionKey])
+
+  const handleSubdivisionInputChange = (divisionId, value) => {
+    setSubdivisionInputs((prev) => ({
+      ...prev,
+      [divisionId]: value,
+    }))
+  }
+
+  const createDivisionForLocation = async (location) => {
+    if (!bodegaId) return
+    const name = String(location?.nombre ?? '').trim()
+    const typeName = String(location?.tipo ?? '').trim()
+    const key = normalizeDivisionKey(name)
+
+    if (!name) {
+      notifyError('Define un nombre para la división.')
+      return
+    }
+
+    if (!typeName) {
+      notifyError('Define un tipo para la división.')
+      return
+    }
+
+    if (divisionCreating[key]) return
+    setDivisionCreating((prev) => ({ ...prev, [key]: true }))
+
+    try {
+      const tipos = await fetchAll(`${API_URL}/tipos/tipos-division/`)
+      const tipoMap = new Map(
+        tipos
+          .map((tipo) => ({
+            key: normalizeDivisionKey(tipo?.nombre),
+            id: tipo?.id,
+          }))
+          .filter((item) => item.key && item.id != null)
+          .map((item) => [item.key, item.id])
+      )
+
+      const tipoKey = normalizeDivisionKey(typeName)
+      if (!tipoKey) {
+        throw new Error('Define un tipo de división.')
+      }
+
+      let tipoId = tipoMap.get(tipoKey)
+      if (!tipoId) {
+        const createResponse = await authFetch(
+          `${API_URL}/tipos/tipos-division/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ nombre: typeName, descripcion: '' }),
+          },
+          token
+        )
+
+        const createData = await createResponse.json().catch(() => ({}))
+        if (createResponse.ok && createData?.id != null) {
+          tipoId = createData.id
+          tipoMap.set(tipoKey, tipoId)
+        } else {
+          const refreshed = await fetchAll(`${API_URL}/tipos/tipos-division/`)
+          refreshed.forEach((tipo) => {
+            const key = normalizeDivisionKey(tipo?.nombre)
+            if (key && tipo?.id != null && !tipoMap.has(key)) tipoMap.set(key, tipo.id)
+          })
+          tipoId = tipoMap.get(tipoKey)
+          if (!tipoId) {
+            const detail =
+              createData?.detail || createData?.nombre?.[0] || 'No se pudo crear el tipo de división.'
+            throw new Error(detail)
+          }
+        }
+      }
+
+      const response = await authFetch(
+        `${API_URL}/inventario/divisiones/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            nombre: name,
+            bodega_id: Number(bodegaId),
+            tipo_division_id: tipoId,
+          }),
+        },
+        token
+      )
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail =
+          data?.detail ||
+          data?.nombre?.[0] ||
+          data?.non_field_errors?.[0] ||
+          'No se pudo crear la división.'
+        throw new Error(detail)
+      }
+
+      await fetchDivisions()
+      return data
+    } catch (err) {
+      notifyError(err.message || 'Ocurrió un error al crear la división.')
+    } finally {
+      setDivisionCreating((prev) => ({ ...prev, [key]: false }))
+    }
+  }
+
+  const handleAddSubdivisionForLocation = async (location) => {
+    if (subdivisionsDisabled) return
+    const key = normalizeDivisionKey(location?.nombre)
+    const name = String(subdivisionInputs[key] ?? '').trim()
+
+    if (!name) {
+      notifyError('Escribe un nombre para la subdivisión.')
+      return
+    }
+
+    let division = key ? divisionByName.get(key) : null
+    if (!division) {
+      const created = await createDivisionForLocation(location)
+      if (!created) return
+      division = created
+    }
+
+    if (!division?.id) {
+      notifyError('No se pudo resolver la división para esta subdivisión.')
+      return
+    }
+
+    setSubdivisionSaving((prev) => ({ ...prev, [key]: true }))
+    try {
+      const response = await authFetch(
+        `${API_URL}/inventario/subdivisiones/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            nombre: name,
+            division_id: Number(division.id),
+          }),
+        },
+        token
+      )
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = data?.detail || data?.nombre?.[0] || 'No se pudo crear la subdivisión.'
+        throw new Error(detail)
+      }
+
+      setSubdivisionInputs((prev) => ({ ...prev, [key]: '' }))
+      fetchSubdivisions()
+    } catch (err) {
+      notifyError(err.message || 'Ocurrió un error al crear subdivisiones.')
+    } finally {
+      setSubdivisionSaving((prev) => ({ ...prev, [key]: false }))
+    }
+  }
+
+  const handleDeleteSubdivision = async (subdivisionId) => {
+    if (!subdivisionId || subdivisionsDisabled) return
+    if (!window.confirm('¿Eliminar esta subdivisión?')) return
+
+    setSubdivisionDeleting((prev) => ({ ...prev, [subdivisionId]: true }))
+    try {
+      const response = await authFetch(
+        `${API_URL}/inventario/subdivisiones/${subdivisionId}/`,
+        { method: 'DELETE' },
+        token
+      )
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        const detail = data?.detail || 'No se pudo eliminar la subdivisión.'
+        throw new Error(detail)
+      }
+
+      fetchSubdivisions()
+    } catch (err) {
+      notifyError(err.message || 'Ocurrió un error al eliminar la subdivisión.')
+    } finally {
+      setSubdivisionDeleting((prev) => ({ ...prev, [subdivisionId]: false }))
+    }
+  }
+
+  const isViewMode = !isEditing
+  const editorDisabled = saving || loadingData || !isEditing
+  const subdivisionsDisabled = editorDisabled || loadingDivisions || loadingSubdivisions
+
+  const renderLocationSubdivisions = useCallback(
+    (location) => {
+      const key = normalizeDivisionKey(location?.nombre)
+      const division = key ? divisionByName.get(key) : null
+      const subs = (division ? (subdivisionsByDivision.get(division.id) || []) : [])
+        .slice()
+        .sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || '')))
+
+      return (
+        <div className="bodega-layout__subdivisions">
+          <div className="bodega-layout__subdivisions-header">
+            <strong>Subdivisiones</strong>
+            <span>{subs.length} pendientes</span>
+          </div>
+
+          {subs.length > 0 ? (
+            <div className="bodega-layout__subdivision-list">
+              {subs.map((subdivision) => (
+                <span key={subdivision.id} className="bodega-layout__subdivision-chip">
+                  {subdivision.nombre}
+                  {isEditing && (
+                    <button
+                      type="button"
+                      className="bodega-layout__subdivision-remove"
+                      onClick={() => handleDeleteSubdivision(subdivision.id)}
+                      disabled={subdivisionsDisabled || subdivisionDeleting[subdivision.id]}
+                      aria-label={`Eliminar ${subdivision.nombre}`}
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="bodega-layout__hint">No hay subdivisiones para esta división.</p>
+          )}
+
+          <div className="bodega-layout__subdivision-form">
+            <label className="create-user__field">
+              <span>Agregar subdivisión</span>
+              <input
+                type="text"
+                value={subdivisionInputs[key] ?? ''}
+                onChange={(event) => handleSubdivisionInputChange(key, event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    handleAddSubdivisionForLocation(location)
+                  }
+                }}
+                placeholder="Ej: Lado A"
+                disabled={subdivisionsDisabled || subdivisionSaving[key] || divisionCreating[key]}
+              />
+            </label>
+            <div className="create-user__field">
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={() => handleAddSubdivisionForLocation(location)}
+                disabled={subdivisionsDisabled || subdivisionSaving[key] || divisionCreating[key]}
+              >
+                {subdivisionSaving[key] || divisionCreating[key] ? 'Agregando...' : 'Agregar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    [
+      createDivisionForLocation,
+      divisionByName,
+      handleAddSubdivisionForLocation,
+      normalizeDivisionKey,
+      subdivisionsByDivision,
+      subdivisionsDisabled,
+      subdivisionInputs,
+      subdivisionDeleting,
+      subdivisionSaving,
+      divisionCreating,
+      isEditing,
+      handleDeleteSubdivision,
+    ]
+  )
 
   const handleSave = async () => {
     if (!isEditing || saving || !bodegaId) return
@@ -370,9 +736,6 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)` ,
   }
 
-  const isViewMode = !isEditing
-  const editorDisabled = saving || loadingData || !isEditing
-
   return (
     <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
       <div className="create-user__modal" ref={modalRef} style={modalStyle}>
@@ -505,9 +868,11 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
                   locations={formData.ubicaciones}
                   onChange={handleLayoutChange}
                   disabled={editorDisabled}
+                  renderLocationFooter={renderLocationSubdivisions}
                 />
               </section>
             )}
+
           </div>
         </div>
 

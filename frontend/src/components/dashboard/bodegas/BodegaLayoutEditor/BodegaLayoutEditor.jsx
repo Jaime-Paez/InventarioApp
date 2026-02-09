@@ -149,7 +149,7 @@ const TypeSelect = ({
   )
 }
 
-function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, disabled }) {
+function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, disabled, renderLocationFooter }) {
   const safeWidth = useMemo(() => Math.max(widthMeters || 0, 0), [widthMeters])
   const safeHeight = useMemo(() => Math.max(heightMeters || 0, 0), [heightMeters])
   const planStyle = useMemo(() => {
@@ -579,6 +579,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                 />
               </label>
             </div>
+            {typeof renderLocationFooter === 'function' ? renderLocationFooter(location, index) : null}
           </div>
         ))}
       </div>

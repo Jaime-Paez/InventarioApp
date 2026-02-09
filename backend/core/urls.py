@@ -11,6 +11,7 @@ from inventario.viewsets import (
     SubDivisionViewSet,
 )
 from casa_comercial.viewsets import CasaComercialViewSet
+from configuracion.viewsets import ConfiguracionSistemaViewSet
 from marcas.viewsets import MarcaViewSet
 from productos.viewsets import (
     OEMProductoViewSet,
@@ -103,6 +104,9 @@ router.register(
     basename="solicitudes-oem-productos",
 )
 router.register(r"solicitudes/solicitudes", SolicitudViewSet, basename="solicitudes-solicitudes")
+
+# Configuracion
+router.register(r"configuracion/sistema", ConfiguracionSistemaViewSet, basename="configuracion-sistema")
 
 urlpatterns = [
     path("admin/", admin.site.urls),

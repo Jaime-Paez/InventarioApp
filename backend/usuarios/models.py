@@ -38,6 +38,7 @@ class RolPermiso(models.Model):
         SOLICITUDES = "solicitudes", "Solicitudes"
         CLIENTES = "clientes", "Clientes"
         USUARIOS = "usuarios", "Administrar"
+        CONFIGURACION = "configuracion", "Configuraciones"
 
     class SubModulos(models.TextChoices):
         """Submódulos disponibles para permisos específicos (solo general)."""

@@ -19,6 +19,7 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [branches, setBranches] = useState([])
+  const [creatingSubdivisions, setCreatingSubdivisions] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -114,9 +115,257 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
     }))
   }
 
+  const updateLocationMeta = (id, updates) => {
+    setFormData((prev) => ({
+      ...prev,
+      ubicaciones: prev.ubicaciones.map((location) => {
+        if (location.id !== id) return location
+        return { ...location, ...updates }
+      }),
+    }))
+  }
+
   const parseMeasure = (value) => {
     const numeric = Number(value)
     return Number.isFinite(numeric) ? Number(numeric.toFixed(1)) : 0
+  }
+
+  const normalizeKey = (value) => String(value ?? '').trim().toLowerCase()
+
+  const sanitizeLocations = (locations) =>
+    locations.map(({ subdivision_draft: _draft, subdivisions_list: _list, ...location }) => location)
+
+  const fetchAll = async (url) => {
+    let next = url
+    const all = []
+
+    while (next) {
+      const response = await authFetch(next, {}, token)
+      if (!response.ok) throw new Error('No se pudieron cargar los datos.')
+      const data = await response.json()
+      if (Array.isArray(data)) {
+        all.push(...data)
+        next = null
+      } else {
+        const list = data?.results || []
+        all.push(...list)
+        next = data?.next || null
+      }
+    }
+
+    return all
+  }
+
+  const createDivisionsAndSubdivisions = async (bodegaId, locations) => {
+    const aggregated = new Map()
+
+    locations.forEach((location) => {
+      const name = String(location?.nombre ?? '').trim()
+      if (!name) return
+      const key = normalizeKey(name)
+      if (!aggregated.has(key)) {
+        aggregated.set(key, {
+          name,
+          typeName: String(location?.tipo ?? '').trim(),
+          subdivisions: new Set(),
+        })
+      }
+
+      const entry = aggregated.get(key)
+      if (!entry.typeName && location?.tipo) entry.typeName = String(location.tipo).trim()
+
+      const names = Array.isArray(location?.subdivisions_list) ? location.subdivisions_list : []
+      names.forEach((subName) => {
+        const trimmed = String(subName ?? '').trim()
+        if (trimmed) entry.subdivisions.add(trimmed)
+      })
+    })
+
+    if (!aggregated.size) return
+
+    const tipos = await fetchAll(`${API_URL}/tipos/tipos-division/`)
+    const tipoMap = new Map(
+      tipos
+        .map((tipo) => ({
+          key: normalizeKey(tipo?.nombre),
+          id: tipo?.id,
+        }))
+        .filter((item) => item.key && item.id != null)
+        .map((item) => [item.key, item.id])
+    )
+
+    const getOrCreateTipoId = async (typeName) => {
+      const tipoKey = normalizeKey(typeName)
+      if (!tipoKey) throw new Error('Define un tipo de división.')
+      if (tipoMap.has(tipoKey)) return tipoMap.get(tipoKey)
+
+      const createResponse = await authFetch(
+        `${API_URL}/tipos/tipos-division/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ nombre: typeName, descripcion: '' }),
+        },
+        token
+      )
+
+      const createData = await createResponse.json().catch(() => ({}))
+      if (createResponse.ok && createData?.id != null) {
+        tipoMap.set(tipoKey, createData.id)
+        return createData.id
+      }
+
+      const refreshed = await fetchAll(`${API_URL}/tipos/tipos-division/`)
+      refreshed.forEach((tipo) => {
+        const key = normalizeKey(tipo?.nombre)
+        if (key && tipo?.id != null && !tipoMap.has(key)) tipoMap.set(key, tipo.id)
+      })
+      if (tipoMap.has(tipoKey)) return tipoMap.get(tipoKey)
+
+      const detail =
+        createData?.detail || createData?.nombre?.[0] || 'No se pudo crear el tipo de división.'
+      throw new Error(detail)
+    }
+
+    for (const entry of aggregated.values()) {
+      const tipoId = await getOrCreateTipoId(entry.typeName)
+
+      const divisionResponse = await authFetch(
+        `${API_URL}/inventario/divisiones/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            nombre: entry.name,
+            bodega_id: Number(bodegaId),
+            tipo_division_id: tipoId,
+          }),
+        },
+        token
+      )
+
+      const divisionData = await divisionResponse.json().catch(() => ({}))
+      if (!divisionResponse.ok) {
+        const detail =
+          divisionData?.detail ||
+          divisionData?.nombre?.[0] ||
+          divisionData?.non_field_errors?.[0] ||
+          'No se pudo crear la división.'
+        throw new Error(detail)
+      }
+
+      const divisionId = divisionData?.id
+      if (!divisionId || !entry.subdivisions.size) continue
+
+      for (const subName of entry.subdivisions) {
+        const subResponse = await authFetch(
+          `${API_URL}/inventario/subdivisiones/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              nombre: subName,
+              division_id: Number(divisionId),
+            }),
+          },
+          token
+        )
+
+        const subData = await subResponse.json().catch(() => ({}))
+        if (!subResponse.ok) {
+          const detail =
+            subData?.detail || subData?.nombre?.[0] || 'No se pudo crear la subdivisión.'
+          throw new Error(detail)
+        }
+      }
+    }
+  }
+
+  const addSubdivisionToLocation = (location) => {
+    const draft = String(location?.subdivision_draft ?? '').trim()
+    if (!draft) return
+
+    const current = Array.isArray(location?.subdivisions_list) ? location.subdivisions_list : []
+    const exists = current.some((name) => normalizeKey(name) === normalizeKey(draft))
+    if (exists) {
+      notifyError('Esa subdivisión ya está en la lista.')
+      return
+    }
+
+    updateLocationMeta(location.id, {
+      subdivisions_list: [...current, draft],
+      subdivision_draft: '',
+    })
+  }
+
+  const handleSubdivisionDraftChange = (locationId, value) => {
+    updateLocationMeta(locationId, { subdivision_draft: value })
+  }
+
+  const removeSubdivisionFromLocation = (locationId, name) => {
+    const current = Array.isArray(formData.ubicaciones) ? formData.ubicaciones : []
+    const target = current.find((loc) => loc.id === locationId)
+    if (!target) return
+    const list = Array.isArray(target.subdivisions_list) ? target.subdivisions_list : []
+    const filtered = list.filter((item) => normalizeKey(item) !== normalizeKey(name))
+    updateLocationMeta(locationId, { subdivisions_list: filtered })
+  }
+
+  const renderLocationSubdivisions = (location) => {
+    const names = Array.isArray(location?.subdivisions_list) ? location.subdivisions_list : []
+    return (
+      <div className="bodega-layout__subdivisions">
+        <div className="bodega-layout__subdivisions-header">
+          <strong>Subdivisiones</strong>
+          <span>{names.length} pendientes</span>
+        </div>
+        {names.length > 0 ? (
+          <div className="bodega-layout__subdivision-list">
+            {names.map((name) => (
+              <span key={name} className="bodega-layout__subdivision-chip">
+                {name}
+                <button
+                  type="button"
+                  className="bodega-layout__subdivision-remove"
+                  onClick={() => removeSubdivisionFromLocation(location.id, name)}
+                  disabled={loading || creatingSubdivisions}
+                  aria-label={`Eliminar ${name}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="bodega-layout__hint">Aún no hay subdivisiones.</p>
+        )}
+        <div className="bodega-layout__subdivision-form">
+          <label className="create-user__field">
+            <span>Agregar subdivisión</span>
+            <input
+              type="text"
+              value={location?.subdivision_draft ?? ''}
+              onChange={(event) => handleSubdivisionDraftChange(location.id, event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  addSubdivisionToLocation(location)
+                }
+              }}
+              placeholder="Ej: Lado A"
+              disabled={loading || creatingSubdivisions}
+            />
+          </label>
+          <div className="create-user__field">
+            <button
+              type="button"
+              className="create-user__action create-user__action--primary"
+              onClick={() => addSubdivisionToLocation(location)}
+              disabled={loading || creatingSubdivisions}
+            >
+              Agregar
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   const handleSubmit = async (event) => {
@@ -128,7 +377,7 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
       sucursal_id: formData.sucursalId ? Number(formData.sucursalId) : null,
       ancho_metros: parseMeasure(formData.ancho_metros),
       alto_metros: parseMeasure(formData.alto_metros),
-      ubicaciones: formData.ubicaciones,
+      ubicaciones: sanitizeLocations(formData.ubicaciones),
     }
 
     if (!payload.nombre) {
@@ -157,6 +406,15 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
       if (!response.ok) {
         const detail = data?.detail || data?.nombre?.[0] || 'No se pudo crear la bodega.'
         throw new Error(detail)
+      }
+
+      try {
+        setCreatingSubdivisions(true)
+        await createDivisionsAndSubdivisions(data.id, formData.ubicaciones)
+      } catch (err) {
+        notifyError(err.message || 'Ocurrió un error al crear divisiones o subdivisiones.')
+      } finally {
+        setCreatingSubdivisions(false)
       }
 
       setFormData(initialForm)
@@ -416,6 +674,7 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
                 locations={formData.ubicaciones}
                 onChange={handleLayoutChange}
                 disabled={loading}
+                renderLocationFooter={renderLocationSubdivisions}
               />
             </section>
           </div>

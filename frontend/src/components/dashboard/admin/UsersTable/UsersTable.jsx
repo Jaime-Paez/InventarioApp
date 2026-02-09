@@ -19,6 +19,13 @@ const formatFullName = (u) =>
   [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || '—'
 
 const normId = (v) => (v == null ? null : String(v))
+const isCheckboxSelection = (event) => {
+  if (event?.type === 'checkbox') return true
+  const target = event?.originalEvent?.target
+  if (!target) return true
+  if (target.type === 'checkbox') return true
+  return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
+}
 
 function UsersTable({
   token,
@@ -767,6 +774,7 @@ function UsersTable({
           selectionMode="multiple"
           selection={selectedUsers}
           onSelectionChange={(e) => {
+            if (!isCheckboxSelection(e)) return
             const value = e.value || []
             setSelectedUsers(value)
             const ids = value.map((user) => normId(user?.id)).filter(Boolean)

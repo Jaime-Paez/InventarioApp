@@ -22,6 +22,7 @@ class MovimientoInventarioAdmin(admin.ModelAdmin):
         "sucursal_objetivo",
         "estado_movimiento",
         "fecha",
+        "iva_rate",
         "funcional",
     )
     list_filter = (

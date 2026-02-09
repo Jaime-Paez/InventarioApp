@@ -205,6 +205,71 @@
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
+.bodega-layout__subdivisions {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--color-border);
+  display: grid;
+  gap: 10px;
+}
+
+.bodega-layout__subdivisions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--font-size-sm);
+}
+
+.bodega-layout__subdivision-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bodega-layout__subdivision-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+  font-size: var(--font-size-xs);
+}
+
+.bodega-layout__subdivision-form {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.bodega-layout__subdivision-form textarea {
+  width: 100%;
+  min-height: 70px;
+  resize: vertical;
+}
+
+.bodega-layout__subdivision-form input {
+  width: 100%;
+}
+
+.bodega-layout__subdivision-remove {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.bodega-layout__subdivision-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .bodega-type-select {
   position: relative;
   width: 100%;

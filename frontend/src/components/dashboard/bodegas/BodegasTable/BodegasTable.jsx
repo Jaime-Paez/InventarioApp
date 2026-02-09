@@ -15,6 +15,13 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (v) => (v == null ? null : String(v))
+const isCheckboxSelection = (event) => {
+  if (event?.type === 'checkbox') return true
+  const target = event?.originalEvent?.target
+  if (!target) return true
+  if (target.type === 'checkbox') return true
+  return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
+}
 
 function BodegasTable({ token, onSelect }) {
   const toast = useRef(null)
@@ -696,6 +703,7 @@ function BodegasTable({ token, onSelect }) {
           selectionMode="multiple"
           selection={selectedRows}
           onSelectionChange={(e) => {
+            if (!isCheckboxSelection(e)) return
             const value = e.value || []
             setSelectedRows(value)
           }}

@@ -1,5 +1,6 @@
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from usuarios.permissions import (
     BodegasModulePermission,
@@ -71,6 +72,15 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "division__nombre", "division__bodega__nombre"]
     ordering_fields = ["nombre", "division__nombre"]
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if Inventario.objects.filter(subdivision=instance).exists():
+            return Response(
+                {"detail": "No se puede eliminar la subdivisión porque tiene productos asociados."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 class InventarioViewSet(viewsets.ModelViewSet):

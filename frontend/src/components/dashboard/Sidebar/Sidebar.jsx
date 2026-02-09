@@ -131,7 +131,11 @@ function Sidebar({
             <PanelLeftClose />
             Cerrar panel
           </button>
-          <button type="button" className="sidebar__action ghost">
+          <button
+            type="button"
+            className="sidebar__action ghost"
+            onClick={() => onSelect('Configuraciones')}
+          >
             <Settings />
             Configuración
           </button>

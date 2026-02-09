@@ -1,0 +1,94 @@
+.inventario-details__modal {
+  min-width: 720px;
+  min-height: 520px;
+}
+
+.inventario-details__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0;
+}
+
+.inventario-details__section {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 14px;
+}
+
+.inventario-details__bodegas {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inventario-details__bodega-card {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inventario-details__bodega-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.inventario-details__bodega-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 12px;
+}
+
+.inventario-details__bodega-grid .create-user__field span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inventario-details__bodega-grid .create-user__field span small {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  opacity: 0.65;
+}
+
+.inventario-details__empty {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  opacity: 0.7;
+}
+
+.inventario-details__error {
+  margin: 0 18px 10px;
+}
+
+.inventario-details__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 8px 18px 16px;
+}
+
+.dashboard-shell.dark .inventario-details__bodega-card {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .inventario-details__bodega-header {
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inventario-details__empty {
+  color: var(--color-text-dark);
+  opacity: 0.7;
+}
+
+@media (max-width: 900px) {
+  .inventario-details__modal {
+    min-width: 0;
+  }
+}

@@ -42,6 +42,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
   const [selectedCasa, setSelectedCasa] = useState(null)
   const [marcaQuery, setMarcaQuery] = useState('')
   const [casaSearch, setCasaSearch] = useState('')
+  const [codigoChecking, setCodigoChecking] = useState(false)
+  const [codigoError, setCodigoError] = useState('')
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -50,6 +52,9 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
   const marcaDropdownRef = useRef(null)
   const casaDropdownRef = useRef(null)
   const alternoDropdownRef = useRef(null)
+  const codigoPrefixRef = useRef('')
+  const codigoCheckTimerRef = useRef(null)
+  const codigoCheckSeqRef = useRef(0)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -180,9 +185,26 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     setIsMaximized(false)
     setSelectedCasa(null)
     restoreRef.current = null
+    codigoPrefixRef.current = ''
+    if (codigoCheckTimerRef.current) {
+      clearTimeout(codigoCheckTimerRef.current)
+      codigoCheckTimerRef.current = null
+    }
+    codigoCheckSeqRef.current = 0
+    setCodigoChecking(false)
+    setCodigoError('')
     setBrands([])
     setSuppliers([])
   }, [open])
+
+  useEffect(
+    () => () => {
+      if (codigoCheckTimerRef.current) {
+        clearTimeout(codigoCheckTimerRef.current)
+      }
+    },
+    []
+  )
 
   useEffect(() => {
     const term = marcaQuery.trim()
@@ -265,11 +287,86 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       }))
       return
     }
+    if (name === 'codigo') {
+      setFormData((prev) => ({
+        ...prev,
+        codigo: value,
+      }))
+      scheduleCodigoCheck(value)
+      return
+    }
     setFormData((prev) => ({
       ...prev,
       [name]: value,
     }))
   }
+
+  const scheduleCodigoCheck = useCallback(
+    (value) => {
+      if (codigoCheckTimerRef.current) {
+        clearTimeout(codigoCheckTimerRef.current)
+        codigoCheckTimerRef.current = null
+      }
+
+      const term = String(value ?? '').trim()
+      if (!term || !token) {
+        setCodigoChecking(false)
+        setCodigoError('')
+        return
+      }
+
+      setCodigoChecking(true)
+      setCodigoError('')
+      const seq = ++codigoCheckSeqRef.current
+
+      codigoCheckTimerRef.current = setTimeout(async () => {
+        try {
+          const response = await authFetch(
+            `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+            {},
+            token
+          )
+          if (!response.ok) throw new Error('No se pudo validar el codigo.')
+          const data = await response.json()
+          if (seq !== codigoCheckSeqRef.current) return
+          const list = Array.isArray(data) ? data : data?.results || []
+          const exists = list.some(
+            (item) => String(item?.codigo ?? '').trim().toLowerCase() === term.toLowerCase()
+          )
+          setCodigoError(exists ? 'Este codigo ya existe.' : '')
+        } catch (err) {
+          if (seq !== codigoCheckSeqRef.current) return
+          setCodigoError('')
+        } finally {
+          if (seq === codigoCheckSeqRef.current) {
+            setCodigoChecking(false)
+          }
+        }
+      }, 350)
+    },
+    [token]
+  )
+
+  const applyCodigoPrefix = useCallback((prefix) => {
+    const cleanPrefix = String(prefix ?? '').trim()
+    if (!cleanPrefix) return
+    const prevPrefix = codigoPrefixRef.current
+    codigoPrefixRef.current = cleanPrefix
+    setFormData((prev) => {
+      const current = String(prev.codigo ?? '')
+      const currentTrim = current.trim()
+      if (!currentTrim || currentTrim === prevPrefix) {
+        scheduleCodigoCheck(cleanPrefix)
+        return { ...prev, codigo: cleanPrefix }
+      }
+      if (prevPrefix && currentTrim.startsWith(prevPrefix)) {
+        const nextCodigo = cleanPrefix + currentTrim.slice(prevPrefix.length)
+        scheduleCodigoCheck(nextCodigo)
+        return { ...prev, codigo: nextCodigo }
+      }
+      return prev
+    })
+  }, [scheduleCodigoCheck])
 
   const handleMarcaInputChange = (event) => {
     const value = event.target.value
@@ -288,21 +385,27 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       marcaId: String(brand.id),
     }))
     setShowMarcaDropdown(false)
+    applyCodigoPrefix(brand.codigo)
   }
 
   const handleCasaToggle = (supplier) => {
     if (!supplier) return
     const id = String(supplier.id)
     if (!id) return
+    let didSelect = false
     setFormData((prev) => {
       const current = (prev.casasIds || []).map(String)
       if (current.includes(id)) {
         setSelectedCasa(null)
         return { ...prev, casasIds: [] }
       }
+      didSelect = true
       setSelectedCasa({ id: supplier.id, nombre: supplier.nombre })
       return { ...prev, casasIds: [id] }
     })
+    if (didSelect && !formData.marcaId) {
+      applyCodigoPrefix(supplier.codigo)
+    }
     setCasaSearch('')
     setShowCasaDropdown(false)
   }
@@ -337,6 +440,19 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (codigoChecking) {
+      notifyError('Estamos validando el codigo, espera un momento.')
+      return
+    }
+    if (codigoError) {
+      notifyError(codigoError)
+      return
+    }
+    if (!formData.codigo.trim()) {
+      notifyError('Define un codigo para el producto.')
+      return
+    }
+
     setLoading(true)
 
     const payload = {
@@ -349,12 +465,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       precio: parseNumber(formData.precio),
       marca_id: formData.marcaId ? Number(formData.marcaId) : null,
       casas_comerciales_ids: (formData.casasIds || []).map((id) => Number(id)),
-    }
-
-    if (!payload.codigo) {
-      setLoading(false)
-      notifyError('Define un codigo para el producto.')
-      return
     }
 
     if (!payload.nombre) {
@@ -677,7 +787,11 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                                     key={supplier.id}
                                     type="button"
                                     className="create-user__result-option"
-                                    onClick={() => handleCasaToggle(supplier)}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      handleCasaToggle(supplier)
+                                    }}
                                     disabled={loading}
                                   >
                                     <div className="create-user__result-info">
@@ -694,16 +808,21 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Referencia</span>
+                      <span>Codigo</span>
                       <input
                         name="codigo"
                         type="text"
-                        placeholder="Referencia del producto"
+                        placeholder="Codigo del producto (ej: FRD-123)"
                         value={formData.codigo}
                         onChange={handleChange}
                         required
                         disabled={loading}
                       />
+                      {!codigoChecking && !codigoError && (
+                        <small className="muted">Sugerencia: se autocompleta con el codigo de la marca o casa comercial.</small>
+                      )}
+                      {codigoChecking && <small className="muted">Validando codigo...</small>}
+                      {!codigoChecking && codigoError && <small className="create-user__field-error">{codigoError}</small>}
                     </label>
 
                     <label className="create-user__field">
@@ -742,9 +861,10 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                                   key={brand.id}
                                   type="button"
                                   className="create-user__result-option"
-                                  onClick={() => {
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
                                     handleMarcaSelect(brand)
-                                    setShowMarcaDropdown(false)
                                   }}
                                   disabled={loading}
                                 >
@@ -980,7 +1100,11 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
             <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>
               Cancelar
             </button>
-            <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>
+            <button
+              type="submit"
+              className="create-user__action create-user__action--primary"
+              disabled={loading || codigoChecking || Boolean(codigoError)}
+            >
               {loading ? 'Guardando...' : 'Crear producto'}
             </button>
           </div>
