@@ -20,11 +20,14 @@ const formatFullName = (u) =>
 
 const normId = (v) => (v == null ? null : String(v))
 const isCheckboxSelection = (event) => {
-  if (event?.type === 'checkbox') return true
+  const type = event?.type
+  if (type === 'checkbox' || type === 'all') return true
   const target = event?.originalEvent?.target
   if (!target) return true
   if (target.type === 'checkbox') return true
-  return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
+  return Boolean(
+    target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input, .row-selection-column')
+  )
 }
 
 function UsersTable({

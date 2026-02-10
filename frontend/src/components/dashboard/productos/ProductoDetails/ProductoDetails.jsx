@@ -28,6 +28,12 @@ const parseNumber = (value) => {
   const parsed = Number(cleaned)
   return Number.isFinite(parsed) ? parsed : null
 }
+const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
+const parseProductCode = (label) => {
+  if (!label) return null
+  const match = /\(([^)]+)\)\s*$/.exec(String(label))
+  return match ? match[1].trim() : null
+}
 
 const DEFAULT_IVA_RATE = 0.15
 
@@ -58,15 +64,18 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [localInventoryContext, setLocalInventoryContext] = useState(null)
+  const [inventoryLoading, setInventoryLoading] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
-  const hasInventory = Boolean(inventoryContext)
+  const resolvedInventoryContext = inventoryContext ?? localInventoryContext
 
   const modalRef = useRef(null)
   const marcaDropdownRef = useRef(null)
   const casaDropdownRef = useRef(null)
+  const inventarioEditorRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -116,6 +125,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     marcaId: data?.marca?.id ?? '',
     casasIds: Array.isArray(data?.casas_comerciales) ? data.casas_comerciales.map((casa) => String(casa.id)) : [],
   })
+  const productCode = formData.codigo || originalData.codigo
 
   const fetchProducto = useCallback(async () => {
     if (!productoId) return
@@ -210,6 +220,57 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     }
   }, [token])
 
+  const fetchInventoryContext = useCallback(async () => {
+    if (!token || !productoId) return
+    const code = String(productCode || '').trim()
+    setInventoryLoading(true)
+    try {
+      const [inventoriesRes, branchesRes, bodegasRes, subdivisionsRes] = await Promise.all([
+        authFetch(`${API_URL}/inventario/inventario/`, {}, token),
+        authFetch(`${API_URL}/inventario/sucursales/`, {}, token),
+        authFetch(`${API_URL}/inventario/bodegas/`, {}, token),
+        authFetch(`${API_URL}/inventario/subdivisiones/`, {}, token),
+      ])
+
+      if (!inventoriesRes.ok) throw new Error('No se pudo cargar el inventario.')
+      if (!branchesRes.ok) throw new Error('No se pudieron cargar las sucursales.')
+      if (!bodegasRes.ok) throw new Error('No se pudieron cargar las bodegas.')
+      if (!subdivisionsRes.ok) throw new Error('No se pudieron cargar las subdivisiones.')
+
+      const [inventoriesData, branchesData, bodegasData, subdivisionsData] = await Promise.all([
+        inventoriesRes.json(),
+        branchesRes.json(),
+        bodegasRes.json(),
+        subdivisionsRes.json(),
+      ])
+
+      const entries = parseApiList(inventoriesData)
+        .map((entry) => {
+          const matchesById = entry?.producto_id && String(entry.producto_id) === String(productoId)
+          const entryCode = parseProductCode(entry?.producto)
+          const matchesByCode = code && entryCode === code
+          if (!matchesById && !matchesByCode) return null
+          return {
+            ...entry,
+            subdivisionId: entry?.subdivisionId ?? entry?.subdivision?.id ?? null,
+          }
+        })
+        .filter(Boolean)
+
+      setLocalInventoryContext({
+        branches: parseApiList(branchesData),
+        bodegas: parseApiList(bodegasData),
+        subdivisions: parseApiList(subdivisionsData),
+        inventarioEntries: entries,
+        onSaved: fetchInventoryContext,
+      })
+    } catch (err) {
+      notifyError(err?.message || 'No se pudo cargar el inventario.')
+    } finally {
+      setInventoryLoading(false)
+    }
+  }, [notifyError, productCode, productoId, token])
+
   useEffect(() => {
     const unsubscribe = onIvaUpdated((rate) => {
       const parsed = Number(rate)
@@ -243,6 +304,20 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     fetchProducto()
     fetchIvaConfig()
   }, [open, fetchProducto, fetchIvaConfig])
+
+  useEffect(() => {
+    if (!open) {
+      setLocalInventoryContext(null)
+      setInventoryLoading(false)
+      return
+    }
+    if (inventoryContext) {
+      setLocalInventoryContext(null)
+      return
+    }
+    if (!productoId) return
+    fetchInventoryContext()
+  }, [fetchInventoryContext, inventoryContext, open, productCode, productoId])
 
   useEffect(() => {
     const term = marcaQuery.trim()
@@ -419,6 +494,9 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       setAlternativas(Array.isArray(data?.alternativas) ? data.alternativas : [])
       setShowMarcaDropdown(false)
       setShowCasaDropdown(false)
+      if (inventarioEditorRef.current?.save) {
+        await inventarioEditorRef.current.save()
+      }
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
@@ -581,6 +659,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     setIsMaximized(true)
   }
 
+
   if (!open) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
@@ -650,16 +729,6 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
             >
               Alternos
             </button>
-            {hasInventory && (
-              <button
-                type="button"
-                className={`create-user__tab ${activeTab === 'inventario' ? 'create-user__tab--active' : ''}`}
-                onClick={() => setActiveTab('inventario')}
-                aria-selected={activeTab === 'inventario'}
-              >
-                Inventario
-              </button>
-            )}
           </div>
 
           <div className="create-user__body">
@@ -878,27 +947,31 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                   </div>
                 </section>
 
-                <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <h4>Ubicaciones del producto</h4>
-                    <button type="button" className="create-user__ghost create-user__location-action" disabled>
-                      Ingresar ubicacion
-                    </button>
+                {inventoryLoading && (
+                  <div className="inventario-details__empty">
+                    <Info size={18} />
+                    <span>Cargando ubicaciones...</span>
                   </div>
-
-                  <div className="create-user__locations-table">
-                    <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Sucursal</span>
-                      <span>Bodega</span>
-                      <span>Division</span>
-                      <span>Subdivision</span>
-                      <span>Cantidad</span>
-                    </div>
-                    <div className="create-user__locations-row create-user__locations-row--empty">
-                      <span>Sin ubicaciones registradas.</span>
-                    </div>
+                )}
+                {!inventoryLoading && resolvedInventoryContext && (
+                  <InventarioEditor
+                    ref={inventarioEditorRef}
+                    productId={productoId}
+                    token={token}
+                    branches={resolvedInventoryContext?.branches || []}
+                    bodegas={resolvedInventoryContext?.bodegas || []}
+                    subdivisions={resolvedInventoryContext?.subdivisions || []}
+                    inventarioEntries={resolvedInventoryContext?.inventarioEntries || []}
+                    disabled={editorDisabled}
+                    onSaved={resolvedInventoryContext?.onSaved}
+                  />
+                )}
+                {!inventoryLoading && !resolvedInventoryContext && (
+                  <div className="inventario-details__empty">
+                    <Info size={18} />
+                    <span>No se pudieron cargar las ubicaciones.</span>
                   </div>
-                </section>
+                )}
               </>
             )}
 
@@ -923,25 +996,6 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
               </section>
             )}
 
-            {activeTab === 'inventario' && hasInventory && (
-              <section className="create-user__section">
-                <div className="create-user__section-header">
-                  <h4>Inventario por sucursal</h4>
-                </div>
-
-                <InventarioEditor
-                  productId={productoId}
-                  token={token}
-                  branches={inventoryContext?.branches || []}
-                  bodegas={inventoryContext?.bodegas || []}
-                  subdivisions={inventoryContext?.subdivisions || []}
-                  inventarioEntries={inventoryContext?.inventarioEntries || []}
-                  disabled={editorDisabled}
-                  onSaved={inventoryContext?.onSaved}
-                  onError={onError}
-                />
-              </section>
-            )}
           </div>
         </div>
 

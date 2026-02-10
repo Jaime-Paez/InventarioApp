@@ -41,7 +41,10 @@ const contains = (fieldValue, target) => {
   return normalizeValue(fieldValue).includes(needle)
 }
 const parseCriteriaNumber = (value) => {
-  const parsed = Number(value)
+  if (value == null) return null
+  const cleaned = String(value).trim()
+  if (!cleaned) return null
+  const parsed = Number(cleaned)
   return Number.isFinite(parsed) ? parsed : null
 }
 const pickValue = (row, keys) => {
@@ -61,6 +64,16 @@ const matchCasa = (row, target) => {
     .join(' ')
   const fallback = row?.casas_comerciales_nombres || ''
   return normalizeValue(names).includes(needle) || normalizeValue(fallback).includes(needle)
+}
+const isCheckboxSelection = (event) => {
+  const type = event?.type
+  if (type === 'checkbox' || type === 'all') return true
+  const target = event?.originalEvent?.target
+  if (!target) return true
+  if (target.type === 'checkbox') return true
+  return Boolean(
+    target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input, .row-selection-column')
+  )
 }
 
 const initialSearchCriteria = {
@@ -324,8 +337,15 @@ function InventarioTable({ token }) {
   const handleSearchSubmit = async (event) => {
     event.preventDefault()
     const nextCriteria = { ...searchCriteria }
-    lastSearchRef.current = nextCriteria
-    setAppliedCriteria(nextCriteria)
+    const isEmptyValue = (value) => {
+      if (value === null || value === undefined) return true
+      if (typeof value === 'string') return value.trim() === ''
+      return String(value).trim() === ''
+    }
+    const isCriteriaEmpty = Object.values(nextCriteria).every(isEmptyValue)
+    const applied = isCriteriaEmpty ? { ...initialSearchCriteria, __onlyWithInventory: true } : nextCriteria
+    lastSearchRef.current = applied
+    setAppliedCriteria(applied)
     setShowSearchModal(false)
   }
 
@@ -402,13 +422,24 @@ function InventarioTable({ token }) {
 
   const applySearchFilters = useCallback((list, criteria) => {
     const piezaCriteria = normalizeValue(criteria?.pieza_original)
-    const qtyMin = parseCriteriaNumber(criteria?.cantidad_min)
+    const qtyMinRaw = parseCriteriaNumber(criteria?.cantidad_min)
     const qtyMax = parseCriteriaNumber(criteria?.cantidad_max)
+    const onlyWithInventory = Boolean(criteria?.__onlyWithInventory)
+    const qtyMin =
+      qtyMinRaw != null
+        ? qtyMinRaw
+        : qtyMax != null
+          ? 1
+          : onlyWithInventory
+            ? 1
+            : null
     return list.filter((row) => {
       const piezaValue = row?.pieza_original ? 'true' : 'false'
       const dateValue = pickValue(row, ['creado_en', 'created_at', 'fecha_creacion'])
       const qtyValue = normalizeNumber(row?.total_general)
+      const hasInventory = onlyWithInventory ? qtyValue > 0 : true
       return (
+        hasInventory &&
         contains(row?.codigo, criteria?.codigo) &&
         contains(row?.nombre, criteria?.nombre) &&
         contains(row?.descripcion, criteria?.descripcion) &&
@@ -543,17 +574,22 @@ function InventarioTable({ token }) {
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
   const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
+  useEffect(() => {
+    setProcessedRows(null)
+  }, [appliedCriteria])
 
-  const selectionBaseRows = useMemo(
-    () => (processedRows === null ? filteredRows : processedRows),
-    [processedRows, filteredRows]
-  )
+  const selectionBaseRows = useMemo(() => {
+    if (Array.isArray(processedRows)) {
+      if (processedRows.length === 0 && filteredRows.length > 0) return filteredRows
+      return processedRows
+    }
+    return filteredRows
+  }, [processedRows, filteredRows])
 
   const allRowIds = useMemo(
     () => selectionBaseRows.map((row) => normId(row?.id)).filter(Boolean),
     [selectionBaseRows]
   )
-  const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
 
   useEffect(() => {
     selectedColumnsRef.current = selectedColumns
@@ -622,6 +658,7 @@ function InventarioTable({ token }) {
     () => (selectedRows || []).map((row) => normId(row?.id)).filter(Boolean),
     [selectedRows]
   )
+  const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
 
   useEffect(() => {
     const saved = sessionStorage.getItem('inventario-table-selected-rows')
@@ -685,33 +722,6 @@ function InventarioTable({ token }) {
     }),
     []
   )
-
-  const handleToggleRowSelection = useCallback((row) => {
-    const id = normId(row?.id)
-    if (!id) return
-    setSelectedRows((prev) => {
-      const map = new Map((prev || []).map((item) => [normId(item?.id), item]))
-      if (map.has(id)) {
-        map.delete(id)
-        return Array.from(map.values())
-      }
-      map.set(id, row)
-      return Array.from(map.values())
-    })
-  }, [])
-
-  const handleToggleAllRows = useCallback(() => {
-    if (!selectionBaseRows.length) return
-    setSelectedRows((prev) => {
-      const map = new Map((prev || []).map((item) => [normId(item?.id), item]))
-      if (allRowsSelected) {
-        selectionBaseRows.forEach((row) => map.delete(normId(row?.id)))
-        return Array.from(map.values())
-      }
-      selectionBaseRows.forEach((row) => map.set(normId(row?.id), row))
-      return Array.from(map.values())
-    })
-  }, [allRowsSelected, selectionBaseRows])
 
   const getRowsToExport = useCallback(() => {
     if (selectedRows?.length) return selectedRows
@@ -1053,7 +1063,7 @@ function InventarioTable({ token }) {
           removableSort
           filters={filters}
           onFilter={(e) => setFilters(e.filters)}
-          onValueChange={(value) => setProcessedRows(value ?? [])}
+          onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : null)}
           globalFilterFields={globalFilterFields}
           stateStorage="session"
           stateKey="inventario-table-state"
@@ -1066,21 +1076,15 @@ function InventarioTable({ token }) {
             selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow inventario__row' : 'inventario__row'
           }
           emptyMessage={loading ? 'Cargando inventario...' : emptyMessage}
+          selectionMode="multiple"
+          selection={selectedRows}
+          onSelectionChange={(e) => {
+            if (!isCheckboxSelection(e)) return
+            setSelectedRows(e.value || [])
+          }}
         >
           <Column
-            header={
-              <Checkbox
-                checked={allRowsSelected}
-                onChange={handleToggleAllRows}
-                disabled={!selectionBaseRows.length}
-              />
-            }
-            body={(rowData) => (
-              <Checkbox
-                checked={selectedRowIds.includes(normId(rowData?.id))}
-                onChange={() => handleToggleRowSelection(rowData)}
-              />
-            )}
+            selectionMode="multiple"
             frozen
             headerClassName="row-selection-column"
             bodyClassName="row-selection-column"

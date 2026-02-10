@@ -701,6 +701,12 @@
   filter: brightness(0.98);
 }
 
+.create-user__ghost:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: none;
+}
+
 .dashboard-shell.dark .create-user__ghost {
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
@@ -863,6 +869,14 @@
   background: var(--color-surface);
 }
 
+.create-user__locations-table--with-actions .create-user__locations-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(90px, 0.7fr) 80px;
+}
+
+.create-user__locations-table--with-actions .create-user__locations-row--empty {
+  grid-template-columns: 1fr;
+}
+
 .create-user__locations-row {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -888,9 +902,103 @@
   color: var(--color-text-primary);
   opacity: 0.65;
 }
+.create-user__locations-row--form select,
+.create-user__locations-row--form input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: #fff;
+  min-height: 28px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.create-user__locations-row--form {
+  gap: 10px;
+}
+
+.create-user__locations-row--form select:focus,
+.create-user__locations-row--form input:focus {
+  outline: none;
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 25%, transparent);
+}
+
+.create-user__locations-row--form select:disabled,
+.create-user__locations-row--form input:disabled {
+  background: #f3f4f6;
+  color: var(--color-text-primary);
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.dashboard-shell.dark .create-user__locations-row--form select,
+.dashboard-shell.dark .create-user__locations-row--form input {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__locations-row--form select:disabled,
+.dashboard-shell.dark .create-user__locations-row--form input:disabled {
+  background: #2a2f36;
+  color: var(--color-text-dark);
+  opacity: 0.6;
+}
 
 .create-user__location-action {
   min-width: 140px;
+}
+.create-user__locations-cell--editable {
+  cursor: pointer;
+}
+.create-user__locations-cell--editable:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+.create-user__locations-cell--editable input,
+.create-user__locations-cell--editable select {
+  width: 100%;
+  max-width: 160px;
+}
+
+.create-user__locations-cell--action {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.create-user__locations-remove {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-error-text);
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.create-user__locations-remove:hover {
+  border-color: var(--color-error-text);
+  background: color-mix(in srgb, var(--color-error-text) 12%, #fff);
+}
+
+.create-user__locations-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f3f4f6;
+}
+.create-user__location-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
 }
 
 .dashboard-shell.dark .create-user__locations-table {
@@ -904,6 +1012,22 @@
 
 .dashboard-shell.dark .create-user__locations-row--head {
   background: var(--table-color-dark);
+}
+
+.dashboard-shell.dark .create-user__locations-remove {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: var(--color-error-text-dark);
+}
+
+.dashboard-shell.dark .create-user__locations-remove:hover {
+  border-color: var(--color-error-text-dark);
+  background: color-mix(in srgb, var(--color-error-text-dark) 18%, var(--color-surface-darker));
+}
+
+.dashboard-shell.dark .create-user__locations-remove:disabled {
+  background: #2a2f36;
+  color: var(--color-text-dark);
 }
 
 .create-user__dropdown {

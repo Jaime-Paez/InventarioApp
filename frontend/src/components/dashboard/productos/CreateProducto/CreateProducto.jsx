@@ -25,6 +25,12 @@ const parseNumber = (value) => {
   const parsed = Number(cleaned)
   return Number.isFinite(parsed) ? parsed : null
 }
+const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
+const parseQuantity = (value) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  return Math.max(0, Math.floor(parsed))
+}
 
 function CreateProducto({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
@@ -39,6 +45,25 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const [brands, setBrands] = useState([])
   const [suppliers, setSuppliers] = useState([])
+  const [branches, setBranches] = useState([])
+  const [bodegas, setBodegas] = useState([])
+  const [divisions, setDivisions] = useState([])
+  const [subdivisions, setSubdivisions] = useState([])
+  const [locationDraft, setLocationDraft] = useState({
+    sucursalId: '',
+    bodegaId: '',
+    divisionId: '',
+    subdivisionId: '',
+    cantidad: '',
+  })
+  const [locations, setLocations] = useState([])
+  const [locationsLoading, setLocationsLoading] = useState(false)
+  const [locationError, setLocationError] = useState('')
+  const [showLocationForm, setShowLocationForm] = useState(false)
+  const [editingLocationKey, setEditingLocationKey] = useState(null)
+  const [editingField, setEditingField] = useState(null)
+  const [editingValue, setEditingValue] = useState('')
+  const [editError, setEditError] = useState('')
   const [selectedCasa, setSelectedCasa] = useState(null)
   const [marcaQuery, setMarcaQuery] = useState('')
   const [casaSearch, setCasaSearch] = useState('')
@@ -93,6 +118,81 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     return suppliers
   }, [suppliers, casaSearch])
 
+  const branchById = useMemo(
+    () => new Map(branches.map((branch) => [String(branch.id), branch])),
+    [branches]
+  )
+  const bodegaById = useMemo(
+    () => new Map(bodegas.map((bodega) => [String(bodega.id), bodega])),
+    [bodegas]
+  )
+  const subdivisionById = useMemo(
+    () => new Map(subdivisions.map((subdivision) => [String(subdivision.id), subdivision])),
+    [subdivisions]
+  )
+  const bodegasBySucursal = useMemo(() => {
+    const map = new Map()
+    bodegas.forEach((bodega) => {
+      const sucursalId = bodega?.sucursal?.id ?? bodega?.sucursal_id
+      if (!sucursalId) return
+      const key = String(sucursalId)
+      const list = map.get(key) || []
+      list.push(bodega)
+      map.set(key, list)
+    })
+    return map
+  }, [bodegas])
+  const divisionsByBodega = useMemo(() => {
+    const map = new Map()
+    divisions.forEach((division) => {
+      const bodegaId = division?.bodega?.id ?? division?.bodega_id
+      if (!bodegaId) return
+      const key = String(bodegaId)
+      const list = map.get(key) || []
+      list.push(division)
+      map.set(key, list)
+    })
+    return map
+  }, [divisions])
+  const subdivisionsByDivision = useMemo(() => {
+    const map = new Map()
+    subdivisions.forEach((subdivision) => {
+      const divisionId = subdivision?.division?.id
+      if (!divisionId) return
+      const key = String(divisionId)
+      const list = map.get(key) || []
+      list.push(subdivision)
+      map.set(key, list)
+    })
+    return map
+  }, [subdivisions])
+  const subdivisionsByBodega = useMemo(() => {
+    const map = new Map()
+    subdivisions.forEach((subdivision) => {
+      const bodegaId = subdivision?.division?.bodega?.id
+      if (!bodegaId) return
+      const key = String(bodegaId)
+      const list = map.get(key) || []
+      list.push(subdivision)
+      map.set(key, list)
+    })
+    return map
+  }, [subdivisions])
+  const availableBodegas = useMemo(
+    () => (locationDraft.sucursalId ? bodegasBySucursal.get(locationDraft.sucursalId) || [] : []),
+    [bodegasBySucursal, locationDraft.sucursalId]
+  )
+  const availableDivisions = useMemo(
+    () => (locationDraft.bodegaId ? divisionsByBodega.get(locationDraft.bodegaId) || [] : []),
+    [divisionsByBodega, locationDraft.bodegaId]
+  )
+  const availableSubdivisions = useMemo(
+    () => (locationDraft.divisionId ? subdivisionsByDivision.get(locationDraft.divisionId) || [] : []),
+    [subdivisionsByDivision, locationDraft.divisionId]
+  )
+
+  const createLocationUid = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
   const searchBrands = useCallback(
     async (query) => {
       const term = String(query ?? '').trim()
@@ -141,6 +241,40 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     [notifyError, token]
   )
 
+  const fetchLocations = useCallback(async () => {
+    if (!token) return
+    setLocationsLoading(true)
+    try {
+      const [branchesRes, bodegasRes, divisionsRes, subdivisionsRes] = await Promise.all([
+        authFetch(`${API_URL}/inventario/sucursales/`, {}, token),
+        authFetch(`${API_URL}/inventario/bodegas/`, {}, token),
+        authFetch(`${API_URL}/inventario/divisiones/`, {}, token),
+        authFetch(`${API_URL}/inventario/subdivisiones/`, {}, token),
+      ])
+
+      if (!branchesRes.ok) throw new Error('No se pudieron cargar las sucursales.')
+      if (!bodegasRes.ok) throw new Error('No se pudieron cargar las bodegas.')
+      if (!divisionsRes.ok) throw new Error('No se pudieron cargar las divisiones.')
+      if (!subdivisionsRes.ok) throw new Error('No se pudieron cargar las subdivisiones.')
+
+      const [branchesData, bodegasData, divisionsData, subdivisionsData] = await Promise.all([
+        branchesRes.json(),
+        bodegasRes.json(),
+        divisionsRes.json(),
+        subdivisionsRes.json(),
+      ])
+
+      setBranches(parseApiList(branchesData))
+      setBodegas(parseApiList(bodegasData))
+      setDivisions(parseApiList(divisionsData))
+      setSubdivisions(parseApiList(subdivisionsData))
+    } catch (err) {
+      notifyError(err?.message || 'Ocurrio un error al cargar las ubicaciones.')
+    } finally {
+      setLocationsLoading(false)
+    }
+  }, [notifyError, token])
+
   const searchAlternos = useCallback(
     async (query) => {
       const term = String(query ?? '').trim()
@@ -184,6 +318,25 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     setShowCasaDropdown(false)
     setIsMaximized(false)
     setSelectedCasa(null)
+    setBranches([])
+    setBodegas([])
+    setDivisions([])
+    setSubdivisions([])
+    setLocations([])
+    setLocationDraft({
+      sucursalId: '',
+      bodegaId: '',
+      divisionId: '',
+      subdivisionId: '',
+      cantidad: '',
+    })
+    setLocationError('')
+    setLocationsLoading(false)
+    setShowLocationForm(false)
+    setEditingLocationKey(null)
+    setEditingField(null)
+    setEditingValue('')
+    setEditError('')
     restoreRef.current = null
     codigoPrefixRef.current = ''
     if (codigoCheckTimerRef.current) {
@@ -195,7 +348,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     setCodigoError('')
     setBrands([])
     setSuppliers([])
-  }, [open])
+    fetchLocations()
+  }, [fetchLocations, open])
 
   useEffect(
     () => () => {
@@ -438,6 +592,222 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     setAlternosSelected((prev) => prev.filter((item) => String(item?.id) !== key))
   }
 
+  const handleLocationSelect = (field, value) => {
+    setLocationError('')
+    setLocationDraft((prev) => {
+      if (field === 'sucursalId') {
+        return {
+          ...prev,
+          sucursalId: value,
+          bodegaId: '',
+          divisionId: '',
+          subdivisionId: '',
+        }
+      }
+      if (field === 'bodegaId') {
+        return {
+          ...prev,
+          bodegaId: value,
+          divisionId: '',
+          subdivisionId: '',
+        }
+      }
+      if (field === 'divisionId') {
+        return {
+          ...prev,
+          divisionId: value,
+          subdivisionId: '',
+        }
+      }
+      return {
+        ...prev,
+        [field]: value,
+      }
+    })
+  }
+
+  const handleAddLocation = () => {
+    const sucursalId = locationDraft.sucursalId
+    const bodegaId = locationDraft.bodegaId
+    const divisionId = locationDraft.divisionId
+    const subdivisionId = locationDraft.subdivisionId
+    const quantity = parseQuantity(locationDraft.cantidad)
+
+    if (!sucursalId) {
+      setLocationError('Selecciona una sucursal.')
+      return
+    }
+    if (!bodegaId) {
+      setLocationError('Selecciona una bodega.')
+      return
+    }
+    if (!divisionId) {
+      setLocationError('Selecciona una division.')
+      return
+    }
+    if (!subdivisionId) {
+      setLocationError('Selecciona una subdivisiÃ³n.')
+      return
+    }
+    const allowedSubs = subdivisionsByDivision.get(String(divisionId)) || []
+    if (!allowedSubs.some((sub) => String(sub.id) === String(subdivisionId))) {
+      setLocationError('La subdivision no pertenece a la division seleccionada.')
+      return
+    }
+    const safeQuantity = quantity && quantity > 0 ? quantity : 1
+
+    const subdivision = subdivisionById.get(String(subdivisionId))
+    const bodega = bodegaById.get(String(bodegaId))
+    const branch = branchById.get(String(sucursalId))
+    const divisionName = subdivision?.division?.nombre || divisions.find((d) => String(d.id) === String(divisionId))?.nombre
+
+    const nextEntry = {
+      uid: createLocationUid(),
+      sucursalId: String(sucursalId),
+      sucursalNombre: branch?.nombre || 'â€”',
+      bodegaId: String(bodegaId),
+      bodegaNombre: bodega?.nombre || 'â€”',
+      divisionId: String(divisionId),
+      divisionNombre: divisionName || 'â€”',
+      subdivisionId: String(subdivisionId),
+      subdivisionNombre: subdivision?.nombre || 'â€”',
+      cantidad: safeQuantity,
+    }
+
+    setLocations((prev) => {
+      const index = prev.findIndex((item) => item.subdivisionId === nextEntry.subdivisionId)
+      if (index === -1) return [...prev, nextEntry]
+      const updated = [...prev]
+      updated[index] = { ...nextEntry, uid: prev[index].uid }
+      return updated
+    })
+
+    setLocationDraft((prev) => ({
+      ...prev,
+      divisionId: '',
+      subdivisionId: '',
+      cantidad: '1',
+    }))
+    setLocationError('')
+  }
+
+  const handleRemoveLocation = (uid) => {
+    const key = String(uid)
+    if (!key) return
+    setLocations((prev) => prev.filter((item) => item.uid !== key))
+    if (editingLocationKey === key) {
+      setEditingLocationKey(null)
+      setEditingField(null)
+      setEditingValue('')
+      setEditError('')
+    }
+  }
+
+  const beginLocationEdit = (location, field) => {
+    setEditError('')
+    setEditingLocationKey(location.uid)
+    setEditingField(field)
+    if (field === 'cantidad') {
+      setEditingValue(String(location.cantidad ?? ''))
+      return
+    }
+    if (field === 'subdivision') {
+      setEditingValue(String(location.subdivisionId ?? ''))
+    }
+  }
+
+  const cancelLocationEdit = () => {
+    setEditingLocationKey(null)
+    setEditingField(null)
+    setEditingValue('')
+    setEditError('')
+  }
+
+  const commitLocationEdit = (overrideValue) => {
+    if (!editingLocationKey || !editingField) return
+    const value = overrideValue ?? editingValue
+
+    setLocations((prev) => {
+      const index = prev.findIndex((item) => item.uid === editingLocationKey)
+      if (index === -1) return prev
+      const current = prev[index]
+
+      if (editingField === 'cantidad') {
+        const quantity = parseQuantity(value)
+        if (!quantity || quantity <= 0) {
+          setEditError('Ingresa una cantidad valida.')
+          return prev
+        }
+        const updated = [...prev]
+        updated[index] = { ...current, cantidad: quantity }
+        cancelLocationEdit()
+        return updated
+      }
+
+      if (editingField === 'subdivision') {
+        const newId = String(value || '')
+        if (!newId) {
+          setEditError('Selecciona una subdivision.')
+          return prev
+        }
+        if (prev.some((item) => item.subdivisionId === newId && item.uid !== current.uid)) {
+          setEditError('Esa subdivision ya esta en la tabla.')
+          return prev
+        }
+        const subdivision = subdivisionById.get(newId)
+        if (!subdivision) {
+          setEditError('Subdivision no valida.')
+          return prev
+        }
+        const divisionId = subdivision?.division?.id
+        const updated = [...prev]
+        updated[index] = {
+          ...current,
+          subdivisionId: newId,
+          subdivisionNombre: subdivision.nombre || current.subdivisionNombre,
+          divisionId: divisionId != null ? String(divisionId) : current.divisionId,
+          divisionNombre: subdivision?.division?.nombre || current.divisionNombre,
+        }
+        cancelLocationEdit()
+        return updated
+      }
+
+      return prev
+    })
+  }
+
+  const saveInventoryLocations = async (productId) => {
+    if (!productId || !locations.length) return []
+    const errors = []
+    for (const location of locations) {
+      const quantity = parseQuantity(location.cantidad)
+      if (!quantity || quantity <= 0) continue
+      try {
+        const response = await authFetch(
+          `${API_URL}/inventario/inventario/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              producto_id: productId,
+              subdivision_id: Number(location.subdivisionId),
+              referencia: '',
+              cantidad: quantity,
+            }),
+          },
+          token
+        )
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}))
+          const detail = data?.detail || 'No se pudo asignar una ubicaciÃ³n.'
+          throw new Error(detail)
+        }
+      } catch (err) {
+        errors.push(err?.message || 'No se pudo asignar una ubicaciÃ³n.')
+      }
+    }
+    return errors
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (codigoChecking) {
@@ -532,8 +902,23 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
         }
       }
 
+      if (data?.id && locations.length) {
+        const errors = await saveInventoryLocations(data.id)
+        if (errors.length) {
+          notifyError(`Se creo el producto, pero fallaron ${errors.length} ubicaciones.`)
+        }
+      }
+
       setFormData(initialForm)
       setAlternosSelected([])
+      setLocations([])
+      setLocationDraft({
+        sucursalId: '',
+        bodegaId: '',
+        divisionId: '',
+        subdivisionId: '',
+        cantidad: '1',
+      })
       onCreated?.(data)
     } catch (err) {
       notifyError(err.message || 'Ocurrio un error al crear el producto.')
@@ -936,8 +1321,25 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                 <section className="create-user__section">
                   <div className="create-user__section-header">
                     <h4>Ubicaciones del producto</h4>
-                    <button type="button" className="create-user__ghost create-user__location-action" disabled>
-                      Ingresar ubicacion
+                    <button
+                      type="button"
+                      className="create-user__ghost create-user__location-action"
+                      onClick={() => {
+                        setLocationError('')
+                        setShowLocationForm((prev) => {
+                          const next = !prev
+                          if (next) {
+                            setLocationDraft((current) => ({
+                              ...current,
+                              cantidad: current.cantidad || '1',
+                            }))
+                          }
+                          return next
+                        })
+                      }}
+                      disabled={loading || locationsLoading}
+                    >
+                      {showLocationForm ? 'Cancelar' : 'Agregar ubicacion'}
                     </button>
                   </div>
 
@@ -949,10 +1351,176 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                       <span>Subdivision</span>
                       <span>Cantidad</span>
                     </div>
-                    <div className="create-user__locations-row create-user__locations-row--empty">
-                      <span>Sin ubicaciones registradas.</span>
-                    </div>
+                    {showLocationForm && (
+                      <div className="create-user__locations-row create-user__locations-row--form">
+                        <span>
+                          <select
+                            value={locationDraft.sucursalId}
+                            onChange={(event) => handleLocationSelect('sucursalId', event.target.value)}
+                            disabled={loading || locationsLoading}
+                          >
+                            <option value="">Selecciona una sucursal</option>
+                            {branches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>
+                                {branch.nombre || `Sucursal ${branch.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                        <span>
+                          <select
+                            value={locationDraft.bodegaId}
+                            onChange={(event) => handleLocationSelect('bodegaId', event.target.value)}
+                            disabled={loading || locationsLoading || !locationDraft.sucursalId}
+                          >
+                            <option value="">Selecciona una bodega</option>
+                            {availableBodegas.map((bodega) => (
+                              <option key={bodega.id} value={bodega.id}>
+                                {bodega.nombre || `Bodega ${bodega.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                        <span>
+                          <select
+                            value={locationDraft.divisionId}
+                            onChange={(event) => handleLocationSelect('divisionId', event.target.value)}
+                            disabled={loading || locationsLoading || !locationDraft.bodegaId}
+                          >
+                            <option value="">Selecciona una division</option>
+                            {availableDivisions.map((division) => (
+                              <option key={division.id} value={division.id}>
+                                {division.nombre || `Division ${division.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                        <span>
+                          <select
+                            value={locationDraft.subdivisionId}
+                            onChange={(event) => handleLocationSelect('subdivisionId', event.target.value)}
+                            disabled={loading || locationsLoading || !locationDraft.divisionId}
+                          >
+                            <option value="">Selecciona una subdivision</option>
+                            {availableSubdivisions.map((subdivision) => (
+                              <option key={subdivision.id} value={subdivision.id}>
+                                {subdivision.nombre || `Subdivision ${subdivision.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            placeholder="Cantidad"
+                            value={locationDraft.cantidad}
+                            onChange={(event) => handleLocationSelect('cantidad', event.target.value)}
+                            disabled={loading || locationsLoading}
+                          />
+                          <button
+                            type="button"
+                            className="create-user__ghost"
+                            onClick={handleAddLocation}
+                            disabled={loading || locationsLoading}
+                          >
+                            Agregar
+                          </button>
+                        </span>
+                      </div>
+                    )}
+                    {locationsLoading && (
+                      <div className="create-user__locations-row create-user__locations-row--empty">
+                        <span>Cargando ubicaciones...</span>
+                      </div>
+                    )}
+                    {!locationsLoading && locations.length === 0 && (
+                      <div className="create-user__locations-row create-user__locations-row--empty">
+                        <span>Sin ubicaciones registradas.</span>
+                      </div>
+                    )}
+                    {locations.map((location) => {
+                      const rowSubdivisions = subdivisionsByBodega.get(location.bodegaId) || []
+                      const isEditingRow = editingLocationKey === location.uid
+                      const editingSubdivision = isEditingRow && editingField === 'subdivision'
+                      const editingCantidad = isEditingRow && editingField === 'cantidad'
+
+                      return (
+                        <div key={location.uid} className="create-user__locations-row">
+                          <span>{location.sucursalNombre}</span>
+                          <span>{location.bodegaNombre}</span>
+                          <span>{location.divisionNombre}</span>
+                          <span
+                            className="create-user__locations-cell create-user__locations-cell--editable"
+                            onDoubleClick={() => beginLocationEdit(location, 'subdivision')}
+                          >
+                            {editingSubdivision ? (
+                              <select
+                                value={editingValue}
+                                onChange={(event) => {
+                                  setEditingValue(event.target.value)
+                                  commitLocationEdit(event.target.value)
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Escape') cancelLocationEdit()
+                                }}
+                                onBlur={() => cancelLocationEdit()}
+                                autoFocus
+                              >
+                                <option value="">Selecciona una subdivision</option>
+                                {rowSubdivisions.map((subdivision) => (
+                                  <option key={subdivision.id} value={subdivision.id}>
+                                    {subdivision.nombre || `Subdivision ${subdivision.id}`}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span>{location.subdivisionNombre}</span>
+                            )}
+                          </span>
+                          <span
+                            className="create-user__locations-cell create-user__locations-cell--editable"
+                            onDoubleClick={() => beginLocationEdit(location, 'cantidad')}
+                            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                          >
+                            {editingCantidad ? (
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={editingValue}
+                                onChange={(event) => setEditingValue(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault()
+                                    commitLocationEdit()
+                                  }
+                                  if (event.key === 'Escape') cancelLocationEdit()
+                                }}
+                                onBlur={() => commitLocationEdit()}
+                                autoFocus
+                              />
+                            ) : (
+                              <strong>{location.cantidad}</strong>
+                            )}
+                            <button
+                              type="button"
+                              className="create-user__ghost"
+                              onClick={() => handleRemoveLocation(location.uid)}
+                              onDoubleClick={(event) => event.stopPropagation()}
+                              disabled={loading}
+                            >
+                              Quitar
+                            </button>
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
+
+                  {locationError && <div className="create-user__error">{locationError}</div>}
+                  {editError && <div className="create-user__error">{editError}</div>}
                 </section>
               </>
             )}
