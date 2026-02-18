@@ -5,6 +5,7 @@
   gap: 8px;
   flex: 1;
   min-width: 0;
+  padding-top: 10px;
 }
 
 .workspace__tablist-wrapper {
@@ -17,12 +18,12 @@
 .workspace__tablist {
   display: flex;
   gap: 10px;
-  margin-top: 10px;
   align-items: center;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-behavior: smooth;
-  padding: 0 15px;
+  padding: 0 12px;
+  cursor: grab;
 }
 
 .workspace__tablist::-webkit-scrollbar {
@@ -33,10 +34,19 @@
   scrollbar-width: none;
 }
 
+.workspace__tablist.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.workspace__tablist.is-dragging .workspace__tab {
+  pointer-events: none;
+}
+
 .workspace__tab {
   border: none;
   outline: none;
-  background: var(--color-primary);
+  background: var(--color-primary-soft);
   color: var(--color-button-primary);
   padding: 8px;
   border-radius: 10px;
@@ -47,25 +57,34 @@
   width: 100px;
   flex: 0 0 100px;
   min-width: 0;
+  opacity: 0.8;
 }
 
 .workspace__tab:hover,
 .workspace__tab:focus-visible {
   background: var(--color-primary-strong);
+  opacity: 0.9;
 }
 
 .workspace__tab.active {
-  background: var(--color-primary-strong);
+  background: var(--color-primary);
+  opacity: 1;
 }
 
 .dashboard-shell.dark .workspace__tab {
-  background: var(--color-primary-dark);
+  background: color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
+  opacity: 0.7;
 }
 
 .dashboard-shell.dark .workspace__tab:hover,
-.dashboard-shell.dark .workspace__tab:focus-visible,
+.dashboard-shell.dark .workspace__tab:focus-visible {
+  background: color-mix(in srgb, var(--color-primary-dark) 55%, transparent);
+  opacity: 0.85;
+}
+
 .dashboard-shell.dark .workspace__tab.active {
-  background: var(--color-primary-dark-strong)
+  background: var(--color-primary-dark);
+  opacity: 1;
 }
 
 .workspace__tab-label {
@@ -103,6 +122,9 @@
   justify-content: center;
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  align-self: center;
+  position: relative;
+  z-index: 2;
 }
 
 .dashboard-shell.dark .workspace__tab-control {

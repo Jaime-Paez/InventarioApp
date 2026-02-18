@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { OrderList } from 'primereact/orderlist'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 
@@ -41,6 +40,13 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
   const [alternoLoading, setAlternoLoading] = useState(false)
   const [alternosSelected, setAlternosSelected] = useState([])
   const [showAlternoDropdown, setShowAlternoDropdown] = useState(false)
+  const [showAlternoForm, setShowAlternoForm] = useState(false)
+  const [alternoDraft, setAlternoDraft] = useState(null)
+  const [alternoError, setAlternoError] = useState('')
+  const [oemItems, setOemItems] = useState([])
+  const [showOemForm, setShowOemForm] = useState(false)
+  const [oemDraft, setOemDraft] = useState({ codigo: '', descripcion: '' })
+  const [oemError, setOemError] = useState('')
   const [showMarcaDropdown, setShowMarcaDropdown] = useState(false)
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const [brands, setBrands] = useState([])
@@ -314,6 +320,13 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     setAlternosSelected([])
     setAlternoLoading(false)
     setShowAlternoDropdown(false)
+    setShowAlternoForm(false)
+    setAlternoDraft(null)
+    setAlternoError('')
+    setOemItems([])
+    setShowOemForm(false)
+    setOemDraft({ codigo: '', descripcion: '' })
+    setOemError('')
     setShowMarcaDropdown(false)
     setShowCasaDropdown(false)
     setIsMaximized(false)
@@ -569,27 +582,101 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     [alternosSelected]
   )
 
-  const handleAddAlterno = (product) => {
+  const handleAlternoSelect = (product) => {
     if (!product) return
-    const id = String(product.id)
-    if (!id) return
-    setAlternosSelected((prev) => {
-      if (prev.some((item) => String(item?.id) === id)) return prev
-      return [
-        ...prev,
-        {
-          id: product.id,
-          codigo: product.codigo,
-          nombre: product.nombre,
-        },
-      ]
+    setAlternoDraft({
+      id: product.id,
+      codigo: product.codigo,
+      nombre: product.nombre,
+      descripcion: product.descripcion,
     })
+    setAlternoError('')
+    setShowAlternoDropdown(false)
+  }
+
+  const handleAddAlterno = (product) => {
+    if (!product) return false
+    const id = String(product.id)
+    if (!id) return false
+    if (alternoIdSet.has(id)) {
+      setAlternoError('Ese producto ya esta en la tabla.')
+      return false
+    }
+    setAlternosSelected((prev) => [
+      ...prev,
+      {
+        id: product.id,
+        codigo: product.codigo,
+        nombre: product.nombre,
+        descripcion: product.descripcion,
+      },
+    ])
+    setAlternoError('')
+    return true
+  }
+
+  const handleAddAlternoDraft = () => {
+    if (!alternoDraft?.id) {
+      setAlternoError('Selecciona un producto alterno.')
+      return
+    }
+    const added = handleAddAlterno(alternoDraft)
+    if (!added) return
+    setAlternoDraft(null)
+    setAlternoQuery('')
+    setAlternoOptions([])
+    setShowAlternoDropdown(false)
   }
 
   const handleRemoveAlterno = (id) => {
     const key = String(id)
     if (!key) return
     setAlternosSelected((prev) => prev.filter((item) => String(item?.id) !== key))
+    setAlternoError('')
+  }
+
+  const normalizeOemCode = (value) => String(value ?? '').trim().toLowerCase()
+  const oemCodeSet = useMemo(
+    () => new Set(oemItems.map((item) => normalizeOemCode(item?.codigo)).filter(Boolean)),
+    [oemItems]
+  )
+
+  const handleOemDraftChange = (field, value) => {
+    setOemDraft((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+    setOemError('')
+  }
+
+  const handleAddOem = () => {
+    const codigo = String(oemDraft.codigo ?? '').trim()
+    const descripcion = String(oemDraft.descripcion ?? '').trim()
+    if (!codigo) {
+      setOemError('Ingresa un codigo OEM.')
+      return
+    }
+    const key = normalizeOemCode(codigo)
+    if (oemCodeSet.has(key)) {
+      setOemError('Ese codigo OEM ya esta en la tabla.')
+      return
+    }
+    setOemItems((prev) => [
+      ...prev,
+      {
+        codigo,
+        descripcion,
+      },
+    ])
+    setOemDraft({ codigo: '', descripcion: '' })
+    setOemError('')
+  }
+
+  const handleRemoveOem = (codigo) => {
+    const key = normalizeOemCode(codigo)
+    if (!key) return
+    setOemItems((prev) => prev.filter((item) => normalizeOemCode(item?.codigo) !== key))
+    setOemError('')
   }
 
   const handleLocationSelect = (field, value) => {
@@ -808,6 +895,84 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     return errors
   }
 
+  const ensureOemId = async (item) => {
+    const codigo = String(item?.codigo ?? '').trim()
+    if (!codigo) return null
+    const payload = {
+      codigo,
+      descripcion: String(item?.descripcion ?? '').trim(),
+    }
+
+    const createResponse = await authFetch(
+      `${API_URL}/productos/oem/`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      token
+    )
+
+    if (createResponse.ok) {
+      const created = await createResponse.json().catch(() => ({}))
+      return created?.id ?? null
+    }
+
+    const searchResponse = await authFetch(
+      `${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}&page_size=20`,
+      {},
+      token
+    )
+    if (!searchResponse.ok) return null
+    const searchData = await searchResponse.json().catch(() => ({}))
+    const list = parseApiList(searchData)
+    const match = list.find(
+      (oem) => String(oem?.codigo ?? '').trim().toLowerCase() === codigo.toLowerCase()
+    )
+    return match?.id ?? null
+  }
+
+  const saveOems = async (productId) => {
+    if (!productId || !oemItems.length) return []
+    const errors = []
+    const seen = new Set()
+    const unique = []
+    oemItems.forEach((item) => {
+      const key = normalizeOemCode(item?.codigo)
+      if (!key || seen.has(key)) return
+      seen.add(key)
+      unique.push(item)
+    })
+
+    for (const item of unique) {
+      try {
+        const oemId = await ensureOemId(item)
+        if (!oemId) {
+          throw new Error('No se pudo registrar el OEM.')
+        }
+        const relationResponse = await authFetch(
+          `${API_URL}/productos/oem-producto/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              producto_id: productId,
+              oem_id: oemId,
+            }),
+          },
+          token
+        )
+        if (!relationResponse.ok) {
+          const data = await relationResponse.json().catch(() => ({}))
+          const detail = data?.detail || 'No se pudo registrar el OEM.'
+          throw new Error(detail)
+        }
+      } catch (err) {
+        errors.push(err?.message || 'No se pudo registrar el OEM.')
+      }
+    }
+
+    return errors
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (codigoChecking) {
@@ -902,6 +1067,13 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
         }
       }
 
+      if (data?.id && oemItems.length) {
+        const errors = await saveOems(data.id)
+        if (errors.length) {
+          notifyError(`Se creo el producto, pero fallaron ${errors.length} OEMs.`)
+        }
+      }
+
       if (data?.id && locations.length) {
         const errors = await saveInventoryLocations(data.id)
         if (errors.length) {
@@ -911,6 +1083,10 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
       setFormData(initialForm)
       setAlternosSelected([])
+      setOemItems([])
+      setShowOemForm(false)
+      setOemDraft({ codigo: '', descripcion: '' })
+      setOemError('')
       setLocations([])
       setLocationDraft({
         sucursalId: '',
@@ -1099,6 +1275,14 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
             </button>
             <button
               type="button"
+              className={`create-user__tab ${activeTab === 'ubicaciones' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('ubicaciones')}
+              aria-selected={activeTab === 'ubicaciones'}
+            >
+              Ubicaciones
+            </button>
+            <button
+              type="button"
               className={`create-user__tab ${activeTab === 'alternos' ? 'create-user__tab--active' : ''}`}
               onClick={() => setActiveTab('alternos')}
               aria-selected={activeTab === 'alternos'}
@@ -1129,6 +1313,79 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                         required
                         disabled={loading}
                       />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Marca</span>
+                      <div className="create-user__dropdown" ref={marcaDropdownRef}>
+                        <button
+                          type="button"
+                          className="create-user__dropdown-trigger"
+                          onClick={() => {
+                            setShowMarcaDropdown((prev) => !prev)
+                            setShowCasaDropdown(false)
+                          }}
+                          disabled={loading}
+                        >
+                          <span>{marcaQuery.trim() ? marcaQuery : 'Selecciona una marca'}</span>
+                          <i className={`pi pi-chevron-${showMarcaDropdown ? 'up' : 'down'}`} />
+                        </button>
+
+                        {showMarcaDropdown && (
+                          <div className="create-user__dropdown-panel">
+                            <div className="create-user__dropdown-search">
+                              <i className="pi pi-search" />
+                              <input
+                                type="text"
+                                placeholder="Buscar marcas"
+                                value={marcaQuery}
+                                onChange={handleMarcaInputChange}
+                              />
+                            </div>
+
+                            <div className="create-user__dropdown-results">
+                              {!marcaQuery.trim() && <small className="muted">Escribe para buscar.</small>}
+                              {marcaQuery.trim() && !brands.length && <small className="muted">Sin resultados.</small>}
+                              {brands.slice(0, 40).map((brand) => (
+                                <button
+                                  key={brand.id}
+                                  type="button"
+                                  className="create-user__result-option"
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    handleMarcaSelect(brand)
+                                  }}
+                                  disabled={loading}
+                                >
+                                  <div className="create-user__result-info">
+                                    <strong>{brand.nombre}</strong>
+                                    <small>{brand.codigo ? `Codigo: ${brand.codigo}` : `ID: ${brand.id}`}</small>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Codigo</span>
+                      <input
+                        name="codigo"
+                        type="text"
+                        placeholder="Codigo del producto (ej: FRD-123)"
+                        value={formData.codigo}
+                        onChange={handleChange}
+                        required
+                        disabled={loading}
+                      />
+                      {!codigoChecking && !codigoError && (
+                        <small className="muted">Sugerencia: se autocompleta con el codigo de la marca o casa comercial.</small>
+                      )}
+                      {codigoChecking && <small className="muted">Validando codigo...</small>}
+                      {!codigoChecking && codigoError && <small className="create-user__field-error">{codigoError}</small>}
                     </label>
 
                     <label className="create-user__field">
@@ -1192,79 +1449,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                       </div>
                     </label>
 
-                    <label className="create-user__field">
-                      <span>Codigo</span>
-                      <input
-                        name="codigo"
-                        type="text"
-                        placeholder="Codigo del producto (ej: FRD-123)"
-                        value={formData.codigo}
-                        onChange={handleChange}
-                        required
-                        disabled={loading}
-                      />
-                      {!codigoChecking && !codigoError && (
-                        <small className="muted">Sugerencia: se autocompleta con el codigo de la marca o casa comercial.</small>
-                      )}
-                      {codigoChecking && <small className="muted">Validando codigo...</small>}
-                      {!codigoChecking && codigoError && <small className="create-user__field-error">{codigoError}</small>}
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Marca</span>
-                      <div className="create-user__dropdown" ref={marcaDropdownRef}>
-                        <button
-                          type="button"
-                          className="create-user__dropdown-trigger"
-                          onClick={() => {
-                            setShowMarcaDropdown((prev) => !prev)
-                            setShowCasaDropdown(false)
-                          }}
-                          disabled={loading}
-                        >
-                          <span>{marcaQuery.trim() ? marcaQuery : 'Selecciona una marca'}</span>
-                          <i className={`pi pi-chevron-${showMarcaDropdown ? 'up' : 'down'}`} />
-                        </button>
-
-                        {showMarcaDropdown && (
-                          <div className="create-user__dropdown-panel">
-                            <div className="create-user__dropdown-search">
-                              <i className="pi pi-search" />
-                              <input
-                                type="text"
-                                placeholder="Buscar marcas"
-                                value={marcaQuery}
-                                onChange={handleMarcaInputChange}
-                              />
-                            </div>
-
-                            <div className="create-user__dropdown-results">
-                              {!marcaQuery.trim() && <small className="muted">Escribe para buscar.</small>}
-                              {marcaQuery.trim() && !brands.length && <small className="muted">Sin resultados.</small>}
-                              {brands.slice(0, 40).map((brand) => (
-                                <button
-                                  key={brand.id}
-                                  type="button"
-                                  className="create-user__result-option"
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    handleMarcaSelect(brand)
-                                  }}
-                                  disabled={loading}
-                                >
-                                  <div className="create-user__result-info">
-                                    <strong>{brand.nombre}</strong>
-                                    <small>{brand.codigo ? `Codigo: ${brand.codigo}` : `ID: ${brand.id}`}</small>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </label>
-
                     <label className="create-user__field create-user__field--full">
                       <span>Descripcion</span>
                       <textarea
@@ -1320,207 +1504,92 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
                 <section className="create-user__section">
                   <div className="create-user__section-header">
-                    <h4>Ubicaciones del producto</h4>
+                    <h4>OEMs</h4>
                     <button
                       type="button"
                       className="create-user__ghost create-user__location-action"
                       onClick={() => {
-                        setLocationError('')
-                        setShowLocationForm((prev) => {
+                        setOemError('')
+                        setShowOemForm((prev) => {
                           const next = !prev
-                          if (next) {
-                            setLocationDraft((current) => ({
-                              ...current,
-                              cantidad: current.cantidad || '1',
-                            }))
+                          if (!next) {
+                            setOemDraft({ codigo: '', descripcion: '' })
                           }
                           return next
                         })
                       }}
-                      disabled={loading || locationsLoading}
+                      disabled={loading}
                     >
-                      {showLocationForm ? 'Cancelar' : 'Agregar ubicacion'}
+                      {showOemForm ? 'Cancelar' : 'Agregar OEM'}
                     </button>
                   </div>
 
-                  <div className="create-user__locations-table">
+                  <div className="create-user__locations-table create-user__locations-table--oem">
                     <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Sucursal</span>
-                      <span>Bodega</span>
-                      <span>Division</span>
-                      <span>Subdivision</span>
-                      <span>Cantidad</span>
+                      <span>Codigo</span>
+                      <span>Descripcion</span>
+                      <span>Acciones</span>
                     </div>
-                    {showLocationForm && (
+
+                    {showOemForm && (
                       <div className="create-user__locations-row create-user__locations-row--form">
                         <span>
-                          <select
-                            value={locationDraft.sucursalId}
-                            onChange={(event) => handleLocationSelect('sucursalId', event.target.value)}
-                            disabled={loading || locationsLoading}
-                          >
-                            <option value="">Selecciona una sucursal</option>
-                            {branches.map((branch) => (
-                              <option key={branch.id} value={branch.id}>
-                                {branch.nombre || `Sucursal ${branch.id}`}
-                              </option>
-                            ))}
-                          </select>
-                        </span>
-                        <span>
-                          <select
-                            value={locationDraft.bodegaId}
-                            onChange={(event) => handleLocationSelect('bodegaId', event.target.value)}
-                            disabled={loading || locationsLoading || !locationDraft.sucursalId}
-                          >
-                            <option value="">Selecciona una bodega</option>
-                            {availableBodegas.map((bodega) => (
-                              <option key={bodega.id} value={bodega.id}>
-                                {bodega.nombre || `Bodega ${bodega.id}`}
-                              </option>
-                            ))}
-                          </select>
-                        </span>
-                        <span>
-                          <select
-                            value={locationDraft.divisionId}
-                            onChange={(event) => handleLocationSelect('divisionId', event.target.value)}
-                            disabled={loading || locationsLoading || !locationDraft.bodegaId}
-                          >
-                            <option value="">Selecciona una division</option>
-                            {availableDivisions.map((division) => (
-                              <option key={division.id} value={division.id}>
-                                {division.nombre || `Division ${division.id}`}
-                              </option>
-                            ))}
-                          </select>
-                        </span>
-                        <span>
-                          <select
-                            value={locationDraft.subdivisionId}
-                            onChange={(event) => handleLocationSelect('subdivisionId', event.target.value)}
-                            disabled={loading || locationsLoading || !locationDraft.divisionId}
-                          >
-                            <option value="">Selecciona una subdivision</option>
-                            {availableSubdivisions.map((subdivision) => (
-                              <option key={subdivision.id} value={subdivision.id}>
-                                {subdivision.nombre || `Subdivision ${subdivision.id}`}
-                              </option>
-                            ))}
-                          </select>
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            placeholder="Cantidad"
-                            value={locationDraft.cantidad}
-                            onChange={(event) => handleLocationSelect('cantidad', event.target.value)}
-                            disabled={loading || locationsLoading}
+                            type="text"
+                            placeholder="Codigo OEM"
+                            value={oemDraft.codigo}
+                            onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
+                            disabled={loading}
                           />
+                        </span>
+                        <span>
+                          <input
+                            type="text"
+                            placeholder="Descripcion (opcional)"
+                            value={oemDraft.descripcion}
+                            onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
+                            disabled={loading}
+                          />
+                        </span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
                           <button
                             type="button"
                             className="create-user__ghost"
-                            onClick={handleAddLocation}
-                            disabled={loading || locationsLoading}
+                            onClick={handleAddOem}
+                            disabled={loading}
                           >
                             Agregar
                           </button>
                         </span>
                       </div>
                     )}
-                    {locationsLoading && (
-                      <div className="create-user__locations-row create-user__locations-row--empty">
-                        <span>Cargando ubicaciones...</span>
-                      </div>
-                    )}
-                    {!locationsLoading && locations.length === 0 && (
-                      <div className="create-user__locations-row create-user__locations-row--empty">
-                        <span>Sin ubicaciones registradas.</span>
-                      </div>
-                    )}
-                    {locations.map((location) => {
-                      const rowSubdivisions = subdivisionsByBodega.get(location.bodegaId) || []
-                      const isEditingRow = editingLocationKey === location.uid
-                      const editingSubdivision = isEditingRow && editingField === 'subdivision'
-                      const editingCantidad = isEditingRow && editingField === 'cantidad'
 
-                      return (
-                        <div key={location.uid} className="create-user__locations-row">
-                          <span>{location.sucursalNombre}</span>
-                          <span>{location.bodegaNombre}</span>
-                          <span>{location.divisionNombre}</span>
-                          <span
-                            className="create-user__locations-cell create-user__locations-cell--editable"
-                            onDoubleClick={() => beginLocationEdit(location, 'subdivision')}
+                    {!oemItems.length && !showOemForm && (
+                      <div className="create-user__locations-row create-user__locations-row--empty">
+                        <span>Sin OEMs registrados.</span>
+                      </div>
+                    )}
+
+                    {oemItems.map((item, index) => (
+                      <div key={`${item.codigo}-${index}`} className="create-user__locations-row">
+                        <span>{item.codigo || '-'}</span>
+                        <span>{item.descripcion || '—'}</span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__locations-remove"
+                            onClick={() => handleRemoveOem(item.codigo)}
+                            disabled={loading}
+                            aria-label="Eliminar OEM"
                           >
-                            {editingSubdivision ? (
-                              <select
-                                value={editingValue}
-                                onChange={(event) => {
-                                  setEditingValue(event.target.value)
-                                  commitLocationEdit(event.target.value)
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Escape') cancelLocationEdit()
-                                }}
-                                onBlur={() => cancelLocationEdit()}
-                                autoFocus
-                              >
-                                <option value="">Selecciona una subdivision</option>
-                                {rowSubdivisions.map((subdivision) => (
-                                  <option key={subdivision.id} value={subdivision.id}>
-                                    {subdivision.nombre || `Subdivision ${subdivision.id}`}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span>{location.subdivisionNombre}</span>
-                            )}
-                          </span>
-                          <span
-                            className="create-user__locations-cell create-user__locations-cell--editable"
-                            onDoubleClick={() => beginLocationEdit(location, 'cantidad')}
-                            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                          >
-                            {editingCantidad ? (
-                              <input
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={editingValue}
-                                onChange={(event) => setEditingValue(event.target.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter') {
-                                    event.preventDefault()
-                                    commitLocationEdit()
-                                  }
-                                  if (event.key === 'Escape') cancelLocationEdit()
-                                }}
-                                onBlur={() => commitLocationEdit()}
-                                autoFocus
-                              />
-                            ) : (
-                              <strong>{location.cantidad}</strong>
-                            )}
-                            <button
-                              type="button"
-                              className="create-user__ghost"
-                              onClick={() => handleRemoveLocation(location.uid)}
-                              onDoubleClick={(event) => event.stopPropagation()}
-                              disabled={loading}
-                            >
-                              Quitar
-                            </button>
-                          </span>
-                        </div>
-                      )
-                    })}
+                            ×
+                          </button>
+                        </span>
+                      </div>
+                    ))}
                   </div>
 
-                  {locationError && <div className="create-user__error">{locationError}</div>}
-                  {editError && <div className="create-user__error">{editError}</div>}
+                  {oemError && <div className="create-user__error">{oemError}</div>}
                 </section>
               </>
             )}
@@ -1529,108 +1598,144 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
               <section className="create-user__section">
                 <div className="create-user__section-header">
                   <h4>Alternos</h4>
+                  <button
+                    type="button"
+                    className="create-user__ghost create-user__location-action"
+                    onClick={() => {
+                      setAlternoError('')
+                      setShowAlternoForm((prev) => {
+                        const next = !prev
+                        if (!next) {
+                          setShowAlternoDropdown(false)
+                          setAlternoDraft(null)
+                          setAlternoQuery('')
+                          setAlternoOptions([])
+                        }
+                        return next
+                      })
+                    }}
+                    disabled={loading}
+                  >
+                    {showAlternoForm ? 'Cancelar' : 'Agregar alterno'}
+                  </button>
                 </div>
 
-                <div className="create-user__grid create-user__grid--two">
-                  <label className="create-user__field create-user__field--full">
-                    <span>Productos alternos</span>
-                    <div className="create-user__dropdown" ref={alternoDropdownRef}>
-                      <button
-                        type="button"
-                        className="create-user__dropdown-trigger"
-                        onClick={() => {
-                          setShowAlternoDropdown((prev) => !prev)
-                          setShowMarcaDropdown(false)
-                          setShowCasaDropdown(false)
-                        }}
-                        disabled={loading}
-                      >
-                        <span>
-                          {alternosSelected.length
-                            ? `${alternosSelected.length} seleccionados`
-                            : 'Selecciona productos alternos'}
-                        </span>
-                        <i className={`pi pi-chevron-${showAlternoDropdown ? 'up' : 'down'}`} />
-                      </button>
+                <div className="create-user__locations-table create-user__locations-table--alternos">
+                  <div className="create-user__locations-row create-user__locations-row--head">
+                    <span>Codigo</span>
+                    <span>Producto</span>
+                    <span>Descripcion</span>
+                    <span>Acciones</span>
+                  </div>
 
-                      {showAlternoDropdown && (
-                        <div className="create-user__dropdown-panel">
-                          <div className="create-user__dropdown-search">
-                            <i className="pi pi-search" />
-                            <input
-                              type="text"
-                              placeholder="Buscar productos"
-                              value={alternoQuery}
-                              onChange={(event) => setAlternoQuery(event.target.value)}
-                            />
-                          </div>
+                  {showAlternoForm && (
+                    <div className="create-user__locations-row create-user__locations-row--form">
+                      <span>{alternoDraft?.codigo || '—'}</span>
+                      <span>
+                        <div className="create-user__dropdown" ref={alternoDropdownRef}>
+                          <button
+                            type="button"
+                            className="create-user__dropdown-trigger"
+                            onClick={() => {
+                              if (loading) return
+                              setShowAlternoDropdown((prev) => !prev)
+                              setShowMarcaDropdown(false)
+                              setShowCasaDropdown(false)
+                            }}
+                            disabled={loading}
+                          >
+                            <span>{alternoDraft?.nombre || 'Selecciona un producto alterno'}</span>
+                            <i className={`pi pi-chevron-${showAlternoDropdown ? 'up' : 'down'}`} />
+                          </button>
 
-                          <div className="create-user__dropdown-results">
-                            {alternoLoading && <small className="muted">Buscando productos...</small>}
-                            {!alternoLoading && !alternoQuery.trim() && (
-                              <small className="muted">Escribe para buscar productos.</small>
-                            )}
-                            {!alternoLoading && alternoQuery.trim() && !alternoOptions.length && (
-                              <small className="muted">Sin resultados.</small>
-                            )}
-                            {alternoOptions.map((product) => {
-                              const isSelected = alternoIdSet.has(String(product?.id))
-                              return (
-                                <button
-                                  key={product.id}
-                                  type="button"
-                                  className="create-user__result-option"
-                                  onClick={() => handleAddAlterno(product)}
-                                  disabled={isSelected}
-                                >
-                                  <div className="create-user__result-info">
-                                    <strong>{product.nombre || 'Sin nombre'}</strong>
-                                    <small>{product.codigo ? `Codigo: ${product.codigo}` : `ID: ${product.id}`}</small>
-                                  </div>
-                                  <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
-                                    {isSelected ? 'Agregado' : 'Agregar'}
-                                  </span>
-                                </button>
-                              )
-                            })}
-                          </div>
+                          {showAlternoDropdown && (
+                            <div className="create-user__dropdown-panel">
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar productos"
+                                  value={alternoQuery}
+                                  onChange={(event) => setAlternoQuery(event.target.value)}
+                                />
+                              </div>
 
-                          <div className="create-user__orderlist-wrapper">
-                            <OrderList
-                              value={alternosSelected}
-                              onChange={(event) => setAlternosSelected(event.value || [])}
-                              dataKey="id"
-                              className="create-user__orderlist"
-                              header="Seleccionados"
-                              listStyle={{ maxHeight: '200px' }}
-                              itemTemplate={(item) => (
-                                <div className="create-user__orderlist-item">
-                                  <div>
-                                    <strong>{item?.nombre || 'Sin nombre'}</strong>
-                                    <small>{item?.codigo ? `Codigo: ${item.codigo}` : `ID: ${item?.id}`}</small>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="create-user__orderlist-remove"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      handleRemoveAlterno(item?.id)
-                                    }}
-                                  >
-                                    Quitar
-                                  </button>
-                                </div>
-                              )}
-                            />
-                            {!alternosSelected.length && (
-                              <small className="muted">Aun no hay alternos seleccionados.</small>
-                            )}
-                          </div>
+                              <div className="create-user__dropdown-results">
+                                {alternoLoading && <small className="muted">Buscando productos...</small>}
+                                {!alternoLoading && !alternoQuery.trim() && (
+                                  <small className="muted">Escribe para buscar productos.</small>
+                                )}
+                                {!alternoLoading && alternoQuery.trim() && !alternoOptions.length && (
+                                  <small className="muted">Sin resultados.</small>
+                                )}
+                                {alternoOptions.map((product) => {
+                                  const isSelected = alternoIdSet.has(String(product?.id))
+                                  return (
+                                    <button
+                                      key={product.id}
+                                      type="button"
+                                      className="create-user__result-option"
+                                      onClick={() => handleAlternoSelect(product)}
+                                      disabled={isSelected}
+                                    >
+                                      <div className="create-user__result-info">
+                                        <strong>{product.nombre || 'Sin nombre'}</strong>
+                                        <small>{product.codigo ? `Codigo: ${product.codigo}` : `ID: ${product.id}`}</small>
+                                      </div>
+                                      <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
+                                        {isSelected ? 'Agregado' : 'Seleccionar'}
+                                      </span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </span>
+                      <span>{alternoDraft?.descripcion || '—'}</span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleAddAlternoDraft}
+                          disabled={loading}
+                        >
+                          Agregar
+                        </button>
+                      </span>
                     </div>
-                  </label>
+                  )}
 
+                  {!alternosSelected.length && !showAlternoForm && (
+                    <div className="create-user__locations-row create-user__locations-row--empty">
+                      <span>Sin alternos registrados.</span>
+                    </div>
+                  )}
+
+                  {alternosSelected.map((alterno, index) => (
+                    <div key={`${alterno.id}-${index}`} className="create-user__locations-row">
+                      <span>{alterno.codigo || '-'}</span>
+                      <span>{alterno.nombre || 'Sin nombre'}</span>
+                      <span>{alterno.descripcion || '—'}</span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__locations-remove"
+                          onClick={() => handleRemoveAlterno(alterno.id)}
+                          disabled={loading}
+                          aria-label="Eliminar alterno"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {alternoError && <div className="create-user__error">{alternoError}</div>}
+
+                <div className="create-user__grid create-user__grid--two">
                   <label className="create-user__field">
                     <span>Pieza original</span>
                     <select
@@ -1660,6 +1765,305 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                     </div>
                   </label>
                 </div>
+              </section>
+            )}
+
+            {false && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <h4>OEMs</h4>
+                  <button
+                    type="button"
+                    className="create-user__ghost create-user__location-action"
+                    onClick={() => {
+                      setOemError('')
+                      setShowOemForm((prev) => {
+                        const next = !prev
+                        if (!next) {
+                          setOemDraft({ codigo: '', descripcion: '' })
+                        }
+                        return next
+                      })
+                    }}
+                    disabled={loading}
+                  >
+                    {showOemForm ? 'Cancelar' : 'Agregar OEM'}
+                  </button>
+                </div>
+
+                <div className="create-user__locations-table create-user__locations-table--oem">
+                  <div className="create-user__locations-row create-user__locations-row--head">
+                    <span>Codigo</span>
+                    <span>Descripcion</span>
+                    <span>Acciones</span>
+                  </div>
+
+                  {showOemForm && (
+                    <div className="create-user__locations-row create-user__locations-row--form">
+                      <span>
+                        <input
+                          type="text"
+                          placeholder="Codigo OEM"
+                          value={oemDraft.codigo}
+                          onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
+                          disabled={loading}
+                        />
+                      </span>
+                      <span>
+                        <input
+                          type="text"
+                          placeholder="Descripcion (opcional)"
+                          value={oemDraft.descripcion}
+                          onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
+                          disabled={loading}
+                        />
+                      </span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleAddOem}
+                          disabled={loading}
+                        >
+                          Agregar
+                        </button>
+                      </span>
+                    </div>
+                  )}
+
+                  {!oemItems.length && !showOemForm && (
+                    <div className="create-user__locations-row create-user__locations-row--empty">
+                      <span>Sin OEMs registrados.</span>
+                    </div>
+                  )}
+
+                  {oemItems.map((item, index) => (
+                    <div key={`${item.codigo}-${index}`} className="create-user__locations-row">
+                      <span>{item.codigo || '-'}</span>
+                      <span>{item.descripcion || '—'}</span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__locations-remove"
+                          onClick={() => handleRemoveOem(item.codigo)}
+                          disabled={loading}
+                          aria-label="Eliminar OEM"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {oemError && <div className="create-user__error">{oemError}</div>}
+              </section>
+            )}
+
+            {activeTab === 'ubicaciones' && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <h4>Ubicaciones del producto</h4>
+                  <button
+                    type="button"
+                    className="create-user__ghost create-user__location-action"
+                    onClick={() => {
+                      setLocationError('')
+                      setShowLocationForm((prev) => {
+                        const next = !prev
+                        if (next) {
+                          setLocationDraft((current) => ({
+                            ...current,
+                            cantidad: current.cantidad || '1',
+                          }))
+                        }
+                        return next
+                      })
+                    }}
+                    disabled={loading || locationsLoading}
+                  >
+                    {showLocationForm ? 'Cancelar' : 'Agregar ubicacion'}
+                  </button>
+                </div>
+
+                <div className="create-user__locations-table">
+                  <div className="create-user__locations-row create-user__locations-row--head">
+                    <span>Sucursal</span>
+                    <span>Bodega</span>
+                    <span>Division</span>
+                    <span>Subdivision</span>
+                    <span>Cantidad</span>
+                  </div>
+                  {showLocationForm && (
+                    <div className="create-user__locations-row create-user__locations-row--form">
+                      <span>
+                        <select
+                          value={locationDraft.sucursalId}
+                          onChange={(event) => handleLocationSelect('sucursalId', event.target.value)}
+                          disabled={loading || locationsLoading}
+                        >
+                          <option value="">Selecciona una sucursal</option>
+                          {branches.map((branch) => (
+                            <option key={branch.id} value={branch.id}>
+                              {branch.nombre || `Sucursal ${branch.id}`}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                      <span>
+                        <select
+                          value={locationDraft.bodegaId}
+                          onChange={(event) => handleLocationSelect('bodegaId', event.target.value)}
+                          disabled={loading || locationsLoading || !locationDraft.sucursalId}
+                        >
+                          <option value="">Selecciona una bodega</option>
+                          {availableBodegas.map((bodega) => (
+                            <option key={bodega.id} value={bodega.id}>
+                              {bodega.nombre || `Bodega ${bodega.id}`}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                      <span>
+                        <select
+                          value={locationDraft.divisionId}
+                          onChange={(event) => handleLocationSelect('divisionId', event.target.value)}
+                          disabled={loading || locationsLoading || !locationDraft.bodegaId}
+                        >
+                          <option value="">Selecciona una division</option>
+                          {availableDivisions.map((division) => (
+                            <option key={division.id} value={division.id}>
+                              {division.nombre || `Division ${division.id}`}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                      <span>
+                        <select
+                          value={locationDraft.subdivisionId}
+                          onChange={(event) => handleLocationSelect('subdivisionId', event.target.value)}
+                          disabled={loading || locationsLoading || !locationDraft.divisionId}
+                        >
+                          <option value="">Selecciona una subdivision</option>
+                          {availableSubdivisions.map((subdivision) => (
+                            <option key={subdivision.id} value={subdivision.id}>
+                              {subdivision.nombre || `Subdivision ${subdivision.id}`}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="Cantidad"
+                          value={locationDraft.cantidad}
+                          onChange={(event) => handleLocationSelect('cantidad', event.target.value)}
+                          disabled={loading || locationsLoading}
+                        />
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleAddLocation}
+                          disabled={loading || locationsLoading}
+                        >
+                          Agregar
+                        </button>
+                      </span>
+                    </div>
+                  )}
+                  {locationsLoading && (
+                    <div className="create-user__locations-row create-user__locations-row--empty">
+                      <span>Cargando ubicaciones...</span>
+                    </div>
+                  )}
+                  {!locationsLoading && locations.length === 0 && (
+                    <div className="create-user__locations-row create-user__locations-row--empty">
+                      <span>Sin ubicaciones registradas.</span>
+                    </div>
+                  )}
+                  {locations.map((location) => {
+                    const rowSubdivisions = subdivisionsByBodega.get(location.bodegaId) || []
+                    const isEditingRow = editingLocationKey === location.uid
+                    const editingSubdivision = isEditingRow && editingField === 'subdivision'
+                    const editingCantidad = isEditingRow && editingField === 'cantidad'
+
+                    return (
+                      <div key={location.uid} className="create-user__locations-row">
+                        <span>{location.sucursalNombre}</span>
+                        <span>{location.bodegaNombre}</span>
+                        <span>{location.divisionNombre}</span>
+                        <span
+                          className="create-user__locations-cell create-user__locations-cell--editable"
+                          onDoubleClick={() => beginLocationEdit(location, 'subdivision')}
+                        >
+                          {editingSubdivision ? (
+                            <select
+                              value={editingValue}
+                              onChange={(event) => {
+                                setEditingValue(event.target.value)
+                                commitLocationEdit(event.target.value)
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Escape') cancelLocationEdit()
+                              }}
+                              onBlur={() => cancelLocationEdit()}
+                              autoFocus
+                            >
+                              <option value="">Selecciona una subdivision</option>
+                              {rowSubdivisions.map((subdivision) => (
+                                <option key={subdivision.id} value={subdivision.id}>
+                                  {subdivision.nombre || `Subdivision ${subdivision.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span>{location.subdivisionNombre}</span>
+                          )}
+                        </span>
+                        <span
+                          className="create-user__locations-cell create-user__locations-cell--editable"
+                          onDoubleClick={() => beginLocationEdit(location, 'cantidad')}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          {editingCantidad ? (
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={editingValue}
+                              onChange={(event) => setEditingValue(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault()
+                                  commitLocationEdit()
+                                }
+                                if (event.key === 'Escape') cancelLocationEdit()
+                              }}
+                              onBlur={() => commitLocationEdit()}
+                              autoFocus
+                            />
+                          ) : (
+                            <strong>{location.cantidad}</strong>
+                          )}
+                          <button
+                            type="button"
+                            className="create-user__ghost"
+                            onClick={() => handleRemoveLocation(location.uid)}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            disabled={loading}
+                          >
+                            Quitar
+                          </button>
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {locationError && <div className="create-user__error">{locationError}</div>}
+                {editError && <div className="create-user__error">{editError}</div>}
               </section>
             )}
           </div>

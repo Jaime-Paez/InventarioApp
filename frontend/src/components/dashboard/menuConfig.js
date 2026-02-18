@@ -11,7 +11,6 @@ import {
   Hexagon,
   Building,
   Hand,
-  Settings,
   UsersRound,
   IdCard,
 } from 'lucide-react'
@@ -44,9 +43,8 @@ export const MENU_STRUCTURE = [
     ],
   },
   { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
-  { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
-  { label: 'Configuraciones', icon: Settings, moduleKey: 'configuracion' },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
+  { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
 ]
 
 const collectPermissionEntries = (permissionSource) => {

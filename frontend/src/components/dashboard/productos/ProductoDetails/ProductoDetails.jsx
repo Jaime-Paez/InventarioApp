@@ -57,6 +57,19 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
   const [showMarcaDropdown, setShowMarcaDropdown] = useState(false)
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const [alternativas, setAlternativas] = useState([])
+  const [originalAlternativas, setOriginalAlternativas] = useState([])
+  const [oemItems, setOemItems] = useState([])
+  const [originalOemItems, setOriginalOemItems] = useState([])
+  const [showOemForm, setShowOemForm] = useState(false)
+  const [oemDraft, setOemDraft] = useState({ codigo: '', descripcion: '' })
+  const [oemError, setOemError] = useState('')
+  const [alternoQuery, setAlternoQuery] = useState('')
+  const [alternoOptions, setAlternoOptions] = useState([])
+  const [alternoLoading, setAlternoLoading] = useState(false)
+  const [showAlternoDropdown, setShowAlternoDropdown] = useState(false)
+  const [showAlternoForm, setShowAlternoForm] = useState(false)
+  const [alternoDraft, setAlternoDraft] = useState(null)
+  const [alternoError, setAlternoError] = useState('')
   const [ivaRate, setIvaRate] = useState(DEFAULT_IVA_RATE)
   const [ivaLoading, setIvaLoading] = useState(false)
   const [loadingData, setLoadingData] = useState(false)
@@ -75,6 +88,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
   const modalRef = useRef(null)
   const marcaDropdownRef = useRef(null)
   const casaDropdownRef = useRef(null)
+  const alternoDropdownRef = useRef(null)
   const inventarioEditorRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
@@ -127,6 +141,41 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
   })
   const productCode = formData.codigo || originalData.codigo
 
+  const enrichAlternativas = useCallback(
+    async (alternos) => {
+      if (!token || !Array.isArray(alternos) || alternos.length === 0) return
+      const idsToFetch = alternos
+        .filter((item) => item?.id && (item.descripcion == null || item.descripcion === ''))
+        .map((item) => item.id)
+      if (!idsToFetch.length) return
+
+      try {
+        const responses = await Promise.all(
+          idsToFetch.map((id) => authFetch(`${API_URL}/productos/listado/${id}/`, {}, token))
+        )
+        const details = await Promise.all(
+          responses.map((res) => (res.ok ? res.json().catch(() => null) : null))
+        )
+        const descById = new Map()
+        details.forEach((detail) => {
+          if (!detail?.id) return
+          descById.set(String(detail.id), detail.descripcion ?? '')
+        })
+        if (!descById.size) return
+        setAlternativas((prev) =>
+          prev.map((item) => {
+            const desc = descById.get(String(item?.id))
+            if (desc === undefined) return item
+            return { ...item, descripcion: desc }
+          })
+        )
+      } catch (err) {
+        // Descripcion es opcional: evita bloquear la edicion si falla.
+      }
+    },
+    [token]
+  )
+
   const fetchProducto = useCallback(async () => {
     if (!productoId) return
     setLoadingData(true)
@@ -147,14 +196,41 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       const casaPrincipal = casas[0] || null
       setSelectedCasa(casaPrincipal)
       setOriginalCasa(casaPrincipal)
-      setAlternativas(Array.isArray(data?.alternativas) ? data.alternativas : [])
+      const alternos = Array.isArray(data?.alternativas) ? data.alternativas : []
+      setAlternativas(alternos)
+      setOriginalAlternativas(alternos)
+      enrichAlternativas(alternos)
+      const oemsRaw = Array.isArray(data?.oem_productos) ? data.oem_productos : []
+      const normalizedOems = oemsRaw
+        .map((relation) => {
+          const oem = relation?.oem
+          return {
+            relationId: relation?.id ?? null,
+            oemId: oem?.id ?? relation?.oem_id ?? null,
+            codigo: oem?.codigo ?? relation?.codigo ?? '',
+            descripcion: oem?.descripcion ?? relation?.descripcion ?? '',
+          }
+        })
+        .filter((item) => item.codigo)
+      setOemItems(normalizedOems)
+      setOriginalOemItems(normalizedOems)
+      setShowOemForm(false)
+      setOemDraft({ codigo: '', descripcion: '' })
+      setOemError('')
+      setAlternoQuery('')
+      setAlternoOptions([])
+      setAlternoLoading(false)
+      setShowAlternoDropdown(false)
+      setShowAlternoForm(false)
+      setAlternoDraft(null)
+      setAlternoError('')
       setIsEditing(false)
     } catch (err) {
       notifyError(err.message || 'Ocurrio un error al obtener la informacion del producto.')
     } finally {
       setLoadingData(false)
     }
-  }, [notifyError, token, productoId])
+  }, [enrichAlternativas, notifyError, token, productoId])
 
   const searchBrands = useCallback(
     async (query) => {
@@ -202,6 +278,36 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       }
     },
     [notifyError, token]
+  )
+
+  const searchAlternos = useCallback(
+    async (query) => {
+      const term = String(query ?? '').trim()
+      if (!term || !token) {
+        setAlternoOptions([])
+        return
+      }
+      setAlternoLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar los productos.')
+        const data = await response.json()
+        let list = parseApiList(data)
+        if (productoId) {
+          list = list.filter((item) => String(item?.id) !== String(productoId))
+        }
+        setAlternoOptions(list)
+      } catch (err) {
+        notifyError(err.message || 'Ocurrio un error al buscar productos.')
+      } finally {
+        setAlternoLoading(false)
+      }
+    },
+    [notifyError, productoId, token]
   )
 
   const fetchIvaConfig = useCallback(async () => {
@@ -297,6 +403,19 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     setSelectedCasa(null)
     setOriginalCasa(null)
     setAlternativas([])
+    setOriginalAlternativas([])
+    setOemItems([])
+    setOriginalOemItems([])
+    setShowOemForm(false)
+    setOemDraft({ codigo: '', descripcion: '' })
+    setOemError('')
+    setAlternoQuery('')
+    setAlternoOptions([])
+    setAlternoLoading(false)
+    setShowAlternoDropdown(false)
+    setShowAlternoForm(false)
+    setAlternoDraft(null)
+    setAlternoError('')
     setShowMarcaDropdown(false)
     setShowCasaDropdown(false)
     setIsMaximized(false)
@@ -344,6 +463,18 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
   }, [casaSearch, searchSuppliers])
 
   useEffect(() => {
+    const term = alternoQuery.trim()
+    if (!term) {
+      setAlternoOptions([])
+      return
+    }
+    const handle = setTimeout(() => {
+      searchAlternos(term)
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [alternoQuery, searchAlternos])
+
+  useEffect(() => {
     const handleClick = (event) => {
       if (showMarcaDropdown && marcaDropdownRef.current && !marcaDropdownRef.current.contains(event.target)) {
         setShowMarcaDropdown(false)
@@ -351,10 +482,13 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       if (showCasaDropdown && casaDropdownRef.current && !casaDropdownRef.current.contains(event.target)) {
         setShowCasaDropdown(false)
       }
+      if (showAlternoDropdown && alternoDropdownRef.current && !alternoDropdownRef.current.contains(event.target)) {
+        setShowAlternoDropdown(false)
+      }
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [showMarcaDropdown, showCasaDropdown])
+  }, [showMarcaDropdown, showCasaDropdown, showAlternoDropdown])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -426,6 +560,292 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     setShowCasaDropdown(false)
   }
 
+  const alternoIdSet = useMemo(
+    () => new Set(alternativas.map((item) => String(item?.id)).filter(Boolean)),
+    [alternativas]
+  )
+
+  const handleAlternoSelect = (product) => {
+    if (!isEditing || !product) return
+    setAlternoDraft({
+      id: product.id,
+      codigo: product.codigo,
+      nombre: product.nombre,
+      descripcion: product.descripcion,
+    })
+    setAlternoError('')
+    setShowAlternoDropdown(false)
+  }
+
+  const handleAddAlterno = (product) => {
+    if (!isEditing || !product) return false
+    const id = String(product.id)
+    if (!id) return false
+    if (alternoIdSet.has(id)) {
+      setAlternoError('Ese producto ya esta en la tabla.')
+      return false
+    }
+    setAlternativas((prev) => [
+      ...prev,
+      {
+        id: product.id,
+        codigo: product.codigo,
+        nombre: product.nombre,
+        descripcion: product.descripcion,
+      },
+    ])
+    setAlternoError('')
+    return true
+  }
+
+  const handleAddAlternoDraft = () => {
+    if (!isEditing) return
+    if (!alternoDraft?.id) {
+      setAlternoError('Selecciona un producto alterno.')
+      return
+    }
+    const added = handleAddAlterno(alternoDraft)
+    if (!added) return
+    setAlternoDraft(null)
+    setAlternoQuery('')
+    setAlternoOptions([])
+    setShowAlternoDropdown(false)
+  }
+
+  const handleRemoveAlterno = (id) => {
+    if (!isEditing) return
+    const key = String(id)
+    if (!key) return
+    setAlternativas((prev) => prev.filter((item) => String(item?.id) !== key))
+    setAlternoError('')
+  }
+
+  const normalizeOemCode = (value) => String(value ?? '').trim().toLowerCase()
+  const oemCodeSet = useMemo(
+    () => new Set(oemItems.map((item) => normalizeOemCode(item?.codigo)).filter(Boolean)),
+    [oemItems]
+  )
+
+  const handleOemDraftChange = (field, value) => {
+    if (!isEditing) return
+    setOemDraft((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+    setOemError('')
+  }
+
+  const handleAddOem = () => {
+    if (!isEditing) return
+    const codigo = String(oemDraft.codigo ?? '').trim()
+    const descripcion = String(oemDraft.descripcion ?? '').trim()
+    if (!codigo) {
+      setOemError('Ingresa un codigo OEM.')
+      return
+    }
+    const key = normalizeOemCode(codigo)
+    if (oemCodeSet.has(key)) {
+      setOemError('Ese codigo OEM ya esta en la tabla.')
+      return
+    }
+    setOemItems((prev) => [
+      ...prev,
+      {
+        codigo,
+        descripcion,
+      },
+    ])
+    setOemDraft({ codigo: '', descripcion: '' })
+    setOemError('')
+  }
+
+  const handleRemoveOem = (codigo) => {
+    if (!isEditing) return
+    const key = normalizeOemCode(codigo)
+    if (!key) return
+    setOemItems((prev) => prev.filter((item) => normalizeOemCode(item?.codigo) !== key))
+    setOemError('')
+  }
+
+  const ensureOemId = useCallback(
+    async (item) => {
+      const codigo = String(item?.codigo ?? '').trim()
+      if (!codigo) return null
+      const payload = {
+        codigo,
+        descripcion: String(item?.descripcion ?? '').trim(),
+      }
+
+      const createResponse = await authFetch(
+        `${API_URL}/productos/oem/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        },
+        token
+      )
+
+      if (createResponse.ok) {
+        const created = await createResponse.json().catch(() => ({}))
+        return created?.id ?? null
+      }
+
+      const searchResponse = await authFetch(
+        `${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}&page_size=20`,
+        {},
+        token
+      )
+      if (!searchResponse.ok) return null
+      const searchData = await searchResponse.json().catch(() => ({}))
+      const list = parseApiList(searchData)
+      const match = list.find(
+        (oem) => String(oem?.codigo ?? '').trim().toLowerCase() === codigo.toLowerCase()
+      )
+      return match?.id ?? null
+    },
+    [token]
+  )
+
+  const syncAlternos = useCallback(
+    async (productoIdValue, codigoProducto) => {
+      if (!productoIdValue || !token) return
+      const codigo = String(codigoProducto || '').trim()
+      if (!codigo) return
+
+      const desiredCodes = new Set(
+        alternativas.map((item) => String(item?.codigo)).filter((value) => value)
+      )
+      const desiredByCode = new Map(
+        alternativas
+          .map((item) => [String(item?.codigo || ''), item])
+          .filter(([key]) => key)
+      )
+
+      const response = await authFetch(
+        `${API_URL}/productos/alternos/?search=${encodeURIComponent(codigo)}&page_size=200`,
+        {},
+        token
+      )
+      if (!response.ok) {
+        throw new Error('No se pudieron cargar los alternos actuales.')
+      }
+      const data = await response.json()
+      const relations = parseApiList(data)
+      const current = relations
+        .map((relation) => ({
+          ...relation,
+          productoCodigo: parseProductCode(relation?.producto),
+          alternoCodigo: parseProductCode(relation?.alterno),
+        }))
+        .filter((relation) => relation.productoCodigo === codigo && relation.alternoCodigo)
+
+      const currentCodes = new Set(current.map((relation) => relation.alternoCodigo))
+      const toRemove = current.filter((relation) => !desiredCodes.has(relation.alternoCodigo))
+      const toAdd = Array.from(desiredByCode.values()).filter(
+        (alterno) => alterno?.id && alterno?.codigo && !currentCodes.has(String(alterno.codigo))
+      )
+
+      if (!toRemove.length && !toAdd.length) return
+
+      const requests = [
+        ...toRemove.map((relation) =>
+          authFetch(`${API_URL}/productos/alternos/${relation.id}/`, { method: 'DELETE' }, token)
+        ),
+        ...toAdd.map((alterno) =>
+          authFetch(
+            `${API_URL}/productos/alternos/`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                producto_id: productoIdValue,
+                alterno_id: alterno.id,
+              }),
+            },
+            token
+          )
+        ),
+      ]
+
+      const responses = await Promise.all(requests)
+      const failed = responses.find((res) => !res.ok && res.status !== 204)
+      if (failed) {
+        const detail = await failed.json().catch(() => ({}))
+        throw new Error(detail?.detail || 'No se pudieron actualizar los alternos.')
+      }
+    },
+    [alternativas, token]
+  )
+
+  const syncOems = useCallback(
+    async (productoIdValue, codigoProducto) => {
+      if (!productoIdValue || !token) return
+      const codigo = String(codigoProducto || '').trim()
+      if (!codigo) return
+
+      const desiredCodes = new Set(
+        oemItems.map((item) => normalizeOemCode(item?.codigo)).filter(Boolean)
+      )
+      const desiredItems = oemItems.filter((item) => normalizeOemCode(item?.codigo))
+
+      const response = await authFetch(
+        `${API_URL}/productos/oem-producto/?search=${encodeURIComponent(codigo)}&page_size=200`,
+        {},
+        token
+      )
+      if (!response.ok) {
+        throw new Error('No se pudieron cargar los OEMs actuales.')
+      }
+      const data = await response.json()
+      const relations = parseApiList(data)
+      const current = relations
+        .map((relation) => ({
+          ...relation,
+          productoCodigo: parseProductCode(relation?.producto),
+          oemCodigo: relation?.oem?.codigo ?? relation?.oem_codigo ?? '',
+        }))
+        .filter((relation) => relation.productoCodigo === codigo && relation.oemCodigo)
+
+      const currentCodes = new Set(current.map((relation) => normalizeOemCode(relation.oemCodigo)))
+      const toRemove = current.filter((relation) => !desiredCodes.has(normalizeOemCode(relation.oemCodigo)))
+      const toAdd = desiredItems.filter((item) => !currentCodes.has(normalizeOemCode(item?.codigo)))
+
+      const removeRequests = toRemove.map((relation) =>
+        authFetch(`${API_URL}/productos/oem-producto/${relation.id}/`, { method: 'DELETE' }, token)
+      )
+
+      const addRequests = []
+      for (const item of toAdd) {
+        const oemId = await ensureOemId(item)
+        if (!oemId) {
+          throw new Error('No se pudo registrar un OEM.')
+        }
+        addRequests.push(
+          authFetch(
+            `${API_URL}/productos/oem-producto/`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                producto_id: productoIdValue,
+                oem_id: oemId,
+              }),
+            },
+            token
+          )
+        )
+      }
+
+      if (!removeRequests.length && !addRequests.length) return
+
+      const responses = await Promise.all([...removeRequests, ...addRequests])
+      const failed = responses.find((res) => !res.ok && res.status !== 204)
+      if (failed) {
+        const detail = await failed.json().catch(() => ({}))
+        throw new Error(detail?.detail || 'No se pudieron actualizar los OEMs.')
+      }
+    },
+    [ensureOemId, oemItems, token]
+  )
+
   const handleSave = async () => {
     if (!isEditing || saving || !productoId) return
     setSaving(true)
@@ -491,11 +911,36 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       const casaPrincipal = casas[0] || null
       setSelectedCasa(casaPrincipal)
       setOriginalCasa(casaPrincipal)
-      setAlternativas(Array.isArray(data?.alternativas) ? data.alternativas : [])
+      const nextAlternativas = Array.isArray(alternativas) ? alternativas : []
+      setAlternativas(nextAlternativas)
+      setOriginalAlternativas(nextAlternativas)
+      const nextOems = Array.isArray(oemItems) ? oemItems : []
+      setOemItems(nextOems)
+      setOriginalOemItems(nextOems)
+      setShowOemForm(false)
+      setOemDraft({ codigo: '', descripcion: '' })
+      setOemError('')
       setShowMarcaDropdown(false)
       setShowCasaDropdown(false)
+      setAlternoQuery('')
+      setAlternoOptions([])
+      setAlternoLoading(false)
+      setShowAlternoDropdown(false)
+      setShowAlternoForm(false)
+      setAlternoDraft(null)
+      setAlternoError('')
       if (inventarioEditorRef.current?.save) {
         await inventarioEditorRef.current.save()
+      }
+      try {
+        await syncAlternos(productoId, data?.codigo || payload.codigo)
+      } catch (alternosError) {
+        notifyError(alternosError?.message || 'No se pudieron actualizar los alternos.')
+      }
+      try {
+        await syncOems(productoId, data?.codigo || payload.codigo)
+      } catch (oemsError) {
+        notifyError(oemsError?.message || 'No se pudieron actualizar los OEMs.')
       }
       setIsEditing(false)
       onUpdated?.(data)
@@ -535,6 +980,17 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     setFormData(originalData)
     setMarcaQuery(originalMarcaNombre)
     setSelectedCasa(originalCasa)
+    setAlternativas(originalAlternativas)
+    setOemItems(originalOemItems)
+    setShowOemForm(false)
+    setOemDraft({ codigo: '', descripcion: '' })
+    setOemError('')
+    setAlternoQuery('')
+    setAlternoOptions([])
+    setShowAlternoDropdown(false)
+    setShowAlternoForm(false)
+    setAlternoDraft(null)
+    setAlternoError('')
     setShowMarcaDropdown(false)
     setShowCasaDropdown(false)
     setIsEditing(false)
@@ -723,6 +1179,14 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
             </button>
             <button
               type="button"
+              className={`create-user__tab ${activeTab === 'ubicaciones' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('ubicaciones')}
+              aria-selected={activeTab === 'ubicaciones'}
+            >
+              Ubicaciones
+            </button>
+            <button
+              type="button"
               className={`create-user__tab ${activeTab === 'alternos' ? 'create-user__tab--active' : ''}`}
               onClick={() => setActiveTab('alternos')}
               aria-selected={activeTab === 'alternos'}
@@ -748,6 +1212,74 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                         name="nombre"
                         type="text"
                         value={formData.nombre}
+                        onChange={handleChange}
+                        disabled={editorDisabled}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Marca</span>
+                      <div className="create-user__dropdown" ref={marcaDropdownRef}>
+                        <button
+                          type="button"
+                          className="create-user__dropdown-trigger"
+                          onClick={() => {
+                            if (editorDisabled) return
+                            setShowMarcaDropdown((prev) => !prev)
+                            setShowCasaDropdown(false)
+                          }}
+                          disabled={editorDisabled}
+                        >
+                          <span>{marcaQuery.trim() ? marcaQuery : 'Selecciona una marca'}</span>
+                          <i className={`pi pi-chevron-${showMarcaDropdown ? 'up' : 'down'}`} />
+                        </button>
+
+                        {showMarcaDropdown && (
+                          <div className="create-user__dropdown-panel">
+                            <div className="create-user__dropdown-search">
+                              <i className="pi pi-search" />
+                              <input
+                                type="text"
+                                placeholder="Buscar marcas"
+                                value={marcaQuery}
+                                onChange={handleMarcaInputChange}
+                                disabled={editorDisabled}
+                              />
+                            </div>
+
+                            <div className="create-user__dropdown-results">
+                              {!marcaQuery.trim() && <small className="muted">Escribe para buscar.</small>}
+                              {marcaQuery.trim() && !brands.length && <small className="muted">Sin resultados.</small>}
+                              {brands.slice(0, 40).map((brand) => (
+                                <button
+                                  key={brand.id}
+                                  type="button"
+                                  className="create-user__result-option"
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    handleMarcaSelect(brand)
+                                  }}
+                                  disabled={editorDisabled}
+                                >
+                                  <div className="create-user__result-info">
+                                    <strong>{brand.nombre}</strong>
+                                    <small>{brand.codigo ? `Codigo: ${brand.codigo}` : `ID: ${brand.id}`}</small>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Codigo</span>
+                      <input
+                        name="codigo"
+                        type="text"
+                        value={formData.codigo}
                         onChange={handleChange}
                         disabled={editorDisabled}
                       />
@@ -803,74 +1335,6 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                                   <div className="create-user__result-info">
                                     <strong>{supplier.nombre}</strong>
                                     <small>{supplier.codigo ? `Codigo: ${supplier.codigo}` : `ID: ${supplier.id}`}</small>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Referencia</span>
-                      <input
-                        name="codigo"
-                        type="text"
-                        value={formData.codigo}
-                        onChange={handleChange}
-                        disabled={editorDisabled}
-                      />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Marca</span>
-                      <div className="create-user__dropdown" ref={marcaDropdownRef}>
-                        <button
-                          type="button"
-                          className="create-user__dropdown-trigger"
-                          onClick={() => {
-                            if (editorDisabled) return
-                            setShowMarcaDropdown((prev) => !prev)
-                            setShowCasaDropdown(false)
-                          }}
-                          disabled={editorDisabled}
-                        >
-                          <span>{marcaQuery.trim() ? marcaQuery : 'Selecciona una marca'}</span>
-                          <i className={`pi pi-chevron-${showMarcaDropdown ? 'up' : 'down'}`} />
-                        </button>
-
-                        {showMarcaDropdown && (
-                          <div className="create-user__dropdown-panel">
-                            <div className="create-user__dropdown-search">
-                              <i className="pi pi-search" />
-                              <input
-                                type="text"
-                                placeholder="Buscar marcas"
-                                value={marcaQuery}
-                                onChange={handleMarcaInputChange}
-                                disabled={editorDisabled}
-                              />
-                            </div>
-
-                            <div className="create-user__dropdown-results">
-                              {!marcaQuery.trim() && <small className="muted">Escribe para buscar.</small>}
-                              {marcaQuery.trim() && !brands.length && <small className="muted">Sin resultados.</small>}
-                              {brands.slice(0, 40).map((brand) => (
-                                <button
-                                  key={brand.id}
-                                  type="button"
-                                  className="create-user__result-option"
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    handleMarcaSelect(brand)
-                                  }}
-                                  disabled={editorDisabled}
-                                >
-                                  <div className="create-user__result-info">
-                                    <strong>{brand.nombre}</strong>
-                                    <small>{brand.codigo ? `Codigo: ${brand.codigo}` : `ID: ${brand.id}`}</small>
                                   </div>
                                 </button>
                               ))}
@@ -947,6 +1411,340 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                   </div>
                 </section>
 
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <h4>OEMs</h4>
+                    <button
+                      type="button"
+                      className="create-user__ghost create-user__location-action"
+                      onClick={() => {
+                        if (editorDisabled) return
+                        setOemError('')
+                        setShowOemForm((prev) => {
+                          const next = !prev
+                          if (!next) {
+                            setOemDraft({ codigo: '', descripcion: '' })
+                          }
+                          return next
+                        })
+                      }}
+                      disabled={editorDisabled}
+                    >
+                      {showOemForm ? 'Cancelar' : 'Agregar OEM'}
+                    </button>
+                  </div>
+
+                  <div className="create-user__locations-table create-user__locations-table--oem">
+                    <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Codigo</span>
+                      <span>Descripcion</span>
+                      <span>Acciones</span>
+                    </div>
+
+                    {showOemForm && (
+                      <div className="create-user__locations-row create-user__locations-row--form">
+                        <span>
+                          <input
+                            type="text"
+                            placeholder="Codigo OEM"
+                            value={oemDraft.codigo}
+                            onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
+                            disabled={editorDisabled}
+                          />
+                        </span>
+                        <span>
+                          <input
+                            type="text"
+                            placeholder="Descripcion (opcional)"
+                            value={oemDraft.descripcion}
+                            onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
+                            disabled={editorDisabled}
+                          />
+                        </span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__ghost"
+                            onClick={handleAddOem}
+                            disabled={editorDisabled}
+                          >
+                            Agregar
+                          </button>
+                        </span>
+                      </div>
+                    )}
+
+                    {!oemItems.length && !showOemForm && (
+                      <div className="create-user__locations-row create-user__locations-row--empty">
+                        <span>No hay OEMs registrados.</span>
+                      </div>
+                    )}
+
+                    {oemItems.map((item, index) => (
+                      <div key={`${item.codigo}-${index}`} className="create-user__locations-row">
+                        <span>{item.codigo || '-'}</span>
+                        <span>{item.descripcion || '—'}</span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__locations-remove"
+                            onClick={() => handleRemoveOem(item.codigo)}
+                            disabled={editorDisabled}
+                            aria-label="Eliminar OEM"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {oemError && <div className="create-user__error">{oemError}</div>}
+                </section>
+
+              </>
+            )}
+
+            {activeTab === 'alternos' && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <h4>Alternos</h4>
+                  <button
+                    type="button"
+                    className="create-user__ghost create-user__location-action"
+                    onClick={() => {
+                      if (editorDisabled) return
+                      setAlternoError('')
+                      setShowAlternoForm((prev) => {
+                        const next = !prev
+                        if (!next) {
+                          setShowAlternoDropdown(false)
+                          setAlternoDraft(null)
+                          setAlternoQuery('')
+                          setAlternoOptions([])
+                        }
+                        return next
+                      })
+                    }}
+                    disabled={editorDisabled}
+                  >
+                    {showAlternoForm ? 'Cancelar' : 'Agregar alterno'}
+                  </button>
+                </div>
+
+                <div className="create-user__locations-table create-user__locations-table--alternos">
+                  <div className="create-user__locations-row create-user__locations-row--head">
+                    <span>Codigo</span>
+                    <span>Producto</span>
+                    <span>Descripcion</span>
+                    <span>Acciones</span>
+                  </div>
+
+                  {showAlternoForm && (
+                    <div className="create-user__locations-row create-user__locations-row--form">
+                      <span>{alternoDraft?.codigo || '—'}</span>
+                      <span>
+                        <div className="create-user__dropdown" ref={alternoDropdownRef}>
+                          <button
+                            type="button"
+                            className="create-user__dropdown-trigger"
+                            onClick={() => {
+                              if (editorDisabled) return
+                              setShowAlternoDropdown((prev) => !prev)
+                              setShowMarcaDropdown(false)
+                              setShowCasaDropdown(false)
+                            }}
+                            disabled={editorDisabled}
+                          >
+                            <span>{alternoDraft?.nombre || 'Selecciona un producto alterno'}</span>
+                            <i className={`pi pi-chevron-${showAlternoDropdown ? 'up' : 'down'}`} />
+                          </button>
+
+                          {showAlternoDropdown && (
+                            <div className="create-user__dropdown-panel">
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar productos"
+                                  value={alternoQuery}
+                                  onChange={(event) => setAlternoQuery(event.target.value)}
+                                  disabled={editorDisabled}
+                                />
+                              </div>
+
+                              <div className="create-user__dropdown-results">
+                                {alternoLoading && <small className="muted">Buscando productos...</small>}
+                                {!alternoLoading && !alternoQuery.trim() && (
+                                  <small className="muted">Escribe para buscar productos.</small>
+                                )}
+                                {!alternoLoading && alternoQuery.trim() && !alternoOptions.length && (
+                                  <small className="muted">Sin resultados.</small>
+                                )}
+                                {alternoOptions.map((product) => {
+                                  const isSelected = alternoIdSet.has(String(product?.id))
+                                  return (
+                                    <button
+                                      key={product.id}
+                                      type="button"
+                                      className="create-user__result-option"
+                                      onClick={() => handleAlternoSelect(product)}
+                                      disabled={isSelected || editorDisabled}
+                                    >
+                                      <div className="create-user__result-info">
+                                        <strong>{product.nombre || 'Sin nombre'}</strong>
+                                        <small>{product.codigo ? `Codigo: ${product.codigo}` : `ID: ${product.id}`}</small>
+                                      </div>
+                                      <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
+                                        {isSelected ? 'Agregado' : 'Seleccionar'}
+                                      </span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </span>
+                      <span>{alternoDraft?.descripcion || '—'}</span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleAddAlternoDraft}
+                          disabled={editorDisabled}
+                        >
+                          Agregar
+                        </button>
+                      </span>
+                    </div>
+                  )}
+
+                  {!alternativas.length && !showAlternoForm && (
+                    <div className="create-user__locations-row create-user__locations-row--empty">
+                      <span>No hay alternos registrados.</span>
+                    </div>
+                  )}
+
+                  {alternativas.map((alterno, index) => (
+                    <div key={`${alterno.id}-${index}`} className="create-user__locations-row">
+                      <span>{alterno.codigo || '-'}</span>
+                      <span>{alterno.nombre || 'Sin nombre'}</span>
+                      <span>{alterno.descripcion || '—'}</span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__locations-remove"
+                          onClick={() => handleRemoveAlterno(alterno.id)}
+                          disabled={editorDisabled}
+                          aria-label="Eliminar alterno"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {alternoError && <div className="create-user__error">{alternoError}</div>}
+              </section>
+            )}
+
+            {false && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <h4>OEMs</h4>
+                  <button
+                    type="button"
+                    className="create-user__ghost create-user__location-action"
+                    onClick={() => {
+                      if (editorDisabled) return
+                      setOemError('')
+                      setShowOemForm((prev) => {
+                        const next = !prev
+                        if (!next) {
+                          setOemDraft({ codigo: '', descripcion: '' })
+                        }
+                        return next
+                      })
+                    }}
+                    disabled={editorDisabled}
+                  >
+                    {showOemForm ? 'Cancelar' : 'Agregar OEM'}
+                  </button>
+                </div>
+
+                <div className="create-user__locations-table create-user__locations-table--oem">
+                  <div className="create-user__locations-row create-user__locations-row--head">
+                    <span>Codigo</span>
+                    <span>Descripcion</span>
+                    <span>Acciones</span>
+                  </div>
+
+                  {showOemForm && (
+                    <div className="create-user__locations-row create-user__locations-row--form">
+                      <span>
+                        <input
+                          type="text"
+                          placeholder="Codigo OEM"
+                          value={oemDraft.codigo}
+                          onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
+                          disabled={editorDisabled}
+                        />
+                      </span>
+                      <span>
+                        <input
+                          type="text"
+                          placeholder="Descripcion (opcional)"
+                          value={oemDraft.descripcion}
+                          onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
+                          disabled={editorDisabled}
+                        />
+                      </span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleAddOem}
+                          disabled={editorDisabled}
+                        >
+                          Agregar
+                        </button>
+                      </span>
+                    </div>
+                  )}
+
+                  {!oemItems.length && !showOemForm && (
+                    <div className="create-user__locations-row create-user__locations-row--empty">
+                      <span>No hay OEMs registrados.</span>
+                    </div>
+                  )}
+
+                  {oemItems.map((item, index) => (
+                    <div key={`${item.codigo}-${index}`} className="create-user__locations-row">
+                      <span>{item.codigo || '-'}</span>
+                      <span>{item.descripcion || '—'}</span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__locations-remove"
+                          onClick={() => handleRemoveOem(item.codigo)}
+                          disabled={editorDisabled}
+                          aria-label="Eliminar OEM"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {oemError && <div className="create-user__error">{oemError}</div>}
+              </section>
+            )}
+
+            {activeTab === 'ubicaciones' && (
+              <>
                 {inventoryLoading && (
                   <div className="inventario-details__empty">
                     <Info size={18} />
@@ -973,27 +1771,6 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                   </div>
                 )}
               </>
-            )}
-
-            {activeTab === 'alternos' && (
-              <section className="create-user__section">
-                <div className="create-user__section-header">
-                  <h4>Alternos</h4>
-                </div>
-
-                <div className="producto-details__alternos-list">
-                  {alternativas.length === 0 && <small className="muted">No hay alternos registrados.</small>}
-                  {alternativas.map((alterno) => (
-                    <div key={alterno.id} className="producto-details__alterno-card">
-                      <div className="producto-details__alterno-info">
-                        <strong>{alterno.nombre || 'Sin nombre'}</strong>
-                        <small>{alterno.codigo ? `Codigo: ${alterno.codigo}` : `ID: ${alterno.id}`}</small>
-                      </div>
-                      {alterno.notas && <small className="producto-details__alterno-note">{alterno.notas}</small>}
-                    </div>
-                  ))}
-                </div>
-              </section>
             )}
 
           </div>

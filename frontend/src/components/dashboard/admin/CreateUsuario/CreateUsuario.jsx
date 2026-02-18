@@ -502,7 +502,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
             </button>
           </div>
 
-          <div className="create-user__body">
+          <div className={`create-user__body${activeTab === 'permisos' ? ' create-user__body--permissions' : ''}`}>
             {activeTab === 'general' && (
               <>
                 <section className="create-user__section">
@@ -636,7 +636,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
             )}
 
             {activeTab === 'permisos' && (
-              <section className="create-user__section">
+              <section className="create-user__section create-user__section--permissions">
                 <div className="create-user__section-header">
                   <div>
                     <p className="create-user__eyebrow">Acceso y permisos</p>

@@ -189,6 +189,7 @@
   cursor: pointer;
 
   transition: background 0.15s ease, color 0.15s ease;
+  opacity: 0.85;
 }
 
 /* Línea divisoria entre tabs */
@@ -200,16 +201,19 @@
 .create-user__tab--active {
   background: var(--color-primary);
   color: var(--color-button-primary);
+  opacity: 1;
 }
 
 /* Dark mode */
 .dashboard-shell.dark .create-user__tab {
   color: var(--color-text-dark);
+  opacity: 0.75;
 }
 
 .dashboard-shell.dark .create-user__tab--active {
   background: var(--color-primary-dark);
   color: var(--color-button-primary);
+  opacity: 1;
 }
 
 /* Hover SOLO para inactivos */
@@ -218,7 +222,8 @@
 }
 
 .dashboard-shell.dark .create-user__tab:not(.create-user__tab--active):hover {
-  background: color-mix(in srgb, var(--color-primary-dark) 16%, transparent);
+  background: color-mix(in srgb, var(--color-primary-dark) 20%, transparent);
+  opacity: 0.9;
 }
 
 /* Accesibilidad */
@@ -242,6 +247,10 @@
   min-height: 0;
 }
 
+.create-user__body--permissions {
+  padding-top: 0;
+}
+
 .create-user__section {
   background: transparent;
   border: none;
@@ -254,6 +263,14 @@
   min-height: auto;
 }
 
+.create-user__section--permissions {
+  gap: 0;
+}
+
+.create-user__section--permissions .permissions-matrix__table {
+  margin-top: 0;
+}
+
 .dashboard-shell.dark .create-user__section + .create-user__section {
   border-top-color: var(--color-border);
 }
@@ -264,7 +281,6 @@
   justify-content: space-between;
   gap: 10px;
   padding: 0 0 10px;
-  border-bottom: 1px solid var(--color-border);
 }
 
 .dashboard-shell.dark .create-user__section-header {
@@ -869,6 +885,26 @@
   background: var(--color-surface);
 }
 
+.create-user__locations-table--alternos .create-user__locations-row {
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1fr) minmax(0, 1.6fr) 100px;
+}
+
+.create-user__locations-table--alternos {
+  overflow: visible;
+}
+
+.create-user__locations-table--oem .create-user__locations-row {
+  grid-template-columns: minmax(140px, 0.9fr) minmax(0, 1.6fr) 100px;
+}
+
+.create-user__locations-table--oem .create-user__locations-row--empty {
+  grid-template-columns: 1fr;
+}
+
+.create-user__locations-table--alternos .create-user__locations-row--empty {
+  grid-template-columns: 1fr;
+}
+
 .create-user__locations-table--with-actions .create-user__locations-row {
   grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(90px, 0.7fr) 80px;
 }
@@ -1310,11 +1346,14 @@
   margin-top: 10px;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible;
+  background: #fff;
+  position: relative;
 }
 
 .dashboard-shell.dark .permissions-matrix__table {
   border-color: var(--color-border-dark);
+  background: var(--table-color-dark);
 }
 
 .permissions-matrix__row {
@@ -1333,6 +1372,11 @@
   border-top: 1px solid #e5e7eb;
 }
 
+.permissions-matrix__row:last-child {
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
 .dashboard-shell.dark .permissions-matrix__row + .permissions-matrix__row {
   border-color: var(--color-border-dark);
 }
@@ -1341,10 +1385,17 @@
   background: #f3f4f6;
   font-weight: 600;
   font-size: 0.95rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 #e5e7eb;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
 }
 
 .dashboard-shell.dark .permissions-matrix__row--head {
   background: var(--table-color-dark);
+  box-shadow: inset 0 -1px 0 var(--color-border-dark);
 }
 
 .permissions-matrix__row--sub .permissions-matrix__cell--label {

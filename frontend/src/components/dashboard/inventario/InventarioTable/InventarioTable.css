@@ -116,3 +116,54 @@
 .inventario__row {
   cursor: pointer;
 }
+
+/* Fix: clamp checkbox/frozen column width for Inventario table */
+.inventario-datatable .p-datatable-frozen-view {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  flex: 0 0 40px !important;
+}
+
+.inventario-datatable .p-datatable-frozen-view table,
+.inventario-datatable .p-datatable-frozen-view colgroup col {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+}
+
+.inventario-datatable th.row-selection-column,
+.inventario-datatable td.row-selection-column {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 0 !important;
+  text-align: center;
+}
+
+.inventario-datatable .row-selection-column .p-checkbox {
+  margin: 0 !important;
+}
+
+@media (max-width: 900px) {
+  .inventario-datatable .p-datatable-frozen-view {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    flex: 0 0 36px !important;
+  }
+
+  .inventario-datatable .p-datatable-frozen-view table,
+  .inventario-datatable .p-datatable-frozen-view colgroup col {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+  }
+
+  .inventario-datatable th.row-selection-column,
+  .inventario-datatable td.row-selection-column {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+  }
+}

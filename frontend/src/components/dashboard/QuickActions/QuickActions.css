@@ -1,11 +1,11 @@
 .quick-actions {
   position: relative;
   margin-right: 12px;
-  margin-top: 10px;
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
   border: 1px solid var(--color-border);
+  align-self: center;
 
   /* base glass (como iOS) */
   background: rgba(255, 255, 255, 0.55);
@@ -158,8 +158,10 @@
 /* MOBILE */
 @media (max-width: 900px) {
   .quick-actions {
-    position: fixed;
-    top: 16px;
-    right: 16px;
+    position: relative;
+    top: auto;
+    right: auto;
+    margin-left: auto;
+    margin-top: 0;
   }
 }

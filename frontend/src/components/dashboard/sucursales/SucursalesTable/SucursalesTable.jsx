@@ -359,29 +359,31 @@ function SucursalesTable({ token, onSelect }) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
-    if (!rows.length) {
-      notifyExportWarning('No hay registros para exportar.')
+    const baseRows = processedRows === null ? branches : processedRows
+    if (!selectedRows?.length) {
+      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
       return
     }
+    const rows = selectedRows
     await exportToExcel({
       rows,
       columns: exportColumns,
       valueGetter: getExportValue,
       fileName: buildFileName('sucursales'),
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [branches, exportColumns, getExportValue, notifyExportWarning, processedRows, selectedRows])
 
   const handleExportPdf = useCallback(async () => {
     if (!exportColumns.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
-    if (!rows.length) {
-      notifyExportWarning('No hay registros para exportar.')
+    const baseRows = processedRows === null ? branches : processedRows
+    if (!selectedRows?.length) {
+      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
       return
     }
+    const rows = selectedRows
     await exportToPdf({
       rows,
       columns: exportColumns,
@@ -389,7 +391,7 @@ function SucursalesTable({ token, onSelect }) {
       fileName: buildFileName('sucursales'),
       title: 'Reporte de Sucursales',
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [branches, exportColumns, getExportValue, notifyExportWarning, processedRows, selectedRows])
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {

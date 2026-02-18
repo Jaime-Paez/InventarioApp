@@ -356,29 +356,31 @@ function ClientesTable({ token, onSelect }) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
-    if (!rows.length) {
-      notifyExportWarning('No hay registros para exportar.')
+    const baseRows = processedRows === null ? clients : processedRows
+    if (!selectedRows?.length) {
+      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
       return
     }
+    const rows = selectedRows
     await exportToExcel({
       rows,
       columns: exportColumns,
       valueGetter: getExportValue,
       fileName: buildFileName('clientes'),
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [clients, exportColumns, getExportValue, notifyExportWarning, processedRows, selectedRows])
 
   const handleExportPdf = useCallback(async () => {
     if (!exportColumns.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
-    if (!rows.length) {
-      notifyExportWarning('No hay registros para exportar.')
+    const baseRows = processedRows === null ? clients : processedRows
+    if (!selectedRows?.length) {
+      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
       return
     }
+    const rows = selectedRows
     await exportToPdf({
       rows,
       columns: exportColumns,
@@ -386,7 +388,7 @@ function ClientesTable({ token, onSelect }) {
       fileName: buildFileName('clientes'),
       title: 'Reporte de clientes',
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [clients, exportColumns, getExportValue, notifyExportWarning, processedRows, selectedRows])
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {

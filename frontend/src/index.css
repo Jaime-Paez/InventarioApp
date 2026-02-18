@@ -40,8 +40,10 @@
   /* ================BOTONES================== */
   --color-primary: #004570;
   --color-primary-strong: #0b568d;
+  --color-primary-soft: #3678a3;
   --color-primary-dark: #0090bb;
   --color-primary-dark-strong: #1ba8d4;
+  --color-primary-dark-soft: #3fb8df;
   --color-primary-hover: rgba(255, 255, 255, 0.25);
   --color-cancel: #898989;
 

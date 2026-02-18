@@ -541,6 +541,36 @@
     width: 100%;
     justify-content: flex-start;
   }
+
+  /* Permitir scroll horizontal en tablas en pantallas pequeñas */
+  .users-datatable .p-datatable-unfrozen-view .p-datatable-scrollable-wrapper,
+  .users-datatable .p-datatable-unfrozen-view .p-datatable-scrollable-view,
+  .users-datatable .p-datatable-unfrozen-view .p-datatable-scrollable-body,
+  .users-datatable .p-datatable-unfrozen-view .p-datatable-scrollable-header,
+  .users-datatable .p-datatable-unfrozen-view .p-datatable-scrollable-footer {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+  }
+
+  .users-table--card {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .users-datatable .p-datatable-unfrozen-view .p-datatable-table,
+  .users-datatable .p-datatable-unfrozen-view .p-datatable-scrollable-body table,
+  .users-datatable .p-datatable-unfrozen-view .p-datatable-scrollable-header-box table,
+  .users-datatable .p-datatable-unfrozen-view .p-datatable-scrollable-footer-box table {
+    min-width: 720px;
+    width: max-content;
+    table-layout: auto;
+  }
+
+  .users-datatable .p-datatable-thead > tr > th,
+  .users-datatable .p-datatable-tbody > tr > td {
+    white-space: nowrap;
+  }
 }
 
 @media (max-width: 700px) {
@@ -676,6 +706,52 @@
   max-width: 40px !important;
 }
 
+/* ====== Override genérico (sin depender de pr_id_*) para evitar ancho inflado ====== */
+.users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th.row-selection-column,
+.users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td.row-selection-column,
+.users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th:nth-child(1),
+.users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td:nth-child(1) {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 0 !important;
+}
+
+.users-datatable .p-datatable-frozen-view,
+.users-datatable .p-datatable-frozen-view table,
+.users-datatable .p-datatable-frozen-view colgroup col {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+}
+
+.users-datatable .p-datatable-unfrozen-view {
+  margin-left: 40px !important;
+}
+
+@media (max-width: 900px) {
+  .users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th.row-selection-column,
+  .users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td.row-selection-column,
+  .users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th:nth-child(1),
+  .users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td:nth-child(1) {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+  }
+
+  .users-datatable .p-datatable-frozen-view,
+  .users-datatable .p-datatable-frozen-view table,
+  .users-datatable .p-datatable-frozen-view colgroup col {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+  }
+
+  .users-datatable .p-datatable-unfrozen-view {
+    margin-left: 36px !important;
+  }
+}
+
 /* =========================================
    ✅ CHECKBOX (PrimeReact) - LIGHT + DARK
    ========================================= */
@@ -700,4 +776,50 @@
 /* Hover SOLO cuando NO está seleccionado (dark) */
 .dashboard-shell.dark .p-checkbox:not(.p-highlight):hover .p-checkbox-box{
   border-color: var(--color-primary-dark-strong);
+}
+
+/* ====== Ajustes móviles para columna de selección ====== */
+@media (max-width: 900px) {
+  .users-datatable .p-datatable-frozen-view {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: var(--table-color);
+    flex: 0 0 36px;
+  }
+
+  .dashboard-shell.dark .users-datatable .p-datatable-frozen-view {
+    background: var(--table-color-dark);
+  }
+
+  .users-datatable .p-datatable-frozen-view,
+  .users-datatable .p-datatable-frozen-view table,
+  .users-datatable .p-datatable-frozen-view .p-datatable-scrollable-body,
+  .users-datatable .p-datatable-frozen-view .p-datatable-scrollable-header,
+  .users-datatable .p-datatable-frozen-view .p-datatable-scrollable-header-box,
+  .users-datatable .p-datatable-frozen-view colgroup col,
+  .users-datatable .p-datatable-thead > tr > th.row-selection-column,
+  .users-datatable .p-datatable-tbody > tr > td.row-selection-column,
+  .users-datatable th.row-selection-column,
+  .users-datatable td.row-selection-column,
+  .row-selection-column {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+  }
+
+  .users-datatable .row-selection-column .p-checkbox,
+  .users-datatable .row-selection-click-block .p-checkbox {
+    width: 20px;
+    height: 20px;
+  }
+
+  .users-datatable .p-checkbox .p-checkbox-box {
+    width: 18px;
+    height: 18px;
+  }
+
+  .users-datatable .p-checkbox .p-checkbox-icon {
+    font-size: 10px;
+  }
 }

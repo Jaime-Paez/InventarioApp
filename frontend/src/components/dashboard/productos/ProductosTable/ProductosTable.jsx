@@ -47,12 +47,17 @@ function ProductosTable({ token, onSelect }) {
     (list) =>
       list.map((product) => {
         const houses = Array.isArray(product?.casas_comerciales) ? product.casas_comerciales : []
+        const oems = Array.isArray(product?.oem_productos) ? product.oem_productos : []
+        const oemCodes = oems
+          .map((item) => item?.oem?.codigo ?? item?.oem_codigo ?? item?.codigo)
+          .filter(Boolean)
         return {
           ...product,
           marca_nombre: product?.marca?.nombre ?? '-',
           casas_comerciales_count: houses.length,
           casas_comerciales_nombres: houses.map((house) => house?.nombre).filter(Boolean).join(', '),
           pieza_original_label: product?.pieza_original ? 'Si' : 'No',
+          oem_codes: oemCodes.join(', '),
         }
       }),
     []
@@ -95,6 +100,7 @@ function ProductosTable({ token, onSelect }) {
           contains(row?.codigo, criteria.codigo) &&
           contains(row?.nombre, criteria.nombre) &&
           contains(row?.descripcion, criteria.descripcion) &&
+          contains(row?.oem_codes, criteria.oem) &&
           contains(row?.marca?.nombre ?? row?.marca_nombre, criteria.marca) &&
           matchCasa(row, criteria.casa_comercial) &&
           (piezaCriteria ? piezaValue === piezaCriteria : true) &&
@@ -191,6 +197,7 @@ function ProductosTable({ token, onSelect }) {
   const initialSearchCriteria = {
     codigo: '',
     nombre: '',
+    oem: '',
     descripcion: '',
     marca: '',
     casa_comercial: '',
@@ -534,29 +541,31 @@ function ProductosTable({ token, onSelect }) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
-    if (!rows.length) {
-      notifyExportWarning('No hay registros para exportar.')
+    const baseRows = processedRows === null ? products : processedRows
+    if (!selectedRows?.length) {
+      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
       return
     }
+    const rows = selectedRows
     await exportToExcel({
       rows,
       columns: exportColumns,
       valueGetter: getExportValue,
       fileName: buildFileName('productos'),
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [exportColumns, getExportValue, notifyExportWarning, processedRows, products, selectedRows])
 
   const handleExportPdf = useCallback(async () => {
     if (!exportColumns.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
-    if (!rows.length) {
-      notifyExportWarning('No hay registros para exportar.')
+    const baseRows = processedRows === null ? products : processedRows
+    if (!selectedRows?.length) {
+      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
       return
     }
+    const rows = selectedRows
     await exportToPdf({
       rows,
       columns: exportColumns,
@@ -564,7 +573,7 @@ function ProductosTable({ token, onSelect }) {
       fileName: buildFileName('productos'),
       title: 'Reporte de productos',
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [exportColumns, getExportValue, notifyExportWarning, processedRows, products, selectedRows])
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
@@ -892,6 +901,7 @@ function ProductosTable({ token, onSelect }) {
           globalFilterFields={[
             'codigo',
             'nombre',
+            'oem_codes',
             'descripcion',
             'marca_nombre',
             'pieza_original_label',
@@ -1083,6 +1093,11 @@ function ProductosTable({ token, onSelect }) {
                     <label className="create-user__field">
                       <span>Codigo</span>
                       <input name="codigo" type="text" placeholder="Ej: PRD-001" value={searchCriteria.codigo} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>OEM</span>
+                      <input name="oem" type="text" placeholder="Ej: 1234-ABC" value={searchCriteria.oem} onChange={handleSearchInputChange} />
                     </label>
 
                     <label className="create-user__field">

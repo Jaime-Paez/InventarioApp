@@ -48,6 +48,8 @@
 .dashboard-shell.dark {
   background: var(--color-surface-darker);
   color: var(--color-button-dark);
+  --color-border: #2b3036;
+  --color-border-dark: #2b3036;
 }
 
 @keyframes sidebar-slide-in {

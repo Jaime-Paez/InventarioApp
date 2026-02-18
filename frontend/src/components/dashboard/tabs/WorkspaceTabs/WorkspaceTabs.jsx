@@ -6,6 +6,9 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
   const [hasOverflow, setHasOverflow] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragState = useRef({ active: false, startX: 0, scrollLeft: 0, dragged: false })
+  const DRAG_THRESHOLD = 6
 
   const updateScrollControls = useCallback(() => {
     const element = listRef.current
@@ -29,13 +32,34 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
 
     const handleResize = () => updateScrollControls()
     const handleScroll = () => updateScrollControls()
+    const handleMouseMove = (event) => {
+      if (!dragState.current.active) return
+      const dx = event.clientX - dragState.current.startX
+      if (!dragState.current.dragged && Math.abs(dx) < DRAG_THRESHOLD) return
+      if (!dragState.current.dragged) {
+        dragState.current.dragged = true
+        setIsDragging(true)
+      }
+      element.scrollLeft = dragState.current.scrollLeft - dx
+      event.preventDefault()
+    }
+    const handleMouseUp = () => {
+      if (!dragState.current.active) return
+      dragState.current.active = false
+      dragState.current.dragged = false
+      setIsDragging(false)
+    }
 
     window.addEventListener('resize', handleResize)
     element.addEventListener('scroll', handleScroll)
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
 
     return () => {
       window.removeEventListener('resize', handleResize)
       element.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
     }
   }, [updateScrollControls])
 
@@ -61,11 +85,35 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
     const element = listRef.current
     if (!element) return
 
-    const scrollAmount = Math.max(element.clientWidth * 0.6, 120)
+    const scrollAmount = Math.max(element.clientWidth * 0.85, 160)
     const nextPosition =
-      direction === 'left' ? element.scrollLeft - scrollAmount : element.scrollLeft + scrollAmount
+      direction === 'left'
+        ? Math.max(0, element.scrollLeft - scrollAmount)
+        : element.scrollLeft + scrollAmount
 
     element.scrollTo({ left: nextPosition, behavior: 'smooth' })
+  }
+
+  const handleWheel = (event) => {
+    const element = listRef.current
+    if (!element) return
+    if (Math.abs(event.deltaX) < Math.abs(event.deltaY)) {
+      element.scrollLeft += event.deltaY
+      event.preventDefault()
+    }
+  }
+
+  const handleMouseDown = (event) => {
+    if (event.button !== 0) return
+    const element = listRef.current
+    if (!element) return
+    dragState.current = {
+      active: true,
+      startX: event.clientX,
+      scrollLeft: element.scrollLeft,
+      dragged: false,
+    }
+    setIsDragging(false)
   }
 
   return (
@@ -83,7 +131,14 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
       )}
 
       <div className="workspace__tablist-wrapper">
-        <div className="workspace__tablist" ref={listRef} role="tablist" aria-label="Pestañas del panel">
+        <div
+          className={`workspace__tablist${isDragging ? ' is-dragging' : ''}`}
+          ref={listRef}
+          role="tablist"
+          aria-label="Pestañas del panel"
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+        >
           {openTabs.map((tab) => {
             const isActive = tab === activeItem
             return (

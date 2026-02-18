@@ -79,6 +79,7 @@ const isCheckboxSelection = (event) => {
 const initialSearchCriteria = {
   codigo: '',
   nombre: '',
+  oem: '',
   descripcion: '',
   marca: '',
   casa_comercial: '',
@@ -443,6 +444,7 @@ function InventarioTable({ token }) {
         contains(row?.codigo, criteria?.codigo) &&
         contains(row?.nombre, criteria?.nombre) &&
         contains(row?.descripcion, criteria?.descripcion) &&
+        contains(row?.oem_codes, criteria?.oem) &&
         contains(row?.marca?.nombre ?? row?.marca_nombre, criteria?.marca) &&
         matchCasa(row, criteria?.casa_comercial) &&
         (piezaCriteria ? piezaValue === piezaCriteria : true) &&
@@ -515,11 +517,17 @@ function InventarioTable({ token }) {
       const totals = totalsByProduct.get(product.id) || {}
       const houses = Array.isArray(product?.casas_comerciales) ? product.casas_comerciales : []
       const casasNombres = houses.map((house) => house?.nombre).filter(Boolean).join(', ')
+      const oems = Array.isArray(product?.oem_productos) ? product.oem_productos : []
+      const oemCodes = oems
+        .map((item) => item?.oem?.codigo ?? item?.oem_codigo ?? item?.codigo)
+        .filter(Boolean)
+        .join(', ')
       const row = {
         ...product,
         marca_nombre: product?.marca?.nombre ?? '-',
         casas_comerciales_nombres: casasNombres,
         pieza_original_label: product?.pieza_original ? 'Si' : 'No',
+        oem_codes: oemCodes,
         __totals: totals,
       }
       return row
@@ -737,29 +745,31 @@ function InventarioTable({ token }) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
-    if (!rows.length) {
-      notifyExportWarning('No hay registros para exportar.')
+    const baseRows = processedRows === null ? filteredRows : processedRows
+    if (!selectedRows?.length) {
+      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
       return
     }
+    const rows = selectedRows
     await exportToExcel({
       rows,
       columns: exportColumns,
       valueGetter: getExportValue,
       fileName: buildFileName('inventario'),
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [exportColumns, filteredRows, getExportValue, notifyExportWarning, processedRows, selectedRows])
 
   const handleExportPdf = useCallback(async () => {
     if (!exportColumns.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
-    if (!rows.length) {
-      notifyExportWarning('No hay registros para exportar.')
+    const baseRows = processedRows === null ? filteredRows : processedRows
+    if (!selectedRows?.length) {
+      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
       return
     }
+    const rows = selectedRows
     await exportToPdf({
       rows,
       columns: exportColumns,
@@ -767,7 +777,7 @@ function InventarioTable({ token }) {
       fileName: buildFileName('inventario'),
       title: 'Reporte de inventario',
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [exportColumns, filteredRows, getExportValue, notifyExportWarning, processedRows, selectedRows])
   const quantityBody = (field) => (rowData) => {
     const value = normalizeNumber(rowData?.[field])
     return (
@@ -1050,7 +1060,7 @@ function InventarioTable({ token }) {
           value={hasSearch ? filteredRows : []}
           dataKey="id"
           header={header}
-          className="users-datatable"
+          className="users-datatable inventario-datatable"
           tableStyle={{ width: '100%' }}
           showGridlines
           size="small"
@@ -1091,6 +1101,7 @@ function InventarioTable({ token }) {
             style={selectionColStyle}
             headerStyle={selectionColStyle}
             bodyStyle={selectionColStyle}
+            resizable={false}
             exportable={false}
             reorderable={false}
           />
@@ -1249,17 +1260,6 @@ function InventarioTable({ token }) {
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Codigo</span>
-                      <input
-                        name="codigo"
-                        type="text"
-                        placeholder="Ej: PRD-001"
-                        value={searchCriteria.codigo}
-                        onChange={handleSearchInputChange}
-                      />
-                    </label>
-
-                    <label className="create-user__field">
                       <span>Nombre</span>
                       <input
                         name="nombre"
@@ -1333,6 +1333,17 @@ function InventarioTable({ token }) {
                     </label>
 
                     <label className="create-user__field">
+                      <span>Codigo</span>
+                      <input
+                        name="codigo"
+                        type="text"
+                        placeholder="Ej: PRD-001"
+                        value={searchCriteria.codigo}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
                       <span>Casa comercial</span>
                       <div className="create-user__dropdown" ref={searchCasaDropdownRef}>
                         <button
@@ -1392,6 +1403,17 @@ function InventarioTable({ token }) {
                           </div>
                         )}
                       </div>
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>OEM</span>
+                      <input
+                        name="oem"
+                        type="text"
+                        placeholder="Ej: 1234-ABC"
+                        value={searchCriteria.oem}
+                        onChange={handleSearchInputChange}
+                      />
                     </label>
 
                     <label className="create-user__field">

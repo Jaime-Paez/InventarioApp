@@ -67,7 +67,15 @@ const downloadBlob = (blob, fileName) => {
   URL.revokeObjectURL(url)
 }
 
+const confirmReportDownload = (formatLabel) => {
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
+    return true
+  }
+  return window.confirm(`¿Quieres descargar el reporte en ${formatLabel}?`)
+}
+
 export const exportToExcel = async ({ rows, columns, valueGetter, fileName = 'export' }) => {
+  if (!confirmReportDownload('Excel')) return
   const xlsx = await import('xlsx')
   const XLSX = xlsx?.default ?? xlsx
   const utils = XLSX.utils
@@ -95,6 +103,7 @@ export const exportToExcel = async ({ rows, columns, valueGetter, fileName = 'ex
 }
 
 export const exportToPdf = async ({ rows, columns, valueGetter, fileName = 'export', title = 'Reporte', subtitle }) => {
+  if (!confirmReportDownload('PDF')) return
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
 
