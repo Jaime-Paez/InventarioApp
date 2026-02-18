@@ -66,7 +66,7 @@ DEBUG = env_bool("DEBUG", default=True)
 # - Render: setea ALLOWED_HOSTS="tu-api.onrender.com"
 ALLOWED_HOSTS = env_list(
     "ALLOWED_HOSTS",
-    default=["localhost", "127.0.0.1", "0.0.0.0", "192.168.0.72", "inventarioapp-0mta.onrender.com,.onrender.com"],
+    default=["localhost", "127.0.0.1", "0.0.0.0", "192.168.0.72", "inventarioapp-0mta.onrender.com","onrender.com"],
 )
 
 # Evita dejar "*" en producción. Si no setean ALLOWED_HOSTS en Render,
