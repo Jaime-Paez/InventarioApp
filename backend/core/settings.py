@@ -12,18 +12,36 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+import dj_database_url
 
-# ============================================================
-# BASE DIR
-# ============================================================
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 # ============================================================
-# DATABASE CONFIGURATION
+# HELPERS
 # ============================================================
-# Variables de entorno (puedes moverlas a un archivo .env)
+def env_bool(key: str, default: bool = False) -> bool:
+    v = os.getenv(key)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "t", "yes", "y", "on")
+
+
+def env_list(key: str, default=None, sep: str = ","):
+    if default is None:
+        default = []
+    v = os.getenv(key)
+    if not v:
+        return default
+    return [item.strip() for item in v.split(sep) if item.strip()]
+
+
+# ============================================================
+# DATABASE CONFIGURATION (LOCAL FALLBACK)
+# ============================================================
+# Local: usa POSTGRES_* (como tenías)
 DB_NAME = os.getenv("POSTGRES_DB", "kava")
 DB_USER = os.getenv("POSTGRES_USER", "ConnectionDjango")
 DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "ka25va18$")
@@ -34,16 +52,27 @@ DB_PORT = os.getenv("POSTGRES_PORT", "5432")
 # ============================================================
 # SECURITY
 # ============================================================
-# ⚠️ No uses esta clave en producción, cámbiala por una variable de entorno
-SECRET_KEY = "django-insecure-y$x-!b&yxi36il!&ws$$^a=t3$i)x_q(m)8)4(^hnels&=3!83"
+# En Render SIEMPRE setea SECRET_KEY por env var
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-dev-only-change-me"
+)
 
-# DEBUG debe ser False en producción
-DEBUG = True
+# En local: DEBUG=1, en Render: DEBUG=0
+DEBUG = env_bool("DEBUG", default=True)
 
-# En producción agrega tus dominios o IPs
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "192.168.0.72"]
-ALLOWED_HOSTS = ["*"]
+# Hosts:
+# - Local default ok
+# - Render: setea ALLOWED_HOSTS="tu-api.onrender.com"
+ALLOWED_HOSTS = env_list(
+    "ALLOWED_HOSTS",
+    default=["localhost", "127.0.0.1", "0.0.0.0", "192.168.0.72"],
+)
 
+# Evita dejar "*" en producción. Si no setean ALLOWED_HOSTS en Render,
+# al menos permite *.onrender.com.
+if not DEBUG and (not ALLOWED_HOSTS or ALLOWED_HOSTS == ["*"]):
+    ALLOWED_HOSTS = [".onrender.com"]
 
 
 # ============================================================
@@ -77,11 +106,14 @@ INSTALLED_APPS = [
     "configuracion",
 ]
 
-# Configuración de Django REST Framework
+
+# ============================================================
+# DJANGO REST FRAMEWORK
+# ============================================================
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
-        "rest_framework.renderers.BrowsableAPIRenderer",  # Interfaz visual del API
+        "rest_framework.renderers.BrowsableAPIRenderer",
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
@@ -101,6 +133,10 @@ REST_FRAMEWORK = {
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",  # Debe ir arriba de CommonMiddleware
     "django.middleware.security.SecurityMiddleware",
+
+    # WhiteNoise: sirve static en Render (y no rompe local)
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -120,11 +156,19 @@ WSGI_APPLICATION = "core.wsgi.application"
 # ============================================================
 # TEMPLATES
 # ============================================================
+# Mantengo tu comportamiento: Django sirve el dist del frontend.
+# Si en Render vas a desplegar React por separado como Static Site,
+# puedes setear SERVE_FRONTEND=0 para que no dependa de esa ruta.
+SERVE_FRONTEND = env_bool("SERVE_FRONTEND", default=True)
+
+TEMPLATES_DIRS = []
+if SERVE_FRONTEND:
+    TEMPLATES_DIRS = [os.path.join(BASE_DIR, "..", "frontend", "dist")]
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        # Directorio donde se sirve el frontend compilado (React/Vite)
-        "DIRS": [os.path.join(BASE_DIR, "..", "frontend", "dist")],
+        "DIRS": TEMPLATES_DIRS,
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -140,18 +184,33 @@ TEMPLATES = [
 # ============================================================
 # DATABASE
 # ============================================================
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": DB_NAME,
-        "USER": DB_USER,
-        "PASSWORD": DB_PASSWORD,
-        "HOST": DB_HOST,
-        "PORT": DB_PORT,
-        "CONN_MAX_AGE": 60,              # mantiene conexión viva (útil en producción)
-        "OPTIONS": {"sslmode": "disable"},
+# Render: usa DATABASE_URL (internal recomendado)
+# Local: fallback a POSTGRES_* como ya lo tenías
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL:
+    # Render normalmente requiere SSL
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=60,
+            ssl_require=True,
+        )
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": DB_NAME,
+            "USER": DB_USER,
+            "PASSWORD": DB_PASSWORD,
+            "HOST": DB_HOST,
+            "PORT": DB_PORT,
+            "CONN_MAX_AGE": 60,
+            # En local puedes desactivar ssl sin problema:
+            "OPTIONS": {"sslmode": "disable"},
+        }
+    }
 
 
 # ============================================================
@@ -168,7 +227,6 @@ AUTH_PASSWORD_VALIDATORS = [
 # ============================================================
 # INTERNATIONALIZATION
 # ============================================================
-# Localización y zona horaria (ajustada a Ecuador)
 LANGUAGE_CODE = "es-ec"
 TIME_ZONE = "America/Guayaquil"
 USE_I18N = True
@@ -178,28 +236,63 @@ USE_TZ = True
 # ============================================================
 # STATIC FILES (CSS, JS, IMÁGENES)
 # ============================================================
-STATIC_URL = "static/"
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, "..", "frontend", "dist", "assets"),
-]
+# Importante: STATIC_URL con slash al inicio para producción.
+STATIC_URL = "/static/"
+
+# Render necesita STATIC_ROOT para collectstatic
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
+# WhiteNoise storage (hash + compresión) -> ideal en producción
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    }
+}
+
+# Mantengo tu STATICFILES_DIRS para servir assets del dist en local/monolito.
+# Si no existe el folder, lo dejamos vacío para no romper en deploy.
+STATICFILES_DIRS = []
+if SERVE_FRONTEND:
+    assets_dir = os.path.join(BASE_DIR, "..", "frontend", "dist", "assets")
+    if os.path.isdir(assets_dir):
+        STATICFILES_DIRS = [assets_dir]
 
 
 # ============================================================
 # CORS / CSRF CONFIG
 # ============================================================
-# Permitir conexiones CORS desde orígenes conocidos (desarrollo)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://192.168.0.72:5173",
-]
-CORS_ALLOW_CREDENTIALS = True
+# En Render setea:
+# CORS_ALLOWED_ORIGINS="https://tu-frontend.onrender.com"
+# CSRF_TRUSTED_ORIGINS="https://tu-frontend.onrender.com"
+CORS_ALLOWED_ORIGINS = env_list(
+    "CORS_ALLOWED_ORIGINS",
+    default=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://192.168.0.72:5173",
+    ],
+)
 
-# Permitir CSRF desde el frontend local (ajusta según tu puerto o dominio)
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://192.168.0.72:5173",
-]
+CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", default=True)
+
+CSRF_TRUSTED_ORIGINS = env_list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=[
+        "http://localhost:5173",
+        "http://192.168.0.72:5173",
+    ],
+)
+
+
+# ============================================================
+# SECURITY (PROD HARDENING)
+# ============================================================
+if not DEBUG:
+    # Render usa HTTPS, esto es recomendado
+    SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", default=True)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 # ============================================================
