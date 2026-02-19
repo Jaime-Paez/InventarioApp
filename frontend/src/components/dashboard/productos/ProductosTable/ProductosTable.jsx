@@ -984,6 +984,7 @@ function ProductosTable({ token, onSelect }) {
     }
     handleSelectAllRows()
   }, [handleSelectAllRows, totalRecords])
+  const hasSearched = Boolean(lastSearchRef.current)
 
   useLayoutEffect(() => {
     if (!showBulkSelectConfirm && !showBulkSelectProgress) return
@@ -1048,6 +1049,24 @@ function ProductosTable({ token, onSelect }) {
       </div>
 
       <div className="users-table users-table--card">
+        {!hasSearched ? (
+          <div className="users-search-empty-state">
+            <div className="users-search-empty-state__content">
+              <h2 className="users-search-empty-state__title">Productos</h2>
+              <div className="users-search-empty-state__hint">
+                <span className="users-search-empty-state__hint-text">Para iniciar, seleccione</span>
+                <Button
+                  label="Buscar"
+                  icon="pi pi-search"
+                  className="users-topbtn users-topbtn--search users-search-empty-state__btn"
+                  onClick={focusSearch}
+                  type="button"
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         {(loading || isRefreshing) && (
           <div className="spinner-container">
             <div className="spinner" />
@@ -1227,6 +1246,8 @@ function ProductosTable({ token, onSelect }) {
             </div>
           ))}
         </OverlayPanel>
+          </>
+        )}
       </div>
 
       {showBulkSelectConfirm && (

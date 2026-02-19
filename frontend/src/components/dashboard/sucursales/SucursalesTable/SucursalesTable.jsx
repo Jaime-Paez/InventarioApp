@@ -515,6 +515,7 @@ function SucursalesTable({ token, onSelect }) {
   }
 
   const focusSearch = () => setShowSearchModal(true)
+  const hasSearched = Boolean(lastSearchRef.current)
 
   useEffect(() => {
     searchSizeRef.current = searchSize
@@ -667,6 +668,24 @@ function SucursalesTable({ token, onSelect }) {
       </div>
 
       <div className="users-table users-table--card">
+        {!hasSearched ? (
+          <div className="users-search-empty-state">
+            <div className="users-search-empty-state__content">
+              <h2 className="users-search-empty-state__title">Sucursales</h2>
+              <div className="users-search-empty-state__hint">
+                <span className="users-search-empty-state__hint-text">Para iniciar, seleccione</span>
+                <Button
+                  label="Buscar"
+                  icon="pi pi-search"
+                  className="users-topbtn users-topbtn--search users-search-empty-state__btn"
+                  onClick={focusSearch}
+                  type="button"
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         {(loading || isRefreshing) && (
           <div className="spinner-container">
             <div className="spinner" />
@@ -796,6 +815,8 @@ function SucursalesTable({ token, onSelect }) {
             </div>
           ))}
         </OverlayPanel>
+          </>
+        )}
 
       </div>
 

@@ -1046,155 +1046,175 @@ function InventarioTable({ token }) {
       </div>
 
       <div className="users-table users-table--card">
-        {loading && (
-          <div className="spinner-container">
-            <div className="spinner" />
-          </div>
-        )}
-
-        {error && (
-          <div className="stale-data-msg">
-            <i className="pi pi-exclamation-circle" style={{ fontSize: '0.8rem', margin: 0, color: 'white' }} />
-            <span>
-              <strong>Los datos pueden estar desactualizados</strong> | intenta recargar la tabla
-            </span>
-          </div>
-        )}
-
-        <DataTable
-          value={hasSearch ? filteredRows : []}
-          dataKey="id"
-          header={header}
-          className="users-datatable inventario-datatable"
-          tableStyle={{ width: '100%' }}
-          showGridlines
-          size="small"
-          scrollable
-          scrollHeight="flex"
-          frozenWidth="40px"
-          paginator
-          rows={25}
-          rowsPerPageOptions={[5, 10, 25, 50]}
-          removableSort
-          filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
-          onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : null)}
-          globalFilterFields={globalFilterFields}
-          stateStorage="session"
-          stateKey="inventario-table-state"
-          reorderableColumns
-          onColReorder={handleOrderChange}
-          resizableColumns
-          columnResizeMode="fit"
-          onRowClick={handleRowClick}
-          rowClassName={(rowData) =>
-            selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow inventario__row' : 'inventario__row'
-          }
-          emptyMessage={loading ? 'Cargando inventario...' : emptyMessage}
-          selectionMode="multiple"
-          selection={selectedRows}
-          onSelectionChange={(e) => {
-            if (!isCheckboxSelection(e)) return
-            setSelectedRows(e.value || [])
-          }}
-        >
-          <Column
-            selectionMode="multiple"
-            frozen
-            headerClassName="row-selection-column"
-            bodyClassName="row-selection-column"
-            style={selectionColStyle}
-            headerStyle={selectionColStyle}
-            bodyStyle={selectionColStyle}
-            resizable={false}
-            exportable={false}
-            reorderable={false}
-          />
-
-          {selectedColumns.map((column) => {
-            let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-            let className = 'column-max-min-width'
-            let filterMatchMode = FilterMatchMode.CONTAINS
-            let showFilterMatchModes = true
-            let showFilterOperator = true
-            let filterElement = undefined
-
-            switch (column.nombrevar) {
-              case 'codigo':
-                bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
-                break
-              case 'nombre':
-              case 'marca_nombre':
-                bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
-                break
-              case 'precio':
-              case 'precio_con_iva':
-                bodyTemplate = (rowData) => priceBodyTemplate(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
-                className = 'column-max-min-width--small'
-                break
-              case 'total_general':
-                bodyTemplate = quantityBody(column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
-                className = 'column-max-min-width--small'
-                break
-              default:
-                if (column.nombrevar.startsWith('sucursal_')) {
-                  bodyTemplate = quantityBody(column.nombrevar)
-                  filterMatchMode = FilterMatchMode.STARTS_WITH
-                  className = 'column-max-min-width--small'
-                }
-                break
-            }
-
-            return (
-              <Column
-                key={column.nombrevar}
-                field={column.nombrevar}
-                header={column.header}
-                body={bodyTemplate}
-                sortable
-                reorderable
-                filter
-                filterField={column.nombrevar}
-                filterPlaceholder={column.filterPlaceholder}
-                filterMatchMode={filterMatchMode}
-                showFilterMenuOptions
-                showFilterMatchModes={showFilterMatchModes}
-                showFilterOperator={showFilterOperator}
-                filterApply={filterApplyTemplate}
-                filterClear={filterClearTemplate}
-                filterElement={filterElement}
-                className={className}
-              />
-            )
-          })}
-        </DataTable>
-
-        <OverlayPanel ref={opColumns} className="table-options-list">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-            <strong>Campos</strong>
-          </div>
-
-          {columnsData.map((col) => (
-            <div
-              key={col.nombrevar}
-              className="p-field-checkbox"
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}
-            >
-              <Checkbox
-                inputId={col.nombrevar}
-                name="category"
-                value={col}
-                onChange={() => handleCheckboxChangeColumn(col)}
-                checked={selectedColumns.some((item) => item.nombrevar === col.nombrevar)}
-              />
-              <label htmlFor={col.nombrevar}>{col.header}</label>
+        {!hasSearch ? (
+          <div className="users-search-empty-state">
+            <div className="users-search-empty-state__content">
+              <h2 className="users-search-empty-state__title">Inventario</h2>
+              <div className="users-search-empty-state__hint">
+                <span className="users-search-empty-state__hint-text">Para iniciar, seleccione</span>
+                <Button
+                  label="Buscar"
+                  icon="pi pi-search"
+                  className="users-topbtn users-topbtn--search users-search-empty-state__btn"
+                  onClick={focusSearch}
+                  type="button"
+                />
+              </div>
             </div>
-          ))}
-        </OverlayPanel>
+          </div>
+        ) : (
+          <>
+            {loading && (
+              <div className="spinner-container">
+                <div className="spinner" />
+              </div>
+            )}
+
+            {error && (
+              <div className="stale-data-msg">
+                <i className="pi pi-exclamation-circle" style={{ fontSize: '0.8rem', margin: 0, color: 'white' }} />
+                <span>
+                  <strong>Los datos pueden estar desactualizados</strong> | intenta recargar la tabla
+                </span>
+              </div>
+            )}
+
+            <DataTable
+              value={hasSearch ? filteredRows : []}
+              dataKey="id"
+              header={header}
+              className="users-datatable inventario-datatable"
+              tableStyle={{ width: '100%' }}
+              showGridlines
+              size="small"
+              scrollable
+              scrollHeight="flex"
+              frozenWidth="40px"
+              paginator
+              rows={25}
+              rowsPerPageOptions={[5, 10, 25, 50]}
+              removableSort
+              filters={filters}
+              onFilter={(e) => setFilters(e.filters)}
+              onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : null)}
+              globalFilterFields={globalFilterFields}
+              stateStorage="session"
+              stateKey="inventario-table-state"
+              reorderableColumns
+              onColReorder={handleOrderChange}
+              resizableColumns
+              columnResizeMode="fit"
+              onRowClick={handleRowClick}
+              rowClassName={(rowData) =>
+                selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow inventario__row' : 'inventario__row'
+              }
+              emptyMessage={loading ? 'Cargando inventario...' : emptyMessage}
+              selectionMode="multiple"
+              selection={selectedRows}
+              onSelectionChange={(e) => {
+                if (!isCheckboxSelection(e)) return
+                setSelectedRows(e.value || [])
+              }}
+            >
+              <Column
+                selectionMode="multiple"
+                frozen
+                headerClassName="row-selection-column"
+                bodyClassName="row-selection-column"
+                style={selectionColStyle}
+                headerStyle={selectionColStyle}
+                bodyStyle={selectionColStyle}
+                resizable={false}
+                exportable={false}
+                reorderable={false}
+              />
+
+              {selectedColumns.map((column) => {
+                let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+                let className = 'column-max-min-width'
+                let filterMatchMode = FilterMatchMode.CONTAINS
+                let showFilterMatchModes = true
+                let showFilterOperator = true
+                let filterElement = undefined
+
+                switch (column.nombrevar) {
+                  case 'codigo':
+                    bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+                    filterMatchMode = FilterMatchMode.STARTS_WITH
+                    break
+                  case 'nombre':
+                  case 'marca_nombre':
+                    bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+                    filterMatchMode = FilterMatchMode.STARTS_WITH
+                    break
+                  case 'precio':
+                  case 'precio_con_iva':
+                    bodyTemplate = priceBodyTemplate(rowData, column.nombrevar)
+                    filterMatchMode = FilterMatchMode.STARTS_WITH
+                    className = 'column-max-min-width--small'
+                    break
+                  case 'total_general':
+                    bodyTemplate = quantityBody(column.nombrevar)
+                    filterMatchMode = FilterMatchMode.STARTS_WITH
+                    className = 'column-max-min-width--small'
+                    break
+                  default:
+                    if (column.nombrevar.startsWith('sucursal_')) {
+                      bodyTemplate = quantityBody(column.nombrevar)
+                      filterMatchMode = FilterMatchMode.STARTS_WITH
+                      className = 'column-max-min-width--small'
+                    }
+                    break
+                }
+
+                return (
+                  <Column
+                    key={column.nombrevar}
+                    field={column.nombrevar}
+                    header={column.header}
+                    body={bodyTemplate}
+                    sortable
+                    reorderable
+                    filter
+                    filterField={column.nombrevar}
+                    filterPlaceholder={column.filterPlaceholder}
+                    filterMatchMode={filterMatchMode}
+                    showFilterMenuOptions
+                    showFilterMatchModes={showFilterMatchModes}
+                    showFilterOperator={showFilterOperator}
+                    filterApply={filterApplyTemplate}
+                    filterClear={filterClearTemplate}
+                    filterElement={filterElement}
+                    className={className}
+                  />
+                )
+              })}
+            </DataTable>
+
+            <OverlayPanel ref={opColumns} className="table-options-list">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                <strong>Campos</strong>
+              </div>
+
+              {columnsData.map((col) => (
+                <div
+                  key={col.nombrevar}
+                  className="p-field-checkbox"
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}
+                >
+                  <Checkbox
+                    inputId={col.nombrevar}
+                    name="category"
+                    value={col}
+                    onChange={() => handleCheckboxChangeColumn(col)}
+                    checked={selectedColumns.some((item) => item.nombrevar === col.nombrevar)}
+                  />
+                  <label htmlFor={col.nombrevar}>{col.header}</label>
+                </div>
+              ))}
+            </OverlayPanel>
+          </>
+        )}
       </div>
 
       <ProductoDetails
