@@ -53,6 +53,9 @@ function ProductosTable({ token, onSelect }) {
     total: 0,
     percent: 0,
   })
+  const [bulkModalPosition, setBulkModalPosition] = useState({ x: 0, y: 0 })
+  const bulkModalRef = useRef(null)
+  const bulkModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
 
   const normalizeList = useCallback(
     (list) =>
@@ -206,17 +209,40 @@ function ProductosTable({ token, onSelect }) {
   }
 
   useEffect(() => {
-    const savedState = sessionStorage.getItem('productos-table-state')
-    if (savedState) {
-      const parsed = JSON.parse(savedState)
-      if (parsed?.filters) {
-        setFilters(parsed.filters)
-        if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
-        return
+    try {
+      const savedState = sessionStorage.getItem('productos-table-state')
+      if (savedState) {
+        const parsed = JSON.parse(savedState)
+        if (parsed?.filters) {
+          setFilters(parsed.filters)
+          if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
+          return
+        }
+      }
+    } catch {
+      try {
+        sessionStorage.removeItem('productos-table-state')
+      } catch {
+        // no-op
       }
     }
     initFilters()
   }, [])
+
+  useEffect(() => {
+    if (!filters) return
+    const payload = JSON.stringify({ filters })
+    try {
+      sessionStorage.setItem('productos-table-state', payload)
+    } catch {
+      try {
+        sessionStorage.removeItem('productos-table-state')
+        sessionStorage.setItem('productos-table-state', payload)
+      } catch {
+        // no-op
+      }
+    }
+  }, [filters])
 
   const clearFilter = () => {
     initFilters()
@@ -272,6 +298,9 @@ function ProductosTable({ token, onSelect }) {
   const SEARCH_MIN_WIDTH = 640
   const SEARCH_MIN_HEIGHT = 480
   const SEARCH_PADDING = 12
+  const BULK_MODAL_PADDING = 12
+  const BULK_MODAL_WIDTH = 560
+  const BULK_MODAL_HEIGHT = 230
 
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target
@@ -462,13 +491,17 @@ function ProductosTable({ token, onSelect }) {
   }, [products])
 
   useEffect(() => {
-    sessionStorage.setItem(
-      'productos-table-selected-rows',
-      JSON.stringify({
-        selectedRowIds,
-        allRowsSelected,
-      })
-    )
+    try {
+      sessionStorage.setItem(
+        'productos-table-selected-rows',
+        JSON.stringify({
+          selectedRowIds,
+          allRowsSelected,
+        })
+      )
+    } catch {
+      // no-op
+    }
   }, [selectedRowIds, allRowsSelected])
 
   const selectionColStyle = useMemo(
@@ -952,6 +985,56 @@ function ProductosTable({ token, onSelect }) {
     handleSelectAllRows()
   }, [handleSelectAllRows, totalRecords])
 
+  useLayoutEffect(() => {
+    if (!showBulkSelectConfirm && !showBulkSelectProgress) return
+    const width = Math.min(BULK_MODAL_WIDTH, Math.max(0, window.innerWidth - BULK_MODAL_PADDING * 2))
+    const height = Math.min(BULK_MODAL_HEIGHT, Math.max(0, window.innerHeight - BULK_MODAL_PADDING * 2))
+    setBulkModalPosition({
+      x: Math.max((window.innerWidth - width) / 2, BULK_MODAL_PADDING),
+      y: Math.max((window.innerHeight - height) / 2, BULK_MODAL_PADDING),
+    })
+  }, [showBulkSelectConfirm, showBulkSelectProgress])
+
+  const handleBulkModalMouseDown = (event) => {
+    if (!bulkModalRef.current) return
+    const rect = bulkModalRef.current.getBoundingClientRect()
+    bulkModalDrag.current = {
+      active: true,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+  }
+
+  useEffect(() => {
+    if (!showBulkSelectConfirm && !showBulkSelectProgress) return undefined
+
+    const handleMouseMove = (event) => {
+      if (!bulkModalDrag.current.active) return
+      event.preventDefault()
+      const width = bulkModalRef.current?.offsetWidth || BULK_MODAL_WIDTH
+      const height = bulkModalRef.current?.offsetHeight || BULK_MODAL_HEIGHT
+      const maxX = Math.max(window.innerWidth - width - BULK_MODAL_PADDING, BULK_MODAL_PADDING)
+      const maxY = Math.max(window.innerHeight - height - BULK_MODAL_PADDING, BULK_MODAL_PADDING)
+      const x = event.clientX - bulkModalDrag.current.offsetX
+      const y = event.clientY - bulkModalDrag.current.offsetY
+      setBulkModalPosition({
+        x: Math.min(Math.max(x, BULK_MODAL_PADDING), maxX),
+        y: Math.min(Math.max(y, BULK_MODAL_PADDING), maxY),
+      })
+    }
+
+    const handleMouseUp = () => {
+      bulkModalDrag.current.active = false
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [showBulkSelectConfirm, showBulkSelectProgress])
+
   return (
     <div className="users-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
@@ -1014,8 +1097,6 @@ function ProductosTable({ token, onSelect }) {
             'costo_minimo',
             'casas_comerciales_nombres',
           ]}
-          stateStorage="session"
-          stateKey="productos-table-state"
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
@@ -1149,16 +1230,19 @@ function ProductosTable({ token, onSelect }) {
       </div>
 
       {showBulkSelectConfirm && (
-        <div className="create-user__overlay" role="dialog" aria-modal="true">
+        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ pointerEvents: 'auto' }}>
           <div
+            ref={bulkModalRef}
             className="create-user__modal"
             style={{
+              top: bulkModalPosition.y,
+              left: bulkModalPosition.x,
               width: 'min(560px, calc(100vw - 32px))',
               height: 'auto',
               maxHeight: 'none',
             }}
           >
-            <header className="create-user__header">
+            <header className="create-user__header" onMouseDown={handleBulkModalMouseDown}>
               <div className="create-user__header-text">
                 <h3>Confirmar seleccion global</h3>
               </div>
@@ -1197,17 +1281,20 @@ function ProductosTable({ token, onSelect }) {
       )}
 
       {showBulkSelectProgress && (
-        <div className="create-user__overlay" role="dialog" aria-modal="true">
+        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ pointerEvents: 'auto' }}>
           <div
+            ref={bulkModalRef}
             className="create-user__modal"
             style={{
+              top: bulkModalPosition.y,
+              left: bulkModalPosition.x,
               width: 'min(560px, calc(100vw - 32px))',
               height: 'auto',
               maxHeight: 'none',
               pointerEvents: 'auto',
             }}
           >
-            <header className="create-user__header">
+            <header className="create-user__header" onMouseDown={handleBulkModalMouseDown}>
               <div className="create-user__header-text">
                 <h3>Seleccionando productos</h3>
               </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../utils/api'
 
@@ -55,6 +55,12 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
   const [pagosSelected, setPagosSelected] = useState([])
+  const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
+  const modalRef = useRef(null)
+  const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const MODAL_PADDING = 12
+  const MODAL_WIDTH = 1100
+  const MODAL_HEIGHT = 820
 
   const notifyError = useCallback(
     (message) => {
@@ -163,6 +169,57 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
     setError('')
     fetchCatalogs()
   }, [open, fetchCatalogs])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const width = Math.min(MODAL_WIDTH, Math.max(0, window.innerWidth - MODAL_PADDING * 2))
+    const height = Math.min(MODAL_HEIGHT, Math.max(0, window.innerHeight - MODAL_PADDING * 2))
+    setModalPosition({
+      x: Math.max((window.innerWidth - width) / 2, MODAL_PADDING),
+      y: Math.max((window.innerHeight - height) / 2, MODAL_PADDING),
+    })
+  }, [open])
+
+  const handleModalMouseDown = (event) => {
+    if (!modalRef.current) return
+    const target = event?.target
+    if (target?.closest?.('.create-user__icon-button')) return
+    const rect = modalRef.current.getBoundingClientRect()
+    modalDrag.current = {
+      active: true,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return undefined
+    const handleMouseMove = (event) => {
+      if (!modalDrag.current.active) return
+      event.preventDefault()
+      const width = modalRef.current?.offsetWidth || MODAL_WIDTH
+      const height = modalRef.current?.offsetHeight || MODAL_HEIGHT
+      const maxX = Math.max(window.innerWidth - width - MODAL_PADDING, MODAL_PADDING)
+      const maxY = Math.max(window.innerHeight - height - MODAL_PADDING, MODAL_PADDING)
+      const x = event.clientX - modalDrag.current.offsetX
+      const y = event.clientY - modalDrag.current.offsetY
+      setModalPosition({
+        x: Math.min(Math.max(x, MODAL_PADDING), maxX),
+        y: Math.min(Math.max(y, MODAL_PADDING), maxY),
+      })
+    }
+
+    const handleMouseUp = () => {
+      modalDrag.current.active = false
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [open])
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
@@ -341,8 +398,17 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
 
   return (
     <div className="create-user__overlay" role="dialog" aria-modal="true">
-      <div className="create-user__modal">
-        <header className="create-user__header">
+      <div
+        ref={modalRef}
+        className="create-user__modal"
+        style={{
+          top: modalPosition.y,
+          left: modalPosition.x,
+          maxWidth: `calc(100vw - ${MODAL_PADDING * 2}px)`,
+          maxHeight: `calc(100vh - ${MODAL_PADDING * 2}px)`,
+        }}
+      >
+        <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
             <h3>Nueva salida</h3>
           </div>
