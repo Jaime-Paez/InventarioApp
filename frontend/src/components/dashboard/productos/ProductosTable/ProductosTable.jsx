@@ -15,6 +15,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (value) => (value == null ? null : String(value))
+const BULK_SELECT_CONFIRM_THRESHOLD = 1000
 const isCheckboxSelection = (event) => {
   if (event?.type === 'checkbox') return true
   const target = event?.originalEvent?.target
@@ -45,6 +46,13 @@ function ProductosTable({ token, onSelect }) {
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
+  const [showBulkSelectConfirm, setShowBulkSelectConfirm] = useState(false)
+  const [showBulkSelectProgress, setShowBulkSelectProgress] = useState(false)
+  const [bulkSelectProgress, setBulkSelectProgress] = useState({
+    loaded: 0,
+    total: 0,
+    percent: 0,
+  })
 
   const normalizeList = useCallback(
     (list) =>
@@ -123,18 +131,46 @@ function ProductosTable({ token, onSelect }) {
   )
 
   const fetchAllProducts = useCallback(
-    async (criteria) => {
+    async (criteria, options = {}) => {
+      const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null
       const all = []
       let url = buildProductsListUrl(criteria, 1, 200)
+      let total = 0
 
       while (url) {
         const res = await authFetch(url, {}, token)
         if (!res.ok) throw new Error('No se pudo obtener la lista completa de productos.')
         const data = await res.json()
-        const list = Array.isArray(data) ? data : data?.results || []
-        all.push(...list)
-        url = Array.isArray(data) ? null : data?.next || null
+        if (Array.isArray(data)) {
+          all.push(...data)
+          total = total || all.length
+          onProgress?.({
+            loaded: all.length,
+            total,
+            percent: total ? Math.min(100, Math.round((all.length / total) * 100)) : 100,
+          })
+          url = null
+        } else {
+          const count = Number(data?.count ?? 0)
+          if (count > 0) total = count
+          const list = Array.isArray(data?.results) ? data.results : []
+          all.push(...list)
+          const safeTotal = total || all.length
+          onProgress?.({
+            loaded: all.length,
+            total: safeTotal,
+            percent: safeTotal ? Math.min(100, Math.round((all.length / safeTotal) * 100)) : 0,
+          })
+          url = data?.next || null
+        }
       }
+
+      const finalTotal = Math.max(total, all.length)
+      onProgress?.({
+        loaded: all.length,
+        total: finalTotal,
+        percent: 100,
+      })
 
       return normalizeList(all)
     },
@@ -856,10 +892,28 @@ function ProductosTable({ token, onSelect }) {
   }
 
   const handleSelectAllRows = useCallback(async () => {
-    if (!lastSearchRef.current) return
+    if (!lastSearchRef.current) {
+      setShowSearchModal(true)
+      return
+    }
+    setShowBulkSelectConfirm(false)
+    setShowBulkSelectProgress(true)
+    setBulkSelectProgress({
+      loaded: 0,
+      total: Math.max(Number(totalRecords) || 0, 0),
+      percent: 0,
+    })
     setIsRefreshing(true)
     try {
-      const all = await fetchAllProducts(lastSearchRef.current)
+      const all = await fetchAllProducts(lastSearchRef.current, {
+        onProgress: ({ loaded, total, percent }) => {
+          setBulkSelectProgress({
+            loaded: Math.max(0, Number(loaded) || 0),
+            total: Math.max(0, Number(total) || 0),
+            percent: Math.max(0, Math.min(100, Number(percent) || 0)),
+          })
+        },
+      })
       setSelectedRows(all)
       toast.current?.show({
         severity: 'info',
@@ -875,13 +929,28 @@ function ProductosTable({ token, onSelect }) {
         life: 3500,
       })
     } finally {
+      setShowBulkSelectProgress(false)
       setIsRefreshing(false)
     }
-  }, [fetchAllProducts])
+  }, [fetchAllProducts, totalRecords])
 
   const handleUnselectAllRows = useCallback(() => {
+    setShowBulkSelectConfirm(false)
+    setShowBulkSelectProgress(false)
     setSelectedRows([])
   }, [])
+
+  const handleSelectAllIntent = useCallback(() => {
+    if (!lastSearchRef.current) {
+      setShowSearchModal(true)
+      return
+    }
+    if ((Number(totalRecords) || 0) > BULK_SELECT_CONFIRM_THRESHOLD) {
+      setShowBulkSelectConfirm(true)
+      return
+    }
+    handleSelectAllRows()
+  }, [handleSelectAllRows, totalRecords])
 
   return (
     <div className="users-page">
@@ -955,10 +1024,18 @@ function ProductosTable({ token, onSelect }) {
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
           selectionMode="multiple"
           selection={selectedRows}
-          onAllRowsSelect={handleSelectAllRows}
           onAllRowsUnselect={handleUnselectAllRows}
           onSelectionChange={(e) => {
             if (!isCheckboxSelection(e)) return
+            if (e?.type === 'all') {
+              const value = Array.isArray(e.value) ? e.value : []
+              if (!value.length) {
+                handleUnselectAllRows()
+              } else {
+                handleSelectAllIntent()
+              }
+              return
+            }
             const value = e.value || []
             const currentPageIds = new Set(allRowIds)
             setSelectedRows((prev) => {
@@ -1070,6 +1147,107 @@ function ProductosTable({ token, onSelect }) {
           ))}
         </OverlayPanel>
       </div>
+
+      {showBulkSelectConfirm && (
+        <div className="create-user__overlay" role="dialog" aria-modal="true">
+          <div
+            className="create-user__modal"
+            style={{
+              width: 'min(560px, calc(100vw - 32px))',
+              height: 'auto',
+              maxHeight: 'none',
+            }}
+          >
+            <header className="create-user__header">
+              <div className="create-user__header-text">
+                <h3>Confirmar seleccion global</h3>
+              </div>
+            </header>
+
+            <div className="create-user__body">
+              <p style={{ margin: 0, lineHeight: 1.5 }}>
+                Va a seleccionar mas de{' '}
+                <strong>{Number(totalRecords || 0).toLocaleString('es-EC')}</strong>{' '}
+                productos. El proceso tomara varios minutos.
+              </p>
+            </div>
+
+            <div className="create-user__footer">
+              <div className="user-details__footer-left">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={() => setShowBulkSelectConfirm(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+              <div className="user-details__footer-right">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleSelectAllRows}
+                >
+                  Continuar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkSelectProgress && (
+        <div className="create-user__overlay" role="dialog" aria-modal="true">
+          <div
+            className="create-user__modal"
+            style={{
+              width: 'min(560px, calc(100vw - 32px))',
+              height: 'auto',
+              maxHeight: 'none',
+              pointerEvents: 'auto',
+            }}
+          >
+            <header className="create-user__header">
+              <div className="create-user__header-text">
+                <h3>Seleccionando productos</h3>
+              </div>
+            </header>
+
+            <div className="create-user__body">
+              <p style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
+                Procesando seleccion global. Por favor espera.
+              </p>
+              <div
+                style={{
+                  width: '100%',
+                  height: 12,
+                  borderRadius: 999,
+                  background: 'rgba(15, 23, 42, 0.12)',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.max(0, Math.min(100, bulkSelectProgress.percent || 0))}%`,
+                    height: '100%',
+                    background: '#0b4f7d',
+                    transition: 'width 180ms ease',
+                  }}
+                />
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '0.9rem' }}>
+                <span>
+                  {Number(bulkSelectProgress.loaded || 0).toLocaleString('es-EC')} / {Number(bulkSelectProgress.total || 0).toLocaleString('es-EC')}
+                </span>
+                <span>
+                  Faltan {Math.max(0, (Number(bulkSelectProgress.total) || 0) - (Number(bulkSelectProgress.loaded) || 0)).toLocaleString('es-EC')}
+                </span>
+                <strong>{Math.max(0, Math.min(100, Number(bulkSelectProgress.percent) || 0))}%</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <CreateProducto
         open={showCreateModal}
