@@ -65,9 +65,14 @@ function MarcasTable({ token, onSelect }) {
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
   const [showSearchModal, setShowSearchModal] = useState(false)
   const lastSearchRef = useRef(null)
-  const [countries, setCountries] = useState([])
+  const [searchPaisQuery, setSearchPaisQuery] = useState('')
+  const [searchPaisOptions, setSearchPaisOptions] = useState([])
+  const [searchPaisLoading, setSearchPaisLoading] = useState(false)
+  const [showSearchPaisDropdown, setShowSearchPaisDropdown] = useState(false)
+  const searchPaisDropdownRef = useRef(null)
   const [creators, setCreators] = useState([])
   const [loadingFilters, setLoadingFilters] = useState(false)
+  const filtersPrefetchedRef = useRef(false)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
@@ -119,7 +124,7 @@ function MarcasTable({ token, onSelect }) {
         return (
           contains(row?.nombre, criteria.nombre) &&
           contains(row?.codigo, criteria.codigo) &&
-          exact(paisValue, criteria.pais) &&
+          contains(paisValue, criteria.pais) &&
           contains(row?.telefono, criteria.telefono) &&
           contains(row?.correo, criteria.correo) &&
           contains(row?.descripcion, criteria.descripcion) &&
@@ -137,6 +142,34 @@ function MarcasTable({ token, onSelect }) {
       [name]: value,
     }))
   }
+
+  const searchCountries = useCallback(
+    async (query) => {
+      const term = String(query ?? '').trim()
+      if (!term || !token) {
+        setSearchPaisOptions([])
+        return
+      }
+
+      setSearchPaisLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/tipos/paises/?search=${encodeURIComponent(term)}&page_size=20`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar los paises.')
+        const data = await response.json()
+        const list = Array.isArray(data) ? data : data?.results || []
+        setSearchPaisOptions(list)
+      } catch {
+        setSearchPaisOptions([])
+      } finally {
+        setSearchPaisLoading(false)
+      }
+    },
+    [token]
+  )
 
   const handleSearchSubmit = async (event) => {
     event.preventDefault()
@@ -541,22 +574,6 @@ function MarcasTable({ token, onSelect }) {
     if (!token) return
     setLoadingFilters(true)
     try {
-      const allCountries = []
-      let url = `${API_URL}/tipos/paises/`
-      while (url) {
-        const response = await authFetch(url, {}, token)
-        if (!response.ok) break
-        const data = await response.json()
-        if (Array.isArray(data)) {
-          allCountries.push(...data)
-          url = null
-        } else {
-          allCountries.push(...(data?.results || []))
-          url = data?.next || null
-        }
-      }
-      setCountries(allCountries)
-
       const allUsers = []
       let usersUrl = `${API_URL}/usuarios/listado/`
       while (usersUrl) {
@@ -578,6 +595,45 @@ function MarcasTable({ token, onSelect }) {
   }, [token])
 
   useEffect(() => {
+    if (!token || filtersPrefetchedRef.current) return
+    filtersPrefetchedRef.current = true
+    fetchFilterOptions()
+  }, [token, fetchFilterOptions])
+
+  useEffect(() => {
+    if (!showSearchModal) return
+    setSearchPaisQuery(searchCriteria.pais || '')
+  }, [showSearchModal, searchCriteria.pais])
+
+  useEffect(() => {
+    if (!showSearchModal || !showSearchPaisDropdown) return
+    const term = searchPaisQuery.trim()
+    if (!term) {
+      setSearchPaisOptions([])
+      return
+    }
+    const handle = setTimeout(() => {
+      searchCountries(term)
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [showSearchModal, showSearchPaisDropdown, searchPaisQuery, searchCountries])
+
+  useEffect(() => {
+    if (!showSearchModal) return
+    const handleClick = (event) => {
+      if (
+        showSearchPaisDropdown &&
+        searchPaisDropdownRef.current &&
+        !searchPaisDropdownRef.current.contains(event.target)
+      ) {
+        setShowSearchPaisDropdown(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [showSearchModal, showSearchPaisDropdown])
+
+  useEffect(() => {
     searchSizeRef.current = searchSize
   }, [searchSize])
 
@@ -587,7 +643,9 @@ function MarcasTable({ token, onSelect }) {
 
   useLayoutEffect(() => {
     if (!showSearchModal) return
-    if (!countries.length || !creators.length) {
+    setShowSearchPaisDropdown(false)
+    setSearchPaisOptions([])
+    if (!creators.length && !loadingFilters) {
       fetchFilterOptions()
     }
     setIsSearchMaximized(false)
@@ -599,7 +657,7 @@ function MarcasTable({ token, onSelect }) {
       x: Math.max((window.innerWidth - width) / 2, SEARCH_PADDING),
       y: Math.max((window.innerHeight - height) / 2, SEARCH_PADDING),
     })
-  }, [showSearchModal])
+  }, [showSearchModal, creators.length, loadingFilters, fetchFilterOptions])
 
   const handleSearchMouseDown = (event) => {
     if (isSearchMaximized) return
@@ -938,19 +996,64 @@ function MarcasTable({ token, onSelect }) {
 
                     <label className="create-user__field">
                       <span>Pais</span>
-                      <select
-                        name="pais"
-                        value={searchCriteria.pais}
-                        onChange={handleSearchInputChange}
-                        className={!searchCriteria.pais ? 'is-placeholder' : undefined}
-                      >
-                        <option value="">Selecciona un pais</option>
-                        {countries.map((country) => (
-                          <option key={country.id} value={country.nombre}>
-                            {country.nombre}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="create-user__dropdown" ref={searchPaisDropdownRef}>
+                        <button
+                          type="button"
+                          className="create-user__dropdown-trigger"
+                          onClick={() => setShowSearchPaisDropdown((prev) => !prev)}
+                        >
+                          <span>{searchPaisQuery.trim() ? searchPaisQuery : 'Selecciona un pais'}</span>
+                          <i className={`pi pi-chevron-${showSearchPaisDropdown ? 'up' : 'down'}`} />
+                        </button>
+
+                        {showSearchPaisDropdown && (
+                          <div className="create-user__dropdown-panel">
+                            <div className="create-user__dropdown-search">
+                              <i className="pi pi-search" />
+                              <input
+                                type="text"
+                                placeholder="Buscar paises"
+                                value={searchPaisQuery}
+                                onChange={(event) => {
+                                  const value = event.target.value
+                                  setSearchPaisQuery(value)
+                                  setSearchCriteria((prev) => ({ ...prev, pais: value }))
+                                }}
+                              />
+                            </div>
+
+                            <div className="create-user__dropdown-results">
+                              {searchPaisLoading && <small className="muted">Buscando paises...</small>}
+                              {!searchPaisLoading && !searchPaisQuery.trim() && (
+                                <small className="muted">Escribe para buscar.</small>
+                              )}
+                              {!searchPaisLoading && searchPaisQuery.trim() && !searchPaisOptions.length && (
+                                <small className="muted">Sin resultados.</small>
+                              )}
+                              {searchPaisOptions.map((country) => (
+                                <button
+                                  key={country.id}
+                                  type="button"
+                                  className="create-user__result-option"
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    setSearchPaisQuery(country.nombre)
+                                    setSearchCriteria((prev) => ({ ...prev, pais: country.nombre }))
+                                    setShowSearchPaisDropdown(false)
+                                  }}
+                                >
+                                  <div className="create-user__result-info">
+                                    <strong>{country.nombre}</strong>
+                                    <small>{country.codigo_pais || `ID: ${country.id}`}</small>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </label>
 
                     <label className="create-user__field">
@@ -1001,7 +1104,11 @@ function MarcasTable({ token, onSelect }) {
                   <button
                     type="button"
                     className="create-user__action"
-                    onClick={() => setSearchCriteria(initialSearchCriteria)}
+                    onClick={() => {
+                      setSearchCriteria(initialSearchCriteria)
+                      setSearchPaisQuery('')
+                      setSearchPaisOptions([])
+                    }}
                   >
                     Limpiar filtros
                   </button>
@@ -1011,7 +1118,7 @@ function MarcasTable({ token, onSelect }) {
                 </div>
                 <div className="user-details__footer-right">
                   <button type="submit" className="create-user__action create-user__action--primary" disabled={loading || isRefreshing}>
-                    {loadingFilters ? 'Cargando filtros...' : 'Buscar'}
+                    Buscar
                   </button>
                 </div>
               </div>

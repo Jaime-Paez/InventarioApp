@@ -1351,6 +1351,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                                   key={brand.id}
                                   type="button"
                                   className="create-user__result-option"
+                                  onMouseDown={(event) => event.preventDefault()}
                                   onClick={(event) => {
                                     event.preventDefault()
                                     event.stopPropagation()
@@ -1429,6 +1430,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                                     key={supplier.id}
                                     type="button"
                                     className="create-user__result-option"
+                                    onMouseDown={(event) => event.preventDefault()}
                                     onClick={(event) => {
                                       event.preventDefault()
                                       event.stopPropagation()
@@ -1675,7 +1677,12 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                                       key={product.id}
                                       type="button"
                                       className="create-user__result-option"
-                                      onClick={() => handleAlternoSelect(product)}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={(event) => {
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        handleAlternoSelect(product)
+                                      }}
                                       disabled={isSelected}
                                     >
                                       <div className="create-user__result-info">

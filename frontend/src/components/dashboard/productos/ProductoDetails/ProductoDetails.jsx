@@ -1255,6 +1255,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                                   key={brand.id}
                                   type="button"
                                   className="create-user__result-option"
+                                  onMouseDown={(event) => event.preventDefault()}
                                   onClick={(event) => {
                                     event.preventDefault()
                                     event.stopPropagation()
@@ -1325,6 +1326,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                                   key={supplier.id}
                                   type="button"
                                   className="create-user__result-option"
+                                  onMouseDown={(event) => event.preventDefault()}
                                   onClick={(event) => {
                                     event.preventDefault()
                                     event.stopPropagation()
@@ -1588,7 +1590,12 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                                       key={product.id}
                                       type="button"
                                       className="create-user__result-option"
-                                      onClick={() => handleAlternoSelect(product)}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={(event) => {
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        handleAlternoSelect(product)
+                                      }}
                                       disabled={isSelected || editorDisabled}
                                     >
                                       <div className="create-user__result-info">

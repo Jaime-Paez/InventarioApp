@@ -1314,7 +1314,10 @@ function InventarioTable({ token }) {
                                   key={marca.id}
                                   type="button"
                                   className="create-user__result-option"
-                                  onClick={() => {
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
                                     setSearchMarcaQuery(marca.nombre)
                                     setSearchCriteria((prev) => ({ ...prev, marca: marca.nombre }))
                                     setShowSearchMarcaDropdown(false)
@@ -1387,7 +1390,10 @@ function InventarioTable({ token }) {
                                   key={casa.id}
                                   type="button"
                                   className="create-user__result-option"
-                                  onClick={() => {
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
                                     setSearchCasaQuery(casa.nombre)
                                     setSearchCriteria((prev) => ({ ...prev, casa_comercial: casa.nombre }))
                                     setShowSearchCasaDropdown(false)

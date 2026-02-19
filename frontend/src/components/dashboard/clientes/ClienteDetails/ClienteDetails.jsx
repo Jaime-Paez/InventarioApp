@@ -723,7 +723,12 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                                     key={marca.id}
                                     type="button"
                                     className="create-user__result-option"
-                                    onClick={() => handleAutoMarcaSelect(index, marca)}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      handleAutoMarcaSelect(index, marca)
+                                    }}
                                     disabled={editorDisabled}
                                   >
                                     <div className="create-user__result-info">

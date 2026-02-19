@@ -623,7 +623,12 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
                                     key={marca.id}
                                     type="button"
                                     className="create-user__result-option"
-                                    onClick={() => handleAutoMarcaSelect(index, marca)}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      handleAutoMarcaSelect(index, marca)
+                                    }}
                                   >
                                     <div className="create-user__result-info">
                                       <strong>{marca.nombre}</strong>
