@@ -105,7 +105,6 @@ function ProductosTable({ token, onSelect }) {
           matchCasa(row, criteria.casa_comercial) &&
           (piezaCriteria ? piezaValue === piezaCriteria : true) &&
           contains(row?.costo_minimo, criteria.costo_minimo) &&
-          contains(row?.costo_maximo, criteria.costo_maximo) &&
           contains(row?.precio, criteria.precio) &&
           contains(dateValue, criteria.fecha_creacion)
         )
@@ -161,7 +160,6 @@ function ProductosTable({ token, onSelect }) {
       marca_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       pieza_original_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       costo_minimo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      costo_maximo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       precio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       casas_comerciales_count: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
     })
@@ -203,7 +201,6 @@ function ProductosTable({ token, onSelect }) {
     casa_comercial: '',
     pieza_original: '',
     costo_minimo: '',
-    costo_maximo: '',
     precio: '',
     fecha_creacion: '',
   }
@@ -461,7 +458,6 @@ function ProductosTable({ token, onSelect }) {
       { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
       { nombrevar: 'costo_minimo', header: 'Costo min', filterPlaceholder: 'Buscar por costo minimo' },
-      { nombrevar: 'costo_maximo', header: 'Costo max', filterPlaceholder: 'Buscar por costo maximo' },
       { nombrevar: 'casas_comerciales_count', header: 'Casas', filterPlaceholder: 'Filtrar por casas' },
     ],
     []
@@ -518,7 +514,6 @@ function ProductosTable({ token, onSelect }) {
           return Number(row?.casas_comerciales_count ?? 0).toString()
         case 'precio':
         case 'costo_minimo':
-        case 'costo_maximo':
           return formatDecimal(row?.[field])
         default:
           return row?.[field] ?? ''
@@ -907,7 +902,6 @@ function ProductosTable({ token, onSelect }) {
             'pieza_original_label',
             'precio',
             'costo_minimo',
-            'costo_maximo',
             'casas_comerciales_nombres',
           ]}
           stateStorage="session"
@@ -964,7 +958,6 @@ function ProductosTable({ token, onSelect }) {
                 break
               case 'precio':
               case 'costo_minimo':
-              case 'costo_maximo':
                 bodyTemplate = (rowData) => numericBodyTemplate(rowData, column.nombrevar)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
                 className = 'column-max-min-width--small'
@@ -1252,11 +1245,6 @@ function ProductosTable({ token, onSelect }) {
                     <label className="create-user__field">
                       <span>Costo minimo</span>
                       <input name="costo_minimo" type="text" placeholder="Ej: 10.50" value={searchCriteria.costo_minimo} onChange={handleSearchInputChange} />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Costo maximo</span>
-                      <input name="costo_maximo" type="text" placeholder="Ej: 45.00" value={searchCriteria.costo_maximo} onChange={handleSearchInputChange} />
                     </label>
 
                     <label className="create-user__field">

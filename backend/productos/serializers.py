@@ -79,7 +79,6 @@ class ProductoSerializer(serializers.ModelSerializer):
             "descripcion",
             "pieza_original",
             "costo_minimo",
-            "costo_maximo",
             "precio",
             "casas_comerciales",
             "casas_comerciales_ids",

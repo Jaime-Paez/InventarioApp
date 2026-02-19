@@ -85,7 +85,6 @@ const initialSearchCriteria = {
   casa_comercial: '',
   pieza_original: '',
   costo_minimo: '',
-  costo_maximo: '',
   precio: '',
   fecha_creacion: '',
   cantidad_min: '',
@@ -449,7 +448,6 @@ function InventarioTable({ token }) {
         matchCasa(row, criteria?.casa_comercial) &&
         (piezaCriteria ? piezaValue === piezaCriteria : true) &&
         contains(row?.costo_minimo, criteria?.costo_minimo) &&
-        contains(row?.costo_maximo, criteria?.costo_maximo) &&
         contains(row?.precio, criteria?.precio) &&
         contains(dateValue, criteria?.fecha_creacion) &&
         (qtyMin === null || qtyValue >= qtyMin) &&
@@ -1443,17 +1441,6 @@ function InventarioTable({ token }) {
                         type="text"
                         placeholder="Ej: 10.50"
                         value={searchCriteria.costo_minimo}
-                        onChange={handleSearchInputChange}
-                      />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Costo maximo</span>
-                      <input
-                        name="costo_maximo"
-                        type="text"
-                        placeholder="Ej: 45.00"
-                        value={searchCriteria.costo_maximo}
                         onChange={handleSearchInputChange}
                       />
                     </label>

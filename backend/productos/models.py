@@ -18,13 +18,6 @@ class Producto(models.Model):
         blank=True,
         help_text="Costo mínimo de adquisición",
     )
-    costo_maximo = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        help_text="Costo máximo registrado",
-    )
     precio = models.DecimalField(
         max_digits=10,
         decimal_places=2,

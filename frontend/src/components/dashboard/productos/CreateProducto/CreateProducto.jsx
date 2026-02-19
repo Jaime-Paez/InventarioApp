@@ -12,7 +12,6 @@ const initialForm = {
   descripcion: '',
   pieza_original: false,
   costo_minimo: '',
-  costo_maximo: '',
   precio: '',
   marcaId: '',
   casasIds: [],
@@ -996,7 +995,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       descripcion: formData.descripcion.trim(),
       pieza_original: Boolean(formData.pieza_original),
       costo_minimo: parseNumber(formData.costo_minimo),
-      costo_maximo: parseNumber(formData.costo_maximo),
       precio: parseNumber(formData.precio),
       marca_id: formData.marcaId ? Number(formData.marcaId) : null,
       casas_comerciales_ids: (formData.casasIds || []).map((id) => Number(id)),
@@ -1754,22 +1752,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                       <option value="true">Si</option>
                       <option value="false">No</option>
                     </select>
-                  </label>
-
-                  <label className="create-user__field">
-                    <span>Costo maximo</span>
-                    <div className="create-user__money">
-                      <span>$</span>
-                      <input
-                        name="costo_maximo"
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={formData.costo_maximo}
-                        onChange={handleChange}
-                        disabled={loading}
-                      />
-                    </div>
                   </label>
                 </div>
               </section>
