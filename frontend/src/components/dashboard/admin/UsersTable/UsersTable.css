@@ -269,16 +269,18 @@
 .users-datatable .p-datatable-wrapper {
   flex: 1;
   min-height: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* Fuerza a la tabla a ocupar todo el ancho disponible aun con pocas columnas */
+/* No comprimir columnas: usar ancho natural y permitir desplazamiento horizontal */
 .users-datatable .p-datatable-table,
 .users-datatable .p-datatable-scrollable-body table,
 .users-datatable .p-datatable-scrollable-header-box table,
 .users-datatable .p-datatable-scrollable-footer-box table {
-  width: 100%;
+  width: max-content;
   min-width: 100%;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 /* --- FIX: que la tabla y su wrapper hereden bien el fondo en dark --- */
@@ -288,6 +290,8 @@
 .users-datatable .p-datatable-scrollable-header,
 .users-datatable .p-datatable-scrollable-footer {
   background: transparent;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 .users-datatable .p-datatable-table {
@@ -305,6 +309,7 @@
   font-weight: 800;
   border: none;
   border-bottom: none;
+  white-space: nowrap;
 }
 
 /* ====== TBODY ====== */
@@ -314,6 +319,7 @@
   padding: 3px;
   color: var(--color-text-primary);
   background: var(--table-color);
+  white-space: nowrap;
 }
 
 .users-datatable .p-datatable-tbody > tr.p-datatable-emptymessage > td,
