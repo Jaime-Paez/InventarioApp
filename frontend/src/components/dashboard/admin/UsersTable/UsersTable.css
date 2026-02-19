@@ -316,6 +316,12 @@
   background: var(--table-color);
 }
 
+.users-datatable .p-datatable-tbody > tr.p-datatable-emptymessage > td,
+.users-datatable .p-datatable-emptymessage > td {
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
 .users-datatable .p-datatable-tbody > tr:hover > td {
   background: var(--table-color-hover);
 }

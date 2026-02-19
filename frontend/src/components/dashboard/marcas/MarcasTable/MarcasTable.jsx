@@ -150,12 +150,23 @@ function MarcasTable({ token, onSelect }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await authFetch(`${API_URL}/marcas/listado/`, {}, token)
+      const list = []
+      let url = `${API_URL}/marcas/listado/`
 
-      if (!res.ok) throw new Error('No se pudo obtener la lista de marcas.')
+      while (url) {
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista de marcas.')
 
-      const data = await res.json()
-      const list = Array.isArray(data) ? data : data?.results || []
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          list.push(...data)
+          url = null
+        } else {
+          list.push(...(data?.results || []))
+          url = data?.next || null
+        }
+      }
+
       const normalized = normalizeList(list)
       setAllBrands(normalized)
       const filtered = criteria ? applySearchFilters(normalized, criteria) : normalized
@@ -999,8 +1010,8 @@ function MarcasTable({ token, onSelect }) {
                   </button>
                 </div>
                 <div className="user-details__footer-right">
-                  <button type="submit" className="create-user__action create-user__action--primary" disabled={loadingFilters}>
-                    Buscar
+                  <button type="submit" className="create-user__action create-user__action--primary" disabled={loading || isRefreshing}>
+                    {loadingFilters ? 'Cargando filtros...' : 'Buscar'}
                   </button>
                 </div>
               </div>

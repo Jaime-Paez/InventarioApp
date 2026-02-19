@@ -16,6 +16,7 @@
   align-items: center;
   gap: 12px;
   position: relative;
+  padding: 16px 16px 0;
 }
 
 .workspace__hero {
@@ -108,7 +109,6 @@
     flex-direction: row;
     align-items: center;
     gap: 12px;
-    padding: 16px 16px 0;
   }
 
   .workspace__hero {

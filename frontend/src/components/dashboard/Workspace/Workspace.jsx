@@ -9,6 +9,7 @@ import ClientesTable from '../clientes/ClientesTable/ClientesTable'
 import ProductosTable from '../productos/ProductosTable/ProductosTable'
 import Configuracion from '../configuracion/Configuracion/Configuracion'
 import InventarioTable from '../inventario/InventarioTable/InventarioTable'
+import SalidasTable from '../movimientos/SalidasTable'
 import './Workspace.css'
 import { labelHasAccess } from '../menuConfig'
 
@@ -42,6 +43,7 @@ function Workspace({
     'Casas comerciales': <CasasComercialesTable token={token} />,
     Productos: <ProductosTable token={token} />,
     Clientes: <ClientesTable token={token} />,
+    Salidas: <SalidasTable token={token} />,
     Configuraciones: <Configuracion token={token} darkMode={darkMode} onToggleTheme={onToggleTheme} />,
   }
 

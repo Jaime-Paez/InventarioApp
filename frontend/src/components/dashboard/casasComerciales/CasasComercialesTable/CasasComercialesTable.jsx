@@ -150,12 +150,23 @@ function CasasComercialesTable({ token, onSelect }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await authFetch(`${API_URL}/casa-comercial/casas/`, {}, token)
+      const list = []
+      let url = `${API_URL}/casa-comercial/casas/`
 
-      if (!res.ok) throw new Error('No se pudo obtener la lista de casas comerciales.')
+      while (url) {
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista de casas comerciales.')
 
-      const data = await res.json()
-      const list = Array.isArray(data) ? data : data?.results || []
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          list.push(...data)
+          url = null
+        } else {
+          list.push(...(data?.results || []))
+          url = data?.next || null
+        }
+      }
+
       const normalized = normalizeList(list)
       setAllCompanies(normalized)
       const filtered = criteria ? applySearchFilters(normalized, criteria) : normalized
@@ -999,8 +1010,8 @@ function CasasComercialesTable({ token, onSelect }) {
                   </button>
                 </div>
                 <div className="user-details__footer-right">
-                  <button type="submit" className="create-user__action create-user__action--primary" disabled={loadingFilters}>
-                    Buscar
+                  <button type="submit" className="create-user__action create-user__action--primary" disabled={loading || isRefreshing}>
+                    {loadingFilters ? 'Cargando filtros...' : 'Buscar'}
                   </button>
                 </div>
               </div>
