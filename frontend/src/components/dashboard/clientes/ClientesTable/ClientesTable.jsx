@@ -77,12 +77,24 @@ function ClientesTable({ token, onSelect }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await authFetch(`${API_URL}/solicitudes/clientes/`, {}, token)
+      const list = []
+      let url = `${API_URL}/solicitudes/clientes/`
 
-      if (!res.ok) throw new Error('No se pudo obtener la lista de clientes.')
+      while (url) {
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista de clientes.')
 
-      const data = await res.json()
-      const list = Array.isArray(data) ? data : data?.results || []
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          list.push(...data)
+          url = null
+        } else {
+          const pageList = Array.isArray(data?.results) ? data.results : []
+          list.push(...pageList)
+          url = data?.next || null
+        }
+      }
+
       const normalized = normalizeList(list)
       setClients(normalized)
       setAllClients(normalized)

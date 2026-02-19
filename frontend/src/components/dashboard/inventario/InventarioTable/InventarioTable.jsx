@@ -144,33 +144,40 @@ function InventarioTable({ token }) {
     setLoading(true)
     setError(null)
     try {
-      const [productsRes, inventoriesRes, branchesRes, bodegasRes, subdivisionsRes] = await Promise.all([
-        authFetch(`${API_URL}/productos/listado/`, {}, token),
-        authFetch(`${API_URL}/inventario/inventario/`, {}, token),
-        authFetch(`${API_URL}/inventario/sucursales/`, {}, token),
-        authFetch(`${API_URL}/inventario/bodegas/`, {}, token),
-        authFetch(`${API_URL}/inventario/subdivisiones/`, {}, token),
-      ])
+      const fetchAllPages = async (initialUrl, errorMessage) => {
+        const allItems = []
+        let url = initialUrl
 
-      if (!productsRes.ok) throw new Error('No se pudieron cargar los productos.')
-      if (!inventoriesRes.ok) throw new Error('No se pudo cargar el inventario.')
-      if (!branchesRes.ok) throw new Error('No se pudieron cargar las sucursales.')
-      if (!bodegasRes.ok) throw new Error('No se pudieron cargar las bodegas.')
-      if (!subdivisionsRes.ok) throw new Error('No se pudieron cargar las subdivisiones.')
+        while (url) {
+          const response = await authFetch(url, {}, token)
+          if (!response.ok) throw new Error(errorMessage)
+
+          const data = await response.json()
+          if (Array.isArray(data)) {
+            allItems.push(...data)
+            url = null
+          } else {
+            allItems.push(...parseApiList(data))
+            url = data?.next || null
+          }
+        }
+
+        return allItems
+      }
 
       const [productsData, inventoriesData, branchesData, bodegasData, subdivisionsData] = await Promise.all([
-        productsRes.json(),
-        inventoriesRes.json(),
-        branchesRes.json(),
-        bodegasRes.json(),
-        subdivisionsRes.json(),
+        fetchAllPages(`${API_URL}/productos/listado/`, 'No se pudieron cargar los productos.'),
+        fetchAllPages(`${API_URL}/inventario/inventario/`, 'No se pudo cargar el inventario.'),
+        fetchAllPages(`${API_URL}/inventario/sucursales/`, 'No se pudieron cargar las sucursales.'),
+        fetchAllPages(`${API_URL}/inventario/bodegas/`, 'No se pudieron cargar las bodegas.'),
+        fetchAllPages(`${API_URL}/inventario/subdivisiones/`, 'No se pudieron cargar las subdivisiones.'),
       ])
 
-      setProducts(parseApiList(productsData))
-      setInventories(parseApiList(inventoriesData))
-      setBranches(parseApiList(branchesData))
-      setBodegas(parseApiList(bodegasData))
-      setSubdivisions(parseApiList(subdivisionsData))
+      setProducts(productsData)
+      setInventories(inventoriesData)
+      setBranches(branchesData)
+      setBodegas(bodegasData)
+      setSubdivisions(subdivisionsData)
     } catch (err) {
       const message = err?.message || 'Ocurrió un error al cargar el inventario.'
       setError(message)

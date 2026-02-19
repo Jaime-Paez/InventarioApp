@@ -61,16 +61,24 @@ function UsersTable({
     setLoading(true)
     setError(null)
     try {
-      const res = await authFetch(
-        `${API_URL}/usuarios/listado/`,
-        {},
-        token
-      )
+      const list = []
+      let url = `${API_URL}/usuarios/listado/`
 
-      if (!res.ok) throw new Error('No se pudo obtener la lista de usuarios.')
+      while (url) {
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista de usuarios.')
 
-      const data = await res.json()
-      const list = Array.isArray(data) ? data : data?.results || []
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          list.push(...data)
+          url = null
+        } else {
+          const pageList = Array.isArray(data?.results) ? data.results : []
+          list.push(...pageList)
+          url = data?.next || null
+        }
+      }
+
       setUsers(list)
       setAllUsers(list)
       return list

@@ -73,10 +73,22 @@ function SalidasTable({ token }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await authFetch(`${API_URL}/movimientos/movimiento_inventario/`, {}, token)
-      if (!res.ok) throw new Error('No se pudo obtener la lista de salidas.')
-      const data = await res.json()
-      const list = parseApiList(data)
+      const list = []
+      let url = `${API_URL}/movimientos/movimiento_inventario/`
+
+      while (url) {
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista de salidas.')
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          list.push(...data)
+          url = null
+        } else {
+          list.push(...parseApiList(data))
+          url = data?.next || null
+        }
+      }
+
       setMovimientos(normalizeList(list))
     } catch (err) {
       const msg = err?.message || 'Ocurrio un error al cargar las salidas.'

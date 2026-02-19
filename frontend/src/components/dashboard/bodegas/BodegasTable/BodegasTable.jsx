@@ -56,15 +56,28 @@ function BodegasTable({ token, onSelect }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await authFetch(`${API_URL}/inventario/bodegas/`, {}, token)
+      const list = []
+      let url = `${API_URL}/inventario/bodegas/`
 
-      if (!res.ok) throw new Error('No se pudo obtener la lista de bodegas.')
+      while (url) {
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista de bodegas.')
 
-      const data = await res.json()
-      const list = Array.isArray(data) ? data : data?.results || []
-      setWarehouses(normalizeList(list))
-      setAllWarehouses(normalizeList(list))
-      return normalizeList(list)
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          list.push(...data)
+          url = null
+        } else {
+          const pageList = Array.isArray(data?.results) ? data.results : []
+          list.push(...pageList)
+          url = data?.next || null
+        }
+      }
+
+      const normalized = normalizeList(list)
+      setWarehouses(normalized)
+      setAllWarehouses(normalized)
+      return normalized
     } catch (e) {
       const msg = e?.message || 'Ocurrió un error al cargar las bodegas.'
       setError(msg)

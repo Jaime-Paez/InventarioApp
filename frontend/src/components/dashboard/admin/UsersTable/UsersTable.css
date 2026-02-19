@@ -273,6 +273,12 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Prime usa column en flex-scrollable y genera espacio muerto inferior en varias tablas. */
+.users-datatable.p-datatable-flex-scrollable > .p-datatable-wrapper {
+  flex-direction: row !important;
+  align-items: stretch;
+}
+
 /* No comprimir columnas: usar ancho natural y permitir desplazamiento horizontal */
 .users-datatable .p-datatable-table,
 .users-datatable .p-datatable-scrollable-body table,

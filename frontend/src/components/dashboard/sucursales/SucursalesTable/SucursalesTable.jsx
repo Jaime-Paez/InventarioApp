@@ -49,16 +49,24 @@ function SucursalesTable({ token, onSelect }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await authFetch(
-        `${API_URL}/inventario/sucursales/`,
-        {},
-        token
-      )
+      const list = []
+      let url = `${API_URL}/inventario/sucursales/`
 
-      if (!res.ok) throw new Error('No se pudo obtener la lista de sucursales.')
+      while (url) {
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista de sucursales.')
 
-      const data = await res.json()
-      const list = Array.isArray(data) ? data : data?.results || []
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          list.push(...data)
+          url = null
+        } else {
+          const pageList = Array.isArray(data?.results) ? data.results : []
+          list.push(...pageList)
+          url = data?.next || null
+        }
+      }
+
       setBranches(list)
       setAllBranches(list)
       return list
