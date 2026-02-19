@@ -1,3 +1,6 @@
+from decimal import Decimal, InvalidOperation
+
+from django.utils.dateparse import parse_date
 from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 
@@ -15,7 +18,7 @@ from .serializers import (
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = (
         Producto.objects.select_related("marca")
-        .prefetch_related("casas_comerciales")
+        .prefetch_related("casas_comerciales", "oem_productos__oem")
         .all()
         .order_by("nombre")
     )
@@ -34,6 +37,62 @@ class ProductoViewSet(viewsets.ModelViewSet):
         "casas_comerciales__nombre",
         "marca__nombre",
     ]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        params = self.request.query_params
+
+        codigo = (params.get("codigo") or "").strip()
+        if codigo:
+            queryset = queryset.filter(codigo__icontains=codigo)
+
+        nombre = (params.get("nombre") or "").strip()
+        if nombre:
+            queryset = queryset.filter(nombre__icontains=nombre)
+
+        descripcion = (params.get("descripcion") or "").strip()
+        if descripcion:
+            queryset = queryset.filter(descripcion__icontains=descripcion)
+
+        marca = (params.get("marca") or "").strip()
+        if marca:
+            queryset = queryset.filter(marca__nombre__icontains=marca)
+
+        casa_comercial = (params.get("casa_comercial") or "").strip()
+        if casa_comercial:
+            queryset = queryset.filter(casas_comerciales__nombre__icontains=casa_comercial)
+
+        oem = (params.get("oem") or "").strip()
+        if oem:
+            queryset = queryset.filter(oem_productos__oem__codigo__icontains=oem)
+
+        pieza_original = (params.get("pieza_original") or "").strip().lower()
+        if pieza_original in {"true", "1", "si", "sí"}:
+            queryset = queryset.filter(pieza_original=True)
+        elif pieza_original in {"false", "0", "no"}:
+            queryset = queryset.filter(pieza_original=False)
+
+        costo_minimo = (params.get("costo_minimo") or "").strip()
+        if costo_minimo:
+            try:
+                queryset = queryset.filter(costo_minimo=Decimal(costo_minimo))
+            except (InvalidOperation, ValueError):
+                pass
+
+        precio = (params.get("precio") or "").strip()
+        if precio:
+            try:
+                queryset = queryset.filter(precio=Decimal(precio))
+            except (InvalidOperation, ValueError):
+                pass
+
+        fecha_creacion = (params.get("fecha_creacion") or "").strip()
+        if fecha_creacion:
+            parsed = parse_date(fecha_creacion)
+            if parsed:
+                queryset = queryset.filter(creado_en__date=parsed)
+
+        return queryset.distinct()
 
 
 class OEMViewSet(viewsets.ModelViewSet):

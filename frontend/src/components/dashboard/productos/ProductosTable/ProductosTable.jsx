@@ -39,6 +39,9 @@ function ProductosTable({ token, onSelect }) {
   )
 
   const [products, setProducts] = useState([])
+  const [totalRecords, setTotalRecords] = useState(0)
+  const [pageFirst, setPageFirst] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
@@ -63,80 +66,79 @@ function ProductosTable({ token, onSelect }) {
     []
   )
 
-  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
-  const contains = (fieldValue, target) => {
-    const needle = normalizeValue(target)
-    if (!needle) return true
-    return normalizeValue(fieldValue).includes(needle)
-  }
-  const exact = (fieldValue, target) => {
-    const needle = normalizeValue(target)
-    if (!needle) return true
-    return normalizeValue(fieldValue) === needle
-  }
-  const pickValue = (row, keys) => {
-    for (const key of keys) {
-      const value = key.split('.').reduce((acc, part) => acc?.[part], row)
-      if (value != null && value !== '') return value
-    }
-    return ''
-  }
-  const matchCasa = (row, target) => {
-    const needle = normalizeValue(target)
-    if (!needle) return true
-    const houses = Array.isArray(row?.casas_comerciales) ? row.casas_comerciales : []
-    return houses.some((house) =>
-      normalizeValue(house?.nombre).includes(needle) || normalizeValue(house?.codigo).includes(needle)
-    )
-  }
+  const buildProductsListUrl = useCallback((criteria, page = 1, rows = 25) => {
+    const params = new URLSearchParams()
+    params.set('page', String(page))
+    params.set('page_size', String(rows))
 
-  const applySearchFilters = useCallback(
-    (list, criteria) =>
-      list.filter((row) => {
-        const piezaCriteria = normalizeValue(criteria.pieza_original)
-        const piezaValue = row?.pieza_original ? 'true' : 'false'
-        const dateValue = pickValue(row, ['creado_en', 'created_at', 'fecha_creacion', 'actualizado_en'])
-        return (
-          contains(row?.codigo, criteria.codigo) &&
-          contains(row?.nombre, criteria.nombre) &&
-          contains(row?.descripcion, criteria.descripcion) &&
-          contains(row?.oem_codes, criteria.oem) &&
-          contains(row?.marca?.nombre ?? row?.marca_nombre, criteria.marca) &&
-          matchCasa(row, criteria.casa_comercial) &&
-          (piezaCriteria ? piezaValue === piezaCriteria : true) &&
-          contains(row?.costo_minimo, criteria.costo_minimo) &&
-          contains(row?.precio, criteria.precio) &&
-          contains(dateValue, criteria.fecha_creacion)
-        )
-      }),
-    []
-  )
+    const addIfPresent = (key, value) => {
+      const parsed = String(value ?? '').trim()
+      if (parsed) params.set(key, parsed)
+    }
+
+    addIfPresent('codigo', criteria?.codigo)
+    addIfPresent('nombre', criteria?.nombre)
+    addIfPresent('oem', criteria?.oem)
+    addIfPresent('descripcion', criteria?.descripcion)
+    addIfPresent('marca', criteria?.marca)
+    addIfPresent('casa_comercial', criteria?.casa_comercial)
+    addIfPresent('pieza_original', criteria?.pieza_original)
+    addIfPresent('costo_minimo', criteria?.costo_minimo)
+    addIfPresent('precio', criteria?.precio)
+    addIfPresent('fecha_creacion', criteria?.fecha_creacion)
+
+    return `${API_URL}/productos/listado/?${params.toString()}`
+  }, [])
 
   const fetchProducts = useCallback(
-    async (criteria) => {
+    async (criteria, page = 1, rows = pageSize) => {
       setLoading(true)
       setError(null)
       try {
-        const res = await authFetch(`${API_URL}/productos/listado/`, {}, token)
-
+        const url = buildProductsListUrl(criteria, page, rows)
+        const res = await authFetch(url, {}, token)
         if (!res.ok) throw new Error('No se pudo obtener la lista de productos.')
 
         const data = await res.json()
+        const count = Array.isArray(data) ? data.length : Number(data?.count ?? 0)
         const list = Array.isArray(data) ? data : data?.results || []
         const normalized = normalizeList(list)
-        const filtered = criteria ? applySearchFilters(normalized, criteria) : normalized
-        setProducts(filtered)
-        return filtered
+        setProducts(normalized)
+        setTotalRecords(count)
+        setPageFirst(Math.max(0, (page - 1) * rows))
+        setPageSize(rows)
+        return normalized
       } catch (err) {
         const msg = err?.message || 'Ocurrio un error al cargar los productos.'
         setError(msg)
+        setProducts([])
+        setTotalRecords(0)
         toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
       } finally {
         setLoading(false)
         setIsRefreshing(false)
       }
     },
-    [token, normalizeList, applySearchFilters]
+    [token, normalizeList, pageSize, buildProductsListUrl]
+  )
+
+  const fetchAllProducts = useCallback(
+    async (criteria) => {
+      const all = []
+      let url = buildProductsListUrl(criteria, 1, 200)
+
+      while (url) {
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista completa de productos.')
+        const data = await res.json()
+        const list = Array.isArray(data) ? data : data?.results || []
+        all.push(...list)
+        url = Array.isArray(data) ? null : data?.next || null
+      }
+
+      return normalizeList(all)
+    },
+    [token, normalizeList, buildProductsListUrl]
   )
 
   const refreshData = () => {
@@ -145,7 +147,8 @@ function ProductosTable({ token, onSelect }) {
       return
     }
     setIsRefreshing(true)
-    fetchProducts(lastSearchRef.current)
+    const currentPage = Math.floor(pageFirst / pageSize) + 1
+    fetchProducts(lastSearchRef.current, currentPage, pageSize)
   }
 
   // ---------------- Filters ----------------
@@ -190,6 +193,9 @@ function ProductosTable({ token, onSelect }) {
     setShowSearchCasaDropdown(false)
     lastSearchRef.current = null
     setProducts([])
+    setSelectedRows([])
+    setTotalRecords(0)
+    setPageFirst(0)
   }
 
   const initialSearchCriteria = {
@@ -352,7 +358,7 @@ function ProductosTable({ token, onSelect }) {
     lastSearchRef.current = { ...searchCriteria }
     setShowSearchModal(false)
     setIsRefreshing(true)
-    await fetchProducts(lastSearchRef.current)
+    await fetchProducts(lastSearchRef.current, 1, pageSize)
   }
 
   const onGlobalFilterChange = (e) => {
@@ -384,7 +390,7 @@ function ProductosTable({ token, onSelect }) {
   )
 
   const allRowIds = useMemo(() => products.map((row) => normId(row?.id)).filter(Boolean), [products])
-  const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
+  const allRowsSelected = allRowIds.length > 0 && allRowIds.every((id) => selectedRowIds.includes(id))
 
   useEffect(() => {
     const saved = sessionStorage.getItem('productos-table-selected-rows')
@@ -417,16 +423,6 @@ function ProductosTable({ token, onSelect }) {
     } catch {
       sessionStorage.removeItem('productos-table-selected-rows-pending')
     }
-  }, [products])
-
-  useEffect(() => {
-    if (!products?.length) {
-      if (selectedRows?.length) setSelectedRows([])
-      return
-    }
-    const idsSet = new Set(allRowIds)
-    const filtered = (selectedRows || []).filter((row) => idsSet.has(normId(row?.id)))
-    if (filtered.length !== (selectedRows || []).length) setSelectedRows(filtered)
   }, [products])
 
   useEffect(() => {
@@ -651,7 +647,7 @@ function ProductosTable({ token, onSelect }) {
   }
 
   // ---------------- Header ----------------
-  const dataLength = products?.length ?? 0
+  const dataLength = totalRecords ?? 0
   const emptyMessage = lastSearchRef.current
     ? 'No se encontraron productos'
     : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
@@ -846,6 +842,47 @@ function ProductosTable({ token, onSelect }) {
     setIsSearchMaximized(true)
   }
 
+  const handlePageChange = async (event) => {
+    const nextRows = Number(event?.rows) || pageSize
+    const nextFirst = Number(event?.first) || 0
+    const nextPage = Math.floor(nextFirst / nextRows) + 1
+
+    setPageFirst(nextFirst)
+    setPageSize(nextRows)
+
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchProducts(lastSearchRef.current, nextPage, nextRows)
+  }
+
+  const handleSelectAllRows = useCallback(async () => {
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    try {
+      const all = await fetchAllProducts(lastSearchRef.current)
+      setSelectedRows(all)
+      toast.current?.show({
+        severity: 'info',
+        summary: 'Seleccion global',
+        detail: `Se seleccionaron ${all.length} productos.`,
+        life: 2500,
+      })
+    } catch (err) {
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Aviso',
+        detail: err?.message || 'No se pudo seleccionar todos los productos.',
+        life: 3500,
+      })
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [fetchAllProducts])
+
+  const handleUnselectAllRows = useCallback(() => {
+    setSelectedRows([])
+  }, [])
+
   return (
     <div className="users-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
@@ -886,9 +923,13 @@ function ProductosTable({ token, onSelect }) {
           scrollable
           scrollHeight="flex"
           frozenWidth="40px"
+          lazy
           paginator
-          rows={25}
+          first={pageFirst}
+          rows={pageSize}
+          totalRecords={totalRecords}
           rowsPerPageOptions={[5, 10, 25, 50]}
+          onPage={handlePageChange}
           removableSort
           filters={filters}
           onFilter={(e) => setFilters(e.filters)}
@@ -914,10 +955,25 @@ function ProductosTable({ token, onSelect }) {
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
           selectionMode="multiple"
           selection={selectedRows}
+          onAllRowsSelect={handleSelectAllRows}
+          onAllRowsUnselect={handleUnselectAllRows}
           onSelectionChange={(e) => {
             if (!isCheckboxSelection(e)) return
             const value = e.value || []
-            setSelectedRows(value)
+            const currentPageIds = new Set(allRowIds)
+            setSelectedRows((prev) => {
+              const preserved = (prev || []).filter((row) => !currentPageIds.has(normId(row?.id)))
+              const nextMap = new Map()
+              preserved.forEach((row) => {
+                const id = normId(row?.id)
+                if (id) nextMap.set(id, row)
+              })
+              value.forEach((row) => {
+                const id = normId(row?.id)
+                if (id) nextMap.set(id, row)
+              })
+              return Array.from(nextMap.values())
+            })
           }}
         >
           <Column
