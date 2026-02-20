@@ -12,10 +12,12 @@ import CreateProducto from '../CreateProducto/CreateProducto'
 import ProductoDetails from '../ProductoDetails/ProductoDetails'
 import '../../admin/UsersTable/UsersTable.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { onIvaUpdated } from '../../../../utils/configEvents'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
+const DEFAULT_IVA_RATE = 0.15
 const createBulkCancelError = () => {
   const err = new Error('Seleccion global cancelada.')
   err.name = 'AbortError'
@@ -63,6 +65,8 @@ function ProductosTable({ token, onSelect }) {
   const bulkModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const bulkSelectAbortRef = useRef(null)
   const bulkSelectCancelledRef = useRef(false)
+  const [ivaRate, setIvaRate] = useState(DEFAULT_IVA_RATE)
+  const [ivaLoading, setIvaLoading] = useState(false)
 
   const normalizeList = useCallback(
     (list) =>
@@ -72,16 +76,20 @@ function ProductosTable({ token, onSelect }) {
         const oemCodes = oems
           .map((item) => item?.oem?.codigo ?? item?.oem_codigo ?? item?.codigo)
           .filter(Boolean)
+        const firstHouseName = houses.map((house) => house?.nombre).find(Boolean) ?? '-'
         return {
           ...product,
           marca_nombre: product?.marca?.nombre ?? '-',
-          casas_comerciales_count: houses.length,
+          casa_comercial_nombre: firstHouseName,
           casas_comerciales_nombres: houses.map((house) => house?.nombre).filter(Boolean).join(', '),
           pieza_original_label: product?.pieza_original ? 'Si' : 'No',
+          precio_con_iva: Number.isFinite(Number(product?.precio))
+            ? Number(product.precio) * (1 + ivaRate)
+            : null,
           oem_codes: oemCodes.join(', '),
         }
       }),
-    []
+    [ivaRate]
   )
 
   const buildProductsListUrl = useCallback((criteria, page = 1, rows = 25) => {
@@ -207,6 +215,52 @@ function ProductosTable({ token, onSelect }) {
     fetchProducts(lastSearchRef.current, currentPage, pageSize)
   }
 
+  const fetchIvaConfig = useCallback(async () => {
+    if (!token) return
+    setIvaLoading(true)
+    try {
+      const response = await authFetch(`${API_URL}/configuracion/sistema/`, {}, token)
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error('No se pudo cargar el IVA.')
+      const parsed = Number(data?.iva_rate)
+      setIvaRate(Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_IVA_RATE)
+    } catch {
+      setIvaRate(DEFAULT_IVA_RATE)
+    } finally {
+      setIvaLoading(false)
+    }
+  }, [token])
+
+  useEffect(() => {
+    fetchIvaConfig()
+  }, [fetchIvaConfig])
+
+  useEffect(() => {
+    const unsubscribe = onIvaUpdated((rate) => {
+      const parsed = Number(rate)
+      if (Number.isFinite(parsed)) {
+        setIvaRate(parsed)
+        setIvaLoading(false)
+        return
+      }
+      fetchIvaConfig()
+    })
+
+    return unsubscribe
+  }, [fetchIvaConfig])
+
+  useEffect(() => {
+    setProducts((prev) =>
+      (Array.isArray(prev) ? prev : []).map((product) => {
+        const precioConIva = Number.isFinite(Number(product?.precio))
+          ? Number(product.precio) * (1 + ivaRate)
+          : null
+        if (product?.precio_con_iva === precioConIva) return product
+        return { ...product, precio_con_iva: precioConIva }
+      })
+    )
+  }, [ivaRate])
+
   // ---------------- Filters ----------------
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
@@ -220,7 +274,8 @@ function ProductosTable({ token, onSelect }) {
       pieza_original_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       costo_minimo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       precio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      casas_comerciales_count: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      precio_con_iva: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      casa_comercial_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
     })
     setGlobalFilterValue('')
   }
@@ -231,8 +286,13 @@ function ProductosTable({ token, onSelect }) {
       if (savedState) {
         const parsed = JSON.parse(savedState)
         if (parsed?.filters) {
-          setFilters(parsed.filters)
-          if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
+          const nextFilters = { ...parsed.filters }
+          if (nextFilters.casas_comerciales_count && !nextFilters.casa_comercial_nombre) {
+            nextFilters.casa_comercial_nombre = nextFilters.casas_comerciales_count
+          }
+          delete nextFilters.casas_comerciales_count
+          setFilters(nextFilters)
+          if (nextFilters?.global?.value) setGlobalFilterValue(nextFilters.global.value)
           return
         }
       }
@@ -539,8 +599,9 @@ function ProductosTable({ token, onSelect }) {
       { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
       { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
-      { nombrevar: 'costo_minimo', header: 'Costo min', filterPlaceholder: 'Buscar por costo minimo' },
-      { nombrevar: 'casas_comerciales_count', header: 'Casas', filterPlaceholder: 'Filtrar por casas' },
+      { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
+      { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
+      { nombrevar: 'casa_comercial_nombre', header: 'Casa comercial', filterPlaceholder: 'Buscar por casa comercial' },
     ],
     []
   )
@@ -555,7 +616,19 @@ function ProductosTable({ token, onSelect }) {
 
   useEffect(() => {
     const stored = localStorage.getItem('productos-table-columns')
-    if (stored) setSelectedColumns(JSON.parse(stored))
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      const migrated = (Array.isArray(parsed) ? parsed : []).map((col) => {
+        if (col?.nombrevar !== 'casas_comerciales_count') return col
+        return {
+          ...col,
+          nombrevar: 'casa_comercial_nombre',
+          header: 'Casa comercial',
+          filterPlaceholder: 'Buscar por casa comercial',
+        }
+      })
+      setSelectedColumns(migrated)
+    }
     return () => {
       localStorage.setItem('productos-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
@@ -592,9 +665,10 @@ function ProductosTable({ token, onSelect }) {
           return row?.marca?.nombre ?? row?.marca_nombre ?? ''
         case 'pieza_original_label':
           return row?.pieza_original ? 'Si' : 'No'
-        case 'casas_comerciales_count':
-          return Number(row?.casas_comerciales_count ?? 0).toString()
+        case 'casa_comercial_nombre':
+          return row?.casa_comercial_nombre ?? row?.casas_comerciales_nombres ?? ''
         case 'precio':
+        case 'precio_con_iva':
         case 'costo_minimo':
           return formatDecimal(row?.[field])
         default:
@@ -684,7 +758,7 @@ function ProductosTable({ token, onSelect }) {
   const numericBodyTemplate = (rowData, field) => {
     const value = Number(rowData?.[field])
     if (!Number.isFinite(value)) return <span className="cell-tooltip">-</span>
-    const text = field === 'casas_comerciales_count' ? String(value) : value.toFixed(2)
+    const text = value.toFixed(2)
     return (
       <span className="cell-tooltip" data-pr-tooltip={text}>
         {text}
@@ -692,10 +766,9 @@ function ProductosTable({ token, onSelect }) {
     )
   }
 
-  const casasBodyTemplate = (rowData) => {
-    const count = Number(rowData?.casas_comerciales_count ?? 0)
-    const text = Number.isFinite(count) ? String(count) : '0'
-    const tooltip = rowData?.casas_comerciales_nombres || 'Sin casas asociadas'
+  const casaComercialBodyTemplate = (rowData) => {
+    const text = rowData?.casa_comercial_nombre ?? rowData?.casas_comerciales_nombres ?? '-'
+    const tooltip = text === '-' ? 'Sin casa comercial asociada' : text
     return (
       <span className="cell-tooltip" data-pr-tooltip={tooltip}>
         {text}
@@ -880,6 +953,18 @@ function ProductosTable({ token, onSelect }) {
       window.removeEventListener('mouseup', handleMouseUp)
     }
   }, [])
+
+  useEffect(() => {
+    setSelectedColumns((prev) => {
+      if (!prev || !prev.length) return columnsData
+      const prevKeys = new Set(prev.map((c) => c.nombrevar))
+      const next = columnsData.filter((col) => prevKeys.has(col.nombrevar))
+      columnsData.forEach((col) => {
+        if (!prevKeys.has(col.nombrevar)) next.push(col)
+      })
+      return next
+    })
+  }, [columnsData])
 
   useEffect(() => {
     const handleWindowResize = () => {
@@ -1165,8 +1250,9 @@ function ProductosTable({ token, onSelect }) {
             'marca_nombre',
             'pieza_original_label',
             'precio',
+            'precio_con_iva',
             'costo_minimo',
-            'casas_comerciales_nombres',
+            'casa_comercial_nombre',
           ]}
           reorderableColumns
           onColReorder={handleOrderChange}
@@ -1242,15 +1328,24 @@ function ProductosTable({ token, onSelect }) {
                 filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'precio':
+              case 'precio_con_iva':
               case 'costo_minimo':
-                bodyTemplate = (rowData) => numericBodyTemplate(rowData, column.nombrevar)
+                bodyTemplate = (rowData) => {
+                  if (column.nombrevar === 'precio_con_iva' && ivaLoading) {
+                    return (
+                      <span className="cell-tooltip" data-pr-tooltip="...">
+                        ...
+                      </span>
+                    )
+                  }
+                  return numericBodyTemplate(rowData, column.nombrevar)
+                }
                 filterMatchMode = FilterMatchMode.STARTS_WITH
                 className = 'column-max-min-width--small'
                 break
-              case 'casas_comerciales_count':
-                bodyTemplate = (rowData) => casasBodyTemplate(rowData)
+              case 'casa_comercial_nombre':
+                bodyTemplate = (rowData) => casaComercialBodyTemplate(rowData)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
-                className = 'column-max-min-width--small'
                 break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
