@@ -1,10 +1,10 @@
 from rest_framework import serializers
 
 from inventario.models import Sucursal
+from marcas.models import Marca
 from productos.models import OEM, Producto
 
 from .models import Auto, Cliente, OEMProductoSolicitado, ProductoSolicitado, Solicitud
-from marcas.models import Marca
 
 
 class AutoSerializer(serializers.ModelSerializer):
@@ -76,6 +76,54 @@ class ProductoSolicitadoSerializer(serializers.ModelSerializer):
         return data
 
 
+class ClienteLiteSerializer(serializers.ModelSerializer):
+    nombre_completo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Cliente
+        fields = [
+            "id",
+            "nombres",
+            "apellidos",
+            "nombre_completo",
+            "cedula_ruc",
+            "correo",
+            "telefono",
+            "direccion",
+        ]
+
+    def get_nombre_completo(self, obj):
+        return f"{obj.nombres} {obj.apellidos}".strip()
+
+
+class SucursalLiteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Sucursal
+        fields = ["id", "nombre", "direccion"]
+
+
+class ProductoLiteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Producto
+        fields = ["id", "codigo", "nombre"]
+
+
+class ProductoSolicitadoLiteSerializer(serializers.ModelSerializer):
+    producto_id = serializers.IntegerField(read_only=True)
+    producto_data = ProductoLiteSerializer(source="producto", read_only=True)
+
+    class Meta:
+        model = ProductoSolicitado
+        fields = [
+            "id",
+            "nombre",
+            "descripcion",
+            "conseguido",
+            "producto_id",
+            "producto_data",
+        ]
+
+
 class OEMProductoSolicitadoSerializer(serializers.ModelSerializer):
     producto_solicitado = serializers.StringRelatedField(read_only=True)
     producto_solicitado_id = serializers.PrimaryKeyRelatedField(
@@ -117,6 +165,17 @@ class SolicitudSerializer(serializers.ModelSerializer):
     producto = serializers.StringRelatedField(read_only=True)
     producto_solicitado = serializers.StringRelatedField(read_only=True)
     producto_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    cliente_data = ClienteLiteSerializer(source="cliente", read_only=True)
+    sucursal_data = SucursalLiteSerializer(source="sucursal", read_only=True)
+    producto_data = ProductoLiteSerializer(source="producto", read_only=True)
+    producto_solicitado_data = ProductoSolicitadoLiteSerializer(
+        source="producto_solicitado",
+        read_only=True,
+    )
+    cliente_nombre = serializers.SerializerMethodField()
+    producto_referencia = serializers.SerializerMethodField()
+    conseguido = serializers.SerializerMethodField()
+    producto_resuelto_data = serializers.SerializerMethodField()
 
     class Meta:
         model = Solicitud
@@ -132,6 +191,14 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "sucursal_id",
             "cliente",
             "cliente_id",
+            "cliente_data",
+            "sucursal_data",
+            "producto_data",
+            "producto_solicitado_data",
+            "cliente_nombre",
+            "producto_referencia",
+            "conseguido",
+            "producto_resuelto_data",
         ]
 
     def validate(self, attrs):
@@ -188,3 +255,31 @@ class SolicitudSerializer(serializers.ModelSerializer):
         else:
             data["producto_id"] = instance.producto_solicitado_id
         return data
+
+    def get_cliente_nombre(self, obj):
+        if not obj.cliente_id:
+            return ""
+        return f"{obj.cliente.nombres} {obj.cliente.apellidos}".strip()
+
+    def get_producto_referencia(self, obj):
+        if obj.tabla == Solicitud.Tabla.PRODUCTO and obj.producto_id:
+            return obj.producto.nombre
+        if obj.producto_solicitado_id:
+            return obj.producto_solicitado.nombre
+        return ""
+
+    def get_conseguido(self, obj):
+        if obj.tabla == Solicitud.Tabla.PRODUCTO:
+            return True
+        if obj.producto_solicitado_id:
+            return bool(obj.producto_solicitado.conseguido)
+        return False
+
+    def get_producto_resuelto_data(self, obj):
+        if obj.tabla == Solicitud.Tabla.PRODUCTO and obj.producto_id:
+            return ProductoLiteSerializer(obj.producto).data
+
+        if obj.producto_solicitado_id and obj.producto_solicitado.producto_id:
+            return ProductoLiteSerializer(obj.producto_solicitado.producto).data
+
+        return None

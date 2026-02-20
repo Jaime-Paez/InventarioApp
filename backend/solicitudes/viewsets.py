@@ -1,6 +1,13 @@
-from rest_framework import filters, viewsets
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
+from django.utils.dateparse import parse_date
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
+from inventario.models import Sucursal
 from usuarios.models import RolPermiso
 from usuarios.permissions import ClientesModulePermission, SolicitudesModulePermission
 from usuarios.sucursal_scope import apply_sucursal_scope, ensure_sucursal_allowed
@@ -8,6 +15,7 @@ from usuarios.sucursal_scope import apply_sucursal_scope, ensure_sucursal_allowe
 from .models import Cliente, OEMProductoSolicitado, ProductoSolicitado, Solicitud
 from .serializers import (
     ClienteSerializer,
+    ClienteLiteSerializer,
     OEMProductoSolicitadoSerializer,
     ProductoSolicitadoSerializer,
     SolicitudSerializer,
@@ -86,6 +94,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "sucursal",
             "producto",
             "producto_solicitado",
+            "producto_solicitado__producto",
         )
         .all()
         .order_by("-fecha", "id")
@@ -105,12 +114,55 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        return apply_sucursal_scope(
+        queryset = apply_sucursal_scope(
             queryset,
             self.request.user,
             RolPermiso.Modulos.SOLICITUDES,
             "sucursal_id",
         )
+
+        params = self.request.query_params
+
+        tabla = (params.get("tabla") or "").strip()
+        if tabla in {Solicitud.Tabla.PRODUCTO, Solicitud.Tabla.PRODUCTO_SOLICITADO}:
+            queryset = queryset.filter(tabla=tabla)
+
+        sucursal_id = (params.get("sucursal_id") or "").strip()
+        if sucursal_id:
+            queryset = queryset.filter(sucursal_id=sucursal_id)
+
+        cliente_id = (params.get("cliente_id") or "").strip()
+        if cliente_id:
+            queryset = queryset.filter(cliente_id=cliente_id)
+
+        cedula_ruc = (params.get("cedula_ruc") or "").strip()
+        if cedula_ruc:
+            queryset = queryset.filter(cliente__cedula_ruc__icontains=cedula_ruc)
+
+        fecha_desde = parse_date((params.get("fecha_desde") or "").strip())
+        if fecha_desde:
+            queryset = queryset.filter(fecha__gte=fecha_desde)
+
+        fecha_hasta = parse_date((params.get("fecha_hasta") or "").strip())
+        if fecha_hasta:
+            queryset = queryset.filter(fecha__lte=fecha_hasta)
+
+        conseguido = self._parse_bool_param(params.get("conseguido"))
+        if conseguido is True:
+            queryset = queryset.filter(
+                Q(tabla=Solicitud.Tabla.PRODUCTO)
+                | Q(
+                    tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
+                    producto_solicitado__conseguido=True,
+                )
+            )
+        elif conseguido is False:
+            queryset = queryset.filter(
+                tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
+                producto_solicitado__conseguido=False,
+            )
+
+        return queryset
 
     def perform_create(self, serializer):
         sucursal = serializer.validated_data.get("sucursal")
@@ -129,3 +181,169 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             getattr(sucursal, "id", None),
         )
         serializer.save()
+
+    @action(detail=False, methods=["get"], url_path="buscar-cliente")
+    def buscar_cliente(self, request):
+        cedula_ruc = (request.query_params.get("cedula_ruc") or "").strip()
+        if not cedula_ruc:
+            return Response({"results": []}, status=status.HTTP_200_OK)
+
+        queryset = Cliente.objects.filter(cedula_ruc__icontains=cedula_ruc).order_by("nombres", "apellidos")[:10]
+        serializer = ClienteLiteSerializer(queryset, many=True)
+        return Response({"results": serializer.data}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="crear-lote")
+    def crear_lote(self, request):
+        payload = request.data or {}
+
+        sucursal_id = payload.get("sucursal_id")
+        if not sucursal_id:
+            return Response(
+                {"sucursal_id": "Debe seleccionar una sucursal."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sucursal = Sucursal.objects.filter(pk=sucursal_id).first()
+        if not sucursal:
+            return Response(
+                {"sucursal_id": "Sucursal no encontrada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ensure_sucursal_allowed(
+            request.user,
+            RolPermiso.Modulos.SOLICITUDES,
+            getattr(sucursal, "id", None),
+        )
+
+        fecha_raw = str(payload.get("fecha") or "").strip()
+        if fecha_raw:
+            fecha = parse_date(fecha_raw)
+            if not fecha:
+                return Response(
+                    {"fecha": "Fecha invalida. Formato esperado: YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            fecha = timezone.localdate()
+
+        cliente, cliente_error = self._resolve_cliente(payload)
+        if cliente_error:
+            return Response(cliente_error, status=status.HTTP_400_BAD_REQUEST)
+
+        productos_raw = payload.get("productos")
+        if not isinstance(productos_raw, list) or not productos_raw:
+            return Response(
+                {"productos": "Debe agregar al menos un producto solicitado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        productos_normalizados = []
+        for index, item in enumerate(productos_raw):
+            if not isinstance(item, dict):
+                return Response(
+                    {"productos": f"Elemento invalido en la posicion {index + 1}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            nombre = str(item.get("nombre") or "").strip()
+            if not nombre:
+                return Response(
+                    {"productos": f"El nombre es obligatorio en la fila {index + 1}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            descripcion = str(item.get("descripcion") or "").strip()
+            cantidad_raw = item.get("cantidad", 1)
+            try:
+                cantidad = int(cantidad_raw)
+            except (TypeError, ValueError):
+                return Response(
+                    {"productos": f"La cantidad de la fila {index + 1} es invalida."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if cantidad <= 0:
+                return Response(
+                    {"productos": f"La cantidad de la fila {index + 1} debe ser mayor a 0."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            productos_normalizados.append(
+                {
+                    "nombre": nombre,
+                    "descripcion": descripcion,
+                    "cantidad": cantidad,
+                }
+            )
+
+        with transaction.atomic():
+            solicitudes = []
+            for item in productos_normalizados:
+                producto_solicitado = ProductoSolicitado.objects.create(
+                    nombre=item["nombre"],
+                    descripcion=item["descripcion"],
+                )
+                solicitud = Solicitud.objects.create(
+                    cantidad=item["cantidad"],
+                    tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
+                    fecha=fecha,
+                    sucursal=sucursal,
+                    cliente=cliente,
+                    producto_solicitado=producto_solicitado,
+                )
+                solicitudes.append(solicitud)
+
+        serializer = self.get_serializer(solicitudes, many=True)
+        return Response(
+            {"count": len(solicitudes), "results": serializer.data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @staticmethod
+    def _parse_bool_param(raw_value):
+        if raw_value is None:
+            return None
+        value = str(raw_value).strip().lower()
+        if value in {"1", "true", "t", "si", "yes"}:
+            return True
+        if value in {"0", "false", "f", "no"}:
+            return False
+        return None
+
+    def _resolve_cliente(self, payload):
+        cliente_id = payload.get("cliente_id")
+        if cliente_id:
+            cliente = Cliente.objects.filter(pk=cliente_id).first()
+            if not cliente:
+                return None, {"cliente_id": "Cliente no encontrado."}
+            return cliente, None
+
+        cliente_data = payload.get("cliente") or {}
+        if not isinstance(cliente_data, dict):
+            return None, {"cliente": "Formato de cliente invalido."}
+
+        cedula_ruc = str(cliente_data.get("cedula_ruc") or "").strip()
+        if cedula_ruc:
+            cliente_existente = Cliente.objects.filter(cedula_ruc__iexact=cedula_ruc).first()
+            if cliente_existente:
+                return cliente_existente, None
+
+        nombres = str(cliente_data.get("nombres") or "").strip()
+        apellidos = str(cliente_data.get("apellidos") or "").strip()
+        correo = str(cliente_data.get("correo") or "").strip()
+        telefono = str(cliente_data.get("telefono") or "").strip()
+        direccion = str(cliente_data.get("direccion") or "").strip()
+
+        if not nombres:
+            return None, {"cliente": "Debe definir los nombres del cliente."}
+
+        cliente = Cliente.objects.create(
+            nombres=nombres,
+            apellidos=apellidos,
+            correo=correo,
+            telefono=telefono,
+            direccion=direccion,
+            cedula_ruc=cedula_ruc,
+        )
+        return cliente, None

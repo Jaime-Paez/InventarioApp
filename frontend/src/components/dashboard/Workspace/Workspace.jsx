@@ -7,6 +7,7 @@ import MarcasTable from '../marcas/MarcasTable/MarcasTable'
 import CasasComercialesTable from '../casasComerciales/CasasComercialesTable/CasasComercialesTable'
 import ClientesTable from '../clientes/ClientesTable/ClientesTable'
 import ProductosTable from '../productos/ProductosTable/ProductosTable'
+import SolicitudesTable from '../solicitudes/SolicitudesTable/SolicitudesTable'
 import Configuracion from '../configuracion/Configuracion/Configuracion'
 import InventarioTable from '../inventario/InventarioTable/InventarioTable'
 import SalidasTable from '../movimientos/SalidasTable'
@@ -42,6 +43,7 @@ function Workspace({
     Marcas: <MarcasTable token={token} />,
     'Casas comerciales': <CasasComercialesTable token={token} />,
     Productos: <ProductosTable token={token} />,
+    Solicitudes: <SolicitudesTable token={token} />,
     Clientes: <ClientesTable token={token} />,
     Salidas: <SalidasTable token={token} />,
     Configuraciones: <Configuracion token={token} darkMode={darkMode} onToggleTheme={onToggleTheme} />,
@@ -59,7 +61,7 @@ function Workspace({
           return (
             <div key={tab} className="workspace__tab-panel active">
               <p className="workspace__subtitle">
-                El módulo "{activeItem}" todavía no tiene contenido disponible.
+                El modulo "{activeItem}" todavia no tiene contenido disponible.
               </p>
             </div>
           )
@@ -70,7 +72,7 @@ function Workspace({
           return (
             <div key={tab} className="workspace__tab-panel active">
               <p className="workspace__subtitle">
-                No tienes permisos para acceder a este módulo. Solicita acceso a un administrador.
+                No tienes permisos para acceder a este modulo. Solicita acceso a un administrador.
               </p>
             </div>
           )
@@ -107,11 +109,11 @@ function Workspace({
             <img src={logo} alt="Logotipo Kava" />
           </div>
           <div className="workspace__copy">
-            <h2>{isLeaving ? farewellTitle : `¡Qué gusto tenerte de vuelta, ${username}!`}</h2>
+            <h2>{isLeaving ? farewellTitle : `Que gusto tenerte de vuelta, ${username}!`}</h2>
             <p className="workspace__subtitle">
               {isLeaving
                 ? 'Nos vemos pronto.'
-                : 'Para comenzar, selecciona una opción del menú'}
+                : 'Para comenzar, selecciona una opcion del menu'}
             </p>
           </div>
         </section>
