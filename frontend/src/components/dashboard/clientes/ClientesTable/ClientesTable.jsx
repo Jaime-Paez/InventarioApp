@@ -16,6 +16,11 @@ import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exp
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
+const createBulkCancelError = () => {
+  const err = new Error('Seleccion global cancelada.')
+  err.name = 'AbortError'
+  return err
+}
 const isCheckboxSelection = (event) => {
   if (event?.type === 'checkbox') return true
   const target = event?.originalEvent?.target
@@ -56,6 +61,8 @@ function ClientesTable({ token, onSelect }) {
   const [bulkModalPosition, setBulkModalPosition] = useState({ x: 0, y: 0 })
   const bulkModalRef = useRef(null)
   const bulkModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const bulkSelectAbortRef = useRef(null)
+  const bulkSelectCancelledRef = useRef(false)
 
   const normalizeList = useCallback(
     (list) =>
@@ -121,17 +128,25 @@ function ClientesTable({ token, onSelect }) {
   const fetchAllClients = useCallback(
     async (criteria, options = {}) => {
       const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null
+      const signal = options?.signal
+      const isCancelled = typeof options?.isCancelled === 'function' ? options.isCancelled : () => false
+      const ensureNotCancelled = () => {
+        if (signal?.aborted || isCancelled()) throw createBulkCancelError()
+      }
       const all = []
       let url = buildClientsListUrl(criteria, 1, 200)
       let total = 0
 
       while (url) {
-        const res = await authFetch(url, {}, token)
+        ensureNotCancelled()
+        const res = await authFetch(url, { signal }, token)
         if (!res.ok) throw new Error('No se pudo obtener la lista completa de clientes.')
+        ensureNotCancelled()
         const data = await res.json()
 
         if (Array.isArray(data)) {
           all.push(...data)
+          ensureNotCancelled()
           total = total || all.length
           onProgress?.({
             loaded: all.length,
@@ -144,6 +159,7 @@ function ClientesTable({ token, onSelect }) {
           if (count > 0) total = count
           const list = Array.isArray(data?.results) ? data.results : []
           all.push(...list)
+          ensureNotCancelled()
           const safeTotal = total || all.length
           onProgress?.({
             loaded: all.length,
@@ -154,6 +170,7 @@ function ClientesTable({ token, onSelect }) {
         }
       }
 
+      ensureNotCancelled()
       const finalTotal = Math.max(total, all.length)
       onProgress?.({
         loaded: all.length,
@@ -269,8 +286,8 @@ function ClientesTable({ token, onSelect }) {
   const SEARCH_MIN_HEIGHT = 480
   const SEARCH_PADDING = 12
   const BULK_MODAL_PADDING = 12
-  const BULK_MODAL_WIDTH = 560
-  const BULK_MODAL_HEIGHT = 230
+  const BULK_MODAL_WIDTH = 440
+  const BULK_MODAL_HEIGHT = 200
 
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target
@@ -756,6 +773,9 @@ function ClientesTable({ token, onSelect }) {
       setShowSearchModal(true)
       return
     }
+    const controller = new AbortController()
+    bulkSelectAbortRef.current = controller
+    bulkSelectCancelledRef.current = false
     setShowBulkSelectConfirm(false)
     setShowBulkSelectProgress(true)
     setBulkSelectProgress({
@@ -766,6 +786,8 @@ function ClientesTable({ token, onSelect }) {
     setIsRefreshing(true)
     try {
       const all = await fetchAllClients(lastSearchRef.current, {
+        signal: controller.signal,
+        isCancelled: () => bulkSelectCancelledRef.current,
         onProgress: ({ loaded, total, percent }) => {
           setBulkSelectProgress({
             loaded: Math.max(0, Number(loaded) || 0),
@@ -774,6 +796,7 @@ function ClientesTable({ token, onSelect }) {
           })
         },
       })
+      if (bulkSelectCancelledRef.current || controller.signal.aborted) return
       setSelectedRows(all)
       toast.current?.show({
         severity: 'info',
@@ -782,6 +805,16 @@ function ClientesTable({ token, onSelect }) {
         life: 2500,
       })
     } catch (err) {
+      const cancelled = bulkSelectCancelledRef.current || err?.name === 'AbortError'
+      if (cancelled) {
+        toast.current?.show({
+          severity: 'info',
+          summary: 'Cancelado',
+          detail: 'Se canceló la seleccion global.',
+          life: 2500,
+        })
+        return
+      }
       toast.current?.show({
         severity: 'warn',
         summary: 'Aviso',
@@ -789,10 +822,29 @@ function ClientesTable({ token, onSelect }) {
         life: 3500,
       })
     } finally {
+      if (bulkSelectAbortRef.current === controller) {
+        bulkSelectAbortRef.current = null
+      }
       setShowBulkSelectProgress(false)
       setIsRefreshing(false)
     }
   }, [fetchAllClients, totalRecords])
+
+  const handleCancelBulkSelection = useCallback(() => {
+    bulkSelectCancelledRef.current = true
+    if (bulkSelectAbortRef.current) {
+      try {
+        bulkSelectAbortRef.current.abort()
+      } catch {
+        // no-op
+      }
+    }
+    setShowBulkSelectConfirm(false)
+    setShowBulkSelectProgress(false)
+    setSelectedRows([])
+    setIsRefreshing(false)
+    setBulkSelectProgress({ loaded: 0, total: 0, percent: 0 })
+  }, [])
 
   const handleUnselectAllRows = useCallback(() => {
     setShowBulkSelectConfirm(false)
@@ -813,14 +865,14 @@ function ClientesTable({ token, onSelect }) {
   }, [handleSelectAllRows, totalRecords])
 
   useLayoutEffect(() => {
-    if (!showBulkSelectConfirm && !showBulkSelectProgress) return
+    if (!showBulkSelectConfirm) return
     const width = Math.min(BULK_MODAL_WIDTH, Math.max(0, window.innerWidth - BULK_MODAL_PADDING * 2))
     const height = Math.min(BULK_MODAL_HEIGHT, Math.max(0, window.innerHeight - BULK_MODAL_PADDING * 2))
     setBulkModalPosition({
       x: Math.max((window.innerWidth - width) / 2, BULK_MODAL_PADDING),
       y: Math.max((window.innerHeight - height) / 2, BULK_MODAL_PADDING),
     })
-  }, [showBulkSelectConfirm, showBulkSelectProgress])
+  }, [showBulkSelectConfirm])
 
   const handleBulkModalMouseDown = (event) => {
     if (!bulkModalRef.current) return
@@ -833,7 +885,7 @@ function ClientesTable({ token, onSelect }) {
   }
 
   useEffect(() => {
-    if (!showBulkSelectConfirm && !showBulkSelectProgress) return undefined
+    if (!showBulkSelectConfirm) return undefined
 
     const handleMouseMove = (event) => {
       if (!bulkModalDrag.current.active) return
@@ -860,7 +912,7 @@ function ClientesTable({ token, onSelect }) {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [showBulkSelectConfirm, showBulkSelectProgress])
+  }, [showBulkSelectConfirm])
 
   return (
     <div className="users-page">
@@ -1067,9 +1119,11 @@ function ClientesTable({ token, onSelect }) {
             style={{
               top: bulkModalPosition.y,
               left: bulkModalPosition.x,
-              width: 'min(560px, calc(100vw - 32px))',
+              width: 'min(440px, calc(100vw - 32px))',
               height: 'auto',
               maxHeight: 'none',
+              minWidth: 0,
+              minHeight: 0,
             }}
           >
             <header className="create-user__header" onMouseDown={handleBulkModalMouseDown}>
@@ -1079,8 +1133,8 @@ function ClientesTable({ token, onSelect }) {
             </header>
 
             <div className="create-user__body">
-              <p style={{ margin: 0, lineHeight: 1.5 }}>
-                Va a seleccionar mas de{' '}
+              <p style={{ margin: 0, lineHeight: 1.5, textAlign: 'center' }}>
+                Va a seleccionar{' '}
                 <strong>{Number(totalRecords || 0).toLocaleString('es-EC')}</strong>{' '}
                 clientes. El proceso tomara varios minutos.
               </p>
@@ -1111,21 +1165,30 @@ function ClientesTable({ token, onSelect }) {
       )}
 
       {showBulkSelectProgress && (
-        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ pointerEvents: 'auto' }}>
+        <div
+          className="create-user__overlay"
+          role="dialog"
+          aria-modal="true"
+          style={{ pointerEvents: 'auto', background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(1px)' }}
+        >
           <div
             ref={bulkModalRef}
             className="create-user__modal"
             style={{
-              top: bulkModalPosition.y,
-              left: bulkModalPosition.x,
-              width: 'min(560px, calc(100vw - 32px))',
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: 'min(440px, calc(100vw - 32px))',
               height: 'auto',
               maxHeight: 'none',
               pointerEvents: 'auto',
+              minWidth: 0,
+              minHeight: 0,
             }}
           >
-            <header className="create-user__header" onMouseDown={handleBulkModalMouseDown}>
-              <div className="create-user__header-text">
+            <header className="create-user__header" style={{ cursor: 'default' }}>
+              <div className="create-user__header-text" style={{ cursor: 'default' }}>
                 <h3>Seleccionando clientes</h3>
               </div>
             </header>
@@ -1160,6 +1223,18 @@ function ClientesTable({ token, onSelect }) {
                   Faltan {Math.max(0, (Number(bulkSelectProgress.total) || 0) - (Number(bulkSelectProgress.loaded) || 0)).toLocaleString('es-EC')}
                 </span>
                 <strong>{Math.max(0, Math.min(100, Number(bulkSelectProgress.percent) || 0))}%</strong>
+              </div>
+            </div>
+            <div className="create-user__footer">
+              <div className="user-details__footer-left" />
+              <div className="user-details__footer-right">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={handleCancelBulkSelection}
+                >
+                  Cancelar
+                </button>
               </div>
             </div>
           </div>
