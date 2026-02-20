@@ -15,6 +15,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (value) => (value == null ? null : String(value))
+const BULK_SELECT_CONFIRM_THRESHOLD = 1000
 const isCheckboxSelection = (event) => {
   if (event?.type === 'checkbox') return true
   const target = event?.originalEvent?.target
@@ -39,10 +40,22 @@ function ClientesTable({ token, onSelect }) {
   )
 
   const [clients, setClients] = useState([])
-  const [allClients, setAllClients] = useState([])
+  const [totalRecords, setTotalRecords] = useState(0)
+  const [pageFirst, setPageFirst] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
+  const [showBulkSelectConfirm, setShowBulkSelectConfirm] = useState(false)
+  const [showBulkSelectProgress, setShowBulkSelectProgress] = useState(false)
+  const [bulkSelectProgress, setBulkSelectProgress] = useState({
+    loaded: 0,
+    total: 0,
+    percent: 0,
+  })
+  const [bulkModalPosition, setBulkModalPosition] = useState({ x: 0, y: 0 })
+  const bulkModalRef = useRef(null)
+  const bulkModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
 
   const normalizeList = useCallback(
     (list) =>
@@ -53,66 +66,105 @@ function ClientesTable({ token, onSelect }) {
     []
   )
 
-  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
-  const contains = (fieldValue, target) => {
-    const needle = normalizeValue(target)
-    if (!needle) return true
-    return normalizeValue(fieldValue).includes(needle)
-  }
+  const buildClientsListUrl = useCallback((criteria, page = 1, rows = 25) => {
+    const params = new URLSearchParams()
+    params.set('page', String(page))
+    params.set('page_size', String(rows))
 
-  const applySearchFilters = useCallback(
-    (list, criteria) =>
-      list.filter((row) => (
-        contains(row?.nombres, criteria.nombres) &&
-        contains(row?.apellidos, criteria.apellidos) &&
-        contains(row?.cedula_ruc, criteria.cedula_ruc) &&
-        contains(row?.correo, criteria.correo) &&
-        contains(row?.telefono, criteria.telefono) &&
-        contains(row?.direccion, criteria.direccion)
-      )),
-    []
-  )
+    const addIfPresent = (key, value) => {
+      const parsed = String(value ?? '').trim()
+      if (parsed) params.set(key, parsed)
+    }
 
-  const fetchClients = useCallback(async (criteria) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const list = []
-      let url = `${API_URL}/solicitudes/clientes/`
+    addIfPresent('nombres', criteria?.nombres)
+    addIfPresent('apellidos', criteria?.apellidos)
+    addIfPresent('cedula_ruc', criteria?.cedula_ruc)
+    addIfPresent('correo', criteria?.correo)
+    addIfPresent('telefono', criteria?.telefono)
+    addIfPresent('direccion', criteria?.direccion)
 
-      while (url) {
+    return `${API_URL}/solicitudes/clientes/?${params.toString()}`
+  }, [])
+
+  const fetchClients = useCallback(
+    async (criteria, page = 1, rows = pageSize) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const url = buildClientsListUrl(criteria, page, rows)
         const res = await authFetch(url, {}, token)
         if (!res.ok) throw new Error('No se pudo obtener la lista de clientes.')
 
         const data = await res.json()
+        const count = Array.isArray(data) ? data.length : Number(data?.count ?? 0)
+        const list = Array.isArray(data) ? data : data?.results || []
+        const normalized = normalizeList(list)
+        setClients(normalized)
+        setTotalRecords(count)
+        setPageFirst(Math.max(0, (page - 1) * rows))
+        setPageSize(rows)
+        return normalized
+      } catch (err) {
+        const msg = err?.message || 'Ocurrio un error al cargar los clientes.'
+        setError(msg)
+        setClients([])
+        setTotalRecords(0)
+        toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
+      } finally {
+        setLoading(false)
+        setIsRefreshing(false)
+      }
+    },
+    [token, normalizeList, pageSize, buildClientsListUrl]
+  )
+
+  const fetchAllClients = useCallback(
+    async (criteria, options = {}) => {
+      const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null
+      const all = []
+      let url = buildClientsListUrl(criteria, 1, 200)
+      let total = 0
+
+      while (url) {
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista completa de clientes.')
+        const data = await res.json()
+
         if (Array.isArray(data)) {
-          list.push(...data)
+          all.push(...data)
+          total = total || all.length
+          onProgress?.({
+            loaded: all.length,
+            total,
+            percent: total ? Math.min(100, Math.round((all.length / total) * 100)) : 100,
+          })
           url = null
         } else {
-          const pageList = Array.isArray(data?.results) ? data.results : []
-          list.push(...pageList)
+          const count = Number(data?.count ?? 0)
+          if (count > 0) total = count
+          const list = Array.isArray(data?.results) ? data.results : []
+          all.push(...list)
+          const safeTotal = total || all.length
+          onProgress?.({
+            loaded: all.length,
+            total: safeTotal,
+            percent: safeTotal ? Math.min(100, Math.round((all.length / safeTotal) * 100)) : 0,
+          })
           url = data?.next || null
         }
       }
 
-      const normalized = normalizeList(list)
-      setClients(normalized)
-      setAllClients(normalized)
-      if (criteria) {
-        const filtered = applySearchFilters(normalized, criteria)
-        setClients(filtered)
-        return filtered
-      }
-      return normalized
-    } catch (err) {
-      const msg = err?.message || 'Ocurrio un error al cargar los clientes.'
-      setError(msg)
-      toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
-    } finally {
-      setLoading(false)
-      setIsRefreshing(false)
-    }
-  }, [token, normalizeList, applySearchFilters])
+      const finalTotal = Math.max(total, all.length)
+      onProgress?.({
+        loaded: all.length,
+        total: finalTotal,
+        percent: 100,
+      })
+
+      return normalizeList(all)
+    },
+    [token, normalizeList, buildClientsListUrl]
+  )
 
   const refreshData = () => {
     if (!lastSearchRef.current) {
@@ -120,7 +172,8 @@ function ClientesTable({ token, onSelect }) {
       return
     }
     setIsRefreshing(true)
-    fetchClients(lastSearchRef.current)
+    const currentPage = Math.floor(pageFirst / pageSize) + 1
+    fetchClients(lastSearchRef.current, currentPage, pageSize)
   }
 
   // ---------------- Filters ----------------
@@ -142,24 +195,53 @@ function ClientesTable({ token, onSelect }) {
   }
 
   useEffect(() => {
-    const savedState = sessionStorage.getItem('clientes-table-state')
-    if (savedState) {
-      const parsed = JSON.parse(savedState)
-      if (parsed?.filters) {
-        setFilters(parsed.filters)
-        if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
-        return
+    try {
+      const savedState = sessionStorage.getItem('clientes-table-state')
+      if (savedState) {
+        const parsed = JSON.parse(savedState)
+        if (parsed?.filters) {
+          setFilters(parsed.filters)
+          if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
+          return
+        }
+      }
+    } catch {
+      try {
+        sessionStorage.removeItem('clientes-table-state')
+      } catch {
+        // no-op
       }
     }
     initFilters()
   }, [])
+
+  useEffect(() => {
+    if (!filters) return
+    const payload = JSON.stringify({ filters })
+    try {
+      sessionStorage.setItem('clientes-table-state', payload)
+    } catch {
+      try {
+        sessionStorage.removeItem('clientes-table-state')
+        sessionStorage.setItem('clientes-table-state', payload)
+      } catch {
+        // no-op
+      }
+    }
+  }, [filters])
 
   const clearFilter = () => {
     initFilters()
     setSearchCriteria(initialSearchCriteria)
     lastSearchRef.current = null
     setClients([])
-    setAllClients([])
+    setSelectedRows([])
+    setTotalRecords(0)
+    setPageFirst(0)
+    setPageSize(25)
+    setShowBulkSelectConfirm(false)
+    setShowBulkSelectProgress(false)
+    setBulkSelectProgress({ loaded: 0, total: 0, percent: 0 })
   }
 
   const initialSearchCriteria = {
@@ -186,6 +268,9 @@ function ClientesTable({ token, onSelect }) {
   const SEARCH_MIN_WIDTH = 640
   const SEARCH_MIN_HEIGHT = 480
   const SEARCH_PADDING = 12
+  const BULK_MODAL_PADDING = 12
+  const BULK_MODAL_WIDTH = 560
+  const BULK_MODAL_HEIGHT = 230
 
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target
@@ -200,7 +285,7 @@ function ClientesTable({ token, onSelect }) {
     lastSearchRef.current = { ...searchCriteria }
     setShowSearchModal(false)
     setIsRefreshing(true)
-    await fetchClients(lastSearchRef.current)
+    await fetchClients(lastSearchRef.current, 1, pageSize)
   }
 
   const onGlobalFilterChange = (e) => {
@@ -232,7 +317,7 @@ function ClientesTable({ token, onSelect }) {
   )
 
   const allRowIds = useMemo(() => clients.map((row) => normId(row?.id)).filter(Boolean), [clients])
-  const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
+  const allRowsSelected = allRowIds.length > 0 && allRowIds.every((id) => selectedRowIds.includes(id))
 
   useEffect(() => {
     const saved = sessionStorage.getItem('clientes-table-selected-rows')
@@ -268,23 +353,17 @@ function ClientesTable({ token, onSelect }) {
   }, [clients])
 
   useEffect(() => {
-    if (!clients?.length) {
-      if (selectedRows?.length) setSelectedRows([])
-      return
+    try {
+      sessionStorage.setItem(
+        'clientes-table-selected-rows',
+        JSON.stringify({
+          selectedRowIds,
+          allRowsSelected,
+        })
+      )
+    } catch {
+      // no-op
     }
-    const idsSet = new Set(allRowIds)
-    const filtered = (selectedRows || []).filter((row) => idsSet.has(normId(row?.id)))
-    if (filtered.length !== (selectedRows || []).length) setSelectedRows(filtered)
-  }, [clients])
-
-  useEffect(() => {
-    sessionStorage.setItem(
-      'clientes-table-selected-rows',
-      JSON.stringify({
-        selectedRowIds,
-        allRowsSelected,
-      })
-    )
   }, [selectedRowIds, allRowsSelected])
 
   const selectionColStyle = useMemo(
@@ -463,7 +542,7 @@ function ClientesTable({ token, onSelect }) {
   }
 
   // ---------------- Header ----------------
-  const dataLength = clients?.length ?? 0
+  const dataLength = totalRecords ?? 0
   const emptyMessage = lastSearchRef.current
     ? 'No se encontraron clientes'
     : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
@@ -659,6 +738,130 @@ function ClientesTable({ token, onSelect }) {
     setIsSearchMaximized(true)
   }
 
+  const handlePageChange = async (event) => {
+    const nextRows = Number(event?.rows) || pageSize
+    const nextFirst = Number(event?.first) || 0
+    const nextPage = Math.floor(nextFirst / nextRows) + 1
+
+    setPageFirst(nextFirst)
+    setPageSize(nextRows)
+
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchClients(lastSearchRef.current, nextPage, nextRows)
+  }
+
+  const handleSelectAllRows = useCallback(async () => {
+    if (!lastSearchRef.current) {
+      setShowSearchModal(true)
+      return
+    }
+    setShowBulkSelectConfirm(false)
+    setShowBulkSelectProgress(true)
+    setBulkSelectProgress({
+      loaded: 0,
+      total: Math.max(Number(totalRecords) || 0, 0),
+      percent: 0,
+    })
+    setIsRefreshing(true)
+    try {
+      const all = await fetchAllClients(lastSearchRef.current, {
+        onProgress: ({ loaded, total, percent }) => {
+          setBulkSelectProgress({
+            loaded: Math.max(0, Number(loaded) || 0),
+            total: Math.max(0, Number(total) || 0),
+            percent: Math.max(0, Math.min(100, Number(percent) || 0)),
+          })
+        },
+      })
+      setSelectedRows(all)
+      toast.current?.show({
+        severity: 'info',
+        summary: 'Seleccion global',
+        detail: `Se seleccionaron ${all.length} clientes.`,
+        life: 2500,
+      })
+    } catch (err) {
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Aviso',
+        detail: err?.message || 'No se pudo seleccionar todos los clientes.',
+        life: 3500,
+      })
+    } finally {
+      setShowBulkSelectProgress(false)
+      setIsRefreshing(false)
+    }
+  }, [fetchAllClients, totalRecords])
+
+  const handleUnselectAllRows = useCallback(() => {
+    setShowBulkSelectConfirm(false)
+    setShowBulkSelectProgress(false)
+    setSelectedRows([])
+  }, [])
+
+  const handleSelectAllIntent = useCallback(() => {
+    if (!lastSearchRef.current) {
+      setShowSearchModal(true)
+      return
+    }
+    if ((Number(totalRecords) || 0) > BULK_SELECT_CONFIRM_THRESHOLD) {
+      setShowBulkSelectConfirm(true)
+      return
+    }
+    handleSelectAllRows()
+  }, [handleSelectAllRows, totalRecords])
+
+  useLayoutEffect(() => {
+    if (!showBulkSelectConfirm && !showBulkSelectProgress) return
+    const width = Math.min(BULK_MODAL_WIDTH, Math.max(0, window.innerWidth - BULK_MODAL_PADDING * 2))
+    const height = Math.min(BULK_MODAL_HEIGHT, Math.max(0, window.innerHeight - BULK_MODAL_PADDING * 2))
+    setBulkModalPosition({
+      x: Math.max((window.innerWidth - width) / 2, BULK_MODAL_PADDING),
+      y: Math.max((window.innerHeight - height) / 2, BULK_MODAL_PADDING),
+    })
+  }, [showBulkSelectConfirm, showBulkSelectProgress])
+
+  const handleBulkModalMouseDown = (event) => {
+    if (!bulkModalRef.current) return
+    const rect = bulkModalRef.current.getBoundingClientRect()
+    bulkModalDrag.current = {
+      active: true,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+  }
+
+  useEffect(() => {
+    if (!showBulkSelectConfirm && !showBulkSelectProgress) return undefined
+
+    const handleMouseMove = (event) => {
+      if (!bulkModalDrag.current.active) return
+      event.preventDefault()
+      const width = bulkModalRef.current?.offsetWidth || BULK_MODAL_WIDTH
+      const height = bulkModalRef.current?.offsetHeight || BULK_MODAL_HEIGHT
+      const maxX = Math.max(window.innerWidth - width - BULK_MODAL_PADDING, BULK_MODAL_PADDING)
+      const maxY = Math.max(window.innerHeight - height - BULK_MODAL_PADDING, BULK_MODAL_PADDING)
+      const x = event.clientX - bulkModalDrag.current.offsetX
+      const y = event.clientY - bulkModalDrag.current.offsetY
+      setBulkModalPosition({
+        x: Math.min(Math.max(x, BULK_MODAL_PADDING), maxX),
+        y: Math.min(Math.max(y, BULK_MODAL_PADDING), maxY),
+      })
+    }
+
+    const handleMouseUp = () => {
+      bulkModalDrag.current.active = false
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [showBulkSelectConfirm, showBulkSelectProgress])
+
   return (
     <div className="users-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
@@ -717,16 +920,18 @@ function ClientesTable({ token, onSelect }) {
           scrollable
           scrollHeight="flex"
           frozenWidth="40px"
+          lazy
           paginator
-          rows={25}
+          first={pageFirst}
+          rows={pageSize}
+          totalRecords={totalRecords}
           rowsPerPageOptions={[5, 10, 25, 50]}
+          onPage={handlePageChange}
           removableSort
           filters={filters}
           onFilter={(e) => setFilters(e.filters)}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombres', 'apellidos', 'cedula_ruc', 'autos_count', 'correo', 'telefono', 'direccion']}
-          stateStorage="session"
-          stateKey="clientes-table-state"
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
@@ -735,10 +940,33 @@ function ClientesTable({ token, onSelect }) {
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
           selectionMode="multiple"
           selection={selectedRows}
+          onAllRowsUnselect={handleUnselectAllRows}
           onSelectionChange={(e) => {
             if (!isCheckboxSelection(e)) return
+            if (e?.type === 'all') {
+              const value = Array.isArray(e.value) ? e.value : []
+              if (!value.length) {
+                handleUnselectAllRows()
+              } else {
+                handleSelectAllIntent()
+              }
+              return
+            }
             const value = e.value || []
-            setSelectedRows(value)
+            const currentPageIds = new Set(allRowIds)
+            setSelectedRows((prev) => {
+              const preserved = (prev || []).filter((row) => !currentPageIds.has(normId(row?.id)))
+              const nextMap = new Map()
+              preserved.forEach((row) => {
+                const id = normId(row?.id)
+                if (id) nextMap.set(id, row)
+              })
+              value.forEach((row) => {
+                const id = normId(row?.id)
+                if (id) nextMap.set(id, row)
+              })
+              return Array.from(nextMap.values())
+            })
           }}
         >
           <Column
@@ -830,6 +1058,113 @@ function ClientesTable({ token, onSelect }) {
         )}
 
       </div>
+
+      {showBulkSelectConfirm && (
+        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ pointerEvents: 'auto' }}>
+          <div
+            ref={bulkModalRef}
+            className="create-user__modal"
+            style={{
+              top: bulkModalPosition.y,
+              left: bulkModalPosition.x,
+              width: 'min(560px, calc(100vw - 32px))',
+              height: 'auto',
+              maxHeight: 'none',
+            }}
+          >
+            <header className="create-user__header" onMouseDown={handleBulkModalMouseDown}>
+              <div className="create-user__header-text">
+                <h3>Confirmar seleccion global</h3>
+              </div>
+            </header>
+
+            <div className="create-user__body">
+              <p style={{ margin: 0, lineHeight: 1.5 }}>
+                Va a seleccionar mas de{' '}
+                <strong>{Number(totalRecords || 0).toLocaleString('es-EC')}</strong>{' '}
+                clientes. El proceso tomara varios minutos.
+              </p>
+            </div>
+
+            <div className="create-user__footer">
+              <div className="user-details__footer-left">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={() => setShowBulkSelectConfirm(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+              <div className="user-details__footer-right">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleSelectAllRows}
+                >
+                  Continuar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkSelectProgress && (
+        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ pointerEvents: 'auto' }}>
+          <div
+            ref={bulkModalRef}
+            className="create-user__modal"
+            style={{
+              top: bulkModalPosition.y,
+              left: bulkModalPosition.x,
+              width: 'min(560px, calc(100vw - 32px))',
+              height: 'auto',
+              maxHeight: 'none',
+              pointerEvents: 'auto',
+            }}
+          >
+            <header className="create-user__header" onMouseDown={handleBulkModalMouseDown}>
+              <div className="create-user__header-text">
+                <h3>Seleccionando clientes</h3>
+              </div>
+            </header>
+
+            <div className="create-user__body">
+              <p style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
+                Procesando seleccion global. Por favor espera.
+              </p>
+              <div
+                style={{
+                  width: '100%',
+                  height: 12,
+                  borderRadius: 999,
+                  background: 'rgba(15, 23, 42, 0.12)',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.max(0, Math.min(100, bulkSelectProgress.percent || 0))}%`,
+                    height: '100%',
+                    background: '#0b4f7d',
+                    transition: 'width 180ms ease',
+                  }}
+                />
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '0.9rem' }}>
+                <span>
+                  {Number(bulkSelectProgress.loaded || 0).toLocaleString('es-EC')} / {Number(bulkSelectProgress.total || 0).toLocaleString('es-EC')}
+                </span>
+                <span>
+                  Faltan {Math.max(0, (Number(bulkSelectProgress.total) || 0) - (Number(bulkSelectProgress.loaded) || 0)).toLocaleString('es-EC')}
+                </span>
+                <strong>{Math.max(0, Math.min(100, Number(bulkSelectProgress.percent) || 0))}%</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <CreateCliente
         open={showCreateModal}

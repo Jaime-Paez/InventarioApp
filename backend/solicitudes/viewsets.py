@@ -22,6 +22,36 @@ class ClienteViewSet(viewsets.ModelViewSet):
     search_fields = ["nombres", "apellidos", "correo", "telefono", "cedula_ruc"]
     ordering_fields = ["nombres", "apellidos", "correo", "telefono"]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        params = self.request.query_params
+
+        nombres = (params.get("nombres") or "").strip()
+        if nombres:
+            queryset = queryset.filter(nombres__icontains=nombres)
+
+        apellidos = (params.get("apellidos") or "").strip()
+        if apellidos:
+            queryset = queryset.filter(apellidos__icontains=apellidos)
+
+        cedula_ruc = (params.get("cedula_ruc") or "").strip()
+        if cedula_ruc:
+            queryset = queryset.filter(cedula_ruc__icontains=cedula_ruc)
+
+        correo = (params.get("correo") or "").strip()
+        if correo:
+            queryset = queryset.filter(correo__icontains=correo)
+
+        telefono = (params.get("telefono") or "").strip()
+        if telefono:
+            queryset = queryset.filter(telefono__icontains=telefono)
+
+        direccion = (params.get("direccion") or "").strip()
+        if direccion:
+            queryset = queryset.filter(direccion__icontains=direccion)
+
+        return queryset
+
 
 class ProductoSolicitadoViewSet(viewsets.ModelViewSet):
     queryset = ProductoSolicitado.objects.select_related("producto").all().order_by("nombre")
