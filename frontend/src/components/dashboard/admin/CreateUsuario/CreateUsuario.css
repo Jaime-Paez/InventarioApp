@@ -786,6 +786,30 @@
   width: 100%;
 }
 
+.create-user__section-header--sub {
+  margin-top: 20px;
+}
+
+.create-user__module-scopes {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.create-user__module-scope-card {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--color-surface);
+}
+
+.create-user__module-scope-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
 .create-user__branches--dropdown {
   grid-template-columns: 1fr;
   gap: 0;
@@ -853,6 +877,11 @@
 }
 
 .dashboard-shell.dark .create-user__branch-option {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__module-scope-card {
   background: var(--color-surface-darker);
   border-color: var(--color-border);
 }

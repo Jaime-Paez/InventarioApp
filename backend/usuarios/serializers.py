@@ -4,7 +4,13 @@ from rest_framework import serializers
 
 from inventario.models import Sucursal
 
-from .models import Rol, RolPermiso, UsuarioSucursal
+from .models import (
+    MODULOS_CON_ALCANCE_SUCURSAL,
+    Rol,
+    RolPermiso,
+    UsuarioModuloSucursal,
+    UsuarioSucursal,
+)
 from .utils import build_permissions_summary, get_personalized_role_for_email
 
 
@@ -27,6 +33,18 @@ def validate_permissions_uniqueness(permisos):
             )
         combos.add(key)
     return permisos
+
+
+def validate_scope_modules_uniqueness(scopes):
+    seen = set()
+    for scope in scopes:
+        modulo = scope.get("modulo")
+        if modulo in seen:
+            raise serializers.ValidationError(
+                "No se puede repetir el alcance de sucursales para el mismo modulo."
+            )
+        seen.add(modulo)
+    return scopes
 
 
 class RolPermisoSerializer(serializers.ModelSerializer):
@@ -105,6 +123,15 @@ class RolSerializer(serializers.ModelSerializer):
         return validate_permissions_uniqueness(value)
 
 
+class ModuloSucursalScopeSerializer(serializers.Serializer):
+    modulo = serializers.ChoiceField(choices=MODULOS_CON_ALCANCE_SUCURSAL)
+    sucursales_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Sucursal.objects.all(),
+        required=False,
+    )
+
+
 class UsuarioSerializer(serializers.ModelSerializer):
     """Serializa usuarios usando el modelo de Django."""
 
@@ -123,9 +150,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
     telefono = serializers.CharField(required=False, allow_blank=True, write_only=True)
     cargo = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
-    sucursales_ids = serializers.PrimaryKeyRelatedField(
+    sucursales_por_modulo = ModuloSucursalScopeSerializer(
         many=True,
-        queryset=Sucursal.objects.all(),
         required=False,
         write_only=True,
     )
@@ -143,7 +169,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "activo",
             "roles",
             "sucursales",
-            "sucursales_ids",
+            "sucursales_por_modulo",
             "permisos_personalizados",
             "permisos_resumen",
             "password",
@@ -154,7 +180,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
         roles = validated_data.pop("roles", [])
         password = validated_data.pop("password", None)
-        sucursales = validated_data.pop("sucursales_ids", None)
+        sucursales_por_modulo = validated_data.pop("sucursales_por_modulo", None)
         validated_data.pop("telefono", None)
         validated_data.pop("cargo", None)
 
@@ -173,14 +199,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 user.roles.set(roles)
 
             self._sync_personalized_permissions(user, permisos_personalizados)
-            self._sync_sucursales(user, sucursales)
+            self._sync_sucursales_por_modulo(user, sucursales_por_modulo)
         return user
 
     def update(self, instance, validated_data):
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
         roles = validated_data.pop("roles", None)
         password = validated_data.pop("password", None)
-        sucursales = validated_data.pop("sucursales_ids", None)
+        sucursales_por_modulo = validated_data.pop("sucursales_por_modulo", None)
         validated_data.pop("telefono", None)
         validated_data.pop("cargo", None)
 
@@ -194,7 +220,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             instance.roles.set(roles)
 
         self._sync_personalized_permissions(instance, permisos_personalizados)
-        self._sync_sucursales(instance, sucursales)
+        self._sync_sucursales_por_modulo(instance, sucursales_por_modulo)
         if password:
             instance.set_password(password)
             instance.save(update_fields=["password"])
@@ -220,6 +246,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     def validate_permisos_personalizados(self, value):
         return validate_permissions_uniqueness(value)
+
+    def validate_sucursales_por_modulo(self, value):
+        return validate_scope_modules_uniqueness(value)
 
     def _sync_personalized_permissions(self, usuario, permisos_data):
         """Crea o actualiza el rol personalizado asociado al usuario."""
@@ -264,31 +293,28 @@ class UsuarioSerializer(serializers.ModelSerializer):
             role.permisos.all().delete()
             role.delete()
 
-    def _sync_sucursales(self, usuario, sucursales):
-        """Crea o elimina las asignaciones de sucursales para el usuario."""
-
-        if sucursales is None:
+    def _sync_sucursales_por_modulo(self, usuario, scopes_data):
+        if scopes_data is None:
             return
 
-        target_ids = set(str(sucursal.id) for sucursal in sucursales)
-        current_ids = set(
-            str(sucursal_id)
-            for sucursal_id in usuario.asignaciones.values_list("sucursal_id", flat=True)
-        )
+        UsuarioModuloSucursal.objects.filter(usuario=usuario).delete()
 
-        # Remover asignaciones que ya no aplican
-        remove_ids = current_ids - target_ids
-        if remove_ids:
-            UsuarioSucursal.objects.filter(usuario=usuario, sucursal_id__in=remove_ids).delete()
+        instances = []
+        for scope in scopes_data:
+            modulo = scope.get("modulo")
+            sucursales = scope.get("sucursales_ids") or []
+            unique_ids = {int(sucursal.id) for sucursal in sucursales}
+            for sucursal_id in unique_ids:
+                instances.append(
+                    UsuarioModuloSucursal(
+                        usuario=usuario,
+                        modulo=modulo,
+                        sucursal_id=sucursal_id,
+                    )
+                )
 
-        # Crear nuevas asignaciones
-        create_ids = target_ids - current_ids
-        UsuarioSucursal.objects.bulk_create(
-            [
-                UsuarioSucursal(usuario=usuario, sucursal_id=sucursal_id)
-                for sucursal_id in create_ids
-            ]
-        )
+        if instances:
+            UsuarioModuloSucursal.objects.bulk_create(instances)
 
     def get_permisos_resumen(self, obj):
         return build_permissions_summary(
@@ -307,6 +333,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             data["permisos_personalizados"] = []
 
         data["sucursales"] = self.get_sucursales(instance)
+        data["sucursales_por_modulo"] = self.get_sucursales_por_modulo(instance)
         data.setdefault("telefono", "")
         data.setdefault("cargo", "")
         return data
@@ -316,6 +343,17 @@ class UsuarioSerializer(serializers.ModelSerializer):
         return [
             {"id": asignacion.sucursal.id, "nombre": asignacion.sucursal.nombre}
             for asignacion in asignaciones
+        ]
+
+    def get_sucursales_por_modulo(self, obj):
+        grouped = {}
+        scopes = obj.alcances_sucursal.all()
+        for scope in scopes:
+            grouped.setdefault(scope.modulo, set()).add(int(scope.sucursal_id))
+
+        return [
+            {"modulo": modulo, "sucursales_ids": sorted(sucursal_ids)}
+            for modulo, sucursal_ids in grouped.items()
         ]
 
 

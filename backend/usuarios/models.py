@@ -23,8 +23,10 @@ class Rol(models.Model):
 
     def __str__(self) -> str:
         return self.nombre
+
+
 class RolPermiso(models.Model):
-    """Permisos específicos asignados a un rol para un módulo."""
+    """Permisos especificos asignados a un rol para un modulo."""
 
     class Modulos(models.TextChoices):
         INVENTARIO = "inventario", "Inventario"
@@ -41,7 +43,7 @@ class RolPermiso(models.Model):
         CONFIGURACION = "configuracion", "Configuraciones"
 
     class SubModulos(models.TextChoices):
-        """Submódulos disponibles para permisos específicos (solo general)."""
+        """Submodulos disponibles para permisos especificos (solo general)."""
 
         GENERAL = "", "General"
 
@@ -87,13 +89,28 @@ class RolPermiso(models.Model):
         if self.submodulo:
             raise ValidationError(
                 {
-                    "submodulo": "Los submódulos están deshabilitados; usa solo 'General'.",
+                    "submodulo": "Los submodulos estan deshabilitados; usa solo 'General'.",
                 }
             )
 
 
+MODULOS_CON_ALCANCE_SUCURSAL = (
+    RolPermiso.Modulos.INVENTARIO,
+    RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+    RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+    RolPermiso.Modulos.SUCURSALES_SUCURSALES,
+    RolPermiso.Modulos.SUCURSALES_BODEGAS,
+    RolPermiso.Modulos.SOLICITUDES,
+)
+MODULOS_CON_ALCANCE_SUCURSAL_CHOICES = tuple(
+    (key, label)
+    for key, label in RolPermiso.Modulos.choices
+    if key in MODULOS_CON_ALCANCE_SUCURSAL
+)
+
+
 class UsuarioSucursal(models.Model):
-    """Asignación de un usuario a una sucursal específica."""
+    """Asignacion de un usuario a una sucursal especifica."""
 
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -116,3 +133,38 @@ class UsuarioSucursal(models.Model):
     def __str__(self) -> str:
         rol = f" - {self.rol}" if self.rol else ""
         return f"{self.usuario} @ {self.sucursal}{rol}"
+
+
+class UsuarioModuloSucursal(models.Model):
+    """Alcance de sucursales permitido a un usuario por modulo."""
+
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="alcances_sucursal",
+    )
+    modulo = models.CharField(
+        max_length=50,
+        choices=MODULOS_CON_ALCANCE_SUCURSAL_CHOICES,
+    )
+    sucursal = models.ForeignKey(
+        "inventario.Sucursal",
+        on_delete=models.CASCADE,
+        related_name="usuarios_por_modulo",
+    )
+
+    class Meta:
+        verbose_name = "Alcance de sucursal por modulo"
+        verbose_name_plural = "Alcances de sucursal por modulo"
+        unique_together = ("usuario", "modulo", "sucursal")
+        ordering = ["usuario__id", "modulo", "sucursal__nombre"]
+
+    def clean(self):
+        super().clean()
+        if self.modulo not in MODULOS_CON_ALCANCE_SUCURSAL:
+            raise ValidationError(
+                {"modulo": "El modulo seleccionado no admite alcance por sucursal."}
+            )
+
+    def __str__(self) -> str:
+        return f"{self.usuario} - {self.modulo} @ {self.sucursal}"

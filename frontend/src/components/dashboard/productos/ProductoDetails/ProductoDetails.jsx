@@ -331,7 +331,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     try {
       const [inventoriesRes, branchesRes, bodegasRes, subdivisionsRes] = await Promise.all([
         authFetch(`${API_URL}/inventario/inventario/`, {}, token),
-        authFetch(`${API_URL}/inventario/sucursales/`, {}, token),
+        authFetch(`${API_URL}/inventario/sucursales/?modulo=productos`, {}, token),
         authFetch(`${API_URL}/inventario/bodegas/`, {}, token),
         authFetch(`${API_URL}/inventario/subdivisiones/`, {}, token),
       ])

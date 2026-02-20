@@ -28,6 +28,16 @@ const serializeMatrix = (matrix) =>
     })
     .filter(Boolean)
 
+const serializeModuleBranchMatrix = (matrix) =>
+  Object.entries(matrix)
+    .map(([modulo, sucursales]) => ({
+      modulo,
+      sucursales_ids: Array.from(
+        new Set((Array.isArray(sucursales) ? sucursales : []).map((id) => Number(id)).filter(Number.isFinite))
+      ),
+    }))
+    .filter((entry) => entry.sucursales_ids.length > 0)
+
 const initialForm = {
   nombres: '',
   apellidos: '',
@@ -43,11 +53,12 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordCopied, setPasswordCopied] = useState(false)
   const [permissionOptions, setPermissionOptions] = useState([])
+  const [branchScopedModules, setBranchScopedModules] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
+  const [moduleBranchMatrix, setModuleBranchMatrix] = useState({})
   const [permissionsLoading, setPermissionsLoading] = useState(false)
   const [branches, setBranches] = useState([])
   const [branchesLoading, setBranchesLoading] = useState(false)
-  const [selectedBranches, setSelectedBranches] = useState([])
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [isMaximized, setIsMaximized] = useState(false)
@@ -98,7 +109,11 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
       const data = await response.json().catch(() => ({}))
       const modulos = Array.isArray(data?.modulos) ? data.modulos : []
+      const modulosConSucursal = Array.isArray(data?.modulos_con_sucursales)
+        ? data.modulos_con_sucursales
+        : []
       setPermissionOptions(modulos)
+      setBranchScopedModules(modulosConSucursal)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
@@ -110,7 +125,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     setBranchesLoading(true)
     try {
       const response = await authFetch(
-        `${API_URL}/inventario/sucursales/`,
+        `${API_URL}/inventario/sucursales/?modulo=usuarios`,
         {},
         token
       )
@@ -134,8 +149,9 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     setConfirmPassword('')
     setPasswordCopied(false)
     setPermissionsMatrix({})
+    setModuleBranchMatrix({})
+    setBranchScopedModules([])
     setBranches([])
-    setSelectedBranches([])
     setActiveTab('general')
     setIsMaximized(false)
     restoreRef.current = null
@@ -185,6 +201,10 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       const hasAction = ACTIONS.some((action) => updatedEntry[action.key])
 
       if (!hasAction) {
+        setModuleBranchMatrix((prevScopes) => {
+          const { [moduleKey]: _ignored, ...restScopes } = prevScopes
+          return restScopes
+        })
         const { [moduleKey]: _ignored, ...rest } = prev
         return rest
       }
@@ -193,11 +213,16 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     })
   }
 
-  const toggleBranch = (branchId) => {
-    setSelectedBranches((prev) => {
-      const exists = prev.includes(branchId)
-      if (exists) return prev.filter((id) => id !== branchId)
-      return [...prev, branchId]
+  const toggleModuleBranch = (moduleKey, branchId) => {
+    setModuleBranchMatrix((prev) => {
+      const current = Array.isArray(prev[moduleKey]) ? prev[moduleKey] : []
+      const exists = current.includes(branchId)
+      const next = exists ? current.filter((id) => id !== branchId) : [...current, branchId]
+      if (!next.length) {
+        const { [moduleKey]: _ignored, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [moduleKey]: next }
     })
   }
 
@@ -237,7 +262,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       telefono: formData.telefono.trim(),
       cargo: formData.cargo.trim(),
       permisos_personalizados: serializeMatrix(permissionsMatrix),
-      sucursales_ids: selectedBranches,
+      sucursales_por_modulo: serializeModuleBranchMatrix(moduleBranchMatrix),
     }
 
     if (!payload.nombres || !payload.apellidos || !payload.correo) {
@@ -276,7 +301,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
           data?.password?.[0] ||
           data?.nombres?.[0] ||
           data?.roles?.[0] ||
-          data?.sucursales_ids?.[0] ||
+          data?.sucursales_por_modulo?.[0] ||
           data?.permisos_personalizados?.[0] ||
           'No se pudo crear el usuario. Verifica la información enviada.'
         throw new Error(detail)
@@ -287,6 +312,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       setConfirmPassword('')
       setPasswordCopied(false)
       setPermissionsMatrix({})
+      setModuleBranchMatrix({})
       onCreated?.({ ...data, password })
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al crear el usuario.')
@@ -664,31 +690,44 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
             {activeTab === 'sucursales' && (
               <section className="create-user__section">
-                <div className="create-user__section-header">
-                  <div>
-                    <p className="create-user__eyebrow">Sucursales</p>
-                    <h4>Acceso por sucursal</h4>
-                  </div>
-                  {(branchesLoading || !branches.length) && (
+                {(branchesLoading || !branches.length) && (
+                  <div className="create-user__section-header">
                     <small className="muted">{branchesLoading ? 'Cargando sucursales...' : 'No hay sucursales registradas.'}</small>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div className="create-user__branches">
-                  {branches.map((branch) => (
-                    <label key={branch.id} className="create-user__branch-option">
-                      <input
-                        type="checkbox"
-                        checked={selectedBranches.includes(branch.id)}
-                        onChange={() => toggleBranch(branch.id)}
-                        disabled={loading || branchesLoading}
-                      />
-                      <div className="create-user__branch-info">
-                        <span>{branch.nombre}</span>
-                        {branch.direccion ? <small>{branch.direccion}</small> : null}
+                <div className="create-user__module-scopes">
+                  {branchScopedModules.map((module) => {
+                    const moduleEntry = permissionsMatrix[module.key] || {}
+                    const hasModulePermission = ACTIONS.some((action) => Boolean(moduleEntry[action.key]))
+                    const selectedForModule = moduleBranchMatrix[module.key] || []
+                    return (
+                      <div key={module.key} className="create-user__module-scope-card">
+                        <div className="create-user__module-scope-head">
+                          <strong>{module.label}</strong>
+                          {!hasModulePermission && (
+                            <small className="muted">Activa al menos un permiso de este modulo para asignar sucursales.</small>
+                          )}
+                        </div>
+                        <div className="create-user__branches">
+                          {branches.map((branch) => (
+                            <label key={`${module.key}-${branch.id}`} className="create-user__branch-option">
+                              <input
+                                type="checkbox"
+                                checked={selectedForModule.includes(branch.id)}
+                                onChange={() => toggleModuleBranch(module.key, branch.id)}
+                                disabled={loading || branchesLoading || !hasModulePermission}
+                              />
+                              <div className="create-user__branch-info">
+                                <span>{branch.nombre}</span>
+                                {branch.direccion ? <small>{branch.direccion}</small> : null}
+                              </div>
+                            </label>
+                          ))}
+                        </div>
                       </div>
-                    </label>
-                  ))}
+                    )
+                  })}
                 </div>
               </section>
             )}

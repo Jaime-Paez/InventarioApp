@@ -179,7 +179,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
         estadosProductoRes,
         salidaRes,
       ] = await Promise.all([
-        authFetch(`${API_URL}/inventario/sucursales/`, {}, token),
+        authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_salidas`, {}, token),
         authFetch(`${API_URL}/tipos/tipos-movimiento/`, {}, token),
         authFetch(`${API_URL}/tipos/subtipos-movimiento/`, {}, token),
         authFetch(`${API_URL}/tipos/estados-movimiento/`, {}, token),

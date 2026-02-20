@@ -95,6 +95,25 @@ class SucursalesModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.SUCURSALES_SUCURSALES
 
 
+class SucursalScopedModulePermission(ModulePermission):
+    """
+    Permite listar sucursales segun el modulo consultado via querystring.
+
+    - GET/HEAD/OPTIONS con `?modulo=<key>` valida ese modulo.
+    - Escritura mantiene el modulo propio de sucursales.
+    """
+
+    module_key = RolPermiso.Modulos.SUCURSALES_SUCURSALES
+
+    def get_target_module_keys(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            query_module = (request.query_params.get("modulo") or "").strip()
+            valid_modules = {key for key, _ in RolPermiso.Modulos.choices}
+            if query_module and query_module in valid_modules:
+                return [query_module]
+        return [self.module_key]
+
+
 class BodegasModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.SUCURSALES_BODEGAS
 

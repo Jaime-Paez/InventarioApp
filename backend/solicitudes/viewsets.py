@@ -1,7 +1,9 @@
 from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 
+from usuarios.models import RolPermiso
 from usuarios.permissions import ClientesModulePermission, SolicitudesModulePermission
+from usuarios.sucursal_scope import apply_sucursal_scope, ensure_sucursal_allowed
 
 from .models import Cliente, OEMProductoSolicitado, ProductoSolicitado, Solicitud
 from .serializers import (
@@ -70,3 +72,30 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         "sucursal__nombre",
     ]
     ordering_fields = ["fecha", "cantidad", "cliente__nombres", "cliente__apellidos", "sucursal__nombre"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return apply_sucursal_scope(
+            queryset,
+            self.request.user,
+            RolPermiso.Modulos.SOLICITUDES,
+            "sucursal_id",
+        )
+
+    def perform_create(self, serializer):
+        sucursal = serializer.validated_data.get("sucursal")
+        ensure_sucursal_allowed(
+            self.request.user,
+            RolPermiso.Modulos.SOLICITUDES,
+            getattr(sucursal, "id", None),
+        )
+        serializer.save()
+
+    def perform_update(self, serializer):
+        sucursal = serializer.validated_data.get("sucursal", serializer.instance.sucursal)
+        ensure_sucursal_allowed(
+            self.request.user,
+            RolPermiso.Modulos.SOLICITUDES,
+            getattr(sucursal, "id", None),
+        )
+        serializer.save()

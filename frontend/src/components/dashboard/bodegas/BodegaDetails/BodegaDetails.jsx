@@ -97,7 +97,7 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
 
   const fetchBranches = useCallback(async () => {
     try {
-      const response = await authFetch(`${API_URL}/inventario/sucursales/`, {}, token)
+      const response = await authFetch(`${API_URL}/inventario/sucursales/?modulo=sucursales_bodegas`, {}, token)
       if (!response.ok) throw new Error('No se pudieron cargar las sucursales.')
       const data = await response.json()
       const list = Array.isArray(data) ? data : data?.results || []

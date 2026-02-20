@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.models import Group, Permission
-from .models import Rol, RolPermiso, UsuarioSucursal
+from .models import Rol, RolPermiso, UsuarioModuloSucursal, UsuarioSucursal
 
 
 class RolPermisoInline(admin.TabularInline):
@@ -36,6 +36,18 @@ class UsuarioSucursalAdmin(admin.ModelAdmin):
         "rol",
     )
     list_filter = ("es_responsable", "sucursal")
+
+
+@admin.register(UsuarioModuloSucursal)
+class UsuarioModuloSucursalAdmin(admin.ModelAdmin):
+    list_display = ("usuario", "modulo", "sucursal")
+    list_filter = ("modulo", "sucursal")
+    search_fields = (
+        "usuario__first_name",
+        "usuario__last_name",
+        "usuario__email",
+        "sucursal__nombre",
+    )
 
 
 # ---- Ocultar grupos/permisos del admin nativo de Django ----

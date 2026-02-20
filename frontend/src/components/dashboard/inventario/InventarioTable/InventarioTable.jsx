@@ -168,7 +168,7 @@ function InventarioTable({ token }) {
       const [productsData, inventoriesData, branchesData, bodegasData, subdivisionsData] = await Promise.all([
         fetchAllPages(`${API_URL}/productos/listado/`, 'No se pudieron cargar los productos.'),
         fetchAllPages(`${API_URL}/inventario/inventario/`, 'No se pudo cargar el inventario.'),
-        fetchAllPages(`${API_URL}/inventario/sucursales/`, 'No se pudieron cargar las sucursales.'),
+        fetchAllPages(`${API_URL}/inventario/sucursales/?modulo=inventario`, 'No se pudieron cargar las sucursales.'),
         fetchAllPages(`${API_URL}/inventario/bodegas/`, 'No se pudieron cargar las bodegas.'),
         fetchAllPages(`${API_URL}/inventario/subdivisiones/`, 'No se pudieron cargar las subdivisiones.'),
       ])

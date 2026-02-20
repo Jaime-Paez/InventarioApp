@@ -1,12 +1,10 @@
 from django.contrib.auth import get_user_model
 
-from .models import Rol
+from .models import MODULOS_CON_ALCANCE_SUCURSAL, Rol, RolPermiso, UsuarioModuloSucursal
 
 
 def build_full_permissions():
-    """Devuelve permisos completos (crear/leer/actualizar/eliminar) por módulo."""
-
-    from .models import RolPermiso  # import tardío para evitar ciclos
+    """Devuelve permisos completos (crear/leer/actualizar/eliminar) por modulo."""
 
     return [
         {
@@ -27,9 +25,9 @@ def get_usuario_interno_por_correo(email):
     if not email:
         return None
 
-    User = get_user_model()
+    user_model = get_user_model()
     return (
-        User.objects.prefetch_related("roles__permisos")
+        user_model.objects.prefetch_related("roles__permisos")
         .filter(email__iexact=email)
         .first()
     )
@@ -79,7 +77,7 @@ def get_permisos_efectivos(usuario, email):
 
 
 def build_permissions_summary(roles, extra_roles=None):
-    """Agrupa los permisos de una colección de roles en una lista consolidada."""
+    """Agrupa los permisos de una coleccion de roles en una lista consolidada."""
 
     roles_to_process = list(roles) + [r for r in extra_roles or [] if r]
     summary = {}
@@ -121,3 +119,28 @@ def remove_personalized_role_for_email(email):
     if role:
         role.permisos.all().delete()
         role.delete()
+
+
+def get_modulos_con_alcance_sucursal_options():
+    return [
+        {"key": modulo_key, "label": modulo_label}
+        for modulo_key, modulo_label in RolPermiso.Modulos.choices
+        if modulo_key in MODULOS_CON_ALCANCE_SUCURSAL
+    ]
+
+
+def build_sucursal_scope_summary(usuario):
+    if not usuario:
+        return []
+
+    grouped = {}
+    rows = UsuarioModuloSucursal.objects.filter(usuario=usuario).values_list(
+        "modulo", "sucursal_id"
+    )
+    for modulo, sucursal_id in rows:
+        grouped.setdefault(modulo, set()).add(int(sucursal_id))
+
+    return [
+        {"modulo": modulo, "sucursales_ids": sorted(sucursal_ids)}
+        for modulo, sucursal_ids in grouped.items()
+    ]

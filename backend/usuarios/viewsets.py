@@ -20,6 +20,7 @@ from .serializers import (
 )
 from .utils import (
     build_full_permissions,
+    get_modulos_con_alcance_sucursal_options,
     get_permisos_efectivos,
     get_personalized_role_for_email,
     get_usuario_interno_por_correo,
@@ -49,6 +50,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         get_user_model().objects.prefetch_related(
             "roles__permisos",
             "asignaciones__sucursal",
+            "alcances_sucursal__sucursal",
         )
         .all()
         .order_by("last_name", "first_name")
@@ -204,4 +206,10 @@ class PermisosDisponiblesAPIView(APIView):
             for modulo_key, modulo_label in RolPermiso.Modulos.choices
         ]
 
-        return Response({"modulos": modulos, "acciones": acciones})
+        return Response(
+            {
+                "modulos": modulos,
+                "acciones": acciones,
+                "modulos_con_sucursales": get_modulos_con_alcance_sucursal_options(),
+            }
+        )
