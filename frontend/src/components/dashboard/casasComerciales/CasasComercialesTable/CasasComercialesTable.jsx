@@ -26,7 +26,7 @@ const isCheckboxSelection = (event) => {
 function CasasComercialesTable({ token, onSelect }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
-  const globalSearchRef = useRef(null)
+
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
       toast.current?.show({
@@ -257,14 +257,6 @@ function CasasComercialesTable({ token, onSelect }) {
     initFilters()
     setSearchCriteria(initialSearchCriteria)
     if (allCompanies.length) setCompanies(allCompanies)
-  }
-
-  const onGlobalFilterChange = (e) => {
-    const value = e.target.value
-    const _filters = { ...filters }
-    _filters.global = { ..._filters.global, value }
-    setFilters(_filters)
-    setGlobalFilterValue(value)
   }
 
   const filterClearTemplate = (options) => (
@@ -516,22 +508,11 @@ function CasasComercialesTable({ token, onSelect }) {
   const dataLength = companies?.length ?? 0
   const emptyMessage = lastSearchRef.current
     ? 'No se encontraron casas comerciales'
-    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
+    : 'Realice una bÃºsqueda para ver la informaciÃ³n. Si quiere ver toda la informaciÃ³n, haga la bÃºsqueda sin aplicar ningÃºn filtro.'
 
   const header = (
     <div className="users-header">
       <div className="users-header__left">
-        <div className="search-input-container">
-          <i className="pi pi-search search-input-icon" />
-          <input
-            ref={globalSearchRef}
-            className="search-input"
-            type="search"
-            placeholder="Buscar en tabla"
-            value={globalFilterValue}
-            onChange={onGlobalFilterChange}
-          />
-        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
@@ -981,7 +962,7 @@ function CasasComercialesTable({ token, onSelect }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? '🗕' : '🗖'}
+                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
                 </button>
                 <button
                   type="button"
@@ -989,7 +970,7 @@ function CasasComercialesTable({ token, onSelect }) {
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </header>

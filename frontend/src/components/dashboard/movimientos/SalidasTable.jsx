@@ -22,7 +22,7 @@ const isSalida = (label) => normalizeValue(label).startsWith('sal')
 
 function SalidasTable({ token }) {
   const toast = useRef(null)
-  const globalSearchRef = useRef(null)
+
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
       toast.current?.show({
@@ -128,14 +128,6 @@ function SalidasTable({ token }) {
     initFilters()
   }
 
-  const onGlobalFilterChange = (e) => {
-    const value = e.target.value
-    const nextFilters = { ...filters }
-    nextFilters.global = { ...nextFilters.global, value }
-    setFilters(nextFilters)
-    setGlobalFilterValue(value)
-  }
-
   const cellWithTooltip = (rowData, field) => {
     const content = rowData?.[field] ?? '-'
     const textColor = content === '-' ? '#9ca3af' : undefined
@@ -186,17 +178,6 @@ function SalidasTable({ token }) {
   const header = (
     <div className="users-header">
       <div className="users-header__left">
-        <div className="search-input-container">
-          <i className="pi pi-search search-input-icon" />
-          <input
-            ref={globalSearchRef}
-            className="search-input"
-            type="search"
-            placeholder="Buscar"
-            value={globalFilterValue}
-            onChange={onGlobalFilterChange}
-          />
-        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={fetchMovimientos} disabled={loading} title="Recargar">
           <i className="pi pi-refresh" />

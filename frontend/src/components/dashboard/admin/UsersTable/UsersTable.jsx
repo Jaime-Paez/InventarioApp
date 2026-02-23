@@ -16,7 +16,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const formatFullName = (u) =>
-  [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || '—'
+  [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || 'â€”'
 
 const normId = (v) => (v == null ? null : String(v))
 const isCheckboxSelection = (event) => {
@@ -39,7 +39,7 @@ function UsersTable({
 }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
-  const globalSearchRef = useRef(null)
+
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
       toast.current?.show({
@@ -83,7 +83,7 @@ function UsersTable({
       setAllUsers(list)
       return list
     } catch (e) {
-      const msg = e?.message || 'Ocurrió un error al cargar los usuarios.'
+      const msg = e?.message || 'OcurriÃ³ un error al cargar los usuarios.'
       setError(msg)
       toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
     } finally {
@@ -218,14 +218,6 @@ function UsersTable({
     setUsers(applySearchFilters(source, lastSearchRef.current))
   }
 
-  const onGlobalFilterChange = (e) => {
-    const value = e.target.value
-    const _filters = { ...filters }
-    _filters.global = { ..._filters.global, value }
-    setFilters(_filters)
-    setGlobalFilterValue(value)
-  }
-
   const filterClearTemplate = (options) => (
     <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
       <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
@@ -239,7 +231,7 @@ function UsersTable({
   )
 
   // =========================================================
-  // ✅ Row selection (Prime nativo) + persistencia por IDs
+  // âœ… Row selection (Prime nativo) + persistencia por IDs
   // =========================================================
   const [selectedUsers, setSelectedUsers] = useState([]) // rows completos
 
@@ -251,7 +243,7 @@ function UsersTable({
   const allRowIds = useMemo(() => users.map((u) => normId(u?.id)).filter(Boolean), [users])
   const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
 
-  // Restore selección (IDs) al iniciar
+  // Restore selecciÃ³n (IDs) al iniciar
   useEffect(() => {
     const saved = sessionStorage.getItem('usuarios-table-selected-rows')
     if (!saved) return
@@ -266,7 +258,7 @@ function UsersTable({
     }
   }, [])
 
-  // Cuando cambia users, aplica la selección pendiente (ids -> rows)
+  // Cuando cambia users, aplica la selecciÃ³n pendiente (ids -> rows)
   useEffect(() => {
     const pending = sessionStorage.getItem('usuarios-table-selected-rows-pending')
     if (!pending) return
@@ -287,7 +279,7 @@ function UsersTable({
     }
   }, [users])
 
-  // Limpia selección si ya no existe en la data
+  // Limpia selecciÃ³n si ya no existe en la data
   useEffect(() => {
     if (!users?.length) {
       if (selectedUsers?.length) setSelectedUsers([])
@@ -310,7 +302,7 @@ function UsersTable({
     )
   }, [selectedRowIds, allRowsSelected])
 
-  // ✅ Estilos duros para clavar el ancho (header + body)
+  // âœ… Estilos duros para clavar el ancho (header + body)
   const selectionColStyle = useMemo(
     () => ({
       width: '40px',
@@ -324,10 +316,10 @@ function UsersTable({
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
+      { nombrevar: 'codigo', header: 'CÃ³digo', filterPlaceholder: 'Buscar por cÃ³digo' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
       { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
-      { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
+      { nombrevar: 'telefono', header: 'TelÃ©fono', filterPlaceholder: 'Buscar por telÃ©fono' },
       { nombrevar: 'cargo', header: 'Cargo', filterPlaceholder: 'Buscar por cargo' },
       { nombrevar: 'activo', header: 'Estado', filterPlaceholder: 'Filtrar estado' },
     ],
@@ -437,8 +429,8 @@ function UsersTable({
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
-    const content = rowData?.[field] ?? '—'
-    const textColor = content === '—' ? '#9ca3af' : undefined
+    const content = rowData?.[field] ?? 'â€”'
+    const textColor = content === 'â€”' ? '#9ca3af' : undefined
     return (
       <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: textColor }}>
         {String(content)}
@@ -447,8 +439,8 @@ function UsersTable({
   }
 
   const codigoBodyTemplate = (rowData) => {
-    const code = rowData?.codigo ?? rowData?.id ?? '—'
-    const textColor = code === '—' ? '#9ca3af' : undefined
+    const code = rowData?.codigo ?? rowData?.id ?? 'â€”'
+    const textColor = code === 'â€”' ? '#9ca3af' : undefined
     return (
       <span className="cell-tooltip" data-pr-tooltip={String(code)} style={{ color: textColor }}>
         {String(code)}
@@ -500,7 +492,7 @@ function UsersTable({
 
   const handleRowClick = (event) => {
     const t = event?.originalEvent?.target
-    // ✅ No abrir modal si hicieron click en el checkbox/columna de selección
+    // âœ… No abrir modal si hicieron click en el checkbox/columna de selecciÃ³n
     if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
 
     const id = event?.data?.id
@@ -530,17 +522,6 @@ function UsersTable({
   const header = (
     <div className="users-header">
       <div className="users-header__left">
-        <div className="search-input-container">
-          <i className="pi pi-search search-input-icon" />
-          <input
-            ref={globalSearchRef}
-            className="search-input"
-            type="search"
-            placeholder="Buscar"
-            value={globalFilterValue}
-            onChange={onGlobalFilterChange}
-          />
-        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
@@ -584,7 +565,7 @@ function UsersTable({
   const handleUserCreated = () => {
     setShowCreateModal(false)
     refreshData()
-    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario creado correctamente', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Ã‰xito', detail: 'Usuario creado correctamente', life: 2500 })
   }
 
   const focusSearch = () => setShowSearchModal(true)
@@ -802,7 +783,7 @@ function UsersTable({
           columnResizeMode="fit"
           onRowClick={handleRowClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
-          // ✅ selección nativa
+          // âœ… selecciÃ³n nativa
           selectionMode="multiple"
           selection={selectedUsers}
           onSelectionChange={(e) => {
@@ -813,7 +794,7 @@ function UsersTable({
             console.log('Usuarios seleccionados:', ids)
           }}
         >
-          {/* ✅ Columna de selección nativa (checkbox + header checkbox) */}
+          {/* âœ… Columna de selecciÃ³n nativa (checkbox + header checkbox) */}
           <Column
             selectionMode="multiple"
             frozen
@@ -944,7 +925,7 @@ function UsersTable({
                     onClick={toggleSearchMaximize}
                     aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                   >
-                    {isSearchMaximized ? '🗕' : '🗖'}
+                    {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
                   </button>
                   <button
                     type="button"
@@ -952,7 +933,7 @@ function UsersTable({
                     onClick={() => setShowSearchModal(false)}
                     aria-label="Cerrar"
                   >
-                    ×
+                    Ã—
                   </button>
                 </div>
               </header>

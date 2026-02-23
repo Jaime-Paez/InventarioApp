@@ -131,7 +131,7 @@ function InventarioTable({ token }) {
   const [ivaRate, setIvaRate] = useState(DEFAULT_IVA_RATE)
   const [ivaLoading, setIvaLoading] = useState(false)
   const opColumns = useRef(null)
-  const globalSearchRef = useRef(null)
+
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
 
@@ -179,7 +179,7 @@ function InventarioTable({ token }) {
       setBodegas(bodegasData)
       setSubdivisions(subdivisionsData)
     } catch (err) {
-      const message = err?.message || 'Ocurrió un error al cargar el inventario.'
+      const message = err?.message || 'OcurriÃ³ un error al cargar el inventario.'
       setError(message)
       showToast(message, 'Error', 'error')
     } finally {
@@ -490,14 +490,6 @@ function InventarioTable({ token }) {
     initFilters()
   }, [initFilters])
 
-  const onGlobalFilterChange = (e) => {
-    const value = e.target.value
-    const nextFilters = { ...(filters || {}) }
-    nextFilters.global = { ...(nextFilters.global || {}), value }
-    setFilters(nextFilters)
-    setGlobalFilterValue(value)
-  }
-
   const filterClearTemplate = (options) => (
     <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
       <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
@@ -567,7 +559,7 @@ function InventarioTable({ token }) {
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por Código' },
+      { nombrevar: 'codigo', header: 'CÃ³digo', filterPlaceholder: 'Buscar por CÃ³digo' },
       { nombrevar: 'nombre', header: 'Producto', filterPlaceholder: 'Buscar por producto' },
       { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
@@ -838,22 +830,11 @@ function InventarioTable({ token }) {
   const dataLength = hasSearch ? filteredRows.length : 0
   const emptyMessage = hasSearch
     ? 'No se encontraron registros'
-    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
+    : 'Realice una bÃºsqueda para ver la informaciÃ³n. Si quiere ver toda la informaciÃ³n, haga la bÃºsqueda sin aplicar ningÃºn filtro.'
 
   const header = (
     <div className="users-header">
       <div className="users-header__left">
-        <div className="search-input-container">
-          <i className="pi pi-search search-input-icon" />
-          <input
-            ref={globalSearchRef}
-            className="search-input"
-            type="search"
-            placeholder="Buscar"
-            value={globalFilterValue}
-            onChange={onGlobalFilterChange}
-          />
-        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading} title="Recargar">
           <i className="pi pi-refresh" />
@@ -1260,7 +1241,7 @@ function InventarioTable({ token }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? '🗕' : '🗖'}
+                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
                 </button>
                 <button
                   type="button"
@@ -1268,7 +1249,7 @@ function InventarioTable({ token }) {
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </header>

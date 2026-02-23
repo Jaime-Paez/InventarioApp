@@ -26,7 +26,7 @@ const isCheckboxSelection = (event) => {
 function BodegasTable({ token, onSelect }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
-  const globalSearchRef = useRef(null)
+
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
       toast.current?.show({
@@ -47,7 +47,7 @@ function BodegasTable({ token, onSelect }) {
   const normalizeList = useCallback((list) => {
     return list.map((warehouse) => ({
       ...warehouse,
-      sucursal_nombre: warehouse?.sucursal?.nombre ?? '—',
+      sucursal_nombre: warehouse?.sucursal?.nombre ?? 'â€”',
       ubicaciones_count: Array.isArray(warehouse?.ubicaciones) ? warehouse.ubicaciones.length : 0,
     }))
   }, [])
@@ -79,7 +79,7 @@ function BodegasTable({ token, onSelect }) {
       setAllWarehouses(normalized)
       return normalized
     } catch (e) {
-      const msg = e?.message || 'Ocurrió un error al cargar las bodegas.'
+      const msg = e?.message || 'OcurriÃ³ un error al cargar las bodegas.'
       setError(msg)
       toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
     } finally {
@@ -201,15 +201,6 @@ function BodegasTable({ token, onSelect }) {
     setShowSearchModal(false)
     const source = allWarehouses.length ? allWarehouses : (await fetchWarehouses()) || []
     setWarehouses(applySearchFilters(source, lastSearchRef.current))
-  }
-
-
-  const onGlobalFilterChange = (e) => {
-    const value = e.target.value
-    const _filters = { ...filters }
-    _filters.global = { ..._filters.global, value }
-    setFilters(_filters)
-    setGlobalFilterValue(value)
   }
 
   const filterClearTemplate = (options) => (
@@ -408,8 +399,8 @@ function BodegasTable({ token, onSelect }) {
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
-    const content = rowData?.[field] ?? '—'
-    const textColor = content === '—' ? '#9ca3af' : undefined
+    const content = rowData?.[field] ?? 'â€”'
+    const textColor = content === 'â€”' ? '#9ca3af' : undefined
     return (
       <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: textColor }}>
         {String(content)}
@@ -418,7 +409,7 @@ function BodegasTable({ token, onSelect }) {
   }
 
   const nombreBodyTemplate = (rowData) => {
-    const name = rowData?.nombre ?? '—'
+    const name = rowData?.nombre ?? 'â€”'
     return (
       <span className="cell-tooltip" data-pr-tooltip={name}>
         {name}
@@ -428,7 +419,7 @@ function BodegasTable({ token, onSelect }) {
 
   const numericBodyTemplate = (rowData, field) => {
     const value = Number(rowData?.[field])
-    if (!Number.isFinite(value)) return <span className="cell-tooltip">—</span>
+    if (!Number.isFinite(value)) return <span className="cell-tooltip">â€”</span>
     const text = field === 'ubicaciones_count' ? String(value) : value.toFixed(2)
     return (
       <span className="cell-tooltip" data-pr-tooltip={text}>
@@ -472,17 +463,6 @@ function BodegasTable({ token, onSelect }) {
   const header = (
     <div className="users-header">
       <div className="users-header__left">
-        <div className="search-input-container">
-          <i className="pi pi-search search-input-icon" />
-          <input
-            ref={globalSearchRef}
-            className="search-input"
-            type="search"
-            placeholder="Buscar"
-            value={globalFilterValue}
-            onChange={onGlobalFilterChange}
-          />
-        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
@@ -516,7 +496,7 @@ function BodegasTable({ token, onSelect }) {
   const handleCreated = () => {
     setShowCreateModal(false)
     refreshData()
-    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Bodega creada correctamente', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Ã‰xito', detail: 'Bodega creada correctamente', life: 2500 })
   }
 
   const focusSearch = () => setShowSearchModal(true)
@@ -870,7 +850,7 @@ function BodegasTable({ token, onSelect }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? '🗕' : '🗖'}
+                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
                 </button>
                 <button
                   type="button"
@@ -878,7 +858,7 @@ function BodegasTable({ token, onSelect }) {
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </header>

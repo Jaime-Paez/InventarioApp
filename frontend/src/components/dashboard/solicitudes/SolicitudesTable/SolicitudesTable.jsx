@@ -32,7 +32,7 @@ const isCheckboxSelection = (event) => {
 function SolicitudesTable({ token, onSelect }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
-  const globalSearchRef = useRef(null)
+
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
       toast.current?.show({
@@ -364,14 +364,6 @@ function SolicitudesTable({ token, onSelect }) {
     await fetchClients(lastSearchRef.current, 1, pageSize)
   }
 
-  const onGlobalFilterChange = (e) => {
-    const value = e.target.value
-    const nextFilters = { ...filters }
-    nextFilters.global = { ...nextFilters.global, value }
-    setFilters(nextFilters)
-    setGlobalFilterValue(value)
-  }
-
   const filterClearTemplate = (options) => (
     <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
       <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
@@ -627,22 +619,11 @@ function SolicitudesTable({ token, onSelect }) {
   const dataLength = totalRecords ?? 0
   const emptyMessage = lastSearchRef.current
     ? 'No se encontraron solicitudes'
-    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
+    : 'Realice una bÃºsqueda para ver la informaciÃ³n. Si quiere ver toda la informaciÃ³n, haga la bÃºsqueda sin aplicar ningÃºn filtro.'
 
   const header = (
     <div className="users-header">
       <div className="users-header__left">
-        <div className="search-input-container">
-          <i className="pi pi-search search-input-icon" />
-          <input
-            ref={globalSearchRef}
-            className="search-input"
-            type="search"
-            placeholder="Buscar"
-            value={globalFilterValue}
-            onChange={onGlobalFilterChange}
-          />
-        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
@@ -875,7 +856,7 @@ function SolicitudesTable({ token, onSelect }) {
         toast.current?.show({
           severity: 'info',
           summary: 'Cancelado',
-          detail: 'Se canceló la seleccion global.',
+          detail: 'Se cancelÃ³ la seleccion global.',
           life: 2500,
         })
         return
@@ -1356,7 +1337,7 @@ function SolicitudesTable({ token, onSelect }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? '🗕' : '🗖'}
+                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
                 </button>
                 <button
                   type="button"
@@ -1364,7 +1345,7 @@ function SolicitudesTable({ token, onSelect }) {
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             </header>
