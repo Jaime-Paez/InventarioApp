@@ -464,3 +464,4 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
 }
 
 export default SolicitudDetails
+

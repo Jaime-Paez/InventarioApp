@@ -22,7 +22,6 @@ const initialProductoDraft = {
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
-
 const normalizeString = (value) => String(value ?? '').trim().toLowerCase()
 
 function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
@@ -31,12 +30,17 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   const [clienteResultados, setClienteResultados] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+
   const [sucursalId, setSucursalId] = useState('')
   const [fecha, setFecha] = useState(todayISO())
   const [sucursales, setSucursales] = useState([])
   const [sucursalesLoading, setSucursalesLoading] = useState(false)
+
+  const [showProductoForm, setShowProductoForm] = useState(false)
   const [productoDraft, setProductoDraft] = useState(initialProductoDraft)
+  const [productoError, setProductoError] = useState('')
   const [productos, setProductos] = useState([])
+
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -82,14 +86,20 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     setClienteResultados([])
     setClienteLoading(false)
     setShowClienteDropdown(false)
+
     setSucursalId('')
     setFecha(todayISO())
+
+    setShowProductoForm(false)
     setProductoDraft(initialProductoDraft)
+    setProductoError('')
     setProductos([])
+
     setError('')
     setLoading(false)
     setIsMaximized(false)
     restoreRef.current = null
+
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current)
       searchTimerRef.current = null
@@ -152,7 +162,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
         const data = await response.json()
         const list = Array.isArray(data) ? data : data?.results || []
         setClienteResultados(list)
-      } catch (err) {
+      } catch {
         setClienteResultados([])
       } finally {
         setClienteLoading(false)
@@ -349,7 +359,15 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   const handleProductoDraftChange = (event) => {
     const { name, value } = event.target
     setProductoDraft((prev) => ({ ...prev, [name]: value }))
+    setProductoError('')
   }
+
+  const normalizeProductoKey = (item) =>
+    `${String(item?.nombre ?? '').trim().toLowerCase()}|${String(item?.descripcion ?? '')
+      .trim()
+      .toLowerCase()}|${String(item?.cantidad ?? '')}`
+
+  const productoKeySet = new Set(productos.map((item) => normalizeProductoKey(item)).filter(Boolean))
 
   const handleAgregarProducto = () => {
     const nombre = String(productoDraft.nombre || '').trim()
@@ -357,30 +375,35 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     const cantidad = Number(productoDraft.cantidad)
 
     if (!nombre) {
-      setError('El nombre del producto solicitado es obligatorio.')
+      setProductoError('Ingresa el nombre del producto solicitado.')
       return
     }
 
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
-      setError('La cantidad debe ser mayor a 0.')
+      setProductoError('La cantidad debe ser mayor a 0.')
       return
     }
 
-    setProductos((prev) => [
-      ...prev,
-      {
-        uid: `ps-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        nombre,
-        descripcion,
-        cantidad: Math.max(1, Math.floor(cantidad)),
-      },
-    ])
+    const item = {
+      uid: `ps-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      nombre,
+      descripcion,
+      cantidad: Math.max(1, Math.floor(cantidad)),
+    }
+
+    if (productoKeySet.has(normalizeProductoKey(item))) {
+      setProductoError('Ese producto ya esta en la tabla.')
+      return
+    }
+
+    setProductos((prev) => [...prev, item])
     setProductoDraft(initialProductoDraft)
-    setError('')
+    setProductoError('')
   }
 
   const handleQuitarProducto = (uid) => {
     setProductos((prev) => prev.filter((item) => item.uid !== uid))
+    setProductoError('')
   }
 
   const handleSubmit = async (event) => {
@@ -663,6 +686,21 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <p className="create-user__eyebrow">Productos</p>
                   <h4>Productos solicitados</h4>
                 </div>
+                <button
+                  type="button"
+                  className="create-user__ghost create-user__location-action"
+                  onClick={() => {
+                    setProductoError('')
+                    setShowProductoForm((prev) => {
+                      const next = !prev
+                      if (!next) setProductoDraft(initialProductoDraft)
+                      return next
+                    })
+                  }}
+                  disabled={loading}
+                >
+                  {showProductoForm ? 'Cancelar' : 'Agregar producto'}
+                </button>
               </div>
 
               <div className="create-user__locations-table create-user__locations-table--oem">
@@ -670,54 +708,56 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <span>Nombre</span>
                   <span>Descripcion</span>
                   <span>Cantidad</span>
-                  <span>Accion</span>
+                  <span>Acciones</span>
                 </div>
 
-                <div className="create-user__locations-row create-user__locations-row--form">
-                  <span>
-                    <input
-                      name="nombre"
-                      type="text"
-                      placeholder="Nombre del producto"
-                      value={productoDraft.nombre}
-                      onChange={handleProductoDraftChange}
-                      disabled={loading}
-                    />
-                  </span>
-                  <span>
-                    <input
-                      name="descripcion"
-                      type="text"
-                      placeholder="Descripcion"
-                      value={productoDraft.descripcion}
-                      onChange={handleProductoDraftChange}
-                      disabled={loading}
-                    />
-                  </span>
-                  <span>
-                    <input
-                      name="cantidad"
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={productoDraft.cantidad}
-                      onChange={handleProductoDraftChange}
-                      disabled={loading}
-                    />
-                  </span>
-                  <span className="create-user__locations-cell create-user__locations-cell--action">
-                    <button
-                      type="button"
-                      className="create-user__ghost"
-                      onClick={handleAgregarProducto}
-                      disabled={loading}
-                    >
-                      Agregar
-                    </button>
-                  </span>
-                </div>
+                {showProductoForm && (
+                  <div className="create-user__locations-row create-user__locations-row--form">
+                    <span>
+                      <input
+                        name="nombre"
+                        type="text"
+                        placeholder="Nombre del producto"
+                        value={productoDraft.nombre}
+                        onChange={handleProductoDraftChange}
+                        disabled={loading}
+                      />
+                    </span>
+                    <span>
+                      <input
+                        name="descripcion"
+                        type="text"
+                        placeholder="Descripcion"
+                        value={productoDraft.descripcion}
+                        onChange={handleProductoDraftChange}
+                        disabled={loading}
+                      />
+                    </span>
+                    <span>
+                      <input
+                        name="cantidad"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={productoDraft.cantidad}
+                        onChange={handleProductoDraftChange}
+                        disabled={loading}
+                      />
+                    </span>
+                    <span className="create-user__locations-cell create-user__locations-cell--action">
+                      <button
+                        type="button"
+                        className="create-user__ghost"
+                        onClick={handleAgregarProducto}
+                        disabled={loading}
+                      >
+                        Agregar
+                      </button>
+                    </span>
+                  </div>
+                )}
 
-                {!productos.length && (
+                {!productos.length && !showProductoForm && (
                   <div className="create-user__locations-row create-user__locations-row--empty">
                     <span>Sin productos agregados.</span>
                   </div>
@@ -734,6 +774,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                         className="create-user__locations-remove"
                         onClick={() => handleQuitarProducto(item.uid)}
                         disabled={loading}
+                        aria-label="Eliminar producto"
                       >
                         Ã—
                       </button>
@@ -741,6 +782,8 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   </div>
                 ))}
               </div>
+
+              {productoError && <div className="create-user__error">{productoError}</div>}
             </section>
           </div>
 
