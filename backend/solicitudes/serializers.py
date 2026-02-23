@@ -187,6 +187,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "producto_solicitado",
             "producto_id",
             "fecha",
+            "descripcion_general",
             "sucursal",
             "sucursal_id",
             "cliente",

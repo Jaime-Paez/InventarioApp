@@ -98,6 +98,7 @@ function SolicitudesTable({ token, onSelect }) {
           item?.producto_solicitado_data?.nombre || item?.producto_referencia || '-',
         producto_solicitado_descripcion:
           item?.producto_solicitado_data?.descripcion || '-',
+        descripcion_general: item?.descripcion_general || '-',
         producto_conseguido:
           item?.producto_resuelto_data
             ? `${item.producto_resuelto_data.codigo || ''} ${item.producto_resuelto_data.nombre || ''}`.trim()
@@ -254,6 +255,10 @@ function SolicitudesTable({ token, onSelect }) {
         constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
       },
       producto_solicitado_descripcion: {
+        operator: FilterOperator.AND,
+        constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
+      },
+      descripcion_general: {
         operator: FilterOperator.AND,
         constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
       },
@@ -463,6 +468,11 @@ function SolicitudesTable({ token, onSelect }) {
         nombrevar: 'producto_solicitado_descripcion',
         header: 'Descripcion',
         filterPlaceholder: 'Buscar por descripcion',
+      },
+      {
+        nombrevar: 'descripcion_general',
+        header: 'Comentario general',
+        filterPlaceholder: 'Buscar por comentario general',
       },
       {
         nombrevar: 'producto_conseguido',
@@ -1045,6 +1055,7 @@ function SolicitudesTable({ token, onSelect }) {
             'sucursal_nombre',
             'producto_solicitado_nombre',
             'producto_solicitado_descripcion',
+            'descripcion_general',
             'producto_conseguido',
             'cantidad',
             'conseguido_label',

@@ -20,6 +20,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
   const [error, setError] = useState('')
   const [linkingProduct, setLinkingProduct] = useState(false)
   const [showCreateProducto, setShowCreateProducto] = useState(false)
+  const [activeTab, setActiveTab] = useState('productos')
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -81,6 +82,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
     setError('')
     setShowCreateProducto(false)
     setLinkingProduct(false)
+    setActiveTab('productos')
     setIsMaximized(false)
     restoreRef.current = null
     fetchSolicitud()
@@ -296,7 +298,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              {isMaximized ? 'ðŸ—•' : 'ðŸ—–'}
+              <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -305,15 +307,26 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
               onClick={onClose}
               aria-label="Cerrar"
             >
-              Ã—
+              <i className="pi pi-times" aria-hidden="true" />
             </button>
           </div>
         </header>
 
         <div className="create-user__content">
           <div className="create-user__tabs" role="tablist" aria-label="Secciones de solicitud">
-            <button type="button" className="create-user__tab create-user__tab--active" disabled>
-              General
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'productos' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('productos')}
+            >
+              Productos
+            </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('cliente')}
+            >
+              Datos del cliente
             </button>
           </div>
 
@@ -324,35 +337,8 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
               </div>
             )}
 
-            {!loading && solicitud && (
+            {!loading && solicitud && activeTab === 'productos' && (
               <>
-                <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Cliente</p>
-                      <h4>Informacion del cliente</h4>
-                    </div>
-                  </div>
-                  <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
-                      <span>Cliente</span>
-                      <input value={solicitud.cliente_nombre || '-'} disabled />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Cedula/RUC</span>
-                      <input value={solicitud.cliente_data?.cedula_ruc || '-'} disabled />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Telefono</span>
-                      <input value={solicitud.cliente_data?.telefono || '-'} disabled />
-                    </label>
-                    <label className="create-user__field create-user__field--full">
-                      <span>Direccion</span>
-                      <input value={solicitud.cliente_data?.direccion || '-'} disabled />
-                    </label>
-                  </div>
-                </section>
-
                 <section className="create-user__section">
                   <div className="create-user__section-header">
                     <div>
@@ -377,13 +363,44 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
                       <span>Estado</span>
                       <input value={solicitud.conseguido ? 'Conseguido' : 'Pendiente'} disabled />
                     </label>
-                    <label className="create-user__field">
-                      <span>Producto solicitado</span>
-                      <input value={productoSolicitado?.nombre || solicitud.producto_referencia || '-'} disabled />
-                    </label>
-                    <label className="create-user__field create-user__field--full">
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Productos</p>
+                      <h4>Productos solicitados</h4>
+                    </div>
+                  </div>
+
+                  <div className="create-user__locations-table create-user__locations-table--oem">
+                    <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Nombre</span>
                       <span>Descripcion</span>
-                      <input value={productoSolicitado?.descripcion || '-'} disabled />
+                      <span>Cantidad</span>
+                      <span>Estado</span>
+                    </div>
+                    <div className="create-user__locations-row">
+                      <span>{productoSolicitado?.nombre || solicitud.producto_referencia || '-'}</span>
+                      <span>{productoSolicitado?.descripcion || '-'}</span>
+                      <span>{String(solicitud.cantidad ?? '-')}</span>
+                      <span>{solicitud.conseguido ? 'Conseguido' : 'Pendiente'}</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Solicitud</p>
+                      <h4>Descripcion general</h4>
+                    </div>
+                  </div>
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field create-user__field--full">
+                      <span>Comentarios</span>
+                      <textarea value={solicitud.descripcion_general || '-'} disabled />
                     </label>
                   </div>
                 </section>
@@ -407,6 +424,35 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
                   </div>
                 </section>
               </>
+            )}
+
+            {!loading && solicitud && activeTab === 'cliente' && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <div>
+                    <p className="create-user__eyebrow">Cliente</p>
+                    <h4>Informacion del cliente</h4>
+                  </div>
+                </div>
+                <div className="create-user__grid create-user__grid--two">
+                  <label className="create-user__field">
+                    <span>Cliente</span>
+                    <input value={solicitud.cliente_nombre || '-'} disabled />
+                  </label>
+                  <label className="create-user__field">
+                    <span>Cedula/RUC</span>
+                    <input value={solicitud.cliente_data?.cedula_ruc || '-'} disabled />
+                  </label>
+                  <label className="create-user__field">
+                    <span>Telefono</span>
+                    <input value={solicitud.cliente_data?.telefono || '-'} disabled />
+                  </label>
+                  <label className="create-user__field create-user__field--full">
+                    <span>Direccion</span>
+                    <input value={solicitud.cliente_data?.direccion || '-'} disabled />
+                  </label>
+                </div>
+              </section>
             )}
 
             {!loading && !solicitud && !error && (
@@ -464,4 +510,3 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
 }
 
 export default SolicitudDetails
-

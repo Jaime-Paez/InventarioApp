@@ -95,6 +95,7 @@ class Solicitud(models.Model):
     )
     tabla = models.CharField(max_length=30, choices=Tabla.choices)
     fecha = models.DateField()
+    descripcion_general = models.TextField(blank=True)
     sucursal = models.ForeignKey(
         "inventario.Sucursal",
         on_delete=models.PROTECT,

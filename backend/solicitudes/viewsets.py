@@ -171,7 +171,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             RolPermiso.Modulos.SOLICITUDES,
             getattr(sucursal, "id", None),
         )
-        serializer.save()
+        serializer.save(fecha=timezone.localdate())
 
     def perform_update(self, serializer):
         sucursal = serializer.validated_data.get("sucursal", serializer.instance.sucursal)
@@ -181,6 +181,18 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             getattr(sucursal, "id", None),
         )
         serializer.save()
+
+    def update(self, request, *args, **kwargs):
+        return Response(
+            {"detail": "Una solicitud creada no se puede editar."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        return Response(
+            {"detail": "Una solicitud creada no se puede editar."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
 
     @action(detail=False, methods=["get"], url_path="buscar-cliente")
     def buscar_cliente(self, request):
@@ -216,16 +228,8 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             getattr(sucursal, "id", None),
         )
 
-        fecha_raw = str(payload.get("fecha") or "").strip()
-        if fecha_raw:
-            fecha = parse_date(fecha_raw)
-            if not fecha:
-                return Response(
-                    {"fecha": "Fecha invalida. Formato esperado: YYYY-MM-DD."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        else:
-            fecha = timezone.localdate()
+        fecha = timezone.localdate()
+        descripcion_general = str(payload.get("descripcion_general") or "").strip()
 
         cliente, cliente_error = self._resolve_cliente(payload)
         if cliente_error:
@@ -288,6 +292,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     cantidad=item["cantidad"],
                     tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
                     fecha=fecha,
+                    descripcion_general=descripcion_general,
                     sucursal=sucursal,
                     cliente=cliente,
                     producto_solicitado=producto_solicitado,

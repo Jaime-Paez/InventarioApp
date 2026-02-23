@@ -33,6 +33,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
   const [sucursalId, setSucursalId] = useState('')
   const [fecha, setFecha] = useState(todayISO())
+  const [descripcionGeneral, setDescripcionGeneral] = useState('')
   const [sucursales, setSucursales] = useState([])
   const [sucursalesLoading, setSucursalesLoading] = useState(false)
 
@@ -43,6 +44,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('productos')
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -89,6 +91,8 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
     setSucursalId('')
     setFecha(todayISO())
+    setDescripcionGeneral('')
+    setActiveTab('productos')
 
     setShowProductoForm(false)
     setProductoDraft(initialProductoDraft)
@@ -431,7 +435,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
     const payload = {
       sucursal_id: Number(sucursalId),
-      fecha: fecha || todayISO(),
+      descripcion_general: String(descripcionGeneral || '').trim(),
       productos: productos.map((item) => ({
         nombre: item.nombre,
         descripcion: item.descripcion,
@@ -511,7 +515,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              {isMaximized ? 'ðŸ—•' : 'ðŸ—–'}
+              <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -520,271 +524,304 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
               onClick={onClose}
               aria-label="Cerrar"
             >
-              Ã—
+              <i className="pi pi-times" aria-hidden="true" />
             </button>
           </div>
         </header>
 
         <form className="create-user__form" onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones de solicitud">
-            <button type="button" className="create-user__tab create-user__tab--active" disabled>
-              General
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'productos' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('productos')}
+            >
+              Productos
+            </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('cliente')}
+            >
+              Datos del cliente
             </button>
           </div>
 
           <div className="create-user__body">
-            <section className="create-user__section">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">Cliente</p>
-                  <h4>Datos del cliente</h4>
-                </div>
-              </div>
+            {activeTab === 'productos' && (
+              <>
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Solicitud</p>
+                      <h4>Datos generales</h4>
+                    </div>
+                  </div>
 
-              <div className="create-user__grid create-user__grid--two">
-                <label className="create-user__field">
-                  <span>Cedula/RUC</span>
-                  <div className="create-user__dropdown" ref={clienteDropdownRef}>
-                    <input
-                      name="cedula_ruc"
-                      type="text"
-                      placeholder="Buscar por cedula"
-                      value={cliente.cedula_ruc}
-                      onChange={handleClienteFieldChange}
-                      onFocus={() => setShowClienteDropdown(Boolean(cliente.cedula_ruc))}
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Sucursal</span>
+                      <select
+                        value={sucursalId}
+                        onChange={(event) => setSucursalId(event.target.value)}
+                        disabled={loading || sucursalesLoading}
+                      >
+                        <option value="">Selecciona una sucursal</option>
+                        {sucursales.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.nombre || `Sucursal ${item.id}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Fecha</span>
+                      <input type="date" value={fecha} disabled />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Productos</p>
+                      <h4>Productos solicitados</h4>
+                    </div>
+                    <button
+                      type="button"
+                      className="create-user__ghost create-user__location-action"
+                      onClick={() => {
+                        setProductoError('')
+                        setShowProductoForm((prev) => {
+                          const next = !prev
+                          if (!next) setProductoDraft(initialProductoDraft)
+                          return next
+                        })
+                      }}
                       disabled={loading}
-                      autoComplete="off"
-                    />
-                    {showClienteDropdown && (
-                      <div className="create-user__dropdown-panel">
-                        <div className="create-user__dropdown-results">
-                          {clienteLoading && <small className="muted">Buscando cliente...</small>}
-                          {!clienteLoading && !clienteResultados.length && (
-                            <small className="muted">Sin coincidencias para la cedula ingresada.</small>
-                          )}
-                          {clienteResultados.map((item) => (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className="create-user__result-option"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => handleClienteSelect(item)}
-                            >
-                              <div className="create-user__result-info">
-                                <strong>{item.nombre_completo || `${item.nombres || ''} ${item.apellidos || ''}`.trim()}</strong>
-                                <small>{item.cedula_ruc || 'Sin cedula'}</small>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
+                    >
+                      {showProductoForm ? 'Cancelar' : 'Agregar producto'}
+                    </button>
+                  </div>
+
+                  <div className="create-user__locations-table create-user__locations-table--oem">
+                    <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Nombre</span>
+                      <span>Descripcion</span>
+                      <span>Cantidad</span>
+                      <span>Acciones</span>
+                    </div>
+
+                    {showProductoForm && (
+                      <div className="create-user__locations-row create-user__locations-row--form">
+                        <span>
+                          <input
+                            name="nombre"
+                            type="text"
+                            placeholder="Nombre del producto"
+                            value={productoDraft.nombre}
+                            onChange={handleProductoDraftChange}
+                            disabled={loading}
+                          />
+                        </span>
+                        <span>
+                          <input
+                            name="descripcion"
+                            type="text"
+                            placeholder="Descripcion"
+                            value={productoDraft.descripcion}
+                            onChange={handleProductoDraftChange}
+                            disabled={loading}
+                          />
+                        </span>
+                        <span>
+                          <input
+                            name="cantidad"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={productoDraft.cantidad}
+                            onChange={handleProductoDraftChange}
+                            disabled={loading}
+                          />
+                        </span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__ghost"
+                            onClick={handleAgregarProducto}
+                            disabled={loading}
+                          >
+                            Agregar
+                          </button>
+                        </span>
                       </div>
                     )}
-                  </div>
-                </label>
 
-                <label className="create-user__field">
-                  <span>Nombres</span>
-                  <input
-                    name="nombres"
-                    type="text"
-                    value={cliente.nombres}
-                    onChange={handleClienteFieldChange}
-                    disabled={loading}
-                  />
-                </label>
+                    {!productos.length && !showProductoForm && (
+                      <div className="create-user__locations-row create-user__locations-row--empty">
+                        <span>Sin productos agregados.</span>
+                      </div>
+                    )}
 
-                <label className="create-user__field">
-                  <span>Apellidos</span>
-                  <input
-                    name="apellidos"
-                    type="text"
-                    value={cliente.apellidos}
-                    onChange={handleClienteFieldChange}
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Correo</span>
-                  <input
-                    name="correo"
-                    type="email"
-                    value={cliente.correo}
-                    onChange={handleClienteFieldChange}
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Telefono</span>
-                  <input
-                    name="telefono"
-                    type="text"
-                    value={cliente.telefono}
-                    onChange={handleClienteFieldChange}
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="create-user__field create-user__field--full">
-                  <span>Direccion</span>
-                  <input
-                    name="direccion"
-                    type="text"
-                    value={cliente.direccion}
-                    onChange={handleClienteFieldChange}
-                    disabled={loading}
-                  />
-                </label>
-              </div>
-
-              {showClientHint && (
-                <small className="muted">Cliente existente detectado. Se usara el registro actual al guardar.</small>
-              )}
-            </section>
-
-            <section className="create-user__section">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">Solicitud</p>
-                  <h4>Datos generales</h4>
-                </div>
-              </div>
-
-              <div className="create-user__grid create-user__grid--two">
-                <label className="create-user__field">
-                  <span>Sucursal</span>
-                  <select
-                    value={sucursalId}
-                    onChange={(event) => setSucursalId(event.target.value)}
-                    disabled={loading || sucursalesLoading}
-                  >
-                    <option value="">Selecciona una sucursal</option>
-                    {sucursales.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.nombre || `Sucursal ${item.id}`}
-                      </option>
+                    {productos.map((item) => (
+                      <div key={item.uid} className="create-user__locations-row">
+                        <span>{item.nombre}</span>
+                        <span>{item.descripcion || '-'}</span>
+                        <span>{item.cantidad}</span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__locations-remove"
+                            onClick={() => handleQuitarProducto(item.uid)}
+                            disabled={loading}
+                            aria-label="Eliminar producto"
+                          >
+                            X
+                          </button>
+                        </span>
+                      </div>
                     ))}
-                  </select>
-                </label>
+                  </div>
 
-                <label className="create-user__field">
-                  <span>Fecha</span>
-                  <input
-                    type="date"
-                    value={fecha}
-                    onChange={(event) => setFecha(event.target.value)}
-                    disabled={loading}
-                  />
-                </label>
-              </div>
-            </section>
+                  {productoError && <div className="create-user__error">{productoError}</div>}
+                </section>
 
-            <section className="create-user__section">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">Productos</p>
-                  <h4>Productos solicitados</h4>
-                </div>
-                <button
-                  type="button"
-                  className="create-user__ghost create-user__location-action"
-                  onClick={() => {
-                    setProductoError('')
-                    setShowProductoForm((prev) => {
-                      const next = !prev
-                      if (!next) setProductoDraft(initialProductoDraft)
-                      return next
-                    })
-                  }}
-                  disabled={loading}
-                >
-                  {showProductoForm ? 'Cancelar' : 'Agregar producto'}
-                </button>
-              </div>
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Solicitud</p>
+                      <h4>Descripcion general</h4>
+                    </div>
+                  </div>
 
-              <div className="create-user__locations-table create-user__locations-table--oem">
-                <div className="create-user__locations-row create-user__locations-row--head">
-                  <span>Nombre</span>
-                  <span>Descripcion</span>
-                  <span>Cantidad</span>
-                  <span>Acciones</span>
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field create-user__field--full">
+                      <span>Comentarios</span>
+                      <textarea
+                        value={descripcionGeneral}
+                        onChange={(event) => setDescripcionGeneral(event.target.value)}
+                        placeholder="Comentarios generales de la solicitud"
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {activeTab === 'cliente' && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <div>
+                    <p className="create-user__eyebrow">Cliente</p>
+                    <h4>Datos del cliente</h4>
+                  </div>
                 </div>
 
-                {showProductoForm && (
-                  <div className="create-user__locations-row create-user__locations-row--form">
-                    <span>
+                <div className="create-user__grid create-user__grid--two">
+                  <label className="create-user__field">
+                    <span>Cedula/RUC</span>
+                    <div className="create-user__dropdown" ref={clienteDropdownRef}>
                       <input
-                        name="nombre"
+                        name="cedula_ruc"
                         type="text"
-                        placeholder="Nombre del producto"
-                        value={productoDraft.nombre}
-                        onChange={handleProductoDraftChange}
+                        placeholder="Buscar por cedula"
+                        value={cliente.cedula_ruc}
+                        onChange={handleClienteFieldChange}
+                        onFocus={() => setShowClienteDropdown(Boolean(cliente.cedula_ruc))}
                         disabled={loading}
+                        autoComplete="off"
                       />
-                    </span>
-                    <span>
-                      <input
-                        name="descripcion"
-                        type="text"
-                        placeholder="Descripcion"
-                        value={productoDraft.descripcion}
-                        onChange={handleProductoDraftChange}
-                        disabled={loading}
-                      />
-                    </span>
-                    <span>
-                      <input
-                        name="cantidad"
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={productoDraft.cantidad}
-                        onChange={handleProductoDraftChange}
-                        disabled={loading}
-                      />
-                    </span>
-                    <span className="create-user__locations-cell create-user__locations-cell--action">
-                      <button
-                        type="button"
-                        className="create-user__ghost"
-                        onClick={handleAgregarProducto}
-                        disabled={loading}
-                      >
-                        Agregar
-                      </button>
-                    </span>
-                  </div>
+                      {showClienteDropdown && (
+                        <div className="create-user__dropdown-panel">
+                          <div className="create-user__dropdown-results">
+                            {clienteLoading && <small className="muted">Buscando cliente...</small>}
+                            {!clienteLoading && !clienteResultados.length && (
+                              <small className="muted">Sin coincidencias para la cedula ingresada.</small>
+                            )}
+                            {clienteResultados.map((item) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className="create-user__result-option"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => handleClienteSelect(item)}
+                              >
+                                <div className="create-user__result-info">
+                                  <strong>{item.nombre_completo || `${item.nombres || ''} ${item.apellidos || ''}`.trim()}</strong>
+                                  <small>{item.cedula_ruc || 'Sin cedula'}</small>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  <label className="create-user__field">
+                    <span>Nombres</span>
+                    <input
+                      name="nombres"
+                      type="text"
+                      value={cliente.nombres}
+                      onChange={handleClienteFieldChange}
+                      disabled={loading}
+                    />
+                  </label>
+
+                  <label className="create-user__field">
+                    <span>Apellidos</span>
+                    <input
+                      name="apellidos"
+                      type="text"
+                      value={cliente.apellidos}
+                      onChange={handleClienteFieldChange}
+                      disabled={loading}
+                    />
+                  </label>
+
+                  <label className="create-user__field">
+                    <span>Correo</span>
+                    <input
+                      name="correo"
+                      type="email"
+                      value={cliente.correo}
+                      onChange={handleClienteFieldChange}
+                      disabled={loading}
+                    />
+                  </label>
+
+                  <label className="create-user__field">
+                    <span>Telefono</span>
+                    <input
+                      name="telefono"
+                      type="text"
+                      value={cliente.telefono}
+                      onChange={handleClienteFieldChange}
+                      disabled={loading}
+                    />
+                  </label>
+
+                  <label className="create-user__field create-user__field--full">
+                    <span>Direccion</span>
+                    <input
+                      name="direccion"
+                      type="text"
+                      value={cliente.direccion}
+                      onChange={handleClienteFieldChange}
+                      disabled={loading}
+                    />
+                  </label>
+                </div>
+
+                {showClientHint && (
+                  <small className="muted">Cliente existente detectado. Se usara el registro actual al guardar.</small>
                 )}
-
-                {!productos.length && !showProductoForm && (
-                  <div className="create-user__locations-row create-user__locations-row--empty">
-                    <span>Sin productos agregados.</span>
-                  </div>
-                )}
-
-                {productos.map((item) => (
-                  <div key={item.uid} className="create-user__locations-row">
-                    <span>{item.nombre}</span>
-                    <span>{item.descripcion || '-'}</span>
-                    <span>{item.cantidad}</span>
-                    <span className="create-user__locations-cell create-user__locations-cell--action">
-                      <button
-                        type="button"
-                        className="create-user__locations-remove"
-                        onClick={() => handleQuitarProducto(item.uid)}
-                        disabled={loading}
-                        aria-label="Eliminar producto"
-                      >
-                        Ã—
-                      </button>
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {productoError && <div className="create-user__error">{productoError}</div>}
-            </section>
+              </section>
+            )}
           </div>
 
           {error && <div className="create-user__error">{error}</div>}

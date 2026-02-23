@@ -271,6 +271,7 @@ CORS_ALLOWED_ORIGINS = env_list(
         "http://127.0.0.1:5173",
         "http://192.168.0.72:5173",
         "https://kavajaimepaez.onrender.com",
+        "https://kava.peugeotjpaez.com",
     ],
 )
 
@@ -282,6 +283,7 @@ CSRF_TRUSTED_ORIGINS = env_list(
         "http://localhost:5173",
         "http://192.168.0.72:5173",
         "https://kavajaimepaez.onrender.com",
+        "https://kava.peugeotjpaez.com",
     ],
 )
 
