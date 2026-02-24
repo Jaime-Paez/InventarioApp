@@ -38,13 +38,13 @@ function Configuracion({ token, darkMode, onToggleTheme }) {
     try {
       const response = await authFetch(`${API_URL}/configuracion/sistema/`, {}, token)
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo cargar la configuracion.')
+      if (!response.ok) throw new Error(data?.detail || 'No se pudo cargar la configuración.')
       if (data?.id) setConfigId(data.id)
       const raw = Number(data?.iva_rate)
       const percent = Number.isFinite(raw) ? raw * 100 : DEFAULT_IVA
       setIvaPercent(String(percent))
     } catch (err) {
-      notify('warn', 'Aviso', err.message || 'No se pudo cargar la configuracion.')
+      notify('warn', 'Aviso', err.message || 'No se pudo cargar la configuración.')
     } finally {
       setLoading(false)
     }
@@ -57,7 +57,7 @@ function Configuracion({ token, darkMode, onToggleTheme }) {
   const handleSave = async () => {
     const percent = parsePercent(ivaPercent)
     if (percent === null) {
-      notify('warn', 'Aviso', 'Ingresa un IVA valido.')
+      notify('warn', 'Aviso', 'Ingresa un IVA válido.')
       return
     }
     if (percent < 0 || percent > 100) {
@@ -67,7 +67,7 @@ function Configuracion({ token, darkMode, onToggleTheme }) {
 
     setSaving(true)
     if (!configId) {
-      notify('warn', 'Aviso', 'No se encontro la configuracion del sistema.')
+      notify('warn', 'Aviso', 'No se encontró la configuración del sistema.')
       return
     }
 
@@ -81,12 +81,12 @@ function Configuracion({ token, darkMode, onToggleTheme }) {
         token
       )
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo guardar la configuracion.')
+      if (!response.ok) throw new Error(data?.detail || 'No se pudo guardar la configuración.')
       setIvaPercent(String(percent))
       emitIvaUpdated(percent / 100)
       notify('success', 'Guardado', 'IVA actualizado correctamente.')
     } catch (err) {
-      notify('warn', 'Aviso', err.message || 'No se pudo guardar la configuracion.')
+      notify('warn', 'Aviso', err.message || 'No se pudo guardar la configuración.')
     } finally {
       setSaving(false)
     }

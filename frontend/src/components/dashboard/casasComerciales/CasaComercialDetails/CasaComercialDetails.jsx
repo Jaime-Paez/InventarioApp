@@ -94,7 +94,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 
       while (url) {
         const response = await authFetch(url, {}, token)
-        if (!response.ok) throw new Error('No se pudieron cargar los paises.')
+        if (!response.ok) throw new Error('No se pudieron cargar los países.')
         const data = await response.json()
         if (Array.isArray(data)) {
           all.push(...data)
@@ -108,7 +108,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 
       setCountries(all)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al cargar los paises.')
+      notifyError(err.message || 'Ocurrió un error al cargar los países.')
     }
   }, [notifyError, token])
 
@@ -119,7 +119,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
       const response = await authFetch(`${API_URL}/casa-comercial/casas/${casaComercialId}/`, {}, token)
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || 'No se pudo cargar la informacion de la casa comercial.'
+        const detail = data?.detail || 'No se pudo cargar la información de la casa comercial.'
         throw new Error(detail)
       }
       const normalized = normalizeCasaComercial(data)
@@ -127,7 +127,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
       setOriginalData(normalized)
       setIsEditing(false)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al obtener la informacion de la casa comercial.')
+      notifyError(err.message || 'Ocurrió un error al obtener la información de la casa comercial.')
     } finally {
       setLoadingData(false)
     }
@@ -211,7 +211,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al actualizar la casa comercial.')
+      notifyError(err.message || 'Ocurrió un error al actualizar la casa comercial.')
     } finally {
       setSaving(false)
     }
@@ -236,7 +236,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
       onDeleted?.(casaComercialId)
       setShowDeleteDialog(false)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al eliminar la casa comercial.')
+      notifyError(err.message || 'Ocurrió un error al eliminar la casa comercial.')
     } finally {
       setDeleteLoading(false)
     }
@@ -285,7 +285,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 
       onDuplicated?.('Marca creada a partir de esta casa comercial.')
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al duplicar la casa comercial.')
+      notifyError(err.message || 'Ocurrió un error al duplicar la casa comercial.')
     } finally {
       setDuplicateLoading(false)
     }
@@ -488,7 +488,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Codigo</span>
+                  <span>Código</span>
                   <input
                     name="codigo"
                     type="text"
@@ -510,7 +510,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
                 </label>
 
                 <label className="create-user__field">
-                  <span>Pais</span>
+                  <span>País</span>
                   <div className="create-user__select-with-flag">
                     <select
                       name="paisId"
@@ -532,7 +532,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
                 </label>
 
                 <label className="create-user__field">
-                  <span>Telefono</span>
+                  <span>Teléfono</span>
                   <input
                     name="telefono"
                     type="text"
@@ -554,7 +554,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
                 </label>
 
                 <label className="create-user__field create-user__field--full">
-                  <span>Descripcion</span>
+                  <span>Descripción</span>
                   <input
                     name="descripcion"
                     type="text"
@@ -623,7 +623,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 
         <button
           type="button"
-          aria-label="Cambiar tamano de ventana"
+          aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />
@@ -637,7 +637,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
             </div>
             <div className="user-details__confirm-content">
               <h4>Eliminar casa comercial</h4>
-              <p>Deseas eliminar esta casa comercial? Esta accion no se puede deshacer.</p>
+              <p>¿Deseas eliminar esta casa comercial? Esta acción no se puede deshacer.</p>
             </div>
             <div className="user-details__confirm-actions">
               <button

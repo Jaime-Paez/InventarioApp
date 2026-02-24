@@ -94,7 +94,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
       const response = await authFetch(`${API_URL}/marcas/listado/${marcaId}/`, {}, token)
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || 'No se pudo cargar la informacion de la marca.'
+        const detail = data?.detail || 'No se pudo cargar la información de la marca.'
         throw new Error(detail)
       }
       const normalized = normalizeMarca(data)
@@ -102,7 +102,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
       setOriginalData(normalized)
       setIsEditing(false)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al obtener la informacion de la marca.')
+      notifyError(err.message || 'Ocurrió un error al obtener la información de la marca.')
     } finally {
       setLoadingData(false)
     }
@@ -115,7 +115,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
 
       while (url) {
         const response = await authFetch(url, {}, token)
-        if (!response.ok) throw new Error('No se pudieron cargar los paises.')
+        if (!response.ok) throw new Error('No se pudieron cargar los países.')
         const data = await response.json()
         if (Array.isArray(data)) {
           all.push(...data)
@@ -129,7 +129,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
 
       setCountries(all)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al cargar los paises.')
+      notifyError(err.message || 'Ocurrió un error al cargar los países.')
     }
   }, [notifyError, token])
 
@@ -211,7 +211,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al actualizar la marca.')
+      notifyError(err.message || 'Ocurrió un error al actualizar la marca.')
     } finally {
       setSaving(false)
     }
@@ -236,7 +236,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
       onDeleted?.(marcaId)
       setShowDeleteDialog(false)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al eliminar la marca.')
+      notifyError(err.message || 'Ocurrió un error al eliminar la marca.')
     } finally {
       setDeleteLoading(false)
     }
@@ -285,7 +285,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
 
       onDuplicated?.('Casa comercial creada a partir de esta marca.')
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al duplicar la marca.')
+      notifyError(err.message || 'Ocurrió un error al duplicar la marca.')
     } finally {
       setDuplicateLoading(false)
     }
@@ -488,7 +488,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Codigo</span>
+                  <span>Código</span>
                   <input
                     name="codigo"
                     type="text"
@@ -510,7 +510,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
                 </label>
 
                 <label className="create-user__field">
-                  <span>Pais</span>
+                  <span>País</span>
                   <div className="create-user__select-with-flag">
                     <select
                       name="paisId"
@@ -532,7 +532,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
                 </label>
 
                 <label className="create-user__field">
-                  <span>Telefono</span>
+                  <span>Teléfono</span>
                   <input
                     name="telefono"
                     type="text"
@@ -554,7 +554,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
                 </label>
 
                 <label className="create-user__field create-user__field--full">
-                  <span>Descripcion</span>
+                  <span>Descripción</span>
                   <input
                     name="descripcion"
                     type="text"
@@ -623,7 +623,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
 
         <button
           type="button"
-          aria-label="Cambiar tamano de ventana"
+          aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />
@@ -637,7 +637,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
             </div>
             <div className="user-details__confirm-content">
               <h4>Eliminar marca</h4>
-              <p>Deseas eliminar esta marca? Esta accion no se puede deshacer.</p>
+              <p>¿Deseas eliminar esta marca? Esta acción no se puede deshacer.</p>
             </div>
             <div className="user-details__confirm-actions">
               <button

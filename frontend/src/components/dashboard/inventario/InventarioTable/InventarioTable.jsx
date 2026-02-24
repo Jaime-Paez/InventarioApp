@@ -34,7 +34,12 @@ const formatCurrency = (value) => {
   return Number.isFinite(number) ? `$${number.toFixed(2)}` : '-'
 }
 
-const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+const normalizeValue = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 const contains = (fieldValue, target) => {
   const needle = normalizeValue(target)
   if (!needle) return true
@@ -179,7 +184,7 @@ function InventarioTable({ token }) {
       setBodegas(bodegasData)
       setSubdivisions(subdivisionsData)
     } catch (err) {
-      const message = err?.message || 'OcurriÃ³ un error al cargar el inventario.'
+      const message = err?.message || 'Ocurrió un error al cargar el inventario.'
       setError(message)
       showToast(message, 'Error', 'error')
     } finally {
@@ -559,7 +564,7 @@ function InventarioTable({ token }) {
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'codigo', header: 'CÃ³digo', filterPlaceholder: 'Buscar por CÃ³digo' },
+      { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por Código' },
       { nombrevar: 'nombre', header: 'Producto', filterPlaceholder: 'Buscar por producto' },
       { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
@@ -830,7 +835,7 @@ function InventarioTable({ token }) {
   const dataLength = hasSearch ? filteredRows.length : 0
   const emptyMessage = hasSearch
     ? 'No se encontraron registros'
-    : 'Realice una bÃºsqueda para ver la informaciÃ³n. Si quiere ver toda la informaciÃ³n, haga la bÃºsqueda sin aplicar ningÃºn filtro.'
+    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
 
   const header = (
     <div className="users-header">
@@ -1130,7 +1135,7 @@ function InventarioTable({ token }) {
                     break
                   case 'precio':
                   case 'precio_con_iva':
-                    bodyTemplate = priceBodyTemplate(rowData, column.nombrevar)
+                    bodyTemplate = (rowData) => priceBodyTemplate(rowData, column.nombrevar)
                     filterMatchMode = FilterMatchMode.STARTS_WITH
                     className = 'column-max-min-width--small'
                     break
@@ -1241,16 +1246,14 @@ function InventarioTable({ token }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
+                  {isSearchMaximized ? '▣' : '▢'}
                 </button>
                 <button
                   type="button"
                   className="create-user__icon-button"
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
-                >
-                  Ã—
-                </button>
+                >×</button>
               </div>
             </header>
 
@@ -1260,7 +1263,7 @@ function InventarioTable({ token }) {
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Filtros</p>
-                      <h4>Busqueda avanzada</h4>
+                      <h4>Búsqueda avanzada</h4>
                     </div>
                   </div>
 
@@ -1331,7 +1334,7 @@ function InventarioTable({ token }) {
                                 >
                                   <div className="create-user__result-info">
                                     <strong>{marca.nombre}</strong>
-                                    <small>{marca.codigo ? `Codigo: ${marca.codigo}` : `ID: ${marca.id}`}</small>
+                                    <small>{marca.codigo ? `Código: ${marca.codigo}` : `ID: ${marca.id}`}</small>
                                   </div>
                                 </button>
                               ))}
@@ -1342,7 +1345,7 @@ function InventarioTable({ token }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Codigo</span>
+                      <span>Código</span>
                       <input
                         name="codigo"
                         type="text"
@@ -1407,7 +1410,7 @@ function InventarioTable({ token }) {
                                 >
                                   <div className="create-user__result-info">
                                     <strong>{casa.nombre}</strong>
-                                    <small>{casa.codigo ? `Codigo: ${casa.codigo}` : `ID: ${casa.id}`}</small>
+                                    <small>{casa.codigo ? `Código: ${casa.codigo}` : `ID: ${casa.id}`}</small>
                                   </div>
                                 </button>
                               ))}
@@ -1465,7 +1468,7 @@ function InventarioTable({ token }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Fecha de creacion</span>
+                      <span>Fecha de creación</span>
                       <input
                         name="fecha_creacion"
                         type="text"
@@ -1500,7 +1503,7 @@ function InventarioTable({ token }) {
                     </label>
 
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <input
                         name="descripcion"
                         type="text"
@@ -1539,7 +1542,7 @@ function InventarioTable({ token }) {
             </form>
             <button
               type="button"
-              aria-label="Cambiar tamano de ventana"
+              aria-label="Cambiar tamaño de ventana"
               className="create-user__resize-handle"
               onMouseDown={handleSearchResizeMouseDown}
             />

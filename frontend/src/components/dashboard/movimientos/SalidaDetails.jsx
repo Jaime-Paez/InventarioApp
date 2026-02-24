@@ -26,7 +26,12 @@ const initialDetail = {
 }
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
-const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+const normalizeValue = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 const parseNumber = (value) => {
   const cleaned = String(value ?? '').trim()
   if (!cleaned) return null
@@ -249,7 +254,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
       setOriginalData(normalized)
       setIsEditing(false)
     } catch (err) {
-      notifyError(err?.message || 'Ocurrio un error al cargar la salida.')
+      notifyError(err?.message || 'Ocurrió un error al cargar la salida.')
     } finally {
       setLoadingData(false)
     }
@@ -356,7 +361,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
       return
     }
     if (!Number.isFinite(valor) || valor < 0) {
-      setDetailError('Ingresa un valor valido.')
+      setDetailError('Ingresa un valor válido.')
       return
     }
 
@@ -414,7 +419,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     setError('')
 
     if (!salidaTipoId) {
-      notifyError('No se encontro el tipo de movimiento de salida.')
+      notifyError('No se encontró el tipo de movimiento de salida.')
       return
     }
 
@@ -511,7 +516,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
         pagos: pagosSelected,
       })
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al actualizar la salida.')
+      notifyError(err.message || 'Ocurrió un error al actualizar la salida.')
     } finally {
       setSaving(false)
     }
@@ -535,7 +540,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
 
       onDeleted?.(salidaId)
     } catch (err) {
-      notifyError(err?.message || 'Ocurrio un error al eliminar la salida.')
+      notifyError(err?.message || 'Ocurrió un error al eliminar la salida.')
     } finally {
       setDeleteLoading(false)
     }
@@ -658,7 +663,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
                 </label>
 
                 <label className="create-user__field create-user__field--full">
-                  <span>Descripcion</span>
+                  <span>Descripción</span>
                   <input name="descripcion" type="text" value={formData.descripcion} onChange={handleChange} disabled={editorDisabled} />
                 </label>
               </div>

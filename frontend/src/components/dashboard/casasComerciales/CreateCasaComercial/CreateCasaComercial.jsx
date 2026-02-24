@@ -68,7 +68,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
 
       while (url) {
         const response = await authFetch(url, {}, token)
-        if (!response.ok) throw new Error('No se pudieron cargar los paises.')
+        if (!response.ok) throw new Error('No se pudieron cargar los países.')
         const data = await response.json()
         if (Array.isArray(data)) {
           all.push(...data)
@@ -82,7 +82,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
 
       setCountries(all)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al cargar los paises.')
+      notifyError(err.message || 'Ocurrió un error al cargar los países.')
     }
   }, [notifyError, token])
 
@@ -167,7 +167,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
       setFormData(initialForm)
       onCreated?.(data)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al crear la casa comercial.')
+      notifyError(err.message || 'Ocurrió un error al crear la casa comercial.')
     } finally {
       setLoading(false)
     }
@@ -358,11 +358,11 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Codigo</span>
+                  <span>Código</span>
                   <input
                     name="codigo"
                     type="text"
-                    placeholder="Codigo"
+                    placeholder="Código"
                     value={formData.codigo}
                     onChange={handleChange}
                     required
@@ -384,7 +384,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                 </label>
 
                 <label className="create-user__field">
-                  <span>Pais</span>
+                  <span>País</span>
                   <div className="create-user__select-with-flag">
                     <select
                       name="paisId"
@@ -406,11 +406,11 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                 </label>
 
                 <label className="create-user__field">
-                  <span>Telefono</span>
+                  <span>Teléfono</span>
                   <input
                     name="telefono"
                     type="text"
-                    placeholder="Telefono"
+                    placeholder="Teléfono"
                     value={formData.telefono}
                     onChange={handleChange}
                     disabled={loading}
@@ -430,11 +430,11 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                 </label>
 
                 <label className="create-user__field create-user__field--full">
-                  <span>Descripcion</span>
+                  <span>Descripción</span>
                   <input
                     name="descripcion"
                     type="text"
-                    placeholder="Descripcion"
+                    placeholder="Descripción"
                     value={formData.descripcion}
                     onChange={handleChange}
                     disabled={loading}
@@ -456,7 +456,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
 
         <button
           type="button"
-          aria-label="Cambiar tamano de ventana"
+          aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />

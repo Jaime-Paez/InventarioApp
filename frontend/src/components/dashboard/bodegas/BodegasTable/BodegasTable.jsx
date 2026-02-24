@@ -47,7 +47,7 @@ function BodegasTable({ token, onSelect }) {
   const normalizeList = useCallback((list) => {
     return list.map((warehouse) => ({
       ...warehouse,
-      sucursal_nombre: warehouse?.sucursal?.nombre ?? 'â€”',
+      sucursal_nombre: warehouse?.sucursal?.nombre ?? '-',
       ubicaciones_count: Array.isArray(warehouse?.ubicaciones) ? warehouse.ubicaciones.length : 0,
     }))
   }, [])
@@ -79,7 +79,7 @@ function BodegasTable({ token, onSelect }) {
       setAllWarehouses(normalized)
       return normalized
     } catch (e) {
-      const msg = e?.message || 'OcurriÃ³ un error al cargar las bodegas.'
+      const msg = e?.message || 'Ocurrió un error al cargar las bodegas.'
       setError(msg)
       toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
     } finally {
@@ -137,7 +137,7 @@ function BodegasTable({ token, onSelect }) {
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
   const [showSearchModal, setShowSearchModal] = useState(false)
-  const lastSearchRef = useRef(null)
+  const lastSearchRef = useRef({ ...initialSearchCriteria })
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
@@ -151,7 +151,12 @@ function BodegasTable({ token, onSelect }) {
   const SEARCH_MIN_HEIGHT = 480
   const SEARCH_PADDING = 12
 
-  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+  const normalizeValue = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
   const contains = (fieldValue, target) => {
     const needle = normalizeValue(target)
     if (!needle) return true
@@ -399,8 +404,8 @@ function BodegasTable({ token, onSelect }) {
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
-    const content = rowData?.[field] ?? 'â€”'
-    const textColor = content === 'â€”' ? '#9ca3af' : undefined
+    const content = rowData?.[field] ?? '-'
+    const textColor = content === '-' ? '#9ca3af' : undefined
     return (
       <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: textColor }}>
         {String(content)}
@@ -409,7 +414,7 @@ function BodegasTable({ token, onSelect }) {
   }
 
   const nombreBodyTemplate = (rowData) => {
-    const name = rowData?.nombre ?? 'â€”'
+    const name = rowData?.nombre ?? '-'
     return (
       <span className="cell-tooltip" data-pr-tooltip={name}>
         {name}
@@ -419,7 +424,7 @@ function BodegasTable({ token, onSelect }) {
 
   const numericBodyTemplate = (rowData, field) => {
     const value = Number(rowData?.[field])
-    if (!Number.isFinite(value)) return <span className="cell-tooltip">â€”</span>
+    if (!Number.isFinite(value)) return <span className="cell-tooltip">-</span>
     const text = field === 'ubicaciones_count' ? String(value) : value.toFixed(2)
     return (
       <span className="cell-tooltip" data-pr-tooltip={text}>
@@ -496,7 +501,7 @@ function BodegasTable({ token, onSelect }) {
   const handleCreated = () => {
     setShowCreateModal(false)
     refreshData()
-    toast.current?.show({ severity: 'success', summary: 'Ã‰xito', detail: 'Bodega creada correctamente', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Bodega creada correctamente', life: 2500 })
   }
 
   const focusSearch = () => setShowSearchModal(true)
@@ -850,16 +855,14 @@ function BodegasTable({ token, onSelect }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
+                  {isSearchMaximized ? '▣' : '▢'}
                 </button>
                 <button
                   type="button"
                   className="create-user__icon-button"
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
-                >
-                  Ã—
-                </button>
+                >×</button>
               </div>
             </header>
 
@@ -869,7 +872,7 @@ function BodegasTable({ token, onSelect }) {
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Filtros</p>
-                      <h4>Busqueda avanzada</h4>
+                      <h4>Búsqueda avanzada</h4>
                     </div>
                   </div>
 
@@ -900,7 +903,7 @@ function BodegasTable({ token, onSelect }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Fecha de creacion</span>
+                      <span>Fecha de creación</span>
                       <input name="fecha_creacion" type="text" placeholder="Ej: 2025-12-31" value={searchCriteria.fecha_creacion} onChange={handleSearchInputChange} />
                     </label>
 
@@ -930,7 +933,7 @@ function BodegasTable({ token, onSelect }) {
             </form>
             <button
               type="button"
-              aria-label="Cambiar tamano de ventana"
+              aria-label="Cambiar tamaño de ventana"
               className="create-user__resize-handle"
               onMouseDown={handleSearchResizeMouseDown}
             />

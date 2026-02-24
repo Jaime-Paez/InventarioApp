@@ -124,7 +124,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
       const list = Array.isArray(data) ? data : data?.results || []
       setSucursales(list)
     } catch (err) {
-      notifyError(err?.message || 'Ocurrio un error al cargar las sucursales.')
+      notifyError(err?.message || 'Ocurrió un error al cargar las sucursales.')
     } finally {
       setSucursalesLoading(false)
     }
@@ -480,7 +480,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
       onCreated?.(data)
     } catch (err) {
-      setError(err?.message || 'Ocurrio un error al crear la solicitud.')
+      setError(err?.message || 'Ocurrió un error al crear la solicitud.')
     } finally {
       setLoading(false)
     }
@@ -608,7 +608,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <div className="create-user__locations-table create-user__locations-table--oem">
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Nombre</span>
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <span>Cantidad</span>
                       <span>Acciones</span>
                     </div>
@@ -629,7 +629,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                           <input
                             name="descripcion"
                             type="text"
-                            placeholder="Descripcion"
+                            placeholder="Descripción"
                             value={productoDraft.descripcion}
                             onChange={handleProductoDraftChange}
                             disabled={loading}
@@ -692,7 +692,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Solicitud</p>
-                      <h4>Descripcion general</h4>
+                      <h4>Descripción general</h4>
                     </div>
                   </div>
 
@@ -795,7 +795,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   </label>
 
                   <label className="create-user__field">
-                    <span>Telefono</span>
+                    <span>Teléfono</span>
                     <input
                       name="telefono"
                       type="text"
@@ -806,7 +806,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   </label>
 
                   <label className="create-user__field create-user__field--full">
-                    <span>Direccion</span>
+                    <span>Dirección</span>
                     <input
                       name="direccion"
                       type="text"
@@ -847,7 +847,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
         <button
           type="button"
-          aria-label="Cambiar tamano de ventana"
+          aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />

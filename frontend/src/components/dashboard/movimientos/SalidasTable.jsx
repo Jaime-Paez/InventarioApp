@@ -12,7 +12,12 @@ import '../admin/UsersTable/UsersTable.css'
 import { API_URL, authFetch } from '../../../utils/api'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
-const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+const normalizeValue = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 const parseCurrency = (value) => {
   const number = Number(value)
   return Number.isFinite(number) ? `$${number.toFixed(2)}` : '-'
@@ -91,7 +96,7 @@ function SalidasTable({ token }) {
 
       setMovimientos(normalizeList(list))
     } catch (err) {
-      const msg = err?.message || 'Ocurrio un error al cargar las salidas.'
+      const msg = err?.message || 'Ocurrió un error al cargar las salidas.'
       setError(msg)
       toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
     } finally {
@@ -160,7 +165,7 @@ function SalidasTable({ token }) {
   const handleCreated = () => {
     setShowCreateModal(false)
     fetchMovimientos()
-    toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Salida creada correctamente', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Salida creada correctamente', life: 2500 })
   }
 
   const handleUpdated = () => {

@@ -267,7 +267,7 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
       setFormData(initialForm)
       onCreated?.(data)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al crear el cliente.')
+      notifyError(err.message || 'Ocurrió un error al crear el cliente.')
     } finally {
       setLoading(false)
     }
@@ -505,7 +505,7 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
                 </label>
 
                 <label className="create-user__field">
-                  <span>Telefono</span>
+                  <span>Teléfono</span>
                   <input
                     name="telefono"
                     type="text"
@@ -517,11 +517,11 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
                 </label>
 
                 <label className="create-user__field create-user__field--full">
-                  <span>Direccion</span>
+                  <span>Dirección</span>
                   <input
                     name="direccion"
                     type="text"
-                    placeholder="Direccion"
+                    placeholder="Dirección"
                     value={formData.direccion}
                     onChange={handleChange}
                     disabled={loading}
@@ -632,7 +632,7 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
                                   >
                                     <div className="create-user__result-info">
                                       <strong>{marca.nombre}</strong>
-                                      <small>{marca.codigo ? `Codigo: ${marca.codigo}` : `ID: ${marca.id}`}</small>
+                                      <small>{marca.codigo ? `Código: ${marca.codigo}` : `ID: ${marca.id}`}</small>
                                     </div>
                                   </button>
                                 ))}
@@ -693,7 +693,7 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
 
         <button
           type="button"
-          aria-label="Cambiar tamano de ventana"
+          aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />

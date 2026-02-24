@@ -115,7 +115,12 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     [onError]
   )
 
-  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+  const normalizeValue = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 
   const filteredSuppliers = useMemo(() => {
     const needle = normalizeValue(casaSearch)
@@ -216,7 +221,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
         const list = Array.isArray(data) ? data : data?.results || []
         setBrands(list)
       } catch (err) {
-        notifyError(err.message || 'Ocurrio un error al cargar las marcas.')
+        notifyError(err.message || 'Ocurrió un error al cargar las marcas.')
       }
     },
     [notifyError, token]
@@ -240,7 +245,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
         const list = Array.isArray(data) ? data : data?.results || []
         setSuppliers(list)
       } catch (err) {
-        notifyError(err.message || 'Ocurrio un error al cargar las casas comerciales.')
+        notifyError(err.message || 'Ocurrió un error al cargar las casas comerciales.')
       }
     },
     [notifyError, token]
@@ -274,7 +279,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       setDivisions(parseApiList(divisionsData))
       setSubdivisions(parseApiList(subdivisionsData))
     } catch (err) {
-      notifyError(err?.message || 'Ocurrio un error al cargar las ubicaciones.')
+      notifyError(err?.message || 'Ocurrió un error al cargar las ubicaciones.')
     } finally {
       setLocationsLoading(false)
     }
@@ -299,7 +304,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
         const list = Array.isArray(data) ? data : data?.results || []
         setAlternoOptions(list)
       } catch (err) {
-        notifyError(err.message || 'Ocurrio un error al buscar productos.')
+        notifyError(err.message || 'Ocurrió un error al buscar productos.')
       } finally {
         setAlternoLoading(false)
       }
@@ -732,7 +737,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       return
     }
     if (!subdivisionId) {
-      setLocationError('Selecciona una subdivisiÃ³n.')
+      setLocationError('Selecciona una subdivisión.')
       return
     }
     const allowedSubs = subdivisionsByDivision.get(String(divisionId)) || []
@@ -750,13 +755,13 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     const nextEntry = {
       uid: createLocationUid(),
       sucursalId: String(sucursalId),
-      sucursalNombre: branch?.nombre || 'â€”',
+      sucursalNombre: branch?.nombre || '-',
       bodegaId: String(bodegaId),
-      bodegaNombre: bodega?.nombre || 'â€”',
+      bodegaNombre: bodega?.nombre || '-',
       divisionId: String(divisionId),
-      divisionNombre: divisionName || 'â€”',
+      divisionNombre: divisionName || '-',
       subdivisionId: String(subdivisionId),
-      subdivisionNombre: subdivision?.nombre || 'â€”',
+      subdivisionNombre: subdivision?.nombre || '-',
       cantidad: safeQuantity,
     }
 
@@ -884,11 +889,11 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
         )
         if (!response.ok) {
           const data = await response.json().catch(() => ({}))
-          const detail = data?.detail || 'No se pudo asignar una ubicaciÃ³n.'
+          const detail = data?.detail || 'No se pudo asignar una ubicación.'
           throw new Error(detail)
         }
       } catch (err) {
-        errors.push(err?.message || 'No se pudo asignar una ubicaciÃ³n.')
+        errors.push(err?.message || 'No se pudo asignar una ubicación.')
       }
     }
     return errors
@@ -1095,7 +1100,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       })
       onCreated?.(data)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al crear el producto.')
+      notifyError(err.message || 'Ocurrió un error al crear el producto.')
     } finally {
       setLoading(false)
     }
@@ -1359,7 +1364,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                                 >
                                   <div className="create-user__result-info">
                                     <strong>{brand.nombre}</strong>
-                                    <small>{brand.codigo ? `Codigo: ${brand.codigo}` : `ID: ${brand.id}`}</small>
+                                    <small>{brand.codigo ? `Código: ${brand.codigo}` : `ID: ${brand.id}`}</small>
                                   </div>
                                 </button>
                               ))}
@@ -1370,11 +1375,11 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Codigo</span>
+                      <span>Código</span>
                       <input
                         name="codigo"
                         type="text"
-                        placeholder="Codigo del producto (ej: FRD-123)"
+                        placeholder="Código del producto (ej: FRD-123)"
                         value={formData.codigo}
                         onChange={handleChange}
                         required
@@ -1438,7 +1443,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                                   >
                                     <div className="create-user__result-info">
                                       <strong>{supplier.nombre}</strong>
-                                      <small>{supplier.codigo ? `Codigo: ${supplier.codigo}` : `ID: ${supplier.id}`}</small>
+                                      <small>{supplier.codigo ? `Código: ${supplier.codigo}` : `ID: ${supplier.id}`}</small>
                                     </div>
                                   </button>
                                 )
@@ -1450,7 +1455,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                     </label>
 
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <textarea
                         name="descripcion"
                         placeholder="Describe el producto, su uso, diferentes nombres o caracteristicas importantes."
@@ -1526,8 +1531,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
                   <div className="create-user__locations-table create-user__locations-table--oem">
                     <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Codigo</span>
-                      <span>Descripcion</span>
+                      <span>Código</span>
+                      <span>Descripción</span>
                       <span>Acciones</span>
                     </div>
 
@@ -1536,7 +1541,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                         <span>
                           <input
                             type="text"
-                            placeholder="Codigo OEM"
+                            placeholder="Código OEM"
                             value={oemDraft.codigo}
                             onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
                             disabled={loading}
@@ -1545,7 +1550,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                         <span>
                           <input
                             type="text"
-                            placeholder="Descripcion (opcional)"
+                            placeholder="Descripción (opcional)"
                             value={oemDraft.descripcion}
                             onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
                             disabled={loading}
@@ -1622,9 +1627,9 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
                 <div className="create-user__locations-table create-user__locations-table--alternos">
                   <div className="create-user__locations-row create-user__locations-row--head">
-                    <span>Codigo</span>
+                    <span>Código</span>
                     <span>Producto</span>
-                    <span>Descripcion</span>
+                    <span>Descripción</span>
                     <span>Acciones</span>
                   </div>
 
@@ -1685,7 +1690,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                                     >
                                       <div className="create-user__result-info">
                                         <strong>{product.nombre || 'Sin nombre'}</strong>
-                                        <small>{product.codigo ? `Codigo: ${product.codigo}` : `ID: ${product.id}`}</small>
+                                        <small>{product.codigo ? `Código: ${product.codigo}` : `ID: ${product.id}`}</small>
                                       </div>
                                       <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
                                         {isSelected ? 'Agregado' : 'Seleccionar'}
@@ -1782,8 +1787,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
                 <div className="create-user__locations-table create-user__locations-table--oem">
                   <div className="create-user__locations-row create-user__locations-row--head">
-                    <span>Codigo</span>
-                    <span>Descripcion</span>
+                    <span>Código</span>
+                    <span>Descripción</span>
                     <span>Acciones</span>
                   </div>
 
@@ -1792,7 +1797,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                       <span>
                         <input
                           type="text"
-                          placeholder="Codigo OEM"
+                          placeholder="Código OEM"
                           value={oemDraft.codigo}
                           onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
                           disabled={loading}
@@ -1801,7 +1806,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                       <span>
                         <input
                           type="text"
-                          placeholder="Descripcion (opcional)"
+                          placeholder="Descripción (opcional)"
                           value={oemDraft.descripcion}
                           onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
                           disabled={loading}
@@ -2073,7 +2078,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
         <button
           type="button"
-          aria-label="Cambiar tamano de ventana"
+          aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />

@@ -13,9 +13,50 @@ import SolicitudDetails from '../SolicitudDetails/SolicitudDetails'
 import '../../admin/UsersTable/UsersTable.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
+import {
+  buildPrimeColumnFiltersPayload,
+  buildPrimeOrdering,
+  getPrimeGlobalFilterValue,
+} from '../../../../utils/primeTableQuery'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
+const SOLICITUD_FILTER_FIELDS = [
+  'fecha',
+  'cliente_nombre',
+  'cedula_ruc',
+  'sucursal_nombre',
+  'producto_solicitado_nombre',
+  'producto_solicitado_descripcion',
+  'descripcion_general',
+  'producto_conseguido',
+  'cantidad',
+  'conseguido_label',
+]
+const SOLICITUD_FILTER_DEFAULT_MODES = {
+  fecha: FilterMatchMode.CONTAINS,
+  cliente_nombre: FilterMatchMode.CONTAINS,
+  cedula_ruc: FilterMatchMode.STARTS_WITH,
+  sucursal_nombre: FilterMatchMode.CONTAINS,
+  producto_solicitado_nombre: FilterMatchMode.CONTAINS,
+  producto_solicitado_descripcion: FilterMatchMode.CONTAINS,
+  descripcion_general: FilterMatchMode.CONTAINS,
+  producto_conseguido: FilterMatchMode.CONTAINS,
+  cantidad: FilterMatchMode.EQUALS,
+  conseguido_label: FilterMatchMode.CONTAINS,
+}
+const SOLICITUD_ORDERING_MAP = {
+  fecha: 'fecha',
+  cliente_nombre: 'cliente_nombre_text',
+  cedula_ruc: 'cliente__cedula_ruc',
+  sucursal_nombre: 'sucursal__nombre',
+  producto_solicitado_nombre: 'producto_referencia_text',
+  producto_solicitado_descripcion: 'producto_solicitado_descripcion_text',
+  descripcion_general: 'descripcion_general',
+  producto_conseguido: 'producto_conseguido_text',
+  cantidad: 'cantidad',
+  conseguido_label: 'conseguido_label_text',
+}
 const createBulkCancelError = () => {
   const err = new Error('Seleccion global cancelada.')
   err.name = 'AbortError'
@@ -64,6 +105,10 @@ function SolicitudesTable({ token, onSelect }) {
   const bulkModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const bulkSelectAbortRef = useRef(null)
   const bulkSelectCancelledRef = useRef(false)
+  const [sortField, setSortField] = useState(null)
+  const [sortOrder, setSortOrder] = useState(null)
+  const [filters, setFilters] = useState(null)
+  const [globalFilterValue, setGlobalFilterValue] = useState('')
 
   const fetchSucursales = useCallback(async () => {
     if (!token) return
@@ -108,8 +153,14 @@ function SolicitudesTable({ token, onSelect }) {
     []
   )
 
-  const buildClientsListUrl = useCallback((criteria, page = 1, rows = 25) => {
+  const buildClientsListUrl = useCallback((criteria, options = {}) => {
     const params = new URLSearchParams()
+    const page = Number(options?.page) || 1
+    const rows = Number(options?.rows) || 25
+    const tableFilters = options?.tableFilters
+    const tableSortField = options?.tableSortField
+    const tableSortOrder = options?.tableSortOrder
+
     params.set('page', String(page))
     params.set('page_size', String(rows))
 
@@ -124,23 +175,41 @@ function SolicitudesTable({ token, onSelect }) {
     addIfPresent('fecha_hasta', criteria?.fecha_hasta)
     addIfPresent('conseguido', criteria?.conseguido)
 
-    const searchValue = [criteria?.cliente_nombre, criteria?.producto]
+    const criteriaSearch = [criteria?.cliente_nombre, criteria?.producto]
       .map((value) => String(value ?? '').trim())
       .filter(Boolean)
       .join(' ')
-    if (searchValue) {
-      params.set('search', searchValue)
-    }
+    const globalSearch = getPrimeGlobalFilterValue(tableFilters)
+    const mergedSearch = [criteriaSearch, globalSearch].filter(Boolean).join(' ').trim()
+    if (mergedSearch) params.set('search', mergedSearch)
+
+    const columnFilters = buildPrimeColumnFiltersPayload(tableFilters, {
+      allowedFields: SOLICITUD_FILTER_FIELDS,
+      defaultMatchModes: SOLICITUD_FILTER_DEFAULT_MODES,
+    })
+    if (columnFilters) params.set('column_filters', JSON.stringify(columnFilters))
+
+    const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, SOLICITUD_ORDERING_MAP)
+    if (ordering) params.set('ordering', ordering)
 
     return `${API_URL}/solicitudes/solicitudes/?${params.toString()}`
   }, [])
 
   const fetchClients = useCallback(
-    async (criteria, page = 1, rows = pageSize) => {
+    async (criteria, page = 1, rows = pageSize, options = {}) => {
       setLoading(true)
       setError(null)
       try {
-        const url = buildClientsListUrl(criteria, page, rows)
+        const tableFilters = options?.tableFilters ?? filters
+        const tableSortField = options?.tableSortField ?? sortField
+        const tableSortOrder = options?.tableSortOrder ?? sortOrder
+        const url = buildClientsListUrl(criteria, {
+          page,
+          rows,
+          tableFilters,
+          tableSortField,
+          tableSortOrder,
+        })
         const res = await authFetch(url, {}, token)
         if (!res.ok) throw new Error('No se pudo obtener la lista de solicitudes.')
 
@@ -154,7 +223,7 @@ function SolicitudesTable({ token, onSelect }) {
         setPageSize(rows)
         return normalized
       } catch (err) {
-        const msg = err?.message || 'Ocurrio un error al cargar las solicitudes.'
+        const msg = err?.message || 'Ocurrió un error al cargar las solicitudes.'
         setError(msg)
         setClients([])
         setTotalRecords(0)
@@ -164,7 +233,7 @@ function SolicitudesTable({ token, onSelect }) {
         setIsRefreshing(false)
       }
     },
-    [token, normalizeList, pageSize, buildClientsListUrl]
+    [token, normalizeList, pageSize, buildClientsListUrl, filters, sortField, sortOrder]
   )
 
   const fetchAllClients = useCallback(
@@ -172,11 +241,20 @@ function SolicitudesTable({ token, onSelect }) {
       const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null
       const signal = options?.signal
       const isCancelled = typeof options?.isCancelled === 'function' ? options.isCancelled : () => false
+      const tableFilters = options?.tableFilters ?? filters
+      const tableSortField = options?.tableSortField ?? sortField
+      const tableSortOrder = options?.tableSortOrder ?? sortOrder
       const ensureNotCancelled = () => {
         if (signal?.aborted || isCancelled()) throw createBulkCancelError()
       }
       const all = []
-      let url = buildClientsListUrl(criteria, 1, 200)
+      let url = buildClientsListUrl(criteria, {
+        page: 1,
+        rows: 200,
+        tableFilters,
+        tableSortField,
+        tableSortOrder,
+      })
       let total = 0
 
       while (url) {
@@ -222,7 +300,7 @@ function SolicitudesTable({ token, onSelect }) {
 
       return normalizeList(all)
     },
-    [token, normalizeList, buildClientsListUrl]
+    [token, normalizeList, buildClientsListUrl, filters, sortField, sortOrder]
   )
 
   useEffect(() => {
@@ -240,11 +318,9 @@ function SolicitudesTable({ token, onSelect }) {
   }
 
   // ---------------- Filters ----------------
-  const [filters, setFilters] = useState(null)
-  const [globalFilterValue, setGlobalFilterValue] = useState('')
 
   const initFilters = () => {
-    setFilters({
+    const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       fecha: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       cliente_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
@@ -265,8 +341,10 @@ function SolicitudesTable({ token, onSelect }) {
       producto_conseguido: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       conseguido_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       cantidad: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
-    })
+    }
+    setFilters(nextFilters)
     setGlobalFilterValue('')
+    return nextFilters
   }
 
   useEffect(() => {
@@ -276,7 +354,12 @@ function SolicitudesTable({ token, onSelect }) {
         const parsed = JSON.parse(savedState)
         if (parsed?.filters) {
           setFilters(parsed.filters)
-          if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
+          setGlobalFilterValue(getPrimeGlobalFilterValue(parsed.filters))
+          const nextSortField = parsed?.sortField || null
+          const parsedSortOrder = Number(parsed?.sortOrder)
+          const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
+          setSortField(nextSortField)
+          setSortOrder(nextSortOrder)
           return
         }
       }
@@ -292,7 +375,7 @@ function SolicitudesTable({ token, onSelect }) {
 
   useEffect(() => {
     if (!filters) return
-    const payload = JSON.stringify({ filters })
+    const payload = JSON.stringify({ filters, sortField, sortOrder })
     try {
       sessionStorage.setItem('solicitudes-table-state', payload)
     } catch {
@@ -303,20 +386,18 @@ function SolicitudesTable({ token, onSelect }) {
         // no-op
       }
     }
-  }, [filters])
+  }, [filters, sortField, sortOrder])
 
-  const clearFilter = () => {
-    initFilters()
-    setSearchCriteria(initialSearchCriteria)
-    lastSearchRef.current = null
-    setClients([])
-    setSelectedRows([])
-    setTotalRecords(0)
+  const clearFilter = async () => {
+    const nextFilters = initFilters()
+    if (!lastSearchRef.current) return
     setPageFirst(0)
-    setPageSize(25)
-    setShowBulkSelectConfirm(false)
-    setShowBulkSelectProgress(false)
-    setBulkSelectProgress({ loaded: 0, total: 0, percent: 0 })
+    setIsRefreshing(true)
+    await fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const initialSearchCriteria = {
@@ -361,7 +442,11 @@ function SolicitudesTable({ token, onSelect }) {
     lastSearchRef.current = { ...searchCriteria }
     setShowSearchModal(false)
     setIsRefreshing(true)
-    await fetchClients(lastSearchRef.current, 1, pageSize)
+    await fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const filterClearTemplate = (options) => (
@@ -458,8 +543,8 @@ function SolicitudesTable({ token, onSelect }) {
       },
       {
         nombrevar: 'producto_solicitado_descripcion',
-        header: 'Descripcion',
-        filterPlaceholder: 'Buscar por descripcion',
+        header: 'Descripción',
+        filterPlaceholder: 'Buscar por descripción',
       },
       {
         nombrevar: 'descripcion_general',
@@ -619,7 +704,7 @@ function SolicitudesTable({ token, onSelect }) {
   const dataLength = totalRecords ?? 0
   const emptyMessage = lastSearchRef.current
     ? 'No se encontraron solicitudes'
-    : 'Realice una bÃºsqueda para ver la informaciÃ³n. Si quiere ver toda la informaciÃ³n, haga la bÃºsqueda sin aplicar ningÃºn filtro.'
+    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
 
   const header = (
     <div className="users-header">
@@ -657,7 +742,7 @@ function SolicitudesTable({ token, onSelect }) {
   const handleCreated = () => {
     setShowCreateModal(false)
     refreshData()
-    toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Solicitud creada correctamente', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Solicitud creada correctamente', life: 2500 })
   }
 
   const focusSearch = () => setShowSearchModal(true)
@@ -801,6 +886,36 @@ function SolicitudesTable({ token, onSelect }) {
     setIsSearchMaximized(true)
   }
 
+  const handleFilterChange = async (event) => {
+    const nextFilters = event?.filters || {}
+    setFilters(nextFilters)
+    setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }
+
+  const handleSortChange = async (event) => {
+    const rawSortOrder = Number(event?.sortOrder)
+    const normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
+    const nextSortField = normalizedSortOrder ? event?.sortField || null : null
+    setSortField(nextSortField)
+    setSortOrder(normalizedSortOrder)
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: nextSortField,
+      tableSortOrder: normalizedSortOrder,
+    })
+  }
+
   const handlePageChange = async (event) => {
     const nextRows = Number(event?.rows) || pageSize
     const nextFirst = Number(event?.first) || 0
@@ -811,7 +926,11 @@ function SolicitudesTable({ token, onSelect }) {
 
     if (!lastSearchRef.current) return
     setIsRefreshing(true)
-    await fetchClients(lastSearchRef.current, nextPage, nextRows)
+    await fetchClients(lastSearchRef.current, nextPage, nextRows, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const handleSelectAllRows = useCallback(async () => {
@@ -856,7 +975,7 @@ function SolicitudesTable({ token, onSelect }) {
         toast.current?.show({
           severity: 'info',
           summary: 'Cancelado',
-          detail: 'Se cancelÃ³ la seleccion global.',
+          detail: 'Se canceló la selección global.',
           life: 2500,
         })
         return
@@ -1026,8 +1145,11 @@ function SolicitudesTable({ token, onSelect }) {
           rowsPerPageOptions={[5, 10, 25, 50]}
           onPage={handlePageChange}
           removableSort
+          sortField={sortField || undefined}
+          sortOrder={sortOrder || 0}
+          onSort={handleSortChange}
           filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
+          onFilter={handleFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={[
             'fecha',
@@ -1181,7 +1303,7 @@ function SolicitudesTable({ token, onSelect }) {
           >
             <header className="create-user__header" onMouseDown={handleBulkModalMouseDown}>
               <div className="create-user__header-text">
-                <h3>Confirmar seleccion global</h3>
+                <h3>Confirmar selección global</h3>
               </div>
             </header>
 
@@ -1248,7 +1370,7 @@ function SolicitudesTable({ token, onSelect }) {
 
             <div className="create-user__body">
               <p style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
-                Procesando seleccion global. Por favor espera.
+                Procesando selección global. Por favor espera.
               </p>
               <div
                 style={{
@@ -1337,16 +1459,14 @@ function SolicitudesTable({ token, onSelect }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
+                  {isSearchMaximized ? '▣' : '▢'}
                 </button>
                 <button
                   type="button"
                   className="create-user__icon-button"
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
-                >
-                  Ã—
-                </button>
+                >×</button>
               </div>
             </header>
 
@@ -1356,7 +1476,7 @@ function SolicitudesTable({ token, onSelect }) {
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Filtros</p>
-                      <h4>Busqueda avanzada</h4>
+                      <h4>Búsqueda avanzada</h4>
                     </div>
                   </div>
 
@@ -1462,7 +1582,7 @@ function SolicitudesTable({ token, onSelect }) {
             </form>
             <button
               type="button"
-              aria-label="Cambiar tamano de ventana"
+              aria-label="Cambiar tamaño de ventana"
               className="create-user__resize-handle"
               onMouseDown={handleSearchResizeMouseDown}
             />

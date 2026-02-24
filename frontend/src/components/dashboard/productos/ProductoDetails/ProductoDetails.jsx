@@ -119,7 +119,12 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     [onError]
   )
 
-  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+  const normalizeValue = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 
   const filteredSuppliers = useMemo(() => {
     const needle = normalizeValue(casaSearch)
@@ -168,7 +173,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
           })
         )
       } catch (err) {
-        // Descripcion es opcional: evita bloquear la edicion si falla.
+        // Descripción es opcional: evita bloquear la edición si falla.
       }
     },
     [token]
@@ -181,7 +186,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       const response = await authFetch(`${API_URL}/productos/listado/${productoId}/`, {}, token)
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || 'No se pudo cargar la informacion del producto.'
+        const detail = data?.detail || 'No se pudo cargar la información del producto.'
         throw new Error(detail)
       }
       const normalized = normalizeProducto(data)
@@ -224,7 +229,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       setAlternoError('')
       setIsEditing(false)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al obtener la informacion del producto.')
+      notifyError(err.message || 'Ocurrió un error al obtener la información del producto.')
     } finally {
       setLoadingData(false)
     }
@@ -248,7 +253,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
         const list = Array.isArray(data) ? data : data?.results || []
         setBrands(list)
       } catch (err) {
-        notifyError(err.message || 'Ocurrio un error al cargar las marcas.')
+        notifyError(err.message || 'Ocurrió un error al cargar las marcas.')
       }
     },
     [notifyError, token]
@@ -272,7 +277,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
         const list = Array.isArray(data) ? data : data?.results || []
         setSuppliers(list)
       } catch (err) {
-        notifyError(err.message || 'Ocurrio un error al cargar las casas comerciales.')
+        notifyError(err.message || 'Ocurrió un error al cargar las casas comerciales.')
       }
     },
     [notifyError, token]
@@ -300,7 +305,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
         }
         setAlternoOptions(list)
       } catch (err) {
-        notifyError(err.message || 'Ocurrio un error al buscar productos.')
+        notifyError(err.message || 'Ocurrió un error al buscar productos.')
       } finally {
         setAlternoLoading(false)
       }
@@ -314,7 +319,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     try {
       const response = await authFetch(`${API_URL}/configuracion/sistema/`, {}, token)
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error('No se pudo cargar la configuracion del IVA.')
+      if (!response.ok) throw new Error('No se pudo cargar la configuración del IVA.')
       const parsed = Number(data?.iva_rate)
       setIvaRate(Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_IVA_RATE)
     } catch (err) {
@@ -942,7 +947,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al actualizar el producto.')
+      notifyError(err.message || 'Ocurrió un error al actualizar el producto.')
     } finally {
       setSaving(false)
     }
@@ -967,7 +972,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       onDeleted?.(productoId)
       setShowDeleteDialog(false)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al eliminar el producto.')
+      notifyError(err.message || 'Ocurrió un error al eliminar el producto.')
     } finally {
       setDeleteLoading(false)
     }
@@ -1262,7 +1267,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                                 >
                                   <div className="create-user__result-info">
                                     <strong>{brand.nombre}</strong>
-                                    <small>{brand.codigo ? `Codigo: ${brand.codigo}` : `ID: ${brand.id}`}</small>
+                                    <small>{brand.codigo ? `Código: ${brand.codigo}` : `ID: ${brand.id}`}</small>
                                   </div>
                                 </button>
                               ))}
@@ -1273,7 +1278,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                     </label>
 
                     <label className="create-user__field">
-                      <span>Codigo</span>
+                      <span>Código</span>
                       <input
                         name="codigo"
                         type="text"
@@ -1333,7 +1338,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                                 >
                                   <div className="create-user__result-info">
                                     <strong>{supplier.nombre}</strong>
-                                    <small>{supplier.codigo ? `Codigo: ${supplier.codigo}` : `ID: ${supplier.id}`}</small>
+                                    <small>{supplier.codigo ? `Código: ${supplier.codigo}` : `ID: ${supplier.id}`}</small>
                                   </div>
                                 </button>
                               ))}
@@ -1344,7 +1349,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                     </label>
 
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <textarea
                         name="descripcion"
                         value={formData.descripcion}
@@ -1402,7 +1407,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                       <strong className="producto-details__metric-value">{formatCurrency(precioConIva)}</strong>
                     </div>
                     <div className="producto-details__metric-note">
-                      <p>*Precio promedio: se calcula automaticamente con la informacion de salidas por ventas.</p>
+                      <p>*Precio promedio: se calcula automáticamente con la información de salidas por ventas.</p>
                       <p>
                         IVA configurado: {ivaLoading ? '...' : `${Math.round(ivaRate * 100)}%`} (ajustable en Configuracion).
                       </p>
@@ -1435,8 +1440,8 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
 
                   <div className="create-user__locations-table create-user__locations-table--oem">
                     <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Codigo</span>
-                      <span>Descripcion</span>
+                      <span>Código</span>
+                      <span>Descripción</span>
                       <span>Acciones</span>
                     </div>
 
@@ -1445,7 +1450,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                         <span>
                           <input
                             type="text"
-                            placeholder="Codigo OEM"
+                            placeholder="Código OEM"
                             value={oemDraft.codigo}
                             onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
                             disabled={editorDisabled}
@@ -1454,7 +1459,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                         <span>
                           <input
                             type="text"
-                            placeholder="Descripcion (opcional)"
+                            placeholder="Descripción (opcional)"
                             value={oemDraft.descripcion}
                             onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
                             disabled={editorDisabled}
@@ -1533,9 +1538,9 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
 
                 <div className="create-user__locations-table create-user__locations-table--alternos">
                   <div className="create-user__locations-row create-user__locations-row--head">
-                    <span>Codigo</span>
+                    <span>Código</span>
                     <span>Producto</span>
-                    <span>Descripcion</span>
+                    <span>Descripción</span>
                     <span>Acciones</span>
                   </div>
 
@@ -1597,7 +1602,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                                     >
                                       <div className="create-user__result-info">
                                         <strong>{product.nombre || 'Sin nombre'}</strong>
-                                        <small>{product.codigo ? `Codigo: ${product.codigo}` : `ID: ${product.id}`}</small>
+                                        <small>{product.codigo ? `Código: ${product.codigo}` : `ID: ${product.id}`}</small>
                                       </div>
                                       <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
                                         {isSelected ? 'Agregado' : 'Seleccionar'}
@@ -1680,8 +1685,8 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
 
                 <div className="create-user__locations-table create-user__locations-table--oem">
                   <div className="create-user__locations-row create-user__locations-row--head">
-                    <span>Codigo</span>
-                    <span>Descripcion</span>
+                    <span>Código</span>
+                    <span>Descripción</span>
                     <span>Acciones</span>
                   </div>
 
@@ -1690,7 +1695,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                       <span>
                         <input
                           type="text"
-                          placeholder="Codigo OEM"
+                          placeholder="Código OEM"
                           value={oemDraft.codigo}
                           onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
                           disabled={editorDisabled}
@@ -1699,7 +1704,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                       <span>
                         <input
                           type="text"
-                          placeholder="Descripcion (opcional)"
+                          placeholder="Descripción (opcional)"
                           value={oemDraft.descripcion}
                           onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
                           disabled={editorDisabled}
@@ -1829,7 +1834,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
 
         <button
           type="button"
-          aria-label="Cambiar tamano de ventana"
+          aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />
@@ -1843,7 +1848,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
             </div>
             <div className="user-details__confirm-content">
               <h4>Eliminar producto</h4>
-              <p>Deseas eliminar este producto? Esta accion no se puede deshacer.</p>
+              <p>¿Deseas eliminar este producto? Esta acción no se puede deshacer.</p>
             </div>
             <div className="user-details__confirm-actions">
               <button

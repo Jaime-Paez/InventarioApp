@@ -49,47 +49,38 @@ function Workspace({
     Configuraciones: <Configuracion token={token} darkMode={darkMode} onToggleTheme={onToggleTheme} />,
   }
 
-  const renderContent = () => (
-    <>
-      {openTabs.map((tab) => {
-        const isActive = tab === activeItem
-        const hasAccess = labelHasAccess(tab, permissionIndex)
-        const content = tabContentMap[tab]
+  const renderContent = () => {
+    if (!activeItem) return null
 
-        if (!content) {
-          if (!isActive) return null
-          return (
-            <div key={tab} className="workspace__tab-panel active">
-              <p className="workspace__subtitle">
-                El modulo "{activeItem}" todavia no tiene contenido disponible.
-              </p>
-            </div>
-          )
-        }
+    const hasAccess = labelHasAccess(activeItem, permissionIndex)
+    const content = tabContentMap[activeItem]
 
-        if (!hasAccess) {
-          if (!isActive) return null
-          return (
-            <div key={tab} className="workspace__tab-panel active">
-              <p className="workspace__subtitle">
-                No tienes permisos para acceder a este modulo. Solicita acceso a un administrador.
-              </p>
-            </div>
-          )
-        }
+    if (!content) {
+      return (
+        <div key={activeItem} className="workspace__tab-panel active">
+          <p className="workspace__subtitle">
+            El módulo "{activeItem}" todavía no tiene contenido disponible.
+          </p>
+        </div>
+      )
+    }
 
-        return (
-          <div
-            key={tab}
-            className={`workspace__tab-panel${isActive ? ' active' : ''}`}
-            aria-hidden={!isActive}
-          >
-            {content}
-          </div>
-        )
-      })}
-    </>
-  )
+    if (!hasAccess) {
+      return (
+        <div key={activeItem} className="workspace__tab-panel active">
+          <p className="workspace__subtitle">
+            No tienes permisos para acceder a este módulo. Solicita acceso a un administrador.
+          </p>
+        </div>
+      )
+    }
+
+    return (
+      <div key={activeItem} className="workspace__tab-panel active" aria-hidden={false}>
+        {content}
+      </div>
+    )
+  }
 
   return (
     <main className="workspace">
@@ -109,11 +100,11 @@ function Workspace({
             <img src={logo} alt="Logotipo Kava" />
           </div>
           <div className="workspace__copy">
-            <h2>{isLeaving ? farewellTitle : `Que gusto tenerte de vuelta, ${username}!`}</h2>
+            <h2>{isLeaving ? farewellTitle : `Qué gusto tenerte de vuelta, ${username}!`}</h2>
             <p className="workspace__subtitle">
               {isLeaving
                 ? 'Nos vemos pronto.'
-                : 'Para comenzar, selecciona una opcion del menu'}
+                : 'Para comenzar, selecciona una opción del menú'}
             </p>
           </div>
         </section>

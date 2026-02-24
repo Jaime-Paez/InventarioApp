@@ -70,7 +70,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
       setSolicitud(data)
     } catch (err) {
       setSolicitud(null)
-      setError(err?.message || 'Ocurrio un error al cargar la solicitud.')
+      setError(err?.message || 'Ocurrió un error al cargar la solicitud.')
     } finally {
       setLoading(false)
     }
@@ -260,7 +260,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
       await fetchSolicitud()
       onUpdated?.(data)
     } catch (err) {
-      notifyError(err?.message || 'Ocurrio un error al enlazar el producto.')
+      notifyError(err?.message || 'Ocurrió un error al enlazar el producto.')
     } finally {
       setLinkingProduct(false)
     }
@@ -377,7 +377,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
                   <div className="create-user__locations-table create-user__locations-table--oem">
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Nombre</span>
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <span>Cantidad</span>
                       <span>Estado</span>
                     </div>
@@ -394,7 +394,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Solicitud</p>
-                      <h4>Descripcion general</h4>
+                      <h4>Descripción general</h4>
                     </div>
                   </div>
                   <div className="create-user__grid create-user__grid--two">
@@ -414,7 +414,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
                   </div>
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Codigo</span>
+                      <span>Código</span>
                       <input value={productoResuelto?.codigo || '-'} disabled />
                     </label>
                     <label className="create-user__field">
@@ -444,11 +444,11 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
                     <input value={solicitud.cliente_data?.cedula_ruc || '-'} disabled />
                   </label>
                   <label className="create-user__field">
-                    <span>Telefono</span>
+                    <span>Teléfono</span>
                     <input value={solicitud.cliente_data?.telefono || '-'} disabled />
                   </label>
                   <label className="create-user__field create-user__field--full">
-                    <span>Direccion</span>
+                    <span>Dirección</span>
                     <input value={solicitud.cliente_data?.direccion || '-'} disabled />
                   </label>
                 </div>
@@ -457,7 +457,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
 
             {!loading && !solicitud && !error && (
               <p className="workspace__subtitle" style={{ margin: 0 }}>
-                No se encontro la solicitud seleccionada.
+                No se encontró la solicitud seleccionada.
               </p>
             )}
           </div>
@@ -492,7 +492,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
 
         <button
           type="button"
-          aria-label="Cambiar tamano de ventana"
+          aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />

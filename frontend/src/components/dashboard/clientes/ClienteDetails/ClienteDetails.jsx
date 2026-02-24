@@ -203,7 +203,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
       const response = await authFetch(`${API_URL}/solicitudes/clientes/${clienteId}/`, {}, token)
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || 'No se pudo cargar la informacion del cliente.'
+        const detail = data?.detail || 'No se pudo cargar la información del cliente.'
         throw new Error(detail)
       }
       const normalized = normalizeCliente(data)
@@ -215,7 +215,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
       setOriginalAutos(nextAutos)
       setIsEditing(false)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al obtener la informacion del cliente.')
+      notifyError(err.message || 'Ocurrió un error al obtener la información del cliente.')
     } finally {
       setLoadingData(false)
     }
@@ -336,7 +336,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al actualizar el cliente.')
+      notifyError(err.message || 'Ocurrió un error al actualizar el cliente.')
     } finally {
       setSaving(false)
     }
@@ -361,7 +361,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
       onDeleted?.(clienteId)
       setShowDeleteDialog(false)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al eliminar el cliente.')
+      notifyError(err.message || 'Ocurrió un error al eliminar el cliente.')
     } finally {
       setDeleteLoading(false)
     }
@@ -606,7 +606,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                 </label>
 
                 <label className="create-user__field">
-                  <span>Telefono</span>
+                  <span>Teléfono</span>
                   <input
                     name="telefono"
                     type="text"
@@ -617,7 +617,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                 </label>
 
                 <label className="create-user__field create-user__field--full">
-                  <span>Direccion</span>
+                  <span>Dirección</span>
                   <input
                     name="direccion"
                     type="text"
@@ -733,7 +733,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                                   >
                                     <div className="create-user__result-info">
                                       <strong>{marca.nombre}</strong>
-                                      <small>{marca.codigo ? `Codigo: ${marca.codigo}` : `ID: ${marca.id}`}</small>
+                                      <small>{marca.codigo ? `Código: ${marca.codigo}` : `ID: ${marca.id}`}</small>
                                     </div>
                                   </button>
                                 ))}
@@ -833,7 +833,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
 
         <button
           type="button"
-          aria-label="Cambiar tamano de ventana"
+          aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
         />
@@ -847,7 +847,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
             </div>
             <div className="user-details__confirm-content">
               <h4>Eliminar cliente</h4>
-              <p>Deseas eliminar este cliente? Esta accion no se puede deshacer.</p>
+              <p>¿Deseas eliminar este cliente? Esta acción no se puede deshacer.</p>
             </div>
             <div className="user-details__confirm-actions">
               <button

@@ -1,9 +1,12 @@
 from decimal import Decimal, InvalidOperation
 
+from django.db.models import Case, CharField, DecimalField, ExpressionWrapper, F, Value, When
 from django.utils.dateparse import parse_date
 from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 
+from configuracion.models import ConfiguracionSistema
+from core.table_filters import apply_column_filters, parse_column_filters
 from usuarios.permissions import ProductosModulePermission
 
 from .models import OEM, OEMProducto, Producto, ProductoAlterno
@@ -28,19 +31,41 @@ class ProductoViewSet(viewsets.ModelViewSet):
     search_fields = [
         "codigo",
         "nombre",
+        "descripcion",
         "casas_comerciales__nombre",
         "marca__nombre",
+        "oem_productos__oem__codigo",
     ]
     ordering_fields = [
         "nombre",
         "codigo",
+        "descripcion",
         "casas_comerciales__nombre",
         "marca__nombre",
+        "pieza_original",
+        "costo_minimo",
+        "precio",
+        "precio_con_iva_backend",
+        "creado_en",
     ]
 
     def get_queryset(self):
         queryset = super().get_queryset()
         params = self.request.query_params
+        iva_rate = ConfiguracionSistema.get_solo().iva_rate
+        factor = Decimal("1") + Decimal(str(iva_rate or 0))
+
+        queryset = queryset.annotate(
+            pieza_original_label_text=Case(
+                When(pieza_original=True, then=Value("Si")),
+                default=Value("No"),
+                output_field=CharField(),
+            ),
+            precio_con_iva_backend=ExpressionWrapper(
+                F("precio") * Value(factor),
+                output_field=DecimalField(max_digits=16, decimal_places=4),
+            ),
+        )
 
         codigo = (params.get("codigo") or "").strip()
         if codigo:
@@ -91,6 +116,21 @@ class ProductoViewSet(viewsets.ModelViewSet):
             parsed = parse_date(fecha_creacion)
             if parsed:
                 queryset = queryset.filter(creado_en__date=parsed)
+
+        queryset = apply_column_filters(
+            queryset,
+            parse_column_filters(params.get("column_filters")),
+            {
+                "codigo": "codigo",
+                "nombre": "nombre",
+                "marca_nombre": "marca__nombre",
+                "pieza_original_label": "pieza_original_label_text",
+                "costo_minimo": {"lookup": "costo_minimo", "type": "number"},
+                "precio": {"lookup": "precio", "type": "number"},
+                "precio_con_iva": {"lookup": "precio_con_iva_backend", "type": "number"},
+                "casa_comercial_nombre": "casas_comerciales__nombre",
+            },
+        )
 
         return queryset.distinct()
 

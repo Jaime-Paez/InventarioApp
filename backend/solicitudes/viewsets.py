@@ -1,5 +1,6 @@
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Case, CharField, Count, Q, Value, When
+from django.db.models.functions import Coalesce, Concat
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import filters, status, viewsets
@@ -7,6 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from core.table_filters import apply_column_filters, parse_column_filters
 from inventario.models import Sucursal
 from usuarios.models import RolPermiso
 from usuarios.permissions import ClientesModulePermission, SolicitudesModulePermission
@@ -27,11 +29,19 @@ class ClienteViewSet(viewsets.ModelViewSet):
     serializer_class = ClienteSerializer
     permission_classes = [IsAuthenticated, ClientesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombres", "apellidos", "correo", "telefono", "cedula_ruc"]
-    ordering_fields = ["nombres", "apellidos", "correo", "telefono"]
+    search_fields = ["nombres", "apellidos", "correo", "telefono", "cedula_ruc", "direccion"]
+    ordering_fields = [
+        "nombres",
+        "apellidos",
+        "correo",
+        "telefono",
+        "cedula_ruc",
+        "direccion",
+        "autos_count_backend",
+    ]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().annotate(autos_count_backend=Count("autos", distinct=True))
         params = self.request.query_params
 
         nombres = (params.get("nombres") or "").strip()
@@ -57,6 +67,20 @@ class ClienteViewSet(viewsets.ModelViewSet):
         direccion = (params.get("direccion") or "").strip()
         if direccion:
             queryset = queryset.filter(direccion__icontains=direccion)
+
+        queryset = apply_column_filters(
+            queryset,
+            parse_column_filters(params.get("column_filters")),
+            {
+                "nombres": "nombres",
+                "apellidos": "apellidos",
+                "cedula_ruc": "cedula_ruc",
+                "correo": "correo",
+                "telefono": "telefono",
+                "direccion": "direccion",
+                "autos_count": {"lookup": "autos_count_backend", "type": "number"},
+            },
+        )
 
         return queryset
 
@@ -103,17 +127,53 @@ class SolicitudViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
+        "descripcion_general",
         "cliente__nombres",
         "cliente__apellidos",
         "cliente__cedula_ruc",
         "producto__nombre",
         "producto_solicitado__nombre",
+        "producto_solicitado__descripcion",
         "sucursal__nombre",
     ]
-    ordering_fields = ["fecha", "cantidad", "cliente__nombres", "cliente__apellidos", "sucursal__nombre"]
+    ordering_fields = [
+        "fecha",
+        "cantidad",
+        "cliente__nombres",
+        "cliente__apellidos",
+        "cliente__cedula_ruc",
+        "sucursal__nombre",
+        "producto_referencia_text",
+        "producto_solicitado_descripcion_text",
+        "descripcion_general",
+        "producto_conseguido_text",
+        "conseguido_label_text",
+        "cliente_nombre_text",
+    ]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().annotate(
+            cliente_nombre_text=Concat(
+                Coalesce("cliente__nombres", Value("")),
+                Value(" "),
+                Coalesce("cliente__apellidos", Value("")),
+                output_field=CharField(),
+            ),
+            producto_referencia_text=Coalesce("producto_solicitado__nombre", "producto__nombre", Value("")),
+            producto_solicitado_descripcion_text=Coalesce("producto_solicitado__descripcion", Value("")),
+            producto_conseguido_text=Concat(
+                Coalesce("producto_solicitado__producto__codigo", Value("")),
+                Value(" "),
+                Coalesce("producto_solicitado__producto__nombre", Value("")),
+                output_field=CharField(),
+            ),
+            conseguido_label_text=Case(
+                When(tabla=Solicitud.Tabla.PRODUCTO, then=Value("Si")),
+                When(producto_solicitado__conseguido=True, then=Value("Si")),
+                default=Value("No"),
+                output_field=CharField(),
+            ),
+        )
         queryset = apply_sucursal_scope(
             queryset,
             self.request.user,
@@ -161,6 +221,23 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
                 producto_solicitado__conseguido=False,
             )
+
+        queryset = apply_column_filters(
+            queryset,
+            parse_column_filters(params.get("column_filters")),
+            {
+                "fecha": {"lookup": "fecha", "type": "date"},
+                "cliente_nombre": "cliente_nombre_text",
+                "cedula_ruc": "cliente__cedula_ruc",
+                "sucursal_nombre": "sucursal__nombre",
+                "producto_solicitado_nombre": "producto_referencia_text",
+                "producto_solicitado_descripcion": "producto_solicitado_descripcion_text",
+                "descripcion_general": "descripcion_general",
+                "producto_conseguido": "producto_conseguido_text",
+                "cantidad": {"lookup": "cantidad", "type": "number"},
+                "conseguido_label": "conseguido_label_text",
+            },
+        )
 
         return queryset
 

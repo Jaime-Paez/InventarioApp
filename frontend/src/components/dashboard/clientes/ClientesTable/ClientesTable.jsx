@@ -13,9 +13,33 @@ import ClienteDetails from '../ClienteDetails/ClienteDetails'
 import '../../admin/UsersTable/UsersTable.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
+import {
+  buildPrimeColumnFiltersPayload,
+  buildPrimeOrdering,
+  getPrimeGlobalFilterValue,
+} from '../../../../utils/primeTableQuery'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
+const CLIENT_FILTER_FIELDS = ['nombres', 'apellidos', 'cedula_ruc', 'autos_count', 'correo', 'telefono', 'direccion']
+const CLIENT_FILTER_DEFAULT_MODES = {
+  nombres: FilterMatchMode.STARTS_WITH,
+  apellidos: FilterMatchMode.STARTS_WITH,
+  cedula_ruc: FilterMatchMode.STARTS_WITH,
+  autos_count: FilterMatchMode.STARTS_WITH,
+  correo: FilterMatchMode.CONTAINS,
+  telefono: FilterMatchMode.CONTAINS,
+  direccion: FilterMatchMode.CONTAINS,
+}
+const CLIENT_ORDERING_MAP = {
+  nombres: 'nombres',
+  apellidos: 'apellidos',
+  cedula_ruc: 'cedula_ruc',
+  autos_count: 'autos_count_backend',
+  correo: 'correo',
+  telefono: 'telefono',
+  direccion: 'direccion',
+}
 const createBulkCancelError = () => {
   const err = new Error('Seleccion global cancelada.')
   err.name = 'AbortError'
@@ -63,6 +87,10 @@ function ClientesTable({ token, onSelect }) {
   const bulkModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const bulkSelectAbortRef = useRef(null)
   const bulkSelectCancelledRef = useRef(false)
+  const [sortField, setSortField] = useState(null)
+  const [sortOrder, setSortOrder] = useState(null)
+  const [filters, setFilters] = useState(null)
+  const [globalFilterValue, setGlobalFilterValue] = useState('')
 
   const normalizeList = useCallback(
     (list) =>
@@ -73,8 +101,14 @@ function ClientesTable({ token, onSelect }) {
     []
   )
 
-  const buildClientsListUrl = useCallback((criteria, page = 1, rows = 25) => {
+  const buildClientsListUrl = useCallback((criteria, options = {}) => {
     const params = new URLSearchParams()
+    const page = Number(options?.page) || 1
+    const rows = Number(options?.rows) || 25
+    const tableFilters = options?.tableFilters
+    const tableSortField = options?.tableSortField
+    const tableSortOrder = options?.tableSortOrder
+
     params.set('page', String(page))
     params.set('page_size', String(rows))
 
@@ -90,15 +124,36 @@ function ClientesTable({ token, onSelect }) {
     addIfPresent('telefono', criteria?.telefono)
     addIfPresent('direccion', criteria?.direccion)
 
+    const globalSearch = getPrimeGlobalFilterValue(tableFilters)
+    if (globalSearch) params.set('search', globalSearch)
+
+    const columnFilters = buildPrimeColumnFiltersPayload(tableFilters, {
+      allowedFields: CLIENT_FILTER_FIELDS,
+      defaultMatchModes: CLIENT_FILTER_DEFAULT_MODES,
+    })
+    if (columnFilters) params.set('column_filters', JSON.stringify(columnFilters))
+
+    const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, CLIENT_ORDERING_MAP)
+    if (ordering) params.set('ordering', ordering)
+
     return `${API_URL}/solicitudes/clientes/?${params.toString()}`
   }, [])
 
   const fetchClients = useCallback(
-    async (criteria, page = 1, rows = pageSize) => {
+    async (criteria, page = 1, rows = pageSize, options = {}) => {
       setLoading(true)
       setError(null)
       try {
-        const url = buildClientsListUrl(criteria, page, rows)
+        const tableFilters = options?.tableFilters ?? filters
+        const tableSortField = options?.tableSortField ?? sortField
+        const tableSortOrder = options?.tableSortOrder ?? sortOrder
+        const url = buildClientsListUrl(criteria, {
+          page,
+          rows,
+          tableFilters,
+          tableSortField,
+          tableSortOrder,
+        })
         const res = await authFetch(url, {}, token)
         if (!res.ok) throw new Error('No se pudo obtener la lista de clientes.')
 
@@ -112,7 +167,7 @@ function ClientesTable({ token, onSelect }) {
         setPageSize(rows)
         return normalized
       } catch (err) {
-        const msg = err?.message || 'Ocurrio un error al cargar los clientes.'
+        const msg = err?.message || 'Ocurrió un error al cargar los clientes.'
         setError(msg)
         setClients([])
         setTotalRecords(0)
@@ -122,7 +177,7 @@ function ClientesTable({ token, onSelect }) {
         setIsRefreshing(false)
       }
     },
-    [token, normalizeList, pageSize, buildClientsListUrl]
+    [token, normalizeList, pageSize, buildClientsListUrl, filters, sortField, sortOrder]
   )
 
   const fetchAllClients = useCallback(
@@ -130,11 +185,20 @@ function ClientesTable({ token, onSelect }) {
       const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null
       const signal = options?.signal
       const isCancelled = typeof options?.isCancelled === 'function' ? options.isCancelled : () => false
+      const tableFilters = options?.tableFilters ?? filters
+      const tableSortField = options?.tableSortField ?? sortField
+      const tableSortOrder = options?.tableSortOrder ?? sortOrder
       const ensureNotCancelled = () => {
         if (signal?.aborted || isCancelled()) throw createBulkCancelError()
       }
       const all = []
-      let url = buildClientsListUrl(criteria, 1, 200)
+      let url = buildClientsListUrl(criteria, {
+        page: 1,
+        rows: 200,
+        tableFilters,
+        tableSortField,
+        tableSortOrder,
+      })
       let total = 0
 
       while (url) {
@@ -180,7 +244,7 @@ function ClientesTable({ token, onSelect }) {
 
       return normalizeList(all)
     },
-    [token, normalizeList, buildClientsListUrl]
+    [token, normalizeList, buildClientsListUrl, filters, sortField, sortOrder]
   )
 
   const refreshData = () => {
@@ -194,11 +258,9 @@ function ClientesTable({ token, onSelect }) {
   }
 
   // ---------------- Filters ----------------
-  const [filters, setFilters] = useState(null)
-  const [globalFilterValue, setGlobalFilterValue] = useState('')
 
   const initFilters = () => {
-    setFilters({
+    const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       nombres: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       apellidos: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
@@ -207,8 +269,10 @@ function ClientesTable({ token, onSelect }) {
       correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       direccion: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-    })
+    }
+    setFilters(nextFilters)
     setGlobalFilterValue('')
+    return nextFilters
   }
 
   useEffect(() => {
@@ -218,7 +282,12 @@ function ClientesTable({ token, onSelect }) {
         const parsed = JSON.parse(savedState)
         if (parsed?.filters) {
           setFilters(parsed.filters)
-          if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
+          setGlobalFilterValue(getPrimeGlobalFilterValue(parsed.filters))
+          const nextSortField = parsed?.sortField || null
+          const parsedSortOrder = Number(parsed?.sortOrder)
+          const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
+          setSortField(nextSortField)
+          setSortOrder(nextSortOrder)
           return
         }
       }
@@ -234,7 +303,7 @@ function ClientesTable({ token, onSelect }) {
 
   useEffect(() => {
     if (!filters) return
-    const payload = JSON.stringify({ filters })
+    const payload = JSON.stringify({ filters, sortField, sortOrder })
     try {
       sessionStorage.setItem('clientes-table-state', payload)
     } catch {
@@ -245,20 +314,18 @@ function ClientesTable({ token, onSelect }) {
         // no-op
       }
     }
-  }, [filters])
+  }, [filters, sortField, sortOrder])
 
-  const clearFilter = () => {
-    initFilters()
-    setSearchCriteria(initialSearchCriteria)
-    lastSearchRef.current = null
-    setClients([])
-    setSelectedRows([])
-    setTotalRecords(0)
+  const clearFilter = async () => {
+    const nextFilters = initFilters()
+    if (!lastSearchRef.current) return
     setPageFirst(0)
-    setPageSize(25)
-    setShowBulkSelectConfirm(false)
-    setShowBulkSelectProgress(false)
-    setBulkSelectProgress({ loaded: 0, total: 0, percent: 0 })
+    setIsRefreshing(true)
+    await fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const initialSearchCriteria = {
@@ -302,7 +369,11 @@ function ClientesTable({ token, onSelect }) {
     lastSearchRef.current = { ...searchCriteria }
     setShowSearchModal(false)
     setIsRefreshing(true)
-    await fetchClients(lastSearchRef.current, 1, pageSize)
+    await fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const filterClearTemplate = (options) => (
@@ -393,8 +464,8 @@ function ClientesTable({ token, onSelect }) {
       { nombrevar: 'cedula_ruc', header: 'Cedula/RUC', filterPlaceholder: 'Buscar por cedula/RUC' },
       { nombrevar: 'autos_count', header: 'Autos', filterPlaceholder: 'Filtrar por autos' },
       { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
-      { nombrevar: 'telefono', header: 'Telefono', filterPlaceholder: 'Buscar por telefono' },
-      { nombrevar: 'direccion', header: 'Direccion', filterPlaceholder: 'Buscar por direccion' },
+      { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
+      { nombrevar: 'direccion', header: 'Dirección', filterPlaceholder: 'Buscar por dirección' },
     ],
     []
   )
@@ -554,7 +625,7 @@ function ClientesTable({ token, onSelect }) {
   const dataLength = totalRecords ?? 0
   const emptyMessage = lastSearchRef.current
     ? 'No se encontraron clientes'
-    : 'Realice una bÃºsqueda para ver la informaciÃ³n. Si quiere ver toda la informaciÃ³n, haga la bÃºsqueda sin aplicar ningÃºn filtro.'
+    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
 
   const header = (
     <div className="users-header">
@@ -592,7 +663,7 @@ function ClientesTable({ token, onSelect }) {
   const handleCreated = () => {
     setShowCreateModal(false)
     refreshData()
-    toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Cliente creado correctamente', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cliente creado correctamente', life: 2500 })
   }
 
   const focusSearch = () => setShowSearchModal(true)
@@ -736,6 +807,36 @@ function ClientesTable({ token, onSelect }) {
     setIsSearchMaximized(true)
   }
 
+  const handleFilterChange = async (event) => {
+    const nextFilters = event?.filters || {}
+    setFilters(nextFilters)
+    setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }
+
+  const handleSortChange = async (event) => {
+    const rawSortOrder = Number(event?.sortOrder)
+    const normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
+    const nextSortField = normalizedSortOrder ? event?.sortField || null : null
+    setSortField(nextSortField)
+    setSortOrder(normalizedSortOrder)
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: nextSortField,
+      tableSortOrder: normalizedSortOrder,
+    })
+  }
+
   const handlePageChange = async (event) => {
     const nextRows = Number(event?.rows) || pageSize
     const nextFirst = Number(event?.first) || 0
@@ -746,7 +847,11 @@ function ClientesTable({ token, onSelect }) {
 
     if (!lastSearchRef.current) return
     setIsRefreshing(true)
-    await fetchClients(lastSearchRef.current, nextPage, nextRows)
+    await fetchClients(lastSearchRef.current, nextPage, nextRows, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const handleSelectAllRows = useCallback(async () => {
@@ -791,7 +896,7 @@ function ClientesTable({ token, onSelect }) {
         toast.current?.show({
           severity: 'info',
           summary: 'Cancelado',
-          detail: 'Se cancelÃ³ la seleccion global.',
+          detail: 'Se canceló la selección global.',
           life: 2500,
         })
         return
@@ -961,8 +1066,11 @@ function ClientesTable({ token, onSelect }) {
           rowsPerPageOptions={[5, 10, 25, 50]}
           onPage={handlePageChange}
           removableSort
+          sortField={sortField || undefined}
+          sortOrder={sortOrder || 0}
+          onSort={handleSortChange}
           filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
+          onFilter={handleFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombres', 'apellidos', 'cedula_ruc', 'autos_count', 'correo', 'telefono', 'direccion']}
           reorderableColumns
@@ -1109,7 +1217,7 @@ function ClientesTable({ token, onSelect }) {
           >
             <header className="create-user__header" onMouseDown={handleBulkModalMouseDown}>
               <div className="create-user__header-text">
-                <h3>Confirmar seleccion global</h3>
+                <h3>Confirmar selección global</h3>
               </div>
             </header>
 
@@ -1176,7 +1284,7 @@ function ClientesTable({ token, onSelect }) {
 
             <div className="create-user__body">
               <p style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
-                Procesando seleccion global. Por favor espera.
+                Procesando selección global. Por favor espera.
               </p>
               <div
                 style={{
@@ -1266,16 +1374,14 @@ function ClientesTable({ token, onSelect }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
+                  {isSearchMaximized ? '▣' : '▢'}
                 </button>
                 <button
                   type="button"
                   className="create-user__icon-button"
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
-                >
-                  Ã—
-                </button>
+                >×</button>
               </div>
             </header>
 
@@ -1285,7 +1391,7 @@ function ClientesTable({ token, onSelect }) {
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Filtros</p>
-                      <h4>Busqueda avanzada</h4>
+                      <h4>Búsqueda avanzada</h4>
                     </div>
                   </div>
 
@@ -1311,12 +1417,12 @@ function ClientesTable({ token, onSelect }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Telefono</span>
+                      <span>Teléfono</span>
                       <input name="telefono" type="text" placeholder="Ej: 0991234567" value={searchCriteria.telefono} onChange={handleSearchInputChange} />
                     </label>
 
                     <label className="create-user__field create-user__field--full">
-                      <span>Direccion</span>
+                      <span>Dirección</span>
                       <input name="direccion" type="text" placeholder="Ej: Av. Principal 123" value={searchCriteria.direccion} onChange={handleSearchInputChange} />
                     </label>
                   </div>
@@ -1345,7 +1451,7 @@ function ClientesTable({ token, onSelect }) {
             </form>
             <button
               type="button"
-              aria-label="Cambiar tamano de ventana"
+              aria-label="Cambiar tamaño de ventana"
               className="create-user__resize-handle"
               onMouseDown={handleSearchResizeMouseDown}
             />

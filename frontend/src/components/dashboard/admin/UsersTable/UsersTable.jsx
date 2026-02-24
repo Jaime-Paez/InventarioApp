@@ -16,7 +16,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const formatFullName = (u) =>
-  [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || 'â€”'
+  [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || '-'
 
 const normId = (v) => (v == null ? null : String(v))
 const isCheckboxSelection = (event) => {
@@ -83,7 +83,7 @@ function UsersTable({
       setAllUsers(list)
       return list
     } catch (e) {
-      const msg = e?.message || 'OcurriÃ³ un error al cargar los usuarios.'
+      const msg = e?.message || 'Ocurrió un error al cargar los usuarios.'
       setError(msg)
       toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
     } finally {
@@ -163,7 +163,12 @@ function UsersTable({
   const SEARCH_MIN_HEIGHT = 480
   const SEARCH_PADDING = 12
 
-  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+  const normalizeValue = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
   const contains = (fieldValue, target) => {
     const needle = normalizeValue(target)
     if (!needle) return true
@@ -231,7 +236,7 @@ function UsersTable({
   )
 
   // =========================================================
-  // âœ… Row selection (Prime nativo) + persistencia por IDs
+  // OK. Row selection (Prime nativo) + persistencia por IDs
   // =========================================================
   const [selectedUsers, setSelectedUsers] = useState([]) // rows completos
 
@@ -243,7 +248,7 @@ function UsersTable({
   const allRowIds = useMemo(() => users.map((u) => normId(u?.id)).filter(Boolean), [users])
   const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
 
-  // Restore selecciÃ³n (IDs) al iniciar
+  // Restore selección (IDs) al iniciar
   useEffect(() => {
     const saved = sessionStorage.getItem('usuarios-table-selected-rows')
     if (!saved) return
@@ -258,7 +263,7 @@ function UsersTable({
     }
   }, [])
 
-  // Cuando cambia users, aplica la selecciÃ³n pendiente (ids -> rows)
+  // Cuando cambia users, aplica la selección pendiente (ids -> rows)
   useEffect(() => {
     const pending = sessionStorage.getItem('usuarios-table-selected-rows-pending')
     if (!pending) return
@@ -279,7 +284,7 @@ function UsersTable({
     }
   }, [users])
 
-  // Limpia selecciÃ³n si ya no existe en la data
+  // Limpia selección si ya no existe en la data
   useEffect(() => {
     if (!users?.length) {
       if (selectedUsers?.length) setSelectedUsers([])
@@ -302,7 +307,7 @@ function UsersTable({
     )
   }, [selectedRowIds, allRowsSelected])
 
-  // âœ… Estilos duros para clavar el ancho (header + body)
+  // OK. Estilos duros para clavar el ancho (header + body)
   const selectionColStyle = useMemo(
     () => ({
       width: '40px',
@@ -316,10 +321,10 @@ function UsersTable({
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'codigo', header: 'CÃ³digo', filterPlaceholder: 'Buscar por cÃ³digo' },
+      { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
       { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
-      { nombrevar: 'telefono', header: 'TelÃ©fono', filterPlaceholder: 'Buscar por telÃ©fono' },
+      { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
       { nombrevar: 'cargo', header: 'Cargo', filterPlaceholder: 'Buscar por cargo' },
       { nombrevar: 'activo', header: 'Estado', filterPlaceholder: 'Filtrar estado' },
     ],
@@ -429,8 +434,8 @@ function UsersTable({
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
-    const content = rowData?.[field] ?? 'â€”'
-    const textColor = content === 'â€”' ? '#9ca3af' : undefined
+    const content = rowData?.[field] ?? '-'
+    const textColor = content === '-' ? '#9ca3af' : undefined
     return (
       <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: textColor }}>
         {String(content)}
@@ -439,8 +444,8 @@ function UsersTable({
   }
 
   const codigoBodyTemplate = (rowData) => {
-    const code = rowData?.codigo ?? rowData?.id ?? 'â€”'
-    const textColor = code === 'â€”' ? '#9ca3af' : undefined
+    const code = rowData?.codigo ?? rowData?.id ?? '-'
+    const textColor = code === '-' ? '#9ca3af' : undefined
     return (
       <span className="cell-tooltip" data-pr-tooltip={String(code)} style={{ color: textColor }}>
         {String(code)}
@@ -492,7 +497,7 @@ function UsersTable({
 
   const handleRowClick = (event) => {
     const t = event?.originalEvent?.target
-    // âœ… No abrir modal si hicieron click en el checkbox/columna de selecciÃ³n
+    // OK. No abrir modal si hicieron click en el checkbox/columna de selección
     if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
 
     const id = event?.data?.id
@@ -565,7 +570,7 @@ function UsersTable({
   const handleUserCreated = () => {
     setShowCreateModal(false)
     refreshData()
-    toast.current?.show({ severity: 'success', summary: 'Ã‰xito', detail: 'Usuario creado correctamente', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Usuario creado correctamente', life: 2500 })
   }
 
   const focusSearch = () => setShowSearchModal(true)
@@ -783,7 +788,7 @@ function UsersTable({
           columnResizeMode="fit"
           onRowClick={handleRowClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
-          // âœ… selecciÃ³n nativa
+          // OK. selección nativa
           selectionMode="multiple"
           selection={selectedUsers}
           onSelectionChange={(e) => {
@@ -794,7 +799,7 @@ function UsersTable({
             console.log('Usuarios seleccionados:', ids)
           }}
         >
-          {/* âœ… Columna de selecciÃ³n nativa (checkbox + header checkbox) */}
+          {/* OK. Columna de selección nativa (checkbox + header checkbox) */}
           <Column
             selectionMode="multiple"
             frozen
@@ -925,16 +930,14 @@ function UsersTable({
                     onClick={toggleSearchMaximize}
                     aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                   >
-                    {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
+                    {isSearchMaximized ? '▣' : '▢'}
                   </button>
                   <button
                     type="button"
                     className="create-user__icon-button"
                     onClick={() => setShowSearchModal(false)}
                     aria-label="Cerrar"
-                  >
-                    Ã—
-                  </button>
+                  >×</button>
                 </div>
               </header>
 
@@ -944,13 +947,13 @@ function UsersTable({
                     <div className="create-user__section-header">
                       <div>
                         <p className="create-user__eyebrow">Filtros</p>
-                        <h4>Busqueda avanzada</h4>
+                        <h4>Búsqueda avanzada</h4>
                       </div>
                     </div>
 
                     <div className="create-user__grid create-user__grid--two">
                       <label className="create-user__field">
-                      <span>Codigo</span>
+                      <span>Código</span>
                       <input name="codigo" type="text" placeholder="Ej: USR-001" value={searchCriteria.codigo} onChange={handleSearchInputChange} />
                     </label>
 
@@ -965,7 +968,7 @@ function UsersTable({
                     </label>
 
                       <label className="create-user__field">
-                      <span>Telefono</span>
+                      <span>Teléfono</span>
                       <input name="telefono" type="text" placeholder="Ej: 0991234567" value={searchCriteria.telefono} onChange={handleSearchInputChange} />
                     </label>
 
@@ -989,7 +992,7 @@ function UsersTable({
                       </label>
 
                       <label className="create-user__field">
-                      <span>Fecha de creacion</span>
+                      <span>Fecha de creación</span>
                       <input name="fecha_creacion" type="text" placeholder="Ej: 2025-12-31" value={searchCriteria.fecha_creacion} onChange={handleSearchInputChange} />
                     </label>
 
@@ -1019,7 +1022,7 @@ function UsersTable({
               </form>
               <button
                 type="button"
-                aria-label="Cambiar tamano de ventana"
+                aria-label="Cambiar tamaño de ventana"
                 className="create-user__resize-handle"
                 onMouseDown={handleSearchResizeMouseDown}
               />

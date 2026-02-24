@@ -24,7 +24,12 @@ const initialDetail = {
 }
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
-const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
+const normalizeValue = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 const parseNumber = (value) => {
   const cleaned = String(value ?? '').trim()
   if (!cleaned) return null
@@ -155,7 +160,7 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
       setProductos(parseApiList(productosData))
       setEstadosProducto(parseApiList(estadosProductoData))
     } catch (err) {
-      notifyError(err?.message || 'Ocurrio un error al cargar los catalogos.')
+      notifyError(err?.message || 'Ocurrió un error al cargar los catálogos.')
     }
   }, [notifyError, token])
 
@@ -257,7 +262,7 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
       return
     }
     if (!Number.isFinite(valor) || valor < 0) {
-      setDetailError('Ingresa un valor valido.')
+      setDetailError('Ingresa un valor válido.')
       return
     }
 
@@ -302,7 +307,7 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
     setError('')
 
     if (!salidaTipoId) {
-      notifyError('No se encontro el tipo de movimiento de salida.')
+      notifyError('No se encontró el tipo de movimiento de salida.')
       return
     }
 
@@ -388,7 +393,7 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
 
       onCreated?.(data)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al crear la salida.')
+      notifyError(err.message || 'Ocurrió un error al crear la salida.')
     } finally {
       setLoading(false)
     }
@@ -510,7 +515,7 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
                   </label>
 
                   <label className="create-user__field create-user__field--full">
-                    <span>Descripcion</span>
+                    <span>Descripción</span>
                     <input name="descripcion" type="text" value={formData.descripcion} onChange={handleChange} disabled={loading} />
                   </label>
                 </div>

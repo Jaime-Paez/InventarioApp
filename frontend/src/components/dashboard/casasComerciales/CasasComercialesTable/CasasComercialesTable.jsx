@@ -13,8 +13,30 @@ import CasaComercialDetails from '../CasaComercialDetails/CasaComercialDetails'
 import '../../admin/UsersTable/UsersTable.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
+import {
+  buildPrimeColumnFiltersPayload,
+  buildPrimeOrdering,
+  getPrimeGlobalFilterValue,
+} from '../../../../utils/primeTableQuery'
 
 const normId = (v) => (v == null ? null : String(v))
+const COMPANY_FILTER_FIELDS = ['nombre', 'codigo', 'pais_nombre', 'telefono', 'correo', 'descripcion']
+const COMPANY_FILTER_DEFAULT_MODES = {
+  nombre: FilterMatchMode.STARTS_WITH,
+  codigo: FilterMatchMode.STARTS_WITH,
+  pais_nombre: FilterMatchMode.STARTS_WITH,
+  telefono: FilterMatchMode.CONTAINS,
+  correo: FilterMatchMode.CONTAINS,
+  descripcion: FilterMatchMode.CONTAINS,
+}
+const COMPANY_ORDERING_MAP = {
+  nombre: 'nombre',
+  codigo: 'codigo',
+  pais_nombre: 'pais__nombre',
+  telefono: 'telefono',
+  correo: 'correo',
+  descripcion: 'descripcion',
+}
 const isCheckboxSelection = (event) => {
   if (event?.type === 'checkbox') return true
   const target = event?.originalEvent?.target
@@ -39,10 +61,16 @@ function CasasComercialesTable({ token, onSelect }) {
   )
 
   const [companies, setCompanies] = useState([])
-  const [allCompanies, setAllCompanies] = useState([])
+  const [totalRecords, setTotalRecords] = useState(0)
+  const [pageFirst, setPageFirst] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
+  const [sortField, setSortField] = useState(null)
+  const [sortOrder, setSortOrder] = useState(null)
+  const [filters, setFilters] = useState(null)
+  const [globalFilterValue, setGlobalFilterValue] = useState('')
 
   const normalizeList = useCallback((list) => {
     return list.map((item) => ({
@@ -58,8 +86,6 @@ function CasasComercialesTable({ token, onSelect }) {
     telefono: '',
     correo: '',
     descripcion: '',
-    fecha_creacion: '',
-    usuario_creador: '',
   }
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
@@ -70,9 +96,6 @@ function CasasComercialesTable({ token, onSelect }) {
   const [searchPaisLoading, setSearchPaisLoading] = useState(false)
   const [showSearchPaisDropdown, setShowSearchPaisDropdown] = useState(false)
   const searchPaisDropdownRef = useRef(null)
-  const [creators, setCreators] = useState([])
-  const [loadingFilters, setLoadingFilters] = useState(false)
-  const filtersPrefetchedRef = useRef(false)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
@@ -85,55 +108,6 @@ function CasasComercialesTable({ token, onSelect }) {
   const SEARCH_MIN_WIDTH = 640
   const SEARCH_MIN_HEIGHT = 480
   const SEARCH_PADDING = 12
-
-  const normalizeValue = (value) => String(value ?? '').trim().toLowerCase()
-  const contains = (fieldValue, target) => {
-    const needle = normalizeValue(target)
-    if (!needle) return true
-    return normalizeValue(fieldValue).includes(needle)
-  }
-  const exact = (fieldValue, target) => {
-    const needle = normalizeValue(target)
-    if (!needle) return true
-    return normalizeValue(fieldValue) === needle
-  }
-  const pickValue = (row, keys) => {
-    for (const key of keys) {
-      const value = key.split('.').reduce((acc, part) => acc?.[part], row)
-      if (value != null && value !== '') return value
-    }
-    return ''
-  }
-
-  const applySearchFilters = useCallback(
-    (list, criteria) =>
-      list.filter((row) => {
-        const paisValue = pickValue(row, ['pais_nombre', 'pais.nombre', 'pais'])
-        const creatorValue = pickValue(row, [
-          'usuario_creador',
-          'usuario_creador.nombre',
-          'usuario_creador.correo',
-          'creado_por',
-          'creado_por.nombre',
-          'created_by',
-          'created_by.username',
-          'created_by.email',
-        ])
-        const dateValue = pickValue(row, ['fecha_creacion', 'created_at', 'creado_en', 'registrado_en'])
-
-        return (
-          contains(row?.nombre, criteria.nombre) &&
-          contains(row?.codigo, criteria.codigo) &&
-          contains(paisValue, criteria.pais) &&
-          contains(row?.telefono, criteria.telefono) &&
-          contains(row?.correo, criteria.correo) &&
-          contains(row?.descripcion, criteria.descripcion) &&
-          contains(dateValue, criteria.fecha_creacion) &&
-          exact(creatorValue, criteria.usuario_creador)
-        )
-      }),
-    []
-  )
 
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target
@@ -158,7 +132,7 @@ function CasasComercialesTable({ token, onSelect }) {
           {},
           token
         )
-        if (!response.ok) throw new Error('No se pudieron cargar los paises.')
+        if (!response.ok) throw new Error('No se pudieron cargar los países.')
         const data = await response.json()
         const list = Array.isArray(data) ? data : data?.results || []
         setSearchPaisOptions(list)
@@ -171,48 +145,96 @@ function CasasComercialesTable({ token, onSelect }) {
     [token]
   )
 
+  const buildCompaniesListUrl = useCallback((criteria, options = {}) => {
+    const params = new URLSearchParams()
+    const page = Number(options?.page) || 1
+    const rows = Number(options?.rows) || 25
+    const tableFilters = options?.tableFilters
+    const tableSortField = options?.tableSortField
+    const tableSortOrder = options?.tableSortOrder
+
+    params.set('page', String(page))
+    params.set('page_size', String(rows))
+
+    const addIfPresent = (key, value) => {
+      const parsed = String(value ?? '').trim()
+      if (parsed) params.set(key, parsed)
+    }
+
+    addIfPresent('nombre', criteria?.nombre)
+    addIfPresent('codigo', criteria?.codigo)
+    addIfPresent('pais', criteria?.pais)
+    addIfPresent('telefono', criteria?.telefono)
+    addIfPresent('correo', criteria?.correo)
+    addIfPresent('descripcion', criteria?.descripcion)
+
+    const globalSearch = getPrimeGlobalFilterValue(tableFilters)
+    if (globalSearch) params.set('search', globalSearch)
+
+    const columnFilters = buildPrimeColumnFiltersPayload(tableFilters, {
+      allowedFields: COMPANY_FILTER_FIELDS,
+      defaultMatchModes: COMPANY_FILTER_DEFAULT_MODES,
+    })
+    if (columnFilters) params.set('column_filters', JSON.stringify(columnFilters))
+
+    const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, COMPANY_ORDERING_MAP)
+    if (ordering) params.set('ordering', ordering)
+
+    return `${API_URL}/casa-comercial/casas/?${params.toString()}`
+  }, [])
+
+  const fetchCompanies = useCallback(
+    async (criteria, page = 1, rows = pageSize, options = {}) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const tableFilters = options?.tableFilters ?? filters
+        const tableSortField = options?.tableSortField ?? sortField
+        const tableSortOrder = options?.tableSortOrder ?? sortOrder
+        const url = buildCompaniesListUrl(criteria, {
+          page,
+          rows,
+          tableFilters,
+          tableSortField,
+          tableSortOrder,
+        })
+        const res = await authFetch(url, {}, token)
+        if (!res.ok) throw new Error('No se pudo obtener la lista de casas comerciales.')
+
+        const data = await res.json()
+        const count = Array.isArray(data) ? data.length : Number(data?.count ?? 0)
+        const list = Array.isArray(data) ? data : data?.results || []
+        const normalized = normalizeList(list)
+        setCompanies(normalized)
+        setTotalRecords(count)
+        setPageFirst(Math.max(0, (page - 1) * rows))
+        setPageSize(rows)
+        return normalized
+      } catch (e) {
+        const msg = e?.message || 'Ocurrió un error al cargar las casas comerciales.'
+        setError(msg)
+        setCompanies([])
+        setTotalRecords(0)
+        toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
+      } finally {
+        setLoading(false)
+        setIsRefreshing(false)
+      }
+    },
+    [token, normalizeList, pageSize, buildCompaniesListUrl, filters, sortField, sortOrder]
+  )
+
   const handleSearchSubmit = async (event) => {
     event.preventDefault()
     lastSearchRef.current = { ...searchCriteria }
     setShowSearchModal(false)
     setIsRefreshing(true)
-    await fetchCompanies(lastSearchRef.current)
+    await fetchCompanies(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
-
-  const fetchCompanies = useCallback(async (criteria) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const list = []
-      let url = `${API_URL}/casa-comercial/casas/`
-
-      while (url) {
-        const res = await authFetch(url, {}, token)
-        if (!res.ok) throw new Error('No se pudo obtener la lista de casas comerciales.')
-
-        const data = await res.json()
-        if (Array.isArray(data)) {
-          list.push(...data)
-          url = null
-        } else {
-          list.push(...(data?.results || []))
-          url = data?.next || null
-        }
-      }
-
-      const normalized = normalizeList(list)
-      setAllCompanies(normalized)
-      const filtered = criteria ? applySearchFilters(normalized, criteria) : normalized
-      setCompanies(filtered)
-    } catch (e) {
-      const msg = e?.message || 'Ocurrio un error al cargar las casas comerciales.'
-      setError(msg)
-      toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
-    } finally {
-      setLoading(false)
-      setIsRefreshing(false)
-    }
-  }, [token, normalizeList, applySearchFilters])
 
   const refreshData = () => {
     if (!lastSearchRef.current) {
@@ -220,15 +242,13 @@ function CasasComercialesTable({ token, onSelect }) {
       return
     }
     setIsRefreshing(true)
-    fetchCompanies(lastSearchRef.current)
+    const currentPage = Math.floor(pageFirst / pageSize) + 1
+    fetchCompanies(lastSearchRef.current, currentPage, pageSize)
   }
 
   // ---------------- Filters ----------------
-  const [filters, setFilters] = useState(null)
-  const [globalFilterValue, setGlobalFilterValue] = useState('')
-
   const initFilters = () => {
-    setFilters({
+    const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
@@ -236,27 +256,63 @@ function CasasComercialesTable({ token, onSelect }) {
       telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       descripcion: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-    })
+    }
+    setFilters(nextFilters)
     setGlobalFilterValue('')
+    return nextFilters
   }
 
   useEffect(() => {
-    const savedState = sessionStorage.getItem('casas-comerciales-table-state')
-    if (savedState) {
-      const parsed = JSON.parse(savedState)
-      if (parsed?.filters) {
-        setFilters(parsed.filters)
-        if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
-        return
+    try {
+      const savedState = sessionStorage.getItem('casas-comerciales-table-state')
+      if (savedState) {
+        const parsed = JSON.parse(savedState)
+        if (parsed?.filters) {
+          setFilters(parsed.filters)
+          setGlobalFilterValue(getPrimeGlobalFilterValue(parsed.filters))
+          const nextSortField = parsed?.sortField || null
+          const parsedSortOrder = Number(parsed?.sortOrder)
+          const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
+          setSortField(nextSortField)
+          setSortOrder(nextSortOrder)
+          return
+        }
+      }
+    } catch {
+      try {
+        sessionStorage.removeItem('casas-comerciales-table-state')
+      } catch {
+        // no-op
       }
     }
     initFilters()
   }, [])
 
-  const clearFilter = () => {
-    initFilters()
-    setSearchCriteria(initialSearchCriteria)
-    if (allCompanies.length) setCompanies(allCompanies)
+  useEffect(() => {
+    if (!filters) return
+    const payload = JSON.stringify({ filters, sortField, sortOrder })
+    try {
+      sessionStorage.setItem('casas-comerciales-table-state', payload)
+    } catch {
+      try {
+        sessionStorage.removeItem('casas-comerciales-table-state')
+        sessionStorage.setItem('casas-comerciales-table-state', payload)
+      } catch {
+        // no-op
+      }
+    }
+  }, [filters, sortField, sortOrder])
+
+  const clearFilter = async () => {
+    const nextFilters = initFilters()
+    if (!lastSearchRef.current) return
+    setPageFirst(0)
+    setIsRefreshing(true)
+    await fetchCompanies(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const filterClearTemplate = (options) => (
@@ -280,7 +336,7 @@ function CasasComercialesTable({ token, onSelect }) {
   )
 
   const allRowIds = useMemo(() => companies.map((u) => normId(u?.id)).filter(Boolean), [companies])
-  const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
+  const allRowsSelected = allRowIds.length > 0 && allRowIds.every((id) => selectedRowIds.includes(id))
 
   useEffect(() => {
     const saved = sessionStorage.getItem('casas-comerciales-table-selected-rows')
@@ -316,16 +372,6 @@ function CasasComercialesTable({ token, onSelect }) {
   }, [companies])
 
   useEffect(() => {
-    if (!companies?.length) {
-      if (selectedRows?.length) setSelectedRows([])
-      return
-    }
-    const idsSet = new Set(allRowIds)
-    const filtered = (selectedRows || []).filter((u) => idsSet.has(normId(u?.id)))
-    if (filtered.length !== (selectedRows || []).length) setSelectedRows(filtered)
-  }, [companies])
-
-  useEffect(() => {
     sessionStorage.setItem(
       'casas-comerciales-table-selected-rows',
       JSON.stringify({
@@ -349,11 +395,11 @@ function CasasComercialesTable({ token, onSelect }) {
   const columnsData = useMemo(
     () => [
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
-      { nombrevar: 'codigo', header: 'Codigo', filterPlaceholder: 'Buscar por codigo' },
-      { nombrevar: 'pais_nombre', header: 'Pais', filterPlaceholder: 'Buscar por pais' },
-      { nombrevar: 'telefono', header: 'Telefono', filterPlaceholder: 'Buscar por telefono' },
+      { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
+      { nombrevar: 'pais_nombre', header: 'País', filterPlaceholder: 'Buscar por país' },
+      { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
       { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
-      { nombrevar: 'descripcion', header: 'Descripcion', filterPlaceholder: 'Buscar por descripcion' },
+      { nombrevar: 'descripcion', header: 'Descripción', filterPlaceholder: 'Buscar por descripción' },
     ],
     []
   )
@@ -501,14 +547,14 @@ function CasasComercialesTable({ token, onSelect }) {
 
   const handleDuplicated = (message) => {
     refreshData()
-    toast.current?.show({ severity: 'success', summary: 'Duplicado', detail: message || 'Duplicacion completada.', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Duplicado', detail: message || 'Duplicación completada.', life: 2500 })
   }
 
   // ---------------- Header ----------------
-  const dataLength = companies?.length ?? 0
+  const dataLength = totalRecords ?? 0
   const emptyMessage = lastSearchRef.current
     ? 'No se encontraron casas comerciales'
-    : 'Realice una bÃºsqueda para ver la informaciÃ³n. Si quiere ver toda la informaciÃ³n, haga la bÃºsqueda sin aplicar ningÃºn filtro.'
+    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
 
   const header = (
     <div className="users-header">
@@ -546,41 +592,11 @@ function CasasComercialesTable({ token, onSelect }) {
   const handleCreated = () => {
     setShowCreateModal(false)
     refreshData()
-    toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Casa comercial creada correctamente', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Casa comercial creada correctamente', life: 2500 })
   }
 
   const focusSearch = () => setShowSearchModal(true)
   const hasSearched = Boolean(lastSearchRef.current)
-
-  const fetchFilterOptions = useCallback(async () => {
-    if (!token) return
-    setLoadingFilters(true)
-    try {
-      const allUsers = []
-      let usersUrl = `${API_URL}/usuarios/listado/`
-      while (usersUrl) {
-        const response = await authFetch(usersUrl, {}, token)
-        if (!response.ok) break
-        const data = await response.json()
-        if (Array.isArray(data)) {
-          allUsers.push(...data)
-          usersUrl = null
-        } else {
-          allUsers.push(...(data?.results || []))
-          usersUrl = data?.next || null
-        }
-      }
-      setCreators(allUsers)
-    } finally {
-      setLoadingFilters(false)
-    }
-  }, [token])
-
-  useEffect(() => {
-    if (!token || filtersPrefetchedRef.current) return
-    filtersPrefetchedRef.current = true
-    fetchFilterOptions()
-  }, [token, fetchFilterOptions])
 
   useEffect(() => {
     if (!showSearchModal) return
@@ -627,9 +643,6 @@ function CasasComercialesTable({ token, onSelect }) {
     if (!showSearchModal) return
     setShowSearchPaisDropdown(false)
     setSearchPaisOptions([])
-    if (!creators.length && !loadingFilters) {
-      fetchFilterOptions()
-    }
     setIsSearchMaximized(false)
     searchRestoreRef.current = null
     const width = Math.min(720, window.innerWidth - SEARCH_PADDING * 2)
@@ -639,7 +652,7 @@ function CasasComercialesTable({ token, onSelect }) {
       x: Math.max((window.innerWidth - width) / 2, SEARCH_PADDING),
       y: Math.max((window.innerHeight - height) / 2, SEARCH_PADDING),
     })
-  }, [showSearchModal, creators.length, loadingFilters, fetchFilterOptions])
+  }, [showSearchModal])
 
   const handleSearchMouseDown = (event) => {
     if (isSearchMaximized) return
@@ -758,6 +771,53 @@ function CasasComercialesTable({ token, onSelect }) {
     setIsSearchMaximized(true)
   }
 
+  const handleFilterChange = async (event) => {
+    const nextFilters = event?.filters || {}
+    setFilters(nextFilters)
+    setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchCompanies(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }
+
+  const handleSortChange = async (event) => {
+    const rawSortOrder = Number(event?.sortOrder)
+    const normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
+    const nextSortField = normalizedSortOrder ? event?.sortField || null : null
+    setSortField(nextSortField)
+    setSortOrder(normalizedSortOrder)
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchCompanies(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: nextSortField,
+      tableSortOrder: normalizedSortOrder,
+    })
+  }
+
+  const handlePageChange = async (event) => {
+    const nextRows = Number(event?.rows) || pageSize
+    const nextFirst = Number(event?.first) || 0
+    const nextPage = Math.floor(nextFirst / nextRows) + 1
+
+    setPageFirst(nextFirst)
+    setPageSize(nextRows)
+
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchCompanies(lastSearchRef.current, nextPage, nextRows, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }
+
   return (
     <div className="users-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
@@ -816,16 +876,21 @@ function CasasComercialesTable({ token, onSelect }) {
           scrollable
           scrollHeight="flex"
           frozenWidth="40px"
+          lazy
           paginator
-          rows={25}
+          first={pageFirst}
+          rows={pageSize}
+          totalRecords={totalRecords}
           rowsPerPageOptions={[5, 10, 25, 50]}
+          onPage={handlePageChange}
           removableSort
+          sortField={sortField || undefined}
+          sortOrder={sortOrder || 0}
+          onSort={handleSortChange}
           filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
+          onFilter={handleFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'codigo', 'pais_nombre', 'telefono', 'correo', 'descripcion']}
-          stateStorage="session"
-          stateKey="casas-comerciales-table-state"
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
@@ -837,7 +902,20 @@ function CasasComercialesTable({ token, onSelect }) {
           onSelectionChange={(e) => {
             if (!isCheckboxSelection(e)) return
             const value = e.value || []
-            setSelectedRows(value)
+            const currentPageIds = new Set(allRowIds)
+            setSelectedRows((prev) => {
+              const preserved = (prev || []).filter((row) => !currentPageIds.has(normId(row?.id)))
+              const nextMap = new Map()
+              preserved.forEach((row) => {
+                const id = normId(row?.id)
+                if (id) nextMap.set(id, row)
+              })
+              value.forEach((row) => {
+                const id = normId(row?.id)
+                if (id) nextMap.set(id, row)
+              })
+              return Array.from(nextMap.values())
+            })
           }}
         >
           <Column
@@ -864,6 +942,11 @@ function CasasComercialesTable({ token, onSelect }) {
             switch (column.nombrevar) {
               case 'nombre':
                 bodyTemplate = (rowData) => nombreBodyTemplate(rowData)
+                filterMatchMode = FilterMatchMode.STARTS_WITH
+                break
+              case 'codigo':
+              case 'pais_nombre':
+                bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               default:
@@ -962,16 +1045,14 @@ function CasasComercialesTable({ token, onSelect }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
+                  {isSearchMaximized ? '▣' : '▢'}
                 </button>
                 <button
                   type="button"
                   className="create-user__icon-button"
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
-                >
-                  Ã—
-                </button>
+                >×</button>
               </div>
             </header>
 
@@ -981,13 +1062,13 @@ function CasasComercialesTable({ token, onSelect }) {
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Filtros</p>
-                      <h4>Busqueda avanzada</h4>
+                      <h4>Búsqueda avanzada</h4>
                     </div>
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Codigo</span>
+                      <span>Código</span>
                       <input name="codigo" type="text" placeholder="Ej: C001" value={searchCriteria.codigo} onChange={handleSearchInputChange} />
                     </label>
 
@@ -997,14 +1078,14 @@ function CasasComercialesTable({ token, onSelect }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Pais</span>
+                      <span>País</span>
                       <div className="create-user__dropdown" ref={searchPaisDropdownRef}>
                         <button
                           type="button"
                           className="create-user__dropdown-trigger"
                           onClick={() => setShowSearchPaisDropdown((prev) => !prev)}
                         >
-                          <span>{searchPaisQuery.trim() ? searchPaisQuery : 'Selecciona un pais'}</span>
+                          <span>{searchPaisQuery.trim() ? searchPaisQuery : 'Selecciona un país'}</span>
                           <i className={`pi pi-chevron-${showSearchPaisDropdown ? 'up' : 'down'}`} />
                         </button>
 
@@ -1014,7 +1095,7 @@ function CasasComercialesTable({ token, onSelect }) {
                               <i className="pi pi-search" />
                               <input
                                 type="text"
-                                placeholder="Buscar paises"
+                                placeholder="Buscar países"
                                 value={searchPaisQuery}
                                 onChange={(event) => {
                                   const value = event.target.value
@@ -1025,7 +1106,7 @@ function CasasComercialesTable({ token, onSelect }) {
                             </div>
 
                             <div className="create-user__dropdown-results">
-                              {searchPaisLoading && <small className="muted">Buscando paises...</small>}
+                              {searchPaisLoading && <small className="muted">Buscando países...</small>}
                               {!searchPaisLoading && !searchPaisQuery.trim() && (
                                 <small className="muted">Escribe para buscar.</small>
                               )}
@@ -1059,7 +1140,7 @@ function CasasComercialesTable({ token, onSelect }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Telefono</span>
+                      <span>Teléfono</span>
                       <input name="telefono" type="text" placeholder="Ej: 0991234567" value={searchCriteria.telefono} onChange={handleSearchInputChange} />
                     </label>
 
@@ -1069,33 +1150,8 @@ function CasasComercialesTable({ token, onSelect }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <input name="descripcion" type="text" placeholder="Ej: Proveedor principal" value={searchCriteria.descripcion} onChange={handleSearchInputChange} />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Fecha de creacion</span>
-                      <input name="fecha_creacion" type="text" placeholder="Ej: 2025-12-31" value={searchCriteria.fecha_creacion} onChange={handleSearchInputChange} />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Usuario creador</span>
-                      <select
-                        name="usuario_creador"
-                        value={searchCriteria.usuario_creador}
-                        onChange={handleSearchInputChange}
-                        className={!searchCriteria.usuario_creador ? 'is-placeholder' : undefined}
-                      >
-                        <option value="">Selecciona un usuario</option>
-                        {creators.map((user) => {
-                          const label = `${user.nombres || ''} ${user.apellidos || ''}`.trim() || user.correo || user.email || `Usuario ${user.id}`
-                          return (
-                            <option key={user.id} value={label}>
-                              {label}
-                            </option>
-                          )
-                        })}
-                      </select>
                     </label>
                   </div>
                 </section>
@@ -1127,7 +1183,7 @@ function CasasComercialesTable({ token, onSelect }) {
             </form>
             <button
               type="button"
-              aria-label="Cambiar tamano de ventana"
+              aria-label="Cambiar tamaño de ventana"
               className="create-user__resize-handle"
               onMouseDown={handleSearchResizeMouseDown}
             />

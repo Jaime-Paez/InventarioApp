@@ -706,7 +706,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                         <div className="create-user__module-scope-head">
                           <strong>{module.label}</strong>
                           {!hasModulePermission && (
-                            <small className="muted">Activa al menos un permiso de este modulo para asignar sucursales.</small>
+                            <small className="muted">Activa al menos un permiso de este módulo para asignar sucursales.</small>
                           )}
                         </div>
                         <div className="create-user__branches">

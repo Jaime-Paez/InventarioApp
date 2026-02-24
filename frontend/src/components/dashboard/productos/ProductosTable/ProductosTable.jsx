@@ -14,10 +14,37 @@ import '../../admin/UsersTable/UsersTable.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
+import {
+  buildPrimeColumnFiltersPayload,
+  buildPrimeOrdering,
+  getPrimeGlobalFilterValue,
+} from '../../../../utils/primeTableQuery'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
 const DEFAULT_IVA_RATE = 0.15
+const PRODUCT_FILTER_FIELDS = [
+  'codigo',
+  'nombre',
+  'marca_nombre',
+  'casa_comercial_nombre',
+]
+const PRODUCT_FILTER_DEFAULT_MODES = {
+  codigo: FilterMatchMode.STARTS_WITH,
+  nombre: FilterMatchMode.STARTS_WITH,
+  marca_nombre: FilterMatchMode.STARTS_WITH,
+  casa_comercial_nombre: FilterMatchMode.STARTS_WITH,
+}
+const PRODUCT_ORDERING_MAP = {
+  codigo: 'codigo',
+  nombre: 'nombre',
+  marca_nombre: 'marca__nombre',
+  pieza_original_label: 'pieza_original',
+  costo_minimo: 'costo_minimo',
+  precio: 'precio',
+  precio_con_iva: 'precio_con_iva_backend',
+  casa_comercial_nombre: 'casas_comerciales__nombre',
+}
 const createBulkCancelError = () => {
   const err = new Error('Seleccion global cancelada.')
   err.name = 'AbortError'
@@ -67,6 +94,10 @@ function ProductosTable({ token, onSelect }) {
   const bulkSelectCancelledRef = useRef(false)
   const [ivaRate, setIvaRate] = useState(DEFAULT_IVA_RATE)
   const [ivaLoading, setIvaLoading] = useState(false)
+  const [sortField, setSortField] = useState(null)
+  const [sortOrder, setSortOrder] = useState(null)
+  const [filters, setFilters] = useState(null)
+  const [globalFilterValue, setGlobalFilterValue] = useState('')
 
   const normalizeList = useCallback(
     (list) =>
@@ -92,8 +123,14 @@ function ProductosTable({ token, onSelect }) {
     [ivaRate]
   )
 
-  const buildProductsListUrl = useCallback((criteria, page = 1, rows = 25) => {
+  const buildProductsListUrl = useCallback((criteria, options = {}) => {
     const params = new URLSearchParams()
+    const page = Number(options?.page) || 1
+    const rows = Number(options?.rows) || 25
+    const tableFilters = options?.tableFilters
+    const tableSortField = options?.tableSortField
+    const tableSortOrder = options?.tableSortOrder
+
     params.set('page', String(page))
     params.set('page_size', String(rows))
 
@@ -113,15 +150,36 @@ function ProductosTable({ token, onSelect }) {
     addIfPresent('precio', criteria?.precio)
     addIfPresent('fecha_creacion', criteria?.fecha_creacion)
 
+    const globalSearch = getPrimeGlobalFilterValue(tableFilters)
+    if (globalSearch) params.set('search', globalSearch)
+
+    const columnFilters = buildPrimeColumnFiltersPayload(tableFilters, {
+      allowedFields: PRODUCT_FILTER_FIELDS,
+      defaultMatchModes: PRODUCT_FILTER_DEFAULT_MODES,
+    })
+    if (columnFilters) params.set('column_filters', JSON.stringify(columnFilters))
+
+    const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, PRODUCT_ORDERING_MAP)
+    if (ordering) params.set('ordering', ordering)
+
     return `${API_URL}/productos/listado/?${params.toString()}`
   }, [])
 
   const fetchProducts = useCallback(
-    async (criteria, page = 1, rows = pageSize) => {
+    async (criteria, page = 1, rows = pageSize, options = {}) => {
       setLoading(true)
       setError(null)
       try {
-        const url = buildProductsListUrl(criteria, page, rows)
+        const tableFilters = options?.tableFilters ?? filters
+        const tableSortField = options?.tableSortField ?? sortField
+        const tableSortOrder = options?.tableSortOrder ?? sortOrder
+        const url = buildProductsListUrl(criteria, {
+          page,
+          rows,
+          tableFilters,
+          tableSortField,
+          tableSortOrder,
+        })
         const res = await authFetch(url, {}, token)
         if (!res.ok) throw new Error('No se pudo obtener la lista de productos.')
 
@@ -135,7 +193,7 @@ function ProductosTable({ token, onSelect }) {
         setPageSize(rows)
         return normalized
       } catch (err) {
-        const msg = err?.message || 'Ocurrio un error al cargar los productos.'
+        const msg = err?.message || 'Ocurrió un error al cargar los productos.'
         setError(msg)
         setProducts([])
         setTotalRecords(0)
@@ -145,7 +203,7 @@ function ProductosTable({ token, onSelect }) {
         setIsRefreshing(false)
       }
     },
-    [token, normalizeList, pageSize, buildProductsListUrl]
+    [token, normalizeList, pageSize, buildProductsListUrl, filters, sortField, sortOrder]
   )
 
   const fetchAllProducts = useCallback(
@@ -153,11 +211,20 @@ function ProductosTable({ token, onSelect }) {
       const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null
       const signal = options?.signal
       const isCancelled = typeof options?.isCancelled === 'function' ? options.isCancelled : () => false
+      const tableFilters = options?.tableFilters ?? filters
+      const tableSortField = options?.tableSortField ?? sortField
+      const tableSortOrder = options?.tableSortOrder ?? sortOrder
       const ensureNotCancelled = () => {
         if (signal?.aborted || isCancelled()) throw createBulkCancelError()
       }
       const all = []
-      let url = buildProductsListUrl(criteria, 1, 200)
+      let url = buildProductsListUrl(criteria, {
+        page: 1,
+        rows: 200,
+        tableFilters,
+        tableSortField,
+        tableSortOrder,
+      })
       let total = 0
 
       while (url) {
@@ -202,7 +269,7 @@ function ProductosTable({ token, onSelect }) {
 
       return normalizeList(all)
     },
-    [token, normalizeList, buildProductsListUrl]
+    [token, normalizeList, buildProductsListUrl, filters, sortField, sortOrder]
   )
 
   const refreshData = () => {
@@ -262,11 +329,9 @@ function ProductosTable({ token, onSelect }) {
   }, [ivaRate])
 
   // ---------------- Filters ----------------
-  const [filters, setFilters] = useState(null)
-  const [globalFilterValue, setGlobalFilterValue] = useState('')
 
   const initFilters = () => {
-    setFilters({
+    const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
@@ -276,8 +341,10 @@ function ProductosTable({ token, onSelect }) {
       precio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       precio_con_iva: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       casa_comercial_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-    })
+    }
+    setFilters(nextFilters)
     setGlobalFilterValue('')
+    return nextFilters
   }
 
   useEffect(() => {
@@ -292,7 +359,12 @@ function ProductosTable({ token, onSelect }) {
           }
           delete nextFilters.casas_comerciales_count
           setFilters(nextFilters)
-          if (nextFilters?.global?.value) setGlobalFilterValue(nextFilters.global.value)
+          setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
+          const nextSortField = parsed?.sortField || null
+          const parsedSortOrder = Number(parsed?.sortOrder)
+          const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
+          setSortField(nextSortField)
+          setSortOrder(nextSortOrder)
           return
         }
       }
@@ -308,7 +380,7 @@ function ProductosTable({ token, onSelect }) {
 
   useEffect(() => {
     if (!filters) return
-    const payload = JSON.stringify({ filters })
+    const payload = JSON.stringify({ filters, sortField, sortOrder })
     try {
       sessionStorage.setItem('productos-table-state', payload)
     } catch {
@@ -319,22 +391,18 @@ function ProductosTable({ token, onSelect }) {
         // no-op
       }
     }
-  }, [filters])
+  }, [filters, sortField, sortOrder])
 
-  const clearFilter = () => {
-    initFilters()
-    setSearchCriteria(initialSearchCriteria)
-    setSearchMarcaQuery('')
-    setSearchCasaQuery('')
-    setSearchMarcaOptions([])
-    setSearchCasaOptions([])
-    setShowSearchMarcaDropdown(false)
-    setShowSearchCasaDropdown(false)
-    lastSearchRef.current = null
-    setProducts([])
-    setSelectedRows([])
-    setTotalRecords(0)
+  const clearFilter = async () => {
+    const nextFilters = initFilters()
+    if (!lastSearchRef.current) return
     setPageFirst(0)
+    setIsRefreshing(true)
+    await fetchProducts(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const initialSearchCriteria = {
@@ -500,7 +568,11 @@ function ProductosTable({ token, onSelect }) {
     lastSearchRef.current = { ...searchCriteria }
     setShowSearchModal(false)
     setIsRefreshing(true)
-    await fetchProducts(lastSearchRef.current, 1, pageSize)
+    await fetchProducts(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const filterClearTemplate = (options) => (
@@ -586,7 +658,7 @@ function ProductosTable({ token, onSelect }) {
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'codigo', header: 'Codigo', filterPlaceholder: 'Buscar por codigo' },
+      { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
       { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
       { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
@@ -801,7 +873,7 @@ function ProductosTable({ token, onSelect }) {
   const dataLength = totalRecords ?? 0
   const emptyMessage = lastSearchRef.current
     ? 'No se encontraron productos'
-    : 'Realice una bÃºsqueda para ver la informaciÃ³n. Si quiere ver toda la informaciÃ³n, haga la bÃºsqueda sin aplicar ningÃºn filtro.'
+    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
 
   const header = (
     <div className="users-header">
@@ -839,7 +911,7 @@ function ProductosTable({ token, onSelect }) {
   const handleCreated = () => {
     setShowCreateModal(false)
     refreshData()
-    toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto creado correctamente', life: 2500 })
+    toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Producto creado correctamente', life: 2500 })
   }
 
   const focusSearch = () => setShowSearchModal(true)
@@ -994,6 +1066,36 @@ function ProductosTable({ token, onSelect }) {
     setIsSearchMaximized(true)
   }
 
+  const handleFilterChange = async (event) => {
+    const nextFilters = event?.filters || {}
+    setFilters(nextFilters)
+    setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchProducts(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }
+
+  const handleSortChange = async (event) => {
+    const rawSortOrder = Number(event?.sortOrder)
+    const normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
+    const nextSortField = normalizedSortOrder ? event?.sortField || null : null
+    setSortField(nextSortField)
+    setSortOrder(normalizedSortOrder)
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchProducts(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: nextSortField,
+      tableSortOrder: normalizedSortOrder,
+    })
+  }
+
   const handlePageChange = async (event) => {
     const nextRows = Number(event?.rows) || pageSize
     const nextFirst = Number(event?.first) || 0
@@ -1004,7 +1106,11 @@ function ProductosTable({ token, onSelect }) {
 
     if (!lastSearchRef.current) return
     setIsRefreshing(true)
-    await fetchProducts(lastSearchRef.current, nextPage, nextRows)
+    await fetchProducts(lastSearchRef.current, nextPage, nextRows, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const handleSelectAllRows = useCallback(async () => {
@@ -1049,7 +1155,7 @@ function ProductosTable({ token, onSelect }) {
         toast.current?.show({
           severity: 'info',
           summary: 'Cancelado',
-          detail: 'Se cancelÃ³ la seleccion global.',
+          detail: 'Se canceló la selección global.',
           life: 2500,
         })
         return
@@ -1220,8 +1326,11 @@ function ProductosTable({ token, onSelect }) {
           rowsPerPageOptions={[5, 10, 25, 50]}
           onPage={handlePageChange}
           removableSort
+          sortField={sortField || undefined}
+          sortOrder={sortOrder || 0}
+          onSort={handleSortChange}
           filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
+          onFilter={handleFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={[
             'codigo',
@@ -1287,6 +1396,7 @@ function ProductosTable({ token, onSelect }) {
           {selectedColumns.map((column, index) => {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
+            let enableFilter = true
 
             let filterMatchMode = FilterMatchMode.CONTAINS
             let showFilterMatchModes = true
@@ -1306,7 +1416,7 @@ function ProductosTable({ token, onSelect }) {
               case 'pieza_original_label':
                 bodyTemplate = (rowData) => piezaOriginalBodyTemplate(rowData)
                 className = 'column-max-min-width--small'
-                filterMatchMode = FilterMatchMode.STARTS_WITH
+                enableFilter = false
                 break
               case 'precio':
               case 'precio_con_iva':
@@ -1321,8 +1431,8 @@ function ProductosTable({ token, onSelect }) {
                   }
                   return numericBodyTemplate(rowData, column.nombrevar)
                 }
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 className = 'column-max-min-width--small'
+                enableFilter = false
                 break
               case 'casa_comercial_nombre':
                 bodyTemplate = (rowData) => casaComercialBodyTemplate(rowData)
@@ -1341,14 +1451,14 @@ function ProductosTable({ token, onSelect }) {
                 body={bodyTemplate}
                 sortable
                 reorderable
-                filter
+                filter={enableFilter}
                 filterPlaceholder={column.filterPlaceholder}
                 filterMatchMode={filterMatchMode}
-                showFilterMenuOptions
-                showFilterMatchModes={showFilterMatchModes}
-                showFilterOperator={showFilterOperator}
-                filterApply={filterApplyTemplate}
-                filterClear={filterClearTemplate}
+                showFilterMenuOptions={enableFilter}
+                showFilterMatchModes={enableFilter && showFilterMatchModes}
+                showFilterOperator={enableFilter && showFilterOperator}
+                filterApply={enableFilter ? filterApplyTemplate : undefined}
+                filterClear={enableFilter ? filterClearTemplate : undefined}
                 filterElement={filterElement}
                 className={className}
               />
@@ -1395,7 +1505,7 @@ function ProductosTable({ token, onSelect }) {
           >
             <header className="create-user__header" onMouseDown={handleBulkModalMouseDown}>
               <div className="create-user__header-text">
-                <h3>Confirmar seleccion global</h3>
+                <h3>Confirmar selección global</h3>
               </div>
             </header>
 
@@ -1462,7 +1572,7 @@ function ProductosTable({ token, onSelect }) {
 
             <div className="create-user__body">
               <p style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
-                Procesando seleccion global. Por favor espera.
+                Procesando selección global. Por favor espera.
               </p>
               <div
                 style={{
@@ -1552,16 +1662,14 @@ function ProductosTable({ token, onSelect }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? 'ðŸ—•' : 'ðŸ—–'}
+                  {isSearchMaximized ? '▣' : '▢'}
                 </button>
                 <button
                   type="button"
                   className="create-user__icon-button"
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
-                >
-                  Ã—
-                </button>
+                >×</button>
               </div>
             </header>
 
@@ -1571,13 +1679,13 @@ function ProductosTable({ token, onSelect }) {
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Filtros</p>
-                      <h4>Busqueda avanzada</h4>
+                      <h4>Búsqueda avanzada</h4>
                     </div>
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Codigo</span>
+                      <span>Código</span>
                       <input name="codigo" type="text" placeholder="Ej: PRD-001" value={searchCriteria.codigo} onChange={handleSearchInputChange} />
                     </label>
 
@@ -1646,7 +1754,7 @@ function ProductosTable({ token, onSelect }) {
                                 >
                                   <div className="create-user__result-info">
                                     <strong>{marca.nombre}</strong>
-                                    <small>{marca.codigo ? `Codigo: ${marca.codigo}` : `ID: ${marca.id}`}</small>
+                                    <small>{marca.codigo ? `Código: ${marca.codigo}` : `ID: ${marca.id}`}</small>
                                   </div>
                                 </button>
                               ))}
@@ -1711,7 +1819,7 @@ function ProductosTable({ token, onSelect }) {
                                 >
                                   <div className="create-user__result-info">
                                     <strong>{casa.nombre}</strong>
-                                    <small>{casa.codigo ? `Codigo: ${casa.codigo}` : `ID: ${casa.id}`}</small>
+                                    <small>{casa.codigo ? `Código: ${casa.codigo}` : `ID: ${casa.id}`}</small>
                                   </div>
                                 </button>
                               ))}
@@ -1746,12 +1854,12 @@ function ProductosTable({ token, onSelect }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Fecha de creacion</span>
+                      <span>Fecha de creación</span>
                       <input name="fecha_creacion" type="text" placeholder="Ej: 2025-12-31" value={searchCriteria.fecha_creacion} onChange={handleSearchInputChange} />
                     </label>
 
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <input name="descripcion" type="text" placeholder="Ej: Repuesto original" value={searchCriteria.descripcion} onChange={handleSearchInputChange} />
                     </label>
                   </div>
@@ -1780,7 +1888,7 @@ function ProductosTable({ token, onSelect }) {
             </form>
             <button
               type="button"
-              aria-label="Cambiar tamano de ventana"
+              aria-label="Cambiar tamaño de ventana"
               className="create-user__resize-handle"
               onMouseDown={handleSearchResizeMouseDown}
             />
