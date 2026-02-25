@@ -150,7 +150,10 @@ function ProductosTable({ token, onSelect }) {
     addIfPresent('precio', criteria?.precio)
     addIfPresent('fecha_creacion', criteria?.fecha_creacion)
 
-    const globalSearch = getPrimeGlobalFilterValue(tableFilters)
+    const hasExplicitGlobalSearch = Object.prototype.hasOwnProperty.call(options || {}, 'globalSearchValue')
+    const globalSearch = hasExplicitGlobalSearch
+      ? String(options?.globalSearchValue ?? '').trim()
+      : getPrimeGlobalFilterValue(tableFilters)
     if (globalSearch) params.set('search', globalSearch)
 
     const columnFilters = buildPrimeColumnFiltersPayload(tableFilters, {
@@ -173,12 +176,16 @@ function ProductosTable({ token, onSelect }) {
         const tableFilters = options?.tableFilters ?? filters
         const tableSortField = options?.tableSortField ?? sortField
         const tableSortOrder = options?.tableSortOrder ?? sortOrder
+        const globalSearchValue = Object.prototype.hasOwnProperty.call(options || {}, 'globalSearchValue')
+          ? options?.globalSearchValue
+          : globalFilterValue
         const url = buildProductsListUrl(criteria, {
           page,
           rows,
           tableFilters,
           tableSortField,
           tableSortOrder,
+          globalSearchValue,
         })
         const res = await authFetch(url, {}, token)
         if (!res.ok) throw new Error('No se pudo obtener la lista de productos.')
@@ -203,7 +210,7 @@ function ProductosTable({ token, onSelect }) {
         setIsRefreshing(false)
       }
     },
-    [token, normalizeList, pageSize, buildProductsListUrl, filters, sortField, sortOrder]
+    [token, normalizeList, pageSize, buildProductsListUrl, filters, sortField, sortOrder, globalFilterValue]
   )
 
   const fetchAllProducts = useCallback(
@@ -362,7 +369,8 @@ function ProductosTable({ token, onSelect }) {
           }
           delete nextFilters.casas_comerciales_count
           setFilters(nextFilters)
-          setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
+          const restoredGlobal = String(parsed?.globalFilterValue ?? getPrimeGlobalFilterValue(nextFilters) ?? '')
+          setGlobalFilterValue(restoredGlobal)
           const nextSortField = parsed?.sortField || null
           const parsedSortOrder = Number(parsed?.sortOrder)
           const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
@@ -383,7 +391,7 @@ function ProductosTable({ token, onSelect }) {
 
   useEffect(() => {
     if (!filters) return
-    const payload = JSON.stringify({ filters, sortField, sortOrder })
+    const payload = JSON.stringify({ filters, sortField, sortOrder, globalFilterValue })
     try {
       sessionStorage.setItem('productos-table-state', payload)
     } catch {
@@ -394,7 +402,7 @@ function ProductosTable({ token, onSelect }) {
         // no-op
       }
     }
-  }, [filters, sortField, sortOrder])
+  }, [filters, sortField, sortOrder, globalFilterValue])
 
   const clearFilter = async () => {
     if (globalSearchDebounceRef.current) {
@@ -408,6 +416,7 @@ function ProductosTable({ token, onSelect }) {
       tableFilters: nextFilters,
       tableSortField: sortField,
       tableSortOrder: sortOrder,
+      globalSearchValue: '',
     })
   }
 
@@ -601,6 +610,7 @@ function ProductosTable({ token, onSelect }) {
       tableFilters: filters,
       tableSortField: sortField,
       tableSortOrder: sortOrder,
+      globalSearchValue: getPrimeGlobalFilterValue(filters),
     })
   }, [fetchProducts, filters, pageSize, sortField, sortOrder])
 
@@ -1106,9 +1116,12 @@ function ProductosTable({ token, onSelect }) {
   }
 
   const handleFilterChange = async (event) => {
-    const nextFilters = event?.filters || {}
+    const rawFilters = event?.filters || {}
+    const nextFilters = {
+      ...rawFilters,
+      global: { value: globalFilterValue || null, matchMode: FilterMatchMode.CONTAINS },
+    }
     setFilters(nextFilters)
-    setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
     setPageFirst(0)
     if (!lastSearchRef.current) return
     setIsRefreshing(true)
@@ -1116,16 +1129,12 @@ function ProductosTable({ token, onSelect }) {
       tableFilters: nextFilters,
       tableSortField: sortField,
       tableSortOrder: sortOrder,
+      globalSearchValue: globalFilterValue,
     })
   }
 
-  async function handleGlobalFilterChange(event) {
+  function handleGlobalFilterChange(event) {
     const value = event.target.value
-    const nextFilters = {
-      ...(filters || {}),
-      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
-    }
-    setFilters(nextFilters)
     setGlobalFilterValue(value)
     setPageFirst(0)
     if (!lastSearchRef.current) return
@@ -1135,9 +1144,10 @@ function ProductosTable({ token, onSelect }) {
     setIsRefreshing(true)
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchProducts(lastSearchRef.current, 1, pageSize, {
-        tableFilters: nextFilters,
+        tableFilters: filters,
         tableSortField: sortField,
         tableSortOrder: sortOrder,
+        globalSearchValue: value,
       })
     }, 500)
   }
@@ -1419,6 +1429,7 @@ function ProductosTable({ token, onSelect }) {
           onSelectionChange={(e) => {
             if (!isCheckboxSelection(e)) return
             if (e?.type === 'all') {
+              if (!e?.originalEvent) return
               const value = Array.isArray(e.value) ? e.value : []
               if (!value.length) {
                 handleUnselectAllRows()
