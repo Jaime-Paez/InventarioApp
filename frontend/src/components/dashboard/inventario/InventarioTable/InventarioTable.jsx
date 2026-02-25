@@ -23,12 +23,6 @@ const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.r
 const DEFAULT_IVA_RATE = 0.15
 const normId = (value) => (value == null ? null : String(value))
 
-const parseProductCode = (label) => {
-  if (!label) return null
-  const match = /\(([^)]+)\)\s*$/.exec(String(label))
-  return match ? match[1].trim() : null
-}
-
 const normalizeNumber = (value) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
@@ -39,31 +33,6 @@ const formatCurrency = (value) => {
   return Number.isFinite(number) ? `$${number.toFixed(2)}` : '-'
 }
 
-const normalizeValue = (value) =>
-  String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-const contains = (fieldValue, target) => {
-  const needle = normalizeValue(target)
-  if (!needle) return true
-  return normalizeValue(fieldValue).includes(needle)
-}
-const parseCriteriaNumber = (value) => {
-  if (value == null) return null
-  const cleaned = String(value).trim()
-  if (!cleaned) return null
-  const parsed = Number(cleaned)
-  return Number.isFinite(parsed) ? parsed : null
-}
-const pickValue = (row, keys) => {
-  for (const key of keys) {
-    const value = key.split('.').reduce((acc, part) => acc?.[part], row)
-    if (value != null && value !== '') return value
-  }
-  return ''
-}
 const isCheckboxSelection = (event) => {
   const type = event?.type
   if (type === 'checkbox' || type === 'all') return true
@@ -89,7 +58,7 @@ const initialSearchCriteria = {
   cantidad_min: '',
   cantidad_max: '',
 }
-const buildDefaultAppliedCriteria = () => ({ ...initialSearchCriteria, __onlyWithInventory: true })
+const buildDefaultAppliedCriteria = () => ({ ...initialSearchCriteria, __onlyWithInventory: false })
 const INVENTARIO_FILTER_FIELDS = [
   'codigo',
   'nombre',
@@ -97,25 +66,31 @@ const INVENTARIO_FILTER_FIELDS = [
   'pieza_original_label',
   'costo_minimo',
   'precio',
+  'precio_con_iva',
   'casa_comercial_nombre',
+  'total_general',
 ]
 const INVENTARIO_FILTER_DEFAULT_MODES = {
   codigo: FilterMatchMode.STARTS_WITH,
   nombre: FilterMatchMode.STARTS_WITH,
   marca_nombre: FilterMatchMode.STARTS_WITH,
   pieza_original_label: FilterMatchMode.STARTS_WITH,
-  costo_minimo: FilterMatchMode.STARTS_WITH,
-  precio: FilterMatchMode.STARTS_WITH,
+  costo_minimo: FilterMatchMode.EQUALS,
+  precio: FilterMatchMode.EQUALS,
+  precio_con_iva: FilterMatchMode.EQUALS,
   casa_comercial_nombre: FilterMatchMode.STARTS_WITH,
+  total_general: FilterMatchMode.EQUALS,
 }
 const INVENTARIO_ORDERING_MAP = {
-  codigo: 'producto__codigo',
-  nombre: 'producto__nombre',
-  marca_nombre: 'producto__marca__nombre',
-  pieza_original_label: 'producto__pieza_original',
-  costo_minimo: 'producto__costo_minimo',
-  precio: 'producto__precio',
-  precio_con_iva: 'producto__precio',
+  codigo: 'codigo',
+  nombre: 'nombre',
+  marca_nombre: 'marca_nombre',
+  pieza_original_label: 'pieza_original_label',
+  costo_minimo: 'costo_minimo',
+  precio: 'precio',
+  precio_con_iva: 'precio_con_iva',
+  casa_comercial_nombre: 'casa_comercial_nombre',
+  total_general: 'total_general',
 }
 
 function InventarioTable({ token }) {
@@ -134,7 +109,6 @@ function InventarioTable({ token }) {
   const [bodegas, setBodegas] = useState([])
   const [subdivisions, setSubdivisions] = useState([])
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
-  const [appliedCriteria, setAppliedCriteria] = useState(() => buildDefaultAppliedCriteria())
   const [showSearchModal, setShowSearchModal] = useState(false)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
@@ -193,6 +167,7 @@ function InventarioTable({ token }) {
     const tableFilters = options?.tableFilters
     const tableSortField = options?.tableSortField
     const tableSortOrder = options?.tableSortOrder
+    const branchFields = branches.map((branch) => `sucursal_${branch.id}`)
 
     params.set('page', String(page))
     params.set('page_size', String(rows))
@@ -224,17 +199,26 @@ function InventarioTable({ token }) {
       : getPrimeGlobalFilterValue(tableFilters)
     if (globalSearch) params.set('search', globalSearch)
 
+    const allowedFilterFields = [...INVENTARIO_FILTER_FIELDS, ...branchFields]
+    const filterDefaultModes = { ...INVENTARIO_FILTER_DEFAULT_MODES }
+    branchFields.forEach((field) => {
+      filterDefaultModes[field] = FilterMatchMode.EQUALS
+    })
     const columnFilters = buildPrimeColumnFiltersPayload(tableFilters, {
-      allowedFields: INVENTARIO_FILTER_FIELDS,
-      defaultMatchModes: INVENTARIO_FILTER_DEFAULT_MODES,
+      allowedFields: allowedFilterFields,
+      defaultMatchModes: filterDefaultModes,
     })
     if (columnFilters) params.set('column_filters', JSON.stringify(columnFilters))
 
-    const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, INVENTARIO_ORDERING_MAP)
+    const orderingMap = { ...INVENTARIO_ORDERING_MAP }
+    branchFields.forEach((field) => {
+      orderingMap[field] = field
+    })
+    const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, orderingMap)
     if (ordering) params.set('ordering', ordering)
 
-    return `${API_URL}/inventario/inventario/?${params.toString()}`
-  }, [])
+    return `${API_URL}/inventario/inventario/tabla/?${params.toString()}`
+  }, [branches])
 
   const fetchLookupData = useCallback(async () => {
     if (!token) return
@@ -550,7 +534,6 @@ function InventarioTable({ token }) {
     const isCriteriaEmpty = Object.values(nextCriteria).every(isEmptyValue)
     const applied = isCriteriaEmpty ? buildDefaultAppliedCriteria() : nextCriteria
     lastSearchRef.current = applied
-    setAppliedCriteria(applied)
     setShowSearchModal(false)
     setPageFirst(0)
     setIsRefreshing(true)
@@ -591,74 +574,29 @@ function InventarioTable({ token }) {
     setShowSearchCasaDropdown(false)
   }
 
-  const inventoryEntries = useMemo(() => {
-    return (Array.isArray(inventories) ? inventories : [])
-      .map((entry) => {
-        const productData = entry?.producto_data || {}
-        const productIdRaw = Number(productData?.id ?? entry?.producto_id)
+  const rows = useMemo(
+    () =>
+      (Array.isArray(inventories) ? inventories : []).map((row) => {
+        const precioBase = Number(row?.precio)
+        const productIdRaw = Number(row?.producto_id ?? row?.id)
         const productId = Number.isFinite(productIdRaw) && productIdRaw > 0 ? productIdRaw : null
-        const subdivision = entry?.subdivision
-        const division = subdivision?.division
-        const bodega = division?.bodega
-        const sucursal = bodega?.sucursal
-        return {
-          ...entry,
-          producto_data: productData,
-          productoId: productId,
-          subdivisionId: subdivision?.id ?? null,
-          bodegaId: bodega?.id ?? null,
-          sucursalId: sucursal?.id ?? null,
+        const normalizedRow = {
+          ...row,
+          id: productId ?? row?.id,
+          producto_id: productId ?? row?.producto_id ?? null,
+          pieza_original: Boolean(row?.pieza_original),
+          pieza_original_label: row?.pieza_original ? 'Si' : 'No',
+          total_general: normalizeNumber(row?.total_general),
+          precio_con_iva: Number.isFinite(precioBase) ? precioBase * (1 + ivaRate) : null,
         }
-      })
-      .filter((entry) => Boolean(entry?.id))
-  }, [inventories])
-
-  const inventoryByProductId = useMemo(() => {
-    const map = new Map()
-    inventoryEntries.forEach((entry) => {
-      if (!entry?.productoId) return
-      const list = map.get(entry.productoId) || []
-      list.push(entry)
-      map.set(entry.productoId, list)
-    })
-    return map
-  }, [inventoryEntries])
-
-  const applySearchFilters = useCallback((list, criteria) => {
-    const piezaCriteria = normalizeValue(criteria?.pieza_original)
-    const qtyMinRaw = parseCriteriaNumber(criteria?.cantidad_min)
-    const qtyMax = parseCriteriaNumber(criteria?.cantidad_max)
-    const onlyWithInventory = Boolean(criteria?.__onlyWithInventory)
-    const qtyMin =
-      qtyMinRaw != null
-        ? qtyMinRaw
-        : qtyMax != null
-          ? 1
-          : onlyWithInventory
-            ? 1
-            : null
-    return list.filter((row) => {
-      const piezaValue = row?.pieza_original ? 'true' : 'false'
-      const dateValue = pickValue(row, ['creado_en', 'created_at', 'fecha_creacion'])
-      const qtyValue = normalizeNumber(row?.total_general)
-      const hasInventory = onlyWithInventory ? qtyValue > 0 : true
-      return (
-        hasInventory &&
-        contains(row?.codigo, criteria?.codigo) &&
-        contains(row?.nombre, criteria?.nombre) &&
-        contains(row?.descripcion, criteria?.descripcion) &&
-        contains(row?.oem_codes, criteria?.oem) &&
-        contains(row?.marca_nombre, criteria?.marca) &&
-        contains(row?.casas_comerciales_nombres, criteria?.casa_comercial) &&
-        (piezaCriteria ? piezaValue === piezaCriteria : true) &&
-        contains(row?.costo_minimo, criteria?.costo_minimo) &&
-        contains(row?.precio, criteria?.precio) &&
-        contains(dateValue, criteria?.fecha_creacion) &&
-        (qtyMin === null || qtyValue >= qtyMin) &&
-        (qtyMax === null || qtyValue <= qtyMax)
-      )
-    })
-  }, [])
+        branches.forEach((branch) => {
+          const fieldName = `sucursal_${branch.id}`
+          normalizedRow[fieldName] = normalizeNumber(row?.[fieldName])
+        })
+        return normalizedRow
+      }),
+    [inventories, ivaRate, branches]
+  )
 
   const initFilters = useCallback(() => {
     const nextFilters = {
@@ -668,15 +606,15 @@ function InventarioTable({ token }) {
       marca_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       pieza_original_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       casa_comercial_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      costo_minimo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      precio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      precio_con_iva: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      total_general: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      costo_minimo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
+      precio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
+      precio_con_iva: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
+      total_general: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
     }
     branches.forEach((branch) => {
       nextFilters[`sucursal_${branch.id}`] = {
         operator: FilterOperator.AND,
-        constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }],
+        constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }],
       }
     })
     setFilters(nextFilters)
@@ -710,7 +648,6 @@ function InventarioTable({ token }) {
     setGlobalFilterValue('')
     const defaultApplied = buildDefaultAppliedCriteria()
     lastSearchRef.current = defaultApplied
-    setAppliedCriteria(defaultApplied)
     setPageFirst(0)
     setIsRefreshing(true)
     await fetchData(defaultApplied, 1, pageSize, {
@@ -800,62 +737,7 @@ function InventarioTable({ token }) {
     })
   }
 
-  const rows = useMemo(() => {
-    const grouped = new Map()
-
-    inventoryEntries.forEach((entry) => {
-      const productData = entry?.producto_data || {}
-      const productId = Number(entry?.productoId)
-      if (!Number.isFinite(productId) || productId <= 0) return
-
-      const key = String(productId)
-      const existing = grouped.get(key)
-      const casasNombres = String(productData?.casas_comerciales_nombres || '').trim()
-      const casaPrincipal = String(productData?.casa_comercial_nombre || '').trim()
-      const casasLabel = casasNombres || casaPrincipal
-      const precioBase = Number(productData?.precio)
-      const cantidad = normalizeNumber(entry?.cantidad)
-      const sucursalField = entry?.sucursalId ? `sucursal_${entry.sucursalId}` : null
-
-      if (!existing) {
-        const base = {
-          id: productId,
-          producto_id: productId,
-          codigo: productData?.codigo || parseProductCode(entry?.producto) || '-',
-          nombre: productData?.nombre || entry?.producto || '-',
-          descripcion: productData?.descripcion || '',
-          marca_nombre: productData?.marca_nombre || '-',
-          casa_comercial_nombre: casaPrincipal || casasLabel || '-',
-          casas_comerciales_nombres: casasLabel || '',
-          pieza_original: Boolean(productData?.pieza_original),
-          pieza_original_label: productData?.pieza_original ? 'Si' : 'No',
-          costo_minimo: productData?.costo_minimo,
-          precio: productData?.precio,
-          precio_con_iva: Number.isFinite(precioBase) ? precioBase * (1 + ivaRate) : null,
-          oem_codes: String(productData?.oem_codes || '').trim(),
-          total_general: 0,
-          creado_en: productData?.creado_en,
-        }
-        branches.forEach((branch) => {
-          base[`sucursal_${branch.id}`] = 0
-        })
-        grouped.set(key, base)
-      }
-
-      const row = grouped.get(key)
-      row.total_general = normalizeNumber(row.total_general) + cantidad
-      if (sucursalField) {
-        row[sucursalField] = normalizeNumber(row[sucursalField]) + cantidad
-      }
-    })
-
-    return Array.from(grouped.values())
-  }, [inventoryEntries, ivaRate, branches])
-
-  const filteredRows = useMemo(() => {
-    if (!appliedCriteria) return rows
-    return applySearchFilters(rows, appliedCriteria)
-  }, [rows, applySearchFilters, appliedCriteria])
+  const filteredRows = rows
 
   // ---------------- Columns ----------------
   const columnsData = useMemo(
@@ -889,7 +771,7 @@ function InventarioTable({ token }) {
   const [processedRows, setProcessedRows] = useState(null)
   useEffect(() => {
     setProcessedRows(null)
-  }, [appliedCriteria])
+  }, [rows])
 
   const selectionBaseRows = useMemo(() => {
     if (Array.isArray(processedRows)) {
@@ -1038,11 +920,6 @@ function InventarioTable({ token }) {
     }),
     []
   )
-
-  const getRowsToExport = useCallback(() => {
-    if (selectedRows?.length) return selectedRows
-    return processedRows === null ? filteredRows : processedRows
-  }, [processedRows, selectedRows, filteredRows])
 
   const notifyExportWarning = useCallback((detail) => {
     toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail, life: 3000 })
@@ -1444,7 +1321,8 @@ function InventarioTable({ token }) {
               case 'precio_con_iva':
               case 'costo_minimo':
                 bodyTemplate = (rowData) => priceBodyTemplate(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
+                filterMatchMode = FilterMatchMode.EQUALS
+                showFilterMatchModes = false
                 className = 'column-max-min-width--small'
                 break
               case 'pieza_original_label':
@@ -1454,13 +1332,15 @@ function InventarioTable({ token }) {
                 break
               case 'total_general':
                 bodyTemplate = quantityBody(column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
+                filterMatchMode = FilterMatchMode.EQUALS
+                showFilterMatchModes = false
                 className = 'column-max-min-width--small'
                 break
               default:
                 if (column.nombrevar.startsWith('sucursal_')) {
                   bodyTemplate = quantityBody(column.nombrevar)
-                  filterMatchMode = FilterMatchMode.STARTS_WITH
+                  filterMatchMode = FilterMatchMode.EQUALS
+                  showFilterMatchModes = false
                   className = 'column-max-min-width--small'
                 }
                 break
@@ -1536,12 +1416,7 @@ function InventarioTable({ token }) {
           branches,
           bodegas,
           subdivisions,
-          inventarioEntries:
-            activeProductInventoryEntries.length > 0
-              ? activeProductInventoryEntries
-              : activeProduct
-                ? inventoryByProductId.get(activeProduct.producto_id) || []
-                : [],
+          inventarioEntries: activeProductInventoryEntries,
           onSaved: () => {
             refreshData()
             refreshCurrentProductInventory()
