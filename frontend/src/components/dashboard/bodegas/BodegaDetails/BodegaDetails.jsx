@@ -735,13 +735,14 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)` ,
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)` ,
   }
+  const modalTitle = String(formData?.nombre ?? '').trim() || 'Bodega'
 
   return (
     <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
       <div className="create-user__modal" ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
-            <h3>{bodegaId ? `Bodega #${bodegaId}` : 'Bodega'}</h3>
+            <h3>{modalTitle}</h3>
           </div>
           <div className="create-user__header-actions">
             <button

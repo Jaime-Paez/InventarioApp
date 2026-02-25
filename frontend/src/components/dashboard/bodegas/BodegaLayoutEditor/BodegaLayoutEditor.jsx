@@ -12,7 +12,7 @@ const normalizeNumber = (value) => {
 
 const DEFAULT_COLOR = '#4f8df8'
 const MIN_SIZE_METERS = 0.5
-const PLAN_MAX_HEIGHT = 520
+const PLAN_MAX_HEIGHT = 'min(78vh, 860px)'
 const VERTICAL_LABEL_RATIO = 1.6
 const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles']
 const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14b8a6']
@@ -157,8 +157,9 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     const ratio = safeWidth / safeHeight
     return {
       aspectRatio: `${safeWidth} / ${safeHeight}`,
-      maxWidth: `min(100%, ${PLAN_MAX_HEIGHT * ratio}px)`,
-      maxHeight: `${PLAN_MAX_HEIGHT}px`,
+      width: '100%',
+      maxWidth: `min(100%, calc(${PLAN_MAX_HEIGHT} * ${ratio}))`,
+      maxHeight: PLAN_MAX_HEIGHT,
       minHeight: 0,
     }
   }, [safeWidth, safeHeight])
@@ -394,6 +395,30 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
       </div>
 
       <div className="bodega-layout__plan-row">
+        <div className="bodega-layout__legend">
+          <h5>Leyenda</h5>
+          {locations.length === 0 && (
+            <p className="bodega-layout__hint">Sin ubicaciones registradas.</p>
+          )}
+          <ul>
+            {Array.from(
+              new Set(
+                locations
+                  .map((loc) => loc.tipo || types[0] || DEFAULT_TYPES[0])
+                  .filter(Boolean)
+              )
+            ).map((type) => (
+              <li key={type}>
+                <span
+                  className="bodega-layout__legend-dot"
+                  style={{ backgroundColor: resolveTypeColor(type) }}
+                />
+                <span>{type}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <div className="bodega-layout__plan-wrapper">
           <div
             className={`bodega-layout__plan${disabled || !safeWidth || !safeHeight ? ' bodega-layout__plan--disabled' : ''}`}
@@ -460,30 +485,6 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
               {resizeOverlay.ancho}m x {resizeOverlay.alto}m
             </div>
           )}
-        </div>
-
-        <div className="bodega-layout__legend">
-          <h5>Leyenda</h5>
-          {locations.length === 0 && (
-            <p className="bodega-layout__hint">Sin ubicaciones registradas.</p>
-          )}
-          <ul>
-            {Array.from(
-              new Set(
-                locations
-                  .map((loc) => loc.tipo || types[0] || DEFAULT_TYPES[0])
-                  .filter(Boolean)
-              )
-            ).map((type) => (
-              <li key={type}>
-                <span
-                  className="bodega-layout__legend-dot"
-                  style={{ backgroundColor: resolveTypeColor(type) }}
-                />
-                <span>{type}</span>
-              </li>
-            ))}
-          </ul>
         </div>
       </div>
       <p className="bodega-layout__hint">

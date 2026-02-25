@@ -73,13 +73,15 @@ function SalidasTable({ token }) {
     []
   )
 
-  const fetchMovimientos = useCallback(async () => {
+  const fetchMovimientos = useCallback(async (searchTerm = '') => {
     if (!token) return
     setLoading(true)
     setError(null)
     try {
       const list = []
-      let url = `${API_URL}/movimientos/movimiento_inventario/`
+      const normalizedSearch = String(searchTerm ?? '').trim()
+      const searchQuery = normalizedSearch ? `?search=${encodeURIComponent(normalizedSearch)}` : ''
+      let url = `${API_URL}/movimientos/movimiento_inventario/${searchQuery}`
 
       while (url) {
         const res = await authFetch(url, {}, token)
@@ -131,6 +133,21 @@ function SalidasTable({ token }) {
 
   const clearFilter = () => {
     initFilters()
+    fetchMovimientos('')
+  }
+  const handleGlobalFilterChange = async (event) => {
+    const value = event.target.value
+    setGlobalFilterValue(value)
+    setFilters((prev) => ({
+      ...(prev || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }))
+    await fetchMovimientos(value)
+  }
+  const handleTableFilterChange = (event) => {
+    const nextFilters = event?.filters || {}
+    setFilters(nextFilters)
+    setGlobalFilterValue(nextFilters?.global?.value || '')
   }
 
   const cellWithTooltip = (rowData, field) => {
@@ -183,8 +200,18 @@ function SalidasTable({ token }) {
   const header = (
     <div className="users-header">
       <div className="users-header__left">
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={globalFilterValue}
+            onChange={handleGlobalFilterChange}
+            className="search-input"
+            placeholder="Buscar en tabla"
+          />
+          <i className="pi pi-search search-input-icon" />
+        </div>
 
-        <button className="rounded-icon-btn" type="button" onClick={fetchMovimientos} disabled={loading} title="Recargar">
+        <button className="rounded-icon-btn" type="button" onClick={() => fetchMovimientos(globalFilterValue)} disabled={loading} title="Recargar">
           <i className="pi pi-refresh" />
         </button>
 
@@ -211,7 +238,7 @@ function SalidasTable({ token }) {
 
       <div className="users-table users-table--card">
         {loading && (
-          <div className="spinner-container">
+          <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
         )}
@@ -229,7 +256,7 @@ function SalidasTable({ token }) {
           value={movimientos}
           dataKey="id"
           header={header}
-          className="users-datatable"
+          className={`users-datatable${loading ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
@@ -241,8 +268,17 @@ function SalidasTable({ token }) {
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
           filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
-          globalFilterFields={['no_documento', 'fecha', 'sucursal_nombre', 'sub_tipo_nombre', 'sucursal_objetivo_nombre', 'estado_nombre']}
+          onFilter={handleTableFilterChange}
+          globalFilterFields={[
+            'no_documento',
+            'fecha',
+            'sucursal_nombre',
+            'sub_tipo_nombre',
+            'sucursal_objetivo_nombre',
+            'estado_nombre',
+            'total',
+            'funcional_label',
+          ]}
           onRowClick={handleRowClick}
         >
           <Column field="no_documento" header="Documento" body={(rowData) => cellWithTooltip(rowData, 'no_documento')} sortable filter />
@@ -278,3 +314,5 @@ function SalidasTable({ token }) {
 }
 
 export default SalidasTable
+
+

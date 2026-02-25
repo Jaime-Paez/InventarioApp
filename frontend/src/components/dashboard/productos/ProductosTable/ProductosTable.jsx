@@ -428,7 +428,8 @@ function ProductosTable({ token, onSelect }) {
   const [showSearchMarcaDropdown, setShowSearchMarcaDropdown] = useState(false)
   const [showSearchCasaDropdown, setShowSearchCasaDropdown] = useState(false)
   const [showSearchModal, setShowSearchModal] = useState(false)
-  const lastSearchRef = useRef(null)
+  const lastSearchRef = useRef({ ...initialSearchCriteria })
+  const didInitialSearchRef = useRef(false)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
@@ -574,6 +575,18 @@ function ProductosTable({ token, onSelect }) {
       tableSortOrder: sortOrder,
     })
   }
+
+  useEffect(() => {
+    if (didInitialSearchRef.current) return
+    if (!filters) return
+    didInitialSearchRef.current = true
+    setIsRefreshing(true)
+    fetchProducts(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }, [fetchProducts, filters, pageSize, sortField, sortOrder])
 
   const filterClearTemplate = (options) => (
     <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
@@ -878,6 +891,16 @@ function ProductosTable({ token, onSelect }) {
   const header = (
     <div className="users-header">
       <div className="users-header__left">
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={globalFilterValue}
+            onChange={handleGlobalFilterChange}
+            className="search-input"
+            placeholder="Buscar en tabla"
+          />
+          <i className="pi pi-search search-input-icon" />
+        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
@@ -1070,6 +1093,24 @@ function ProductosTable({ token, onSelect }) {
     const nextFilters = event?.filters || {}
     setFilters(nextFilters)
     setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchProducts(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }
+
+  async function handleGlobalFilterChange(event) {
+    const value = event.target.value
+    const nextFilters = {
+      ...(filters || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }
+    setFilters(nextFilters)
+    setGlobalFilterValue(value)
     setPageFirst(0)
     if (!lastSearchRef.current) return
     setIsRefreshing(true)
@@ -1292,7 +1333,7 @@ function ProductosTable({ token, onSelect }) {
         ) : (
           <>
         {(loading || isRefreshing) && (
-          <div className="spinner-container">
+          <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
         )}
@@ -1310,7 +1351,7 @@ function ProductosTable({ token, onSelect }) {
           value={products}
           dataKey="id"
           header={header}
-          className="users-datatable"
+          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
@@ -1343,6 +1384,7 @@ function ProductosTable({ token, onSelect }) {
             'precio_con_iva',
             'costo_minimo',
             'casa_comercial_nombre',
+            'casas_comerciales_nombres',
           ]}
           reorderableColumns
           onColReorder={handleOrderChange}
@@ -1900,3 +1942,5 @@ function ProductosTable({ token, onSelect }) {
 }
 
 export default ProductosTable
+
+

@@ -90,7 +90,8 @@ function CasasComercialesTable({ token, onSelect }) {
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
   const [showSearchModal, setShowSearchModal] = useState(false)
-  const lastSearchRef = useRef(null)
+  const lastSearchRef = useRef({ ...initialSearchCriteria })
+  const didInitialSearchRef = useRef(false)
   const [searchPaisQuery, setSearchPaisQuery] = useState('')
   const [searchPaisOptions, setSearchPaisOptions] = useState([])
   const [searchPaisLoading, setSearchPaisLoading] = useState(false)
@@ -314,6 +315,18 @@ function CasasComercialesTable({ token, onSelect }) {
       tableSortOrder: sortOrder,
     })
   }
+
+  useEffect(() => {
+    if (didInitialSearchRef.current) return
+    if (!filters) return
+    didInitialSearchRef.current = true
+    setIsRefreshing(true)
+    fetchCompanies(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }, [fetchCompanies, filters, pageSize, sortField, sortOrder])
 
   const filterClearTemplate = (options) => (
     <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
@@ -560,6 +573,17 @@ function CasasComercialesTable({ token, onSelect }) {
     <div className="users-header">
       <div className="users-header__left">
 
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={globalFilterValue}
+            onChange={handleGlobalFilterChange}
+            className="search-input"
+            placeholder="Buscar en tabla"
+          />
+          <i className="pi pi-search search-input-icon" />
+        </div>
+
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
         </button>
@@ -785,6 +809,24 @@ function CasasComercialesTable({ token, onSelect }) {
     })
   }
 
+  async function handleGlobalFilterChange(event) {
+    const value = event.target.value
+    const nextFilters = {
+      ...(filters || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }
+    setFilters(nextFilters)
+    setGlobalFilterValue(value)
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchCompanies(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }
+
   const handleSortChange = async (event) => {
     const rawSortOrder = Number(event?.sortOrder)
     const normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
@@ -850,7 +892,7 @@ function CasasComercialesTable({ token, onSelect }) {
         ) : (
           <>
         {(loading || isRefreshing) && (
-          <div className="spinner-container">
+          <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
         )}
@@ -868,7 +910,7 @@ function CasasComercialesTable({ token, onSelect }) {
           value={companies}
           dataKey="id"
           header={header}
-          className="users-datatable"
+          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
@@ -1195,3 +1237,5 @@ function CasasComercialesTable({ token, onSelect }) {
 }
 
 export default CasasComercialesTable
+
+

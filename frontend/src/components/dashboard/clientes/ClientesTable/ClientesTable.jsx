@@ -339,7 +339,8 @@ function ClientesTable({ token, onSelect }) {
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
   const [showSearchModal, setShowSearchModal] = useState(false)
-  const lastSearchRef = useRef(null)
+  const lastSearchRef = useRef({ ...initialSearchCriteria })
+  const didInitialSearchRef = useRef(false)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
@@ -375,6 +376,18 @@ function ClientesTable({ token, onSelect }) {
       tableSortOrder: sortOrder,
     })
   }
+
+  useEffect(() => {
+    if (didInitialSearchRef.current) return
+    if (!filters) return
+    didInitialSearchRef.current = true
+    setIsRefreshing(true)
+    fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }, [fetchClients, filters, pageSize, sortField, sortOrder])
 
   const filterClearTemplate = (options) => (
     <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
@@ -631,6 +644,17 @@ function ClientesTable({ token, onSelect }) {
     <div className="users-header">
       <div className="users-header__left">
 
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={globalFilterValue}
+            onChange={handleGlobalFilterChange}
+            className="search-input"
+            placeholder="Buscar en tabla"
+          />
+          <i className="pi pi-search search-input-icon" />
+        </div>
+
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
         </button>
@@ -811,6 +835,24 @@ function ClientesTable({ token, onSelect }) {
     const nextFilters = event?.filters || {}
     setFilters(nextFilters)
     setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
+    setPageFirst(0)
+    if (!lastSearchRef.current) return
+    setIsRefreshing(true)
+    await fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }
+
+  async function handleGlobalFilterChange(event) {
+    const value = event.target.value
+    const nextFilters = {
+      ...(filters || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }
+    setFilters(nextFilters)
+    setGlobalFilterValue(value)
     setPageFirst(0)
     if (!lastSearchRef.current) return
     setIsRefreshing(true)
@@ -1032,7 +1074,7 @@ function ClientesTable({ token, onSelect }) {
         ) : (
           <>
         {(loading || isRefreshing) && (
-          <div className="spinner-container">
+          <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
         )}
@@ -1050,7 +1092,7 @@ function ClientesTable({ token, onSelect }) {
           value={clients}
           dataKey="id"
           header={header}
-          className="users-datatable users-datatable--compact"
+          className={`users-datatable users-datatable--compact${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
@@ -1463,3 +1505,5 @@ function ClientesTable({ token, onSelect }) {
 }
 
 export default ClientesTable
+
+

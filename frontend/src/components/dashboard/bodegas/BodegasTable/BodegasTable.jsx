@@ -52,12 +52,14 @@ function BodegasTable({ token, onSelect }) {
     }))
   }, [])
 
-  const fetchWarehouses = useCallback(async () => {
+  const fetchWarehouses = useCallback(async (searchTerm = '') => {
     setLoading(true)
     setError(null)
     try {
       const list = []
-      let url = `${API_URL}/inventario/bodegas/`
+      const normalizedSearch = String(searchTerm ?? '').trim()
+      const searchQuery = normalizedSearch ? `?search=${encodeURIComponent(normalizedSearch)}` : ''
+      let url = `${API_URL}/inventario/bodegas/${searchQuery}`
 
       while (url) {
         const res = await authFetch(url, {}, token)
@@ -94,7 +96,7 @@ function BodegasTable({ token, onSelect }) {
 
   const refreshData = () => {
     setIsRefreshing(true)
-    fetchWarehouses()
+    fetchWarehouses(globalFilterValue)
   }
 
   // ---------------- Filters ----------------
@@ -124,7 +126,26 @@ function BodegasTable({ token, onSelect }) {
     initFilters()
   }, [])
 
-  const clearFilter = () => initFilters()
+  const clearFilter = () => {
+    initFilters()
+    setIsRefreshing(true)
+    fetchWarehouses('')
+  }
+  const handleGlobalFilterChange = async (event) => {
+    const value = event.target.value
+    setGlobalFilterValue(value)
+    setFilters((prev) => ({
+      ...(prev || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }))
+    setIsRefreshing(true)
+    await fetchWarehouses(value)
+  }
+  const handleTableFilterChange = (event) => {
+    const nextFilters = event?.filters || {}
+    setFilters(nextFilters)
+    setGlobalFilterValue(nextFilters?.global?.value || '')
+  }
 
   const initialSearchCriteria = {
     nombre: '',
@@ -468,6 +489,16 @@ function BodegasTable({ token, onSelect }) {
   const header = (
     <div className="users-header">
       <div className="users-header__left">
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={globalFilterValue}
+            onChange={handleGlobalFilterChange}
+            className="search-input"
+            placeholder="Buscar en tabla"
+          />
+          <i className="pi pi-search search-input-icon" />
+        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
@@ -677,7 +708,7 @@ function BodegasTable({ token, onSelect }) {
         ) : (
           <>
         {(loading || isRefreshing) && (
-          <div className="spinner-container">
+          <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
         )}
@@ -695,7 +726,7 @@ function BodegasTable({ token, onSelect }) {
           value={warehouses}
           dataKey="id"
           header={header}
-          className="users-datatable"
+          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage="No se encontraron bodegas"
           showGridlines
@@ -708,7 +739,7 @@ function BodegasTable({ token, onSelect }) {
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
           filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
+          onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'sucursal_nombre', 'ancho_metros', 'alto_metros', 'ubicaciones_count']}
           stateStorage="session"
@@ -945,3 +976,5 @@ function BodegasTable({ token, onSelect }) {
 }
 
 export default BodegasTable
+
+

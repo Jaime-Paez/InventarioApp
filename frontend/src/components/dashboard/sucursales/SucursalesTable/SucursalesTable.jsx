@@ -45,12 +45,14 @@ function SucursalesTable({ token, onSelect }) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
 
-  const fetchBranches = useCallback(async () => {
+  const fetchBranches = useCallback(async (searchTerm = '') => {
     setLoading(true)
     setError(null)
     try {
       const list = []
-      let url = `${API_URL}/inventario/sucursales/`
+      const normalizedSearch = String(searchTerm ?? '').trim()
+      const searchQuery = normalizedSearch ? `?search=${encodeURIComponent(normalizedSearch)}` : ''
+      let url = `${API_URL}/inventario/sucursales/${searchQuery}`
 
       while (url) {
         const res = await authFetch(url, {}, token)
@@ -86,7 +88,7 @@ function SucursalesTable({ token, onSelect }) {
 
   const refreshData = () => {
     setIsRefreshing(true)
-    fetchBranches()
+    fetchBranches(globalFilterValue)
   }
 
   // ---------------- Filters ----------------
@@ -116,7 +118,26 @@ function SucursalesTable({ token, onSelect }) {
     initFilters()
   }, [])
 
-  const clearFilter = () => initFilters()
+  const clearFilter = () => {
+    initFilters()
+    setIsRefreshing(true)
+    fetchBranches('')
+  }
+  const handleGlobalFilterChange = async (event) => {
+    const value = event.target.value
+    setGlobalFilterValue(value)
+    setFilters((prev) => ({
+      ...(prev || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }))
+    setIsRefreshing(true)
+    await fetchBranches(value)
+  }
+  const handleTableFilterChange = (event) => {
+    const nextFilters = event?.filters || {}
+    setFilters(nextFilters)
+    setGlobalFilterValue(nextFilters?.global?.value || '')
+  }
 
   const initialSearchCriteria = {
     nombre: '',
@@ -463,6 +484,16 @@ function SucursalesTable({ token, onSelect }) {
   const header = (
     <div className="users-header">
       <div className="users-header__left">
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={globalFilterValue}
+            onChange={handleGlobalFilterChange}
+            className="search-input"
+            placeholder="Buscar en tabla"
+          />
+          <i className="pi pi-search search-input-icon" />
+        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
@@ -672,7 +703,7 @@ function SucursalesTable({ token, onSelect }) {
         ) : (
           <>
         {(loading || isRefreshing) && (
-          <div className="spinner-container">
+          <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
         )}
@@ -690,7 +721,7 @@ function SucursalesTable({ token, onSelect }) {
           value={branches}
           dataKey="id"
           header={header}
-          className="users-datatable"
+          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage="No se encontraron sucursales"
           showGridlines
@@ -703,7 +734,7 @@ function SucursalesTable({ token, onSelect }) {
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
           filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
+          onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'direccion', 'latitud', 'longitud']}
           stateStorage="session"
@@ -934,3 +965,5 @@ function SucursalesTable({ token, onSelect }) {
 }
 
 export default SucursalesTable
+
+

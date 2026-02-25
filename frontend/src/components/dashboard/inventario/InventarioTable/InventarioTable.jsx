@@ -95,6 +95,7 @@ const initialSearchCriteria = {
   cantidad_min: '',
   cantidad_max: '',
 }
+const buildDefaultAppliedCriteria = () => ({ ...initialSearchCriteria, __onlyWithInventory: true })
 
 function InventarioTable({ token }) {
   const toast = useRef(null)
@@ -106,7 +107,7 @@ function InventarioTable({ token }) {
   const [bodegas, setBodegas] = useState([])
   const [subdivisions, setSubdivisions] = useState([])
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
-  const [appliedCriteria, setAppliedCriteria] = useState(null)
+  const [appliedCriteria, setAppliedCriteria] = useState(() => buildDefaultAppliedCriteria())
   const [showSearchModal, setShowSearchModal] = useState(false)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
@@ -120,7 +121,7 @@ function InventarioTable({ token }) {
   const SEARCH_MIN_WIDTH = 640
   const SEARCH_MIN_HEIGHT = 480
   const SEARCH_PADDING = 12
-  const lastSearchRef = useRef(null)
+  const lastSearchRef = useRef(buildDefaultAppliedCriteria())
   const [searchMarcaQuery, setSearchMarcaQuery] = useState('')
   const [searchCasaQuery, setSearchCasaQuery] = useState('')
   const [searchMarcaOptions, setSearchMarcaOptions] = useState([])
@@ -144,11 +145,12 @@ function InventarioTable({ token }) {
     toast.current?.show({ severity, summary, detail, life: 3500 })
   }, [])
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (searchTerm = '') => {
     if (!token) return
     setLoading(true)
     setError(null)
     try {
+      const normalizedSearch = String(searchTerm ?? '').trim()
       const fetchAllPages = async (initialUrl, errorMessage) => {
         const allItems = []
         let url = initialUrl
@@ -170,8 +172,9 @@ function InventarioTable({ token }) {
         return allItems
       }
 
+      const productSearchQuery = normalizedSearch ? `?search=${encodeURIComponent(normalizedSearch)}` : ''
       const [productsData, inventoriesData, branchesData, bodegasData, subdivisionsData] = await Promise.all([
-        fetchAllPages(`${API_URL}/productos/listado/`, 'No se pudieron cargar los productos.'),
+        fetchAllPages(`${API_URL}/productos/listado/${productSearchQuery}`, 'No se pudieron cargar los productos.'),
         fetchAllPages(`${API_URL}/inventario/inventario/`, 'No se pudo cargar el inventario.'),
         fetchAllPages(`${API_URL}/inventario/sucursales/?modulo=inventario`, 'No se pudieron cargar las sucursales.'),
         fetchAllPages(`${API_URL}/inventario/bodegas/`, 'No se pudieron cargar las bodegas.'),
@@ -355,7 +358,7 @@ function InventarioTable({ token }) {
       return String(value).trim() === ''
     }
     const isCriteriaEmpty = Object.values(nextCriteria).every(isEmptyValue)
-    const applied = isCriteriaEmpty ? { ...initialSearchCriteria, __onlyWithInventory: true } : nextCriteria
+    const applied = isCriteriaEmpty ? buildDefaultAppliedCriteria() : nextCriteria
     lastSearchRef.current = applied
     setAppliedCriteria(applied)
     setShowSearchModal(false)
@@ -366,7 +369,7 @@ function InventarioTable({ token }) {
       setShowSearchModal(true)
       return
     }
-    fetchData()
+    fetchData(globalFilterValue)
   }
 
   const resetSearch = () => {
@@ -510,8 +513,25 @@ function InventarioTable({ token }) {
   const clearFilter = () => {
     initFilters()
     resetSearch()
-    lastSearchRef.current = null
-    setAppliedCriteria(null)
+    setGlobalFilterValue('')
+    const defaultApplied = buildDefaultAppliedCriteria()
+    lastSearchRef.current = defaultApplied
+    setAppliedCriteria(defaultApplied)
+    fetchData('')
+  }
+  const handleGlobalFilterChange = async (event) => {
+    const value = event.target.value
+    setGlobalFilterValue(value)
+    setFilters((prev) => ({
+      ...(prev || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }))
+    await fetchData(value)
+  }
+  const handleTableFilterChange = (event) => {
+    const nextFilters = event?.filters || {}
+    setFilters(nextFilters)
+    setGlobalFilterValue(nextFilters?.global?.value || '')
   }
 
   const rows = useMemo(() => {
@@ -579,7 +599,11 @@ function InventarioTable({ token }) {
     [branches]
   )
 
-  const globalFilterFields = useMemo(() => columnsData.map((col) => col.nombrevar), [columnsData])
+  const globalFilterFields = useMemo(() => {
+    const baseFields = columnsData.map((col) => col.nombrevar)
+    const extraFields = ['descripcion', 'oem_codes', 'casas_comerciales_nombres', 'pieza_original_label']
+    return Array.from(new Set([...baseFields, ...extraFields]))
+  }, [columnsData])
 
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
   const selectedColumnsRef = useRef(selectedColumns)
@@ -840,6 +864,16 @@ function InventarioTable({ token }) {
   const header = (
     <div className="users-header">
       <div className="users-header__left">
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={globalFilterValue}
+            onChange={handleGlobalFilterChange}
+            className="search-input"
+            placeholder="Buscar en tabla"
+          />
+          <i className="pi pi-search search-input-icon" />
+        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading} title="Recargar">
           <i className="pi pi-refresh" />
@@ -1051,7 +1085,7 @@ function InventarioTable({ token }) {
         ) : (
           <>
             {loading && (
-              <div className="spinner-container">
+              <div className="spinner-container spinner-container--table">
                 <div className="spinner" />
               </div>
             )}
@@ -1069,7 +1103,7 @@ function InventarioTable({ token }) {
               value={hasSearch ? filteredRows : []}
               dataKey="id"
               header={header}
-              className="users-datatable inventario-datatable"
+              className={`users-datatable inventario-datatable${loading ? ' users-datatable--loading-content' : ''}`}
               tableStyle={{ width: '100%' }}
               showGridlines
               size="small"
@@ -1081,7 +1115,7 @@ function InventarioTable({ token }) {
               rowsPerPageOptions={[5, 10, 25, 50]}
               removableSort
               filters={filters}
-              onFilter={(e) => setFilters(e.filters)}
+              onFilter={handleTableFilterChange}
               onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : null)}
               globalFilterFields={globalFilterFields}
               stateStorage="session"
@@ -1554,3 +1588,5 @@ function InventarioTable({ token }) {
 }
 
 export default InventarioTable
+
+

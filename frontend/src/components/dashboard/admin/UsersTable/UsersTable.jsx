@@ -57,12 +57,14 @@ function UsersTable({
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (searchTerm = '') => {
     setLoading(true)
     setError(null)
     try {
       const list = []
-      let url = `${API_URL}/usuarios/listado/`
+      const normalizedSearch = String(searchTerm ?? '').trim()
+      const searchQuery = normalizedSearch ? `?search=${encodeURIComponent(normalizedSearch)}` : ''
+      let url = `${API_URL}/usuarios/listado/${searchQuery}`
 
       while (url) {
         const res = await authFetch(url, {}, token)
@@ -98,7 +100,7 @@ function UsersTable({
 
   const refreshData = () => {
     setIsRefreshing(true)
-    fetchUsers()
+    fetchUsers(globalFilterValue)
   }
 
   // ---------------- Filters ----------------
@@ -135,7 +137,27 @@ function UsersTable({
     initFilters()
   }, [])
 
-  const clearFilter = () => initFilters()
+  const clearFilter = () => {
+    initFilters()
+    setIsRefreshing(true)
+    fetchUsers('')
+  }
+  const handleGlobalFilterChange = async (event) => {
+    const value = event.target.value
+    setGlobalFilterValue(value)
+    const nextFilters = {
+      ...(filters || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }
+    setFilters(nextFilters)
+    setIsRefreshing(true)
+    await fetchUsers(value)
+  }
+  const handleTableFilterChange = (event) => {
+    const nextFilters = event?.filters || {}
+    setFilters(nextFilters)
+    setGlobalFilterValue(nextFilters?.global?.value || '')
+  }
 
   const initialSearchCriteria = {
     codigo: '',
@@ -149,7 +171,7 @@ function UsersTable({
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
   const [showSearchModal, setShowSearchModal] = useState(false)
-  const lastSearchRef = useRef(null)
+  const lastSearchRef = useRef({ ...initialSearchCriteria })
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
@@ -527,6 +549,16 @@ function UsersTable({
   const header = (
     <div className="users-header">
       <div className="users-header__left">
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={globalFilterValue}
+            onChange={handleGlobalFilterChange}
+            className="search-input"
+            placeholder="Buscar en tabla"
+          />
+          <i className="pi pi-search search-input-icon" />
+        </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
@@ -746,7 +778,7 @@ function UsersTable({
         ) : (
           <>
         {(loading || isRefreshing) && (
-          <div className="spinner-container">
+          <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
         )}
@@ -764,7 +796,7 @@ function UsersTable({
           value={users}
           dataKey="id"
           header={header}
-          className="users-datatable"
+          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage="No se encontraron usuarios"
           showGridlines
@@ -777,9 +809,9 @@ function UsersTable({
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
           filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
+          onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
-          globalFilterFields={['codigo', 'nombre', 'correo', 'telefono', 'cargo', 'activo']}
+          globalFilterFields={['codigo', 'nombre', 'nombres', 'apellidos', 'correo', 'telefono', 'cargo', 'activo']}
           stateStorage="session"
           stateKey={USERS_TABLE_STATE_KEY}
           reorderableColumns
@@ -1035,3 +1067,5 @@ function UsersTable({
 }
 
 export default UsersTable
+
+
