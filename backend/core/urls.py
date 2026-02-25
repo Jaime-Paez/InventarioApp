@@ -110,6 +110,7 @@ router.register(r"configuracion/sistema", ConfiguracionSistemaViewSet, basename=
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("", include("app.urls")),
     path("auth/register/", RegistroAPIView.as_view(), name="auth-register"),
     path("auth/login/", LoginAPIView.as_view(), name="auth-login"),
     path("auth/me/", PerfilAPIView.as_view(), name="auth-profile"),
