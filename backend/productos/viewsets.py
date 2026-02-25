@@ -58,9 +58,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         if self.action == "retrieve":
-            queryset = queryset.prefetch_related(
-                "inventarios__subdivision__division__bodega__sucursal"
-            )
+            return queryset
         params = self.request.query_params
         iva_rate = ConfiguracionSistema.get_solo().iva_rate
         factor = Decimal("1") + Decimal(str(iva_rate or 0))

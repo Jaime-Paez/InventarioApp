@@ -212,6 +212,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             "producto__marca",
             "subdivision",
             "subdivision__division",
+            "subdivision__division__tipo_division",
             "subdivision__division__bodega",
             "subdivision__division__bodega__sucursal",
         )
@@ -633,6 +634,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             )
         )
         params = self.request.query_params
+        needs_distinct = bool((params.get("search") or "").strip())
 
         producto_ids_raw = (params.get("producto_ids") or "").strip()
         if producto_ids_raw:
@@ -664,12 +666,14 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         casa_comercial = (params.get("casa_comercial") or "").strip()
         if casa_comercial:
+            needs_distinct = True
             queryset = queryset.filter(
                 producto__casas_comerciales__nombre__icontains=casa_comercial
             )
 
         oem = (params.get("oem") or "").strip()
         if oem:
+            needs_distinct = True
             queryset = queryset.filter(producto__oem_productos__oem__codigo__icontains=oem)
 
         pieza_original = (params.get("pieza_original") or "").strip().lower()
@@ -712,9 +716,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 pass
 
+        column_filters = parse_column_filters(params.get("column_filters"))
+        if column_filters.get("casa_comercial_nombre"):
+            needs_distinct = True
+
         queryset = apply_column_filters(
             queryset,
-            parse_column_filters(params.get("column_filters")),
+            column_filters,
             {
                 "codigo": "producto__codigo",
                 "nombre": "producto__nombre",
@@ -727,7 +735,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "ubicacion": "subdivision__division__bodega__sucursal__nombre",
             },
         )
-        return queryset.distinct()
+        return queryset.distinct() if needs_distinct else queryset
 
     def perform_create(self, serializer):
         subdivision = serializer.validated_data.get("subdivision")
@@ -758,3 +766,4 @@ class InventarioViewSet(viewsets.ModelViewSet):
             sucursal_id,
         )
         serializer.save()
+

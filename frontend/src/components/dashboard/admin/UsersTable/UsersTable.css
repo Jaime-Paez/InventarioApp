@@ -575,11 +575,12 @@
 }
 
 .spinner-container.spinner-container--table {
-  display: none;
+  display: grid;
+  background: var(--table-color);
 }
 
 .dashboard-shell.dark .spinner-container.spinner-container--table {
-  background: transparent;
+  background: var(--table-color-dark);
 }
 
 .users-datatable.users-datatable--loading-content .p-datatable-wrapper {
@@ -589,30 +590,15 @@
 }
 
 .users-datatable.users-datatable--loading-content .p-datatable-wrapper::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--table-color);
-  z-index: 3;
+  content: none;
 }
 
 .dashboard-shell.dark .users-datatable.users-datatable--loading-content .p-datatable-wrapper::before {
-  background: var(--table-color-dark);
+  content: none;
 }
 
 .users-datatable.users-datatable--loading-content .p-datatable-wrapper::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 32px;
-  height: 32px;
-  margin: -16px 0 0 -16px;
-  border-radius: 50%;
-  border: 3px solid var(--color-text-dark);
-  border-top-color: var(--color-primary);
-  animation: spin 0.9s linear infinite;
-  z-index: 4;
+  content: none;
 }
 
 .users-datatable.users-datatable--loading-content .p-paginator {

@@ -175,6 +175,13 @@ class ProductoDetailSerializer(ProductoSerializer):
 
     def get_inventario_context(self, obj):
         request = self.context.get("request")
+        include_inventory_context = str(
+            (request.query_params.get("include_inventory_context") if request else "1")
+            or "1"
+        ).strip().lower() not in {"0", "false", "no"}
+        if not include_inventory_context:
+            return None
+
         if not request or not request.user or not request.user.is_authenticated:
             return {
                 "branches": [],
@@ -184,13 +191,21 @@ class ProductoDetailSerializer(ProductoSerializer):
             }
 
         branches_qs = apply_sucursal_scope(
-            Sucursal.objects.all().order_by("nombre"),
+            Sucursal.objects.only("id", "nombre").order_by("id"),
             request.user,
             RolPermiso.Modulos.PRODUCTOS,
             "id",
         )
         bodegas_qs = apply_sucursal_scope(
-            Bodega.objects.select_related("sucursal").all().order_by("sucursal__nombre", "nombre"),
+            Bodega.objects.select_related("sucursal")
+            .only(
+                "id",
+                "nombre",
+                "sucursal_id",
+                "sucursal__id",
+                "sucursal__nombre",
+            )
+            .order_by("id"),
             request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             "sucursal_id",
@@ -201,8 +216,20 @@ class ProductoDetailSerializer(ProductoSerializer):
                 "division__bodega",
                 "division__bodega__sucursal",
             )
-            .all()
-            .order_by("division__bodega__nombre", "division__nombre", "nombre"),
+            .only(
+                "id",
+                "nombre",
+                "division_id",
+                "division__id",
+                "division__nombre",
+                "division__bodega_id",
+                "division__bodega__id",
+                "division__bodega__nombre",
+                "division__bodega__sucursal_id",
+                "division__bodega__sucursal__id",
+                "division__bodega__sucursal__nombre",
+            )
+            .order_by("id"),
             request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             "division__bodega__sucursal_id",
@@ -213,7 +240,26 @@ class ProductoDetailSerializer(ProductoSerializer):
                 "subdivision__division",
                 "subdivision__division__bodega",
                 "subdivision__division__bodega__sucursal",
-            ).all(),
+            )
+            .only(
+                "id",
+                "producto_id",
+                "subdivision_id",
+                "referencia",
+                "cantidad",
+                "subdivision__id",
+                "subdivision__nombre",
+                "subdivision__division_id",
+                "subdivision__division__id",
+                "subdivision__division__nombre",
+                "subdivision__division__bodega_id",
+                "subdivision__division__bodega__id",
+                "subdivision__division__bodega__nombre",
+                "subdivision__division__bodega__sucursal_id",
+                "subdivision__division__bodega__sucursal__id",
+                "subdivision__division__bodega__sucursal__nombre",
+            )
+            .order_by("id"),
             request.user,
             RolPermiso.Modulos.INVENTARIO,
             "subdivision__division__bodega__sucursal_id",

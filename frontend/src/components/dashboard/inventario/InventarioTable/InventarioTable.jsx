@@ -240,7 +240,7 @@ function InventarioTable({ token }) {
       setBodegas(parseApiList(bodegasData))
       setSubdivisions(parseApiList(subdivisionsData))
     } catch (err) {
-      showToast(err?.message || 'No se pudo cargar la configuracion de ubicaciones.', 'Error', 'error')
+      showToast(err?.message || 'No se pudo cargar la configuración de ubicaciones.', 'Error', 'error')
     }
   }, [showToast, token])
 
@@ -279,7 +279,7 @@ function InventarioTable({ token }) {
         setPageSize(rows)
         return list
       } catch (err) {
-        const message = err?.message || 'Ocurrio un error al cargar el inventario.'
+        const message = err?.message || 'Ocurrió un error al cargar el inventario.'
         setError(message)
         setInventories([])
         setTotalRecords(0)
@@ -742,7 +742,7 @@ function InventarioTable({ token }) {
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'codigo', header: 'Codigo', filterPlaceholder: 'Buscar por codigo' },
+      { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Producto', filterPlaceholder: 'Buscar por producto' },
       { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
       { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
