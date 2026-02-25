@@ -252,6 +252,9 @@ function ClientesTable({ token, onSelect }) {
       setShowSearchModal(true)
       return
     }
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     setIsRefreshing(true)
     const currentPage = Math.floor(pageFirst / pageSize) + 1
     fetchClients(lastSearchRef.current, currentPage, pageSize)
@@ -317,6 +320,9 @@ function ClientesTable({ token, onSelect }) {
   }, [filters, sortField, sortOrder])
 
   const clearFilter = async () => {
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     const nextFilters = initFilters()
     if (!lastSearchRef.current) return
     setPageFirst(0)
@@ -341,6 +347,7 @@ function ClientesTable({ token, onSelect }) {
   const [showSearchModal, setShowSearchModal] = useState(false)
   const lastSearchRef = useRef({ ...initialSearchCriteria })
   const didInitialSearchRef = useRef(false)
+  const globalSearchDebounceRef = useRef(null)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
@@ -356,6 +363,15 @@ function ClientesTable({ token, onSelect }) {
   const BULK_MODAL_PADDING = 12
   const BULK_MODAL_WIDTH = 440
   const BULK_MODAL_HEIGHT = 200
+
+  useEffect(
+    () => () => {
+      if (globalSearchDebounceRef.current) {
+        clearTimeout(globalSearchDebounceRef.current)
+      }
+    },
+    []
+  )
 
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target
@@ -855,12 +871,17 @@ function ClientesTable({ token, onSelect }) {
     setGlobalFilterValue(value)
     setPageFirst(0)
     if (!lastSearchRef.current) return
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     setIsRefreshing(true)
-    await fetchClients(lastSearchRef.current, 1, pageSize, {
-      tableFilters: nextFilters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
-    })
+    globalSearchDebounceRef.current = setTimeout(() => {
+      fetchClients(lastSearchRef.current, 1, pageSize, {
+        tableFilters: nextFilters,
+        tableSortField: sortField,
+        tableSortOrder: sortOrder,
+      })
+    }, 500)
   }
 
   const handleSortChange = async (event) => {

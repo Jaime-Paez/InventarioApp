@@ -92,6 +92,7 @@ function CasasComercialesTable({ token, onSelect }) {
   const [showSearchModal, setShowSearchModal] = useState(false)
   const lastSearchRef = useRef({ ...initialSearchCriteria })
   const didInitialSearchRef = useRef(false)
+  const globalSearchDebounceRef = useRef(null)
   const [searchPaisQuery, setSearchPaisQuery] = useState('')
   const [searchPaisOptions, setSearchPaisOptions] = useState([])
   const [searchPaisLoading, setSearchPaisLoading] = useState(false)
@@ -109,6 +110,15 @@ function CasasComercialesTable({ token, onSelect }) {
   const SEARCH_MIN_WIDTH = 640
   const SEARCH_MIN_HEIGHT = 480
   const SEARCH_PADDING = 12
+
+  useEffect(
+    () => () => {
+      if (globalSearchDebounceRef.current) {
+        clearTimeout(globalSearchDebounceRef.current)
+      }
+    },
+    []
+  )
 
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target
@@ -242,6 +252,9 @@ function CasasComercialesTable({ token, onSelect }) {
       setShowSearchModal(true)
       return
     }
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     setIsRefreshing(true)
     const currentPage = Math.floor(pageFirst / pageSize) + 1
     fetchCompanies(lastSearchRef.current, currentPage, pageSize)
@@ -305,6 +318,9 @@ function CasasComercialesTable({ token, onSelect }) {
   }, [filters, sortField, sortOrder])
 
   const clearFilter = async () => {
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     const nextFilters = initFilters()
     if (!lastSearchRef.current) return
     setPageFirst(0)
@@ -819,12 +835,17 @@ function CasasComercialesTable({ token, onSelect }) {
     setGlobalFilterValue(value)
     setPageFirst(0)
     if (!lastSearchRef.current) return
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     setIsRefreshing(true)
-    await fetchCompanies(lastSearchRef.current, 1, pageSize, {
-      tableFilters: nextFilters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
-    })
+    globalSearchDebounceRef.current = setTimeout(() => {
+      fetchCompanies(lastSearchRef.current, 1, pageSize, {
+        tableFilters: nextFilters,
+        tableSortField: sortField,
+        tableSortOrder: sortOrder,
+      })
+    }, 500)
   }
 
   const handleSortChange = async (event) => {

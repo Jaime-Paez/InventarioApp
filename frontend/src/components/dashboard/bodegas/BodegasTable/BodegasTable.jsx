@@ -95,6 +95,9 @@ function BodegasTable({ token, onSelect }) {
   }, [fetchWarehouses])
 
   const refreshData = () => {
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     setIsRefreshing(true)
     fetchWarehouses(globalFilterValue)
   }
@@ -102,6 +105,16 @@ function BodegasTable({ token, onSelect }) {
   // ---------------- Filters ----------------
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const globalSearchDebounceRef = useRef(null)
+
+  useEffect(
+    () => () => {
+      if (globalSearchDebounceRef.current) {
+        clearTimeout(globalSearchDebounceRef.current)
+      }
+    },
+    []
+  )
 
   const initFilters = () => {
     setFilters({
@@ -127,19 +140,27 @@ function BodegasTable({ token, onSelect }) {
   }, [])
 
   const clearFilter = () => {
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     initFilters()
     setIsRefreshing(true)
     fetchWarehouses('')
   }
-  const handleGlobalFilterChange = async (event) => {
+  const handleGlobalFilterChange = (event) => {
     const value = event.target.value
     setGlobalFilterValue(value)
     setFilters((prev) => ({
       ...(prev || {}),
       global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
     }))
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     setIsRefreshing(true)
-    await fetchWarehouses(value)
+    globalSearchDebounceRef.current = setTimeout(() => {
+      fetchWarehouses(value)
+    }, 500)
   }
   const handleTableFilterChange = (event) => {
     const nextFilters = event?.filters || {}

@@ -140,6 +140,16 @@ function InventarioTable({ token }) {
 
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const globalSearchDebounceRef = useRef(null)
+
+  useEffect(
+    () => () => {
+      if (globalSearchDebounceRef.current) {
+        clearTimeout(globalSearchDebounceRef.current)
+      }
+    },
+    []
+  )
 
   const showToast = useCallback((detail, summary = 'Aviso', severity = 'warn') => {
     toast.current?.show({ severity, summary, detail, life: 3500 })
@@ -369,6 +379,9 @@ function InventarioTable({ token }) {
       setShowSearchModal(true)
       return
     }
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     fetchData(globalFilterValue)
   }
 
@@ -511,6 +524,9 @@ function InventarioTable({ token }) {
   )
 
   const clearFilter = () => {
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     initFilters()
     resetSearch()
     setGlobalFilterValue('')
@@ -519,14 +535,19 @@ function InventarioTable({ token }) {
     setAppliedCriteria(defaultApplied)
     fetchData('')
   }
-  const handleGlobalFilterChange = async (event) => {
+  const handleGlobalFilterChange = (event) => {
     const value = event.target.value
     setGlobalFilterValue(value)
     setFilters((prev) => ({
       ...(prev || {}),
       global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
     }))
-    await fetchData(value)
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
+    globalSearchDebounceRef.current = setTimeout(() => {
+      fetchData(value)
+    }, 500)
   }
   const handleTableFilterChange = (event) => {
     const nextFilters = event?.filters || {}

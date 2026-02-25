@@ -99,6 +99,9 @@ function UsersTable({
   }, [fetchUsers])
 
   const refreshData = () => {
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     setIsRefreshing(true)
     fetchUsers(globalFilterValue)
   }
@@ -106,6 +109,16 @@ function UsersTable({
   // ---------------- Filters ----------------
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const globalSearchDebounceRef = useRef(null)
+
+  useEffect(
+    () => () => {
+      if (globalSearchDebounceRef.current) {
+        clearTimeout(globalSearchDebounceRef.current)
+      }
+    },
+    []
+  )
 
   const initFilters = () => {
     setFilters({
@@ -138,11 +151,14 @@ function UsersTable({
   }, [])
 
   const clearFilter = () => {
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     initFilters()
     setIsRefreshing(true)
     fetchUsers('')
   }
-  const handleGlobalFilterChange = async (event) => {
+  const handleGlobalFilterChange = (event) => {
     const value = event.target.value
     setGlobalFilterValue(value)
     const nextFilters = {
@@ -150,8 +166,13 @@ function UsersTable({
       global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
     }
     setFilters(nextFilters)
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     setIsRefreshing(true)
-    await fetchUsers(value)
+    globalSearchDebounceRef.current = setTimeout(() => {
+      fetchUsers(value)
+    }, 500)
   }
   const handleTableFilterChange = (event) => {
     const nextFilters = event?.filters || {}

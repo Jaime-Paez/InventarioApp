@@ -113,6 +113,7 @@ function SalidasTable({ token }) {
   // ---------------- Filters ----------------
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const globalSearchDebounceRef = useRef(null)
 
   const initFilters = () => {
     setFilters({
@@ -131,18 +132,35 @@ function SalidasTable({ token }) {
     initFilters()
   }, [])
 
+  useEffect(
+    () => () => {
+      if (globalSearchDebounceRef.current) {
+        clearTimeout(globalSearchDebounceRef.current)
+      }
+    },
+    []
+  )
+
   const clearFilter = () => {
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
     initFilters()
     fetchMovimientos('')
   }
-  const handleGlobalFilterChange = async (event) => {
+  const handleGlobalFilterChange = (event) => {
     const value = event.target.value
     setGlobalFilterValue(value)
     setFilters((prev) => ({
       ...(prev || {}),
       global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
     }))
-    await fetchMovimientos(value)
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
+    globalSearchDebounceRef.current = setTimeout(() => {
+      fetchMovimientos(value)
+    }, 500)
   }
   const handleTableFilterChange = (event) => {
     const nextFilters = event?.filters || {}
@@ -211,7 +229,18 @@ function SalidasTable({ token }) {
           <i className="pi pi-search search-input-icon" />
         </div>
 
-        <button className="rounded-icon-btn" type="button" onClick={() => fetchMovimientos(globalFilterValue)} disabled={loading} title="Recargar">
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={() => {
+            if (globalSearchDebounceRef.current) {
+              clearTimeout(globalSearchDebounceRef.current)
+            }
+            fetchMovimientos(globalFilterValue)
+          }}
+          disabled={loading}
+          title="Recargar"
+        >
           <i className="pi pi-refresh" />
         </button>
 
