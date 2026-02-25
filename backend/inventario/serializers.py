@@ -76,15 +76,15 @@ class InventarioSerializer(serializers.ModelSerializer):
     subdivision_id = serializers.PrimaryKeyRelatedField(
         source="subdivision",
         queryset=SubDivision.objects.all(),
-        write_only=True,
     )
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
         queryset=Producto.objects.all(),
-        write_only=True,
     )
     subdivision = SubDivisionSerializer(read_only=True)
     producto = serializers.StringRelatedField(read_only=True)
+    producto_data = serializers.SerializerMethodField()
+    ubicacion = serializers.SerializerMethodField()
 
     class Meta:
         model = Inventario
@@ -96,4 +96,54 @@ class InventarioSerializer(serializers.ModelSerializer):
             "producto_id",
             "referencia",
             "cantidad",
+            "producto_data",
+            "ubicacion",
         ]
+
+    def get_producto_data(self, obj):
+        producto = getattr(obj, "producto", None)
+        if producto is None:
+            return None
+        casas = list(getattr(producto, "casas_comerciales", []).all())
+        oems = list(getattr(producto, "oem_productos", []).all())
+        oem_codes = []
+        for rel in oems:
+            codigo = getattr(getattr(rel, "oem", None), "codigo", None)
+            if codigo:
+                oem_codes.append(codigo)
+        return {
+            "id": producto.id,
+            "codigo": producto.codigo,
+            "nombre": producto.nombre,
+            "descripcion": producto.descripcion,
+            "pieza_original": bool(producto.pieza_original),
+            "costo_minimo": producto.costo_minimo,
+            "precio": producto.precio,
+            "creado_en": producto.creado_en,
+            "marca_nombre": getattr(getattr(producto, "marca", None), "nombre", "") or "",
+            "casa_comercial_nombre": (casas[0].nombre if casas else "") or "",
+            "casas_comerciales_nombres": ", ".join(
+                [casa.nombre for casa in casas if getattr(casa, "nombre", None)]
+            ),
+            "oem_codes": ", ".join(oem_codes),
+        }
+
+    def get_ubicacion(self, obj):
+        subdivision = getattr(obj, "subdivision", None)
+        division = getattr(subdivision, "division", None)
+        bodega = getattr(division, "bodega", None)
+        sucursal = getattr(bodega, "sucursal", None)
+        parts = [
+            getattr(sucursal, "nombre", ""),
+            getattr(bodega, "nombre", ""),
+            getattr(division, "nombre", ""),
+            getattr(subdivision, "nombre", ""),
+        ]
+        clean_parts = [part for part in parts if part]
+        if not clean_parts:
+            return ""
+        base = " / ".join(clean_parts)
+        referencia = (getattr(obj, "referencia", "") or "").strip()
+        if not referencia:
+            return base
+        return f"{base} ({referencia})"

@@ -61,6 +61,7 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
   const [detailError, setDetailError] = useState('')
   const [pagosSelected, setPagosSelected] = useState([])
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
+  const [isMaximized, setIsMaximized] = useState(false)
   const modalRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const MODAL_PADDING = 12
@@ -171,6 +172,7 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
     setDetailDraft(initialDetail)
     setDetailError('')
     setPagosSelected([])
+    setIsMaximized(false)
     setError('')
     fetchCatalogs()
   }, [open, fetchCatalogs])
@@ -186,7 +188,7 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
   }, [open])
 
   const handleModalMouseDown = (event) => {
-    if (!modalRef.current) return
+    if (isMaximized || !modalRef.current) return
     const target = event?.target
     if (target?.closest?.('.create-user__icon-button')) return
     const rect = modalRef.current.getBoundingClientRect()
@@ -200,7 +202,7 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
   useEffect(() => {
     if (!open) return undefined
     const handleMouseMove = (event) => {
-      if (!modalDrag.current.active) return
+      if (isMaximized || !modalDrag.current.active) return
       event.preventDefault()
       const width = modalRef.current?.offsetWidth || MODAL_WIDTH
       const height = modalRef.current?.offsetHeight || MODAL_HEIGHT
@@ -224,7 +226,12 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [open])
+  }, [open, isMaximized])
+
+  const toggleMaximize = () => {
+    modalDrag.current.active = false
+    setIsMaximized((prev) => !prev)
+  }
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
@@ -401,25 +408,45 @@ function CreateSalida({ open, onClose, onCreated, token, onError }) {
 
   if (!open) return null
 
+  const modalStyle = isMaximized
+    ? {
+        top: MODAL_PADDING,
+        left: MODAL_PADDING,
+        width: `calc(100vw - ${MODAL_PADDING * 2}px)`,
+        height: `calc(100vh - ${MODAL_PADDING * 2}px)`,
+        maxWidth: `calc(100vw - ${MODAL_PADDING * 2}px)`,
+        maxHeight: `calc(100vh - ${MODAL_PADDING * 2}px)`,
+      }
+    : {
+        top: modalPosition.y,
+        left: modalPosition.x,
+        maxWidth: `calc(100vw - ${MODAL_PADDING * 2}px)`,
+        maxHeight: `calc(100vh - ${MODAL_PADDING * 2}px)`,
+      }
+
   return (
     <div className="create-user__overlay" role="dialog" aria-modal="true">
       <div
         ref={modalRef}
         className="create-user__modal"
-        style={{
-          top: modalPosition.y,
-          left: modalPosition.x,
-          maxWidth: `calc(100vw - ${MODAL_PADDING * 2}px)`,
-          maxHeight: `calc(100vh - ${MODAL_PADDING * 2}px)`,
-        }}
+        style={modalStyle}
       >
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
             <h3>Nueva salida</h3>
           </div>
           <div className="create-user__header-actions">
+            <button
+              type="button"
+              className="create-user__icon-button create-user__icon-button--maximize"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={toggleMaximize}
+              aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+            >
+              <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+            </button>
             <button type="button" className="create-user__icon-button" onClick={onClose} aria-label="Cerrar">
-              x
+              <i className="pi pi-times" aria-hidden="true" />
             </button>
           </div>
         </header>

@@ -35,51 +35,62 @@ function Workspace({
   const showWelcome = !activeItem
   const farewellTitle = `Hasta luego, ${username}.`
 
-  const tabContentMap = {
-    Inventario: <InventarioTable token={token} />,
-    Administrar: <UsersTable token={token} />,
-    Sucursales: <SucursalesTable token={token} />,
-    Bodegas: <BodegasTable token={token} />,
-    Marcas: <MarcasTable token={token} />,
-    'Casas comerciales': <CasasComercialesTable token={token} />,
-    Productos: <ProductosTable token={token} />,
-    Solicitudes: <SolicitudesTable token={token} />,
-    Clientes: <ClientesTable token={token} />,
-    Salidas: <SalidasTable token={token} />,
-    Configuraciones: <Configuracion token={token} darkMode={darkMode} onToggleTheme={onToggleTheme} />,
+  const tabComponentMap = {
+    Inventario: InventarioTable,
+    Administrar: UsersTable,
+    Sucursales: SucursalesTable,
+    Bodegas: BodegasTable,
+    Marcas: MarcasTable,
+    'Casas comerciales': CasasComercialesTable,
+    Productos: ProductosTable,
+    Solicitudes: SolicitudesTable,
+    Clientes: ClientesTable,
+    Salidas: SalidasTable,
+    Configuraciones: Configuracion,
   }
 
-  const renderContent = () => {
-    if (!activeItem) return null
+  const renderTabContent = (tab) => {
+    const hasAccess = labelHasAccess(tab, permissionIndex)
+    const TabComponent = tabComponentMap[tab]
 
-    const hasAccess = labelHasAccess(activeItem, permissionIndex)
-    const content = tabContentMap[activeItem]
-
-    if (!content) {
+    if (!TabComponent) {
       return (
-        <div key={activeItem} className="workspace__tab-panel active">
-          <p className="workspace__subtitle">
-            El módulo "{activeItem}" todavía no tiene contenido disponible.
-          </p>
-        </div>
+        <p className="workspace__subtitle">
+          El módulo "{tab}" todavía no tiene contenido disponible.
+        </p>
       )
     }
 
     if (!hasAccess) {
       return (
-        <div key={activeItem} className="workspace__tab-panel active">
-          <p className="workspace__subtitle">
-            No tienes permisos para acceder a este módulo. Solicita acceso a un administrador.
-          </p>
-        </div>
+        <p className="workspace__subtitle">
+          No tienes permisos para acceder a este módulo. Solicita acceso a un administrador.
+        </p>
       )
     }
 
-    return (
-      <div key={activeItem} className="workspace__tab-panel active" aria-hidden={false}>
-        {content}
-      </div>
-    )
+    if (tab === 'Configuraciones') {
+      return <TabComponent token={token} darkMode={darkMode} onToggleTheme={onToggleTheme} />
+    }
+
+    return <TabComponent token={token} />
+  }
+
+  const renderContent = () => {
+    if (!openTabs.length) return null
+
+    return openTabs.map((tab) => {
+      const isActive = tab === activeItem
+      return (
+        <div
+          key={tab}
+          className={`workspace__tab-panel ${isActive ? 'active' : ''}`}
+          aria-hidden={!isActive}
+        >
+          {renderTabContent(tab)}
+        </div>
+      )
+    })
   }
 
   return (
@@ -102,9 +113,7 @@ function Workspace({
           <div className="workspace__copy">
             <h2>{isLeaving ? farewellTitle : `Qué gusto tenerte de vuelta, ${username}!`}</h2>
             <p className="workspace__subtitle">
-              {isLeaving
-                ? 'Nos vemos pronto.'
-                : 'Para comenzar, selecciona una opción del menú'}
+              {isLeaving ? 'Nos vemos pronto.' : 'Para comenzar, selecciona una opción del menú'}
             </p>
           </div>
         </section>

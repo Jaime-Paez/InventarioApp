@@ -13,6 +13,7 @@ from .models import OEM, OEMProducto, Producto, ProductoAlterno
 from .serializers import (
     OEMProductoSerializer,
     OEMSerializer,
+    ProductoDetailSerializer,
     ProductoAlternoSerializer,
     ProductoSerializer,
 )
@@ -49,8 +50,17 @@ class ProductoViewSet(viewsets.ModelViewSet):
         "creado_en",
     ]
 
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return ProductoDetailSerializer
+        return ProductoSerializer
+
     def get_queryset(self):
         queryset = super().get_queryset()
+        if self.action == "retrieve":
+            queryset = queryset.prefetch_related(
+                "inventarios__subdivision__division__bodega__sucursal"
+            )
         params = self.request.query_params
         iva_rate = ConfiguracionSistema.get_solo().iva_rate
         factor = Decimal("1") + Decimal(str(iva_rate or 0))

@@ -13,6 +13,11 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
+import {
+  buildPrimeColumnFiltersPayload,
+  buildPrimeOrdering,
+  getPrimeGlobalFilterValue,
+} from '../../../../utils/primeTableQuery'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const DEFAULT_IVA_RATE = 0.15
@@ -59,17 +64,6 @@ const pickValue = (row, keys) => {
   }
   return ''
 }
-const matchCasa = (row, target) => {
-  const needle = normalizeValue(target)
-  if (!needle) return true
-  const houses = Array.isArray(row?.casas_comerciales) ? row.casas_comerciales : []
-  const names = houses
-    .map((house) => `${house?.nombre ?? ''} ${house?.codigo ?? ''}`.trim())
-    .filter(Boolean)
-    .join(' ')
-  const fallback = row?.casas_comerciales_nombres || ''
-  return normalizeValue(names).includes(needle) || normalizeValue(fallback).includes(needle)
-}
 const isCheckboxSelection = (event) => {
   const type = event?.type
   if (type === 'checkbox' || type === 'all') return true
@@ -96,13 +90,46 @@ const initialSearchCriteria = {
   cantidad_max: '',
 }
 const buildDefaultAppliedCriteria = () => ({ ...initialSearchCriteria, __onlyWithInventory: true })
+const INVENTARIO_FILTER_FIELDS = [
+  'codigo',
+  'nombre',
+  'marca_nombre',
+  'pieza_original_label',
+  'costo_minimo',
+  'precio',
+  'casa_comercial_nombre',
+]
+const INVENTARIO_FILTER_DEFAULT_MODES = {
+  codigo: FilterMatchMode.STARTS_WITH,
+  nombre: FilterMatchMode.STARTS_WITH,
+  marca_nombre: FilterMatchMode.STARTS_WITH,
+  pieza_original_label: FilterMatchMode.STARTS_WITH,
+  costo_minimo: FilterMatchMode.STARTS_WITH,
+  precio: FilterMatchMode.STARTS_WITH,
+  casa_comercial_nombre: FilterMatchMode.STARTS_WITH,
+}
+const INVENTARIO_ORDERING_MAP = {
+  codigo: 'producto__codigo',
+  nombre: 'producto__nombre',
+  marca_nombre: 'producto__marca__nombre',
+  pieza_original_label: 'producto__pieza_original',
+  costo_minimo: 'producto__costo_minimo',
+  precio: 'producto__precio',
+  precio_con_iva: 'producto__precio',
+}
 
 function InventarioTable({ token }) {
   const toast = useRef(null)
   const [loading, setLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
   const [error, setError] = useState(null)
-  const [products, setProducts] = useState([])
   const [inventories, setInventories] = useState([])
+  const [totalRecords, setTotalRecords] = useState(0)
+  const [pageFirst, setPageFirst] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
+  const [sortField, setSortField] = useState(null)
+  const [sortOrder, setSortOrder] = useState(null)
   const [branches, setBranches] = useState([])
   const [bodegas, setBodegas] = useState([])
   const [subdivisions, setSubdivisions] = useState([])
@@ -133,20 +160,24 @@ function InventarioTable({ token }) {
   const searchMarcaDropdownRef = useRef(null)
   const searchCasaDropdownRef = useRef(null)
   const [activeProduct, setActiveProduct] = useState(null)
+  const [activeProductInventoryEntries, setActiveProductInventoryEntries] = useState([])
   const [showDetails, setShowDetails] = useState(false)
   const [ivaRate, setIvaRate] = useState(DEFAULT_IVA_RATE)
   const [ivaLoading, setIvaLoading] = useState(false)
   const opColumns = useRef(null)
+  const didInitialSearchRef = useRef(false)
 
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
   const globalSearchDebounceRef = useRef(null)
+  const globalSearchSeqRef = useRef(0)
 
   useEffect(
     () => () => {
       if (globalSearchDebounceRef.current) {
         clearTimeout(globalSearchDebounceRef.current)
       }
+      setIsGlobalSearchPending(false)
     },
     []
   )
@@ -155,55 +186,169 @@ function InventarioTable({ token }) {
     toast.current?.show({ severity, summary, detail, life: 3500 })
   }, [])
 
-  const fetchData = useCallback(async (searchTerm = '') => {
+  const buildInventarioListUrl = useCallback((criteria, options = {}) => {
+    const params = new URLSearchParams()
+    const page = Number(options?.page) || 1
+    const rows = Number(options?.rows) || 25
+    const tableFilters = options?.tableFilters
+    const tableSortField = options?.tableSortField
+    const tableSortOrder = options?.tableSortOrder
+
+    params.set('page', String(page))
+    params.set('page_size', String(rows))
+
+    const addIfPresent = (key, value) => {
+      const parsed = String(value ?? '').trim()
+      if (parsed) params.set(key, parsed)
+    }
+
+    addIfPresent('codigo', criteria?.codigo)
+    addIfPresent('nombre', criteria?.nombre)
+    addIfPresent('oem', criteria?.oem)
+    addIfPresent('descripcion', criteria?.descripcion)
+    addIfPresent('marca', criteria?.marca)
+    addIfPresent('casa_comercial', criteria?.casa_comercial)
+    addIfPresent('pieza_original', criteria?.pieza_original)
+    addIfPresent('costo_minimo', criteria?.costo_minimo)
+    addIfPresent('precio', criteria?.precio)
+    addIfPresent('fecha_creacion', criteria?.fecha_creacion)
+    addIfPresent('cantidad_min', criteria?.cantidad_min)
+    addIfPresent('cantidad_max', criteria?.cantidad_max)
+    if (criteria?.__onlyWithInventory) {
+      addIfPresent('cantidad_min', criteria?.cantidad_min || '1')
+    }
+
+    const hasExplicitGlobalSearch = Object.prototype.hasOwnProperty.call(options || {}, 'globalSearchValue')
+    const globalSearch = hasExplicitGlobalSearch
+      ? String(options?.globalSearchValue ?? '').trim()
+      : getPrimeGlobalFilterValue(tableFilters)
+    if (globalSearch) params.set('search', globalSearch)
+
+    const columnFilters = buildPrimeColumnFiltersPayload(tableFilters, {
+      allowedFields: INVENTARIO_FILTER_FIELDS,
+      defaultMatchModes: INVENTARIO_FILTER_DEFAULT_MODES,
+    })
+    if (columnFilters) params.set('column_filters', JSON.stringify(columnFilters))
+
+    const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, INVENTARIO_ORDERING_MAP)
+    if (ordering) params.set('ordering', ordering)
+
+    return `${API_URL}/inventario/inventario/?${params.toString()}`
+  }, [])
+
+  const fetchLookupData = useCallback(async () => {
     if (!token) return
-    setLoading(true)
-    setError(null)
     try {
-      const normalizedSearch = String(searchTerm ?? '').trim()
-      const fetchAllPages = async (initialUrl, errorMessage) => {
-        const allItems = []
-        let url = initialUrl
+      const [branchesRes, bodegasRes, subdivisionsRes] = await Promise.all([
+        authFetch(`${API_URL}/inventario/sucursales/?modulo=inventario&page_size=500`, {}, token),
+        authFetch(`${API_URL}/inventario/bodegas/?page_size=500`, {}, token),
+        authFetch(`${API_URL}/inventario/subdivisiones/?page_size=500`, {}, token),
+      ])
+      if (!branchesRes.ok) throw new Error('No se pudieron cargar las sucursales.')
+      if (!bodegasRes.ok) throw new Error('No se pudieron cargar las bodegas.')
+      if (!subdivisionsRes.ok) throw new Error('No se pudieron cargar las subdivisiones.')
+      const [branchesData, bodegasData, subdivisionsData] = await Promise.all([
+        branchesRes.json(),
+        bodegasRes.json(),
+        subdivisionsRes.json(),
+      ])
+      setBranches(parseApiList(branchesData))
+      setBodegas(parseApiList(bodegasData))
+      setSubdivisions(parseApiList(subdivisionsData))
+    } catch (err) {
+      showToast(err?.message || 'No se pudo cargar la configuracion de ubicaciones.', 'Error', 'error')
+    }
+  }, [showToast, token])
 
-        while (url) {
-          const response = await authFetch(url, {}, token)
-          if (!response.ok) throw new Error(errorMessage)
+  const fetchData = useCallback(
+    async (criteria, page = 1, rows = pageSize, options = {}) => {
+      if (!token) {
+        setIsRefreshing(false)
+        return []
+      }
+      setLoading(true)
+      setError(null)
+      try {
+        const tableFilters = options?.tableFilters ?? filters
+        const tableSortField = options?.tableSortField ?? sortField
+        const tableSortOrder = options?.tableSortOrder ?? sortOrder
+        const globalSearchValue = Object.prototype.hasOwnProperty.call(options || {}, 'globalSearchValue')
+          ? options?.globalSearchValue
+          : globalFilterValue
+        const url = buildInventarioListUrl(criteria, {
+          page,
+          rows,
+          tableFilters,
+          tableSortField,
+          tableSortOrder,
+          globalSearchValue,
+        })
+        const response = await authFetch(url, {}, token)
+        if (!response.ok) throw new Error('No se pudo cargar el inventario.')
+        const data = await response.json()
+        const count = Array.isArray(data) ? data.length : Number(data?.count ?? 0)
+        const list = parseApiList(data)
 
+        setInventories(list)
+        setTotalRecords(count)
+        setPageFirst(Math.max(0, (page - 1) * rows))
+        setPageSize(rows)
+        return list
+      } catch (err) {
+        const message = err?.message || 'Ocurrio un error al cargar el inventario.'
+        setError(message)
+        setInventories([])
+        setTotalRecords(0)
+        showToast(message, 'Error', 'error')
+      } finally {
+        setLoading(false)
+        setIsRefreshing(false)
+      }
+      return []
+    },
+    [token, pageSize, filters, sortField, sortOrder, globalFilterValue, buildInventarioListUrl, showToast]
+  )
+
+  const fetchInventoryByProductId = useCallback(
+    async (productId) => {
+      const normalizedId = Number(productId)
+      if (!token || !Number.isFinite(normalizedId) || normalizedId <= 0) {
+        setActiveProductInventoryEntries([])
+        return []
+      }
+      try {
+        let nextUrl = `${API_URL}/inventario/inventario/?producto_ids=${normalizedId}&page_size=500`
+        const list = []
+        while (nextUrl) {
+          const response = await authFetch(nextUrl, {}, token)
+          if (!response.ok) throw new Error('No se pudo cargar el detalle de inventario del producto.')
           const data = await response.json()
           if (Array.isArray(data)) {
-            allItems.push(...data)
-            url = null
-          } else {
-            allItems.push(...parseApiList(data))
-            url = data?.next || null
+            list.push(...data)
+            break
           }
+          list.push(...parseApiList(data))
+          nextUrl = data?.next || null
         }
-
-        return allItems
+        setActiveProductInventoryEntries(list)
+        return list
+      } catch (err) {
+        setActiveProductInventoryEntries([])
+        showToast(err?.message || 'No se pudo cargar el detalle de inventario del producto.', 'Error', 'error')
+        return []
       }
+    },
+    [showToast, token]
+  )
 
-      const productSearchQuery = normalizedSearch ? `?search=${encodeURIComponent(normalizedSearch)}` : ''
-      const [productsData, inventoriesData, branchesData, bodegasData, subdivisionsData] = await Promise.all([
-        fetchAllPages(`${API_URL}/productos/listado/${productSearchQuery}`, 'No se pudieron cargar los productos.'),
-        fetchAllPages(`${API_URL}/inventario/inventario/`, 'No se pudo cargar el inventario.'),
-        fetchAllPages(`${API_URL}/inventario/sucursales/?modulo=inventario`, 'No se pudieron cargar las sucursales.'),
-        fetchAllPages(`${API_URL}/inventario/bodegas/`, 'No se pudieron cargar las bodegas.'),
-        fetchAllPages(`${API_URL}/inventario/subdivisiones/`, 'No se pudieron cargar las subdivisiones.'),
-      ])
-
-      setProducts(productsData)
-      setInventories(inventoriesData)
-      setBranches(branchesData)
-      setBodegas(bodegasData)
-      setSubdivisions(subdivisionsData)
-    } catch (err) {
-      const message = err?.message || 'Ocurrió un error al cargar el inventario.'
-      setError(message)
-      showToast(message, 'Error', 'error')
-    } finally {
-      setLoading(false)
+  const refreshCurrentProductInventory = useCallback(() => {
+    const productId = Number(activeProduct?.producto_id)
+    if (!Number.isFinite(productId) || productId <= 0) {
+      setActiveProductInventoryEntries([])
+      return
     }
-  }, [token, showToast])
+    fetchInventoryByProductId(productId)
+  }, [activeProduct, fetchInventoryByProductId])
 
   const fetchIvaConfig = useCallback(async () => {
     if (!token) return
@@ -222,8 +367,17 @@ function InventarioTable({ token }) {
   }, [token])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    fetchLookupData()
+  }, [fetchLookupData])
+
+  useEffect(() => {
+    if (token) return
+    didInitialSearchRef.current = false
+    setInventories([])
+    setTotalRecords(0)
+    setLoading(false)
+    setIsRefreshing(false)
+  }, [token])
 
   useEffect(() => {
     fetchIvaConfig()
@@ -242,6 +396,28 @@ function InventarioTable({ token }) {
 
     return unsubscribe
   }, [fetchIvaConfig])
+
+  useEffect(() => {
+    if (!token) return
+    if (didInitialSearchRef.current) return
+    if (!filters) return
+    didInitialSearchRef.current = true
+    setIsRefreshing(true)
+    fetchData(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      globalSearchValue: globalFilterValue,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }, [fetchData, filters, globalFilterValue, pageSize, sortField, sortOrder, token])
+
+  useEffect(() => {
+    if (!showDetails) {
+      setActiveProductInventoryEntries([])
+      return
+    }
+    refreshCurrentProductInventory()
+  }, [showDetails, refreshCurrentProductInventory])
 
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target
@@ -361,6 +537,10 @@ function InventarioTable({ token }) {
 
   const handleSearchSubmit = async (event) => {
     event.preventDefault()
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
+    setIsGlobalSearchPending(false)
     const nextCriteria = { ...searchCriteria }
     const isEmptyValue = (value) => {
       if (value === null || value === undefined) return true
@@ -372,6 +552,14 @@ function InventarioTable({ token }) {
     lastSearchRef.current = applied
     setAppliedCriteria(applied)
     setShowSearchModal(false)
+    setPageFirst(0)
+    setIsRefreshing(true)
+    await fetchData(applied, 1, pageSize, {
+      tableFilters: filters,
+      globalSearchValue: globalFilterValue,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const refreshData = () => {
@@ -382,7 +570,15 @@ function InventarioTable({ token }) {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
-    fetchData(globalFilterValue)
+    setIsGlobalSearchPending(false)
+    setIsRefreshing(true)
+    const currentPage = Math.floor(pageFirst / pageSize) + 1
+    fetchData(lastSearchRef.current, currentPage, pageSize, {
+      tableFilters: filters,
+      globalSearchValue: globalFilterValue,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const resetSearch = () => {
@@ -395,55 +591,35 @@ function InventarioTable({ token }) {
     setShowSearchCasaDropdown(false)
   }
 
-  const productByCode = useMemo(() => {
-    const map = new Map()
-    products.forEach((product) => {
-      const code = String(product?.codigo ?? '').trim()
-      if (code) map.set(code, product)
-    })
-    return map
-  }, [products])
-
   const inventoryEntries = useMemo(() => {
-    return inventories
+    return (Array.isArray(inventories) ? inventories : [])
       .map((entry) => {
-        const code = parseProductCode(entry?.producto)
-        const product = code ? productByCode.get(code) : null
-        if (!product) return null
+        const productData = entry?.producto_data || {}
+        const productIdRaw = Number(productData?.id ?? entry?.producto_id)
+        const productId = Number.isFinite(productIdRaw) && productIdRaw > 0 ? productIdRaw : null
         const subdivision = entry?.subdivision
         const division = subdivision?.division
         const bodega = division?.bodega
         const sucursal = bodega?.sucursal
         return {
           ...entry,
-          productoId: product.id,
-          productoCodigo: product.codigo,
+          producto_data: productData,
+          productoId: productId,
           subdivisionId: subdivision?.id ?? null,
           bodegaId: bodega?.id ?? null,
           sucursalId: sucursal?.id ?? null,
         }
       })
-      .filter(Boolean)
-  }, [inventories, productByCode])
+      .filter((entry) => Boolean(entry?.id))
+  }, [inventories])
 
   const inventoryByProductId = useMemo(() => {
     const map = new Map()
     inventoryEntries.forEach((entry) => {
+      if (!entry?.productoId) return
       const list = map.get(entry.productoId) || []
       list.push(entry)
       map.set(entry.productoId, list)
-    })
-    return map
-  }, [inventoryEntries])
-
-  const totalsByProduct = useMemo(() => {
-    const map = new Map()
-    inventoryEntries.forEach((entry) => {
-      if (!entry.productoId || !entry.sucursalId) return
-      const bySucursal = map.get(entry.productoId) || {}
-      const current = bySucursal[entry.sucursalId] || 0
-      bySucursal[entry.sucursalId] = current + normalizeNumber(entry.cantidad)
-      map.set(entry.productoId, bySucursal)
     })
     return map
   }, [inventoryEntries])
@@ -472,8 +648,8 @@ function InventarioTable({ token }) {
         contains(row?.nombre, criteria?.nombre) &&
         contains(row?.descripcion, criteria?.descripcion) &&
         contains(row?.oem_codes, criteria?.oem) &&
-        contains(row?.marca?.nombre ?? row?.marca_nombre, criteria?.marca) &&
-        matchCasa(row, criteria?.casa_comercial) &&
+        contains(row?.marca_nombre, criteria?.marca) &&
+        contains(row?.casas_comerciales_nombres, criteria?.casa_comercial) &&
         (piezaCriteria ? piezaValue === piezaCriteria : true) &&
         contains(row?.costo_minimo, criteria?.costo_minimo) &&
         contains(row?.precio, criteria?.precio) &&
@@ -487,24 +663,25 @@ function InventarioTable({ token }) {
   const initFilters = useCallback(() => {
     const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
+      codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      marca_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      pieza_original_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      casa_comercial_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      costo_minimo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      precio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      precio_con_iva: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      total_general: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
     }
-    const columnKeys = [
-      'codigo',
-      'nombre',
-      'marca_nombre',
-      'precio',
-      'precio_con_iva',
-      'total_general',
-      ...branches.map((branch) => `sucursal_${branch.id}`),
-    ]
-    columnKeys.forEach((key) => {
-      nextFilters[key] = {
+    branches.forEach((branch) => {
+      nextFilters[`sucursal_${branch.id}`] = {
         operator: FilterOperator.AND,
         constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }],
       }
     })
     setFilters(nextFilters)
     setGlobalFilterValue('')
+    return nextFilters
   }, [branches])
 
   useEffect(() => {
@@ -523,91 +700,172 @@ function InventarioTable({ token }) {
     </Button>
   )
 
-  const clearFilter = () => {
+  const clearFilter = async () => {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
-    initFilters()
+    setIsGlobalSearchPending(false)
+    const nextFilters = initFilters()
     resetSearch()
     setGlobalFilterValue('')
     const defaultApplied = buildDefaultAppliedCriteria()
     lastSearchRef.current = defaultApplied
     setAppliedCriteria(defaultApplied)
-    fetchData('')
+    setPageFirst(0)
+    setIsRefreshing(true)
+    await fetchData(defaultApplied, 1, pageSize, {
+      globalSearchValue: '',
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+      tableFilters: nextFilters,
+    })
   }
-  const handleGlobalFilterChange = (event) => {
+
+  function handleGlobalFilterChange(event) {
     const value = event.target.value
     setGlobalFilterValue(value)
-    setFilters((prev) => ({
-      ...(prev || {}),
+    setPageFirst(0)
+    const nextFilters = {
+      ...(filters || {}),
       global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
-    }))
+    }
+    setFilters(nextFilters)
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
+    const seq = globalSearchSeqRef.current + 1
+    globalSearchSeqRef.current = seq
+    setIsGlobalSearchPending(true)
+    setIsRefreshing(true)
     globalSearchDebounceRef.current = setTimeout(() => {
-      fetchData(value)
+      fetchData(lastSearchRef.current, 1, pageSize, {
+        tableFilters: nextFilters,
+        globalSearchValue: value,
+        tableSortField: sortField,
+        tableSortOrder: sortOrder,
+      }).finally(() => {
+        if (globalSearchSeqRef.current === seq) {
+          setIsGlobalSearchPending(false)
+        }
+      })
     }, 500)
   }
-  const handleTableFilterChange = (event) => {
-    const nextFilters = event?.filters || {}
+
+  const handleTableFilterChange = async (event) => {
+    const rawFilters = event?.filters || {}
+    const nextFilters = {
+      ...rawFilters,
+      global: { value: globalFilterValue || null, matchMode: FilterMatchMode.CONTAINS },
+    }
     setFilters(nextFilters)
-    setGlobalFilterValue(nextFilters?.global?.value || '')
+    setPageFirst(0)
+    setIsRefreshing(true)
+    await fetchData(lastSearchRef.current, 1, pageSize, {
+      tableFilters: nextFilters,
+      globalSearchValue: globalFilterValue,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
+  }
+
+  const handleSortChange = async (event) => {
+    const rawSortOrder = Number(event?.sortOrder)
+    const normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
+    const nextSortField = normalizedSortOrder ? event?.sortField || null : null
+    setSortField(nextSortField)
+    setSortOrder(normalizedSortOrder)
+    setPageFirst(0)
+    setIsRefreshing(true)
+    await fetchData(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      globalSearchValue: globalFilterValue,
+      tableSortField: nextSortField,
+      tableSortOrder: normalizedSortOrder,
+    })
+  }
+
+  const handlePageChange = async (event) => {
+    const nextRows = Number(event?.rows) || pageSize
+    const nextFirst = Number(event?.first) || 0
+    const nextPage = Math.floor(nextFirst / nextRows) + 1
+
+    setPageFirst(nextFirst)
+    setPageSize(nextRows)
+    setIsRefreshing(true)
+    await fetchData(lastSearchRef.current, nextPage, nextRows, {
+      tableFilters: filters,
+      globalSearchValue: globalFilterValue,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+    })
   }
 
   const rows = useMemo(() => {
-    return products.map((product) => {
-      const totals = totalsByProduct.get(product.id) || {}
-      const houses = Array.isArray(product?.casas_comerciales) ? product.casas_comerciales : []
-      const casasNombres = houses.map((house) => house?.nombre).filter(Boolean).join(', ')
-      const oems = Array.isArray(product?.oem_productos) ? product.oem_productos : []
-      const oemCodes = oems
-        .map((item) => item?.oem?.codigo ?? item?.oem_codigo ?? item?.codigo)
-        .filter(Boolean)
-        .join(', ')
-      const row = {
-        ...product,
-        marca_nombre: product?.marca?.nombre ?? '-',
-        casas_comerciales_nombres: casasNombres,
-        pieza_original_label: product?.pieza_original ? 'Si' : 'No',
-        oem_codes: oemCodes,
-        __totals: totals,
-      }
-      return row
-    })
-  }, [products, totalsByProduct])
+    const grouped = new Map()
 
-  const displayRows = useMemo(() => {
-    if (!appliedCriteria) return []
-    return rows.map((row) => {
-      const totals = row.__totals || {}
-      const totalAll = Object.values(totals).reduce((acc, value) => acc + normalizeNumber(value), 0)
-      const totalGeneral = totalAll
-      const precioBase = Number(row?.precio)
-      const precioConIvaValue = Number.isFinite(precioBase) ? precioBase * (1 + ivaRate) : null
-      const next = {
-        ...row,
-        total_general: totalGeneral,
-        precio_con_iva: precioConIvaValue,
+    inventoryEntries.forEach((entry) => {
+      const productData = entry?.producto_data || {}
+      const productId = Number(entry?.productoId)
+      if (!Number.isFinite(productId) || productId <= 0) return
+
+      const key = String(productId)
+      const existing = grouped.get(key)
+      const casasNombres = String(productData?.casas_comerciales_nombres || '').trim()
+      const casaPrincipal = String(productData?.casa_comercial_nombre || '').trim()
+      const casasLabel = casasNombres || casaPrincipal
+      const precioBase = Number(productData?.precio)
+      const cantidad = normalizeNumber(entry?.cantidad)
+      const sucursalField = entry?.sucursalId ? `sucursal_${entry.sucursalId}` : null
+
+      if (!existing) {
+        const base = {
+          id: productId,
+          producto_id: productId,
+          codigo: productData?.codigo || parseProductCode(entry?.producto) || '-',
+          nombre: productData?.nombre || entry?.producto || '-',
+          descripcion: productData?.descripcion || '',
+          marca_nombre: productData?.marca_nombre || '-',
+          casa_comercial_nombre: casaPrincipal || casasLabel || '-',
+          casas_comerciales_nombres: casasLabel || '',
+          pieza_original: Boolean(productData?.pieza_original),
+          pieza_original_label: productData?.pieza_original ? 'Si' : 'No',
+          costo_minimo: productData?.costo_minimo,
+          precio: productData?.precio,
+          precio_con_iva: Number.isFinite(precioBase) ? precioBase * (1 + ivaRate) : null,
+          oem_codes: String(productData?.oem_codes || '').trim(),
+          total_general: 0,
+          creado_en: productData?.creado_en,
+        }
+        branches.forEach((branch) => {
+          base[`sucursal_${branch.id}`] = 0
+        })
+        grouped.set(key, base)
       }
-      branches.forEach((branch) => {
-        next[`sucursal_${branch.id}`] = totals[branch.id] ?? 0
-      })
-      return next
+
+      const row = grouped.get(key)
+      row.total_general = normalizeNumber(row.total_general) + cantidad
+      if (sucursalField) {
+        row[sucursalField] = normalizeNumber(row[sucursalField]) + cantidad
+      }
     })
-  }, [rows, branches, appliedCriteria, ivaRate])
+
+    return Array.from(grouped.values())
+  }, [inventoryEntries, ivaRate, branches])
 
   const filteredRows = useMemo(() => {
-    if (!appliedCriteria) return []
-    return applySearchFilters(displayRows, appliedCriteria)
-  }, [displayRows, applySearchFilters, appliedCriteria])
+    if (!appliedCriteria) return rows
+    return applySearchFilters(rows, appliedCriteria)
+  }, [rows, applySearchFilters, appliedCriteria])
 
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por Código' },
+      { nombrevar: 'codigo', header: 'Codigo', filterPlaceholder: 'Buscar por codigo' },
       { nombrevar: 'nombre', header: 'Producto', filterPlaceholder: 'Buscar por producto' },
       { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
+      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
+      { nombrevar: 'casa_comercial_nombre', header: 'Casa comercial', filterPlaceholder: 'Buscar por casa comercial' },
+      { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
       { nombrevar: 'precio_con_iva', header: 'Precio con IVA', filterPlaceholder: 'Buscar por precio con IVA' },
       { nombrevar: 'total_general', header: 'Total', filterPlaceholder: 'Filtrar por total' },
@@ -696,9 +954,12 @@ function InventarioTable({ token }) {
   )
 
   const getExportValue = useCallback((row, field) => {
-    if (field === 'precio' || field === 'precio_con_iva') {
+    if (field === 'precio' || field === 'precio_con_iva' || field === 'costo_minimo') {
       const num = Number(row?.[field])
       return Number.isFinite(num) ? num.toFixed(2) : ''
+    }
+    if (field === 'pieza_original_label') {
+      return row?.pieza_original ? 'Si' : 'No'
     }
     if (field === 'total_general' || field.startsWith('sucursal_')) {
       const num = Number(row?.[field])
@@ -853,7 +1114,12 @@ function InventarioTable({ token }) {
         </span>
       )
     }
-    const value = field === 'precio_con_iva' ? rowData?.precio_con_iva : rowData?.precio
+    const value =
+      field === 'precio_con_iva'
+        ? rowData?.precio_con_iva
+        : field === 'costo_minimo'
+          ? rowData?.costo_minimo
+          : rowData?.precio
     const text = formatCurrency(value)
     return (
       <span className="cell-tooltip" data-pr-tooltip={text}>
@@ -862,12 +1128,15 @@ function InventarioTable({ token }) {
     )
   }
 
-  const hasSearch = Boolean(appliedCriteria)
-
-  const openDetails = (row) => {
-    setActiveProduct(row)
-    setShowDetails(true)
-  }
+  const openDetails = useCallback(
+    (row) => {
+      const productId = Number(row?.producto_id)
+      if (!Number.isFinite(productId) || productId <= 0) return
+      setActiveProduct(row)
+      setShowDetails(true)
+    },
+    []
+  )
 
   const handleRowClick = (event) => {
     const t = event?.originalEvent?.target
@@ -877,10 +1146,8 @@ function InventarioTable({ token }) {
     openDetails(row)
   }
 
-  const dataLength = hasSearch ? filteredRows.length : 0
-  const emptyMessage = hasSearch
-    ? 'No se encontraron registros'
-    : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
+  const dataLength = totalRecords ?? 0
+  const emptyMessage = 'No se encontraron registros'
 
   const header = (
     <div className="users-header">
@@ -896,7 +1163,7 @@ function InventarioTable({ token }) {
           <i className="pi pi-search search-input-icon" />
         </div>
 
-        <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading} title="Recargar">
+        <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
           <i className="pi pi-refresh" />
         </button>
 
@@ -1087,191 +1354,198 @@ function InventarioTable({ token }) {
       </div>
 
       <div className="users-table users-table--card">
-        {!hasSearch ? (
-          <div className="users-search-empty-state">
-            <div className="users-search-empty-state__content">
-              <h2 className="users-search-empty-state__title">Inventario</h2>
-              <div className="users-search-empty-state__hint">
-                <span className="users-search-empty-state__hint-text">Para iniciar, seleccione</span>
-                <Button
-                  label="Buscar"
-                  icon="pi pi-search"
-                  className="users-topbtn users-topbtn--search users-search-empty-state__btn"
-                  onClick={focusSearch}
-                  type="button"
-                />
-              </div>
-            </div>
+        {(loading || isRefreshing || isGlobalSearchPending) && (
+          <div className="spinner-container spinner-container--table">
+            <div className="spinner" />
           </div>
-        ) : (
-          <>
-            {loading && (
-              <div className="spinner-container spinner-container--table">
-                <div className="spinner" />
-              </div>
-            )}
-
-            {error && (
-              <div className="stale-data-msg">
-                <i className="pi pi-exclamation-circle" style={{ fontSize: '0.8rem', margin: 0, color: 'white' }} />
-                <span>
-                  <strong>Los datos pueden estar desactualizados</strong> | intenta recargar la tabla
-                </span>
-              </div>
-            )}
-
-            <DataTable
-              value={hasSearch ? filteredRows : []}
-              dataKey="id"
-              header={header}
-              className={`users-datatable inventario-datatable${loading ? ' users-datatable--loading-content' : ''}`}
-              tableStyle={{ width: '100%' }}
-              showGridlines
-              size="small"
-              scrollable
-              scrollHeight="flex"
-              frozenWidth="40px"
-              paginator
-              rows={25}
-              rowsPerPageOptions={[5, 10, 25, 50]}
-              removableSort
-              filters={filters}
-              onFilter={handleTableFilterChange}
-              onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : null)}
-              globalFilterFields={globalFilterFields}
-              stateStorage="session"
-              stateKey="inventario-table-state"
-              reorderableColumns
-              onColReorder={handleOrderChange}
-              resizableColumns
-              columnResizeMode="fit"
-              onRowClick={handleRowClick}
-              rowClassName={(rowData) =>
-                selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow inventario__row' : 'inventario__row'
-              }
-              emptyMessage={loading ? 'Cargando inventario...' : emptyMessage}
-              selectionMode="multiple"
-              selection={selectedRows}
-              onSelectionChange={(e) => {
-                if (!isCheckboxSelection(e)) return
-                setSelectedRows(e.value || [])
-              }}
-            >
-              <Column
-                selectionMode="multiple"
-                frozen
-                headerClassName="row-selection-column"
-                bodyClassName="row-selection-column"
-                style={selectionColStyle}
-                headerStyle={selectionColStyle}
-                bodyStyle={selectionColStyle}
-                resizable={false}
-                exportable={false}
-                reorderable={false}
-              />
-
-              {selectedColumns.map((column) => {
-                let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                let className = 'column-max-min-width'
-                let filterMatchMode = FilterMatchMode.CONTAINS
-                let showFilterMatchModes = true
-                let showFilterOperator = true
-                let filterElement = undefined
-
-                switch (column.nombrevar) {
-                  case 'codigo':
-                    bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                    filterMatchMode = FilterMatchMode.STARTS_WITH
-                    break
-                  case 'nombre':
-                  case 'marca_nombre':
-                    bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                    filterMatchMode = FilterMatchMode.STARTS_WITH
-                    break
-                  case 'precio':
-                  case 'precio_con_iva':
-                    bodyTemplate = (rowData) => priceBodyTemplate(rowData, column.nombrevar)
-                    filterMatchMode = FilterMatchMode.STARTS_WITH
-                    className = 'column-max-min-width--small'
-                    break
-                  case 'total_general':
-                    bodyTemplate = quantityBody(column.nombrevar)
-                    filterMatchMode = FilterMatchMode.STARTS_WITH
-                    className = 'column-max-min-width--small'
-                    break
-                  default:
-                    if (column.nombrevar.startsWith('sucursal_')) {
-                      bodyTemplate = quantityBody(column.nombrevar)
-                      filterMatchMode = FilterMatchMode.STARTS_WITH
-                      className = 'column-max-min-width--small'
-                    }
-                    break
-                }
-
-                return (
-                  <Column
-                    key={column.nombrevar}
-                    field={column.nombrevar}
-                    header={column.header}
-                    body={bodyTemplate}
-                    sortable
-                    reorderable
-                    filter
-                    filterField={column.nombrevar}
-                    filterPlaceholder={column.filterPlaceholder}
-                    filterMatchMode={filterMatchMode}
-                    showFilterMenuOptions
-                    showFilterMatchModes={showFilterMatchModes}
-                    showFilterOperator={showFilterOperator}
-                    filterApply={filterApplyTemplate}
-                    filterClear={filterClearTemplate}
-                    filterElement={filterElement}
-                    className={className}
-                  />
-                )
-              })}
-            </DataTable>
-
-            <OverlayPanel ref={opColumns} className="table-options-list">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                <strong>Campos</strong>
-              </div>
-
-              {columnsData.map((col) => (
-                <div
-                  key={col.nombrevar}
-                  className="p-field-checkbox"
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}
-                >
-                  <Checkbox
-                    inputId={col.nombrevar}
-                    name="category"
-                    value={col}
-                    onChange={() => handleCheckboxChangeColumn(col)}
-                    checked={selectedColumns.some((item) => item.nombrevar === col.nombrevar)}
-                  />
-                  <label htmlFor={col.nombrevar}>{col.header}</label>
-                </div>
-              ))}
-            </OverlayPanel>
-          </>
         )}
+
+        {error && (
+          <div className="stale-data-msg">
+            <i className="pi pi-exclamation-circle" style={{ fontSize: '0.8rem', margin: 0, color: 'white' }} />
+            <span>
+              <strong>Los datos pueden estar desactualizados</strong> | intenta recargar la tabla
+            </span>
+          </div>
+        )}
+
+        <DataTable
+          value={filteredRows}
+          dataKey="id"
+          header={header}
+          className={`users-datatable inventario-datatable${loading || isRefreshing || isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
+          tableStyle={{ width: '100%' }}
+          showGridlines
+          size="small"
+          scrollable
+          scrollHeight="flex"
+          frozenWidth="40px"
+          lazy
+          paginator
+          first={pageFirst}
+          rows={pageSize}
+          totalRecords={totalRecords}
+          rowsPerPageOptions={[5, 10, 25, 50]}
+          onPage={handlePageChange}
+          removableSort
+          sortField={sortField || undefined}
+          sortOrder={sortOrder || 0}
+          onSort={handleSortChange}
+          filters={filters}
+          onFilter={handleTableFilterChange}
+          onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : null)}
+          globalFilterFields={globalFilterFields}
+          reorderableColumns
+          onColReorder={handleOrderChange}
+          resizableColumns
+          columnResizeMode="fit"
+          onRowClick={handleRowClick}
+          rowClassName={(rowData) =>
+            selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow inventario__row' : 'inventario__row'
+          }
+          emptyMessage={loading || isRefreshing ? 'Cargando inventario...' : emptyMessage}
+          selectionMode="multiple"
+          selection={selectedRows}
+          onSelectionChange={(e) => {
+            if (!isCheckboxSelection(e)) return
+            setSelectedRows(e.value || [])
+          }}
+        >
+          <Column
+            selectionMode="multiple"
+            frozen
+            headerClassName="row-selection-column"
+            bodyClassName="row-selection-column"
+            style={selectionColStyle}
+            headerStyle={selectionColStyle}
+            bodyStyle={selectionColStyle}
+            resizable={false}
+            exportable={false}
+            reorderable={false}
+          />
+
+          {selectedColumns.map((column) => {
+            let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+            let className = 'column-max-min-width'
+            let filterMatchMode = FilterMatchMode.CONTAINS
+            let showFilterMatchModes = true
+            let showFilterOperator = true
+            let filterElement = undefined
+
+            switch (column.nombrevar) {
+              case 'codigo':
+              case 'nombre':
+              case 'marca_nombre':
+              case 'casa_comercial_nombre':
+                bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+                filterMatchMode = FilterMatchMode.STARTS_WITH
+                break
+              case 'precio':
+              case 'precio_con_iva':
+              case 'costo_minimo':
+                bodyTemplate = (rowData) => priceBodyTemplate(rowData, column.nombrevar)
+                filterMatchMode = FilterMatchMode.STARTS_WITH
+                className = 'column-max-min-width--small'
+                break
+              case 'pieza_original_label':
+                bodyTemplate = (rowData) => cellWithTooltip(rowData, 'pieza_original_label')
+                filterMatchMode = FilterMatchMode.STARTS_WITH
+                className = 'column-max-min-width--small'
+                break
+              case 'total_general':
+                bodyTemplate = quantityBody(column.nombrevar)
+                filterMatchMode = FilterMatchMode.STARTS_WITH
+                className = 'column-max-min-width--small'
+                break
+              default:
+                if (column.nombrevar.startsWith('sucursal_')) {
+                  bodyTemplate = quantityBody(column.nombrevar)
+                  filterMatchMode = FilterMatchMode.STARTS_WITH
+                  className = 'column-max-min-width--small'
+                }
+                break
+            }
+
+            return (
+              <Column
+                key={column.nombrevar}
+                field={column.nombrevar}
+                header={column.header}
+                body={bodyTemplate}
+                sortable
+                reorderable
+                filter
+                filterField={column.nombrevar}
+                filterPlaceholder={column.filterPlaceholder}
+                filterMatchMode={filterMatchMode}
+                showFilterMenuOptions
+                showFilterMatchModes={showFilterMatchModes}
+                showFilterOperator={showFilterOperator}
+                filterApply={filterApplyTemplate}
+                filterClear={filterClearTemplate}
+                filterElement={filterElement}
+                className={className}
+              />
+            )
+          })}
+        </DataTable>
+
+        <OverlayPanel ref={opColumns} className="table-options-list">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <strong>Campos</strong>
+          </div>
+
+          {columnsData.map((col) => (
+            <div
+              key={col.nombrevar}
+              className="p-field-checkbox"
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}
+            >
+              <Checkbox
+                inputId={col.nombrevar}
+                name="category"
+                value={col}
+                onChange={() => handleCheckboxChangeColumn(col)}
+                checked={selectedColumns.some((item) => item.nombrevar === col.nombrevar)}
+              />
+              <label htmlFor={col.nombrevar}>{col.header}</label>
+            </div>
+          ))}
+        </OverlayPanel>
       </div>
 
       <ProductoDetails
         open={showDetails}
-        productoId={activeProduct?.id ?? null}
+        productoId={activeProduct?.producto_id ?? null}
         token={token}
-        onClose={() => setShowDetails(false)}
-        onUpdated={fetchData}
-        onDeleted={fetchData}
+        onClose={() => {
+          setShowDetails(false)
+          setActiveProduct(null)
+        }}
+        onUpdated={() => {
+          refreshData()
+          refreshCurrentProductInventory()
+        }}
+        onDeleted={() => {
+          setShowDetails(false)
+          setActiveProduct(null)
+          refreshData()
+        }}
         onError={(message) => showToast(message, 'Error', 'error')}
         inventoryContext={{
           branches,
           bodegas,
           subdivisions,
-          inventarioEntries: activeProduct ? inventoryByProductId.get(activeProduct.id) || [] : [],
-          onSaved: fetchData,
+          inventarioEntries:
+            activeProductInventoryEntries.length > 0
+              ? activeProductInventoryEntries
+              : activeProduct
+                ? inventoryByProductId.get(activeProduct.producto_id) || []
+                : [],
+          onSaved: () => {
+            refreshData()
+            refreshCurrentProductInventory()
+          },
         }}
       />
 
@@ -1301,14 +1575,14 @@ function InventarioTable({ token }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? '▣' : '▢'}
+                  <i className={isSearchMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
                 </button>
                 <button
                   type="button"
                   className="create-user__icon-button"
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
-                >×</button>
+                ><i className="pi pi-times" aria-hidden="true" /></button>
               </div>
             </header>
 
@@ -1609,5 +1883,7 @@ function InventarioTable({ token }) {
 }
 
 export default InventarioTable
+
+
 
 

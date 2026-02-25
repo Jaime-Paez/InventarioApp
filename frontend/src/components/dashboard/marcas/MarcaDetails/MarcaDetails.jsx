@@ -452,7 +452,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              {isMaximized ? '🗕' : '🗖'}
+              <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -461,7 +461,7 @@ function MarcaDetails({ open, marcaId, token, onClose, onUpdated, onDeleted, onD
               onClick={onClose}
               aria-label="Cerrar"
             >
-              ×
+              <i className="pi pi-times" aria-hidden="true" />
             </button>
           </div>
         </header>

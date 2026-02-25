@@ -368,7 +368,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              {isMaximized ? '🗗' : '🗖'}
+              <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -377,7 +377,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
               onClick={onClose}
               aria-label="Cerrar"
             >
-              ×
+              <i className="pi pi-times" aria-hidden="true" />
             </button>
           </div>
         </header>

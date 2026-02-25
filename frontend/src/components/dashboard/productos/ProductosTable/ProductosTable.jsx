@@ -98,6 +98,8 @@ function ProductosTable({ token, onSelect }) {
   const [sortOrder, setSortOrder] = useState(null)
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const [selectedId, setSelectedId] = useState(null)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
 
   const normalizeList = useCallback(
     (list) =>
@@ -888,9 +890,6 @@ function ProductosTable({ token, onSelect }) {
   }
 
   // ---------------- Row click -> detalles ----------------
-  const [selectedId, setSelectedId] = useState(null)
-  const [showDetailsModal, setShowDetailsModal] = useState(false)
-
   const handleRowClick = (event) => {
     const target = event?.originalEvent?.target
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
@@ -1718,7 +1717,9 @@ function ProductosTable({ token, onSelect }) {
       <ProductoDetails
         open={showDetailsModal}
         productoId={selectedId}
-        onClose={() => setShowDetailsModal(false)}
+        onClose={() => {
+          setShowDetailsModal(false)
+        }}
         token={token}
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}
@@ -1751,14 +1752,14 @@ function ProductosTable({ token, onSelect }) {
                   onClick={toggleSearchMaximize}
                   aria-label={isSearchMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  {isSearchMaximized ? '▣' : '▢'}
+                  <i className={isSearchMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
                 </button>
                 <button
                   type="button"
                   className="create-user__icon-button"
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
-                >×</button>
+                ><i className="pi pi-times" aria-hidden="true" /></button>
               </div>
             </header>
 

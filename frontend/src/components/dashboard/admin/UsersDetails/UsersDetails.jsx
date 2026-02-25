@@ -580,7 +580,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
             onClick={toggleMaximize}
             aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
           >
-            {isMaximized ? '🗗' : '🗖'}
+            <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -589,7 +589,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
             onClick={handleClose}
             aria-label="Cerrar"
           >
-            ×
+            <i className="pi pi-times" aria-hidden="true" />
           </button>
         </div>
       </header>

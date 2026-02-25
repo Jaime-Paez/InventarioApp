@@ -81,6 +81,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   const [productos, setProductos] = useState([])
   const [estadosProducto, setEstadosProducto] = useState([])
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
+  const [isMaximized, setIsMaximized] = useState(false)
   const modalRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const MODAL_PADDING = 12
@@ -268,6 +269,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     setPagosSelected([])
     setOriginalData(null)
     setIsEditing(false)
+    setIsMaximized(false)
     setError('')
     loadData()
   }, [open, loadData])
@@ -283,7 +285,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   }, [open])
 
   const handleModalMouseDown = (event) => {
-    if (!modalRef.current) return
+    if (isMaximized || !modalRef.current) return
     const target = event?.target
     if (target?.closest?.('.create-user__icon-button')) return
     const rect = modalRef.current.getBoundingClientRect()
@@ -297,7 +299,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   useEffect(() => {
     if (!open) return undefined
     const handleMouseMove = (event) => {
-      if (!modalDrag.current.active) return
+      if (isMaximized || !modalDrag.current.active) return
       event.preventDefault()
       const width = modalRef.current?.offsetWidth || MODAL_WIDTH
       const height = modalRef.current?.offsetHeight || MODAL_HEIGHT
@@ -321,7 +323,12 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [open])
+  }, [open, isMaximized])
+
+  const toggleMaximize = () => {
+    modalDrag.current.active = false
+    setIsMaximized((prev) => !prev)
+  }
 
   const handleChange = (event) => {
     if (!isEditing) return
@@ -549,26 +556,51 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   if (!open) return null
 
   const editorDisabled = !isEditing || saving || loadingData
+  const modalStyle = isMaximized
+    ? {
+        top: MODAL_PADDING,
+        left: MODAL_PADDING,
+        width: `calc(100vw - ${MODAL_PADDING * 2}px)`,
+        height: `calc(100vh - ${MODAL_PADDING * 2}px)`,
+        maxWidth: `calc(100vw - ${MODAL_PADDING * 2}px)`,
+        maxHeight: `calc(100vh - ${MODAL_PADDING * 2}px)`,
+      }
+    : {
+        top: modalPosition.y,
+        left: modalPosition.x,
+        maxWidth: `calc(100vw - ${MODAL_PADDING * 2}px)`,
+        maxHeight: `calc(100vh - ${MODAL_PADDING * 2}px)`,
+      }
 
   return (
     <div className="create-user__overlay" role="dialog" aria-modal="true">
       <div
         ref={modalRef}
         className="create-user__modal"
-        style={{
-          top: modalPosition.y,
-          left: modalPosition.x,
-          maxWidth: `calc(100vw - ${MODAL_PADDING * 2}px)`,
-          maxHeight: `calc(100vh - ${MODAL_PADDING * 2}px)`,
-        }}
+        style={modalStyle}
       >
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
             <h3>{salidaId ? `Salida #${salidaId}` : 'Salida'}</h3>
           </div>
           <div className="create-user__header-actions">
-            <button type="button" className="create-user__icon-button" onClick={onClose} aria-label="Cerrar">
-              x
+            <button
+              type="button"
+              className="create-user__icon-button create-user__icon-button--maximize"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={toggleMaximize}
+              aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+            >
+              <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="create-user__icon-button"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={onClose}
+              aria-label="Cerrar"
+            >
+              <i className="pi pi-times" aria-hidden="true" />
             </button>
           </div>
         </header>

@@ -115,6 +115,31 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     [onError]
   )
 
+  const fetchAllPages = useCallback(
+    async (initialUrl, errorMessage) => {
+      if (!token) return []
+      const allItems = []
+      let nextUrl = initialUrl
+
+      while (nextUrl) {
+        const response = await authFetch(nextUrl, {}, token)
+        if (!response.ok) throw new Error(errorMessage)
+        const payload = await response.json()
+
+        if (Array.isArray(payload)) {
+          allItems.push(...payload)
+          break
+        }
+
+        allItems.push(...parseApiList(payload))
+        nextUrl = payload?.next || null
+      }
+
+      return allItems
+    },
+    [token]
+  )
+
   const normalizeValue = (value) =>
   String(value ?? '')
     .normalize('NFD')
@@ -255,35 +280,29 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     if (!token) return
     setLocationsLoading(true)
     try {
-      const [branchesRes, bodegasRes, divisionsRes, subdivisionsRes] = await Promise.all([
-        authFetch(`${API_URL}/inventario/sucursales/?modulo=productos`, {}, token),
-        authFetch(`${API_URL}/inventario/bodegas/`, {}, token),
-        authFetch(`${API_URL}/inventario/divisiones/`, {}, token),
-        authFetch(`${API_URL}/inventario/subdivisiones/`, {}, token),
-      ])
-
-      if (!branchesRes.ok) throw new Error('No se pudieron cargar las sucursales.')
-      if (!bodegasRes.ok) throw new Error('No se pudieron cargar las bodegas.')
-      if (!divisionsRes.ok) throw new Error('No se pudieron cargar las divisiones.')
-      if (!subdivisionsRes.ok) throw new Error('No se pudieron cargar las subdivisiones.')
-
       const [branchesData, bodegasData, divisionsData, subdivisionsData] = await Promise.all([
-        branchesRes.json(),
-        bodegasRes.json(),
-        divisionsRes.json(),
-        subdivisionsRes.json(),
+        fetchAllPages(
+          `${API_URL}/inventario/sucursales/?modulo=productos&page_size=500`,
+          'No se pudieron cargar las sucursales.'
+        ),
+        fetchAllPages(`${API_URL}/inventario/bodegas/?page_size=500`, 'No se pudieron cargar las bodegas.'),
+        fetchAllPages(`${API_URL}/inventario/divisiones/?page_size=500`, 'No se pudieron cargar las divisiones.'),
+        fetchAllPages(
+          `${API_URL}/inventario/subdivisiones/?page_size=500`,
+          'No se pudieron cargar las subdivisiones.'
+        ),
       ])
 
-      setBranches(parseApiList(branchesData))
-      setBodegas(parseApiList(bodegasData))
-      setDivisions(parseApiList(divisionsData))
-      setSubdivisions(parseApiList(subdivisionsData))
+      setBranches(branchesData)
+      setBodegas(bodegasData)
+      setDivisions(divisionsData)
+      setSubdivisions(subdivisionsData)
     } catch (err) {
       notifyError(err?.message || 'Ocurrió un error al cargar las ubicaciones.')
     } finally {
       setLocationsLoading(false)
     }
-  }, [notifyError, token])
+  }, [fetchAllPages, notifyError, token])
 
   const searchAlternos = useCallback(
     async (query) => {
@@ -1252,7 +1271,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              {isMaximized ? '🗕' : '🗖'}
+              <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -1261,7 +1280,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
               onClick={onClose}
               aria-label="Cerrar"
             >
-              ×
+              <i className="pi pi-times" aria-hidden="true" />
             </button>
           </div>
         </header>
@@ -2088,3 +2107,4 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateProducto
+
