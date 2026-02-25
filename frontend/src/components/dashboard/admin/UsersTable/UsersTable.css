@@ -585,18 +585,19 @@
 .users-datatable.users-datatable--loading-content .p-datatable-wrapper {
   position: relative;
   pointer-events: none;
+  overflow: hidden !important;
 }
 
 .users-datatable.users-datatable--loading-content .p-datatable-wrapper::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: var(--sidebar-backgorund-color);
+  background: var(--table-color);
   z-index: 3;
 }
 
 .dashboard-shell.dark .users-datatable.users-datatable--loading-content .p-datatable-wrapper::before {
-  background: var(--table-color-dark-hover);
+  background: var(--table-color-dark);
 }
 
 .users-datatable.users-datatable--loading-content .p-datatable-wrapper::after {
@@ -615,6 +616,23 @@
 }
 
 .users-datatable.users-datatable--loading-content .p-paginator {
+  display: none;
+}
+
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-wrapper,
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-view,
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-body,
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-header,
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-footer {
+  overflow: hidden !important;
+  scrollbar-width: none;
+}
+
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-wrapper::-webkit-scrollbar,
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-view::-webkit-scrollbar,
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-body::-webkit-scrollbar,
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-header::-webkit-scrollbar,
+.users-datatable.users-datatable--loading-content .p-datatable-scrollable-footer::-webkit-scrollbar {
   display: none;
 }
 

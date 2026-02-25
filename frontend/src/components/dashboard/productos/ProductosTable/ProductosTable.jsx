@@ -287,6 +287,7 @@ function ProductosTable({ token, onSelect }) {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
+    setIsGlobalSearchPending(false)
     setIsRefreshing(true)
     const currentPage = Math.floor(pageFirst / pageSize) + 1
     fetchProducts(lastSearchRef.current, currentPage, pageSize)
@@ -408,6 +409,7 @@ function ProductosTable({ token, onSelect }) {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
+    setIsGlobalSearchPending(false)
     const nextFilters = initFilters()
     if (!lastSearchRef.current) return
     setPageFirst(0)
@@ -443,9 +445,11 @@ function ProductosTable({ token, onSelect }) {
   const [showSearchMarcaDropdown, setShowSearchMarcaDropdown] = useState(false)
   const [showSearchCasaDropdown, setShowSearchCasaDropdown] = useState(false)
   const [showSearchModal, setShowSearchModal] = useState(false)
+  const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
   const lastSearchRef = useRef({ ...initialSearchCriteria })
   const didInitialSearchRef = useRef(false)
   const globalSearchDebounceRef = useRef(null)
+  const globalSearchSeqRef = useRef(0)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
@@ -591,6 +595,10 @@ function ProductosTable({ token, onSelect }) {
 
   const handleSearchSubmit = async (event) => {
     event.preventDefault()
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current)
+    }
+    setIsGlobalSearchPending(false)
     lastSearchRef.current = { ...searchCriteria }
     setShowSearchModal(false)
     setIsRefreshing(true)
@@ -1141,6 +1149,9 @@ function ProductosTable({ token, onSelect }) {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
+    const seq = globalSearchSeqRef.current + 1
+    globalSearchSeqRef.current = seq
+    setIsGlobalSearchPending(true)
     setIsRefreshing(true)
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchProducts(lastSearchRef.current, 1, pageSize, {
@@ -1148,6 +1159,10 @@ function ProductosTable({ token, onSelect }) {
         tableSortField: sortField,
         tableSortOrder: sortOrder,
         globalSearchValue: value,
+      }).finally(() => {
+        if (globalSearchSeqRef.current === seq) {
+          setIsGlobalSearchPending(false)
+        }
       })
     }, 500)
   }
@@ -1363,7 +1378,7 @@ function ProductosTable({ token, onSelect }) {
           </div>
         ) : (
           <>
-        {(loading || isRefreshing) && (
+        {(loading || isRefreshing || isGlobalSearchPending) && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
@@ -1382,7 +1397,7 @@ function ProductosTable({ token, onSelect }) {
           value={products}
           dataKey="id"
           header={header}
-          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
+          className={`users-datatable${loading || isRefreshing || isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
