@@ -55,10 +55,16 @@ function UsersTable({
   const [allUsers, setAllUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isQuickSearchLoading, setIsQuickSearchLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const fetchUsers = useCallback(async (searchTerm = '') => {
-    setLoading(true)
+  const fetchUsers = useCallback(async (searchTerm = '', options = {}) => {
+    const withOverlay = options?.withOverlay !== false
+    if (withOverlay) {
+      setLoading(true)
+    } else {
+      setIsQuickSearchLoading(true)
+    }
     setError(null)
     try {
       const list = []
@@ -89,7 +95,11 @@ function UsersTable({
       setError(msg)
       toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
     } finally {
-      setLoading(false)
+      if (withOverlay) {
+        setLoading(false)
+      } else {
+        setIsQuickSearchLoading(false)
+      }
       setIsRefreshing(false)
     }
   }, [token])
@@ -102,6 +112,7 @@ function UsersTable({
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
+    setIsQuickSearchLoading(false)
     setIsRefreshing(true)
     fetchUsers(globalFilterValue)
   }
@@ -154,6 +165,7 @@ function UsersTable({
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
+    setIsQuickSearchLoading(false)
     initFilters()
     setIsRefreshing(true)
     fetchUsers('')
@@ -169,9 +181,9 @@ function UsersTable({
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
-    setIsRefreshing(true)
+    setIsQuickSearchLoading(true)
     globalSearchDebounceRef.current = setTimeout(() => {
-      fetchUsers(value)
+      fetchUsers(value, { withOverlay: false })
     }, 500)
   }
   const handleTableFilterChange = (event) => {
@@ -578,7 +590,7 @@ function UsersTable({
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isQuickSearchLoading ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
