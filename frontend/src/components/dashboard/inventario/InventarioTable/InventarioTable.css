@@ -117,6 +117,39 @@
   cursor: pointer;
 }
 
+.inventario-datatable.inventario-datatable--pending .p-datatable-scrollable-body {
+  position: relative;
+  pointer-events: none;
+}
+
+.inventario-datatable.inventario-datatable--pending .p-datatable-scrollable-body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--table-color) 86%, transparent);
+  z-index: 2;
+}
+
+.dashboard-shell.dark .inventario-datatable.inventario-datatable--pending .p-datatable-scrollable-body::before {
+  background: color-mix(in srgb, var(--table-color-dark) 86%, transparent);
+}
+
+.inventario-datatable.inventario-datatable--pending .p-datatable-scrollable-body::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  margin-left: -16px;
+  border-radius: 50%;
+  border: 3px solid var(--color-text-dark);
+  border-top-color: var(--color-primary);
+  animation: spin 0.9s linear infinite;
+  z-index: 3;
+}
+
 /* Fix: clamp checkbox/frozen column width for Inventario table */
 .inventario-datatable .p-datatable-frozen-view {
   width: 40px !important;

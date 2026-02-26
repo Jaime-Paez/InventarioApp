@@ -250,7 +250,10 @@ function InventarioTable({ token }) {
         setIsRefreshing(false)
         return []
       }
-      setLoading(true)
+      const withOverlay = options?.withOverlay !== false
+      if (withOverlay) {
+        setLoading(true)
+      }
       setError(null)
       try {
         const tableFilters = options?.tableFilters ?? filters
@@ -285,7 +288,9 @@ function InventarioTable({ token }) {
         setTotalRecords(0)
         showToast(message, 'Error', 'error')
       } finally {
-        setLoading(false)
+        if (withOverlay) {
+          setLoading(false)
+        }
         setIsRefreshing(false)
       }
       return []
@@ -618,7 +623,6 @@ function InventarioTable({ token }) {
       }
     })
     setFilters(nextFilters)
-    setGlobalFilterValue('')
     return nextFilters
   }, [branches])
 
@@ -673,13 +677,13 @@ function InventarioTable({ token }) {
     const seq = globalSearchSeqRef.current + 1
     globalSearchSeqRef.current = seq
     setIsGlobalSearchPending(true)
-    setIsRefreshing(true)
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchData(lastSearchRef.current, 1, pageSize, {
         tableFilters: nextFilters,
         globalSearchValue: value,
         tableSortField: sortField,
         tableSortOrder: sortOrder,
+        withOverlay: false,
       }).finally(() => {
         if (globalSearchSeqRef.current === seq) {
           setIsGlobalSearchPending(false)
@@ -696,12 +700,12 @@ function InventarioTable({ token }) {
     }
     setFilters(nextFilters)
     setPageFirst(0)
-    setIsRefreshing(true)
     await fetchData(lastSearchRef.current, 1, pageSize, {
       tableFilters: nextFilters,
       globalSearchValue: globalFilterValue,
       tableSortField: sortField,
       tableSortOrder: sortOrder,
+      withOverlay: false,
     })
   }
 
@@ -1037,7 +1041,7 @@ function InventarioTable({ token }) {
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isGlobalSearchPending ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
@@ -1231,7 +1235,7 @@ function InventarioTable({ token }) {
       </div>
 
       <div className="users-table users-table--card">
-        {(loading || isRefreshing || isGlobalSearchPending) && (
+        {(loading || isRefreshing) && !isGlobalSearchPending && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
@@ -1250,7 +1254,7 @@ function InventarioTable({ token }) {
           value={filteredRows}
           dataKey="id"
           header={header}
-          className={`users-datatable inventario-datatable${loading || isRefreshing || isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
+          className={`users-datatable inventario-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}${isGlobalSearchPending ? ' inventario-datatable--pending' : ''}`}
           tableStyle={{ width: '100%' }}
           showGridlines
           size="small"
