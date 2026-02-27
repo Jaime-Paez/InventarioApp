@@ -1209,13 +1209,16 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
     formData.estadoNombre ||
     ''
+  const headerTipo = selectedSubTipo?.nombre || formData.subTipoNombre || 'Tipo de salida'
+  const headerDocumento = String(formData.no_documento || '').trim() || 'No. de salida'
+  const modalTitle = `${headerTipo}: ${headerDocumento}`
 
   return (
     <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
-            <h3>Detalle de salida</h3>
+            <h3>{modalTitle}</h3>
           </div>
           <div className="create-user__header-actions">
             <button
