@@ -1,6 +1,10 @@
-from django.db.models import Q
-from rest_framework import filters, viewsets
+from django.db.models import Q, Sum
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from inventario.models import Inventario
 
 from usuarios.models import RolPermiso
 from usuarios.permissions import MovimientoInventarioModulePermission
@@ -129,3 +133,41 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             field_label="sucursal objetivo",
         )
         serializer.save()
+
+    @action(detail=False, methods=["get"], url_path="stock-sucursal")
+    def stock_sucursal(self, request):
+        sucursal_id_raw = (request.query_params.get("sucursal_id") or "").strip()
+        if not sucursal_id_raw.isdigit():
+            return Response(
+                {"detail": "Debes enviar un sucursal_id valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sucursal_id = int(sucursal_id_raw)
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            sucursal_id,
+            field_label="sucursal",
+        )
+
+        rows = (
+            Inventario.objects.filter(
+                subdivision__division__bodega__sucursal_id=sucursal_id
+            )
+            .values("producto_id", "producto__codigo", "producto__nombre")
+            .annotate(cantidad_disponible=Sum("cantidad"))
+            .filter(cantidad_disponible__gt=0)
+            .order_by("producto__nombre", "producto__codigo")
+        )
+
+        payload = [
+            {
+                "producto_id": int(row["producto_id"]),
+                "codigo": row.get("producto__codigo") or "",
+                "nombre": row.get("producto__nombre") or "",
+                "cantidad_disponible": int(row.get("cantidad_disponible") or 0),
+            }
+            for row in rows
+        ]
+        return Response(payload)

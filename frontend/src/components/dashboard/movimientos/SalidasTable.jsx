@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FilterMatchMode, FilterOperator } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -8,6 +8,7 @@ import { Button } from 'primereact/button'
 
 import CreateSalida from './CreateSalida'
 import SalidaDetails from './SalidaDetails'
+import './SalidasTable.css'
 import '../admin/UsersTable/UsersTable.css'
 import { API_URL, authFetch } from '../../../utils/api'
 
@@ -22,11 +23,36 @@ const parseCurrency = (value) => {
   const number = Number(value)
   return Number.isFinite(number) ? `$${number.toFixed(2)}` : '-'
 }
+const SUBTYPE_FILTERS = [
+  { key: 'all', label: 'Todos' },
+  { key: 'venta', label: 'Ventas' },
+  { key: 'devolucion', label: 'Devoluciones' },
+  { key: 'traslado', label: 'Traslados' },
+]
 
 const isSalida = (label) => normalizeValue(label).startsWith('sal')
+const resolveSalidaSubtype = (label) => {
+  const normalized = normalizeValue(label)
+  if (normalized.includes('vent')) return 'venta'
+  if (normalized.includes('devol')) return 'devolucion'
+  if (normalized.includes('trasl')) return 'traslado'
+  return 'other'
+}
+const normId = (value) => (value == null ? null : String(value))
+const isCheckboxSelection = (event) => {
+  const type = event?.type
+  if (type === 'checkbox' || type === 'all') return true
+  const target = event?.originalEvent?.target
+  if (!target) return true
+  if (target.type === 'checkbox') return true
+  return Boolean(
+    target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input, .row-selection-column')
+  )
+}
 
 function SalidasTable({ token }) {
   const toast = useRef(null)
+  const preloadSalidaCatalogsPromiseRef = useRef(null)
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -45,6 +71,11 @@ function SalidasTable({ token }) {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [selectedRows, setSelectedRows] = useState([])
+  const [prefetchedTipoMovimientos, setPrefetchedTipoMovimientos] = useState([])
+  const [prefetchedSubTiposSalida, setPrefetchedSubTiposSalida] = useState([])
+  const [salidaCatalogsPreloaded, setSalidaCatalogsPreloaded] = useState(false)
+  const [subtypeFilter, setSubtypeFilter] = useState('all')
 
   const normalizeList = useCallback(
     (list) =>
@@ -106,9 +137,59 @@ function SalidasTable({ token }) {
     }
   }, [token, normalizeList])
 
+  const preloadSalidaCatalogs = useCallback(async () => {
+    if (!token) return
+    if (salidaCatalogsPreloaded) return
+    if (preloadSalidaCatalogsPromiseRef.current) {
+      return preloadSalidaCatalogsPromiseRef.current
+    }
+
+    preloadSalidaCatalogsPromiseRef.current = (async () => {
+      try {
+        const [tiposRes, subTiposRes] = await Promise.all([
+          authFetch(`${API_URL}/tipos/tipos-movimiento/`, {}, token),
+          authFetch(`${API_URL}/tipos/subtipos-movimiento/`, {}, token),
+        ])
+        if (!tiposRes.ok || !subTiposRes.ok) return
+
+        const [tiposData, subTiposData] = await Promise.all([tiposRes.json(), subTiposRes.json()])
+        const tiposList = parseApiList(tiposData)
+        const subTiposList = parseApiList(subTiposData)
+        const salidaTipo = tiposList.find((tipo) => isSalida(tipo?.nombre))
+        const salidaTipoId = salidaTipo?.id
+
+        setPrefetchedTipoMovimientos(tiposList)
+        if (!salidaTipoId) {
+          setPrefetchedSubTiposSalida([])
+          return
+        }
+        setPrefetchedSubTiposSalida(
+          subTiposList.filter(
+            (subTipo) => String(subTipo?.tipo_movimiento?.id || '') === String(salidaTipoId)
+          )
+        )
+        setSalidaCatalogsPreloaded(true)
+      } finally {
+        preloadSalidaCatalogsPromiseRef.current = null
+      }
+    })()
+
+    return preloadSalidaCatalogsPromiseRef.current
+  }, [salidaCatalogsPreloaded, token])
+
   useEffect(() => {
     fetchMovimientos()
   }, [fetchMovimientos])
+
+  useEffect(() => {
+    setSalidaCatalogsPreloaded(false)
+    setPrefetchedTipoMovimientos([])
+    setPrefetchedSubTiposSalida([])
+  }, [token])
+
+  useEffect(() => {
+    preloadSalidaCatalogs()
+  }, [preloadSalidaCatalogs])
 
   // ---------------- Filters ----------------
   const [filters, setFilters] = useState(null)
@@ -187,6 +268,33 @@ function SalidasTable({ token }) {
     )
   }
 
+  const columnClassName = (field) => {
+    if (field === 'fecha' || field === 'total' || field === 'funcional_label') {
+      return 'column-max-min-width--small'
+    }
+    return 'column-max-min-width'
+  }
+
+  const selectedRowIds = useMemo(
+    () => (selectedRows || []).map((row) => normId(row?.id)).filter(Boolean),
+    [selectedRows]
+  )
+
+  const filteredMovimientos = useMemo(() => {
+    if (subtypeFilter === 'all') return movimientos
+    return movimientos.filter((row) => resolveSalidaSubtype(row?.sub_tipo_nombre) === subtypeFilter)
+  }, [movimientos, subtypeFilter])
+
+  const selectionColStyle = useMemo(
+    () => ({
+      width: '40px',
+      minWidth: '40px',
+      maxWidth: '40px',
+      textAlign: 'center',
+    }),
+    []
+  )
+
   const handleRowClick = (event) => {
     const target = event?.originalEvent?.target
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
@@ -213,6 +321,15 @@ function SalidasTable({ token }) {
     setSelectedId(null)
     fetchMovimientos()
     toast.current?.show({ severity: 'success', summary: 'Eliminado', detail: 'Salida eliminada', life: 2500 })
+  }
+
+  const handleOpenCreateModal = async () => {
+    try {
+      await preloadSalidaCatalogs()
+    } catch {
+      // Si falla la precarga, el modal se abre y carga sus catálogos como respaldo.
+    }
+    setShowCreateModal(true)
   }
 
   const header = (
@@ -251,8 +368,14 @@ function SalidasTable({ token }) {
     </div>
   )
 
-  const dataLength = movimientos?.length ?? 0
-  const emptyMessage = dataLength ? 'No se encontraron salidas' : 'No hay salidas registradas.'
+  const dataLength = filteredMovimientos?.length ?? 0
+  const emptyMessageByFilter = {
+    all: dataLength ? 'No se encontraron salidas' : 'No hay salidas registradas.',
+    venta: dataLength ? 'No se encontraron ventas' : 'No hay ventas registradas.',
+    devolucion: dataLength ? 'No se encontraron devoluciones' : 'No hay devoluciones registradas.',
+    traslado: dataLength ? 'No se encontraron traslados' : 'No hay traslados registrados.',
+  }
+  const emptyMessage = emptyMessageByFilter[subtypeFilter] || emptyMessageByFilter.all
 
   return (
     <div className="users-page">
@@ -261,7 +384,21 @@ function SalidasTable({ token }) {
 
       <div className="users-page__top">
         <div className="users-page__actions">
-          <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
+          <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={handleOpenCreateModal} type="button" />
+          <div className="salidas-type-filter" role="group" aria-label="Filtros de tipo de salida">
+            {SUBTYPE_FILTERS.map((option) => {
+              const active = subtypeFilter === option.key
+              return (
+                <Button
+                  key={option.key}
+                  label={option.label}
+                  type="button"
+                  className={`users-topbtn salidas-type-filter__btn${active ? ' salidas-type-filter__btn--active' : ''}`}
+                  onClick={() => setSubtypeFilter(option.key)}
+                />
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -282,7 +419,7 @@ function SalidasTable({ token }) {
         )}
 
         <DataTable
-          value={movimientos}
+          value={filteredMovimientos}
           dataKey="id"
           header={header}
           className={`users-datatable${loading ? ' users-datatable--loading-content' : ''}`}
@@ -292,10 +429,14 @@ function SalidasTable({ token }) {
           size="small"
           scrollable
           scrollHeight="flex"
+          frozenWidth="40px"
           paginator
           rows={25}
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
+          reorderableColumns
+          resizableColumns
+          columnResizeMode="fit"
           filters={filters}
           onFilter={handleTableFilterChange}
           globalFilterFields={[
@@ -309,15 +450,81 @@ function SalidasTable({ token }) {
             'funcional_label',
           ]}
           onRowClick={handleRowClick}
+          rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
+          selectionMode="multiple"
+          selection={selectedRows}
+          onSelectionChange={(e) => {
+            if (!isCheckboxSelection(e)) return
+            setSelectedRows(e.value || [])
+          }}
         >
-          <Column field="no_documento" header="Documento" body={(rowData) => cellWithTooltip(rowData, 'no_documento')} sortable filter />
-          <Column field="fecha" header="Fecha" body={(rowData) => cellWithTooltip(rowData, 'fecha')} sortable filter />
-          <Column field="sucursal_nombre" header="Sucursal" body={(rowData) => cellWithTooltip(rowData, 'sucursal_nombre')} sortable filter />
-          <Column field="sub_tipo_nombre" header="Subtipo" body={(rowData) => cellWithTooltip(rowData, 'sub_tipo_nombre')} sortable filter />
-          <Column field="sucursal_objetivo_nombre" header="Destino" body={(rowData) => cellWithTooltip(rowData, 'sucursal_objetivo_nombre')} sortable filter />
-          <Column field="estado_nombre" header="Estado" body={(rowData) => cellWithTooltip(rowData, 'estado_nombre')} sortable filter />
-          <Column field="total" header="Total" body={totalBodyTemplate} sortable />
-          <Column field="funcional_label" header="Funcional" body={(rowData) => cellWithTooltip(rowData, 'funcional_label')} />
+          <Column
+            selectionMode="multiple"
+            frozen
+            headerClassName="row-selection-column"
+            bodyClassName="row-selection-column"
+            style={selectionColStyle}
+            headerStyle={selectionColStyle}
+            bodyStyle={selectionColStyle}
+            exportable={false}
+            reorderable={false}
+          />
+
+          <Column
+            field="no_documento"
+            header="Documento"
+            body={(rowData) => cellWithTooltip(rowData, 'no_documento')}
+            sortable
+            filter
+            className={columnClassName('no_documento')}
+          />
+          <Column
+            field="fecha"
+            header="Fecha"
+            body={(rowData) => cellWithTooltip(rowData, 'fecha')}
+            sortable
+            filter
+            className={columnClassName('fecha')}
+          />
+          <Column
+            field="sucursal_nombre"
+            header="Sucursal"
+            body={(rowData) => cellWithTooltip(rowData, 'sucursal_nombre')}
+            sortable
+            filter
+            className={columnClassName('sucursal_nombre')}
+          />
+          <Column
+            field="sub_tipo_nombre"
+            header="Tipo"
+            body={(rowData) => cellWithTooltip(rowData, 'sub_tipo_nombre')}
+            sortable
+            filter
+            className={columnClassName('sub_tipo_nombre')}
+          />
+          <Column
+            field="sucursal_objetivo_nombre"
+            header="Destino"
+            body={(rowData) => cellWithTooltip(rowData, 'sucursal_objetivo_nombre')}
+            sortable
+            filter
+            className={columnClassName('sucursal_objetivo_nombre')}
+          />
+          <Column
+            field="estado_nombre"
+            header="Estado"
+            body={(rowData) => cellWithTooltip(rowData, 'estado_nombre')}
+            sortable
+            filter
+            className={columnClassName('estado_nombre')}
+          />
+          <Column field="total" header="Total" body={totalBodyTemplate} sortable className={columnClassName('total')} />
+          <Column
+            field="funcional_label"
+            header="Funcional"
+            body={(rowData) => cellWithTooltip(rowData, 'funcional_label')}
+            className={columnClassName('funcional_label')}
+          />
         </DataTable>
       </div>
 
@@ -327,6 +534,8 @@ function SalidasTable({ token }) {
         onCreated={handleCreated}
         token={token}
         onError={showErrorToast}
+        preloadedTipoMovimientos={prefetchedTipoMovimientos}
+        preloadedSubTipos={prefetchedSubTiposSalida}
       />
 
       <SalidaDetails
