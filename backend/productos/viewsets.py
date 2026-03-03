@@ -24,7 +24,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Producto.objects.select_related("marca")
         .prefetch_related("casas_comerciales", "oem_productos__oem")
         .all()
-        .order_by("nombre")
+        .order_by("-creado_en", "-id")
     )
     serializer_class = ProductoSerializer
     permission_classes = [IsAuthenticated, ProductosModulePermission]
@@ -144,7 +144,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
 
 
 class OEMViewSet(viewsets.ModelViewSet):
-    queryset = OEM.objects.all().order_by("codigo")
+    queryset = OEM.objects.all().order_by("-id")
     serializer_class = OEMSerializer
     permission_classes = [IsAuthenticated, ProductosModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -156,7 +156,7 @@ class OEMProductoViewSet(viewsets.ModelViewSet):
     queryset = (
         OEMProducto.objects.select_related("producto", "oem")
         .all()
-        .order_by("producto__nombre", "oem__codigo")
+        .order_by("-id")
     )
     serializer_class = OEMProductoSerializer
     permission_classes = [IsAuthenticated, ProductosModulePermission]
@@ -173,7 +173,7 @@ class ProductoAlternoViewSet(viewsets.ModelViewSet):
     queryset = (
         ProductoAlterno.objects.select_related("producto", "alterno")
         .all()
-        .order_by("producto__nombre", "alterno__nombre")
+        .order_by("-id")
     )
     serializer_class = ProductoAlternoSerializer
     permission_classes = [IsAuthenticated, ProductosModulePermission]

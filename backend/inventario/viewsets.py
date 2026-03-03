@@ -41,7 +41,7 @@ from .serializers import (
 
 
 class SucursalViewSet(viewsets.ModelViewSet):
-    queryset = Sucursal.objects.all().order_by("nombre")
+    queryset = Sucursal.objects.all().order_by("-id")
     serializer_class = SucursalSerializer
     permission_classes = [IsAuthenticated, SucursalScopedModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -68,7 +68,7 @@ class SucursalViewSet(viewsets.ModelViewSet):
 
 class BodegaViewSet(viewsets.ModelViewSet):
     queryset = Bodega.objects.select_related("sucursal").all().order_by(
-        "sucursal__nombre", "nombre"
+        "-id"
     )
     serializer_class = BodegaSerializer
     permission_classes = [IsAuthenticated, BodegasModulePermission]
@@ -108,7 +108,7 @@ class DivisionViewSet(viewsets.ModelViewSet):
     queryset = (
         Division.objects.select_related("tipo_division", "bodega", "bodega__sucursal")
         .all()
-        .order_by("bodega__nombre", "nombre")
+        .order_by("-id")
     )
     serializer_class = DivisionSerializer
     permission_classes = [IsAuthenticated, BodegasModulePermission]
@@ -158,7 +158,7 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
             "division__tipo_division",
         )
         .all()
-        .order_by("division__nombre", "nombre")
+        .order_by("-id")
     )
     serializer_class = SubDivisionSerializer
     permission_classes = [IsAuthenticated, BodegasModulePermission]
@@ -218,7 +218,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
         )
         .prefetch_related("producto__casas_comerciales", "producto__oem_productos__oem")
         .all()
-        .order_by("subdivision__division__bodega__nombre", "producto__nombre")
+        .order_by("-id")
     )
     serializer_class = InventarioSerializer
     permission_classes = [IsAuthenticated, InventarioModulePermission]
@@ -427,7 +427,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 resolved.append(f"-{target_key}" if descending else target_key)
 
         if not resolved:
-            return ["nombre", "codigo", "producto_id"]
+            return ["-producto_id"]
 
         if "producto_id" not in {term.lstrip("-") for term in resolved}:
             resolved.append("producto_id")
@@ -502,7 +502,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
     def tabla(self, request, *args, **kwargs):
         branches = list(
             apply_sucursal_scope(
-                Sucursal.objects.all().order_by("nombre"),
+                Sucursal.objects.all().order_by("-id"),
                 request.user,
                 RolPermiso.Modulos.INVENTARIO,
                 "id",

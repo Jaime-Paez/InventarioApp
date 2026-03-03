@@ -61,7 +61,8 @@ class ProductoSerializer(serializers.ModelSerializer):
         source="casas_comerciales",
         queryset=CasaComercial.objects.all(),
         many=True,
-        required=False,
+        required=True,
+        allow_empty=False,
         write_only=True,
     )
     marca = MarcaSerializer(read_only=True)
@@ -101,7 +102,24 @@ class ProductoSerializer(serializers.ModelSerializer):
                     "required": "El codigo del producto es obligatorio.",
                     "unique": "Este codigo ya existe.",
                 },
-            }
+            },
+            "descripcion": {
+                "required": True,
+                "allow_blank": False,
+                "error_messages": {
+                    "blank": "La descripcion del producto es obligatoria.",
+                    "required": "La descripcion del producto es obligatoria.",
+                },
+            },
+            "precio": {
+                "required": True,
+                "allow_null": False,
+                "error_messages": {
+                    "null": "El precio del producto es obligatorio.",
+                    "required": "El precio del producto es obligatorio.",
+                    "invalid": "Ingresa un precio valido.",
+                },
+            },
         }
 
     def get_alternativas(self, obj):
@@ -117,6 +135,32 @@ class ProductoSerializer(serializers.ModelSerializer):
                 }
             )
         return alternativas
+
+    def validate(self, attrs):
+        errors = {}
+
+        descripcion = attrs.get("descripcion", serializers.empty)
+        if descripcion is serializers.empty and self.instance is not None:
+            descripcion = self.instance.descripcion
+        if not str(descripcion or "").strip():
+            errors["descripcion"] = ["La descripcion del producto es obligatoria."]
+
+        precio = attrs.get("precio", serializers.empty)
+        if precio is serializers.empty and self.instance is not None:
+            precio = self.instance.precio
+        if precio in (serializers.empty, None):
+            errors["precio"] = ["El precio del producto es obligatorio."]
+
+        casas_comerciales = attrs.get("casas_comerciales", serializers.empty)
+        if casas_comerciales is serializers.empty and self.instance is not None:
+            casas_comerciales = list(self.instance.casas_comerciales.all())
+        if not casas_comerciales:
+            errors["casas_comerciales_ids"] = ["Debe seleccionar al menos una casa comercial."]
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return attrs
 
 
 class ProductoDetailSerializer(ProductoSerializer):
@@ -141,6 +185,9 @@ class ProductoDetailSerializer(ProductoSerializer):
             "nombre": bodega.nombre,
             "sucursal_id": bodega.sucursal_id,
             "sucursal": sucursal_payload or self._serialize_sucursal(getattr(bodega, "sucursal", None)),
+            "ancho_metros": getattr(bodega, "ancho_metros", 0),
+            "alto_metros": getattr(bodega, "alto_metros", 0),
+            "ubicaciones": getattr(bodega, "ubicaciones", []) or [],
         }
 
     def _serialize_division(self, division, bodega_payload=None):
@@ -202,6 +249,9 @@ class ProductoDetailSerializer(ProductoSerializer):
                 "id",
                 "nombre",
                 "sucursal_id",
+                "ancho_metros",
+                "alto_metros",
+                "ubicaciones",
                 "sucursal__id",
                 "sucursal__nombre",
             )

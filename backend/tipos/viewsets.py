@@ -29,7 +29,7 @@ from .serializers import (
 
 
 class PaisViewSet(viewsets.ModelViewSet):
-    queryset = Pais.objects.all().order_by("nombre")
+    queryset = Pais.objects.all().order_by("-id")
     serializer_class = PaisSerializer
     permission_classes = [IsAuthenticated, ProveedoresCasasModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -38,7 +38,7 @@ class PaisViewSet(viewsets.ModelViewSet):
 
 
 class TipoMovimientoViewSet(viewsets.ModelViewSet):
-    queryset = TipoMovimiento.objects.all().order_by("nombre")
+    queryset = TipoMovimiento.objects.all().order_by("-id")
     serializer_class = TipoMovimientoSerializer
     permission_classes = [IsAuthenticated, MovimientosCatalogosPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -50,7 +50,7 @@ class SubTipoMovimientoViewSet(viewsets.ModelViewSet):
     queryset = (
         SubTipoMovimiento.objects.select_related("tipo_movimiento")
         .all()
-        .order_by("tipo_movimiento__nombre", "nombre")
+        .order_by("-id")
     )
     serializer_class = SubTipoMovimientoSerializer
     permission_classes = [IsAuthenticated, MovimientosCatalogosPermission]
@@ -60,7 +60,7 @@ class SubTipoMovimientoViewSet(viewsets.ModelViewSet):
 
 
 class EstadoMovimientoViewSet(viewsets.ModelViewSet):
-    queryset = EstadoMovimiento.objects.all().order_by("nombre")
+    queryset = EstadoMovimiento.objects.all().order_by("-id")
     serializer_class = EstadoMovimientoSerializer
     permission_classes = [IsAuthenticated, MovimientosCatalogosPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -69,7 +69,7 @@ class EstadoMovimientoViewSet(viewsets.ModelViewSet):
 
 
 class EstadoProductoViewSet(viewsets.ModelViewSet):
-    queryset = EstadoProducto.objects.all().order_by("nombre")
+    queryset = EstadoProducto.objects.all().order_by("-id")
     serializer_class = EstadoProductoSerializer
     permission_classes = [IsAuthenticated, InventarioModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -78,7 +78,7 @@ class EstadoProductoViewSet(viewsets.ModelViewSet):
 
 
 class TipoPagoViewSet(viewsets.ModelViewSet):
-    queryset = TipoPago.objects.all().order_by("nombre")
+    queryset = TipoPago.objects.all().order_by("-id")
     serializer_class = TipoPagoSerializer
     permission_classes = [IsAuthenticated, MovimientosCatalogosPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -87,7 +87,7 @@ class TipoPagoViewSet(viewsets.ModelViewSet):
 
 
 class TipoDivisionViewSet(viewsets.ModelViewSet):
-    queryset = TipoDivision.objects.all().order_by("nombre")
+    queryset = TipoDivision.objects.all().order_by("-id")
     serializer_class = TipoDivisionSerializer
     permission_classes = [IsAuthenticated, BodegasModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

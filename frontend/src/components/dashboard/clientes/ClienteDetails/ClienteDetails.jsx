@@ -317,6 +317,13 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
       return
     }
 
+    const hadCedulaInitially = Boolean(String(originalData.cedula_ruc || '').trim())
+    if (hadCedulaInitially && !payload.cedula_ruc) {
+      setSaving(false)
+      notifyError('La cedula/RUC es obligatoria para este cliente.')
+      return
+    }
+
     try {
       const response = await authFetch(
         `${API_URL}/solicitudes/clientes/${clienteId}/`,
@@ -514,6 +521,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
 
   const isViewMode = !isEditing
   const editorDisabled = saving || loadingData || !isEditing
+  const hadCedulaBefore = Boolean(String(originalData.cedula_ruc || '').trim())
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
@@ -604,6 +612,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                     type="text"
                     value={formData.cedula_ruc}
                     onChange={handleChange}
+                    required={hadCedulaBefore}
                     disabled={editorDisabled}
                   />
                 </label>

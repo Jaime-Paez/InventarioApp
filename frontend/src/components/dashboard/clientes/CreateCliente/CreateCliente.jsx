@@ -249,6 +249,12 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
       return
     }
 
+    if (!payload.cedula_ruc) {
+      setLoading(false)
+      notifyError('Define la cedula/RUC del cliente.')
+      return
+    }
+
     try {
       const response = await authFetch(
         `${API_URL}/solicitudes/clientes/`,
@@ -439,7 +445,7 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
           </div>
         </header>
 
-        <form className="create-user__form" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones del cliente">
             <button type="button" className="create-user__tab create-user__tab--active" disabled>
               General
@@ -490,6 +496,7 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
                     placeholder="Cedula o RUC"
                     value={formData.cedula_ruc}
                     onChange={handleChange}
+                    required
                     disabled={loading}
                   />
                 </label>

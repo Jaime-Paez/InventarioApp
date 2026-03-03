@@ -342,7 +342,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
           </div>
         </header>
 
-        <form className="create-user__form" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones de la casa comercial">
             <button type="button" className="create-user__tab create-user__tab--active" disabled>
               General

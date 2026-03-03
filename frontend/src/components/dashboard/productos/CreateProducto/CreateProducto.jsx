@@ -470,11 +470,11 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
   }, [position])
 
   const handleChange = (event) => {
-    const { name, value } = event.target
+    const { name, value, type, checked } = event.target
     if (name === 'pieza_original') {
       setFormData((prev) => ({
         ...prev,
-        pieza_original: value === 'true',
+        pieza_original: type === 'checkbox' ? checked : value === 'true',
       }))
       return
     }
@@ -1031,9 +1031,27 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
       return
     }
 
+    if (!payload.descripcion) {
+      setLoading(false)
+      notifyError('Define una descripcion para el producto.')
+      return
+    }
+
     if (!payload.marca_id) {
       setLoading(false)
       notifyError('Selecciona una marca para el producto.')
+      return
+    }
+
+    if (!payload.casas_comerciales_ids.length) {
+      setLoading(false)
+      notifyError('Selecciona una casa comercial para el producto.')
+      return
+    }
+
+    if (payload.precio === null) {
+      setLoading(false)
+      notifyError('Define un precio para el producto.')
       return
     }
 
@@ -1053,7 +1071,10 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
           data?.detail ||
           data?.codigo?.[0] ||
           data?.nombre?.[0] ||
+          data?.descripcion?.[0] ||
+          data?.precio?.[0] ||
           data?.marca_id?.[0] ||
+          data?.casas_comerciales_ids?.[0] ||
           'No se pudo crear el producto.'
         throw new Error(detail)
       }
@@ -1287,7 +1308,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
           </div>
         </header>
 
-        <form className="create-user__form" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones del producto">
             <button
               type="button"
@@ -1339,7 +1360,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                       />
                     </label>
 
-                    <label className="create-user__field">
+                    <label className="create-user__field create-user__field--required">
                       <span>Marca</span>
                       <div className="create-user__dropdown" ref={marcaDropdownRef}>
                         <button
@@ -1413,7 +1434,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                       {!codigoChecking && codigoError && <small className="create-user__field-error">{codigoError}</small>}
                     </label>
 
-                    <label className="create-user__field">
+                    <label className="create-user__field create-user__field--required">
                       <span>Casa comercial</span>
                       <div className="create-user__dropdown" ref={casaDropdownRef}>
                         <button
@@ -1475,17 +1496,18 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                       </div>
                     </label>
 
-                    <label className="create-user__field">
-                      <span>Original</span>
-                      <select
+                    <label className="create-user__checkbox">
+                      <input
                         name="pieza_original"
-                        value={formData.pieza_original ? 'true' : 'false'}
+                        type="checkbox"
+                        checked={Boolean(formData.pieza_original)}
                         onChange={handleChange}
                         disabled={loading}
-                      >
-                        <option value="true">Activo</option>
-                        <option value="false">Inactivo</option>
-                      </select>
+                      />
+                      <div>
+                        <span>Original</span>
+                        <p>Marcar cuando la pieza es original.</p>
+                      </div>
                     </label>
 
                     <label className="create-user__field create-user__field--full">
@@ -1495,6 +1517,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                         placeholder="Describe el producto, su uso, diferentes nombres o caracteristicas importantes."
                         value={formData.descripcion}
                         onChange={handleChange}
+                        required
                         disabled={loading}
                       />
                     </label>
@@ -1534,6 +1557,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                           placeholder="Precio al que se pretende vender"
                           value={formData.precio}
                           onChange={handleChange}
+                          required
                           disabled={loading}
                         />
                       </div>

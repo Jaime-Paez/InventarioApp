@@ -34,6 +34,8 @@
   color: var(--color-text-primary);
   pointer-events: auto;
   animation: create-user-modal-in 180ms ease both;
+  transition: width 220ms ease, height 220ms ease, top 220ms ease, left 220ms ease;
+  will-change: width, height, top, left;
 }
 
 .create-user__overlay--closing {
@@ -42,6 +44,16 @@
 
 .create-user__modal--closing {
   animation: create-user-modal-out 180ms ease both;
+}
+
+.create-user__modal--resizing {
+  transition: none !important;
+  will-change: auto;
+}
+
+.create-user__modal--moving {
+  transition: none !important;
+  will-change: auto;
 }
 
 @keyframes create-user-overlay-in {
@@ -414,9 +426,32 @@
   opacity: 0.75;
 }
 
+.create-user__field:has(:is(input:not([type='checkbox']):not([type='radio']), select, textarea):required) > span::after,
+.create-user__field:has(:is(input:not([type='checkbox']):not([type='radio']), select, textarea):required) .create-user__field-label > span::after {
+  content: ' *';
+  color: var(--color-error-text);
+  font-weight: 700;
+}
+
+.create-user__field.create-user__field--required > span::after,
+.create-user__field.create-user__field--required .create-user__field-label > span::after {
+  content: ' *';
+  color: var(--color-error-text);
+  font-weight: 700;
+}
+
 .dashboard-shell.dark .create-user__field span {
   color: var(--color-button-primary);
   opacity: 0.78;
+}
+
+.dashboard-shell.dark
+  .create-user__field:has(:is(input:not([type='checkbox']):not([type='radio']), select, textarea):required) > span::after,
+.dashboard-shell.dark
+  .create-user__field:has(:is(input:not([type='checkbox']):not([type='radio']), select, textarea):required) .create-user__field-label > span::after,
+.dashboard-shell.dark .create-user__field.create-user__field--required > span::after,
+.dashboard-shell.dark .create-user__field.create-user__field--required .create-user__field-label > span::after {
+  color: var(--color-error-text-dark);
 }
 
 .create-user__field--full {
@@ -559,6 +594,12 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
 }
 
+.create-user__form--create.create-user__form--submitted
+  :is(input:not([type='checkbox']):not([type='radio']), select, textarea):required:invalid {
+  border-color: var(--color-error-border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border) 32%, transparent);
+}
+
 .dashboard-shell.dark .create-user__field input,
 .dashboard-shell.dark .create-user__field select,
 .dashboard-shell.dark .create-user__field textarea {
@@ -594,6 +635,12 @@
 .dashboard-shell.dark .create-user__field textarea:focus {
   border-color: var(--color-primary-dark);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 32%, transparent);
+}
+
+.dashboard-shell.dark .create-user__form--create.create-user__form--submitted
+  :is(input:not([type='checkbox']):not([type='radio']), select, textarea):required:invalid {
+  border-color: var(--color-error-border-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border-dark) 36%, transparent);
 }
 
 .create-user__money {
@@ -1566,8 +1613,11 @@
   .create-user__overlay,
   .create-user__overlay--closing,
   .create-user__modal,
-  .create-user__modal--closing {
+  .create-user__modal--closing,
+  .create-user__modal--resizing,
+  .create-user__modal--moving {
     animation: none !important;
+    transition: none !important;
   }
 }
 

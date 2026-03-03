@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FilterMatchMode, FilterOperator } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -10,7 +10,9 @@ import CreateSalida from './CreateSalida'
 import SalidaDetails from './SalidaDetails'
 import './SalidasTable.css'
 import '../admin/UsersTable/UsersTable.css'
+import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
+import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
   buildPrimeOrdering,
@@ -118,6 +120,19 @@ const createInitialFilters = () => ({
   },
 })
 
+const initialSearchCriteria = {
+  no_documento: '',
+  fecha_desde: '',
+  fecha_hasta: '',
+  sucursal: '',
+  sub_tipo: '',
+  estado: '',
+  sucursal_objetivo: '',
+  total_min: '',
+  total_max: '',
+  funcional: '',
+}
+
 const normId = (value) => (value == null ? null : String(value))
 const isCheckboxSelection = (event) => {
   const type = event?.type
@@ -156,6 +171,13 @@ function SalidasTable({ token }) {
   const [prefetchedSubTiposSalida, setPrefetchedSubTiposSalida] = useState([])
   const [salidaCatalogsPreloaded, setSalidaCatalogsPreloaded] = useState(false)
   const [subtypeFilter, setSubtypeFilter] = useState('all')
+  const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
+  const [showSearchModal, setShowSearchModal] = useState(false)
+  const [processedRows, setProcessedRows] = useState(null)
+  const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
+  const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
+  const lastSearchRef = useRef({ ...initialSearchCriteria })
+  const SEARCH_PADDING = 12
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -185,7 +207,7 @@ function SalidasTable({ token }) {
     []
   )
 
-  const buildMovimientosListUrl = useCallback((options = {}) => {
+  const buildMovimientosListUrl = useCallback((criteria = {}, options = {}) => {
     const params = new URLSearchParams()
     const page = Number(options?.page) || 1
     const rows = Number(options?.rows) || 25
@@ -197,6 +219,26 @@ function SalidasTable({ token }) {
     params.set('tipo', 'salida')
     params.set('page', String(page))
     params.set('page_size', String(rows))
+
+    const addIfPresent = (key, value) => {
+      const parsed = String(value ?? '').trim()
+      if (parsed) params.set(key, parsed)
+    }
+
+    addIfPresent('no_documento', criteria?.no_documento)
+    addIfPresent('fecha_desde', criteria?.fecha_desde)
+    addIfPresent('fecha_hasta', criteria?.fecha_hasta)
+    addIfPresent('sucursal', criteria?.sucursal)
+    addIfPresent('sub_tipo', criteria?.sub_tipo)
+    addIfPresent('estado', criteria?.estado)
+    addIfPresent('sucursal_objetivo', criteria?.sucursal_objetivo)
+    addIfPresent('total_min', criteria?.total_min)
+    addIfPresent('total_max', criteria?.total_max)
+
+    const funcionalValue = String(criteria?.funcional ?? '').trim().toLowerCase()
+    if (funcionalValue === 'si' || funcionalValue === 'no') {
+      params.set('funcional', funcionalValue)
+    }
 
     if (subtype && subtype !== 'all') {
       params.set('subtipo', subtype)
@@ -234,6 +276,7 @@ function SalidasTable({ token }) {
       const tableSortField = options?.tableSortField ?? null
       const tableSortOrder = options?.tableSortOrder ?? null
       const subtype = String(options?.subtypeFilter || 'all').trim()
+      const criteria = options?.criteria ?? lastSearchRef.current
       const globalSearchValue = Object.prototype.hasOwnProperty.call(options, 'globalSearchValue')
         ? options?.globalSearchValue
         : getPrimeGlobalFilterValue(tableFilters)
@@ -243,7 +286,7 @@ function SalidasTable({ token }) {
       setLoading(true)
       setError(null)
       try {
-        const url = buildMovimientosListUrl({
+        const url = buildMovimientosListUrl(criteria, {
           page,
           rows,
           tableFilters,
@@ -348,6 +391,7 @@ function SalidasTable({ token }) {
       tableSortOrder: sortOrder,
       globalSearchValue: globalFilterValue,
       subtypeFilter,
+      criteria: lastSearchRef.current,
     })
   }, [token, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter])
 
@@ -413,6 +457,7 @@ function SalidasTable({ token }) {
       fetchMovimientos({
         page: options?.page ?? currentPage,
         rows: options?.rows ?? pageSize,
+        criteria: options?.criteria ?? lastSearchRef.current,
         tableFilters: options?.tableFilters ?? filters,
         tableSortField: options?.tableSortField ?? sortField,
         tableSortOrder: options?.tableSortOrder ?? sortOrder,
@@ -580,6 +625,104 @@ function SalidasTable({ token }) {
     setShowCreateModal(true)
   }
 
+  const handleSearchInputChange = (event) => {
+    const { name, value } = event.target
+    setSearchCriteria((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault()
+    const nextCriteria = { ...searchCriteria }
+    lastSearchRef.current = nextCriteria
+    setShowSearchModal(false)
+    setSelectedRows([])
+    refreshData({
+      page: 1,
+      criteria: nextCriteria,
+    })
+  }
+
+  const focusSearch = () => {
+    setSearchCriteria({ ...lastSearchRef.current })
+    setShowSearchModal(true)
+  }
+
+  const exportColumns = useMemo(
+    () => [
+      { key: 'no_documento', header: 'Documento' },
+      { key: 'fecha', header: 'Fecha' },
+      { key: 'sucursal_nombre', header: 'Sucursal' },
+      { key: 'sub_tipo_nombre', header: 'Tipo' },
+      { key: 'sucursal_objetivo_nombre', header: 'Destino' },
+      { key: 'estado_nombre', header: 'Estado' },
+      { key: 'total', header: 'Total' },
+      { key: 'funcional_label', header: 'Funcional' },
+    ],
+    []
+  )
+
+  const getExportValue = useCallback((row, field) => {
+    if (field === 'total') {
+      const total = Number(row?.total)
+      return Number.isFinite(total) ? total.toFixed(2) : ''
+    }
+    return row?.[field] ?? ''
+  }, [])
+
+  const getRowsToExport = useCallback(() => {
+    if (selectedRows?.length) return selectedRows
+    return processedRows === null ? movimientos : processedRows
+  }, [movimientos, processedRows, selectedRows])
+
+  const notifyExportWarning = useCallback((detail) => {
+    toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail, life: 3000 })
+  }, [])
+
+  const handleExportExcel = useCallback(async () => {
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
+      return
+    }
+    await exportToExcel({
+      rows,
+      columns: exportColumns,
+      valueGetter: getExportValue,
+      fileName: buildFileName('salidas'),
+    })
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+
+  const handleExportPdf = useCallback(async () => {
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
+      return
+    }
+    await exportToPdf({
+      rows,
+      columns: exportColumns,
+      valueGetter: getExportValue,
+      fileName: buildFileName('salidas'),
+      title: 'Reporte de Salidas',
+    })
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+
+  const { shouldRender: shouldRenderSearchModal, isClosing: isClosingSearchModal } = useModalAnimation(showSearchModal)
+
+  useLayoutEffect(() => {
+    if (!showSearchModal) return
+    const width = Math.min(720, Math.max(0, window.innerWidth - SEARCH_PADDING * 2))
+    const height = Math.min(520, Math.max(0, window.innerHeight - SEARCH_PADDING * 2))
+    setSearchSize({ width, height })
+    setSearchPosition({
+      x: Math.max((window.innerWidth - width) / 2, SEARCH_PADDING),
+      y: Math.max((window.innerHeight - height) / 2, SEARCH_PADDING),
+    })
+  }, [showSearchModal, SEARCH_PADDING])
+
   const header = (
     <div className="users-header">
       <div className="users-header__left">
@@ -614,6 +757,15 @@ function SalidasTable({ token }) {
           <i className="pi pi-filter-slash" />
         </button>
       </div>
+      <div className="users-header__right">
+        <span className="users-header__count">Reg. {totalRecords ?? 0}</span>
+        <button className="users-circle users-circle--excel" type="button" title="Excel" onClick={handleExportExcel}>
+          <i className="pi pi-file-excel" />
+        </button>
+        <button className="users-circle users-circle--pdf" type="button" title="PDF" onClick={handleExportPdf}>
+          <i className="pi pi-file-pdf" />
+        </button>
+      </div>
     </div>
   )
 
@@ -625,6 +777,7 @@ function SalidasTable({ token }) {
       <div className="users-page__top">
         <div className="users-page__actions">
           <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={handleOpenCreateModal} type="button" />
+          <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
           <div className="salidas-type-filter" role="group" aria-label="Filtros de tipo de salida">
             {SUBTYPE_FILTERS.map((option) => {
               const active = subtypeFilter === option.key
@@ -686,6 +839,7 @@ function SalidasTable({ token }) {
           columnResizeMode="fit"
           filters={filters}
           onFilter={handleTableFilterChange}
+          onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={[
             'no_documento',
             'fecha',
@@ -796,6 +950,196 @@ function SalidasTable({ token }) {
         onDeleted={handleDeleted}
         onError={showErrorToast}
       />
+
+      {shouldRenderSearchModal && (
+        <div
+          className={`create-user__overlay${isClosingSearchModal ? ' create-user__overlay--closing' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          style={{ padding: `${SEARCH_PADDING}px` }}
+        >
+          <div
+            className={`create-user__modal${isClosingSearchModal ? ' create-user__modal--closing' : ''}`}
+            style={{
+              top: searchPosition.y,
+              left: searchPosition.x,
+              width: searchSize.width,
+              height: searchSize.height,
+              maxWidth: `calc(100vw - ${SEARCH_PADDING * 2}px)`,
+              maxHeight: `calc(100vh - ${SEARCH_PADDING * 2}px)`,
+            }}
+          >
+            <header className="create-user__header">
+              <div className="create-user__header-text">
+                <h3>Búsqueda avanzada de salidas</h3>
+              </div>
+              <div className="create-user__header-actions">
+                <button
+                  type="button"
+                  className="create-user__icon-button"
+                  onClick={() => setShowSearchModal(false)}
+                  aria-label="Cerrar"
+                >
+                  <i className="pi pi-times" aria-hidden="true" />
+                </button>
+              </div>
+            </header>
+
+            <form className="create-user__form" onSubmit={handleSearchSubmit}>
+              <div className="create-user__body">
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Filtros</p>
+                      <h4>Búsqueda avanzada</h4>
+                    </div>
+                  </div>
+
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Documento</span>
+                      <input
+                        name="no_documento"
+                        type="text"
+                        placeholder="Ej: FAC-001"
+                        value={searchCriteria.no_documento}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Sucursal</span>
+                      <input
+                        name="sucursal"
+                        type="text"
+                        placeholder="Ej: Matriz"
+                        value={searchCriteria.sucursal}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Fecha desde</span>
+                      <input
+                        name="fecha_desde"
+                        type="date"
+                        value={searchCriteria.fecha_desde}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Fecha hasta</span>
+                      <input
+                        name="fecha_hasta"
+                        type="date"
+                        value={searchCriteria.fecha_hasta}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Subtipo</span>
+                      <input
+                        name="sub_tipo"
+                        type="text"
+                        placeholder="Ej: Venta, Devolución"
+                        value={searchCriteria.sub_tipo}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Estado</span>
+                      <input
+                        name="estado"
+                        type="text"
+                        placeholder="Ej: Facturado"
+                        value={searchCriteria.estado}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Sucursal destino</span>
+                      <input
+                        name="sucursal_objetivo"
+                        type="text"
+                        placeholder="Ej: Norte"
+                        value={searchCriteria.sucursal_objetivo}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Funcional</span>
+                      <select
+                        name="funcional"
+                        value={searchCriteria.funcional}
+                        onChange={handleSearchInputChange}
+                      >
+                        <option value="">Todos</option>
+                        <option value="si">Si</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Total mínimo</span>
+                      <input
+                        name="total_min"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="Ej: 100"
+                        value={searchCriteria.total_min}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Total máximo</span>
+                      <input
+                        name="total_max"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="Ej: 1000"
+                        value={searchCriteria.total_max}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+                  </div>
+                </section>
+              </div>
+
+              <div className="create-user__footer">
+                <div className="user-details__footer-left">
+                  <button
+                    type="button"
+                    className="create-user__action"
+                    onClick={() => setSearchCriteria(initialSearchCriteria)}
+                  >
+                    Limpiar filtros
+                  </button>
+                  <button
+                    type="button"
+                    className="create-user__action create-user__action--cancel"
+                    onClick={() => setShowSearchModal(false)}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+                <div className="user-details__footer-right">
+                  <button type="submit" className="create-user__action create-user__action--primary">
+                    Buscar
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

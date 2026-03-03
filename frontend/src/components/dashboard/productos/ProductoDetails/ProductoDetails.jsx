@@ -512,11 +512,11 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
 
   const handleChange = (event) => {
     if (!isEditing) return
-    const { name, value } = event.target
+    const { name, value, type, checked } = event.target
     if (name === 'pieza_original') {
       setFormData((prev) => ({
         ...prev,
-        pieza_original: value === 'true',
+        pieza_original: type === 'checkbox' ? checked : value === 'true',
       }))
       return
     }
@@ -873,9 +873,27 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       return
     }
 
+    if (!payload.descripcion) {
+      setSaving(false)
+      notifyError('Define una descripcion para el producto.')
+      return
+    }
+
     if (!payload.marca_id) {
       setSaving(false)
       notifyError('Selecciona una marca para el producto.')
+      return
+    }
+
+    if (!payload.casas_comerciales_ids.length) {
+      setSaving(false)
+      notifyError('Selecciona una casa comercial para el producto.')
+      return
+    }
+
+    if (payload.precio === null) {
+      setSaving(false)
+      notifyError('Define un precio para el producto.')
       return
     }
 
@@ -895,7 +913,10 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
           data?.detail ||
           data?.codigo?.[0] ||
           data?.nombre?.[0] ||
+          data?.descripcion?.[0] ||
+          data?.precio?.[0] ||
           data?.marca_id?.[0] ||
+          data?.casas_comerciales_ids?.[0] ||
           'No se pudo actualizar el producto.'
         throw new Error(detail)
       }
@@ -1229,7 +1250,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                       />
                     </label>
 
-                    <label className="create-user__field">
+                    <label className="create-user__field create-user__field--required">
                       <span>Marca</span>
                       <div className="create-user__dropdown" ref={marcaDropdownRef}>
                         <button
@@ -1298,7 +1319,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                       />
                     </label>
 
-                    <label className="create-user__field">
+                    <label className="create-user__field create-user__field--required">
                       <span>Casa comercial</span>
                       <div className="create-user__dropdown" ref={casaDropdownRef}>
                         <button
@@ -1358,12 +1379,27 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                       </div>
                     </label>
 
+                    <label className="create-user__checkbox">
+                      <input
+                        name="pieza_original"
+                        type="checkbox"
+                        checked={Boolean(formData.pieza_original)}
+                        onChange={handleChange}
+                        disabled={editorDisabled}
+                      />
+                      <div>
+                        <span>Original</span>
+                        <p>Marcar cuando la pieza es original.</p>
+                      </div>
+                    </label>
+
                     <label className="create-user__field create-user__field--full">
                       <span>Descripción</span>
                       <textarea
                         name="descripcion"
                         value={formData.descripcion}
                         onChange={handleChange}
+                        required
                         disabled={editorDisabled}
                       />
                     </label>
@@ -1401,6 +1437,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                           step="0.01"
                           value={formData.precio}
                           onChange={handleChange}
+                          required
                           disabled={editorDisabled}
                         />
                       </div>

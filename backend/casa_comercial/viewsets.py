@@ -9,7 +9,7 @@ from .serializers import CasaComercialSerializer
 
 
 class CasaComercialViewSet(viewsets.ModelViewSet):
-    queryset = CasaComercial.objects.select_related("pais").all().order_by("nombre")
+    queryset = CasaComercial.objects.select_related("pais").all().order_by("-id")
     serializer_class = CasaComercialSerializer
     permission_classes = [IsAuthenticated, ProveedoresCasasModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

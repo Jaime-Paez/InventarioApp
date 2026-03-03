@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
+import './CreateSolicitud.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 
-const MIN_WIDTH = 760
-const MIN_HEIGHT = 560
+const MIN_WIDTH = 860
+const MIN_HEIGHT = 620
 const VIEWPORT_PADDING = 12
 
 const initialCliente = {
@@ -17,13 +18,89 @@ const initialCliente = {
 }
 
 const initialProductoDraft = {
+  productoId: '',
+  codigo: '',
   nombre: '',
-  descripcion: '',
+  oems: '',
+  marca: '',
+  comentario: '',
   cantidad: '1',
 }
+const requiredClienteManualFields = ['cedula_ruc', 'nombres', 'apellidos', 'correo', 'telefono', 'direccion']
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
+const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeString = (value) => String(value ?? '').trim().toLowerCase()
+
+const parseApiErrorValue = (value) => {
+  if (!value) return ''
+  if (typeof value === 'string') return value.trim()
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const parsed = parseApiErrorValue(entry)
+      if (parsed) return parsed
+    }
+    return ''
+  }
+  if (typeof value === 'object') {
+    for (const entry of Object.values(value)) {
+      const parsed = parseApiErrorValue(entry)
+      if (parsed) return parsed
+    }
+  }
+  return ''
+}
+
+const resolveApiErrorMessage = (payload, fallback) => {
+  const detail = parseApiErrorValue(payload?.detail)
+  if (detail) return detail
+  const fallbackFromBody = parseApiErrorValue(payload)
+  if (fallbackFromBody) return fallbackFromBody
+  return fallback
+}
+
+const parseOemInput = (rawValue) => {
+  const source = String(rawValue || '').replace(/;/g, ',').replace(/\n/g, ',')
+  const parts = source.split(',')
+  const seen = new Set()
+  const list = []
+  for (const part of parts) {
+    const value = String(part || '').trim()
+    if (!value) continue
+    const key = normalizeString(value)
+    if (seen.has(key)) continue
+    seen.add(key)
+    list.push(value)
+  }
+  return list
+}
+
+const extractProductoOems = (producto) => {
+  const relaciones = Array.isArray(producto?.oem_productos) ? producto.oem_productos : []
+  const seen = new Set()
+  const result = []
+  for (const relacion of relaciones) {
+    const code = String(relacion?.oem?.codigo || relacion?.codigo || '').trim()
+    if (!code) continue
+    const key = normalizeString(code)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(code)
+  }
+  return result
+}
+
+const formatStockByBranch = (rows) => {
+  const list = Array.isArray(rows) ? rows : []
+  const parts = []
+  for (const row of list) {
+    const nombre = String(row?.sucursal_nombre || 'Sucursal').trim() || 'Sucursal'
+    const cantidad = Number(row?.cantidad)
+    if (!Number.isFinite(cantidad) || cantidad <= 0) continue
+    parts.push(`${nombre}: ${Math.trunc(cantidad)}`)
+  }
+  return parts.join(', ')
+}
 
 const resolveClienteNombre = (cliente) =>
   String(cliente?.nombre_completo || `${cliente?.nombres || ''} ${cliente?.apellidos || ''}`).trim()
@@ -52,12 +129,18 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   const [sucursales, setSucursales] = useState([])
   const [sucursalesLoading, setSucursalesLoading] = useState(false)
 
-  const [showProductoForm, setShowProductoForm] = useState(false)
   const [productoDraft, setProductoDraft] = useState(initialProductoDraft)
-  const [productoError, setProductoError] = useState('')
+  const [selectedDraftProducto, setSelectedDraftProducto] = useState(null)
   const [productos, setProductos] = useState([])
+  const [showCodigoDropdown, setShowCodigoDropdown] = useState(false)
+  const [codigoOptions, setCodigoOptions] = useState([])
+  const [codigoLoading, setCodigoLoading] = useState(false)
+  const [showOemDropdown, setShowOemDropdown] = useState(false)
+  const [oemOptions, setOemOptions] = useState([])
+  const [oemLoading, setOemLoading] = useState(false)
 
-  const [error, setError] = useState('')
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+  const [productoAttempted, setProductoAttempted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const [isMaximized, setIsMaximized] = useState(false)
@@ -66,7 +149,13 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
   const modalRef = useRef(null)
   const clienteDropdownRef = useRef(null)
-  const searchTimerRef = useRef(null)
+  const codigoDropdownRef = useRef(null)
+  const oemDropdownRef = useRef(null)
+  const clienteSearchTimerRef = useRef(null)
+  const codigoSearchTimerRef = useRef(null)
+  const codigoSearchSeqRef = useRef(0)
+  const oemSearchTimerRef = useRef(null)
+  const oemSearchSeqRef = useRef(0)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -78,9 +167,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
       if (!message) return
       if (onError) {
         onError(message)
-        return
       }
-      setError(message)
     },
     [onError]
   )
@@ -110,19 +197,33 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     setDescripcionGeneral('')
     setActiveTab('productos')
 
-    setShowProductoForm(false)
     setProductoDraft(initialProductoDraft)
-    setProductoError('')
+    setSelectedDraftProducto(null)
     setProductos([])
+    setShowCodigoDropdown(false)
+    setCodigoOptions([])
+    setCodigoLoading(false)
+    setShowOemDropdown(false)
+    setOemOptions([])
+    setOemLoading(false)
 
-    setError('')
+    setSubmitAttempted(false)
+    setProductoAttempted(false)
     setLoading(false)
     setIsMaximized(false)
     restoreRef.current = null
 
-    if (searchTimerRef.current) {
-      clearTimeout(searchTimerRef.current)
-      searchTimerRef.current = null
+    if (clienteSearchTimerRef.current) {
+      clearTimeout(clienteSearchTimerRef.current)
+      clienteSearchTimerRef.current = null
+    }
+    if (codigoSearchTimerRef.current) {
+      clearTimeout(codigoSearchTimerRef.current)
+      codigoSearchTimerRef.current = null
+    }
+    if (oemSearchTimerRef.current) {
+      clearTimeout(oemSearchTimerRef.current)
+      oemSearchTimerRef.current = null
     }
   }, [])
 
@@ -137,10 +238,9 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
       )
       if (!response.ok) throw new Error('No se pudieron cargar las sucursales.')
       const data = await response.json()
-      const list = Array.isArray(data) ? data : data?.results || []
-      setSucursales(list)
+      setSucursales(parseApiList(data))
     } catch (err) {
-      notifyError(err?.message || 'Ocurrió un error al cargar las sucursales.')
+      notifyError(err?.message || 'Ocurrio un error al cargar las sucursales.')
     } finally {
       setSucursalesLoading(false)
     }
@@ -154,7 +254,9 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
   useEffect(
     () => () => {
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+      if (clienteSearchTimerRef.current) clearTimeout(clienteSearchTimerRef.current)
+      if (codigoSearchTimerRef.current) clearTimeout(codigoSearchTimerRef.current)
+      if (oemSearchTimerRef.current) clearTimeout(oemSearchTimerRef.current)
     },
     []
   )
@@ -168,10 +270,10 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
       return
     }
 
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    if (clienteSearchTimerRef.current) clearTimeout(clienteSearchTimerRef.current)
 
     setClienteLoading(true)
-    searchTimerRef.current = setTimeout(async () => {
+    clienteSearchTimerRef.current = setTimeout(async () => {
       try {
         const response = await authFetch(
           `${API_URL}/solicitudes/solicitudes/buscar-cliente/?q=${encodeURIComponent(searchTerm)}&page_size=10`,
@@ -180,8 +282,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
         )
         if (!response.ok) throw new Error('No se pudo buscar el cliente.')
         const data = await response.json()
-        const list = Array.isArray(data) ? data : data?.results || []
-        setClienteResultados(list)
+        setClienteResultados(parseApiList(data))
       } catch {
         setClienteResultados([])
       } finally {
@@ -190,12 +291,105 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     }, 320)
 
     return () => {
-      if (searchTimerRef.current) {
-        clearTimeout(searchTimerRef.current)
-        searchTimerRef.current = null
+      if (clienteSearchTimerRef.current) {
+        clearTimeout(clienteSearchTimerRef.current)
+        clienteSearchTimerRef.current = null
       }
     }
   }, [open, showClienteDropdown, token, clienteSearchTerm])
+
+  const oemSearchTerm = useMemo(() => {
+    const raw = String(productoDraft.oems || '').replace(/;/g, ',')
+    const parts = raw.split(',')
+    return String(parts[parts.length - 1] || '').trim()
+  }, [productoDraft.oems])
+
+  useEffect(() => {
+    if (!open || !showCodigoDropdown) return
+    const term = String(productoDraft.codigo || '').trim()
+    if (!term || term.length < 2 || !token) {
+      setCodigoOptions([])
+      setCodigoLoading(false)
+      return
+    }
+
+    if (codigoSearchTimerRef.current) clearTimeout(codigoSearchTimerRef.current)
+
+    setCodigoLoading(true)
+    codigoSearchTimerRef.current = setTimeout(async () => {
+      const requestId = codigoSearchSeqRef.current + 1
+      codigoSearchSeqRef.current = requestId
+
+      try {
+        const response = await authFetch(
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar productos.')
+        const data = await response.json()
+        if (requestId !== codigoSearchSeqRef.current) return
+        setCodigoOptions(parseApiList(data))
+      } catch {
+        if (requestId !== codigoSearchSeqRef.current) return
+        setCodigoOptions([])
+      } finally {
+        if (requestId === codigoSearchSeqRef.current) {
+          setCodigoLoading(false)
+        }
+      }
+    }, 320)
+
+    return () => {
+      if (codigoSearchTimerRef.current) {
+        clearTimeout(codigoSearchTimerRef.current)
+        codigoSearchTimerRef.current = null
+      }
+    }
+  }, [open, showCodigoDropdown, token, productoDraft.codigo])
+
+  useEffect(() => {
+    if (!open || !showOemDropdown) return
+    if (!oemSearchTerm || oemSearchTerm.length < 2 || !token) {
+      setOemOptions([])
+      setOemLoading(false)
+      return
+    }
+
+    if (oemSearchTimerRef.current) clearTimeout(oemSearchTimerRef.current)
+
+    setOemLoading(true)
+    oemSearchTimerRef.current = setTimeout(async () => {
+      const requestId = oemSearchSeqRef.current + 1
+      oemSearchSeqRef.current = requestId
+
+      try {
+        const response = await authFetch(
+          `${API_URL}/productos/listado/?oem=${encodeURIComponent(oemSearchTerm)}&page_size=20`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar productos por OEM.')
+        const data = await response.json()
+        if (requestId !== oemSearchSeqRef.current) return
+        setOemOptions(parseApiList(data))
+      } catch {
+        if (requestId !== oemSearchSeqRef.current) return
+        setOemOptions([])
+      } finally {
+        if (requestId === oemSearchSeqRef.current) {
+          setOemLoading(false)
+        }
+      }
+    }, 320)
+
+    return () => {
+      if (oemSearchTimerRef.current) {
+        clearTimeout(oemSearchTimerRef.current)
+        oemSearchTimerRef.current = null
+      }
+    }
+  }, [open, showOemDropdown, token, oemSearchTerm])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -218,14 +412,26 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   }, [position])
 
   useEffect(() => {
-    if (!showClienteDropdown) return
     const handleClickOutside = (event) => {
-      if (!clienteDropdownRef.current || clienteDropdownRef.current.contains(event.target)) return
-      setShowClienteDropdown(false)
+      if (showClienteDropdown) {
+        if (!clienteDropdownRef.current || !clienteDropdownRef.current.contains(event.target)) {
+          setShowClienteDropdown(false)
+        }
+      }
+      if (showCodigoDropdown) {
+        if (!codigoDropdownRef.current || !codigoDropdownRef.current.contains(event.target)) {
+          setShowCodigoDropdown(false)
+        }
+      }
+      if (showOemDropdown) {
+        if (!oemDropdownRef.current || !oemDropdownRef.current.contains(event.target)) {
+          setShowOemDropdown(false)
+        }
+      }
     }
     window.addEventListener('mousedown', handleClickOutside)
     return () => window.removeEventListener('mousedown', handleClickOutside)
-  }, [showClienteDropdown])
+  }, [showClienteDropdown, showCodigoDropdown, showOemDropdown])
 
   useEffect(() => {
     const handleMouseMove = (event) => {
@@ -351,7 +557,6 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
   const handleClienteFieldChange = (event) => {
     const { name, value } = event.target
-    setError('')
 
     setCliente((prev) => ({ ...prev, [name]: value }))
     if (selectedCliente && normalizeString(value) !== normalizeString(selectedCliente[name])) {
@@ -394,90 +599,331 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
   const handleProductoDraftChange = (event) => {
     const { name, value } = event.target
-    setProductoDraft((prev) => ({ ...prev, [name]: value }))
-    setProductoError('')
-  }
 
-  const normalizeProductoKey = (item) =>
-    `${String(item?.nombre ?? '').trim().toLowerCase()}|${String(item?.descripcion ?? '')
-      .trim()
-      .toLowerCase()}|${String(item?.cantidad ?? '')}`
-
-  const productoKeySet = new Set(productos.map((item) => normalizeProductoKey(item)).filter(Boolean))
-
-  const handleAgregarProducto = () => {
-    const nombre = String(productoDraft.nombre || '').trim()
-    const descripcion = String(productoDraft.descripcion || '').trim()
-    const cantidad = Number(productoDraft.cantidad)
-
-    if (!nombre) {
-      setProductoError('Ingresa el nombre del producto solicitado.')
+    if (selectedDraftProducto && ['codigo', 'nombre', 'oems', 'marca'].includes(name)) {
+      setSelectedDraftProducto(null)
+      setProductoDraft((prev) => ({
+        ...prev,
+        productoId: '',
+        [name]: value,
+      }))
       return
     }
 
-    if (!Number.isFinite(cantidad) || cantidad <= 0) {
-      setProductoError('La cantidad debe ser mayor a 0.')
+    if (name === 'codigo') {
+      const shouldShow = String(value || '').trim().length >= 1
+      setShowCodigoDropdown(shouldShow)
+      if (!shouldShow) setCodigoOptions([])
+    }
+
+    if (name === 'oems') {
+      const shouldShow = String(value || '').trim().length >= 1
+      setShowOemDropdown(shouldShow)
+      if (!shouldShow) setOemOptions([])
+    }
+
+    setProductoDraft((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleProductoSelect = (producto) => {
+    if (!producto) return
+
+    const codigo = String(producto?.codigo || '').trim()
+    const nombre = String(producto?.nombre || '').trim()
+    const marca = String(producto?.marca?.nombre || producto?.marca || '').trim()
+    const oems = extractProductoOems(producto)
+
+    setSelectedDraftProducto(producto)
+    setProductoDraft((prev) => ({
+      ...prev,
+      productoId: String(producto.id),
+      codigo,
+      nombre,
+      oems: oems.join(', '),
+      marca,
+      cantidad: prev.cantidad || '1',
+    }))
+    setShowCodigoDropdown(false)
+    setShowOemDropdown(false)
+    setCodigoOptions([])
+    setOemOptions([])
+  }
+
+  const draftOemList = useMemo(() => parseOemInput(productoDraft.oems), [productoDraft.oems])
+
+  const buildCurrentIdentitySets = useCallback(() => {
+    const productoIds = new Set()
+    const codes = new Set()
+    const oems = new Set()
+
+    for (const item of productos) {
+      const itemProductId = Number(item?.productoId)
+      if (Number.isFinite(itemProductId) && itemProductId > 0) {
+        productoIds.add(itemProductId)
+      }
+
+      const codeKey = normalizeString(item?.codigo)
+      if (codeKey) codes.add(codeKey)
+
+      const itemOems = Array.isArray(item?.oems) ? item.oems : []
+      for (const oem of itemOems) {
+        const oemKey = normalizeString(oem)
+        if (!oemKey) continue
+        oems.add(oemKey)
+      }
+    }
+
+    return { productoIds, codes, oems }
+  }, [productos])
+
+  const resolveSingleExistingProduct = useCallback(async () => {
+    if (!token) return null
+
+    const codigo = String(productoDraft.codigo || '').trim()
+    if (codigo) {
+      const response = await authFetch(
+        `${API_URL}/productos/listado/?codigo=${encodeURIComponent(codigo)}&page_size=3`,
+        {},
+        token
+      )
+      if (response.ok) {
+        const data = await response.json()
+        const exactMatches = parseApiList(data).filter(
+          (item) => normalizeString(item?.codigo) === normalizeString(codigo)
+        )
+        if (exactMatches.length === 1) return exactMatches[0]
+      }
+    }
+
+    const parsedOems = parseOemInput(productoDraft.oems)
+    if (parsedOems.length === 1) {
+      const oemCode = parsedOems[0]
+      const response = await authFetch(
+        `${API_URL}/productos/listado/?oem=${encodeURIComponent(oemCode)}&page_size=3`,
+        {},
+        token
+      )
+      if (response.ok) {
+        const data = await response.json()
+        const exactMatches = parseApiList(data).filter((item) =>
+          extractProductoOems(item).some((value) => normalizeString(value) === normalizeString(oemCode))
+        )
+        if (exactMatches.length === 1) return exactMatches[0]
+      }
+    }
+
+    return null
+  }, [productoDraft.codigo, productoDraft.oems, token])
+
+  const fetchProductoStockInfo = useCallback(
+    async (productoId) => {
+      const normalizedId = Number(productoId)
+      if (!Number.isFinite(normalizedId) || normalizedId <= 0) {
+        return { stockTotal: 0, sucursalesStock: [] }
+      }
+      if (!token) throw new Error('No se pudo validar el stock del producto.')
+
+      const response = await authFetch(
+        `${API_URL}/solicitudes/solicitudes/stock-producto/?producto_id=${encodeURIComponent(normalizedId)}`,
+        {},
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(resolveApiErrorMessage(data, 'No se pudo validar el stock del producto.'))
+      }
+
+      const stockTotal = Number(data?.stock_total)
+      const sucursalesStock = Array.isArray(data?.sucursales_stock) ? data.sucursales_stock : []
+      return {
+        stockTotal: Number.isFinite(stockTotal) ? stockTotal : 0,
+        sucursalesStock,
+      }
+    },
+    [token]
+  )
+
+  const handleAgregarProducto = async () => {
+    setProductoAttempted(true)
+    const cantidadRaw = Number(productoDraft.cantidad)
+    const cantidad = Number.isFinite(cantidadRaw) ? Math.max(1, Math.floor(cantidadRaw)) : 0
+    let productoIdRaw = Number(productoDraft.productoId)
+    let hasProductoId = Number.isFinite(productoIdRaw) && productoIdRaw > 0
+
+    let codigo = String(productoDraft.codigo || '').trim()
+    let nombre = String(productoDraft.nombre || '').trim()
+    let marca = String(productoDraft.marca || '').trim()
+    let oemList = draftOemList
+    const comentario = String(productoDraft.comentario || '').trim()
+
+    if (!Number.isFinite(cantidadRaw) || cantidadRaw <= 0) {
+      notifyError('La cantidad debe ser mayor a 0.')
       return
+    }
+
+    if (!hasProductoId && (codigo || oemList.length)) {
+      try {
+        const matchedProducto = await resolveSingleExistingProduct()
+        if (matchedProducto) {
+          productoIdRaw = Number(matchedProducto.id)
+          hasProductoId = Number.isFinite(productoIdRaw) && productoIdRaw > 0
+          codigo = String(matchedProducto?.codigo || '').trim()
+          nombre = String(matchedProducto?.nombre || '').trim()
+          marca = String(matchedProducto?.marca?.nombre || matchedProducto?.marca || '').trim()
+          oemList = extractProductoOems(matchedProducto)
+          setSelectedDraftProducto(matchedProducto)
+        }
+      } catch {
+        // Si falla la resolución automática, se mantiene el flujo manual.
+      }
+    }
+
+    const { productoIds, codes, oems } = buildCurrentIdentitySets()
+
+    if (hasProductoId && productoIds.has(productoIdRaw)) {
+      notifyError('Ese producto ya esta en la tabla.')
+      return
+    }
+
+    if (hasProductoId) {
+      try {
+        const { stockTotal: stockDisponible, sucursalesStock } = await fetchProductoStockInfo(productoIdRaw)
+        if (stockDisponible > 0) {
+          const detalleStock = formatStockByBranch(sucursalesStock)
+          notifyError(
+            detalleStock
+              ? `No se puede solicitar este producto porque tiene stock disponible (${stockDisponible}) en: ${detalleStock}.`
+              : `No se puede solicitar este producto porque tiene stock disponible (${stockDisponible}).`
+          )
+          return
+        }
+      } catch (err) {
+        notifyError(err?.message || 'No se pudo validar el stock del producto.')
+        return
+      }
+    }
+
+    if (!codigo || !nombre || !marca) {
+      notifyError('Codigo, nombre y marca son obligatorios.')
+      return
+    }
+
+    const codeKey = normalizeString(codigo)
+    if (codeKey && codes.has(codeKey)) {
+      notifyError('ya existe este producto')
+      return
+    }
+
+    for (const oemCode of oemList) {
+      const oemKey = normalizeString(oemCode)
+      if (!oemKey) continue
+      if (oems.has(oemKey)) {
+        notifyError('ya existe este producto')
+        return
+      }
     }
 
     const item = {
-      uid: `ps-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      uid: `sol-row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      tipo: hasProductoId ? 'existente' : 'nuevo',
+      productoId: hasProductoId ? productoIdRaw : null,
+      codigo,
       nombre,
-      descripcion,
-      cantidad: Math.max(1, Math.floor(cantidad)),
-    }
-
-    if (productoKeySet.has(normalizeProductoKey(item))) {
-      setProductoError('Ese producto ya esta en la tabla.')
-      return
+      oems: oemList,
+      marca,
+      comentario,
+      cantidad,
     }
 
     setProductos((prev) => [...prev, item])
     setProductoDraft(initialProductoDraft)
-    setProductoError('')
+    setSelectedDraftProducto(null)
+    setProductoAttempted(false)
+    setShowCodigoDropdown(false)
+    setShowOemDropdown(false)
+    setCodigoOptions([])
+    setOemOptions([])
   }
 
   const handleQuitarProducto = (uid) => {
     setProductos((prev) => prev.filter((item) => item.uid !== uid))
-    setProductoError('')
+  }
+
+  const hasAnyManualClienteData = useMemo(
+    () => Object.values(cliente).some((value) => String(value || '').trim()),
+    [cliente]
+  )
+  const mustCompleteManualClient = !selectedCliente?.id && hasAnyManualClienteData
+  const hasManualClienteData = useMemo(
+    () => requiredClienteManualFields.every((field) => String(cliente[field] || '').trim()),
+    [cliente]
+  )
+  const isClientReady = !mustCompleteManualClient || hasManualClienteData
+  const canSubmit = Boolean(sucursalId) && productos.length > 0 && isClientReady
+
+  const getSubmitValidationMessage = useCallback(() => {
+    if (!sucursalId) return 'Debe seleccionar una sucursal.'
+    if (!productos.length) return 'Debe agregar al menos un producto solicitado.'
+    if (!isClientReady) return 'Si ingresa datos del cliente, la cedula es obligatoria y debe completar todos los campos.'
+    return ''
+  }, [sucursalId, productos.length, isClientReady])
+
+  const registerInvalidSubmitAttempt = useCallback(() => {
+    setSubmitAttempted(true)
+
+    if (!sucursalId || !productos.length) {
+      setActiveTab('productos')
+    } else if (!isClientReady) {
+      setActiveTab('cliente')
+    }
+
+    const validationMessage = getSubmitValidationMessage()
+    if (validationMessage) notifyError(validationMessage)
+  }, [getSubmitValidationMessage, isClientReady, notifyError, productos.length, sucursalId])
+
+  const handleCreateButtonClick = (event) => {
+    if (loading || canSubmit) return
+    event.preventDefault()
+    registerInvalidSubmitAttempt()
   }
 
   const handleSubmit = async (event) => {
     event.preventDefault()
-    setError('')
-
-    if (!sucursalId) {
-      setError('Debe seleccionar una sucursal.')
+    if (!canSubmit) {
+      registerInvalidSubmitAttempt()
       return
-    }
-
-    if (!productos.length) {
-      setError('Debe agregar al menos un producto solicitado.')
-      return
-    }
-
-    if (!selectedCliente) {
-      const requiredFields = ['nombres', 'apellidos', 'cedula_ruc', 'telefono', 'direccion']
-      const missing = requiredFields.find((field) => !String(cliente[field] || '').trim())
-      if (missing) {
-        setError('Complete todos los datos del cliente para continuar.')
-        return
-      }
     }
 
     const payload = {
       sucursal_id: Number(sucursalId),
       descripcion_general: String(descripcionGeneral || '').trim(),
-      productos: productos.map((item) => ({
-        nombre: item.nombre,
-        descripcion: item.descripcion,
-        cantidad: item.cantidad,
-      })),
+      productos: productos.map((item) => {
+        const base = {
+          cantidad: Number(item.cantidad),
+          comentario: String(item.comentario || '').trim(),
+        }
+
+        if (item.productoId) {
+          return {
+            ...base,
+            producto_id: Number(item.productoId),
+          }
+        }
+
+        return {
+          ...base,
+          codigo: String(item.codigo || '').trim(),
+          nombre: String(item.nombre || '').trim(),
+          marca: String(item.marca || '').trim(),
+          oems: Array.isArray(item.oems) ? item.oems : parseOemInput(item.oems),
+          descripcion: '',
+        }
+      }),
     }
 
     if (selectedCliente?.id) {
       payload.cliente_id = Number(selectedCliente.id)
-    } else {
+    } else if (mustCompleteManualClient) {
       payload.cliente = {
         nombres: String(cliente.nombres || '').trim(),
         apellidos: String(cliente.apellidos || '').trim(),
@@ -501,18 +947,12 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail =
-          data?.detail ||
-          data?.productos ||
-          data?.cliente ||
-          data?.sucursal_id ||
-          'No se pudo crear la solicitud.'
-        throw new Error(Array.isArray(detail) ? detail.join(', ') : String(detail))
+        throw new Error(resolveApiErrorMessage(data, 'No se pudo crear la solicitud.'))
       }
 
       onCreated?.(data)
     } catch (err) {
-      setError(err?.message || 'Ocurrió un error al crear la solicitud.')
+      notifyError(err?.message || 'Ocurrio un error al crear la solicitud.')
     } finally {
       setLoading(false)
     }
@@ -532,6 +972,15 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   }
 
   const showClientHint = Boolean(selectedCliente?.id)
+  const draftCantidadRaw = Number(productoDraft.cantidad)
+  const productoCodigoInvalid = productoAttempted && !String(productoDraft.codigo || '').trim()
+  const productoNombreInvalid = productoAttempted && !String(productoDraft.nombre || '').trim()
+  const productoMarcaInvalid = productoAttempted && !String(productoDraft.marca || '').trim()
+  const productoCantidadInvalid = productoAttempted && (!Number.isFinite(draftCantidadRaw) || draftCantidadRaw <= 0)
+  const sucursalInvalid = submitAttempted && !sucursalId
+  const productosInvalid = submitAttempted && !productos.length
+  const isClientFieldInvalid = (fieldName) =>
+    submitAttempted && mustCompleteManualClient && !String(cliente[fieldName] || '').trim()
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
@@ -562,7 +1011,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
           </div>
         </header>
 
-        <form className="create-user__form" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones de solicitud">
             <button
               type="button"
@@ -595,9 +1044,11 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                     <label className="create-user__field">
                       <span>Sucursal</span>
                       <select
+                        className={sucursalInvalid ? 'create-solicitud__input--invalid' : ''}
                         value={sucursalId}
                         onChange={(event) => setSucursalId(event.target.value)}
                         disabled={loading || sucursalesLoading}
+                        required
                       >
                         <option value="">Selecciona una sucursal</option>
                         {sucursales.map((item) => (
@@ -621,78 +1072,213 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                       <p className="create-user__eyebrow">Productos</p>
                       <h4>Productos solicitados</h4>
                     </div>
-                    <button
-                      type="button"
-                      className="create-user__ghost create-user__location-action"
-                      onClick={() => {
-                        setProductoError('')
-                        setShowProductoForm((prev) => {
-                          const next = !prev
-                          if (!next) setProductoDraft(initialProductoDraft)
-                          return next
-                        })
-                      }}
-                      disabled={loading}
-                    >
-                      {showProductoForm ? 'Cancelar' : 'Agregar producto'}
-                    </button>
                   </div>
 
-                  <div className="create-user__locations-table create-user__locations-table--oem">
+                  <div
+                    className={`create-user__locations-table create-solicitud__products-table${productosInvalid ? ' create-solicitud__products-table--invalid' : ''}`}
+                  >
                     <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Codigo</span>
                       <span>Nombre</span>
-                      <span>Descripción</span>
+                      <span>OEM</span>
+                      <span>Marca</span>
+                      <span>Comentario</span>
                       <span>Cantidad</span>
                       <span>Acciones</span>
                     </div>
 
-                    {showProductoForm && (
-                      <div className="create-user__locations-row create-user__locations-row--form">
-                        <span>
+                    <div className="create-user__locations-row create-user__locations-row--form">
+                      <span>
+                        <div className="create-solicitud__inline-dropdown" ref={codigoDropdownRef}>
                           <input
-                            name="nombre"
+                            className={productoCodigoInvalid ? 'create-solicitud__input--invalid' : ''}
+                            name="codigo"
                             type="text"
-                            placeholder="Nombre del producto"
-                            value={productoDraft.nombre}
+                            placeholder="Codigo"
+                            value={productoDraft.codigo}
                             onChange={handleProductoDraftChange}
+                            onFocus={() => {
+                              const hasTerm = String(productoDraft.codigo || '').trim().length >= 1
+                              setShowCodigoDropdown(hasTerm)
+                            }}
                             disabled={loading}
+                            autoComplete="off"
                           />
-                        </span>
-                        <span>
-                          <input
-                            name="descripcion"
-                            type="text"
-                            placeholder="Descripción"
-                            value={productoDraft.descripcion}
-                            onChange={handleProductoDraftChange}
-                            disabled={loading}
-                          />
-                        </span>
-                        <span>
-                          <input
-                            name="cantidad"
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={productoDraft.cantidad}
-                            onChange={handleProductoDraftChange}
-                            disabled={loading}
-                          />
-                        </span>
-                        <span className="create-user__locations-cell create-user__locations-cell--action">
-                          <button
-                            type="button"
-                            className="create-user__ghost"
-                            onClick={handleAgregarProducto}
-                            disabled={loading}
-                          >
-                            Agregar
-                          </button>
-                        </span>
-                      </div>
-                    )}
+                          {showCodigoDropdown && (
+                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--wide">
+                              <div className="create-solicitud__inline-results">
+                                {codigoLoading && <small className="muted">Buscando por codigo...</small>}
+                                {!codigoLoading && String(productoDraft.codigo || '').trim().length < 2 && (
+                                  <small className="muted">Escribe al menos 2 caracteres.</small>
+                                )}
+                                {!codigoLoading &&
+                                  String(productoDraft.codigo || '').trim().length >= 2 &&
+                                  !codigoOptions.length && (
+                                    <small className="muted">
+                                      Sin coincidencias. Puedes usar este codigo nuevo.
+                                    </small>
+                                  )}
+                                {codigoOptions.map((producto) => {
+                                  const isSelected =
+                                    String(selectedDraftProducto?.id || '') === String(producto.id)
+                                  const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
+                                  const nombre = String(producto?.nombre || '').trim()
+                                  const marca = String(producto?.marca?.nombre || producto?.marca || '').trim()
+                                  const oems = extractProductoOems(producto)
 
-                    {!productos.length && !showProductoForm && (
+                                  return (
+                                    <button
+                                      key={`codigo-opt-${producto.id}`}
+                                      type="button"
+                                      className="create-user__result-option"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => handleProductoSelect(producto)}
+                                    >
+                                      <div className="create-user__result-info">
+                                        <strong>{codigo}</strong>
+                                        <small>{nombre || '-'}</small>
+                                        <small>
+                                          {marca ? `Marca: ${marca}` : 'Sin marca'} |{' '}
+                                          {oems.length
+                                            ? `OEM: ${oems.slice(0, 4).join(', ')}${oems.length > 4 ? '...' : ''}`
+                                            : 'Sin OEM'}
+                                        </small>
+                                      </div>
+                                      {isSelected && (
+                                        <span className="create-user__result-tag is-selected">Seleccionado</span>
+                                      )}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </span>
+
+                      <span>
+                        <input
+                          className={productoNombreInvalid ? 'create-solicitud__input--invalid' : ''}
+                          name="nombre"
+                          type="text"
+                          placeholder="Nombre del producto"
+                          value={productoDraft.nombre}
+                          onChange={handleProductoDraftChange}
+                          disabled={loading}
+                        />
+                      </span>
+
+                      <span>
+                        <div className="create-solicitud__inline-dropdown" ref={oemDropdownRef}>
+                          <input
+                            name="oems"
+                            type="text"
+                            placeholder="OEM1, OEM2"
+                            value={productoDraft.oems}
+                            onChange={handleProductoDraftChange}
+                            onFocus={() => {
+                              const hasTerm = String(oemSearchTerm || '').trim().length >= 1
+                              setShowOemDropdown(hasTerm)
+                            }}
+                            disabled={loading}
+                            autoComplete="off"
+                          />
+                          {showOemDropdown && (
+                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--wide create-solicitud__inline-panel--align-right">
+                              <div className="create-solicitud__inline-results">
+                                {oemLoading && <small className="muted">Buscando por OEM...</small>}
+                                {!oemLoading && String(oemSearchTerm || '').trim().length < 2 && (
+                                  <small className="muted">Escribe al menos 2 caracteres.</small>
+                                )}
+                                {!oemLoading &&
+                                  String(oemSearchTerm || '').trim().length >= 2 &&
+                                  !oemOptions.length && (
+                                    <small className="muted">
+                                      Sin coincidencias. Puedes escribir un OEM nuevo.
+                                    </small>
+                                  )}
+                                {oemOptions.map((producto) => {
+                                  const isSelected =
+                                    String(selectedDraftProducto?.id || '') === String(producto.id)
+                                  const oems = extractProductoOems(producto)
+                                  const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
+                                  const nombre = String(producto?.nombre || '').trim()
+                                  const marca = String(producto?.marca?.nombre || producto?.marca || '').trim()
+                                  return (
+                                    <button
+                                      key={`oem-opt-${producto.id}`}
+                                      type="button"
+                                      className="create-user__result-option"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => handleProductoSelect(producto)}
+                                    >
+                                      <div className="create-user__result-info">
+                                        <strong>{codigo}</strong>
+                                        <small>{nombre || '-'}</small>
+                                        <small>
+                                          {marca ? `Marca: ${marca}` : 'Sin marca'} |{' '}
+                                          {oems.length
+                                            ? `OEM: ${oems.slice(0, 3).join(', ')}${oems.length > 3 ? '...' : ''}`
+                                            : 'Sin OEM'}
+                                        </small>
+                                      </div>
+                                      {isSelected && (
+                                        <span className="create-user__result-tag is-selected">Seleccionado</span>
+                                      )}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </span>
+
+                      <span>
+                        <input
+                          className={productoMarcaInvalid ? 'create-solicitud__input--invalid' : ''}
+                          name="marca"
+                          type="text"
+                          placeholder="Marca"
+                          value={productoDraft.marca}
+                          onChange={handleProductoDraftChange}
+                          disabled={loading}
+                        />
+                      </span>
+
+                      <span>
+                        <input
+                          name="comentario"
+                          type="text"
+                          placeholder="Comentario por producto"
+                          value={productoDraft.comentario}
+                          onChange={handleProductoDraftChange}
+                          disabled={loading}
+                        />
+                      </span>
+
+                      <span>
+                        <input
+                          className={productoCantidadInvalid ? 'create-solicitud__input--invalid' : ''}
+                          name="cantidad"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={productoDraft.cantidad}
+                          onChange={handleProductoDraftChange}
+                          disabled={loading}
+                          autoComplete="off"
+                        />
+                      </span>
+
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button type="button" className="create-user__ghost" onClick={handleAgregarProducto} disabled={loading}>
+                          Agregar
+                        </button>
+                      </span>
+                    </div>
+
+                    {!productos.length && (
                       <div className="create-user__locations-row create-user__locations-row--empty">
                         <span>Sin productos agregados.</span>
                       </div>
@@ -700,9 +1286,15 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
                     {productos.map((item) => (
                       <div key={item.uid} className="create-user__locations-row">
-                        <span>{item.nombre}</span>
-                        <span>{item.descripcion || '-'}</span>
-                        <span>{item.cantidad}</span>
+                        <span>
+                          {item.codigo || '-'}
+                          {item.tipo === 'existente' && <small className="create-solicitud__chip">Catalogo</small>}
+                        </span>
+                        <span>{item.nombre || '-'}</span>
+                        <span>{item.oems?.length ? item.oems.join(', ') : '-'}</span>
+                        <span>{item.marca || '-'}</span>
+                        <span>{item.comentario || '-'}</span>
+                        <span className="create-solicitud__quantity-cell">{item.cantidad}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
                           <button
                             type="button"
@@ -718,7 +1310,6 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                     ))}
                   </div>
 
-                  {productoError && <div className="create-user__error">{productoError}</div>}
                 </section>
 
                 <section className="create-user__section">
@@ -806,10 +1397,12 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <label className="create-user__field">
                     <span>Cedula/RUC</span>
                     <input
+                      className={isClientFieldInvalid('cedula_ruc') ? 'create-solicitud__input--invalid' : ''}
                       name="cedula_ruc"
                       type="text"
                       value={cliente.cedula_ruc}
                       onChange={handleClienteFieldChange}
+                      required={mustCompleteManualClient}
                       disabled={loading}
                     />
                   </label>
@@ -817,10 +1410,12 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <label className="create-user__field">
                     <span>Nombres</span>
                     <input
+                      className={isClientFieldInvalid('nombres') ? 'create-solicitud__input--invalid' : ''}
                       name="nombres"
                       type="text"
                       value={cliente.nombres}
                       onChange={handleClienteFieldChange}
+                      required={mustCompleteManualClient}
                       disabled={loading}
                     />
                   </label>
@@ -828,10 +1423,12 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <label className="create-user__field">
                     <span>Apellidos</span>
                     <input
+                      className={isClientFieldInvalid('apellidos') ? 'create-solicitud__input--invalid' : ''}
                       name="apellidos"
                       type="text"
                       value={cliente.apellidos}
                       onChange={handleClienteFieldChange}
+                      required={mustCompleteManualClient}
                       disabled={loading}
                     />
                   </label>
@@ -839,10 +1436,12 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <label className="create-user__field">
                     <span>Correo</span>
                     <input
+                      className={isClientFieldInvalid('correo') ? 'create-solicitud__input--invalid' : ''}
                       name="correo"
                       type="email"
                       value={cliente.correo}
                       onChange={handleClienteFieldChange}
+                      required={mustCompleteManualClient}
                       disabled={loading}
                     />
                   </label>
@@ -850,10 +1449,12 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <label className="create-user__field">
                     <span>Teléfono</span>
                     <input
+                      className={isClientFieldInvalid('telefono') ? 'create-solicitud__input--invalid' : ''}
                       name="telefono"
                       type="text"
                       value={cliente.telefono}
                       onChange={handleClienteFieldChange}
+                      required={mustCompleteManualClient}
                       disabled={loading}
                     />
                   </label>
@@ -861,10 +1462,12 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                   <label className="create-user__field create-user__field--full">
                     <span>Dirección</span>
                     <input
+                      className={isClientFieldInvalid('direccion') ? 'create-solicitud__input--invalid' : ''}
                       name="direccion"
                       type="text"
                       value={cliente.direccion}
                       onChange={handleClienteFieldChange}
+                      required={mustCompleteManualClient}
                       disabled={loading}
                     />
                   </label>
@@ -877,8 +1480,6 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
             )}
           </div>
 
-          {error && <div className="create-user__error">{error}</div>}
-
           <div className="create-user__footer">
             <button
               type="button"
@@ -888,13 +1489,16 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
             >
               Cancelar
             </button>
-            <button
-              type="submit"
-              className="create-user__action create-user__action--primary"
-              disabled={loading}
-            >
-              {loading ? 'Guardando...' : 'Crear solicitud'}
-            </button>
+            <div className="create-solicitud__submit-wrap" onClick={handleCreateButtonClick}>
+              <button
+                type="submit"
+                className="create-user__action create-user__action--primary"
+                disabled={loading || !canSubmit}
+                style={!loading && !canSubmit ? { pointerEvents: 'none' } : undefined}
+              >
+                {loading ? 'Guardando...' : 'Crear solicitud'}
+              </button>
+            </div>
           </div>
         </form>
 
@@ -910,5 +1514,6 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateSolicitud
+
 
 

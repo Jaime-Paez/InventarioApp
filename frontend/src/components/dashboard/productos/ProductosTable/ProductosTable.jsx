@@ -117,7 +117,7 @@ function ProductosTable({ token, onSelect }) {
           marca_nombre: product?.marca?.nombre ?? '-',
           casa_comercial_nombre: firstHouseName,
           casas_comerciales_nombres: houses.map((house) => house?.nombre).filter(Boolean).join(', '),
-          pieza_original_label: product?.pieza_original ? 'Activo' : 'Inactivo',
+          pieza_original_label: product?.pieza_original ? 'Si' : 'No',
           precio_con_iva: Number.isFinite(Number(product?.precio))
             ? Number(product.precio) * (1 + ivaRate)
             : null,
@@ -174,7 +174,10 @@ function ProductosTable({ token, onSelect }) {
 
   const fetchProducts = useCallback(
     async (criteria, page = 1, rows = pageSize, options = {}) => {
-      setLoading(true)
+      const withOverlay = options?.withOverlay !== false
+      if (withOverlay) {
+        setLoading(true)
+      }
       setError(null)
       try {
         const tableFilters = options?.tableFilters ?? filters
@@ -210,7 +213,9 @@ function ProductosTable({ token, onSelect }) {
         setTotalRecords(0)
         toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
       } finally {
-        setLoading(false)
+        if (withOverlay) {
+          setLoading(false)
+        }
         setIsRefreshing(false)
       }
     },
@@ -712,7 +717,7 @@ function ProductosTable({ token, onSelect }) {
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
       { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
-      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Activo/Inactivo' },
+      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
       { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
@@ -779,7 +784,7 @@ function ProductosTable({ token, onSelect }) {
         case 'marca_nombre':
           return row?.marca?.nombre ?? row?.marca_nombre ?? ''
         case 'pieza_original_label':
-          return row?.pieza_original ? 'Activo' : 'Inactivo'
+          return row?.pieza_original ? 'Si' : 'No'
         case 'casa_comercial_nombre':
           return row?.casa_comercial_nombre ?? row?.casas_comerciales_nombres ?? ''
         case 'precio':
@@ -934,7 +939,7 @@ function ProductosTable({ token, onSelect }) {
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isGlobalSearchPending ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
@@ -1147,19 +1152,24 @@ function ProductosTable({ token, onSelect }) {
     setGlobalFilterValue(value)
     setPageFirst(0)
     if (!lastSearchRef.current) return
+    const nextFilters = {
+      ...(filters || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }
+    setFilters(nextFilters)
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
     const seq = globalSearchSeqRef.current + 1
     globalSearchSeqRef.current = seq
     setIsGlobalSearchPending(true)
-    setIsRefreshing(true)
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchProducts(lastSearchRef.current, 1, pageSize, {
-        tableFilters: filters,
+        tableFilters: nextFilters,
         tableSortField: sortField,
         tableSortOrder: sortOrder,
         globalSearchValue: value,
+        withOverlay: false,
       }).finally(() => {
         if (globalSearchSeqRef.current === seq) {
           setIsGlobalSearchPending(false)
@@ -1389,7 +1399,7 @@ function ProductosTable({ token, onSelect }) {
           </div>
         ) : (
           <>
-        {(loading || isRefreshing || isGlobalSearchPending) && (
+        {(loading || isRefreshing) && !isGlobalSearchPending && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
@@ -1408,7 +1418,7 @@ function ProductosTable({ token, onSelect }) {
           value={products}
           dataKey="id"
           header={header}
-          className={`users-datatable${loading || isRefreshing || isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
+          className={`users-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
@@ -1945,8 +1955,8 @@ function ProductosTable({ token, onSelect }) {
                         className={!searchCriteria.pieza_original ? 'is-placeholder' : undefined}
                       >
                         <option value="">Todos</option>
-                        <option value="true">Activo</option>
-                        <option value="false">Inactivo</option>
+                        <option value="true">Si</option>
+                        <option value="false">No</option>
                       </select>
                     </label>
 

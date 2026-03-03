@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Case, CharField, Count, Q, Value, When
+from django.db.models import Case, CharField, Count, F, Q, Sum, TextField, Value, When
 from django.db.models.functions import Coalesce, Concat
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -9,7 +9,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
-from inventario.models import Sucursal
+from inventario.models import Inventario, Sucursal
+from productos.models import OEM, Producto
 from usuarios.models import RolPermiso
 from usuarios.permissions import ClientesModulePermission, SolicitudesModulePermission
 from usuarios.sucursal_scope import apply_sucursal_scope, ensure_sucursal_allowed
@@ -25,7 +26,7 @@ from .serializers import (
 
 
 class ClienteViewSet(viewsets.ModelViewSet):
-    queryset = Cliente.objects.all().order_by("nombres", "apellidos")
+    queryset = Cliente.objects.all().order_by("-id")
     serializer_class = ClienteSerializer
     permission_classes = [IsAuthenticated, ClientesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -86,7 +87,7 @@ class ClienteViewSet(viewsets.ModelViewSet):
 
 
 class ProductoSolicitadoViewSet(viewsets.ModelViewSet):
-    queryset = ProductoSolicitado.objects.select_related("producto").all().order_by("nombre")
+    queryset = ProductoSolicitado.objects.select_related("producto").all().order_by("-id")
     serializer_class = ProductoSolicitadoSerializer
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -98,7 +99,7 @@ class OEMProductoSolicitadoViewSet(viewsets.ModelViewSet):
     queryset = (
         OEMProductoSolicitado.objects.select_related("producto_solicitado", "oem")
         .all()
-        .order_by("producto_solicitado__nombre", "oem__codigo")
+        .order_by("-id")
     )
     serializer_class = OEMProductoSolicitadoSerializer
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
@@ -120,22 +121,28 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "producto_solicitado",
             "producto_solicitado__producto",
         )
+        .prefetch_related("producto_solicitado__oem_relaciones__oem")
         .all()
-        .order_by("-fecha", "id")
+        .order_by("-fecha", "-id")
     )
     serializer_class = SolicitudSerializer
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
-        "descripcion_general",
-        "cliente__nombres",
-        "cliente__apellidos",
-        "cliente__cedula_ruc",
-        "producto__nombre",
-        "producto_solicitado__nombre",
-        "producto_solicitado__descripcion",
-        "sucursal__nombre",
-    ]
+            "descripcion_general",
+            "comentario",
+            "cliente__nombres",
+            "cliente__apellidos",
+            "cliente__cedula_ruc",
+            "producto__nombre",
+            "producto__codigo",
+            "producto_solicitado__nombre",
+            "producto_solicitado__codigo",
+            "producto_solicitado__marca",
+            "producto_solicitado__descripcion",
+            "producto_solicitado__oem_relaciones__oem__codigo",
+            "sucursal__nombre",
+        ]
     ordering_fields = [
         "fecha",
         "cantidad",
@@ -160,7 +167,11 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 output_field=CharField(),
             ),
             producto_referencia_text=Coalesce("producto_solicitado__nombre", "producto__nombre", Value("")),
-            producto_solicitado_descripcion_text=Coalesce("producto_solicitado__descripcion", Value("")),
+            producto_solicitado_descripcion_text=Coalesce(
+                "producto_solicitado__descripcion",
+                Value("", output_field=TextField()),
+                output_field=TextField(),
+            ),
             producto_conseguido_text=Concat(
                 Coalesce("producto_solicitado__producto__codigo", Value("")),
                 Value(" "),
@@ -295,6 +306,35 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         serializer = ClienteLiteSerializer(queryset, many=True)
         return Response({"results": serializer.data}, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=["get"], url_path="stock-producto")
+    def stock_producto(self, request):
+        raw_producto_id = request.query_params.get("producto_id")
+        try:
+            producto_id = int(raw_producto_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"producto_id": "Debe enviar un producto_id valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not Producto.objects.filter(pk=producto_id).exists():
+            return Response(
+                {"producto_id": "Producto no encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        sucursales_stock = self._get_producto_stock_por_sucursal(producto_id)
+        stock_total = sum(item.get("cantidad", 0) for item in sucursales_stock)
+        return Response(
+            {
+                "producto_id": producto_id,
+                "stock_total": stock_total,
+                "tiene_stock": stock_total > 0,
+                "sucursales_stock": sucursales_stock,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=False, methods=["post"], url_path="crear-lote")
     def crear_lote(self, request):
         payload = request.data or {}
@@ -334,6 +374,9 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             )
 
         productos_normalizados = []
+        producto_ids_en_lote = set()
+        codigos_nuevos = set()
+        oems_nuevos = set()
         for index, item in enumerate(productos_raw):
             if not isinstance(item, dict):
                 return Response(
@@ -341,14 +384,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            nombre = str(item.get("nombre") or "").strip()
-            if not nombre:
-                return Response(
-                    {"productos": f"El nombre es obligatorio en la fila {index + 1}."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            descripcion = str(item.get("descripcion") or "").strip()
             cantidad_raw = item.get("cantidad", 1)
             try:
                 cantidad = int(cantidad_raw)
@@ -364,30 +399,161 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            comentario = str(item.get("comentario") or "").strip()
+            producto_id = item.get("producto_id")
+
+            if producto_id not in (None, ""):
+                try:
+                    producto_id = int(producto_id)
+                except (TypeError, ValueError):
+                    return Response(
+                        {"productos": f"El producto de la fila {index + 1} es invalido."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                if producto_id in producto_ids_en_lote:
+                    return Response(
+                        {"productos": f"El producto de la fila {index + 1} ya esta en la tabla."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                producto = Producto.objects.filter(pk=producto_id).first()
+                if not producto:
+                    return Response(
+                        {"productos": f"El producto de la fila {index + 1} no existe."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                sucursales_stock = self._get_producto_stock_por_sucursal(producto_id)
+                stock_disponible = sum(item.get("cantidad", 0) for item in sucursales_stock)
+                if stock_disponible > 0:
+                    detalle_stock = self._format_stock_por_sucursal(sucursales_stock)
+                    return Response(
+                        {
+                            "productos": (
+                                f"Fila {index + 1}: no se puede solicitar '{producto.codigo}' porque "
+                                f"tiene stock disponible ({stock_disponible}) en: {detalle_stock}."
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                producto_ids_en_lote.add(producto_id)
+                productos_normalizados.append(
+                    {
+                        "tipo": Solicitud.Tabla.PRODUCTO,
+                        "producto": producto,
+                        "cantidad": cantidad,
+                        "comentario": comentario,
+                    }
+                )
+                continue
+
+            nombre = str(item.get("nombre") or "").strip()
+            if not nombre:
+                return Response(
+                    {"productos": f"El nombre es obligatorio en la fila {index + 1}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            codigo = str(item.get("codigo") or "").strip()
+            if not codigo:
+                return Response(
+                    {"productos": f"El codigo es obligatorio en la fila {index + 1}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            marca = str(item.get("marca") or "").strip()
+            if not marca:
+                return Response(
+                    {"productos": f"La marca es obligatoria en la fila {index + 1}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            descripcion = str(item.get("descripcion") or "").strip()
+            oem_codigos = self._parse_oem_codes(item.get("oems"))
+
+            codigo_key = codigo.lower()
+            if codigo_key in codigos_nuevos:
+                return Response(
+                    {"productos": f"Fila {index + 1}: ya existe este producto."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if Producto.objects.filter(codigo__iexact=codigo).exists():
+                return Response(
+                    {"productos": f"Fila {index + 1}: ya existe este producto."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            codigos_nuevos.add(codigo_key)
+
+            for oem_codigo in oem_codigos:
+                oem_key = oem_codigo.lower()
+                if oem_key in oems_nuevos:
+                    return Response(
+                        {"productos": f"Fila {index + 1}: ya existe este producto."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if Producto.objects.filter(oem_productos__oem__codigo__iexact=oem_codigo).exists():
+                    return Response(
+                        {"productos": f"Fila {index + 1}: ya existe este producto."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                oems_nuevos.add(oem_key)
+
             productos_normalizados.append(
                 {
+                    "tipo": Solicitud.Tabla.PRODUCTO_SOLICITADO,
+                    "codigo": codigo,
                     "nombre": nombre,
+                    "marca": marca,
                     "descripcion": descripcion,
+                    "oem_codigos": oem_codigos,
                     "cantidad": cantidad,
+                    "comentario": comentario,
                 }
             )
 
         with transaction.atomic():
             solicitudes = []
             for item in productos_normalizados:
-                producto_solicitado = ProductoSolicitado.objects.create(
-                    nombre=item["nombre"],
-                    descripcion=item["descripcion"],
-                )
-                solicitud = Solicitud.objects.create(
-                    cantidad=item["cantidad"],
-                    tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
-                    fecha=fecha,
-                    descripcion_general=descripcion_general,
-                    sucursal=sucursal,
-                    cliente=cliente,
-                    producto_solicitado=producto_solicitado,
-                )
+                if item["tipo"] == Solicitud.Tabla.PRODUCTO:
+                    solicitud = Solicitud.objects.create(
+                        cantidad=item["cantidad"],
+                        tabla=Solicitud.Tabla.PRODUCTO,
+                        fecha=fecha,
+                        descripcion_general=descripcion_general,
+                        comentario=item.get("comentario", ""),
+                        sucursal=sucursal,
+                        cliente=cliente,
+                        producto=item["producto"],
+                    )
+                else:
+                    producto_solicitado = ProductoSolicitado.objects.create(
+                        codigo=item["codigo"],
+                        nombre=item["nombre"],
+                        marca=item["marca"],
+                        descripcion=item["descripcion"],
+                    )
+                    for oem_codigo in item.get("oem_codigos", []):
+                        oem, _ = OEM.objects.get_or_create(
+                            codigo=oem_codigo,
+                            defaults={"descripcion": ""},
+                        )
+                        OEMProductoSolicitado.objects.get_or_create(
+                            producto_solicitado=producto_solicitado,
+                            oem=oem,
+                        )
+
+                    solicitud = Solicitud.objects.create(
+                        cantidad=item["cantidad"],
+                        tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
+                        fecha=fecha,
+                        descripcion_general=descripcion_general,
+                        comentario=item.get("comentario", ""),
+                        sucursal=sucursal,
+                        cliente=cliente,
+                        producto_solicitado=producto_solicitado,
+                    )
                 solicitudes.append(solicitud)
 
         serializer = self.get_serializer(solicitudes, many=True)
@@ -407,6 +573,72 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             return False
         return None
 
+    @staticmethod
+    def _parse_oem_codes(raw_value):
+        if isinstance(raw_value, list):
+            raw_items = raw_value
+        else:
+            raw_items = str(raw_value or "").replace(";", ",").replace("\n", ",").split(",")
+
+        codes = []
+        seen = set()
+        for value in raw_items:
+            code = str(value or "").strip()
+            if not code:
+                continue
+            key = code.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            codes.append(code)
+        return codes
+
+    @staticmethod
+    def _get_producto_stock_total(producto_id):
+        if not producto_id:
+            return 0
+        aggregated = (
+            Inventario.objects.filter(
+                producto_id=producto_id,
+            ).aggregate(total=Coalesce(Sum("cantidad"), Value(0)))
+        )
+        return int(aggregated.get("total") or 0)
+
+    @staticmethod
+    def _get_producto_stock_por_sucursal(producto_id):
+        if not producto_id:
+            return []
+        rows = (
+            Inventario.objects.filter(producto_id=producto_id)
+            .values(
+                sucursal_id=F("subdivision__division__bodega__sucursal_id"),
+                sucursal_nombre=F("subdivision__division__bodega__sucursal__nombre"),
+            )
+            .annotate(cantidad=Coalesce(Sum("cantidad"), Value(0)))
+            .filter(cantidad__gt=0)
+            .order_by("-cantidad", "sucursal_nombre")
+        )
+        return [
+            {
+                "sucursal_id": int(row.get("sucursal_id") or 0),
+                "sucursal_nombre": str(row.get("sucursal_nombre") or "").strip(),
+                "cantidad": int(row.get("cantidad") or 0),
+            }
+            for row in rows
+            if int(row.get("cantidad") or 0) > 0
+        ]
+
+    @staticmethod
+    def _format_stock_por_sucursal(sucursales_stock):
+        partes = []
+        for item in sucursales_stock:
+            nombre = str(item.get("sucursal_nombre") or "Sucursal").strip() or "Sucursal"
+            cantidad = int(item.get("cantidad") or 0)
+            if cantidad <= 0:
+                continue
+            partes.append(f"{nombre}: {cantidad}")
+        return ", ".join(partes) if partes else "inventario general"
+
     def _resolve_cliente(self, payload):
         cliente_id = payload.get("cliente_id")
         if cliente_id:
@@ -415,24 +647,39 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 return None, {"cliente_id": "Cliente no encontrado."}
             return cliente, None
 
-        cliente_data = payload.get("cliente") or {}
+        cliente_data = payload.get("cliente")
         if not isinstance(cliente_data, dict):
-            return None, {"cliente": "Formato de cliente invalido."}
+            return None, {"cliente": "Debe seleccionar o crear un cliente."}
+
+        if not cliente_data:
+            return None, {"cliente": "Debe seleccionar o crear un cliente."}
 
         cedula_ruc = str(cliente_data.get("cedula_ruc") or "").strip()
-        if cedula_ruc:
-            cliente_existente = Cliente.objects.filter(cedula_ruc__iexact=cedula_ruc).first()
-            if cliente_existente:
-                return cliente_existente, None
-
         nombres = str(cliente_data.get("nombres") or "").strip()
         apellidos = str(cliente_data.get("apellidos") or "").strip()
         correo = str(cliente_data.get("correo") or "").strip()
         telefono = str(cliente_data.get("telefono") or "").strip()
         direccion = str(cliente_data.get("direccion") or "").strip()
 
+        missing_fields = []
         if not nombres:
-            return None, {"cliente": "Debe definir los nombres del cliente."}
+            missing_fields.append("nombres")
+        if not apellidos:
+            missing_fields.append("apellidos")
+        if not cedula_ruc:
+            missing_fields.append("cedula/ruc")
+        if not telefono:
+            missing_fields.append("telefono")
+        if not direccion:
+            missing_fields.append("direccion")
+
+        if missing_fields:
+            return None, {"cliente": f"Faltan campos obligatorios del cliente: {', '.join(missing_fields)}."}
+
+        if cedula_ruc:
+            cliente_existente = Cliente.objects.filter(cedula_ruc__iexact=cedula_ruc).first()
+            if cliente_existente:
+                return cliente_existente, None
 
         cliente = Cliente.objects.create(
             nombres=nombres,

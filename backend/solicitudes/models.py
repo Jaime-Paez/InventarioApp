@@ -52,7 +52,9 @@ class Auto(models.Model):
 class ProductoSolicitado(models.Model):
     """Producto solicitado por un cliente que aún no está en inventario."""
 
+    codigo = models.CharField(max_length=80, blank=True)
     nombre = models.CharField(max_length=255)
+    marca = models.CharField(max_length=120, blank=True)
     descripcion = models.TextField(blank=True)
     conseguido = models.BooleanField(default=False)
     producto = models.ForeignKey(
@@ -96,6 +98,7 @@ class Solicitud(models.Model):
     tabla = models.CharField(max_length=30, choices=Tabla.choices)
     fecha = models.DateField()
     descripcion_general = models.TextField(blank=True)
+    comentario = models.TextField(blank=True)
     sucursal = models.ForeignKey(
         "inventario.Sucursal",
         on_delete=models.PROTECT,

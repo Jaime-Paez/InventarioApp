@@ -9,7 +9,7 @@ from .serializers import MarcaSerializer
 
 
 class MarcaViewSet(viewsets.ModelViewSet):
-    queryset = Marca.objects.select_related("pais").all().order_by("nombre")
+    queryset = Marca.objects.select_related("pais").all().order_by("-id")
     serializer_class = MarcaSerializer
     permission_classes = [IsAuthenticated, ProveedoresMarcasModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

@@ -34,7 +34,7 @@ class RolViewSet(viewsets.ModelViewSet):
     queryset = (
         Rol.objects.prefetch_related("permisos")
         .filter(es_personalizado=False)
-        .order_by("nombre")
+        .order_by("-id")
     )
     serializer_class = RolSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
@@ -53,7 +53,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             "alcances_sucursal__sucursal",
         )
         .all()
-        .order_by("last_name", "first_name")
+        .order_by("-date_joined", "-id")
     )
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]
@@ -84,7 +84,7 @@ class UsuarioSucursalViewSet(viewsets.ModelViewSet):
     queryset = (
         UsuarioSucursal.objects.select_related("usuario", "sucursal")
         .all()
-        .order_by("sucursal__nombre", "usuario__last_name")
+        .order_by("-id")
     )
     serializer_class = UsuarioSucursalSerializer
     permission_classes = [IsAuthenticated, UsuariosModulePermission]

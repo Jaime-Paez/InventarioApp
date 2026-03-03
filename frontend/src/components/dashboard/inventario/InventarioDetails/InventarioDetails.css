@@ -73,6 +73,14 @@
   margin: 8px 18px 16px;
 }
 
+.create-user__locations-table--with-actions {
+  overflow: visible;
+}
+
+.create-user__locations-table--with-actions .create-user__locations-cell--action {
+  gap: 6px;
+}
+
 .dashboard-shell.dark .inventario-details__bodega-card {
   background: var(--color-surface-darker);
   border-color: var(--color-border);

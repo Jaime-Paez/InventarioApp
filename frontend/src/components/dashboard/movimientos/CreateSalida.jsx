@@ -1426,7 +1426,7 @@ function CreateSalida({
           </div>
         </header>
 
-        <form className="create-user__form" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
           {!formData.subTipoId ? (
             <div className="create-salida__selector-shell">
               <section className="create-user__section create-salida__selector-card">
@@ -1444,6 +1444,7 @@ function CreateSalida({
                       value={formData.subTipoId}
                       onChange={handleChange}
                       disabled={loading}
+                      required
                       className={`create-salida__tipo-select${!formData.subTipoId ? ' is-placeholder' : ''}`}
                     >
                       <option value="">Selecciona un tipo</option>
@@ -1498,6 +1499,7 @@ function CreateSalida({
                         value={formData.subTipoId}
                         onChange={handleChange}
                         disabled={loading}
+                        required
                         className={`create-salida__tipo-select${!formData.subTipoId ? ' is-placeholder' : ''}`}
                       >
                         <option value="">Selecciona un tipo</option>
@@ -1516,7 +1518,7 @@ function CreateSalida({
 
                     <label className="create-user__field">
                       <span>Sucursal</span>
-                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={loading}>
+                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={loading} required>
                         <option value="">Selecciona una sucursal</option>
                         {branches.map((branch) => (
                           <option key={branch.id} value={branch.id}>
@@ -1534,6 +1536,7 @@ function CreateSalida({
                           value={formData.sucursalObjetivoId}
                           onChange={handleChange}
                           disabled={loading}
+                          required={requiresSucursalObjetivo}
                         >
                           <option value="">Selecciona una sucursal</option>
                           {branches.map((branch) => (
@@ -1553,6 +1556,7 @@ function CreateSalida({
                         value={formData.no_documento}
                         onChange={handleChange}
                         disabled={loading}
+                        required
                       />
                       {documentStatus === DOCUMENT_STATUS.duplicate && (
                         <small className="create-user__field-error">No se puede usar dos iguales.</small>
@@ -1574,7 +1578,7 @@ function CreateSalida({
                     {isVenta && (
                       <label className="create-user__field">
                         <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={loading}>
+                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={loading} required>
                           <option value="">Selecciona un estado</option>
                           {ventaEstadoOptions.map((estado) => (
                             <option key={estado.id} value={estado.id}>
@@ -1917,6 +1921,7 @@ function CreateSalida({
                               value={clienteForm.cedula_ruc}
                               onChange={handleClienteFieldChange}
                               disabled={loading}
+                              required
                             />
                           </label>
 
@@ -1928,6 +1933,7 @@ function CreateSalida({
                               value={clienteForm.nombres}
                               onChange={handleClienteFieldChange}
                               disabled={loading}
+                              required
                             />
                           </label>
 
@@ -1939,6 +1945,7 @@ function CreateSalida({
                               value={clienteForm.apellidos}
                               onChange={handleClienteFieldChange}
                               disabled={loading}
+                              required
                             />
                           </label>
 
@@ -1961,6 +1968,7 @@ function CreateSalida({
                               value={clienteForm.telefono}
                               onChange={handleClienteFieldChange}
                               disabled={loading}
+                              required
                             />
                           </label>
 
@@ -1972,6 +1980,7 @@ function CreateSalida({
                               value={clienteForm.direccion}
                               onChange={handleClienteFieldChange}
                               disabled={loading}
+                              required
                             />
                           </label>
                         </>

@@ -20,6 +20,58 @@ const getSystemThemePreference = () =>
     ? window.matchMedia('(prefers-color-scheme: dark)').matches
     : false
 
+const NON_TEXT_INPUT_TYPES = new Set([
+  'button',
+  'checkbox',
+  'color',
+  'file',
+  'hidden',
+  'image',
+  'radio',
+  'range',
+  'reset',
+  'submit',
+])
+
+const shouldDisableFieldAutocomplete = (field) => {
+  if (!field || field.disabled) return false
+  const tag = String(field.tagName || '').toLowerCase()
+  if (tag === 'textarea') return true
+  if (tag !== 'input') return false
+  const type = String(field.getAttribute('type') || 'text').toLowerCase()
+  return !NON_TEXT_INPUT_TYPES.has(type)
+}
+
+const disableAutocompleteInNode = (node) => {
+  if (!node || node.nodeType !== 1) return
+
+  const elements = []
+  if (node.matches?.('form, input, textarea')) {
+    elements.push(node)
+  }
+  if (node.querySelectorAll) {
+    elements.push(...node.querySelectorAll('form, input, textarea'))
+  }
+
+  elements.forEach((element) => {
+    const tag = String(element.tagName || '').toLowerCase()
+    if (tag === 'form') {
+      element.setAttribute('autocomplete', 'off')
+      return
+    }
+
+    if (!shouldDisableFieldAutocomplete(element)) return
+
+    // Chromium/Brave ignora `off` en algunos casos; `new-password` reduce sugerencias.
+    element.setAttribute('autocomplete', 'new-password')
+    element.setAttribute('autocorrect', 'off')
+    element.setAttribute('autocapitalize', 'off')
+    element.setAttribute('spellcheck', 'false')
+    element.setAttribute('data-lpignore', 'true')
+    element.setAttribute('data-1p-ignore', 'true')
+  })
+}
+
 function App() {
   const [darkMode, setDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme')
@@ -156,6 +208,81 @@ function App() {
     },
     []
   )
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    disableAutocompleteInNode(document.body)
+
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          disableAutocompleteInNode(node)
+        })
+      })
+    })
+
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+
+    const handleInvalid = (event) => {
+      const form = event?.target?.form
+      if (!form) return
+      if (!form.classList.contains('create-user__form--create')) return
+      form.classList.add('create-user__form--submitted')
+    }
+
+    document.addEventListener('invalid', handleInvalid, true)
+    return () => document.removeEventListener('invalid', handleInvalid, true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+
+    const clearModalInteractionClasses = () => {
+      document
+        .querySelectorAll('.create-user__modal--resizing, .create-user__modal--moving')
+        .forEach((modal) => {
+          modal.classList.remove('create-user__modal--resizing')
+          modal.classList.remove('create-user__modal--moving')
+        })
+    }
+
+    const handleResizeStart = (event) => {
+      const target = event.target
+      const handle = target?.closest?.('.create-user__resize-handle')
+      if (!handle) return
+      const modal = handle.closest('.create-user__modal')
+      if (!modal) return
+      modal.classList.add('create-user__modal--resizing')
+    }
+
+    const handleDragStart = (event) => {
+      const target = event.target
+      if (target?.closest?.('.create-user__icon-button')) return
+      const header = target?.closest?.('.create-user__header')
+      if (!header) return
+      const modal = header.closest('.create-user__modal')
+      if (!modal) return
+      modal.classList.add('create-user__modal--moving')
+    }
+
+    document.addEventListener('mousedown', handleResizeStart, true)
+    document.addEventListener('mousedown', handleDragStart, true)
+    window.addEventListener('mouseup', clearModalInteractionClasses, true)
+    window.addEventListener('blur', clearModalInteractionClasses)
+
+    return () => {
+      document.removeEventListener('mousedown', handleResizeStart, true)
+      document.removeEventListener('mousedown', handleDragStart, true)
+      window.removeEventListener('mouseup', clearModalInteractionClasses, true)
+      window.removeEventListener('blur', clearModalInteractionClasses)
+      clearModalInteractionClasses()
+    }
+  }, [])
 
   return (
     <div className={appClassName}>

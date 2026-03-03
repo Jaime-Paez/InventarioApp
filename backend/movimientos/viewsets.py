@@ -1,5 +1,8 @@
+from decimal import Decimal, InvalidOperation
+
 from django.db.models import DecimalField, Q, Sum, Value
 from django.db.models.functions import Coalesce
+from django.utils.dateparse import parse_date
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -142,6 +145,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
             )
         )
+        params = self.request.query_params
 
         tipo_param = self._resolve_tipo_param()
         if tipo_param == "salida":
@@ -150,6 +154,56 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(tipo_movimiento__nombre__istartswith="ent")
 
         queryset = self._apply_subtipo_filter(queryset)
+
+        no_documento = (params.get("no_documento") or "").strip()
+        if no_documento:
+            queryset = queryset.filter(no_documento__icontains=no_documento)
+
+        fecha_desde = parse_date((params.get("fecha_desde") or "").strip())
+        if fecha_desde:
+            queryset = queryset.filter(fecha__gte=fecha_desde)
+
+        fecha_hasta = parse_date((params.get("fecha_hasta") or "").strip())
+        if fecha_hasta:
+            queryset = queryset.filter(fecha__lte=fecha_hasta)
+
+        sucursal = (params.get("sucursal") or "").strip()
+        if sucursal:
+            queryset = queryset.filter(sucursal__nombre__icontains=sucursal)
+
+        sub_tipo = (params.get("sub_tipo") or "").strip()
+        if sub_tipo:
+            queryset = queryset.filter(sub_tipo_movimiento__nombre__icontains=sub_tipo)
+
+        estado = (params.get("estado") or "").strip()
+        if estado:
+            queryset = queryset.filter(estado_movimiento__nombre__icontains=estado)
+
+        sucursal_objetivo = (params.get("sucursal_objetivo") or "").strip()
+        if sucursal_objetivo:
+            queryset = queryset.filter(
+                sucursal_objetivo__nombre__icontains=sucursal_objetivo
+            )
+
+        total_min = (params.get("total_min") or "").strip()
+        if total_min:
+            try:
+                queryset = queryset.filter(total_monto__gte=Decimal(total_min))
+            except (InvalidOperation, ValueError):
+                pass
+
+        total_max = (params.get("total_max") or "").strip()
+        if total_max:
+            try:
+                queryset = queryset.filter(total_monto__lte=Decimal(total_max))
+            except (InvalidOperation, ValueError):
+                pass
+
+        funcional = self._resolve_funcional_value(params.get("funcional"))
+        if funcional is True:
+            queryset = queryset.filter(funcional=True)
+        elif funcional is False:
+            queryset = queryset.filter(funcional=False)
 
         column_filters = parse_column_filters(self.request.query_params.get("column_filters"))
         funcional_filter = column_filters.pop("funcional_label", None)

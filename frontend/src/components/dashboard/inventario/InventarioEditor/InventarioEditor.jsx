@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'r
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../InventarioDetails/InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import BodegaLocationPreview from './BodegaLocationPreview'
 
 const parseNumber = (value) => {
   const parsed = Number(value)
@@ -605,6 +606,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             const isEditingRow = editingLocationKey === location.uid
             const editingSubdivision = isEditingRow && editingField === 'subdivision'
             const editingCantidad = isEditingRow && editingField === 'cantidad'
+            const currentBodega = bodegaById.get(String(location.bodegaId))
 
             return (
               <div key={location.uid} className="create-user__locations-row">
@@ -665,6 +667,11 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   )}
                 </span>
                 <span className="create-user__locations-cell create-user__locations-cell--action">
+                  <BodegaLocationPreview
+                    bodega={currentBodega}
+                    divisionName={location.divisionNombre}
+                    subdivisionName={location.subdivisionNombre}
+                  />
                   <button
                     type="button"
                     className="create-user__locations-remove"

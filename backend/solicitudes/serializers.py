@@ -1,6 +1,8 @@
+from django.db.models import F, Sum, Value
+from django.db.models.functions import Coalesce
 from rest_framework import serializers
 
-from inventario.models import Sucursal
+from inventario.models import Inventario, Sucursal
 from marcas.models import Marca
 from productos.models import OEM, Producto
 
@@ -63,7 +65,9 @@ class ProductoSolicitadoSerializer(serializers.ModelSerializer):
         model = ProductoSolicitado
         fields = [
             "id",
+            "codigo",
             "nombre",
+            "marca",
             "descripcion",
             "conseguido",
             "producto",
@@ -111,17 +115,32 @@ class ProductoLiteSerializer(serializers.ModelSerializer):
 class ProductoSolicitadoLiteSerializer(serializers.ModelSerializer):
     producto_id = serializers.IntegerField(read_only=True)
     producto_data = ProductoLiteSerializer(source="producto", read_only=True)
+    oem_codigos = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductoSolicitado
         fields = [
             "id",
+            "codigo",
             "nombre",
+            "marca",
             "descripcion",
             "conseguido",
             "producto_id",
             "producto_data",
+            "oem_codigos",
         ]
+
+    def get_oem_codigos(self, obj):
+        relaciones = getattr(obj, "oem_relaciones", None)
+        if relaciones is None:
+            return []
+        codigos = []
+        for relation in relaciones.select_related("oem").all():
+            codigo = str(getattr(getattr(relation, "oem", None), "codigo", "") or "").strip()
+            if codigo:
+                codigos.append(codigo)
+        return codigos
 
 
 class OEMProductoSolicitadoSerializer(serializers.ModelSerializer):
@@ -194,6 +213,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "producto_id",
             "fecha",
             "descripcion_general",
+            "comentario",
             "sucursal",
             "sucursal_id",
             "cliente",
@@ -245,6 +265,20 @@ class SolicitudSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"producto_id": "Producto no encontrado."}
                 ) from exc
+
+            sucursales_stock = self._get_producto_stock_por_sucursal(producto.id)
+            stock_disponible = sum(item.get("cantidad", 0) for item in sucursales_stock)
+            if stock_disponible > 0:
+                detalle_stock = self._format_stock_por_sucursal(sucursales_stock)
+                raise serializers.ValidationError(
+                    {
+                        "producto_id": (
+                            f"No se puede solicitar este producto porque tiene stock "
+                            f"disponible ({stock_disponible}) en: {detalle_stock}."
+                        )
+                    }
+                )
+
             attrs["producto"] = producto
             attrs["producto_solicitado"] = None
         elif tabla == Solicitud.Tabla.PRODUCTO_SOLICITADO:
@@ -325,3 +359,49 @@ class SolicitudSerializer(serializers.ModelSerializer):
             return ProductoLiteSerializer(obj.producto_solicitado.producto).data
 
         return None
+
+    @staticmethod
+    def _get_producto_stock_total(producto_id):
+        if not producto_id:
+            return 0
+        aggregated = (
+            Inventario.objects.filter(
+                producto_id=producto_id,
+            ).aggregate(total=Coalesce(Sum("cantidad"), Value(0)))
+        )
+        return int(aggregated.get("total") or 0)
+
+    @staticmethod
+    def _get_producto_stock_por_sucursal(producto_id):
+        if not producto_id:
+            return []
+        rows = (
+            Inventario.objects.filter(producto_id=producto_id)
+            .values(
+                sucursal_id=F("subdivision__division__bodega__sucursal_id"),
+                sucursal_nombre=F("subdivision__division__bodega__sucursal__nombre"),
+            )
+            .annotate(cantidad=Coalesce(Sum("cantidad"), Value(0)))
+            .filter(cantidad__gt=0)
+            .order_by("-cantidad", "sucursal_nombre")
+        )
+        return [
+            {
+                "sucursal_id": int(row.get("sucursal_id") or 0),
+                "sucursal_nombre": str(row.get("sucursal_nombre") or "").strip(),
+                "cantidad": int(row.get("cantidad") or 0),
+            }
+            for row in rows
+            if int(row.get("cantidad") or 0) > 0
+        ]
+
+    @staticmethod
+    def _format_stock_por_sucursal(sucursales_stock):
+        partes = []
+        for item in sucursales_stock:
+            nombre = str(item.get("sucursal_nombre") or "Sucursal").strip() or "Sucursal"
+            cantidad = int(item.get("cantidad") or 0)
+            if cantidad <= 0:
+                continue
+            partes.append(f"{nombre}: {cantidad}")
+        return ", ".join(partes) if partes else "inventario general"
