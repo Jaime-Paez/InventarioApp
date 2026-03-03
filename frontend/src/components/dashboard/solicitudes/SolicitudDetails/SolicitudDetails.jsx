@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
+import useModalAnimation from '../../common/useModalAnimation'
 
 const MIN_WIDTH = 760
 const MIN_HEIGHT = 560
@@ -87,6 +88,12 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
     restoreRef.current = null
     fetchSolicitud()
   }, [open, fetchSolicitud])
+
+  useEffect(() => {
+    if (!open) {
+      setLoading(true)
+    }
+  }, [open])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -265,8 +272,9 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
       setLinkingProduct(false)
     }
   }
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   const productoSolicitado = solicitud?.producto_solicitado_data || null
   const productoResuelto = solicitud?.producto_resuelto_data || null
@@ -284,8 +292,8 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
   }
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
-      <div className="create-user__modal" ref={modalRef} style={modalStyle}>
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
+      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>{solicitudId ? `Solicitud #${solicitudId}` : 'Detalle de solicitud'}</h3>
@@ -313,6 +321,12 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
         </header>
 
         <div className="create-user__content">
+          {loading && (
+            <div className="create-user__loading-overlay" role="status" aria-live="polite">
+              <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+              <span>Cargando datos...</span>
+            </div>
+          )}
           <div className="create-user__tabs" role="tablist" aria-label="Secciones de solicitud">
             <button
               type="button"
@@ -510,3 +524,5 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
 }
 
 export default SolicitudDetails
+
+

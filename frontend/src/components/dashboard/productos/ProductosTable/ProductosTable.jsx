@@ -11,6 +11,8 @@ import { Button } from 'primereact/button'
 import CreateProducto from '../CreateProducto/CreateProducto'
 import ProductoDetails from '../ProductoDetails/ProductoDetails'
 import '../../admin/UsersTable/UsersTable.css'
+
+import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
@@ -115,7 +117,7 @@ function ProductosTable({ token, onSelect }) {
           marca_nombre: product?.marca?.nombre ?? '-',
           casa_comercial_nombre: firstHouseName,
           casas_comerciales_nombres: houses.map((house) => house?.nombre).filter(Boolean).join(', '),
-          pieza_original_label: product?.pieza_original ? 'Si' : 'No',
+          pieza_original_label: product?.pieza_original ? 'Activo' : 'Inactivo',
           precio_con_iva: Number.isFinite(Number(product?.precio))
             ? Number(product.precio) * (1 + ivaRate)
             : null,
@@ -710,7 +712,7 @@ function ProductosTable({ token, onSelect }) {
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
       { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
-      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
+      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Activo/Inactivo' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
       { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
@@ -777,7 +779,7 @@ function ProductosTable({ token, onSelect }) {
         case 'marca_nombre':
           return row?.marca?.nombre ?? row?.marca_nombre ?? ''
         case 'pieza_original_label':
-          return row?.pieza_original ? 'Si' : 'No'
+          return row?.pieza_original ? 'Activo' : 'Inactivo'
         case 'casa_comercial_nombre':
           return row?.casa_comercial_nombre ?? row?.casas_comerciales_nombres ?? ''
         case 'precio':
@@ -1346,6 +1348,16 @@ function ProductosTable({ token, onSelect }) {
     }
   }, [showBulkSelectConfirm])
 
+  const {
+    shouldRender: shouldRenderBulkSelectConfirmModal,
+    isClosing: isClosingBulkSelectConfirmModal,
+  } = useModalAnimation(showBulkSelectConfirm)
+  const {
+    shouldRender: shouldRenderBulkSelectProgressModal,
+    isClosing: isClosingBulkSelectProgressModal,
+  } = useModalAnimation(showBulkSelectProgress)
+  const { shouldRender: shouldRenderSearchModal, isClosing: isClosingSearchModal } = useModalAnimation(showSearchModal)
+
   return (
     <div className="users-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
@@ -1576,11 +1588,16 @@ function ProductosTable({ token, onSelect }) {
         )}
       </div>
 
-      {showBulkSelectConfirm && (
-        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ pointerEvents: 'auto' }}>
+      {shouldRenderBulkSelectConfirmModal && (
+        <div
+          className={`create-user__overlay${isClosingBulkSelectConfirmModal ? ' create-user__overlay--closing' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          style={{ pointerEvents: 'auto' }}
+        >
           <div
             ref={bulkModalRef}
-            className="create-user__modal"
+            className={`create-user__modal${isClosingBulkSelectConfirmModal ? ' create-user__modal--closing' : ''}`}
             style={{
               top: bulkModalPosition.y,
               left: bulkModalPosition.x,
@@ -1629,16 +1646,16 @@ function ProductosTable({ token, onSelect }) {
         </div>
       )}
 
-      {showBulkSelectProgress && (
+      {shouldRenderBulkSelectProgressModal && (
         <div
-          className="create-user__overlay"
+          className={`create-user__overlay${isClosingBulkSelectProgressModal ? ' create-user__overlay--closing' : ''}`}
           role="dialog"
           aria-modal="true"
           style={{ pointerEvents: 'auto', background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(1px)' }}
         >
           <div
             ref={bulkModalRef}
-            className="create-user__modal"
+            className={`create-user__modal${isClosingBulkSelectProgressModal ? ' create-user__modal--closing' : ''}`}
             style={{
               position: 'fixed',
               top: '50%',
@@ -1726,10 +1743,10 @@ function ProductosTable({ token, onSelect }) {
         onError={showErrorToast}
       />
 
-      {showSearchModal && (
-        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
+      {shouldRenderSearchModal && (
+        <div className={`create-user__overlay${isClosingSearchModal ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
           <div
-            className="create-user__modal"
+            className={`create-user__modal${isClosingSearchModal ? ' create-user__modal--closing' : ''}`}
             ref={searchModalRef}
             style={{
               top: searchPosition.y,
@@ -1920,7 +1937,7 @@ function ProductosTable({ token, onSelect }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Pieza original</span>
+                      <span>Original</span>
                       <select
                         name="pieza_original"
                         value={searchCriteria.pieza_original}
@@ -1928,8 +1945,8 @@ function ProductosTable({ token, onSelect }) {
                         className={!searchCriteria.pieza_original ? 'is-placeholder' : undefined}
                       >
                         <option value="">Todos</option>
-                        <option value="true">Si</option>
-                        <option value="false">No</option>
+                        <option value="true">Activo</option>
+                        <option value="false">Inactivo</option>
                       </select>
                     </label>
 
@@ -1990,5 +2007,8 @@ function ProductosTable({ token, onSelect }) {
 }
 
 export default ProductosTable
+
+
+
 
 

@@ -11,6 +11,8 @@ import { Button } from 'primereact/button'
 import CreateCasaComercial from '../CreateCasaComercial/CreateCasaComercial'
 import CasaComercialDetails from '../CasaComercialDetails/CasaComercialDetails'
 import '../../admin/UsersTable/UsersTable.css'
+
+import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import {
@@ -881,6 +883,8 @@ function CasasComercialesTable({ token, onSelect }) {
     })
   }
 
+  const { shouldRender: shouldRenderSearchModal, isClosing: isClosingSearchModal } = useModalAnimation(showSearchModal)
+
   return (
     <div className="users-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
@@ -1082,10 +1086,10 @@ function CasasComercialesTable({ token, onSelect }) {
         onError={showErrorToast}
       />
 
-      {showSearchModal && (
-        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
+      {shouldRenderSearchModal && (
+        <div className={`create-user__overlay${isClosingSearchModal ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
           <div
-            className="create-user__modal"
+            className={`create-user__modal${isClosingSearchModal ? ' create-user__modal--closing' : ''}`}
             ref={searchModalRef}
             style={{
               top: searchPosition.y,
@@ -1258,5 +1262,8 @@ function CasasComercialesTable({ token, onSelect }) {
 }
 
 export default CasasComercialesTable
+
+
+
 
 

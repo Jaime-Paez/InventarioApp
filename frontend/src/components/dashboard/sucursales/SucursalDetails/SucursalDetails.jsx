@@ -5,6 +5,7 @@ import '../../admin/UsersDetails/UsersDetails.css'
 import '../SucursalMap.css'
 import 'leaflet/dist/leaflet.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import useModalAnimation from '../../common/useModalAnimation'
 const MAP_ZOOM = 16
 const MIN_WIDTH = 650
 const MIN_HEIGHT = 500
@@ -197,6 +198,12 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
       }
     }
   }, [open, fetchSucursal])
+
+  useEffect(() => {
+    if (!open) {
+      setLoadingData(true)
+    }
+  }, [open])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -525,8 +532,9 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     setIsEditing(false)
     setShowDeleteDialog(false)
   }
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {
@@ -539,9 +547,9 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   }
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
       <div
-        className="create-user__modal"
+        className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
         ref={modalRef}
         style={modalStyle}
       >
@@ -572,6 +580,12 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
         </header>
 
         <form className="create-user__form" onSubmit={handleSubmit}>
+          {loadingData && (
+            <div className="create-user__loading-overlay" role="status" aria-live="polite">
+              <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+              <span>Cargando datos...</span>
+            </div>
+          )}
           <div className="create-user__tabs" role="tablist" aria-label="Secciones de la sucursal">
             <button
               type="button"
@@ -741,3 +755,5 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
 }
 
 export default SucursalDetails
+
+

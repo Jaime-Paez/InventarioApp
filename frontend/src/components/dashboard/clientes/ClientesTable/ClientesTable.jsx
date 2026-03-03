@@ -11,6 +11,8 @@ import { Button } from 'primereact/button'
 import CreateCliente from '../CreateCliente/CreateCliente'
 import ClienteDetails from '../ClienteDetails/ClienteDetails'
 import '../../admin/UsersTable/UsersTable.css'
+
+import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import {
@@ -1063,6 +1065,16 @@ function ClientesTable({ token, onSelect }) {
     }
   }, [showBulkSelectConfirm])
 
+  const {
+    shouldRender: shouldRenderBulkSelectConfirmModal,
+    isClosing: isClosingBulkSelectConfirmModal,
+  } = useModalAnimation(showBulkSelectConfirm)
+  const {
+    shouldRender: shouldRenderBulkSelectProgressModal,
+    isClosing: isClosingBulkSelectProgressModal,
+  } = useModalAnimation(showBulkSelectProgress)
+  const { shouldRender: shouldRenderSearchModal, isClosing: isClosingSearchModal } = useModalAnimation(showSearchModal)
+
   return (
     <div className="users-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
@@ -1263,11 +1275,16 @@ function ClientesTable({ token, onSelect }) {
 
       </div>
 
-      {showBulkSelectConfirm && (
-        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ pointerEvents: 'auto' }}>
+      {shouldRenderBulkSelectConfirmModal && (
+        <div
+          className={`create-user__overlay${isClosingBulkSelectConfirmModal ? ' create-user__overlay--closing' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          style={{ pointerEvents: 'auto' }}
+        >
           <div
             ref={bulkModalRef}
-            className="create-user__modal"
+            className={`create-user__modal${isClosingBulkSelectConfirmModal ? ' create-user__modal--closing' : ''}`}
             style={{
               top: bulkModalPosition.y,
               left: bulkModalPosition.x,
@@ -1316,16 +1333,16 @@ function ClientesTable({ token, onSelect }) {
         </div>
       )}
 
-      {showBulkSelectProgress && (
+      {shouldRenderBulkSelectProgressModal && (
         <div
-          className="create-user__overlay"
+          className={`create-user__overlay${isClosingBulkSelectProgressModal ? ' create-user__overlay--closing' : ''}`}
           role="dialog"
           aria-modal="true"
           style={{ pointerEvents: 'auto', background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(1px)' }}
         >
           <div
             ref={bulkModalRef}
-            className="create-user__modal"
+            className={`create-user__modal${isClosingBulkSelectProgressModal ? ' create-user__modal--closing' : ''}`}
             style={{
               position: 'fixed',
               top: '50%',
@@ -1411,10 +1428,10 @@ function ClientesTable({ token, onSelect }) {
         onError={showErrorToast}
       />
 
-      {showSearchModal && (
-        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
+      {shouldRenderSearchModal && (
+        <div className={`create-user__overlay${isClosingSearchModal ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
           <div
-            className="create-user__modal"
+            className={`create-user__modal${isClosingSearchModal ? ' create-user__modal--closing' : ''}`}
             ref={searchModalRef}
             style={{
               top: searchPosition.y,
@@ -1526,5 +1543,8 @@ function ClientesTable({ token, onSelect }) {
 }
 
 export default ClientesTable
+
+
+
 
 

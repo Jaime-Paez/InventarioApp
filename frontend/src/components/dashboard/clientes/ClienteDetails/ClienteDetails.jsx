@@ -3,6 +3,7 @@ import { Eye, Info, Pencil } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import useModalAnimation from '../../common/useModalAnimation'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -234,6 +235,12 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
     setMarcas([])
     fetchCliente()
   }, [open, fetchCliente])
+
+  useEffect(() => {
+    if (!open) {
+      setLoadingData(true)
+    }
+  }, [open])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -491,8 +498,9 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
     setPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
     setIsMaximized(true)
   }
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {
@@ -508,8 +516,8 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
   const editorDisabled = saving || loadingData || !isEditing
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
-      <div className="create-user__modal" ref={modalRef} style={modalStyle}>
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
+      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>
@@ -541,6 +549,12 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
         </header>
 
         <div className="create-user__content">
+          {loadingData && (
+            <div className="create-user__loading-overlay" role="status" aria-live="polite">
+              <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+              <span>Cargando datos...</span>
+            </div>
+          )}
           <div className="create-user__tabs" role="tablist" aria-label="Secciones del cliente">
             <button
               type="button"
@@ -875,3 +889,5 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
 }
 
 export default ClienteDetails
+
+

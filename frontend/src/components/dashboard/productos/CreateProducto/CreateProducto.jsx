@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import useModalAnimation from '../../common/useModalAnimation'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -1243,8 +1244,9 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     setPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
     setIsMaximized(true)
   }
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {
@@ -1257,8 +1259,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
   }
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
-      <div className="create-user__modal" ref={modalRef} style={modalStyle}>
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
+      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>Crear nuevo producto</h3>
@@ -1471,6 +1473,19 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                           </div>
                         )}
                       </div>
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Original</span>
+                      <select
+                        name="pieza_original"
+                        value={formData.pieza_original ? 'true' : 'false'}
+                        onChange={handleChange}
+                        disabled={loading}
+                      >
+                        <option value="true">Activo</option>
+                        <option value="false">Inactivo</option>
+                      </select>
                     </label>
 
                     <label className="create-user__field create-user__field--full">
@@ -1764,20 +1779,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 
                 {alternoError && <div className="create-user__error">{alternoError}</div>}
 
-                <div className="create-user__grid create-user__grid--two">
-                  <label className="create-user__field">
-                    <span>Pieza original</span>
-                    <select
-                      name="pieza_original"
-                      value={formData.pieza_original ? 'true' : 'false'}
-                      onChange={handleChange}
-                      disabled={loading}
-                    >
-                      <option value="true">Si</option>
-                      <option value="false">No</option>
-                    </select>
-                  </label>
-                </div>
               </section>
             )}
 
@@ -2107,4 +2108,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateProducto
+
+
 

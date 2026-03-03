@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import useModalAnimation from '../../common/useModalAnimation'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -391,8 +392,9 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
     setPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
     setIsMaximized(true)
   }
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {
@@ -405,8 +407,8 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
   }
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
-      <div className="create-user__modal" ref={modalRef} style={modalStyle}>
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
+      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>
@@ -703,3 +705,5 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateCliente
+
+

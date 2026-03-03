@@ -173,8 +173,14 @@ class SolicitudSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     cliente_nombre = serializers.SerializerMethodField()
+    cedula_ruc = serializers.SerializerMethodField()
+    sucursal_nombre = serializers.SerializerMethodField()
     producto_referencia = serializers.SerializerMethodField()
+    producto_solicitado_nombre = serializers.SerializerMethodField()
+    producto_solicitado_descripcion = serializers.SerializerMethodField()
     conseguido = serializers.SerializerMethodField()
+    conseguido_label = serializers.SerializerMethodField()
+    producto_conseguido = serializers.SerializerMethodField()
     producto_resuelto_data = serializers.SerializerMethodField()
 
     class Meta:
@@ -197,8 +203,14 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "producto_data",
             "producto_solicitado_data",
             "cliente_nombre",
+            "cedula_ruc",
+            "sucursal_nombre",
             "producto_referencia",
+            "producto_solicitado_nombre",
+            "producto_solicitado_descripcion",
             "conseguido",
+            "conseguido_label",
+            "producto_conseguido",
             "producto_resuelto_data",
         ]
 
@@ -262,11 +274,29 @@ class SolicitudSerializer(serializers.ModelSerializer):
             return ""
         return f"{obj.cliente.nombres} {obj.cliente.apellidos}".strip()
 
+    def get_cedula_ruc(self, obj):
+        if not obj.cliente_id:
+            return ""
+        return str(getattr(obj.cliente, "cedula_ruc", "") or "").strip()
+
+    def get_sucursal_nombre(self, obj):
+        if not obj.sucursal_id:
+            return ""
+        return str(getattr(obj.sucursal, "nombre", "") or "").strip()
+
     def get_producto_referencia(self, obj):
         if obj.tabla == Solicitud.Tabla.PRODUCTO and obj.producto_id:
             return obj.producto.nombre
         if obj.producto_solicitado_id:
             return obj.producto_solicitado.nombre
+        return ""
+
+    def get_producto_solicitado_nombre(self, obj):
+        return self.get_producto_referencia(obj)
+
+    def get_producto_solicitado_descripcion(self, obj):
+        if obj.producto_solicitado_id:
+            return str(getattr(obj.producto_solicitado, "descripcion", "") or "").strip()
         return ""
 
     def get_conseguido(self, obj):
@@ -275,6 +305,17 @@ class SolicitudSerializer(serializers.ModelSerializer):
         if obj.producto_solicitado_id:
             return bool(obj.producto_solicitado.conseguido)
         return False
+
+    def get_conseguido_label(self, obj):
+        return "Si" if self.get_conseguido(obj) else "No"
+
+    def get_producto_conseguido(self, obj):
+        resolved = self.get_producto_resuelto_data(obj)
+        if not isinstance(resolved, dict):
+            return ""
+        codigo = str(resolved.get("codigo") or "").strip()
+        nombre = str(resolved.get("nombre") or "").strip()
+        return f"{codigo} {nombre}".strip()
 
     def get_producto_resuelto_data(self, obj):
         if obj.tabla == Solicitud.Tabla.PRODUCTO and obj.producto_id:

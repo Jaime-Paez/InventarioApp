@@ -3,6 +3,7 @@ import { Eye, Info, Pencil } from 'lucide-react'
 import '../CreateUsuario/CreateUsuario.css'
 import './UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import useModalAnimation from '../../common/useModalAnimation'
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
@@ -309,6 +310,12 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     fetchBranches()
   }, [open, fetchUser, loadPermissionOptions, fetchBranches])
 
+  useEffect(() => {
+    if (!open) {
+      setLoadingData(true)
+    }
+  }, [open])
+
   useLayoutEffect(() => {
     if (!open) return
     const { availableWidth, availableHeight } = getViewportMetrics()
@@ -553,13 +560,14 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setIsEditing(false)
     setShowDeleteDialog(false)
   }
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true">
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true">
       <div
-        className="create-user__modal"
+        className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
         ref={modalRef}
         style={{ top: position.y, left: position.x, width: size.width, height: size.height }}
       >
@@ -595,6 +603,12 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       </header>
 
       <form className="create-user__form" onSubmit={handleSubmit}>
+        {loadingData && (
+          <div className="create-user__loading-overlay" role="status" aria-live="polite">
+            <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+            <span>Cargando datos...</span>
+          </div>
+        )}
         <div className="create-user__tabs" role="tablist" aria-label="Secciones del usuario">
           <button
             type="button"
@@ -931,3 +945,5 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
 }
 
 export default UsersDetails
+
+

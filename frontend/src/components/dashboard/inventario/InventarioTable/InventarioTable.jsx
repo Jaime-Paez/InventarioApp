@@ -9,6 +9,8 @@ import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
 import '../../admin/UsersTable/UsersTable.css'
 import './InventarioTable.css'
+
+import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
@@ -590,7 +592,7 @@ function InventarioTable({ token }) {
           id: productId ?? row?.id,
           producto_id: productId ?? row?.producto_id ?? null,
           pieza_original: Boolean(row?.pieza_original),
-          pieza_original_label: row?.pieza_original ? 'Si' : 'No',
+          pieza_original_label: row?.pieza_original ? 'Activo' : 'Inactivo',
           total_general: normalizeNumber(row?.total_general),
           precio_con_iva: Number.isFinite(precioBase) ? precioBase * (1 + ivaRate) : null,
         }
@@ -749,7 +751,7 @@ function InventarioTable({ token }) {
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Producto', filterPlaceholder: 'Buscar por producto' },
       { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
-      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
+      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Activo/Inactivo' },
       { nombrevar: 'casa_comercial_nombre', header: 'Casa comercial', filterPlaceholder: 'Buscar por casa comercial' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
@@ -845,7 +847,7 @@ function InventarioTable({ token }) {
       return Number.isFinite(num) ? num.toFixed(2) : ''
     }
     if (field === 'pieza_original_label') {
-      return row?.pieza_original ? 'Si' : 'No'
+      return row?.pieza_original ? 'Activo' : 'Inactivo'
     }
     if (field === 'total_general' || field.startsWith('sucursal_')) {
       const num = Number(row?.[field])
@@ -1217,6 +1219,8 @@ function InventarioTable({ token }) {
     setIsSearchMaximized(true)
   }
 
+  const { shouldRender: shouldRenderSearchModal, isClosing: isClosingSearchModal } = useModalAnimation(showSearchModal)
+
   return (
     <div className="users-page inventario-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
@@ -1428,10 +1432,10 @@ function InventarioTable({ token }) {
         }}
       />
 
-      {showSearchModal && (
-        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
+      {shouldRenderSearchModal && (
+        <div className={`create-user__overlay${isClosingSearchModal ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>
           <div
-            className="create-user__modal"
+            className={`create-user__modal${isClosingSearchModal ? ' create-user__modal--closing' : ''}`}
             ref={searchModalRef}
             style={{
               top: searchPosition.y,
@@ -1640,7 +1644,7 @@ function InventarioTable({ token }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Pieza original</span>
+                      <span>Original</span>
                       <select
                         name="pieza_original"
                         value={searchCriteria.pieza_original}
@@ -1648,8 +1652,8 @@ function InventarioTable({ token }) {
                         className={!searchCriteria.pieza_original ? 'is-placeholder' : undefined}
                       >
                         <option value="">Todos</option>
-                        <option value="true">Si</option>
-                        <option value="false">No</option>
+                        <option value="true">Activo</option>
+                        <option value="false">Inactivo</option>
                       </select>
                     </label>
 
@@ -1762,6 +1766,9 @@ function InventarioTable({ token }) {
 }
 
 export default InventarioTable
+
+
+
 
 
 

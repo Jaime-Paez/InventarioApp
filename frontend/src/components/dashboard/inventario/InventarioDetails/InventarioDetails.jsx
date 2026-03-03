@@ -4,6 +4,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import './InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import useModalAnimation from '../../common/useModalAnimation'
 
 const parseNumber = (value) => {
   const parsed = Number(value)
@@ -247,8 +248,9 @@ function InventarioDetails({
       setSaving(false)
     }
   }, [product, saving, subdivisions, draftQuantities, entryBySubdivision, token, onClose, onSaved])
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open || !product) return null
+  if (!shouldRender || !product) return null
 
   const modalStyle = {
     top: position.y,
@@ -260,8 +262,8 @@ function InventarioDetails({
   }
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: `${VIEWPORT_PADDING}px` }}>
-      <div className="create-user__modal inventario-details__modal" ref={modalRef} style={modalStyle}>
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={{ padding: `${VIEWPORT_PADDING}px` }}>
+      <div className={`create-user__modal inventario-details__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>
@@ -397,3 +399,5 @@ function InventarioDetails({
 }
 
 export default InventarioDetails
+
+

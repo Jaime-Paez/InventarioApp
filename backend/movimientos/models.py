@@ -54,7 +54,7 @@ class MovimientoInventario(models.Model):
     )
 
     class Meta:
-        ordering = ["-fecha", "no_documento"]
+        ordering = ["-fecha", "-id"]
         verbose_name = "Movimiento de inventario"
         verbose_name_plural = "Movimientos de inventario"
         unique_together = ("tipo_movimiento", "no_documento")

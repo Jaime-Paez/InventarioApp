@@ -3,6 +3,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../SucursalMap.css'
 import 'leaflet/dist/leaflet.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import useModalAnimation from '../../common/useModalAnimation'
 const MAP_ZOOM = 16
 const MIN_WIDTH = 650
 const MIN_HEIGHT = 500
@@ -336,8 +337,9 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     setPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
     setIsMaximized(true)
   }
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {
@@ -350,9 +352,9 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   }
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
       <div
-        className="create-user__modal"
+        className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
         ref={modalRef}
         style={modalStyle}
       >
@@ -464,3 +466,5 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateSucursal
+
+

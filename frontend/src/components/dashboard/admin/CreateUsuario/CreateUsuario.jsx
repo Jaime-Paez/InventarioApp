@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import './CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import useModalAnimation from '../../common/useModalAnimation'
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
@@ -461,13 +462,14 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       notifyError('No se pudo copiar la contraseña. Intenta nuevamente.')
     }
   }
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true">
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true">
       <div
-        className="create-user__modal"
+        className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
         ref={modalRef}
         style={{ top: position.y, left: position.x, width: size.width, height: size.height }}
       >
@@ -755,3 +757,5 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateUsuario
+
+

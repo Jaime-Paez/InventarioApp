@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
+import useModalAnimation from '../common/useModalAnimation'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -22,6 +23,15 @@ const emptyForm = {
   cliente: '',
   descuento: '',
   iva_rate: String(DEFAULT_IVA_RATE),
+}
+
+const initialClienteForm = {
+  nombres: '',
+  apellidos: '',
+  cedula_ruc: '',
+  correo: '',
+  telefono: '',
+  direccion: '',
 }
 
 const initialDetail = {
@@ -77,6 +87,78 @@ const resolveProductPrice = (producto) => {
   if (parsed === null || parsed < 0) return ''
   const raw = String(producto?.precio ?? '').trim()
   return raw || parsed.toFixed(2)
+}
+
+const resolveClienteNombre = (cliente) => {
+  const nombreCompleto = String(
+    cliente?.nombre_completo || `${cliente?.nombres || ''} ${cliente?.apellidos || ''}`
+  ).trim()
+  return nombreCompleto
+}
+
+const formatClienteDropdownLabel = (cliente) => {
+  if (!cliente) return ''
+  const cedula = String(cliente?.cedula_ruc || '').trim()
+  const nombre = resolveClienteNombre(cliente)
+  if (cedula && nombre) return `${cedula}: ${nombre}`
+  if (cedula) return cedula
+  if (nombre) return nombre
+  return ''
+}
+
+const formatClienteFieldValue = (cliente) => {
+  if (!cliente) return ''
+  const nombre = resolveClienteNombre(cliente)
+  if (nombre) return nombre
+  return String(cliente?.cedula_ruc || '').trim()
+}
+
+const normalizeClientePayload = (cliente) => ({
+  nombres: String(cliente?.nombres || '').trim(),
+  apellidos: String(cliente?.apellidos || '').trim(),
+  cedula_ruc: String(cliente?.cedula_ruc || '').trim(),
+  correo: String(cliente?.correo || '').trim(),
+  telefono: String(cliente?.telefono || '').trim(),
+  direccion: String(cliente?.direccion || '').trim(),
+})
+
+const buildClienteFormFromText = (rawValue, normalizedValue = '') => {
+  const raw = String(rawValue || '').trim()
+  const normalized = String(normalizedValue || '').trim()
+  if (!raw && !normalized) return { ...initialClienteForm }
+
+  const legacyLabelMatch = /^([0-9A-Za-z.-]+)\s*:\s*(.+)$/.exec(raw)
+  if (legacyLabelMatch) {
+    return {
+      ...initialClienteForm,
+      cedula_ruc: String(legacyLabelMatch[1] || '').trim(),
+      nombres: String(legacyLabelMatch[2] || '').trim(),
+    }
+  }
+
+  if (/^[0-9A-Za-z.-]{6,}$/.test(raw)) {
+    return {
+      ...initialClienteForm,
+      cedula_ruc: raw,
+      nombres: normalized,
+    }
+  }
+
+  return { ...initialClienteForm, nombres: normalized || raw }
+}
+
+const normalizeClienteTextForField = (value) => {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+
+  const separatorIndex = raw.indexOf(':')
+  if (separatorIndex <= 0) return raw
+
+  const left = raw.slice(0, separatorIndex).trim()
+  const right = raw.slice(separatorIndex + 1).trim()
+  if (!right) return raw
+  if (/^[0-9A-Za-z.-]+$/.test(left)) return right
+  return raw
 }
 
 const parseProductCode = (label) => {
@@ -191,6 +273,13 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
   const [productLoading, setProductLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('general')
+  const [selectedCliente, setSelectedCliente] = useState(null)
+  const [clienteForm, setClienteForm] = useState(initialClienteForm)
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+  const [clienteQuery, setClienteQuery] = useState('')
+  const [clienteOptions, setClienteOptions] = useState([])
+  const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
@@ -200,6 +289,8 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   const modalRef = useRef(null)
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
+  const clienteDropdownRef = useRef(null)
+  const clienteSearchTimerRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const modalSizeRef = useRef(modalSize)
@@ -340,16 +431,22 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     return subtotal + draftTotal
   }, [draftLineTotal, subtotal])
 
-  const descuentoAplicado = useMemo(() => {
+  const descuentoPercent = useMemo(() => {
     if (!isVenta) return 0
     const parsed = parseNumber(formData.descuento)
-    if (!Number.isFinite(parsed) || parsed < 0) return 0
-    return parsed
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0
+    return Math.min(parsed, 100)
   }, [formData.descuento, isVenta])
+
+  const descuentoAplicado = useMemo(
+    () => subtotalConBorrador * (descuentoPercent / 100),
+    [descuentoPercent, subtotalConBorrador]
+  )
 
   const subtotalNeto = Math.max(subtotalConBorrador - descuentoAplicado, 0)
   const totalConIva = subtotalNeto * (1 + ivaRateValue)
   const ivaPercent = (ivaRateValue * 100).toFixed(2).replace(/\.00$/, '')
+  const descuentoPercentLabel = descuentoPercent.toFixed(2).replace(/\.00$/, '')
 
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
@@ -402,6 +499,34 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     [formData.sucursalId, isTraslado, stockByProduct, token]
   )
 
+  const searchClientes = useCallback(
+    async (query) => {
+      const term = String(query ?? '').trim()
+      if (!term || term.length < 2 || !token) {
+        setClienteOptions([])
+        setClienteLoading(false)
+        return
+      }
+
+      setClienteLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/buscar-cliente/?q=${encodeURIComponent(term)}&page_size=10`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar los clientes.')
+        const payload = await response.json().catch(() => ({}))
+        setClienteOptions(parseApiList(payload))
+      } catch {
+        setClienteOptions([])
+      } finally {
+        setClienteLoading(false)
+      }
+    },
+    [token]
+  )
+
   useEffect(() => {
     if (!open || !formData.subTipoId || !defaultEstadoMovimientoId) return
     setFormData((prev) => {
@@ -446,6 +571,27 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     })
   }, [formData.subTipoId, isDevolucion, isTraslado, isVenta])
 
+  useEffect(() => {
+    if (isVenta) return
+    if (clienteSearchTimerRef.current) {
+      clearTimeout(clienteSearchTimerRef.current)
+      clienteSearchTimerRef.current = null
+    }
+    setActiveTab('general')
+    setSelectedCliente(null)
+    setClienteForm(initialClienteForm)
+    setShowClienteDropdown(false)
+    setClienteQuery('')
+    setClienteOptions([])
+    setClienteLoading(false)
+  }, [isVenta])
+
+  useEffect(() => {
+    if (!formData.subTipoId) {
+      setActiveTab('general')
+    }
+  }, [formData.subTipoId])
+
   const buildFormData = useCallback((salida, catalogs) => {
     const {
       branchesList,
@@ -475,6 +621,9 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     const estadoId = matchedEstado?.id ?? ''
     const estadoNombre = matchedEstado?.nombre || estadoLabel
     const { cliente, descripcion } = extractClienteFromDescripcion(salida?.descripcion)
+    const clienteRawValue = String(cliente || '').trim()
+    const clienteFieldValue = normalizeClienteTextForField(clienteRawValue)
+    const clienteForm = buildClienteFormFromText(clienteRawValue, clienteFieldValue)
 
     const detalles = (Array.isArray(salida?.detalles) ? salida.detalles : []).map((detalle) => {
       const productLabel = String(detalle?.producto ?? '').trim()
@@ -522,10 +671,11 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
         descripcion,
         funcional: Boolean(salida?.funcional),
         sucursalObjetivoId: sucursalObjetivoId ? String(sucursalObjetivoId) : '',
-        cliente,
+        cliente: clienteFieldValue,
         descuento: salida?.descuento ?? '',
         iva_rate: String(salida?.iva_rate ?? DEFAULT_IVA_RATE),
       },
+      clienteForm,
       detalles,
     }
   }, [])
@@ -602,6 +752,12 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
       })
 
       setFormData(normalized.form)
+      setClienteQuery(String(normalized.form?.cliente || ''))
+      setSelectedCliente(null)
+      setClienteForm(normalized.clienteForm || initialClienteForm)
+      setShowClienteDropdown(false)
+      setClienteOptions([])
+      setClienteLoading(false)
       setDetails(normalized.detalles)
       setOriginalData(normalized)
       setDetailDraft(initialDetail)
@@ -652,6 +808,10 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
 
   useEffect(() => {
     if (!open) return
+    if (clienteSearchTimerRef.current) {
+      clearTimeout(clienteSearchTimerRef.current)
+      clienteSearchTimerRef.current = null
+    }
     setFormData(emptyForm)
     setDetails([])
     setDetailDraft(initialDetail)
@@ -662,6 +822,13 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     setProductQuery('')
     setProductOptions([])
     setProductLoading(false)
+    setActiveTab('general')
+    setSelectedCliente(null)
+    setClienteForm(initialClienteForm)
+    setShowClienteDropdown(false)
+    setClienteQuery('')
+    setClienteOptions([])
+    setClienteLoading(false)
     setStockByProduct({})
     setOriginalData(null)
     setIsEditing(false)
@@ -671,6 +838,21 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     setError('')
     loadData()
   }, [open, loadData])
+
+  useEffect(
+    () => () => {
+      if (clienteSearchTimerRef.current) {
+        clearTimeout(clienteSearchTimerRef.current)
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
+    if (!open) {
+      setLoadingData(true)
+    }
+  }, [open])
 
   const updateProductDropdownPlacement = useCallback(() => {
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
@@ -716,15 +898,122 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   }, [open, productQuery, searchProducts, showProductDropdown])
 
   useEffect(() => {
-    if (!open || !showProductDropdown) return undefined
+    if (!open || !isVenta || !showClienteDropdown) return
+    const term = clienteQuery.trim()
+    if (!term || term.length < 2) {
+      if (clienteSearchTimerRef.current) {
+        clearTimeout(clienteSearchTimerRef.current)
+        clienteSearchTimerRef.current = null
+      }
+      setClienteOptions([])
+      setClienteLoading(false)
+      return
+    }
+
+    if (clienteSearchTimerRef.current) {
+      clearTimeout(clienteSearchTimerRef.current)
+      clienteSearchTimerRef.current = null
+    }
+
+    clienteSearchTimerRef.current = setTimeout(() => {
+      searchClientes(term)
+    }, 320)
+
+    return () => {
+      if (clienteSearchTimerRef.current) {
+        clearTimeout(clienteSearchTimerRef.current)
+        clienteSearchTimerRef.current = null
+      }
+    }
+  }, [clienteQuery, isVenta, open, searchClientes, showClienteDropdown])
+
+  useEffect(() => {
+    if (!open || (!showProductDropdown && !showClienteDropdown)) return undefined
     const handleClick = (event) => {
       if (productDropdownRef.current && !productDropdownRef.current.contains(event.target)) {
         setShowProductDropdown(false)
       }
+      if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
+        setShowClienteDropdown(false)
+      }
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [open, showProductDropdown])
+  }, [open, showClienteDropdown, showProductDropdown])
+
+  useEffect(() => {
+    if (activeTab !== 'cliente' && showClienteDropdown) {
+      setShowClienteDropdown(false)
+    }
+    if (activeTab !== 'general' && showProductDropdown) {
+      setShowProductDropdown(false)
+    }
+  }, [activeTab, showClienteDropdown, showProductDropdown])
+
+  useEffect(() => {
+    if (!open || loadingData || isEditing || !isVenta) return
+    if (selectedCliente?.id) return
+
+    const preferredLookup = String(clienteForm.cedula_ruc || '').trim()
+    const fallbackLookup = String(formData.cliente || '').trim()
+    const lookup = preferredLookup || fallbackLookup
+    if (!lookup || lookup.length < 2 || !token) return
+
+    let ignore = false
+
+    const resolveCliente = async () => {
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/buscar-cliente/?q=${encodeURIComponent(lookup)}&page_size=10`,
+          {},
+          token
+        )
+        if (!response.ok || ignore) return
+        const payload = await response.json().catch(() => ({}))
+        if (ignore) return
+        const options = parseApiList(payload)
+        if (!options.length) return
+
+        let matched = null
+        if (preferredLookup) {
+          const exactByCedula = options.filter(
+            (item) => normalizeValue(item?.cedula_ruc) === normalizeValue(preferredLookup)
+          )
+          if (exactByCedula.length === 1) {
+            matched = exactByCedula[0]
+          }
+        }
+
+        if (!matched) {
+          const normalizedName = normalizeValue(fallbackLookup)
+          const exactByName = options.filter(
+            (item) => normalizeValue(resolveClienteNombre(item)) === normalizedName
+          )
+          if (exactByName.length === 1) {
+            matched = exactByName[0]
+          }
+        }
+
+        if (!matched && options.length === 1) {
+          matched = options[0]
+        }
+
+        if (!matched) return
+        setSelectedCliente(matched)
+        setClienteForm(normalizeClientePayload(matched))
+        const fieldValue = formatClienteFieldValue(matched)
+        setFormData((prev) => ({ ...prev, cliente: fieldValue }))
+        setClienteQuery(fieldValue)
+      } catch {
+        // No bloquear la vista si no se puede resolver el cliente.
+      }
+    }
+
+    resolveCliente()
+    return () => {
+      ignore = true
+    }
+  }, [clienteForm.cedula_ruc, formData.cliente, isEditing, isVenta, loadingData, open, selectedCliente, token])
 
   useEffect(() => {
     if (!open || !showProductDropdown) return undefined
@@ -905,6 +1194,60 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     }))
   }
 
+  const handleClienteQueryChange = (event) => {
+    if (!isEditing) return
+    const value = event.target.value
+    setClienteQuery(value)
+    setShowClienteDropdown(Boolean(value))
+    if (!value.trim()) {
+      setSelectedCliente(null)
+      setFormData((prev) => ({ ...prev, cliente: '' }))
+      setClienteForm(initialClienteForm)
+      setClienteOptions([])
+      setClienteLoading(false)
+      return
+    }
+
+    const currentLabel = formatClienteFieldValue(selectedCliente)
+    if (selectedCliente && normalizeValue(value) !== normalizeValue(currentLabel)) {
+      setSelectedCliente(null)
+      setFormData((prev) => ({ ...prev, cliente: '' }))
+    }
+  }
+
+  const handleClienteFieldChange = (event) => {
+    if (!isEditing) return
+    const { name, value } = event.target
+    setClienteForm((prev) => ({ ...prev, [name]: value }))
+    if (selectedCliente) {
+      setSelectedCliente(null)
+      setFormData((prev) => ({ ...prev, cliente: '' }))
+      return
+    }
+
+    if (name === 'nombres' || name === 'apellidos') {
+      setFormData((prev) => {
+        const nombres = name === 'nombres' ? value : clienteForm.nombres
+        const apellidos = name === 'apellidos' ? value : clienteForm.apellidos
+        const clienteLabel = `${String(nombres || '').trim()} ${String(apellidos || '').trim()}`.trim()
+        return { ...prev, cliente: clienteLabel }
+      })
+    }
+  }
+
+  const handleClienteSelect = (cliente) => {
+    if (!isEditing) return
+    const label = formatClienteFieldValue(cliente)
+    if (!label) return
+    setSelectedCliente(cliente || null)
+    setFormData((prev) => ({ ...prev, cliente: label }))
+    setClienteQuery(label)
+    setClienteForm(normalizeClientePayload(cliente))
+    setShowClienteDropdown(false)
+    setClienteOptions([])
+    setClienteLoading(false)
+  }
+
   const handleDetailChange = (event) => {
     if (!isEditing) return
     const { name, value } = event.target
@@ -1021,14 +1364,20 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     setProductDropdownMaxHeight(null)
     setProductQuery('')
     setProductOptions([])
+    setShowClienteDropdown(false)
+    setClienteQuery(String(originalData.form?.cliente || ''))
+    setClienteForm(originalData.clienteForm || initialClienteForm)
+    setClienteOptions([])
+    setClienteLoading(false)
+    setSelectedCliente(null)
     setError('')
     setIsEditing(false)
   }
 
-  const buildDescripcion = () => {
+  const buildDescripcion = (clienteLabel = '') => {
     const descripcionBase = String(formData.descripcion || '').trim()
     if (!isVenta) return descripcionBase
-    const cliente = String(formData.cliente || '').trim()
+    const cliente = String(clienteLabel || '').trim()
     if (!cliente) return descripcionBase
     if (!descripcionBase) return `Cliente: ${cliente}`
     return `Cliente: ${cliente}\n${descripcionBase}`
@@ -1073,9 +1422,20 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
       return
     }
 
-    if (isVenta && !String(formData.cliente || '').trim()) {
-      notifyError('Ingresa el cliente para la venta.')
-      return
+    let ventaClienteLabel = String(formData.cliente || '').trim()
+    if (isVenta) {
+      if (selectedCliente?.id) {
+        ventaClienteLabel = formatClienteFieldValue(selectedCliente)
+      } else {
+        const clientePayload = normalizeClientePayload(clienteForm)
+        ventaClienteLabel = `${clientePayload.nombres} ${clientePayload.apellidos}`.trim()
+      }
+
+      if (!ventaClienteLabel) {
+        notifyError('Ingresa los datos del cliente para la venta.')
+        setActiveTab('cliente')
+        return
+      }
     }
 
     if (!details.length) {
@@ -1096,14 +1456,24 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
       return
     }
 
-    const descuento = isVenta ? parseNumber(formData.descuento) ?? 0 : 0
+    const descuentoIngresado = isVenta ? parseNumber(formData.descuento) : 0
+    if (
+      isVenta &&
+      descuentoIngresado !== null &&
+      (!Number.isFinite(descuentoIngresado) || descuentoIngresado < 0 || descuentoIngresado > 100)
+    ) {
+      notifyError('El descuento debe ser un porcentaje entre 0 y 100.')
+      return
+    }
+
+    const descuento = isVenta ? Math.max(descuentoIngresado ?? 0, 0) : 0
     const ivaRate = parseNumber(formData.iva_rate)
 
     const payload = {
       sucursal_id: Number(formData.sucursalId),
       tipo_movimiento_id: Number(salidaTipoId),
       sub_tipo_movimiento_id: Number(formData.subTipoId),
-      descripcion: buildDescripcion(),
+      descripcion: buildDescripcion(ventaClienteLabel),
       funcional: isDevolucion ? Boolean(formData.funcional) : true,
       sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
       estado_movimiento_id: Number(formData.estadoId),
@@ -1145,11 +1515,18 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
         throw new Error(detail)
       }
 
+      const updatedForm = { ...formData, cliente: ventaClienteLabel }
+      setFormData(updatedForm)
       const nextOriginal = {
-        form: { ...formData },
+        form: { ...updatedForm },
+        clienteForm: { ...clienteForm },
         detalles: details.map((detail) => ({ ...detail })),
       }
       setOriginalData(nextOriginal)
+      setClienteQuery(String(updatedForm.cliente || ''))
+      setShowClienteDropdown(false)
+      setClienteOptions([])
+      setClienteLoading(false)
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
@@ -1184,7 +1561,9 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     }
   }
 
-  if (!open) return null
+  const { shouldRender, isClosing } = useModalAnimation(open)
+
+  if (!shouldRender) return null
 
   const editorDisabled = !isEditing || saving || loadingData
 
@@ -1200,6 +1579,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   const modalClassName = [
     'create-user__modal',
     'create-salida__modal',
+    isClosing ? 'create-user__modal--closing' : '',
     isResizingModal ? 'create-salida__modal--resizing' : '',
   ]
     .filter(Boolean)
@@ -1214,7 +1594,12 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   const modalTitle = `${headerTipo}: ${headerDocumento}`
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
+    <div
+      className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      style={overlayStyle}
+    >
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
@@ -1243,8 +1628,34 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
         </header>
 
         <form className="create-user__form" onSubmit={(event) => event.preventDefault()}>
+          {loadingData && (
+            <div className="create-user__loading-overlay" role="status" aria-live="polite">
+              <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+              <span>Cargando datos...</span>
+            </div>
+          )}
+          {isVenta && (
+            <div className="create-user__tabs" role="tablist" aria-label="Secciones de salida">
+              <button
+                type="button"
+                className={`create-user__tab ${activeTab === 'general' ? 'create-user__tab--active' : ''}`}
+                onClick={() => setActiveTab('general')}
+              >
+                Datos de salida
+              </button>
+              <button
+                type="button"
+                className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
+                onClick={() => setActiveTab('cliente')}
+              >
+                Datos del cliente
+              </button>
+            </div>
+          )}
           <div className="create-user__content create-salida__content">
               <div className="create-user__body">
+                {(activeTab === 'general' || !isVenta) && (
+                  <>
                 <section className="create-user__section">
                   <div className="create-user__section-header">
                     <div>
@@ -1362,19 +1773,13 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
 
                     {isVenta && (
                       <label className="create-user__field">
-                        <span>Cliente</span>
-                        <input name="cliente" type="text" value={formData.cliente} onChange={handleChange} disabled={editorDisabled} />
-                      </label>
-                    )}
-
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Descuento</span>
+                        <span>Descuento (%)</span>
                         <input
                           name="descuento"
                           type="number"
                           step="0.01"
                           min="0"
+                          max="100"
                           value={formData.descuento}
                           onChange={handleChange}
                           disabled={editorDisabled}
@@ -1581,7 +1986,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
 
                     {isVenta && (
                       <div className="create-user__locations-row create-salida__totals-row">
-                        <span className="create-salida__totals-label">Descuento</span>
+                        <span className="create-salida__totals-label">Descuento ({descuentoPercentLabel}%)</span>
                         <span className="create-salida__totals-value">-{formatCurrency(descuentoAplicado)}</span>
                         <span className="create-salida__totals-spacer" />
                       </div>
@@ -1598,6 +2003,141 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
 
                   {detailError && <div className="create-user__error">{detailError}</div>}
                 </section>
+                  </>
+                )}
+
+                {isVenta && activeTab === 'cliente' && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <p className="create-user__eyebrow">Cliente</p>
+                        <h4>Datos del cliente</h4>
+                      </div>
+                    </div>
+
+                    <div className="create-user__grid create-user__grid--two">
+                      <label className="create-user__field create-user__field--full">
+                        <span>Cliente</span>
+                        <div className="create-user__dropdown" ref={clienteDropdownRef}>
+                          <input
+                            type="text"
+                            placeholder="Buscar por cedula o nombre"
+                            value={clienteQuery}
+                            onChange={handleClienteQueryChange}
+                            onFocus={() => isEditing && setShowClienteDropdown(Boolean(clienteQuery))}
+                            disabled={editorDisabled}
+                            autoComplete="off"
+                          />
+                          {showClienteDropdown && isEditing && (
+                            <div className="create-user__dropdown-panel create-salida__cliente-panel">
+                              <div className="create-user__dropdown-results">
+                                {clienteLoading && <small className="muted">Buscando cliente...</small>}
+                                {!clienteLoading && !clienteQuery.trim() && (
+                                  <small className="muted">Escribe para buscar.</small>
+                                )}
+                                {!clienteLoading && clienteQuery.trim() && clienteQuery.trim().length < 2 && (
+                                  <small className="muted">Escribe al menos 2 caracteres.</small>
+                                )}
+                                {!clienteLoading && clienteQuery.trim().length >= 2 && !clienteOptions.length && (
+                                  <small className="muted">Sin resultados.</small>
+                                )}
+                                {clienteOptions.map((cliente) => {
+                                  const optionLabel = formatClienteDropdownLabel(cliente)
+                                  const selected = String(selectedCliente?.id || '') === String(cliente?.id || '')
+                                  return (
+                                    <button
+                                      key={cliente.id}
+                                      type="button"
+                                      className="create-user__result-option"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => handleClienteSelect(cliente)}
+                                    >
+                                      <div className="create-user__result-info">
+                                        <strong>{optionLabel || `Cliente ${cliente.id}`}</strong>
+                                        <small>ID: {cliente.id}</small>
+                                      </div>
+                                      {selected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </label>
+
+                      <label className="create-user__field">
+                        <span>Cedula/RUC</span>
+                        <input
+                          name="cedula_ruc"
+                          type="text"
+                          value={clienteForm.cedula_ruc}
+                          onChange={handleClienteFieldChange}
+                          disabled={editorDisabled}
+                        />
+                      </label>
+
+                      <label className="create-user__field">
+                        <span>Nombres</span>
+                        <input
+                          name="nombres"
+                          type="text"
+                          value={clienteForm.nombres}
+                          onChange={handleClienteFieldChange}
+                          disabled={editorDisabled}
+                        />
+                      </label>
+
+                      <label className="create-user__field">
+                        <span>Apellidos</span>
+                        <input
+                          name="apellidos"
+                          type="text"
+                          value={clienteForm.apellidos}
+                          onChange={handleClienteFieldChange}
+                          disabled={editorDisabled}
+                        />
+                      </label>
+
+                      <label className="create-user__field">
+                        <span>Correo</span>
+                        <input
+                          name="correo"
+                          type="email"
+                          value={clienteForm.correo}
+                          onChange={handleClienteFieldChange}
+                          disabled={editorDisabled}
+                        />
+                      </label>
+
+                      <label className="create-user__field">
+                        <span>Telefono</span>
+                        <input
+                          name="telefono"
+                          type="text"
+                          value={clienteForm.telefono}
+                          onChange={handleClienteFieldChange}
+                          disabled={editorDisabled}
+                        />
+                      </label>
+
+                      <label className="create-user__field create-user__field--full">
+                        <span>Direccion</span>
+                        <input
+                          name="direccion"
+                          type="text"
+                          value={clienteForm.direccion}
+                          onChange={handleClienteFieldChange}
+                          disabled={editorDisabled}
+                        />
+                      </label>
+                    </div>
+
+                    {selectedCliente?.id && (
+                      <small className="muted">Cliente existente detectado. Se usara el registro actual al guardar.</small>
+                    )}
+                  </section>
+                )}
               </div>
             </div>
 

@@ -273,11 +273,25 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="buscar-cliente")
     def buscar_cliente(self, request):
-        cedula_ruc = (request.query_params.get("cedula_ruc") or "").strip()
-        if not cedula_ruc:
+        raw_query = (
+            request.query_params.get("q")
+            or request.query_params.get("search")
+            or request.query_params.get("cedula_ruc")
+            or ""
+        )
+        query = str(raw_query).strip()
+        if not query:
             return Response({"results": []}, status=status.HTTP_200_OK)
 
-        queryset = Cliente.objects.filter(cedula_ruc__icontains=cedula_ruc).order_by("nombres", "apellidos")[:10]
+        tokens = [token for token in query.split() if token]
+        search_q = Q(cedula_ruc__icontains=query)
+        if tokens:
+            for token in tokens:
+                search_q |= Q(nombres__icontains=token) | Q(apellidos__icontains=token)
+        else:
+            search_q |= Q(nombres__icontains=query) | Q(apellidos__icontains=query)
+
+        queryset = Cliente.objects.filter(search_q).order_by("nombres", "apellidos").distinct()[:10]
         serializer = ClienteLiteSerializer(queryset, many=True)
         return Response({"results": serializer.data}, status=status.HTTP_200_OK)
 

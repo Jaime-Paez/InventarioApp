@@ -55,6 +55,27 @@
   min-width: 0;
 }
 
+.create-salida__cliente-mode {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.create-salida__cliente-mode-btn {
+  min-width: 180px;
+}
+
+.create-salida__cliente-mode-btn.is-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-button-primary);
+}
+
+.dashboard-shell.dark .create-salida__cliente-mode-btn.is-active {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+}
+
 @keyframes create-salida-reveal {
   from {
     opacity: 0;

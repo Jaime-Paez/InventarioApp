@@ -5,6 +5,7 @@
   padding: 12px;
   overflow: hidden;
   pointer-events: none;
+  animation: create-user-overlay-in 180ms ease both;
 }
 
 .create-user__overlay:focus-within {
@@ -32,6 +33,59 @@
   gap: 0;
   color: var(--color-text-primary);
   pointer-events: auto;
+  animation: create-user-modal-in 180ms ease both;
+}
+
+.create-user__overlay--closing {
+  animation: create-user-overlay-out 180ms ease both;
+}
+
+.create-user__modal--closing {
+  animation: create-user-modal-out 180ms ease both;
+}
+
+@keyframes create-user-overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes create-user-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes create-user-overlay-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes create-user-modal-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
 }
 
 .dashboard-shell.dark .create-user__modal {
@@ -141,6 +195,7 @@
   min-height: 0;
   width: 100%;
   max-width: none;
+  position: relative;
 }
 
 .create-user__content {
@@ -150,6 +205,35 @@
   gap: 0;
   overflow: hidden;
   width: 100%;
+  position: relative;
+}
+
+.create-user__loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--modal-color) 96%, transparent);
+  color: var(--color-text-primary);
+  pointer-events: all;
+}
+
+.create-user__loading-overlay i {
+  font-size: 1.5rem;
+}
+
+.create-user__loading-overlay span {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
+.dashboard-shell.dark .create-user__loading-overlay {
+  background: color-mix(in srgb, var(--table-color-dark) 95%, transparent);
+  color: var(--color-text-dark);
 }
 
 /* =========================
@@ -1475,6 +1559,15 @@
 
   .create-user__grid--two {
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .create-user__overlay,
+  .create-user__overlay--closing,
+  .create-user__modal,
+  .create-user__modal--closing {
+    animation: none !important;
   }
 }
 

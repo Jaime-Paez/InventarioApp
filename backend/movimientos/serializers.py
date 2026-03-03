@@ -155,6 +155,23 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         subtipo = attrs.get("sub_tipo_movimiento") or getattr(self.instance, "sub_tipo_movimiento", None)
         estado = attrs.get("estado_movimiento") or getattr(self.instance, "estado_movimiento", None)
 
+        no_documento = str(
+            attrs.get("no_documento", getattr(self.instance, "no_documento", ""))
+            or ""
+        ).strip()
+        tipo_id = getattr(tipo, "id", None)
+        if tipo_id and no_documento:
+            duplicated = MovimientoInventario.objects.filter(
+                tipo_movimiento_id=tipo_id,
+                no_documento__iexact=no_documento,
+            )
+            if self.instance is not None:
+                duplicated = duplicated.exclude(pk=self.instance.pk)
+            if duplicated.exists():
+                raise serializers.ValidationError(
+                    {"no_documento": "No se puede usar dos iguales."}
+                )
+
         tipo_name = normalize_name(getattr(tipo, "nombre", ""))
         if not tipo_name.startswith("sal"):
             return attrs
@@ -220,6 +237,19 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                             "En venta solo se permite Vendido, Proformado o Facturado."
                         )
                     }
+                )
+
+            descuento_raw = attrs.get("descuento", getattr(self.instance, "descuento", 0))
+            try:
+                descuento_value = float(descuento_raw or 0)
+            except (TypeError, ValueError):
+                raise serializers.ValidationError(
+                    {"descuento": "El descuento debe ser un porcentaje valido entre 0 y 100."}
+                )
+
+            if descuento_value < 0 or descuento_value > 100:
+                raise serializers.ValidationError(
+                    {"descuento": "El descuento debe ser un porcentaje entre 0 y 100."}
                 )
 
         return attrs

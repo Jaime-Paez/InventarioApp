@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
+import useModalAnimation from '../common/useModalAnimation'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -32,6 +33,15 @@ const initialDetail = {
   valor: '',
 }
 
+const initialClienteForm = {
+  nombres: '',
+  apellidos: '',
+  cedula_ruc: '',
+  correo: '',
+  telefono: '',
+  direccion: '',
+}
+
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeValue = (value) =>
   String(value ?? '')
@@ -51,6 +61,33 @@ const parseIntValue = (value) => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return null
   return Math.max(0, Math.floor(parsed))
+}
+
+const parseApiErrorValue = (value) => {
+  if (!value) return ''
+  if (typeof value === 'string') return value.trim()
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const parsed = parseApiErrorValue(entry)
+      if (parsed) return parsed
+    }
+    return ''
+  }
+  if (typeof value === 'object') {
+    for (const entry of Object.values(value)) {
+      const parsed = parseApiErrorValue(entry)
+      if (parsed) return parsed
+    }
+  }
+  return ''
+}
+
+const resolveApiErrorMessage = (payload, fallback) => {
+  const detail = parseApiErrorValue(payload?.detail)
+  if (detail) return detail
+  const fallbackFromBody = parseApiErrorValue(payload)
+  if (fallbackFromBody) return fallbackFromBody
+  return fallback
 }
 
 const todayISO = () => {
@@ -79,6 +116,51 @@ const resolveProductPrice = (producto) => {
   if (parsed === null || parsed < 0) return ''
   const raw = String(producto?.precio ?? '').trim()
   return raw || parsed.toFixed(2)
+}
+
+const resolveClienteNombre = (cliente) => {
+  const nombreCompleto = String(
+    cliente?.nombre_completo || `${cliente?.nombres || ''} ${cliente?.apellidos || ''}`
+  ).trim()
+  return nombreCompleto
+}
+
+const formatClienteDropdownLabel = (cliente) => {
+  if (!cliente) return ''
+  const cedula = String(cliente?.cedula_ruc || '').trim()
+  const nombre = resolveClienteNombre(cliente)
+  if (cedula && nombre) return `${cedula}: ${nombre}`
+  if (cedula) return cedula
+  if (nombre) return nombre
+  return ''
+}
+
+const formatClienteFieldValue = (cliente) => {
+  if (!cliente) return ''
+  const nombre = resolveClienteNombre(cliente)
+  if (nombre) return nombre
+  return String(cliente?.cedula_ruc || '').trim()
+}
+
+const normalizeClientePayload = (cliente) => ({
+  nombres: String(cliente?.nombres || '').trim(),
+  apellidos: String(cliente?.apellidos || '').trim(),
+  cedula_ruc: String(cliente?.cedula_ruc || '').trim(),
+  correo: String(cliente?.correo || '').trim(),
+  telefono: String(cliente?.telefono || '').trim(),
+  direccion: String(cliente?.direccion || '').trim(),
+})
+
+const clienteRequiredFields = ['nombres', 'apellidos', 'cedula_ruc', 'telefono', 'direccion']
+const CLIENT_MODE_EXISTING = 'existing'
+const CLIENT_MODE_NEW = 'new'
+const DOCUMENT_STATUS = {
+  idle: 'idle',
+  invalid: 'invalid',
+  checking: 'checking',
+  available: 'available',
+  duplicate: 'duplicate',
+  error: 'error',
 }
 
 function CreateSalida({
@@ -110,8 +192,17 @@ function CreateSalida({
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
   const [productLoading, setProductLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('general')
+  const [clienteMode, setClienteMode] = useState(CLIENT_MODE_EXISTING)
+  const [selectedCliente, setSelectedCliente] = useState(null)
+  const [clienteForm, setClienteForm] = useState(initialClienteForm)
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+  const [clienteQuery, setClienteQuery] = useState('')
+  const [clienteOptions, setClienteOptions] = useState([])
+  const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
+  const [documentStatus, setDocumentStatus] = useState(DOCUMENT_STATUS.invalid)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -119,6 +210,10 @@ function CreateSalida({
   const modalRef = useRef(null)
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
+  const clienteDropdownRef = useRef(null)
+  const clienteSearchTimerRef = useRef(null)
+  const documentCheckTimerRef = useRef(null)
+  const documentCheckSequenceRef = useRef(0)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const modalSizeRef = useRef(modalSize)
@@ -173,6 +268,8 @@ function CreateSalida({
   const isDevolucion = selectedSubTipoName.includes('devol')
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
+  const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
+  const useNewCliente = clienteMode === CLIENT_MODE_NEW
   const isSelectorStep = !formData.subTipoId
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'No. de Traslado' : 'No. de Factura'
@@ -257,16 +354,29 @@ function CreateSalida({
     return subtotal + draftTotal
   }, [draftLineTotal, subtotal])
 
-  const descuentoAplicado = useMemo(() => {
+  const descuentoPercent = useMemo(() => {
     if (!isVenta) return 0
     const parsed = parseNumber(formData.descuento)
-    if (!Number.isFinite(parsed) || parsed < 0) return 0
-    return parsed
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0
+    return Math.min(parsed, 100)
   }, [formData.descuento, isVenta])
+
+  const descuentoAplicado = useMemo(
+    () => subtotalConBorrador * (descuentoPercent / 100),
+    [descuentoPercent, subtotalConBorrador]
+  )
 
   const subtotalNeto = Math.max(subtotalConBorrador - descuentoAplicado, 0)
   const totalConIva = subtotalNeto * (1 + ivaRateValue)
   const ivaPercent = (ivaRateValue * 100).toFixed(2).replace(/\.00$/, '')
+  const descuentoPercentLabel = descuentoPercent.toFixed(2).replace(/\.00$/, '')
+  const isDocumentChecking = documentStatus === DOCUMENT_STATUS.checking
+  const isDocumentAvailable = documentStatus === DOCUMENT_STATUS.available
+  const isExistingClienteReady = useExistingCliente && Boolean(selectedCliente?.id)
+  const isNewClienteReady =
+    useNewCliente && clienteRequiredFields.every((field) => String(clienteForm[field] || '').trim())
+  const isVentaClienteReady = !isVenta || isExistingClienteReady || isNewClienteReady
+  const canSubmit = !loading && isDocumentAvailable && !isDocumentChecking && isVentaClienteReady
 
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
@@ -329,6 +439,78 @@ function CreateSalida({
     [formData.sucursalId, isTraslado, stockByProduct, token]
   )
 
+  const searchClientes = useCallback(
+    async (query) => {
+      const term = String(query ?? '').trim()
+      if (!term || term.length < 2 || !token) {
+        setClienteOptions([])
+        setClienteLoading(false)
+        return
+      }
+
+      setClienteLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/buscar-cliente/?q=${encodeURIComponent(term)}&page_size=10`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar los clientes.')
+        const payload = await response.json().catch(() => ({}))
+        setClienteOptions(parseApiList(payload))
+      } catch {
+        setClienteOptions([])
+      } finally {
+        setClienteLoading(false)
+      }
+    },
+    [token]
+  )
+
+  const validateDocumentNumber = useCallback(
+    async (inputValue) => {
+      const normalized = String(inputValue || '').trim()
+      if (!normalized) {
+        setDocumentStatus(DOCUMENT_STATUS.invalid)
+        return false
+      }
+      if (!salidaTipoId || !token) {
+        setDocumentStatus(DOCUMENT_STATUS.error)
+        return false
+      }
+
+      const requestSequence = documentCheckSequenceRef.current + 1
+      documentCheckSequenceRef.current = requestSequence
+      setDocumentStatus(DOCUMENT_STATUS.checking)
+
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/validar-documento/?tipo_movimiento_id=${encodeURIComponent(
+            salidaTipoId
+          )}&no_documento=${encodeURIComponent(normalized)}`,
+          {},
+          token
+        )
+        const payload = await response.json().catch(() => ({}))
+        if (requestSequence !== documentCheckSequenceRef.current) return false
+        if (!response.ok) {
+          setDocumentStatus(DOCUMENT_STATUS.error)
+          return false
+        }
+
+        const available = Boolean(payload?.is_available)
+        setDocumentStatus(available ? DOCUMENT_STATUS.available : DOCUMENT_STATUS.duplicate)
+        return available
+      } catch {
+        if (requestSequence === documentCheckSequenceRef.current) {
+          setDocumentStatus(DOCUMENT_STATUS.error)
+        }
+        return false
+      }
+    },
+    [salidaTipoId, token]
+  )
+
   useEffect(() => {
     if (!open || !formData.subTipoId || !defaultEstadoMovimientoId) return
     setFormData((prev) =>
@@ -362,6 +544,29 @@ function CreateSalida({
       return changed ? next : prev
     })
   }, [formData.subTipoId, isDevolucion, isTraslado, isVenta])
+
+  useEffect(() => {
+    if (!formData.subTipoId) {
+      setClienteMode(CLIENT_MODE_EXISTING)
+      setActiveTab('general')
+    }
+  }, [formData.subTipoId])
+
+  useEffect(() => {
+    if (isVenta) return
+    if (clienteSearchTimerRef.current) {
+      clearTimeout(clienteSearchTimerRef.current)
+      clienteSearchTimerRef.current = null
+    }
+    setClienteMode(CLIENT_MODE_EXISTING)
+    setActiveTab('general')
+    setSelectedCliente(null)
+    setClienteForm(initialClienteForm)
+    setShowClienteDropdown(false)
+    setClienteQuery('')
+    setClienteOptions([])
+    setClienteLoading(false)
+  }, [isVenta])
 
   const fetchCatalogs = useCallback(async () => {
     if (!token) return
@@ -463,6 +668,15 @@ function CreateSalida({
 
   useEffect(() => {
     if (!open) return
+    if (clienteSearchTimerRef.current) {
+      clearTimeout(clienteSearchTimerRef.current)
+      clienteSearchTimerRef.current = null
+    }
+    if (documentCheckTimerRef.current) {
+      clearTimeout(documentCheckTimerRef.current)
+      documentCheckTimerRef.current = null
+    }
+    documentCheckSequenceRef.current = 0
     setFormData({ ...initialForm, fecha: todayISO() })
     setDetails([])
     setDetailDraft(initialDetail)
@@ -473,13 +687,34 @@ function CreateSalida({
     setProductQuery('')
     setProductOptions([])
     setProductLoading(false)
+    setClienteMode(CLIENT_MODE_EXISTING)
+    setActiveTab('general')
+    setSelectedCliente(null)
+    setClienteForm(initialClienteForm)
+    setShowClienteDropdown(false)
+    setClienteQuery('')
+    setClienteOptions([])
+    setClienteLoading(false)
     setStockByProduct({})
+    setDocumentStatus(DOCUMENT_STATUS.invalid)
     setIsMaximized(false)
     setIsResizingModal(false)
     modalRestoreRef.current = null
     setError('')
     fetchCatalogs()
   }, [open, fetchCatalogs])
+
+  useEffect(
+    () => () => {
+      if (clienteSearchTimerRef.current) {
+        clearTimeout(clienteSearchTimerRef.current)
+      }
+      if (documentCheckTimerRef.current) {
+        clearTimeout(documentCheckTimerRef.current)
+      }
+    },
+    []
+  )
 
   const updateProductDropdownPlacement = useCallback(() => {
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
@@ -525,15 +760,91 @@ function CreateSalida({
   }, [open, productQuery, searchProducts, showProductDropdown])
 
   useEffect(() => {
-    if (!open || !showProductDropdown) return undefined
+    if (!open || !isVenta || !showClienteDropdown) return
+    const term = clienteQuery.trim()
+    if (!term || term.length < 2) {
+      if (clienteSearchTimerRef.current) {
+        clearTimeout(clienteSearchTimerRef.current)
+        clienteSearchTimerRef.current = null
+      }
+      setClienteOptions([])
+      setClienteLoading(false)
+      return
+    }
+
+    if (clienteSearchTimerRef.current) {
+      clearTimeout(clienteSearchTimerRef.current)
+      clienteSearchTimerRef.current = null
+    }
+
+    clienteSearchTimerRef.current = setTimeout(() => {
+      searchClientes(term)
+    }, 320)
+
+    return () => {
+      if (clienteSearchTimerRef.current) {
+        clearTimeout(clienteSearchTimerRef.current)
+        clienteSearchTimerRef.current = null
+      }
+    }
+  }, [clienteQuery, isVenta, open, searchClientes, showClienteDropdown])
+
+  useEffect(() => {
+    if (!open || !formData.subTipoId) {
+      setDocumentStatus(DOCUMENT_STATUS.invalid)
+      return
+    }
+
+    const value = String(formData.no_documento || '').trim()
+    if (!value) {
+      setDocumentStatus(DOCUMENT_STATUS.invalid)
+      if (documentCheckTimerRef.current) {
+        clearTimeout(documentCheckTimerRef.current)
+        documentCheckTimerRef.current = null
+      }
+      return
+    }
+
+    if (documentCheckTimerRef.current) {
+      clearTimeout(documentCheckTimerRef.current)
+      documentCheckTimerRef.current = null
+    }
+
+    setDocumentStatus(DOCUMENT_STATUS.checking)
+    documentCheckTimerRef.current = setTimeout(() => {
+      validateDocumentNumber(value)
+    }, 320)
+
+    return () => {
+      if (documentCheckTimerRef.current) {
+        clearTimeout(documentCheckTimerRef.current)
+        documentCheckTimerRef.current = null
+      }
+    }
+  }, [formData.no_documento, formData.subTipoId, open, validateDocumentNumber])
+
+  useEffect(() => {
+    if (!open || (!showProductDropdown && !showClienteDropdown)) return undefined
     const handleClick = (event) => {
       if (productDropdownRef.current && !productDropdownRef.current.contains(event.target)) {
         setShowProductDropdown(false)
       }
+      if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
+        setShowClienteDropdown(false)
+      }
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [open, showProductDropdown])
+  }, [open, showClienteDropdown, showProductDropdown])
+
+  useEffect(() => {
+    if (activeTab !== 'cliente' && showClienteDropdown) {
+      setShowClienteDropdown(false)
+    }
+    if (activeTab !== 'general' && showProductDropdown) {
+      setShowProductDropdown(false)
+    }
+  }, [activeTab, showClienteDropdown, showProductDropdown])
 
   useEffect(() => {
     if (!open || !showProductDropdown) return undefined
@@ -714,6 +1025,68 @@ function CreateSalida({
     }))
   }
 
+  const handleUseExistingCliente = () => {
+    setError('')
+    setClienteMode(CLIENT_MODE_EXISTING)
+  }
+
+  const handleCreateNewCliente = () => {
+    setError('')
+    setClienteMode(CLIENT_MODE_NEW)
+    setSelectedCliente(null)
+    setFormData((prev) => ({ ...prev, cliente: '' }))
+    setClienteQuery('')
+    setShowClienteDropdown(false)
+    setClienteOptions([])
+    setClienteLoading(false)
+    setClienteForm(initialClienteForm)
+  }
+
+  const handleClienteQueryChange = (event) => {
+    const value = event.target.value
+    setError('')
+    setClienteQuery(value)
+    setShowClienteDropdown(Boolean(value))
+    if (!value.trim()) {
+      if (selectedCliente) {
+        setSelectedCliente(null)
+        setFormData((prev) => ({ ...prev, cliente: '' }))
+      }
+      setClienteOptions([])
+      setClienteLoading(false)
+      return
+    }
+
+    const currentLabel = formatClienteFieldValue(selectedCliente)
+    if (selectedCliente && normalizeValue(value) !== normalizeValue(currentLabel)) {
+      setSelectedCliente(null)
+      setFormData((prev) => ({ ...prev, cliente: '' }))
+    }
+  }
+
+  const handleClienteFieldChange = (event) => {
+    const { name, value } = event.target
+    setError('')
+    setClienteForm((prev) => ({ ...prev, [name]: value }))
+    if (selectedCliente) {
+      setSelectedCliente(null)
+      setFormData((prev) => ({ ...prev, cliente: '' }))
+    }
+  }
+
+  const handleClienteSelect = (cliente) => {
+    const label = formatClienteFieldValue(cliente)
+    if (!label) return
+    setClienteMode(CLIENT_MODE_EXISTING)
+    setSelectedCliente(cliente || null)
+    setFormData((prev) => ({ ...prev, cliente: label }))
+    setClienteQuery(label)
+    setClienteForm(normalizeClientePayload(cliente))
+    setShowClienteDropdown(false)
+    setClienteOptions([])
+    setClienteLoading(false)
+  }
+
   const handleDetailChange = (event) => {
     const { name, value } = event.target
     setDetailDraft((prev) => ({
@@ -810,10 +1183,10 @@ function CreateSalida({
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
   }
 
-  const buildDescripcion = () => {
+  const buildDescripcion = (clienteLabel = '') => {
     const descripcionBase = String(formData.descripcion || '').trim()
     if (!isVenta) return descripcionBase
-    const cliente = String(formData.cliente || '').trim()
+    const cliente = String(clienteLabel || '').trim()
     if (!cliente) return descripcionBase
     if (!descripcionBase) return `Cliente: ${cliente}`
     return `Cliente: ${cliente}\n${descripcionBase}`
@@ -858,8 +1231,9 @@ function CreateSalida({
       return
     }
 
-    if (isVenta && !String(formData.cliente || '').trim()) {
-      notifyError('Ingresa el cliente para la venta.')
+    const documentoDisponible = await validateDocumentNumber(formData.no_documento)
+    if (!documentoDisponible) {
+      notifyError('No se puede usar dos iguales.')
       return
     }
 
@@ -873,35 +1247,106 @@ function CreateSalida({
       return
     }
 
-    const descuento = isVenta ? parseNumber(formData.descuento) ?? 0 : 0
-    const ivaRate = parseNumber(formData.iva_rate)
-
-    const payload = {
-      sucursal_id: Number(formData.sucursalId),
-      tipo_movimiento_id: Number(salidaTipoId),
-      sub_tipo_movimiento_id: Number(formData.subTipoId),
-      descripcion: buildDescripcion(),
-      funcional: isDevolucion ? Boolean(formData.funcional) : true,
-      sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
-      estado_movimiento_id: Number(formData.estadoId),
-      descuento,
-      fecha: formData.fecha,
-      no_documento: formData.no_documento.trim(),
-      detalles: details.map((detail) => ({
-        producto_id: Number(detail.productoId),
-        cantidad: detail.cantidad,
-        estado_producto_id: Number(detail.estadoProductoId),
-        valor: detail.valor,
-        valor_total: detail.valor_total,
-      })),
-    }
-
-    if (ivaRate !== null) {
-      payload.iva_rate = ivaRate
+    const descuentoIngresado = isVenta ? parseNumber(formData.descuento) : 0
+    if (
+      isVenta &&
+      descuentoIngresado !== null &&
+      (!Number.isFinite(descuentoIngresado) || descuentoIngresado < 0 || descuentoIngresado > 100)
+    ) {
+      notifyError('El descuento debe ser un porcentaje entre 0 y 100.')
+      return
     }
 
     setLoading(true)
     try {
+      let ventaCliente = selectedCliente
+      let ventaClienteLabel = String(formData.cliente || '').trim()
+
+      if (isVenta) {
+        if (useExistingCliente) {
+          if (!ventaCliente?.id) {
+            setActiveTab('cliente')
+            throw new Error('Selecciona un cliente existente o usa "Crear nuevo cliente".')
+          }
+          ventaClienteLabel = formatClienteFieldValue(ventaCliente)
+        }
+
+        if (useNewCliente) {
+          const clientePayload = normalizeClientePayload(clienteForm)
+          const missingRequiredField = clienteRequiredFields.find((field) => !clientePayload[field])
+          if (missingRequiredField) {
+            setActiveTab('cliente')
+            throw new Error('Completa todos los datos del nuevo cliente para continuar.')
+          }
+
+          const createClienteResponse = await authFetch(
+            `${API_URL}/solicitudes/clientes/`,
+            {
+              method: 'POST',
+              body: JSON.stringify(clientePayload),
+            },
+            token
+          )
+          const createClienteData = await createClienteResponse.json().catch(() => ({}))
+          if (!createClienteResponse.ok) {
+            const detail = resolveApiErrorMessage(createClienteData, 'No se pudo crear el cliente.')
+            setActiveTab('cliente')
+            throw new Error(detail)
+          }
+
+          ventaCliente = createClienteData
+          ventaClienteLabel =
+            formatClienteFieldValue(createClienteData) ||
+            formatClienteDropdownLabel(createClienteData) ||
+            formatClienteFieldValue(clientePayload)
+
+          setSelectedCliente(createClienteData)
+          setClienteForm(normalizeClientePayload(createClienteData))
+          setClienteQuery(ventaClienteLabel)
+          setClienteMode(CLIENT_MODE_EXISTING)
+        }
+
+        if (!useExistingCliente && !useNewCliente) {
+          setActiveTab('cliente')
+          throw new Error('Selecciona como deseas asociar el cliente.')
+        }
+
+        if (!ventaClienteLabel) {
+          setActiveTab('cliente')
+          throw new Error('No se pudo resolver la informacion del cliente para la venta.')
+        }
+      }
+
+      const descuento = isVenta ? Math.max(descuentoIngresado ?? 0, 0) : 0
+      const ivaRate = parseNumber(formData.iva_rate)
+      const payload = {
+        sucursal_id: Number(formData.sucursalId),
+        tipo_movimiento_id: Number(salidaTipoId),
+        sub_tipo_movimiento_id: Number(formData.subTipoId),
+        descripcion: buildDescripcion(ventaClienteLabel),
+        funcional: isDevolucion ? Boolean(formData.funcional) : true,
+        sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
+        estado_movimiento_id: Number(formData.estadoId),
+        descuento,
+        fecha: formData.fecha,
+        no_documento: formData.no_documento.trim(),
+        detalles: details.map((detail) => ({
+          producto_id: Number(detail.productoId),
+          cantidad: detail.cantidad,
+          estado_producto_id: Number(detail.estadoProductoId),
+          valor: detail.valor,
+          valor_total: detail.valor_total,
+        })),
+      }
+
+      if (ivaRate !== null) {
+        payload.iva_rate = ivaRate
+      }
+
+      if (isVenta) {
+        setFormData((prev) => ({ ...prev, cliente: ventaClienteLabel }))
+      }
+
       const response = await authFetch(
         `${API_URL}/movimientos/movimiento_inventario/`,
         {
@@ -913,7 +1358,7 @@ function CreateSalida({
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || 'No se pudo crear la salida.'
+        const detail = resolveApiErrorMessage(data, 'No se pudo crear la salida.')
         throw new Error(detail)
       }
 
@@ -925,7 +1370,9 @@ function CreateSalida({
     }
   }
 
-  if (!open) return null
+  const { shouldRender, isClosing } = useModalAnimation(open)
+
+  if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {
@@ -939,13 +1386,19 @@ function CreateSalida({
   const modalClassName = [
     'create-user__modal',
     'create-salida__modal',
+    isClosing ? 'create-user__modal--closing' : '',
     isResizingModal ? 'create-salida__modal--resizing' : '',
   ]
     .filter(Boolean)
     .join(' ')
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
+    <div
+      className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      style={overlayStyle}
+    >
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
@@ -1005,9 +1458,31 @@ function CreateSalida({
               </section>
             </div>
           ) : (
-            <div className="create-user__content create-salida__content">
+            <>
+              {isVenta && (
+                <div className="create-user__tabs create-salida__tabs" role="tablist" aria-label="Secciones de salida">
+                  <button
+                    type="button"
+                    className={`create-user__tab ${activeTab === 'general' ? 'create-user__tab--active' : ''}`}
+                    onClick={() => setActiveTab('general')}
+                  >
+                    Datos de salida
+                  </button>
+                  <button
+                    type="button"
+                    className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
+                    onClick={() => setActiveTab('cliente')}
+                  >
+                    Datos del cliente
+                  </button>
+                </div>
+              )}
+
+              <div className="create-user__content create-salida__content">
               <div className="create-user__body">
-                <section className="create-user__section">
+                {(activeTab === 'general' || !isVenta) && (
+                  <>
+                    <section className="create-user__section">
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Datos</p>
@@ -1079,6 +1554,9 @@ function CreateSalida({
                         onChange={handleChange}
                         disabled={loading}
                       />
+                      {documentStatus === DOCUMENT_STATUS.duplicate && (
+                        <small className="create-user__field-error">No se puede usar dos iguales.</small>
+                      )}
                     </label>
 
                     {!isVenta && (
@@ -1109,19 +1587,13 @@ function CreateSalida({
 
                     {isVenta && (
                       <label className="create-user__field">
-                        <span>Cliente</span>
-                        <input name="cliente" type="text" value={formData.cliente} onChange={handleChange} disabled={loading} />
-                      </label>
-                    )}
-
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Descuento</span>
+                        <span>Descuento (%)</span>
                         <input
                           name="descuento"
                           type="number"
                           step="0.01"
                           min="0"
+                          max="100"
                           value={formData.descuento}
                           onChange={handleChange}
                           disabled={loading}
@@ -1327,7 +1799,7 @@ function CreateSalida({
 
                     {isVenta && (
                       <div className="create-user__locations-row create-salida__totals-row">
-                        <span className="create-salida__totals-label">Descuento</span>
+                        <span className="create-salida__totals-label">Descuento ({descuentoPercentLabel}%)</span>
                         <span className="create-salida__totals-value">-{formatCurrency(descuentoAplicado)}</span>
                         <span className="create-salida__totals-spacer" />
                       </div>
@@ -1344,8 +1816,176 @@ function CreateSalida({
 
                   {detailError && <div className="create-user__error">{detailError}</div>}
                 </section>
+                  </>
+                )}
+
+                {isVenta && activeTab === 'cliente' && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <p className="create-user__eyebrow">Cliente</p>
+                        <h4>Datos del cliente</h4>
+                      </div>
+                    </div>
+
+                    <div className="create-user__grid create-user__grid--two">
+                      <div className="create-user__field create-user__field--full">
+                        <span>Modo de cliente</span>
+                        <div className="create-salida__cliente-mode">
+                          <button
+                            type="button"
+                            className={`create-user__ghost create-salida__cliente-mode-btn ${
+                              useExistingCliente ? 'is-active' : ''
+                            }`}
+                            onClick={handleUseExistingCliente}
+                            disabled={loading}
+                          >
+                            Seleccionar existente
+                          </button>
+                          <button
+                            type="button"
+                            className={`create-user__ghost create-salida__cliente-mode-btn ${
+                              useNewCliente ? 'is-active' : ''
+                            }`}
+                            onClick={handleCreateNewCliente}
+                            disabled={loading}
+                          >
+                            Crear nuevo cliente
+                          </button>
+                        </div>
+                      </div>
+
+                      {useExistingCliente && (
+                        <label className="create-user__field create-user__field--full">
+                          <span>Cliente</span>
+                          <div className="create-user__dropdown" ref={clienteDropdownRef}>
+                            <input
+                              type="text"
+                              placeholder="Buscar por cedula o nombre"
+                              value={clienteQuery}
+                              onChange={handleClienteQueryChange}
+                              onFocus={() => setShowClienteDropdown(Boolean(clienteQuery))}
+                              disabled={loading}
+                              autoComplete="off"
+                            />
+                            {showClienteDropdown && (
+                              <div className="create-user__dropdown-panel create-salida__cliente-panel">
+                                <div className="create-user__dropdown-results">
+                                  {clienteLoading && <small className="muted">Buscando cliente...</small>}
+                                  {!clienteLoading && !clienteQuery.trim() && (
+                                    <small className="muted">Escribe para buscar.</small>
+                                  )}
+                                  {!clienteLoading && clienteQuery.trim() && clienteQuery.trim().length < 2 && (
+                                    <small className="muted">Escribe al menos 2 caracteres.</small>
+                                  )}
+                                  {!clienteLoading && clienteQuery.trim().length >= 2 && !clienteOptions.length && (
+                                    <small className="muted">Sin resultados.</small>
+                                  )}
+                                  {clienteOptions.map((cliente) => {
+                                    const optionLabel = formatClienteDropdownLabel(cliente)
+                                    const selected = String(selectedCliente?.id || '') === String(cliente?.id || '')
+                                    return (
+                                      <button
+                                        key={cliente.id}
+                                        type="button"
+                                        className="create-user__result-option"
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={() => handleClienteSelect(cliente)}
+                                      >
+                                        <div className="create-user__result-info">
+                                          <strong>{optionLabel || `Cliente ${cliente.id}`}</strong>
+                                          <small>ID: {cliente.id}</small>
+                                        </div>
+                                        {selected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      )}
+
+                      {useNewCliente && (
+                        <>
+                          <label className="create-user__field">
+                            <span>Cedula/RUC</span>
+                            <input
+                              name="cedula_ruc"
+                              type="text"
+                              value={clienteForm.cedula_ruc}
+                              onChange={handleClienteFieldChange}
+                              disabled={loading}
+                            />
+                          </label>
+
+                          <label className="create-user__field">
+                            <span>Nombres</span>
+                            <input
+                              name="nombres"
+                              type="text"
+                              value={clienteForm.nombres}
+                              onChange={handleClienteFieldChange}
+                              disabled={loading}
+                            />
+                          </label>
+
+                          <label className="create-user__field">
+                            <span>Apellidos</span>
+                            <input
+                              name="apellidos"
+                              type="text"
+                              value={clienteForm.apellidos}
+                              onChange={handleClienteFieldChange}
+                              disabled={loading}
+                            />
+                          </label>
+
+                          <label className="create-user__field">
+                            <span>Correo</span>
+                            <input
+                              name="correo"
+                              type="email"
+                              value={clienteForm.correo}
+                              onChange={handleClienteFieldChange}
+                              disabled={loading}
+                            />
+                          </label>
+
+                          <label className="create-user__field">
+                            <span>Telefono</span>
+                            <input
+                              name="telefono"
+                              type="text"
+                              value={clienteForm.telefono}
+                              onChange={handleClienteFieldChange}
+                              disabled={loading}
+                            />
+                          </label>
+
+                          <label className="create-user__field create-user__field--full">
+                            <span>Direccion</span>
+                            <input
+                              name="direccion"
+                              type="text"
+                              value={clienteForm.direccion}
+                              onChange={handleClienteFieldChange}
+                              disabled={loading}
+                            />
+                          </label>
+                        </>
+                      )}
+                    </div>
+
+                    {useExistingCliente && selectedCliente?.id && (
+                      <small className="muted">Cliente existente detectado. Se usara el registro actual al guardar.</small>
+                    )}
+                  </section>
+                )}
               </div>
             </div>
+            </>
           )}
 
           {error && <div className="create-user__error">{error}</div>}
@@ -1355,7 +1995,7 @@ function CreateSalida({
               Cancelar
             </button>
             {formData.subTipoId && (
-              <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>
+              <button type="submit" className="create-user__action create-user__action--primary" disabled={!canSubmit}>
                 {loading ? 'Guardando...' : 'Crear salida'}
               </button>
             )}

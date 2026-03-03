@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import useModalAnimation from '../../common/useModalAnimation'
 
 const MIN_WIDTH = 760
 const MIN_HEIGHT = 560
@@ -24,12 +25,26 @@ const initialProductoDraft = {
 const todayISO = () => new Date().toISOString().slice(0, 10)
 const normalizeString = (value) => String(value ?? '').trim().toLowerCase()
 
+const resolveClienteNombre = (cliente) =>
+  String(cliente?.nombre_completo || `${cliente?.nombres || ''} ${cliente?.apellidos || ''}`).trim()
+
+const formatClienteLabel = (cliente) => {
+  if (!cliente) return ''
+  const cedula = String(cliente?.cedula_ruc || '').trim()
+  const nombre = resolveClienteNombre(cliente)
+  if (cedula && nombre) return `${cedula}: ${nombre}`
+  if (cedula) return cedula
+  if (nombre) return nombre
+  return ''
+}
+
 function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   const [cliente, setCliente] = useState(initialCliente)
   const [selectedCliente, setSelectedCliente] = useState(null)
   const [clienteResultados, setClienteResultados] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+  const [clienteSearchTerm, setClienteSearchTerm] = useState('')
 
   const [sucursalId, setSucursalId] = useState('')
   const [fecha, setFecha] = useState(todayISO())
@@ -88,6 +103,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     setClienteResultados([])
     setClienteLoading(false)
     setShowClienteDropdown(false)
+    setClienteSearchTerm('')
 
     setSucursalId('')
     setFecha(todayISO())
@@ -144,9 +160,9 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   )
 
   useEffect(() => {
-    if (!open) return
-    const cedulaTerm = String(cliente.cedula_ruc || '').trim()
-    if (!cedulaTerm || cedulaTerm.length < 4 || !token) {
+    if (!open || !showClienteDropdown) return
+    const searchTerm = String(clienteSearchTerm || '').trim()
+    if (!searchTerm || searchTerm.length < 2 || !token) {
       setClienteResultados([])
       setClienteLoading(false)
       return
@@ -158,7 +174,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     searchTimerRef.current = setTimeout(async () => {
       try {
         const response = await authFetch(
-          `${API_URL}/solicitudes/solicitudes/buscar-cliente/?cedula_ruc=${encodeURIComponent(cedulaTerm)}&page_size=10`,
+          `${API_URL}/solicitudes/solicitudes/buscar-cliente/?q=${encodeURIComponent(searchTerm)}&page_size=10`,
           {},
           token
         )
@@ -179,7 +195,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
         searchTimerRef.current = null
       }
     }
-  }, [open, token, cliente.cedula_ruc])
+  }, [open, showClienteDropdown, token, clienteSearchTerm])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -341,8 +357,21 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     if (selectedCliente && normalizeString(value) !== normalizeString(selectedCliente[name])) {
       setSelectedCliente(null)
     }
-    if (name === 'cedula_ruc') {
-      setShowClienteDropdown(Boolean(value))
+  }
+
+  const handleClienteSearchChange = (event) => {
+    const value = event.target.value
+    setClienteSearchTerm(value)
+    setShowClienteDropdown(Boolean(value))
+    if (!value.trim()) {
+      setClienteResultados([])
+      setClienteLoading(false)
+    }
+    if (selectedCliente) {
+      const selectedLabel = formatClienteLabel(selectedCliente)
+      if (normalizeString(value) !== normalizeString(selectedLabel)) {
+        setSelectedCliente(null)
+      }
     }
   }
 
@@ -357,6 +386,9 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
       telefono: item.telefono || '',
       direccion: item.direccion || '',
     })
+    setClienteSearchTerm(formatClienteLabel(item))
+    setClienteResultados([])
+    setClienteLoading(false)
     setShowClienteDropdown(false)
   }
 
@@ -485,8 +517,9 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
       setLoading(false)
     }
   }
+  const { shouldRender, isClosing } = useModalAnimation(open)
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {
@@ -501,8 +534,8 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   const showClientHint = Boolean(selectedCliente?.id)
 
   return (
-    <div className="create-user__overlay" role="dialog" aria-modal="true" style={overlayStyle}>
-      <div className="create-user__modal" ref={modalRef} style={modalStyle}>
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
+      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>Crear solicitud</h3>
@@ -722,15 +755,14 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 
                 <div className="create-user__grid create-user__grid--two">
                   <label className="create-user__field">
-                    <span>Cedula/RUC</span>
+                    <span>Cliente</span>
                     <div className="create-user__dropdown" ref={clienteDropdownRef}>
                       <input
-                        name="cedula_ruc"
                         type="text"
-                        placeholder="Buscar por cedula"
-                        value={cliente.cedula_ruc}
-                        onChange={handleClienteFieldChange}
-                        onFocus={() => setShowClienteDropdown(Boolean(cliente.cedula_ruc))}
+                        placeholder="Buscar por cedula o nombre"
+                        value={clienteSearchTerm}
+                        onChange={handleClienteSearchChange}
+                        onFocus={() => setShowClienteDropdown(Boolean(clienteSearchTerm))}
                         disabled={loading}
                         autoComplete="off"
                       />
@@ -738,27 +770,48 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                         <div className="create-user__dropdown-panel">
                           <div className="create-user__dropdown-results">
                             {clienteLoading && <small className="muted">Buscando cliente...</small>}
-                            {!clienteLoading && !clienteResultados.length && (
-                              <small className="muted">Sin coincidencias para la cedula ingresada.</small>
+                            {!clienteLoading && !clienteSearchTerm.trim() && (
+                              <small className="muted">Escribe para buscar.</small>
                             )}
-                            {clienteResultados.map((item) => (
-                              <button
-                                key={item.id}
-                                type="button"
-                                className="create-user__result-option"
-                                onMouseDown={(event) => event.preventDefault()}
-                                onClick={() => handleClienteSelect(item)}
-                              >
-                                <div className="create-user__result-info">
-                                  <strong>{item.nombre_completo || `${item.nombres || ''} ${item.apellidos || ''}`.trim()}</strong>
-                                  <small>{item.cedula_ruc || 'Sin cedula'}</small>
-                                </div>
-                              </button>
-                            ))}
+                            {!clienteLoading && clienteSearchTerm.trim() && clienteSearchTerm.trim().length < 2 && (
+                              <small className="muted">Escribe al menos 2 caracteres.</small>
+                            )}
+                            {!clienteLoading && clienteSearchTerm.trim().length >= 2 && !clienteResultados.length && (
+                              <small className="muted">Sin coincidencias.</small>
+                            )}
+                            {clienteResultados.map((item) => {
+                              const isSelected = String(selectedCliente?.id || '') === String(item?.id || '')
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  className="create-user__result-option"
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={() => handleClienteSelect(item)}
+                                >
+                                  <div className="create-user__result-info">
+                                    <strong>{formatClienteLabel(item) || `Cliente ${item.id}`}</strong>
+                                    <small>ID: {item.id}</small>
+                                  </div>
+                                  {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
+                                </button>
+                              )
+                            })}
                           </div>
                         </div>
                       )}
                     </div>
+                  </label>
+
+                  <label className="create-user__field">
+                    <span>Cedula/RUC</span>
+                    <input
+                      name="cedula_ruc"
+                      type="text"
+                      value={cliente.cedula_ruc}
+                      onChange={handleClienteFieldChange}
+                      disabled={loading}
+                    />
                   </label>
 
                   <label className="create-user__field">
@@ -857,3 +910,5 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateSolicitud
+
+
