@@ -34,6 +34,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -186,6 +187,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
     setIsEditing(false)
     setFormData(emptyForm)
     setOriginalData(emptyForm)
+    setSubmitAttempted(false)
     setActiveTab('general')
     setIsMaximized(false)
     restoreRef.current = null
@@ -442,6 +444,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
       const next = !prev
       if (!next) {
         setFormData(originalData)
+        setSubmitAttempted(false)
       }
       return next
     })
@@ -450,6 +453,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!isEditing || loadingData) return
+    setSubmitAttempted(true)
     setSaving(true)
 
     const payload = {
@@ -490,6 +494,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
       const normalized = normalizeSucursal(data)
       setFormData(normalized)
       setOriginalData(normalized)
+      setSubmitAttempted(false)
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
@@ -530,6 +535,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   const handleClose = () => {
     onClose?.()
     setIsEditing(false)
+    setSubmitAttempted(false)
     setShowDeleteDialog(false)
   }
   const { shouldRender, isClosing } = useModalAnimation(open)
@@ -579,7 +585,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
           </div>
         </header>
 
-        <form className="create-user__form" onSubmit={handleSubmit}>
+        <form className={`create-user__form${submitAttempted && isEditing ? ' create-user__form--submitted' : ''}`} onSubmit={handleSubmit}>
           {loadingData && (
             <div className="create-user__loading-overlay" role="status" aria-live="polite">
               <i className="pi pi-spin pi-spinner" aria-hidden="true" />

@@ -25,6 +25,7 @@ const initialForm = {
   cliente: '',
   descuento: '',
   iva_rate: String(DEFAULT_IVA_RATE),
+  solicitudTrasladoId: '',
 }
 
 const initialDetail = {
@@ -201,7 +202,9 @@ function CreateSalida({
   const [clienteOptions, setClienteOptions] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
-  const [stockLoading, setStockLoading] = useState(false)
+  const [, setStockLoading] = useState(false)
+  const [solicitudesTraslado, setSolicitudesTraslado] = useState([])
+  const [solicitudesTrasladoLoading, setSolicitudesTrasladoLoading] = useState(false)
   const [documentStatus, setDocumentStatus] = useState(DOCUMENT_STATUS.invalid)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -376,11 +379,24 @@ function CreateSalida({
   const isNewClienteReady =
     useNewCliente && clienteRequiredFields.every((field) => String(clienteForm[field] || '').trim())
   const isVentaClienteReady = !isVenta || isExistingClienteReady || isNewClienteReady
-  const canSubmit = !loading && isDocumentAvailable && !isDocumentChecking && isVentaClienteReady
+  const hasSolicitudTrasladoSelected = Boolean(String(formData.solicitudTrasladoId || '').trim())
+  const canSubmit = !loading
+    && isDocumentAvailable
+    && !isDocumentChecking
+    && isVentaClienteReady
+    && (!isTraslado || hasSolicitudTrasladoSelected)
 
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
+  )
+
+  const selectedSolicitudTraslado = useMemo(
+    () =>
+      solicitudesTraslado.find(
+        (solicitud) => String(solicitud?.id) === String(formData.solicitudTrasladoId)
+      ) || null,
+    [formData.solicitudTrasladoId, solicitudesTraslado]
   )
 
   useEffect(() => {
@@ -528,6 +544,10 @@ function CreateSalida({
         next.sucursalObjetivoId = ''
         changed = true
       }
+      if (!isTraslado && next.solicitudTrasladoId) {
+        next.solicitudTrasladoId = ''
+        changed = true
+      }
       if (!isVenta && next.cliente) {
         next.cliente = ''
         changed = true
@@ -666,6 +686,38 @@ function CreateSalida({
     [notifyError, token]
   )
 
+  const fetchSolicitudesTraslado = useCallback(
+    async (sucursalId) => {
+      if (!token || !sucursalId) {
+        setSolicitudesTraslado([])
+        return
+      }
+
+      setSolicitudesTrasladoLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/?sucursal_proveedora_id=${encodeURIComponent(
+            sucursalId
+          )}&estado=pendiente&page_size=100`,
+          {},
+          token
+        )
+        if (!response.ok) {
+          throw new Error('No se pudieron cargar las solicitudes de traslado pendientes.')
+        }
+
+        const payload = await response.json().catch(() => ({}))
+        setSolicitudesTraslado(parseApiList(payload))
+      } catch (err) {
+        setSolicitudesTraslado([])
+        notifyError(err?.message || 'No se pudieron cargar las solicitudes de traslado pendientes.')
+      } finally {
+        setSolicitudesTrasladoLoading(false)
+      }
+    },
+    [notifyError, token]
+  )
+
   useEffect(() => {
     if (!open) return
     if (clienteSearchTimerRef.current) {
@@ -696,6 +748,8 @@ function CreateSalida({
     setClienteOptions([])
     setClienteLoading(false)
     setStockByProduct({})
+    setSolicitudesTraslado([])
+    setSolicitudesTrasladoLoading(false)
     setDocumentStatus(DOCUMENT_STATUS.invalid)
     setIsMaximized(false)
     setIsResizingModal(false)
@@ -868,6 +922,87 @@ function CreateSalida({
     fetchStockByBranch(formData.sucursalId)
   }, [fetchStockByBranch, formData.sucursalId, isTraslado, open])
 
+  useEffect(() => {
+    if (!open || !isTraslado || !formData.sucursalId) {
+      setSolicitudesTraslado([])
+      setSolicitudesTrasladoLoading(false)
+      return
+    }
+    fetchSolicitudesTraslado(formData.sucursalId)
+  }, [fetchSolicitudesTraslado, formData.sucursalId, isTraslado, open])
+
+  useEffect(() => {
+    if (!open || !isTraslado) return
+
+    const solicitudId = String(formData.solicitudTrasladoId || '').trim()
+    if (!solicitudId) {
+      setDetails([])
+      setDetailDraft(initialDetail)
+      setDetailError('')
+      setFormData((prev) => {
+        if (!prev.sucursalObjetivoId) return prev
+        return { ...prev, sucursalObjetivoId: '' }
+      })
+      return
+    }
+
+    if (!selectedSolicitudTraslado) return
+
+    const objetivoId = String(selectedSolicitudTraslado.sucursal_solicitante_id || '').trim()
+    setFormData((prev) => {
+      if (String(prev.sucursalObjetivoId) === objetivoId) return prev
+      return { ...prev, sucursalObjetivoId: objetivoId }
+    })
+
+    const estadoProductoId = String(defaultEstadoProductoId || '').trim()
+    const estadoProducto = estadosProducto.find(
+      (item) => String(item.id) === estadoProductoId
+    )
+    const detalleRows = Array.isArray(selectedSolicitudTraslado?.detalles)
+      ? selectedSolicitudTraslado.detalles
+      : []
+    const mappedDetails = detalleRows
+      .map((row) => {
+        const productoId = String(row?.producto_id || '').trim()
+        const cantidad = parseIntValue(row?.cantidad)
+        if (!productoId || !Number.isFinite(cantidad) || cantidad <= 0) return null
+
+        const producto = productos.find((item) => String(item.id) === productoId)
+        const valorParsed = parseNumber(row?.valor)
+        const fallbackValor = parseNumber(resolveProductPrice(producto))
+        const valor = Number.isFinite(valorParsed) ? valorParsed : (Number.isFinite(fallbackValor) ? fallbackValor : 0)
+        const valorTotal = cantidad * valor
+
+        return {
+          uid: `sol-${selectedSolicitudTraslado.id}-${productoId}`,
+          productoId,
+          productoCodigo: String(row?.producto_codigo || producto?.codigo || '').trim(),
+          productoNombre: String(row?.producto_nombre || producto?.nombre || '').trim(),
+          estadoProductoId,
+          estadoProductoNombre: estadoProducto?.nombre || '',
+          cantidad,
+          valor,
+          valor_total: valorTotal,
+        }
+      })
+      .filter(Boolean)
+
+    setDetails(mappedDetails)
+    setDetailDraft(initialDetail)
+    setDetailError('')
+    setShowProductDropdown(false)
+    setProductQuery('')
+    setProductOptions([])
+  }, [
+    defaultEstadoProductoId,
+    estadosProducto,
+    formData.solicitudTrasladoId,
+    isTraslado,
+    open,
+    productos,
+    selectedSolicitudTraslado,
+  ])
+
   useLayoutEffect(() => {
     if (!open || isMaximized) return
     const compactMode = isSelectorStep
@@ -1019,10 +1154,26 @@ function CreateSalida({
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }))
+    const nextValue = type === 'checkbox' ? checked : value
+    setFormData((prev) => {
+      const next = {
+        ...prev,
+        [name]: nextValue,
+      }
+
+      if (name === 'sucursalId' && String(prev.sucursalId) !== String(nextValue)) {
+        next.solicitudTrasladoId = ''
+        if (isTraslado) {
+          next.sucursalObjetivoId = ''
+        }
+      }
+
+      if (name === 'subTipoId' && String(prev.subTipoId) !== String(nextValue)) {
+        next.solicitudTrasladoId = ''
+      }
+
+      return next
+    })
   }
 
   const handleUseExistingCliente = () => {
@@ -1115,6 +1266,10 @@ function CreateSalida({
 
   const handleAddDetail = () => {
     setDetailError('')
+    if (isTraslado) {
+      setDetailError('Los productos del traslado se cargan desde la solicitud seleccionada.')
+      return
+    }
     const productoId = String(detailDraft.productoId || '').trim()
     const cantidad = parseIntValue(detailDraft.cantidad)
     const estadoProductoId = String(defaultEstadoProductoId || '').trim()
@@ -1180,6 +1335,7 @@ function CreateSalida({
   }
 
   const handleRemoveDetail = (uid) => {
+    if (isTraslado) return
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
   }
 
@@ -1208,6 +1364,16 @@ function CreateSalida({
 
     if (!formData.sucursalId) {
       notifyError('Selecciona la sucursal.')
+      return
+    }
+
+    if (isTraslado && !formData.solicitudTrasladoId) {
+      notifyError('Selecciona una solicitud de traslado pendiente.')
+      return
+    }
+
+    if (isTraslado && !selectedSolicitudTraslado) {
+      notifyError('La solicitud seleccionada ya no esta disponible. Recarga e intenta de nuevo.')
       return
     }
 
@@ -1323,6 +1489,7 @@ function CreateSalida({
         sucursal_id: Number(formData.sucursalId),
         tipo_movimiento_id: Number(salidaTipoId),
         sub_tipo_movimiento_id: Number(formData.subTipoId),
+        solicitud_traslado_id: isTraslado ? Number(formData.solicitudTrasladoId) : null,
         descripcion: buildDescripcion(ventaClienteLabel),
         funcional: isDevolucion ? Boolean(formData.funcional) : true,
         sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
@@ -1528,14 +1695,43 @@ function CreateSalida({
                       </select>
                     </label>
 
+                    {isTraslado && (
+                      <label className="create-user__field">
+                        <span>Solicitud de traslado</span>
+                        <select
+                          name="solicitudTrasladoId"
+                          value={formData.solicitudTrasladoId}
+                          onChange={handleChange}
+                          disabled={loading || !formData.sucursalId || solicitudesTrasladoLoading}
+                          required
+                        >
+                          <option value="">
+                            {!formData.sucursalId
+                              ? 'Selecciona una sucursal'
+                              : (solicitudesTrasladoLoading
+                                  ? 'Cargando solicitudes...'
+                                  : 'Selecciona una solicitud pendiente')}
+                          </option>
+                          {solicitudesTraslado.map((solicitud) => (
+                            <option key={solicitud.id} value={solicitud.id}>
+                              {`${solicitud.no_documento || `SOL-${solicitud.id}`} - ${solicitud.sucursal_solicitante || 'Sucursal solicitante'}`}
+                            </option>
+                          ))}
+                        </select>
+                        {formData.sucursalId && !solicitudesTrasladoLoading && !solicitudesTraslado.length && (
+                          <small className="create-user__field-error">No hay solicitudes pendientes para esta sucursal.</small>
+                        )}
+                      </label>
+                    )}
+
                     {requiresSucursalObjetivo && (
                       <label className="create-user__field">
-                        <span>Sucursal Destino</span>
+                        <span>{isTraslado ? 'Sucursal solicitante' : 'Sucursal Destino'}</span>
                         <select
                           name="sucursalObjetivoId"
                           value={formData.sucursalObjetivoId}
                           onChange={handleChange}
-                          disabled={loading}
+                          disabled={loading || isTraslado}
                           required={requiresSucursalObjetivo}
                         >
                           <option value="">Selecciona una sucursal</option>
@@ -1660,7 +1856,7 @@ function CreateSalida({
                             type="button"
                             className="create-user__dropdown-trigger"
                             ref={productDropdownTriggerRef}
-                            disabled={loading || (isTraslado && (!formData.sucursalId || stockLoading))}
+                            disabled={loading || isTraslado}
                             onClick={() => {
                               const isOpening = !showProductDropdown
                               if (isOpening) {
@@ -1694,10 +1890,11 @@ function CreateSalida({
                                 <i className="pi pi-search" />
                                 <input
                                   type="text"
-                                  placeholder={isTraslado ? 'Buscar en sucursal' : 'Buscar productos'}
+                                  placeholder={isTraslado ? 'Selecciona una solicitud de traslado' : 'Buscar productos'}
                                   value={productQuery}
                                   onChange={(event) => setProductQuery(event.target.value)}
                                   autoFocus
+                                  disabled={isTraslado}
                                 />
                               </div>
 
@@ -1716,7 +1913,6 @@ function CreateSalida({
                                 )}
                                 {productOptions.map((producto) => {
                                   const isSelected = String(producto.id) === String(detailDraft.productoId)
-                                  const available = Number(stockByProduct[String(producto.id)] ?? 0)
                                   return (
                                     <button
                                       key={producto.id}
@@ -1731,7 +1927,7 @@ function CreateSalida({
                                     >
                                       <div className="create-user__result-info">
                                         <strong>{formatProductoOptionLabel(producto)}</strong>
-                                        <small>{isTraslado ? `Disponible: ${available}` : `ID: ${producto.id}`}</small>
+                                        <small>ID: {producto.id}</small>
                                       </div>
                                       {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
                                     </button>
@@ -1750,7 +1946,7 @@ function CreateSalida({
                           step="1"
                           value={detailDraft.cantidad}
                           onChange={handleDetailChange}
-                          disabled={loading}
+                          disabled={loading || isTraslado}
                         />
                       </span>
                       <span>
@@ -1761,14 +1957,14 @@ function CreateSalida({
                           min="0"
                           value={detailDraft.valor}
                           readOnly
-                          disabled={loading}
+                          disabled={loading || isTraslado}
                         />
                       </span>
                       <span>
                         <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
                       </span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button type="button" className="create-user__ghost" onClick={handleAddDetail} disabled={loading}>
+                        <button type="button" className="create-user__ghost" onClick={handleAddDetail} disabled={loading || isTraslado}>
                           Agregar
                         </button>
                       </span>
@@ -1788,7 +1984,7 @@ function CreateSalida({
                         <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
-                          <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={loading}>
+                          <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={loading || isTraslado}>
                             x
                           </button>
                         </span>

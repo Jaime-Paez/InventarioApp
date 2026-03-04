@@ -1,0 +1,272 @@
+.entity-reminders {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.entity-reminders__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.entity-reminders__head h4 {
+  margin: 0;
+}
+
+.entity-reminders__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.entity-reminders__pane {
+  width: 100%;
+  min-height: 0;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+}
+
+.entity-reminders__pane--form {
+  min-height: min(58vh, 560px);
+  display: flex;
+  overflow: hidden;
+}
+
+.entity-reminders__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+}
+
+.entity-reminders__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.entity-reminders__creator {
+  grid-column: 1 / -1;
+}
+
+.entity-reminders__form textarea {
+  min-height: 84px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  padding: 10px;
+  resize: vertical;
+  background: var(--color-surface);
+  color: inherit;
+}
+
+.entity-reminders__form textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 24%, transparent);
+}
+
+.entity-reminders__recipients-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.entity-reminders__recipients-head h5 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.entity-reminders__loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+}
+
+.entity-reminders__loading svg {
+  animation: entity-reminders-spin 0.8s linear infinite;
+}
+
+.entity-reminders__helper {
+  margin: 0;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+}
+
+.entity-reminders__recipient-list {
+  flex: 1;
+  min-height: 220px;
+  max-height: none;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+}
+
+.entity-reminders__recipient-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+}
+
+.entity-reminders__recipient-item + .entity-reminders__recipient-item {
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
+}
+
+.entity-reminders__recipient-item input {
+  margin-top: 3px;
+  accent-color: var(--color-primary);
+}
+
+.entity-reminders__recipient-item strong {
+  display: block;
+  font-size: 13px;
+}
+
+.entity-reminders__recipient-item small {
+  display: block;
+  color: color-mix(in srgb, currentColor 70%, transparent);
+}
+
+.entity-reminders__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.entity-reminders__table-wrap {
+  min-height: 280px;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+}
+
+.entity-reminders__pane--list {
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+}
+
+.entity-reminders__table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.entity-reminders__table th,
+.entity-reminders__table td {
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.entity-reminders__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.entity-reminders__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.entity-reminders__status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.entity-reminders__status--pending {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
+}
+
+.entity-reminders__status--seen {
+  background: color-mix(in srgb, var(--color-success-text) 18%, transparent);
+  color: var(--color-success-text);
+}
+
+.entity-reminders__status--expired {
+  background: color-mix(in srgb, var(--color-error-text) 18%, transparent);
+  color: var(--color-error-text);
+}
+
+.entity-reminders__status--info {
+  background: color-mix(in srgb, var(--color-border) 24%, transparent);
+  color: color-mix(in srgb, currentColor 72%, transparent);
+}
+
+.entity-reminders__mark-seen {
+  border: 1px solid color-mix(in srgb, var(--color-primary) 46%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.entity-reminders__mark-seen:hover {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.entity-reminders__na,
+.entity-reminders__empty {
+  color: color-mix(in srgb, currentColor 68%, transparent);
+}
+
+.entity-reminders__empty {
+  margin: 0;
+  padding: 12px;
+}
+
+@keyframes entity-reminders-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 900px) {
+  .entity-reminders__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .entity-reminders__pane--form {
+    min-height: min(60vh, 600px);
+  }
+
+  .entity-reminders__recipient-list {
+    min-height: 180px;
+  }
+
+  .entity-reminders__table-wrap {
+    max-height: min(46vh, 360px);
+  }
+}

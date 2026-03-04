@@ -3,6 +3,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
 import useModalAnimation from '../../common/useModalAnimation'
+import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 
 const MIN_WIDTH = 760
 const MIN_HEIGHT = 560
@@ -15,7 +16,7 @@ const formatDate = (value) => {
   return date.toLocaleDateString('es-EC')
 }
 
-function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onError }) {
+function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onError, currentUser }) {
   const [solicitud, setSolicitud] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -342,6 +343,13 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
             >
               Datos del cliente
             </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('recordatorios')}
+            >
+              Recordatorios
+            </button>
           </div>
 
           <div className="create-user__body">
@@ -467,6 +475,16 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
                   </label>
                 </div>
               </section>
+            )}
+
+            {!loading && activeTab === 'recordatorios' && (
+              <EntityRemindersTab
+                token={token}
+                currentUser={currentUser}
+                entityType="solicitud"
+                entityId={solicitudId}
+                entityLabel={solicitudId ? `Solicitud #${solicitudId}` : 'Solicitud'}
+              />
             )}
 
             {!loading && !solicitud && !error && (

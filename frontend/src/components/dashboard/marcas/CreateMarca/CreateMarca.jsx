@@ -23,15 +23,28 @@ const getFlagUrl = (code) => {
   return `https://flagsapi.com/${clean.toUpperCase()}/flat/64.png`
 }
 
+const normalizeCountrySearch = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+
 function CreateMarca({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [countries, setCountries] = useState([])
+  const [countryQuery, setCountryQuery] = useState('')
+  const [countryOptions, setCountryOptions] = useState([])
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false)
+  const [countryLoading, setCountryLoading] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
   const modalRef = useRef(null)
+  const countryDropdownRef = useRef(null)
+  const countrySearchTimerRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -91,10 +104,61 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
     if (!open) return
     setFormData(initialForm)
     setLoading(false)
+    setCountryQuery('')
+    setCountryOptions([])
+    setShowCountryDropdown(false)
+    setCountryLoading(false)
     setIsMaximized(false)
     restoreRef.current = null
     fetchCountries()
   }, [open, fetchCountries])
+
+  useEffect(() => {
+    if (!open || !showCountryDropdown) return
+    if (countrySearchTimerRef.current) clearTimeout(countrySearchTimerRef.current)
+
+    setCountryLoading(true)
+    countrySearchTimerRef.current = setTimeout(() => {
+      const term = normalizeCountrySearch(countryQuery)
+      const filtered = term
+        ? countries.filter((country) => {
+            const nombre = normalizeCountrySearch(country?.nombre)
+            const codigoPais = normalizeCountrySearch(country?.codigo_pais)
+            return nombre.includes(term) || codigoPais.includes(term)
+          })
+        : countries
+      setCountryOptions(filtered.slice(0, term ? 20 : 5))
+      setCountryLoading(false)
+    }, 280)
+
+    return () => {
+      if (countrySearchTimerRef.current) {
+        clearTimeout(countrySearchTimerRef.current)
+        countrySearchTimerRef.current = null
+      }
+    }
+  }, [open, showCountryDropdown, countryQuery, countries])
+
+  useEffect(() => {
+    if (!showCountryDropdown) return
+    const handleClickOutside = (event) => {
+      if (!countryDropdownRef.current?.contains(event.target)) {
+        setShowCountryDropdown(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClickOutside)
+    return () => window.removeEventListener('mousedown', handleClickOutside)
+  }, [showCountryDropdown])
+
+  useEffect(
+    () => () => {
+      if (countrySearchTimerRef.current) {
+        clearTimeout(countrySearchTimerRef.current)
+        countrySearchTimerRef.current = null
+      }
+    },
+    []
+  )
 
   useLayoutEffect(() => {
     if (!open) return
@@ -122,6 +186,22 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
       ...prev,
       [name]: name === 'codigo' ? value.toUpperCase() : value,
     }))
+  }
+
+  const handleCountrySearchChange = (event) => {
+    const value = event.target.value
+    setCountryQuery(value)
+    setShowCountryDropdown(true)
+    if (formData.paisId) {
+      setFormData((prev) => ({ ...prev, paisId: '' }))
+    }
+  }
+
+  const handleCountrySelect = (country) => {
+    if (!country) return
+    setFormData((prev) => ({ ...prev, paisId: String(country.id) }))
+    setCountryQuery(String(country.nombre || '').trim())
+    setShowCountryDropdown(false)
   }
 
   const handleSubmit = async (event) => {
@@ -166,6 +246,10 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
       }
 
       setFormData(initialForm)
+      setCountryQuery('')
+      setCountryOptions([])
+      setShowCountryDropdown(false)
+      setCountryLoading(false)
       onCreated?.(data)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al crear la marca.')
@@ -388,14 +472,57 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
                 <label className="create-user__field">
                   <span>País</span>
                   <div className="create-user__select-with-flag">
-                    <select name="paisId" value={formData.paisId} onChange={handleChange} disabled={loading}>
-                      <option value="" />
-                      {countries.map((country) => (
-                        <option key={country.id} value={country.id}>
-                          {country.nombre}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="create-user__dropdown" ref={countryDropdownRef}>
+                      <button
+                        type="button"
+                        className="create-user__dropdown-trigger"
+                        onClick={() => setShowCountryDropdown((prev) => !prev)}
+                        disabled={loading}
+                      >
+                        <span>{selectedCountry?.nombre || 'Selecciona un pais'}</span>
+                        <i className={`pi pi-chevron-${showCountryDropdown ? 'up' : 'down'}`} />
+                      </button>
+
+                      {showCountryDropdown && (
+                        <div className="create-user__dropdown-panel">
+                          <div className="create-user__dropdown-search">
+                            <i className="pi pi-search" />
+                            <input
+                              type="text"
+                              placeholder="Buscar pais"
+                              value={countryQuery}
+                              onChange={handleCountrySearchChange}
+                              disabled={loading}
+                              autoFocus
+                            />
+                          </div>
+
+                          <div className="create-user__dropdown-results">
+                            {countryLoading && <small className="muted">Buscando paises...</small>}
+                            {!countryLoading && !countryQuery.trim() && (
+                              <small className="muted">Mostrando 5 paises.</small>
+                            )}
+                            {!countryLoading && countryQuery.trim() && !countryOptions.length && (
+                              <small className="muted">Sin resultados.</small>
+                            )}
+                            {countryOptions.map((country) => (
+                              <button
+                                key={country.id}
+                                type="button"
+                                className="create-user__result-option"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => handleCountrySelect(country)}
+                              >
+                                <div className="create-user__result-info">
+                                  <strong>{country.nombre}</strong>
+                                  <small>{country.codigo_pais || `ID: ${country.id}`}</small>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <span className={`create-user__flag${selectedFlagUrl ? '' : ' is-empty'}`} aria-hidden="true">
                       {selectedFlagUrl ? <img src={selectedFlagUrl} alt="" /> : '□'}
                     </span>
@@ -463,5 +590,6 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateMarca
+
 
 

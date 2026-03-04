@@ -19,8 +19,8 @@ from usuarios.sucursal_scope import (
     get_allowed_sucursal_ids,
 )
 
-from .models import MovimientoInventario
-from .serializers import MovimientoInventarioSerializer
+from .models import MovimientoInventario, SolicitudTraslado
+from .serializers import MovimientoInventarioSerializer, SolicitudTrasladoSerializer
 
 
 class MovimientoInventarioViewSet(viewsets.ModelViewSet):
@@ -97,6 +97,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "venta": "vent",
             "devolucion": "devol",
             "traslado": "trasl",
+            "compra_local": "compra",
+            "importacion": "import",
         }
         token = subtype_tokens.get(subtipo)
         if not token:
@@ -292,10 +294,19 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         permission_checker = MovimientoInventarioModulePermission()
         return permission_checker.get_target_module_keys(self.request, self)
 
+    def _is_traslado_movement(self, serializer):
+        sub_tipo = serializer.validated_data.get("sub_tipo_movimiento")
+        nombre = str(getattr(sub_tipo, "nombre", "") or "").strip().lower()
+        return "trasl" in nombre
+
     def perform_create(self, serializer):
         module_keys = self._resolve_target_modules()
         sucursal = serializer.validated_data.get("sucursal")
         sucursal_objetivo = serializer.validated_data.get("sucursal_objetivo")
+        solicitud_traslado = serializer.validated_data.get("solicitud_traslado")
+        skip_target_scope_validation = bool(
+            solicitud_traslado is not None and self._is_traslado_movement(serializer)
+        )
 
         ensure_sucursal_allowed_for_modules(
             self.request.user,
@@ -303,12 +314,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             getattr(sucursal, "id", None),
             field_label="sucursal",
         )
-        ensure_sucursal_allowed_for_modules(
-            self.request.user,
-            module_keys,
-            getattr(sucursal_objetivo, "id", None),
-            field_label="sucursal objetivo",
-        )
+        if not skip_target_scope_validation:
+            ensure_sucursal_allowed_for_modules(
+                self.request.user,
+                module_keys,
+                getattr(sucursal_objetivo, "id", None),
+                field_label="sucursal objetivo",
+            )
         serializer.save()
 
     def perform_update(self, serializer):
@@ -329,9 +341,94 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             self.request.user,
             module_keys,
             getattr(sucursal_objetivo, "id", None),
-            field_label="sucursal objetivo",
-        )
+                field_label="sucursal objetivo",
+            )
         serializer.save()
+
+    @action(detail=False, methods=["get", "post"], url_path="solicitudes-traslado")
+    def solicitudes_traslado(self, request):
+        if request.method.lower() == "post":
+            serializer = SolicitudTrasladoSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            sucursal_solicitante = serializer.validated_data.get("sucursal_solicitante")
+            ensure_sucursal_allowed_for_modules(
+                request.user,
+                [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+                getattr(sucursal_solicitante, "id", None),
+                field_label="sucursal solicitante",
+            )
+
+            solicitud = serializer.save()
+            output = SolicitudTrasladoSerializer(instance=solicitud)
+            return Response(output.data, status=status.HTTP_201_CREATED)
+
+        queryset = (
+            SolicitudTraslado.objects.select_related(
+                "sucursal_solicitante",
+                "sucursal_proveedora",
+                "movimiento_salida",
+                "movimiento_entrada",
+            )
+            .prefetch_related("detalles__producto")
+            .order_by("-fecha", "-id")
+        )
+
+        raw_estado = (
+            request.query_params.get("estado") or SolicitudTraslado.Estados.PENDIENTE
+        )
+        estado = str(raw_estado).strip().lower()
+        allowed_states = {choice[0] for choice in SolicitudTraslado.Estados.choices}
+        if estado in allowed_states:
+            queryset = queryset.filter(estado=estado)
+
+        sucursal_proveedora_raw = (
+            request.query_params.get("sucursal_proveedora_id") or ""
+        ).strip()
+        if sucursal_proveedora_raw:
+            if not sucursal_proveedora_raw.isdigit():
+                return Response(
+                    {"detail": "Debes enviar un sucursal_proveedora_id valido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            sucursal_proveedora_id = int(sucursal_proveedora_raw)
+            ensure_sucursal_allowed_for_modules(
+                request.user,
+                [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+                sucursal_proveedora_id,
+                field_label="sucursal proveedora",
+            )
+            queryset = queryset.filter(sucursal_proveedora_id=sucursal_proveedora_id)
+        else:
+            allowed = get_allowed_sucursal_ids(
+                request.user,
+                RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+            )
+            if allowed is not None:
+                if not allowed:
+                    queryset = queryset.none()
+                else:
+                    queryset = queryset.filter(sucursal_proveedora_id__in=sorted(allowed))
+
+        sucursal_solicitante_raw = (
+            request.query_params.get("sucursal_solicitante_id") or ""
+        ).strip()
+        if sucursal_solicitante_raw:
+            if not sucursal_solicitante_raw.isdigit():
+                return Response(
+                    {"detail": "Debes enviar un sucursal_solicitante_id valido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(sucursal_solicitante_id=int(sucursal_solicitante_raw))
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = SolicitudTrasladoSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = SolicitudTrasladoSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="buscar-cliente")
     def buscar_cliente(self, request):
@@ -415,9 +512,19 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
 
         sucursal_id = int(sucursal_id_raw)
+        modulo = (request.query_params.get("modulo") or "").strip()
+        allowed_modules = {
+            RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+            RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+        }
+        target_module = (
+            modulo
+            if modulo in allowed_modules
+            else RolPermiso.Modulos.MOVIMIENTOS_SALIDAS
+        )
         ensure_sucursal_allowed_for_modules(
             request.user,
-            [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            [target_module],
             sucursal_id,
             field_label="sucursal",
         )

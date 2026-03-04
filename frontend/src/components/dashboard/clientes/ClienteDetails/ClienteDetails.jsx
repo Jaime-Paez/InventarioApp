@@ -4,6 +4,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
+import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -27,7 +28,7 @@ const emptyAuto = {
   color: '',
 }
 
-function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted, onError }) {
+function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted, onError, currentUser }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [autos, setAutos] = useState([])
@@ -40,6 +41,8 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
   const [marcas, setMarcas] = useState([])
   const [loadingMarcas, setLoadingMarcas] = useState(false)
   const [activeAutoMarcaDropdown, setActiveAutoMarcaDropdown] = useState(null)
+  const [activeTab, setActiveTab] = useState('general')
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -230,6 +233,8 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
     setAutos([])
     setOriginalAutos([])
     setActiveAutoMarcaDropdown(null)
+    setActiveTab('general')
+    setSubmitAttempted(false)
     setIsMaximized(false)
     restoreRef.current = null
     setMarcas([])
@@ -276,6 +281,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
 
   const handleSave = async () => {
     if (!isEditing || saving || !clienteId) return
+    setSubmitAttempted(true)
     setSaving(true)
 
     const payload = {
@@ -317,8 +323,13 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
       return
     }
 
-    const hadCedulaInitially = Boolean(String(originalData.cedula_ruc || '').trim())
-    if (hadCedulaInitially && !payload.cedula_ruc) {
+    if (!payload.apellidos) {
+      setSaving(false)
+      notifyError('Define los apellidos del cliente.')
+      return
+    }
+
+    if (!payload.cedula_ruc) {
       setSaving(false)
       notifyError('La cedula/RUC es obligatoria para este cliente.')
       return
@@ -347,6 +358,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
       const nextAutos = autosList
       setAutos(nextAutos)
       setOriginalAutos(nextAutos)
+      setSubmitAttempted(false)
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
@@ -384,7 +396,18 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
   const handleCancelEdit = () => {
     setFormData(originalData)
     setAutos(originalAutos)
+    setSubmitAttempted(false)
     setIsEditing(false)
+  }
+
+  const handleToggleEdit = () => {
+    setIsEditing((prev) => {
+      const next = !prev
+      if (!next) {
+        setSubmitAttempted(false)
+      }
+      return next
+    })
   }
 
   const handleMouseDown = (event) => {
@@ -521,11 +544,14 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
 
   const isViewMode = !isEditing
   const editorDisabled = saving || loadingData || !isEditing
-  const hadCedulaBefore = Boolean(String(originalData.cedula_ruc || '').trim())
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
-      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
+      <div
+        className={`create-user__modal${submitAttempted ? ' create-user__modal--submitted' : ''}${isClosing ? ' create-user__modal--closing' : ''}`}
+        ref={modalRef}
+        style={modalStyle}
+      >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>
@@ -566,15 +592,23 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
           <div className="create-user__tabs" role="tablist" aria-label="Secciones del cliente">
             <button
               type="button"
-              className="create-user__tab create-user__tab--active"
-              disabled
+              className={`create-user__tab ${activeTab === 'general' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('general')}
             >
               General
+            </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('recordatorios')}
+            >
+              Recordatorios
             </button>
           </div>
 
           <div className="create-user__body">
-            <section className="create-user__section">
+            {activeTab === 'general' && (
+              <section className="create-user__section">
               <div className="create-user__section-header">
                 <div>
                   <p className="create-user__eyebrow">Datos del cliente</p>
@@ -590,6 +624,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                     type="text"
                     value={formData.nombres}
                     onChange={handleChange}
+                    required
                     disabled={editorDisabled}
                   />
                 </label>
@@ -601,6 +636,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                     type="text"
                     value={formData.apellidos}
                     onChange={handleChange}
+                    required
                     disabled={editorDisabled}
                   />
                 </label>
@@ -612,7 +648,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                     type="text"
                     value={formData.cedula_ruc}
                     onChange={handleChange}
-                    required={hadCedulaBefore}
+                    required
                     disabled={editorDisabled}
                   />
                 </label>
@@ -805,7 +841,21 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                   </button>
                 </div>
               )}
-            </section>
+              </section>
+            )}
+
+            {activeTab === 'recordatorios' && (
+              <EntityRemindersTab
+                token={token}
+                currentUser={currentUser}
+                entityType="cliente"
+                entityId={clienteId}
+                entityLabel={
+                  `${formData.nombres || ''} ${formData.apellidos || ''}`.trim() ||
+                  (clienteId ? `Cliente #${clienteId}` : 'Cliente')
+                }
+              />
+            )}
           </div>
         </div>
 
@@ -822,7 +872,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
             <button
               type="button"
               className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-              onClick={() => setIsEditing((prev) => !prev)}
+              onClick={handleToggleEdit}
               disabled={loadingData || saving}
             >
               <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>

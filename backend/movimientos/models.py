@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db import models
+from django.db.models import Q
 
 
 class MovimientoInventario(models.Model):
@@ -61,6 +62,88 @@ class MovimientoInventario(models.Model):
 
     def __str__(self) -> str:
         return f"{self.tipo_movimiento.nombre} #{self.no_documento}"
+
+
+class SolicitudTraslado(models.Model):
+    """Solicitud de traslado entre sucursales (A solicita a B)."""
+
+    class Estados(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente"
+        APROBADA = "aprobada", "Aprobada"
+        CANCELADA = "cancelada", "Cancelada"
+
+    sucursal_solicitante = models.ForeignKey(
+        "inventario.Sucursal",
+        on_delete=models.PROTECT,
+        related_name="solicitudes_traslado_realizadas",
+    )
+    sucursal_proveedora = models.ForeignKey(
+        "inventario.Sucursal",
+        on_delete=models.PROTECT,
+        related_name="solicitudes_traslado_recibidas",
+    )
+    descripcion = models.TextField(blank=True)
+    fecha = models.DateField()
+    no_documento = models.CharField(max_length=80, unique=True)
+    estado = models.CharField(
+        max_length=20,
+        choices=Estados.choices,
+        default=Estados.PENDIENTE,
+    )
+    movimiento_salida = models.OneToOneField(
+        "movimientos.MovimientoInventario",
+        on_delete=models.SET_NULL,
+        related_name="solicitud_traslado_salida",
+        null=True,
+        blank=True,
+    )
+    movimiento_entrada = models.OneToOneField(
+        "movimientos.MovimientoInventario",
+        on_delete=models.SET_NULL,
+        related_name="solicitud_traslado_entrada",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+        verbose_name = "Solicitud de traslado"
+        verbose_name_plural = "Solicitudes de traslado"
+        constraints = [
+            models.CheckConstraint(
+                check=~Q(sucursal_solicitante=models.F("sucursal_proveedora")),
+                name="solicitud_traslado_sucursales_distintas",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"Traslado #{self.no_documento}"
+
+
+class SolicitudTrasladoDetalle(models.Model):
+    """Detalle de productos solicitados en una solicitud de traslado."""
+
+    solicitud = models.ForeignKey(
+        SolicitudTraslado,
+        on_delete=models.CASCADE,
+        related_name="detalles",
+    )
+    producto = models.ForeignKey(
+        "productos.Producto",
+        on_delete=models.PROTECT,
+        related_name="detalles_solicitud_traslado",
+    )
+    cantidad = models.PositiveIntegerField()
+    valor = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    class Meta:
+        verbose_name = "Detalle de solicitud de traslado"
+        verbose_name_plural = "Detalles de solicitud de traslado"
+
+    def __str__(self) -> str:
+        return f"{self.solicitud.no_documento} - {self.producto.codigo}"
 
 
 class DetalleMovimiento(models.Model):

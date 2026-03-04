@@ -34,6 +34,38 @@ class ClienteSerializer(serializers.ModelSerializer):
         model = Cliente
         fields = ["id", "nombres", "apellidos", "correo", "telefono", "direccion", "cedula_ruc", "autos"]
 
+    def validate(self, attrs):
+        nombres = attrs.get("nombres", serializers.empty)
+        apellidos = attrs.get("apellidos", serializers.empty)
+        cedula_ruc = attrs.get("cedula_ruc", serializers.empty)
+
+        if nombres is serializers.empty and self.instance is not None:
+            nombres = self.instance.nombres
+        if apellidos is serializers.empty and self.instance is not None:
+            apellidos = self.instance.apellidos
+        if cedula_ruc is serializers.empty and self.instance is not None:
+            cedula_ruc = self.instance.cedula_ruc
+
+        nombres = str(nombres or "").strip()
+        apellidos = str(apellidos or "").strip()
+        cedula_ruc = str(cedula_ruc or "").strip()
+
+        errors = {}
+        if not nombres:
+            errors["nombres"] = ["Los nombres son obligatorios."]
+        if not apellidos:
+            errors["apellidos"] = ["Los apellidos son obligatorios."]
+        if not cedula_ruc:
+            errors["cedula_ruc"] = ["La cedula/RUC es obligatoria."]
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        attrs["nombres"] = nombres
+        attrs["apellidos"] = apellidos
+        attrs["cedula_ruc"] = cedula_ruc
+        return attrs
+
     def create(self, validated_data):
         autos_data = validated_data.pop("autos", [])
         cliente = super().create(validated_data)

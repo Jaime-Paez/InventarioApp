@@ -95,7 +95,7 @@ const INVENTARIO_ORDERING_MAP = {
   total_general: 'total_general',
 }
 
-function InventarioTable({ token }) {
+function InventarioTable({ token, user }) {
   const toast = useRef(null)
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -1420,6 +1420,7 @@ function InventarioTable({ token }) {
           refreshData()
         }}
         onError={(message) => showToast(message, 'Error', 'error')}
+        currentUser={user}
         inventoryContext={{
           branches,
           bodegas,

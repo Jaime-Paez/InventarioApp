@@ -5,6 +5,7 @@ import '../../admin/UsersDetails/UsersDetails.css'
 import './InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
+import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 
 const parseNumber = (value) => {
   const parsed = Number(value)
@@ -22,10 +23,12 @@ function InventarioDetails({
   inventarioEntries = [],
   onClose,
   onSaved,
+  currentUser,
 }) {
   const [draftQuantities, setDraftQuantities] = useState({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [activeTab, setActiveTab] = useState('general')
   const modalRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -80,6 +83,7 @@ function InventarioDetails({
     })
     setDraftQuantities(initial)
     setError(null)
+    setActiveTab('general')
   }, [open, subdivisions, entryBySubdivision])
 
   useEffect(() => {
@@ -293,7 +297,26 @@ function InventarioDetails({
         </header>
 
         <div className="create-user__content">
+          <div className="create-user__tabs" role="tablist" aria-label="Secciones de inventario">
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'general' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('general')}
+            >
+              General
+            </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('recordatorios')}
+            >
+              Recordatorios
+            </button>
+          </div>
+
           <div className="create-user__body inventario-details__body">
+            {activeTab === 'general' && (
+              <>
             {branches.map((branch) => {
               const branchBodegas = bodegasBySucursal.get(branch.id) || []
               if (!branchBodegas.length) return null
@@ -360,6 +383,22 @@ function InventarioDetails({
                 <Info size={18} />
                 <span>No hay sucursales configuradas.</span>
               </div>
+            )}
+              </>
+            )}
+
+            {activeTab === 'recordatorios' && (
+              <EntityRemindersTab
+                token={token}
+                currentUser={currentUser}
+                entityType="inventario"
+                entityId={product?.id}
+                entityLabel={
+                  product?.codigo
+                    ? `${product.codigo} - ${product.nombre || 'Producto'}`
+                    : product?.nombre || 'Inventario'
+                }
+              />
             )}
           </div>
         </div>

@@ -6,6 +6,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import InventarioEditor from '../../inventario/InventarioEditor/InventarioEditor'
 import useModalAnimation from '../../common/useModalAnimation'
+import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -43,7 +44,17 @@ const formatCurrency = (value) => {
   return `$${number.toFixed(2)}`
 }
 
-function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDeleted, onError, inventoryContext }) {
+function ProductoDetails({
+  open,
+  productoId,
+  token,
+  onClose,
+  onUpdated,
+  onDeleted,
+  onError,
+  inventoryContext,
+  currentUser,
+}) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [brands, setBrands] = useState([])
@@ -76,6 +87,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [localInventoryContext, setLocalInventoryContext] = useState(null)
   const [inventoryLoading, setInventoryLoading] = useState(false)
@@ -203,7 +215,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
             return { ...item, descripcion: desc }
           })
         )
-      } catch (err) {
+      } catch {
         // Descripción es opcional: evita bloquear la edición si falla.
       }
     },
@@ -371,7 +383,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       if (!response.ok) throw new Error('No se pudo cargar la configuración del IVA.')
       const parsed = Number(data?.iva_rate)
       setIvaRate(Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_IVA_RATE)
-    } catch (err) {
+    } catch {
       setIvaRate(DEFAULT_IVA_RATE)
     } finally {
       setIvaLoading(false)
@@ -396,6 +408,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
   useEffect(() => {
     if (!open) return
     setIsEditing(false)
+    setSubmitAttempted(false)
     setActiveTab('general')
     setFormData(emptyForm)
     setOriginalData(emptyForm)
@@ -848,6 +861,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
 
   const handleSave = async () => {
     if (!isEditing || saving || !productoId) return
+    setSubmitAttempted(true)
     setSaving(true)
 
     const payload = {
@@ -962,6 +976,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       } catch (oemsError) {
         notifyError(oemsError?.message || 'No se pudieron actualizar los OEMs.')
       }
+      setSubmitAttempted(false)
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
@@ -1013,6 +1028,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
     setAlternoError('')
     setShowMarcaDropdown(false)
     setShowCasaDropdown(false)
+    setSubmitAttempted(false)
     setIsEditing(false)
   }
 
@@ -1155,6 +1171,9 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
   const precioPromedio = null
 
   const editorDisabled = saving || loadingData || !isEditing
+  const precioInvalid = submitAttempted && isEditing && parseNumber(formData.precio) === null
+  const marcaInvalid = submitAttempted && isEditing && !Number(formData.marcaId)
+  const casaInvalid = submitAttempted && isEditing && !(Array.isArray(formData.casasIds) && formData.casasIds.length)
 
   return (
     <div
@@ -1163,7 +1182,11 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
       aria-modal="true"
       style={overlayStyle}
     >
-      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
+      <div
+        className={`create-user__modal${submitAttempted && isEditing ? ' create-user__modal--submitted' : ''}${isClosing ? ' create-user__modal--closing' : ''}`}
+        ref={modalRef}
+        style={modalStyle}
+      >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>
@@ -1226,6 +1249,14 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
             >
               Alternos
             </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('recordatorios')}
+              aria-selected={activeTab === 'recordatorios'}
+            >
+              Recordatorios
+            </button>
           </div>
 
           <div className="create-user__body">
@@ -1246,13 +1277,17 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                         type="text"
                         value={formData.nombre}
                         onChange={handleChange}
+                        required
                         disabled={editorDisabled}
                       />
                     </label>
 
                     <label className="create-user__field create-user__field--required">
                       <span>Marca</span>
-                      <div className="create-user__dropdown" ref={marcaDropdownRef}>
+                      <div
+                        className={`create-user__dropdown${marcaInvalid ? ' create-user__dropdown--invalid' : ''}`}
+                        ref={marcaDropdownRef}
+                      >
                         <button
                           type="button"
                           className="create-user__dropdown-trigger"
@@ -1315,13 +1350,17 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
                         type="text"
                         value={formData.codigo}
                         onChange={handleChange}
+                        required
                         disabled={editorDisabled}
                       />
                     </label>
 
                     <label className="create-user__field create-user__field--required">
                       <span>Casa comercial</span>
-                      <div className="create-user__dropdown" ref={casaDropdownRef}>
+                      <div
+                        className={`create-user__dropdown${casaInvalid ? ' create-user__dropdown--invalid' : ''}`}
+                        ref={casaDropdownRef}
+                      >
                         <button
                           type="button"
                           className="create-user__dropdown-trigger"
@@ -1429,7 +1468,7 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
 
                     <label className="create-user__field">
                       <span>Precio</span>
-                      <div className="create-user__money">
+                      <div className={`create-user__money${precioInvalid ? ' create-user__money--invalid' : ''}`}>
                         <span>$</span>
                         <input
                           name="precio"
@@ -1706,99 +1745,6 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
               </section>
             )}
 
-            {false && (
-              <section className="create-user__section">
-                <div className="create-user__section-header">
-                  <h4>OEMs</h4>
-                  <button
-                    type="button"
-                    className="create-user__ghost create-user__location-action"
-                    onClick={() => {
-                      if (editorDisabled) return
-                      setOemError('')
-                      setShowOemForm((prev) => {
-                        const next = !prev
-                        if (!next) {
-                          setOemDraft({ codigo: '', descripcion: '' })
-                        }
-                        return next
-                      })
-                    }}
-                    disabled={editorDisabled}
-                  >
-                    {showOemForm ? 'Cancelar' : 'Agregar OEM'}
-                  </button>
-                </div>
-
-                <div className="create-user__locations-table create-user__locations-table--oem">
-                  <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Código</span>
-                      <span>Descripción</span>
-                    <span>Acciones</span>
-                  </div>
-
-                  {showOemForm && (
-                    <div className="create-user__locations-row create-user__locations-row--form">
-                      <span>
-                        <input
-                          type="text"
-                            placeholder="Código OEM"
-                          value={oemDraft.codigo}
-                          onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
-                          disabled={editorDisabled}
-                        />
-                      </span>
-                      <span>
-                        <input
-                          type="text"
-                            placeholder="Descripción (opcional)"
-                          value={oemDraft.descripcion}
-                          onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
-                          disabled={editorDisabled}
-                        />
-                      </span>
-                      <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button
-                          type="button"
-                          className="create-user__ghost"
-                          onClick={handleAddOem}
-                          disabled={editorDisabled}
-                        >
-                          Agregar
-                        </button>
-                      </span>
-                    </div>
-                  )}
-
-                  {!oemItems.length && !showOemForm && (
-                    <div className="create-user__locations-row create-user__locations-row--empty">
-                      <span>No hay OEMs registrados.</span>
-                    </div>
-                  )}
-
-                  {oemItems.map((item, index) => (
-                    <div key={`${item.codigo}-${index}`} className="create-user__locations-row">
-                      <span>{item.codigo || '-'}</span>
-                        <span>{item.descripcion || '-'}</span>
-                      <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button
-                          type="button"
-                          className="create-user__locations-remove"
-                          onClick={() => handleRemoveOem(item.codigo)}
-                          disabled={editorDisabled}
-                          aria-label="Eliminar OEM"
-                        >
-                            ×
-                        </button>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {oemError && <div className="create-user__error">{oemError}</div>}
-              </section>
-            )}
-
             {activeTab === 'ubicaciones' && (
               <>
                 {inventoryLoading && (
@@ -1829,6 +1775,16 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
               </>
             )}
 
+            {activeTab === 'recordatorios' && (
+              <EntityRemindersTab
+                token={token}
+                currentUser={currentUser}
+                entityType="producto"
+                entityId={productoId}
+                entityLabel={formData.nombre || (productoId ? `Producto #${productoId}` : 'Producto')}
+              />
+            )}
+
           </div>
         </div>
 
@@ -1849,7 +1805,10 @@ function ProductoDetails({ open, productoId, token, onClose, onUpdated, onDelete
               <button
                 type="button"
                 className="create-user__action create-user__action--edit user-details__edit-toggle"
-                onClick={() => setIsEditing(true)}
+                onClick={() => {
+                  setSubmitAttempted(false)
+                  setIsEditing(true)
+                }}
                 disabled={loadingData || saving}
               >
                 <span className="user-details__toggle-icon"><Pencil size={14} /></span>

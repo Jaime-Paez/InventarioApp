@@ -144,6 +144,12 @@ class MovimientoInventarioModulePermission(ModulePermission):
     def get_target_module_keys(self, request, view):
         from tipos.models import TipoMovimiento  # Import tardío para evitar ciclos
 
+        action = getattr(view, "action", "")
+        if action == "solicitudes_traslado":
+            if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+                return [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS]
+            return [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS]
+
         tipo_movimiento = None
         tipo_movimiento_id = request.data.get("tipo_movimiento_id") or request.data.get("tipo_movimiento")
 

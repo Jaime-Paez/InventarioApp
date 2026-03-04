@@ -72,7 +72,7 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
-function SolicitudesTable({ token, onSelect }) {
+function SolicitudesTable({ token, onSelect, user }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
 
@@ -1551,6 +1551,7 @@ function SolicitudesTable({ token, onSelect }) {
         token={token}
         onUpdated={handleUpdated}
         onError={showErrorToast}
+        currentUser={user}
       />
 
       {shouldRenderSearchModal && (

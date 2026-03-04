@@ -145,7 +145,7 @@ const isCheckboxSelection = (event) => {
   )
 }
 
-function SalidasTable({ token }) {
+function SalidasTable({ token, user }) {
   const toast = useRef(null)
   const preloadSalidaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
@@ -949,6 +949,7 @@ function SalidasTable({ token }) {
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}
         onError={showErrorToast}
+        currentUser={user}
       />
 
       {shouldRenderSearchModal && (

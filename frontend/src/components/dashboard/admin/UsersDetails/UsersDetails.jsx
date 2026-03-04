@@ -92,6 +92,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -302,6 +303,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setModuleBranchMatrix({})
     setBranchScopedModules([])
     setBranches([])
+    setSubmitAttempted(false)
     setActiveTab('general')
     setIsMaximized(false)
     restoreRef.current = null
@@ -463,6 +465,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
         setFormData(originalData)
         setPermissionsMatrix(buildMatrixFromList(originalData.permisos_personalizados))
         setModuleBranchMatrix(buildModuleBranchMatrixFromList(originalData.sucursales_por_modulo))
+        setSubmitAttempted(false)
       }
       return next
     })
@@ -471,6 +474,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!isEditing || loadingData) return
+    setSubmitAttempted(true)
     setSaving(true)
 
     const payload = {
@@ -518,6 +522,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       setOriginalData(normalized)
       setPermissionsMatrix(buildMatrixFromList(normalized.permisos_personalizados))
       setModuleBranchMatrix(buildModuleBranchMatrixFromList(normalized.sucursales_por_modulo))
+      setSubmitAttempted(false)
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
@@ -558,6 +563,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const handleClose = () => {
     onClose?.()
     setIsEditing(false)
+    setSubmitAttempted(false)
     setShowDeleteDialog(false)
   }
   const { shouldRender, isClosing } = useModalAnimation(open)
@@ -602,7 +608,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
         </div>
       </header>
 
-      <form className="create-user__form" onSubmit={handleSubmit}>
+      <form className={`create-user__form${submitAttempted && isEditing ? ' create-user__form--submitted' : ''}`} onSubmit={handleSubmit}>
         {loadingData && (
           <div className="create-user__loading-overlay" role="status" aria-live="polite">
             <i className="pi pi-spin pi-spinner" aria-hidden="true" />

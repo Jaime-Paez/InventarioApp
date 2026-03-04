@@ -25,21 +25,35 @@ const getFlagUrl = (code) => {
   return `https://flagsapi.com/${clean.toUpperCase()}/flat/64.png`
 }
 
+const normalizeCountrySearch = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+
 function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated, onDeleted, onDuplicated, onError }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [countries, setCountries] = useState([])
+  const [countryQuery, setCountryQuery] = useState('')
+  const [countryOptions, setCountryOptions] = useState([])
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false)
+  const [countryLoading, setCountryLoading] = useState(false)
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [duplicateLoading, setDuplicateLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
   const modalRef = useRef(null)
+  const countryDropdownRef = useRef(null)
+  const countrySearchTimerRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -86,6 +100,23 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
       ...prev,
       [name]: name === 'codigo' ? value.toUpperCase() : value,
     }))
+  }
+
+  const handleCountrySearchChange = (event) => {
+    if (!isEditing) return
+    const value = event.target.value
+    setCountryQuery(value)
+    setShowCountryDropdown(true)
+    if (formData.paisId) {
+      setFormData((prev) => ({ ...prev, paisId: '' }))
+    }
+  }
+
+  const handleCountrySelect = (country) => {
+    if (!country) return
+    setFormData((prev) => ({ ...prev, paisId: String(country.id) }))
+    setCountryQuery(String(country.nombre || '').trim())
+    setShowCountryDropdown(false)
   }
 
   const fetchCountries = useCallback(async () => {
@@ -139,6 +170,11 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
     setIsEditing(false)
     setFormData(emptyForm)
     setOriginalData(emptyForm)
+    setSubmitAttempted(false)
+    setCountryQuery('')
+    setCountryOptions([])
+    setShowCountryDropdown(false)
+    setCountryLoading(false)
     setIsMaximized(false)
     restoreRef.current = null
     fetchCountries()
@@ -150,6 +186,59 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
       setLoadingData(true)
     }
   }, [open])
+
+  useEffect(() => {
+    if (!open || !showCountryDropdown) return
+    if (countrySearchTimerRef.current) clearTimeout(countrySearchTimerRef.current)
+
+    setCountryLoading(true)
+    countrySearchTimerRef.current = setTimeout(() => {
+      const term = normalizeCountrySearch(countryQuery)
+      const filtered = term
+        ? countries.filter((country) => {
+            const nombre = normalizeCountrySearch(country?.nombre)
+            const codigoPais = normalizeCountrySearch(country?.codigo_pais)
+            return nombre.includes(term) || codigoPais.includes(term)
+          })
+        : countries
+      setCountryOptions(filtered.slice(0, term ? 20 : 5))
+      setCountryLoading(false)
+    }, 280)
+
+    return () => {
+      if (countrySearchTimerRef.current) {
+        clearTimeout(countrySearchTimerRef.current)
+        countrySearchTimerRef.current = null
+      }
+    }
+  }, [open, showCountryDropdown, countryQuery, countries])
+
+  useEffect(() => {
+    if (!showCountryDropdown) return
+    const handleClickOutside = (event) => {
+      if (!countryDropdownRef.current?.contains(event.target)) {
+        setShowCountryDropdown(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClickOutside)
+    return () => window.removeEventListener('mousedown', handleClickOutside)
+  }, [showCountryDropdown])
+
+  useEffect(
+    () => () => {
+      if (countrySearchTimerRef.current) {
+        clearTimeout(countrySearchTimerRef.current)
+        countrySearchTimerRef.current = null
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
+    if (!isEditing) {
+      setShowCountryDropdown(false)
+    }
+  }, [isEditing])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -173,6 +262,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 
   const handleSave = async () => {
     if (!isEditing || saving || !casaComercialId) return
+    setSubmitAttempted(true)
     setSaving(true)
 
     const payload = {
@@ -215,6 +305,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
       const normalized = normalizeCasaComercial(data)
       setFormData(normalized)
       setOriginalData(normalized)
+      setSubmitAttempted(false)
       setIsEditing(false)
       onUpdated?.(data)
     } catch (err) {
@@ -251,6 +342,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 
   const handleDuplicateToMarca = async () => {
     if (!isEditing || duplicateLoading) return
+    setSubmitAttempted(true)
     setDuplicateLoading(true)
 
     const payload = {
@@ -300,7 +392,18 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 
   const handleCancelEdit = () => {
     setFormData(originalData)
+    setSubmitAttempted(false)
     setIsEditing(false)
+  }
+
+  const handleToggleEdit = () => {
+    setIsEditing((prev) => {
+      const next = !prev
+      if (!next) {
+        setSubmitAttempted(false)
+      }
+      return next
+    })
   }
 
   const selectedCountry = countries.find((country) => String(country.id) === String(formData.paisId))
@@ -438,12 +541,15 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
 
-  const isViewMode = !isEditing
   const editorDisabled = saving || loadingData || !isEditing
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
-      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
+      <div
+        className={`create-user__modal${submitAttempted && isEditing ? ' create-user__modal--submitted' : ''}${isClosing ? ' create-user__modal--closing' : ''}`}
+        ref={modalRef}
+        style={modalStyle}
+      >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>
@@ -501,24 +607,26 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
               </div>
 
               <div className="create-user__grid create-user__grid--two">
-                <label className="create-user__field">
+                <label className="create-user__field create-user__field--required">
                   <span>Código</span>
                   <input
                     name="codigo"
                     type="text"
                     value={formData.codigo}
                     onChange={handleChange}
+                    required
                     disabled={editorDisabled}
                   />
                 </label>
 
-                <label className="create-user__field">
+                <label className="create-user__field create-user__field--required">
                   <span>Nombre</span>
                   <input
                     name="nombre"
                     type="text"
                     value={formData.nombre}
                     onChange={handleChange}
+                    required
                     disabled={editorDisabled}
                   />
                 </label>
@@ -526,19 +634,57 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
                 <label className="create-user__field">
                   <span>País</span>
                   <div className="create-user__select-with-flag">
-                    <select
-                      name="paisId"
-                      value={formData.paisId}
-                      onChange={handleChange}
-                      disabled={editorDisabled}
-                    >
-                      <option value="" />
-                      {countries.map((country) => (
-                        <option key={country.id} value={country.id}>
-                          {country.nombre}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="create-user__dropdown" ref={countryDropdownRef}>
+                      <button
+                        type="button"
+                        className="create-user__dropdown-trigger"
+                        onClick={() => setShowCountryDropdown((prev) => !prev)}
+                        disabled={editorDisabled}
+                      >
+                        <span>{selectedCountry?.nombre || 'Selecciona un pais'}</span>
+                        <i className={`pi pi-chevron-${showCountryDropdown ? 'up' : 'down'}`} />
+                      </button>
+
+                      {showCountryDropdown && (
+                        <div className="create-user__dropdown-panel">
+                          <div className="create-user__dropdown-search">
+                            <i className="pi pi-search" />
+                            <input
+                              type="text"
+                              placeholder="Buscar pais"
+                              value={countryQuery}
+                              onChange={handleCountrySearchChange}
+                              disabled={editorDisabled}
+                              autoFocus
+                            />
+                          </div>
+
+                          <div className="create-user__dropdown-results">
+                            {countryLoading && <small className="muted">Buscando paises...</small>}
+                            {!countryLoading && !countryQuery.trim() && (
+                              <small className="muted">Mostrando 5 paises.</small>
+                            )}
+                            {!countryLoading && countryQuery.trim() && !countryOptions.length && (
+                              <small className="muted">Sin resultados.</small>
+                            )}
+                            {countryOptions.map((country) => (
+                              <button
+                                key={country.id}
+                                type="button"
+                                className="create-user__result-option"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => handleCountrySelect(country)}
+                              >
+                                <div className="create-user__result-info">
+                                  <strong>{country.nombre}</strong>
+                                  <small>{country.codigo_pais || `ID: ${country.id}`}</small>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <span className={`create-user__flag${selectedFlagUrl ? '' : ' is-empty'}`} aria-hidden="true">
                       {selectedFlagUrl ? <img src={selectedFlagUrl} alt="" /> : '□'}
                     </span>
@@ -595,7 +741,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
             <button
               type="button"
               className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-              onClick={() => setIsEditing((prev) => !prev)}
+              onClick={handleToggleEdit}
               disabled={loadingData || saving}
             >
               <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>
@@ -679,5 +825,6 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
 }
 
 export default CasaComercialDetails
+
 
 

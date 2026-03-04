@@ -10,6 +10,7 @@ import ProductosTable from '../productos/ProductosTable/ProductosTable'
 import SolicitudesTable from '../solicitudes/SolicitudesTable/SolicitudesTable'
 import Configuracion from '../configuracion/Configuracion/Configuracion'
 import InventarioTable from '../inventario/InventarioTable/InventarioTable'
+import EntradasTable from '../movimientos/EntradasTable'
 import SalidasTable from '../movimientos/SalidasTable'
 import './Workspace.css'
 import { labelHasAccess } from '../menuConfig'
@@ -45,6 +46,7 @@ function Workspace({
     Productos: ProductosTable,
     Solicitudes: SolicitudesTable,
     Clientes: ClientesTable,
+    Entradas: EntradasTable,
     Salidas: SalidasTable,
     Configuraciones: Configuracion,
   }
@@ -70,10 +72,10 @@ function Workspace({
     }
 
     if (tab === 'Configuraciones') {
-      return <TabComponent token={token} darkMode={darkMode} onToggleTheme={onToggleTheme} />
+      return <TabComponent token={token} darkMode={darkMode} onToggleTheme={onToggleTheme} user={user} />
     }
 
-    return <TabComponent token={token} />
+    return <TabComponent token={token} user={user} />
   }
 
   const renderContent = () => {
@@ -102,7 +104,7 @@ function Workspace({
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
         />
-        <QuickActions darkMode={darkMode} onToggleTheme={onToggleTheme} />
+        <QuickActions darkMode={darkMode} onToggleTheme={onToggleTheme} token={token} user={user} />
       </div>
 
       {showWelcome && (

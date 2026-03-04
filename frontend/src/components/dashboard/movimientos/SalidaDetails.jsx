@@ -3,6 +3,7 @@ import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
+import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -248,7 +249,7 @@ const extractClienteFromDescripcion = (value) => {
   return { cliente, descripcion }
 }
 
-function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, onError }) {
+function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, onError, currentUser }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(null)
   const [loadingData, setLoadingData] = useState(false)
@@ -577,14 +578,16 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
       clearTimeout(clienteSearchTimerRef.current)
       clienteSearchTimerRef.current = null
     }
-    setActiveTab('general')
+    if (activeTab === 'cliente') {
+      setActiveTab('general')
+    }
     setSelectedCliente(null)
     setClienteForm(initialClienteForm)
     setShowClienteDropdown(false)
     setClienteQuery('')
     setClienteOptions([])
     setClienteLoading(false)
-  }, [isVenta])
+  }, [activeTab, isVenta])
 
   useEffect(() => {
     if (!formData.subTipoId) {
@@ -1634,15 +1637,15 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
               <span>Cargando datos...</span>
             </div>
           )}
-          {isVenta && (
-            <div className="create-user__tabs" role="tablist" aria-label="Secciones de salida">
-              <button
-                type="button"
-                className={`create-user__tab ${activeTab === 'general' ? 'create-user__tab--active' : ''}`}
-                onClick={() => setActiveTab('general')}
-              >
-                Datos de salida
-              </button>
+          <div className="create-user__tabs" role="tablist" aria-label="Secciones de salida">
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'general' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('general')}
+            >
+              Datos de salida
+            </button>
+            {isVenta && (
               <button
                 type="button"
                 className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
@@ -1650,11 +1653,18 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
               >
                 Datos del cliente
               </button>
-            </div>
-          )}
+            )}
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('recordatorios')}
+            >
+              Recordatorios
+            </button>
+          </div>
           <div className="create-user__content create-salida__content">
               <div className="create-user__body">
-                {(activeTab === 'general' || !isVenta) && (
+                {activeTab === 'general' && (
                   <>
                 <section className="create-user__section">
                   <div className="create-user__section-header">
@@ -2137,6 +2147,16 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
                       <small className="muted">Cliente existente detectado. Se usara el registro actual al guardar.</small>
                     )}
                   </section>
+                )}
+
+                {activeTab === 'recordatorios' && (
+                  <EntityRemindersTab
+                    token={token}
+                    currentUser={currentUser}
+                    entityType="salida"
+                    entityId={salidaId}
+                    entityLabel={modalTitle}
+                  />
                 )}
               </div>
             </div>

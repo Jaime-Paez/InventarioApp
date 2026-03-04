@@ -594,7 +594,9 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
 }
 
-.create-user__form--create.create-user__form--submitted
+.create-user__form--submitted
+  :is(input:not([type='checkbox']):not([type='radio']), select, textarea):required:invalid,
+.create-user__modal--submitted
   :is(input:not([type='checkbox']):not([type='radio']), select, textarea):required:invalid {
   border-color: var(--color-error-border);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border) 32%, transparent);
@@ -637,7 +639,9 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 32%, transparent);
 }
 
-.dashboard-shell.dark .create-user__form--create.create-user__form--submitted
+.dashboard-shell.dark .create-user__form--submitted
+  :is(input:not([type='checkbox']):not([type='radio']), select, textarea):required:invalid,
+.dashboard-shell.dark .create-user__modal--submitted
   :is(input:not([type='checkbox']):not([type='radio']), select, textarea):required:invalid {
   border-color: var(--color-error-border-dark);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border-dark) 36%, transparent);
@@ -678,8 +682,18 @@
   border-color: var(--color-border);
 }
 
+.create-user__money.create-user__money--invalid {
+  border-color: var(--color-error-border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border) 32%, transparent);
+}
+
 .dashboard-shell.dark .create-user__money span {
   color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .create-user__money.create-user__money--invalid {
+  border-color: var(--color-error-border-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border-dark) 36%, transparent);
 }
 
 .create-user__access-grid {
@@ -1262,6 +1276,16 @@
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
   border-color: var(--color-border);
+}
+
+.create-user__dropdown.create-user__dropdown--invalid .create-user__dropdown-trigger {
+  border-color: var(--color-error-border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border) 32%, transparent);
+}
+
+.dashboard-shell.dark .create-user__dropdown.create-user__dropdown--invalid .create-user__dropdown-trigger {
+  border-color: var(--color-error-border-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border-dark) 36%, transparent);
 }
 
 .create-user__dropdown-panel {
