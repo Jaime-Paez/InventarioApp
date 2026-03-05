@@ -9,6 +9,7 @@ import {
   buildUserIdSet,
   createReminderId,
   emitRemindersSync,
+  fetchRemindersFromBackend,
   formatCurrentUserName,
   getReminderDeadlineTimestamp,
   isReminderCreatedByCurrentUser,
@@ -309,6 +310,27 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
     const timer = window.setInterval(() => setClockTick(Date.now()), 30000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const hydrateReminders = async () => {
+      if (!token) {
+        setReminders([])
+        return
+      }
+
+      const remote = await fetchRemindersFromBackend(token)
+      if (cancelled) return
+      setReminders(remote)
+    }
+
+    hydrateReminders()
+
+    return () => {
+      cancelled = true
+    }
+  }, [token])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !urgentDecisionReminder || isReminderModalOpen) return undefined

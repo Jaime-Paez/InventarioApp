@@ -9,6 +9,7 @@ import {
   createReminderId,
   emitRemindersSync,
   extractUserId,
+  fetchRemindersFromBackend,
   formatCurrentUserName,
   formatReminderDateTime,
   isReminderCreatedByCurrentUser,
@@ -138,6 +139,26 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
       window.removeEventListener(REMINDERS_SYNC_EVENT, syncFromStorage)
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const hydrateReminders = async () => {
+      if (!token) {
+        setAllReminders([])
+        return
+      }
+
+      const remote = await fetchRemindersFromBackend(token)
+      if (cancelled) return
+      setAllReminders(remote)
+    }
+
+    hydrateReminders()
+    return () => {
+      cancelled = true
+    }
+  }, [token])
 
   useEffect(() => {
     let cancelled = false

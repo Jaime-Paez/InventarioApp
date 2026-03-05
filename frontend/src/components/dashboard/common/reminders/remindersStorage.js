@@ -1,6 +1,9 @@
+import { API_URL, authFetch, resolveAuthToken } from '../../../../utils/api'
+
 export const REMINDERS_STORAGE_KEY = 'inventario-recordatorios-v1'
 export const REMINDERS_SYNC_EVENT = 'inventario-reminders-sync'
 export const SPECIAL_TRANSFER_DECISION_KIND = 'solicitud_traslado_decision'
+export const REMINDERS_BACKEND_ENDPOINT = `${API_URL}/recordatorios/estado/`
 
 export const normalizeId = (value) => (value == null ? '' : String(value).trim())
 export const normalizeText = (value) => String(value || '').trim().toLowerCase()
@@ -207,6 +210,102 @@ export const sanitizeReminder = (reminder) => {
   }
 }
 
+const writeRemindersToLocalCache = (reminders) => {
+  const normalized = (Array.isArray(reminders) ? reminders : []).map(sanitizeReminder).filter(Boolean)
+  if (typeof window === 'undefined') return normalized
+
+  try {
+    window.localStorage.setItem(REMINDERS_STORAGE_KEY, JSON.stringify(normalized))
+  } catch {
+    // Ignore storage errors (quota/private mode).
+  }
+
+  return normalized
+}
+
+let pendingServerSnapshot = null
+let isServerSyncInFlight = false
+
+export const syncRemindersToBackend = async (reminders, token) => {
+  const normalized = (Array.isArray(reminders) ? reminders : []).map(sanitizeReminder).filter(Boolean)
+  const effectiveToken = resolveAuthToken(token)
+  if (!effectiveToken) return normalized
+
+  try {
+    const response = await authFetch(
+      REMINDERS_BACKEND_ENDPOINT,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ reminders: normalized }),
+      },
+      effectiveToken
+    )
+
+    if (!response.ok) {
+      return normalized
+    }
+
+    const payload = await response.json().catch(() => ({}))
+    const backendReminders = Array.isArray(payload?.reminders)
+      ? payload.reminders
+      : Array.isArray(payload)
+        ? payload
+        : []
+    const merged = backendReminders.map(sanitizeReminder).filter(Boolean)
+    if (!merged.length) return normalized
+    return writeRemindersToLocalCache(merged)
+  } catch {
+    return normalized
+  }
+}
+
+const queueServerReminderSync = (reminders, token) => {
+  if (typeof window === 'undefined') return
+
+  pendingServerSnapshot = (Array.isArray(reminders) ? reminders : []).map(sanitizeReminder).filter(Boolean)
+  if (!pendingServerSnapshot.length && !readRemindersFromStorage().length) {
+    return
+  }
+  if (isServerSyncInFlight) return
+
+  isServerSyncInFlight = true
+  const flush = async () => {
+    while (pendingServerSnapshot) {
+      const snapshot = pendingServerSnapshot
+      pendingServerSnapshot = null
+      const synced = await syncRemindersToBackend(snapshot, token)
+      writeRemindersToLocalCache(synced)
+      emitRemindersSync()
+    }
+    isServerSyncInFlight = false
+  }
+
+  void flush()
+}
+
+export const fetchRemindersFromBackend = async (token) => {
+  const effectiveToken = resolveAuthToken(token)
+  if (!effectiveToken) return readRemindersFromStorage()
+
+  try {
+    const response = await authFetch(REMINDERS_BACKEND_ENDPOINT, {}, effectiveToken)
+    if (!response.ok) return readRemindersFromStorage()
+
+    const payload = await response.json().catch(() => ({}))
+    const backendReminders = Array.isArray(payload?.reminders)
+      ? payload.reminders
+      : Array.isArray(payload)
+        ? payload
+        : []
+    const normalized = backendReminders.map(sanitizeReminder).filter(Boolean)
+    const cached = writeRemindersToLocalCache(normalized)
+    emitRemindersSync()
+    return cached
+  } catch {
+    return readRemindersFromStorage()
+  }
+}
+
 export const readRemindersFromStorage = () => {
   if (typeof window === 'undefined') return []
 
@@ -222,15 +321,8 @@ export const readRemindersFromStorage = () => {
 }
 
 export const writeRemindersToStorage = (reminders) => {
-  const normalized = (Array.isArray(reminders) ? reminders : []).map(sanitizeReminder).filter(Boolean)
-  if (typeof window === 'undefined') return normalized
-
-  try {
-    window.localStorage.setItem(REMINDERS_STORAGE_KEY, JSON.stringify(normalized))
-  } catch {
-    // Ignore storage errors (quota/private mode).
-  }
-
+  const normalized = writeRemindersToLocalCache(reminders)
+  queueServerReminderSync(normalized)
   return normalized
 }
 
