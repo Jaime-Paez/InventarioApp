@@ -23,7 +23,10 @@ import {
   writeRemindersToStorage,
 } from '../common/reminders/remindersStorage'
 
-function QuickActions({ darkMode, onToggleTheme, token, user }) {
+const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
+const URGENT_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
+
+function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecisionAccepted }) {
   const wrapRef = useRef(null)
   const btnRefs = useRef([])
   const reminderButtonRef = useRef(null)
@@ -82,19 +85,17 @@ function QuickActions({ darkMode, onToggleTheme, token, user }) {
     const createdAt = Date.parse(String(urgentDecisionReminder?.createdAt || ''))
     const now = Number(clockTick || Date.now())
 
-    if (!Number.isFinite(deadline)) return 0
-    if (!Number.isFinite(createdAt) || createdAt >= deadline) {
+    if (!Number.isFinite(createdAt)) {
+      if (!Number.isFinite(deadline)) return 0
       return now >= deadline ? 1 : 0
     }
 
-    const ratio = (now - createdAt) / (deadline - createdAt)
+    const elapsed = Math.max(0, now - createdAt)
+    const deadlineWindow = Number.isFinite(deadline) ? Math.max(1, deadline - createdAt) : Number.POSITIVE_INFINITY
+    const growthWindow = Math.min(URGENT_SHIELD_NEAR_FULL_MS, deadlineWindow)
+    const ratio = elapsed / growthWindow
     return Math.max(0, Math.min(1, ratio))
   }, [clockTick, urgentDecisionReminder])
-
-  const urgentDotSize = useMemo(
-    () => 7 + Math.round(urgentDecisionProgress * 20),
-    [urgentDecisionProgress]
-  )
 
   const urgentShieldStyle = useMemo(() => {
     if (!urgentDecisionReminder || isReminderModalOpen || typeof window === 'undefined') return null
@@ -115,6 +116,115 @@ function QuickActions({ darkMode, onToggleTheme, token, user }) {
       '--urgency': String(urgentDecisionProgress.toFixed(3)),
     }
   }, [isReminderModalOpen, urgentDecisionProgress, urgentDecisionReminder, clockTick])
+
+  const urgentMessageStyle = useMemo(() => {
+    if (!urgentShieldStyle) return null
+    const shieldSize = Number.parseFloat(urgentShieldStyle.width)
+    const shieldLeft = Number.parseFloat(urgentShieldStyle.left)
+    const shieldTop = Number.parseFloat(urgentShieldStyle.top)
+
+    if (!Number.isFinite(shieldSize) || !Number.isFinite(shieldLeft) || !Number.isFinite(shieldTop)) {
+      return null
+    }
+
+    const clamp01 = (value) => Math.max(0, Math.min(1, value))
+    const progress = clamp01(urgentDecisionProgress)
+    const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
+    const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight
+
+    const shieldCenterX = shieldLeft + shieldSize / 2
+    const shieldCenterY = shieldTop + shieldSize / 2
+    const viewportCenterX = viewportWidth / 2
+    const viewportCenterY = viewportHeight / 2
+    const vectorX = viewportCenterX - shieldCenterX
+    const vectorY = viewportCenterY - shieldCenterY
+
+    const edgePadding = 12
+    const radius = shieldSize / 2
+    const usableRadius = Math.max(1, radius - edgePadding)
+
+    const minFont = 12
+    const maxFont = 64
+    let fontSize = Math.round(minFont + (maxFont - minFont) * progress)
+
+    const minWidth = 240
+    const maxWidth = Math.min(980, viewportWidth - edgePadding * 2)
+    let width = Math.round(minWidth + (maxWidth - minWidth) * progress)
+    width = Math.max(180, Math.min(width, maxWidth, Math.max(180, shieldSize - 16)))
+
+    const estimateHeight = (boxWidth, size) => {
+      const charsPerLine = Math.max(10, Math.floor(boxWidth / Math.max(1, size * 0.55)))
+      const lines = Math.max(1, Math.ceil(URGENT_MESSAGE.length / charsPerLine))
+      return Math.max(size * 1.25, lines * size * 1.22)
+    }
+
+    let height = estimateHeight(width, fontSize)
+    let halfDiagonal = Math.hypot(width / 2, height / 2)
+
+    while (halfDiagonal > usableRadius && fontSize > 9) {
+      fontSize -= 1
+      height = estimateHeight(width, fontSize)
+      halfDiagonal = Math.hypot(width / 2, height / 2)
+    }
+
+    if (halfDiagonal > usableRadius) {
+      width = Math.max(130, Math.min(width, Math.max(130, usableRadius * 1.35)))
+      height = estimateHeight(width, fontSize)
+      halfDiagonal = Math.hypot(width / 2, height / 2)
+    }
+
+    while (halfDiagonal > usableRadius && fontSize > 6) {
+      fontSize -= 1
+      height = estimateHeight(width, fontSize)
+      halfDiagonal = Math.hypot(width / 2, height / 2)
+    }
+
+    const minCenterX = edgePadding + width / 2
+    const maxCenterX = viewportWidth - edgePadding - width / 2
+    const minCenterY = edgePadding + height / 2
+    const maxCenterY = viewportHeight - edgePadding - height / 2
+
+    let maxTViewport = 1
+    if (Math.abs(vectorX) > 0.001) {
+      const tX = vectorX > 0 ? (maxCenterX - shieldCenterX) / vectorX : (minCenterX - shieldCenterX) / vectorX
+      maxTViewport = Math.min(maxTViewport, tX)
+    }
+    if (Math.abs(vectorY) > 0.001) {
+      const tY = vectorY > 0 ? (maxCenterY - shieldCenterY) / vectorY : (minCenterY - shieldCenterY) / vectorY
+      maxTViewport = Math.min(maxTViewport, tY)
+    }
+    maxTViewport = clamp01(maxTViewport)
+
+    let maxTCircle = 1
+    const absVx = Math.abs(vectorX)
+    const absVy = Math.abs(vectorY)
+    const A = absVx * absVx + absVy * absVy
+    const B = absVx * width + absVy * height
+    const C = (width / 2) ** 2 + (height / 2) ** 2 - usableRadius ** 2
+
+    if (A <= 1e-8) {
+      maxTCircle = C <= 0 ? 1 : 0
+    } else {
+      const discriminant = B * B - 4 * A * C
+      if (discriminant < 0) {
+        maxTCircle = 0
+      } else {
+        maxTCircle = (-B + Math.sqrt(discriminant)) / (2 * A)
+      }
+    }
+    maxTCircle = clamp01(maxTCircle)
+
+    const travel = clamp01(Math.min(progress, maxTViewport, maxTCircle))
+    const centerX = shieldCenterX + vectorX * travel
+    const centerY = shieldCenterY + vectorY * travel
+
+    return {
+      left: `${centerX}px`,
+      top: `${centerY}px`,
+      width: `${width}px`,
+      fontSize: `${fontSize}px`,
+    }
+  }, [urgentDecisionProgress, urgentShieldStyle])
 
   const personalReminders = useMemo(() => {
     const related = reminders.filter(
@@ -336,9 +446,14 @@ function QuickActions({ darkMode, onToggleTheme, token, user }) {
           aria-label="Resolver solicitud de traslado pendiente"
         />
       )}
+      {urgentMessageStyle && (
+        <div className="quick-actions__urgent-message" style={urgentMessageStyle} aria-hidden="true">
+          {URGENT_MESSAGE}
+        </div>
+      )}
       <div
         ref={wrapRef}
-        className={`quick-actions ${darkMode ? 'dark' : 'light'}`}
+        className={`quick-actions ${darkMode ? 'dark' : 'light'}${urgentShieldStyle ? ' has-urgent-shield' : ''}`}
         onMouseLeave={hideBlob}
       >
         <span
@@ -378,8 +493,7 @@ function QuickActions({ darkMode, onToggleTheme, token, user }) {
           <Bell />
           {hasPendingReminder && (
             <span
-              className={`quick-actions__pending-dot${urgentDecisionReminder ? ' is-urgent' : ''}`}
-              style={urgentDecisionReminder ? { width: urgentDotSize, height: urgentDotSize } : undefined}
+              className="quick-actions__pending-dot"
               aria-hidden="true"
             />
           )}
@@ -413,6 +527,7 @@ function QuickActions({ darkMode, onToggleTheme, token, user }) {
         onApplyRemindersUpdate={applyReminderUpdate}
         focusReminderId={focusReminderId}
         onFocusReminderHandled={() => setFocusReminderId('')}
+        onTransferDecisionAccepted={onTransferDecisionAccepted}
       />
     </>
   )

@@ -1,6 +1,4 @@
 from decimal import Decimal, InvalidOperation
-from datetime import date
-
 from django.db.models import DecimalField, ExpressionWrapper, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
@@ -20,8 +18,6 @@ from usuarios.sucursal_scope import (
     ensure_sucursal_allowed_for_modules,
     get_allowed_sucursal_ids,
 )
-from tipos.models import EstadoMovimiento, SubTipoMovimiento, TipoMovimiento
-
 from .models import MovimientoInventario, SolicitudTraslado
 from .serializers import MovimientoInventarioSerializer, SolicitudTrasladoSerializer
 
@@ -90,18 +86,24 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
         return payload
 
+    @staticmethod
+    def _resolve_solicitud_estado_label(solicitud):
+        estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
+        if estado == SolicitudTraslado.Estados.PENDIENTE:
+            return "Solicitud pendiente"
+        if estado == SolicitudTraslado.Estados.CANCELADA:
+            return "Rechazada"
+        if estado == SolicitudTraslado.Estados.APROBADA:
+            if getattr(solicitud, "movimiento_salida_id", None):
+                return "Solicitud enviada"
+            return "Solicitud aceptada"
+        return estado.capitalize() if estado else "-"
+
     def _serialize_solicitud_table_rows(self, solicitudes):
         payload = []
-        status_labels = {
-            str(key).strip().lower(): str(label).strip()
-            for key, label in SolicitudTraslado.Estados.choices
-        }
         for solicitud in solicitudes:
             solicitud_id = int(getattr(solicitud, "id", 0) or 0)
-            estado_key = str(getattr(solicitud, "estado", "") or "").strip().lower()
-            estado_label = status_labels.get(estado_key) or (
-                estado_key.capitalize() if estado_key else "-"
-            )
+            estado_label = self._resolve_solicitud_estado_label(solicitud)
             detalles_payload = []
             detalles_rows = getattr(solicitud, "detalles", None)
             if detalles_rows is not None:
@@ -258,7 +260,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
                 )
             )
-            .filter(movimiento_entrada__isnull=True)
             .order_by("-fecha", "-id")
         )
 
@@ -279,8 +280,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(estado=raw_estado)
             else:
                 queryset = queryset.filter(estado__icontains=raw_estado)
-        else:
-            queryset = queryset.filter(estado=SolicitudTraslado.Estados.PENDIENTE)
 
         no_documento = (params.get("no_documento") or "").strip()
         if no_documento:
@@ -638,51 +637,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             .first()
         )
 
-    def _resolve_transfer_approval_catalogs(self):
-        tipo_salida = (
-            TipoMovimiento.objects.filter(nombre__istartswith="sal")
-            .order_by("id")
-            .first()
-        )
-        if tipo_salida is None:
-            return None, None, None
-
-        subtipo_traslado = (
-            SubTipoMovimiento.objects.filter(
-                tipo_movimiento=tipo_salida,
-                nombre__icontains="trasl",
-            )
-            .order_by("id")
-            .first()
-        )
-        if subtipo_traslado is None:
-            return None, None, None
-
-        estado_enviado = (
-            EstadoMovimiento.objects.filter(nombre__icontains="enviad")
-            .order_by("id")
-            .first()
-        )
-        if estado_enviado is None:
-            return None, None, None
-
-        return tipo_salida, subtipo_traslado, estado_enviado
-
-    @staticmethod
-    def _build_unique_transfer_document(tipo_movimiento, base_document):
-        raw_base = str(base_document or "").strip() or "TR-SALIDA"
-        candidate = raw_base[:80]
-        index = 1
-        while MovimientoInventario.objects.filter(
-            tipo_movimiento=tipo_movimiento,
-            no_documento__iexact=candidate,
-        ).exists():
-            suffix = f"-{index}"
-            trimmed = raw_base[: max(1, 80 - len(suffix))]
-            candidate = f"{trimmed}{suffix}"
-            index += 1
-        return candidate
-
     @action(detail=False, methods=["get", "post"], url_path="solicitudes-traslado")
     def solicitudes_traslado(self, request):
         if request.method.lower() == "post":
@@ -859,49 +813,31 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         decision = str(request.data.get("decision") or "").strip().lower()
         if decision in {"aceptar", "aprobar", "aprobada", "approve", "approved"}:
-            tipo_salida, subtipo_traslado, estado_enviado = (
-                self._resolve_transfer_approval_catalogs()
+            solicitud.estado = SolicitudTraslado.Estados.APROBADA
+            solicitud.motivo_rechazo = ""
+            solicitud.rechazada_por = None
+            solicitud.rechazada_en = None
+            solicitud.save(
+                update_fields=[
+                    "estado",
+                    "motivo_rechazo",
+                    "rechazada_por",
+                    "rechazada_en",
+                    "updated_at",
+                ]
             )
-            if not all([tipo_salida, subtipo_traslado, estado_enviado]):
-                return Response(
-                    {
-                        "detail": (
-                            "Faltan catalogos para aprobar la solicitud de traslado."
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            document_number = self._build_unique_transfer_document(
-                tipo_salida,
-                f"TR-SAL-{solicitud.no_documento}",
-            )
-            movement_payload = {
-                "sucursal_id": int(solicitud.sucursal_proveedora_id),
-                "tipo_movimiento_id": int(tipo_salida.id),
-                "sub_tipo_movimiento_id": int(subtipo_traslado.id),
-                "estado_movimiento_id": int(estado_enviado.id),
-                "descripcion": str(solicitud.descripcion or "").strip(),
-                "funcional": True,
-                "sucursal_objetivo_id": int(solicitud.sucursal_solicitante_id),
-                "fecha": date.today().isoformat(),
-                "no_documento": document_number,
-                "solicitud_traslado_id": int(solicitud.id),
-            }
-
-            serializer = self.get_serializer(data=movement_payload)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            solicitud.refresh_from_db()
 
             output = SolicitudTrasladoSerializer(instance=solicitud)
             return Response(
                 {
-                    "detail": "Solicitud aprobada correctamente.",
+                    "detail": "Solicitud aceptada correctamente.",
                     "decision": "aceptada",
                     "solicitud": output.data,
-                    "movimiento_salida_id": solicitud.movimiento_salida_id,
-                    "movimiento_entrada_id": solicitud.movimiento_entrada_id,
+                    "next_action": {
+                        "type": "crear_salida",
+                        "solicitud_id": int(solicitud.id),
+                        "sucursal_proveedora_id": int(solicitud.sucursal_proveedora_id),
+                    },
                 },
                 status=status.HTTP_200_OK,
             )

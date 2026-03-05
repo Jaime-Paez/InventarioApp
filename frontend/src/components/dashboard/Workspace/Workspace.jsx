@@ -65,6 +65,7 @@ function Workspace({
   })
   const [isMovementBranchMenuOpen, setIsMovementBranchMenuOpen] = useState(false)
   const movementBranchMenuRef = useRef(null)
+  const [pendingTransferSalidaRequest, setPendingTransferSalidaRequest] = useState(null)
 
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
@@ -152,6 +153,35 @@ function Workspace({
       if (String(prev?.[tab] || '') === normalized) return prev
       return { ...prev, [tab]: normalized }
     })
+  }, [])
+
+  const handleTransferDecisionAccepted = useCallback((payload) => {
+    const payloadSolicitud = payload?.solicitud || null
+    const solicitudIdRaw = payload?.solicitudId ?? payloadSolicitud?.id
+    const solicitudId = String(solicitudIdRaw || '').trim()
+    if (!solicitudId) return
+    if (!labelHasAccess('Salidas', permissionIndex)) return
+
+    const sucursalProveedoraRaw = (
+      payload?.nextAction?.sucursal_proveedora_id ??
+      payloadSolicitud?.sucursal_proveedora_id
+    )
+    const sucursalProveedoraId = String(sucursalProveedoraRaw || '').trim()
+
+    if (sucursalProveedoraId) {
+      setMovementBranchSelection((prev) => ({ ...prev, Salidas: sucursalProveedoraId }))
+    }
+    onSelectTab?.('Salidas')
+    setPendingTransferSalidaRequest({
+      requestKey: `${Date.now()}-${solicitudId}`,
+      solicitudId,
+      sucursalProveedoraId,
+      solicitud: payloadSolicitud,
+    })
+  }, [onSelectTab, permissionIndex])
+
+  const handleTransferRequestHandled = useCallback(() => {
+    setPendingTransferSalidaRequest(null)
   }, [])
 
   const activeMovementBranches = movementBranchOptions?.[activeItem] || []
@@ -249,6 +279,10 @@ function Workspace({
         moduleKey={moduleKey}
         moduleActions={moduleActions}
         permissionIndex={permissionIndex}
+        pendingTransferSalidaRequest={tab === 'Salidas' ? pendingTransferSalidaRequest : null}
+        onPendingTransferSalidaRequestHandled={
+          tab === 'Salidas' ? handleTransferRequestHandled : undefined
+        }
       />
     )
   }
@@ -279,7 +313,13 @@ function Workspace({
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
         />
-        <QuickActions darkMode={darkMode} onToggleTheme={onToggleTheme} token={token} user={user} />
+        <QuickActions
+          darkMode={darkMode}
+          onToggleTheme={onToggleTheme}
+          token={token}
+          user={user}
+          onTransferDecisionAccepted={handleTransferDecisionAccepted}
+        />
       </div>
 
       {showWelcome && (

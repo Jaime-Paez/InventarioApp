@@ -745,8 +745,79 @@
   padding: 10px 14px 14px;
   border-top: 1px solid color-mix(in srgb, var(--color-border) 74%, transparent);
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: center;
   gap: 10px;
+}
+
+.recordatorios-popup__decision-actions-row {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.recordatorios-popup__decision-button {
+  min-width: 150px;
+  min-height: 42px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.recordatorios-popup__decision-button--accept {
+  background: var(--color-success-text);
+  border-color: color-mix(in srgb, var(--color-success-text) 78%, black 22%);
+  color: #fff;
+}
+
+.recordatorios-popup__decision-button--accept:hover {
+  background: color-mix(in srgb, var(--color-success-text) 88%, #fff 12%);
+}
+
+.recordatorios-popup__decision-button--reject {
+  background: var(--color-error-text);
+  border-color: color-mix(in srgb, var(--color-error-text) 80%, black 20%);
+  color: #fff;
+}
+
+.recordatorios-popup__decision-button--reject:hover {
+  background: color-mix(in srgb, var(--color-error-text) 90%, #fff 10%);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--accept {
+  background: var(--color-success-text-dark);
+  border-color: color-mix(in srgb, var(--color-success-text-dark) 78%, black 22%);
+  color: #fff;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--accept:hover {
+  background: color-mix(in srgb, var(--color-success-text-dark) 90%, #fff 10%);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--reject {
+  background: var(--color-error-text-dark);
+  border-color: color-mix(in srgb, var(--color-error-text-dark) 80%, black 20%);
+  color: #fff;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--reject:hover {
+  background: color-mix(in srgb, var(--color-error-text-dark) 90%, #fff 10%);
+}
+
+.recordatorios-popup__decision-close-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: color-mix(in srgb, currentColor 75%, transparent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.recordatorios-popup__decision-close-link:hover {
+  color: color-mix(in srgb, currentColor 90%, transparent);
 }
 
 @keyframes recordatorios-overlay-in {

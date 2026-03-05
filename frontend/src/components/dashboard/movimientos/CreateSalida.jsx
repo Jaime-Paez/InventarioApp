@@ -173,6 +173,7 @@ function CreateSalida({
   preloadedTipoMovimientos = [],
   preloadedSubTipos = [],
   prefilledSucursalId = '',
+  prefillTransferRequest = null,
 }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
@@ -223,6 +224,7 @@ function CreateSalida({
   const modalSizeRef = useRef(modalSize)
   const modalPositionRef = useRef(modalPosition)
   const modalRestoreRef = useRef(null)
+  const appliedPrefillRequestKeyRef = useRef('')
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const getViewportMetrics = useCallback((compactMode = false) => {
@@ -398,6 +400,8 @@ function CreateSalida({
       ) || null,
     [formData.solicitudTrasladoId, solicitudesTraslado]
   )
+  const prefillTransferRequestKey = String(prefillTransferRequest?.requestKey || '').trim()
+  const prefillTransferSolicitudId = String(prefillTransferRequest?.solicitudId || '').trim()
 
   useEffect(() => {
     if (!preloadedTipoMovimientos.length) return
@@ -698,19 +702,22 @@ function CreateSalida({
         const response = await authFetch(
           `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/?sucursal_proveedora_id=${encodeURIComponent(
             sucursalId
-          )}&estado=pendiente&page_size=100`,
+          )}&estado=aprobada&page_size=100`,
           {},
           token
         )
         if (!response.ok) {
-          throw new Error('No se pudieron cargar las solicitudes de traslado pendientes.')
+          throw new Error('No se pudieron cargar las solicitudes de traslado aceptadas.')
         }
 
         const payload = await response.json().catch(() => ({}))
-        setSolicitudesTraslado(parseApiList(payload))
+        const rows = parseApiList(payload).filter(
+          (solicitud) => !solicitud?.movimiento_salida_id && !solicitud?.movimiento_entrada_id
+        )
+        setSolicitudesTraslado(rows)
       } catch (err) {
         setSolicitudesTraslado([])
-        notifyError(err?.message || 'No se pudieron cargar las solicitudes de traslado pendientes.')
+        notifyError(err?.message || 'No se pudieron cargar las solicitudes de traslado aceptadas.')
       } finally {
         setSolicitudesTrasladoLoading(false)
       }
@@ -729,6 +736,7 @@ function CreateSalida({
       documentCheckTimerRef.current = null
     }
     documentCheckSequenceRef.current = 0
+    appliedPrefillRequestKeyRef.current = ''
     setFormData({
       ...initialForm,
       fecha: todayISO(),
@@ -761,6 +769,50 @@ function CreateSalida({
     setError('')
     fetchCatalogs()
   }, [fetchCatalogs, normalizedPrefilledSucursalId, open])
+
+  useEffect(() => {
+    if (!open) return
+    const solicitud = prefillTransferRequest?.solicitud
+    const solicitudId = String(solicitud?.id || '').trim()
+    if (!solicitud || !solicitudId) return
+    setSolicitudesTraslado((prev) => {
+      const list = Array.isArray(prev) ? prev : []
+      if (list.some((item) => String(item?.id || '').trim() === solicitudId)) return list
+      return [solicitud, ...list]
+    })
+  }, [open, prefillTransferRequest])
+
+  useEffect(() => {
+    if (!open) return
+    if (!prefillTransferRequestKey || !prefillTransferSolicitudId) return
+    if (appliedPrefillRequestKeyRef.current === prefillTransferRequestKey) return
+    if (!subTiposSalida.length) return
+
+    const trasladoSubTipo = subTiposSalida.find((subTipo) =>
+      normalizeValue(subTipo?.nombre).includes('trasl')
+    )
+    if (!trasladoSubTipo?.id) return
+
+    const solicitudDoc = String(
+      prefillTransferRequest?.solicitud?.no_documento || prefillTransferSolicitudId
+    ).trim()
+    const prefilledDocNumber = `TR-SAL-${solicitudDoc}`.slice(0, 80)
+
+    setFormData((prev) => ({
+      ...prev,
+      subTipoId: String(trasladoSubTipo.id),
+      solicitudTrasladoId: prefillTransferSolicitudId,
+      no_documento: String(prev.no_documento || '').trim() || prefilledDocNumber,
+    }))
+    setActiveTab('general')
+    appliedPrefillRequestKeyRef.current = prefillTransferRequestKey
+  }, [
+    open,
+    prefillTransferRequest,
+    prefillTransferRequestKey,
+    prefillTransferSolicitudId,
+    subTiposSalida,
+  ])
 
   useEffect(() => {
     if (!open) return
@@ -1378,7 +1430,7 @@ function CreateSalida({
     }
 
     if (isTraslado && !formData.solicitudTrasladoId) {
-      notifyError('Selecciona una solicitud de traslado pendiente.')
+      notifyError('Selecciona una solicitud de traslado aceptada.')
       return
     }
 
@@ -1731,7 +1783,7 @@ function CreateSalida({
                               ? 'Selecciona una sucursal'
                               : (solicitudesTrasladoLoading
                                   ? 'Cargando solicitudes...'
-                                  : 'Selecciona una solicitud pendiente')}
+                                  : 'Selecciona una solicitud aceptada')}
                           </option>
                           {solicitudesTraslado.map((solicitud) => (
                             <option key={solicitud.id} value={solicitud.id}>
@@ -1740,7 +1792,7 @@ function CreateSalida({
                           ))}
                         </select>
                         {formData.sucursalId && !solicitudesTrasladoLoading && !solicitudesTraslado.length && (
-                          <small className="create-user__field-error">No hay solicitudes pendientes para esta sucursal.</small>
+                          <small className="create-user__field-error">No hay solicitudes aceptadas para esta sucursal.</small>
                         )}
                       </label>
                     )}

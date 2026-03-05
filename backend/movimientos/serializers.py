@@ -118,6 +118,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
     detalles = SolicitudTrasladoDetalleSerializer(many=True)
     movimiento_salida_id = serializers.IntegerField(source="movimiento_salida.id", read_only=True)
     movimiento_entrada_id = serializers.IntegerField(source="movimiento_entrada.id", read_only=True)
+    estado_label = serializers.SerializerMethodField(read_only=True)
     rechazada_por_nombre = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -128,6 +129,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "fecha",
             "descripcion",
             "estado",
+            "estado_label",
             "sucursal_solicitante",
             "sucursal_solicitante_id",
             "sucursal_proveedora",
@@ -145,6 +147,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "estado",
+            "estado_label",
             "motivo_rechazo",
             "rechazada_por",
             "rechazada_por_nombre",
@@ -165,6 +168,21 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             return full_name
 
         return str(getattr(user, "email", "") or "").strip()
+
+    def get_estado_label(self, obj):
+        estado = str(getattr(obj, "estado", "") or "").strip().lower()
+        if estado == SolicitudTraslado.Estados.PENDIENTE:
+            return "Solicitud pendiente"
+        if estado == SolicitudTraslado.Estados.CANCELADA:
+            return "Rechazada"
+        if estado == SolicitudTraslado.Estados.APROBADA:
+            if getattr(obj, "movimiento_salida_id", None):
+                return "Solicitud enviada"
+            return "Solicitud aceptada"
+        display = str(getattr(obj, "get_estado_display", lambda: "")() or "").strip()
+        if display:
+            return display
+        return str(getattr(obj, "estado", "") or "").strip() or "-"
 
     def validate_no_documento(self, value):
         normalized = str(value or "").strip()
@@ -522,14 +540,14 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(
                         {
                             "solicitud_traslado_id": (
-                                "Debes seleccionar una solicitud de traslado pendiente."
+                                "Debes seleccionar una solicitud de traslado aceptada."
                             )
                         }
                     )
 
-                if solicitud_traslado.estado != SolicitudTraslado.Estados.PENDIENTE:
+                if solicitud_traslado.estado != SolicitudTraslado.Estados.APROBADA:
                     raise serializers.ValidationError(
-                        {"solicitud_traslado_id": "La solicitud de traslado ya no esta pendiente."}
+                        {"solicitud_traslado_id": "La solicitud de traslado debe estar aceptada."}
                     )
 
                 if (

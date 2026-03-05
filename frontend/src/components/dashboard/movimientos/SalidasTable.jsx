@@ -147,13 +147,21 @@ const isCheckboxSelection = (event) => {
   )
 }
 
-function SalidasTable({ token, user, createBranchId = '', moduleActions }) {
+function SalidasTable({
+  token,
+  user,
+  createBranchId = '',
+  moduleActions,
+  pendingTransferSalidaRequest = null,
+  onPendingTransferSalidaRequestHandled,
+}) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const preloadSalidaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
   const fetchSeqRef = useRef(0)
   const loadedTokenRef = useRef(null)
+  const handledTransferRequestKeyRef = useRef('')
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
@@ -176,6 +184,7 @@ function SalidasTable({ token, user, createBranchId = '', moduleActions }) {
   const [prefetchedTipoMovimientos, setPrefetchedTipoMovimientos] = useState([])
   const [prefetchedSubTiposSalida, setPrefetchedSubTiposSalida] = useState([])
   const [salidaCatalogsPreloaded, setSalidaCatalogsPreloaded] = useState(false)
+  const [createPrefillTransferRequest, setCreatePrefillTransferRequest] = useState(null)
   const [subtypeFilter, setSubtypeFilter] = useState('all')
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
   const [showSearchModal, setShowSearchModal] = useState(false)
@@ -692,6 +701,7 @@ function SalidasTable({ token, user, createBranchId = '', moduleActions }) {
   }
 
   const handleCreated = () => {
+    setCreatePrefillTransferRequest(null)
     setShowCreateModal(false)
     setSelectedRows([])
     refreshData({ page: 1 })
@@ -726,8 +736,67 @@ function SalidasTable({ token, user, createBranchId = '', moduleActions }) {
     } catch {
       // Si falla la precarga, el modal se abre y carga sus catalogos como respaldo.
     }
+    setCreatePrefillTransferRequest(null)
     setShowCreateModal(true)
   }
+
+  useEffect(() => {
+    const request = pendingTransferSalidaRequest
+    const requestKey = String(request?.requestKey || '').trim()
+    if (!requestKey) return
+    if (handledTransferRequestKeyRef.current === requestKey) return
+
+    const markHandled = () => {
+      handledTransferRequestKeyRef.current = requestKey
+      onPendingTransferSalidaRequestHandled?.()
+    }
+
+    if (!canCreate) {
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Sin permiso',
+        detail: 'No tienes permisos para crear salidas.',
+        life: 3200,
+      })
+      markHandled()
+      return
+    }
+
+    const targetBranchId = String(request?.sucursalProveedoraId || '').trim()
+    if (targetBranchId && normalizedCreateBranchId !== targetBranchId) {
+      return
+    }
+
+    let cancelled = false
+    const openPrefilledCreate = async () => {
+      try {
+        await preloadSalidaCatalogs()
+      } catch {
+        // Si falla la precarga, el modal puede cargar catalogos internamente.
+      }
+      if (cancelled) return
+
+      setCreatePrefillTransferRequest({
+        requestKey,
+        solicitudId: String(request?.solicitudId || '').trim(),
+        sucursalProveedoraId: targetBranchId,
+        solicitud: request?.solicitud || null,
+      })
+      setShowCreateModal(true)
+      markHandled()
+    }
+
+    openPrefilledCreate()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    canCreate,
+    normalizedCreateBranchId,
+    onPendingTransferSalidaRequestHandled,
+    pendingTransferSalidaRequest,
+    preloadSalidaCatalogs,
+  ])
 
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target
@@ -1024,13 +1093,17 @@ function SalidasTable({ token, user, createBranchId = '', moduleActions }) {
 
       <CreateSalida
         open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => {
+          setShowCreateModal(false)
+          setCreatePrefillTransferRequest(null)
+        }}
         onCreated={handleCreated}
         token={token}
         onError={showErrorToast}
         preloadedTipoMovimientos={prefetchedTipoMovimientos}
         preloadedSubTipos={prefetchedSubTiposSalida}
         prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}
+        prefillTransferRequest={createPrefillTransferRequest}
       />
 
       <SalidaDetails

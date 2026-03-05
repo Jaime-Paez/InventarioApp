@@ -1,5 +1,6 @@
 .quick-actions {
   position: relative;
+  z-index: 1310;
   margin-right: 12px;
   display: inline-flex;
   align-items: center;
@@ -155,6 +156,14 @@
   stroke-width: 2.1;
 }
 
+.quick-actions.has-urgent-shield {
+  background: rgba(255, 255, 255, 1);
+}
+
+.quick-actions.dark.has-urgent-shield {
+  background: rgba(17, 24, 39, 1);
+}
+
 .quick-actions__button--reminders.is-active {
   background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
@@ -176,61 +185,45 @@
   pointer-events: none;
 }
 
-.quick-actions__pending-dot.is-urgent {
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--color-surface) 75%, transparent),
-    0 0 0 8px color-mix(in srgb, var(--color-primary) 18%, transparent);
-  animation: quick-actions-urgent-dot 1.4s ease-in-out infinite;
-}
-
 .quick-actions.dark .quick-actions__pending-dot {
   background: var(--color-primary-dark);
   box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.65);
 }
 
-.quick-actions.dark .quick-actions__pending-dot.is-urgent {
-  box-shadow:
-    0 0 0 1px rgba(17, 24, 39, 0.65),
-    0 0 0 8px color-mix(in srgb, var(--color-primary-dark) 24%, transparent);
-}
-
 .quick-actions__urgent-shield {
   position: fixed;
-  z-index: 1185;
+  z-index: 1300;
   border: none;
   border-radius: 999px;
   padding: 0;
   margin: 0;
   pointer-events: auto;
   cursor: pointer;
-  background:
-    radial-gradient(
-      circle at 50% 50%,
-      color-mix(in srgb, var(--color-primary) 32%, transparent) 0%,
-      color-mix(in srgb, var(--color-primary) 20%, transparent) 38%,
-      color-mix(in srgb, var(--color-primary) 10%, transparent) 70%,
-      transparent 100%
-    );
-  backdrop-filter: blur(calc(1px + (var(--urgency, 0) * 5px)));
-  -webkit-backdrop-filter: blur(calc(1px + (var(--urgency, 0) * 5px)));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 18%, transparent),
-    0 0 80px color-mix(in srgb, var(--color-primary) 36%, transparent);
-  animation: quick-actions-urgent-shield 1.6s ease-in-out infinite;
+  background: var(--color-primary);
+  opacity: 1;
+  box-shadow: none;
+  overflow: visible;
+  animation: none;
 }
 
 .quick-actions.dark .quick-actions__urgent-shield {
-  background:
-    radial-gradient(
-      circle at 50% 50%,
-      color-mix(in srgb, var(--color-primary-dark) 40%, transparent) 0%,
-      color-mix(in srgb, var(--color-primary-dark) 24%, transparent) 40%,
-      color-mix(in srgb, var(--color-primary-dark) 10%, transparent) 72%,
-      transparent 100%
-    );
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--color-primary-dark) 22%, transparent),
-    0 0 90px color-mix(in srgb, var(--color-primary-dark) 42%, transparent);
+  background: var(--color-primary-dark);
+  box-shadow: none;
+}
+
+.quick-actions__urgent-message {
+  position: fixed;
+  z-index: 1305;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 90vw;
+  padding: 0 12px;
+  pointer-events: none;
+  user-select: none;
+  white-space: normal;
 }
 
 /* MOBILE */
@@ -244,30 +237,16 @@
   }
 }
 
-@keyframes quick-actions-urgent-dot {
-  0% {
-    transform: translateX(6px) scale(1);
-  }
-
-  50% {
-    transform: translateX(6px) scale(1.08);
-  }
-
-  100% {
-    transform: translateX(6px) scale(1);
-  }
-}
-
 @keyframes quick-actions-urgent-shield {
   0% {
-    opacity: calc(0.18 + (var(--urgency, 0) * 0.42));
+    opacity: 1;
   }
 
   50% {
-    opacity: calc(0.24 + (var(--urgency, 0) * 0.48));
+    opacity: 1;
   }
 
   100% {
-    opacity: calc(0.18 + (var(--urgency, 0) * 0.42));
+    opacity: 1;
   }
 }

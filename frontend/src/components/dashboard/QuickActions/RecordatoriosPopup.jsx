@@ -54,6 +54,7 @@ function RecordatoriosPopup({
   onApplyRemindersUpdate,
   focusReminderId,
   onFocusReminderHandled,
+  onTransferDecisionAccepted,
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const [users, setUsers] = useState([])
@@ -72,6 +73,7 @@ function RecordatoriosPopup({
   const [decisionSubmitting, setDecisionSubmitting] = useState(false)
   const [decisionError, setDecisionError] = useState('')
   const [rejectionReason, setRejectionReason] = useState('')
+  const [isRejectFlowActive, setIsRejectFlowActive] = useState(false)
 
   const notifyError = useCallback(
     (message) => {
@@ -109,6 +111,7 @@ function RecordatoriosPopup({
     setDecisionSubmitting(false)
     setDecisionError('')
     setRejectionReason('')
+    setIsRejectFlowActive(false)
   }, [])
 
   const loadDecisionDetail = useCallback(
@@ -151,6 +154,7 @@ function RecordatoriosPopup({
       setDecisionDetail(null)
       setDecisionError('')
       setRejectionReason('')
+      setIsRejectFlowActive(false)
       loadDecisionDetail(reminder)
     },
     [loadDecisionDetail]
@@ -488,6 +492,16 @@ function RecordatoriosPopup({
       if (responseSolicitud) {
         setDecisionDetail(responseSolicitud)
       }
+      if (resolvedDecision === 'aceptada') {
+        onTransferDecisionAccepted?.({
+          solicitudId: Number(solicitudId),
+          solicitud: responseSolicitud || null,
+          nextAction: data?.next_action || null,
+        })
+        closeDecisionPanel()
+        onClose?.()
+        return
+      }
       closeDecisionPanel()
     } catch (error) {
       const message = error?.message || 'No se pudo registrar la decision.'
@@ -500,6 +514,17 @@ function RecordatoriosPopup({
   const activeDecisionStatus = getReminderDecisionStatus(activeDecisionReminder)
   const canSubmitDecision = activeDecisionStatus === 'pendiente'
   const decisionDetalles = Array.isArray(decisionDetail?.detalles) ? decisionDetail.detalles : []
+  const showRejectReasonField = canSubmitDecision && isRejectFlowActive
+
+  const handleRejectButtonClick = () => {
+    if (!canSubmitDecision || decisionSubmitting || decisionLoading) return
+    if (!isRejectFlowActive) {
+      setIsRejectFlowActive(true)
+      setDecisionError('')
+      return
+    }
+    handleTransferDecision('rechazar')
+  }
 
   if (!shouldRender || typeof document === 'undefined') return null
 
@@ -782,7 +807,7 @@ function RecordatoriosPopup({
 
                 {decisionError && <p className="recordatorios-popup__error">{decisionError}</p>}
 
-                {canSubmitDecision && (
+                {showRejectReasonField && (
                   <label className="recordatorios-popup__field recordatorios-popup__field--full">
                     <span>Motivo de rechazo (obligatorio si rechazas)</span>
                     <textarea
@@ -796,34 +821,34 @@ function RecordatoriosPopup({
               </div>
 
               <div className="recordatorios-popup__decision-actions">
-                <button
-                  type="button"
-                  className="recordatorios-popup__button recordatorios-popup__button--ghost"
-                  onClick={closeDecisionPanel}
-                  disabled={decisionSubmitting}
-                >
-                  Cerrar
-                </button>
                 {canSubmitDecision && (
-                  <>
+                  <div className="recordatorios-popup__decision-actions-row">
                     <button
                       type="button"
-                      className="recordatorios-popup__button recordatorios-popup__button--danger"
-                      onClick={() => handleTransferDecision('rechazar')}
+                      className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--reject"
+                      onClick={handleRejectButtonClick}
                       disabled={decisionSubmitting || decisionLoading}
                     >
-                      {decisionSubmitting ? 'Guardando...' : 'Rechazar'}
+                      {decisionSubmitting ? 'Guardando...' : (isRejectFlowActive ? 'Confirmar rechazo' : 'Rechazar')}
                     </button>
                     <button
                       type="button"
-                      className="recordatorios-popup__button recordatorios-popup__button--primary"
+                      className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--accept"
                       onClick={() => handleTransferDecision('aceptar')}
                       disabled={decisionSubmitting || decisionLoading}
                     >
                       {decisionSubmitting ? 'Guardando...' : 'Aceptar'}
                     </button>
-                  </>
+                  </div>
                 )}
+                <button
+                  type="button"
+                  className="recordatorios-popup__decision-close-link"
+                  onClick={closeDecisionPanel}
+                  disabled={decisionSubmitting}
+                >
+                  Cerrar
+                </button>
               </div>
             </div>
           </div>
