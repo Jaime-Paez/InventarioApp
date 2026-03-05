@@ -25,6 +25,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     inventarioEntries = [],
     disabled = false,
     onSaved,
+    onError,
   },
   ref
 ) {
@@ -44,6 +45,21 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const [editingField, setEditingField] = useState(null)
   const [editingValue, setEditingValue] = useState('')
   const [editError, setEditError] = useState('')
+
+  useEffect(() => {
+    if (!locationError) return
+    onError?.(locationError)
+  }, [locationError, onError])
+
+  useEffect(() => {
+    if (!editError) return
+    onError?.(editError)
+  }, [editError, onError])
+
+  useEffect(() => {
+    if (!error) return
+    onError?.(error)
+  }, [error, onError])
 
   const entryBySubdivision = useMemo(() => {
     const map = new Map()
@@ -687,11 +703,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
           })}
         </div>
 
-        {locationError && <div className="create-user__error">{locationError}</div>}
-        {editError && <div className="create-user__error">{editError}</div>}
       </section>
-
-      {error && <div className="create-user__error inventario-details__error">{error}</div>}
 
     </div>
   )

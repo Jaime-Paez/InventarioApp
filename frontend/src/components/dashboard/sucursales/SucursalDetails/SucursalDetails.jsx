@@ -585,7 +585,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
           </div>
         </header>
 
-        <form className={`create-user__form${submitAttempted && isEditing ? ' create-user__form--submitted' : ''}`} onSubmit={handleSubmit}>
+        <form className={`create-user__form${submitAttempted && isEditing ? ' create-user__form--submitted' : ''}`} noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
           {loadingData && (
             <div className="create-user__loading-overlay" role="status" aria-live="polite">
               <i className="pi pi-spin pi-spinner" aria-hidden="true" />
@@ -761,5 +761,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
 }
 
 export default SucursalDetails
+
+
 
 

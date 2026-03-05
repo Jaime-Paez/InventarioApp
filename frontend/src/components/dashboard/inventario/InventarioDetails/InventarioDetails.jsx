@@ -23,11 +23,12 @@ function InventarioDetails({
   inventarioEntries = [],
   onClose,
   onSaved,
+  onError,
   currentUser,
 }) {
   const [draftQuantities, setDraftQuantities] = useState({})
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
+  const [, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('general')
   const modalRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
@@ -247,11 +248,13 @@ function InventarioDetails({
       onSaved?.()
       onClose?.()
     } catch (err) {
-      setError(err?.message || 'No se pudieron guardar los cambios.')
+      const message = err?.message || 'No se pudieron guardar los cambios.'
+      setError(message)
+      onError?.(message)
     } finally {
       setSaving(false)
     }
-  }, [product, saving, subdivisions, draftQuantities, entryBySubdivision, token, onClose, onSaved])
+  }, [product, saving, subdivisions, draftQuantities, entryBySubdivision, token, onClose, onError, onSaved])
   const { shouldRender, isClosing } = useModalAnimation(open)
 
   if (!shouldRender || !product) return null
@@ -398,16 +401,11 @@ function InventarioDetails({
                     ? `${product.codigo} - ${product.nombre || 'Producto'}`
                     : product?.nombre || 'Inventario'
                 }
+                onError={onError}
               />
             )}
           </div>
         </div>
-
-        {error && (
-          <div className="create-user__error inventario-details__error">
-            {error}
-          </div>
-        )}
 
         <div className="create-user__footer">
           <div className="user-details__footer-left">

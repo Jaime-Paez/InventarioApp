@@ -116,6 +116,26 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
     [onError]
   )
 
+  useEffect(() => {
+    if (!oemError) return
+    notifyError(oemError)
+  }, [notifyError, oemError])
+
+  useEffect(() => {
+    if (!alternoError) return
+    notifyError(alternoError)
+  }, [alternoError, notifyError])
+
+  useEffect(() => {
+    if (!locationError) return
+    notifyError(locationError)
+  }, [locationError, notifyError])
+
+  useEffect(() => {
+    if (!editError) return
+    notifyError(editError)
+  }, [editError, notifyError])
+
   const fetchAllPages = useCallback(
     async (initialUrl, errorMessage) => {
       if (!token) return []
@@ -525,7 +545,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
             (item) => String(item?.codigo ?? '').trim().toLowerCase() === term.toLowerCase()
           )
           setCodigoError(exists ? 'Este codigo ya existe.' : '')
-        } catch (err) {
+        } catch {
           if (seq !== codigoCheckSeqRef.current) return
           setCodigoError('')
         } finally {
@@ -1308,7 +1328,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
           </div>
         </header>
 
-        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones del producto">
             <button
               type="button"
@@ -1468,8 +1488,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                                 <small className="muted">Sin resultados.</small>
                               )}
                               {filteredSuppliers.map((supplier) => {
-                                const id = String(supplier.id)
-                                const isSelected = formData.casasIds.includes(id)
                                 return (
                                   <button
                                     key={supplier.id}
@@ -1652,7 +1670,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                     ))}
                   </div>
 
-                  {oemError && <div className="create-user__error">{oemError}</div>}
                 </section>
               </>
             )}
@@ -1801,102 +1818,10 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                   ))}
                 </div>
 
-                {alternoError && <div className="create-user__error">{alternoError}</div>}
 
               </section>
             )}
 
-            {false && (
-              <section className="create-user__section">
-                <div className="create-user__section-header">
-                  <h4>OEMs</h4>
-                  <button
-                    type="button"
-                    className="create-user__ghost create-user__location-action"
-                    onClick={() => {
-                      setOemError('')
-                      setShowOemForm((prev) => {
-                        const next = !prev
-                        if (!next) {
-                          setOemDraft({ codigo: '', descripcion: '' })
-                        }
-                        return next
-                      })
-                    }}
-                    disabled={loading}
-                  >
-                    {showOemForm ? 'Cancelar' : 'Agregar OEM'}
-                  </button>
-                </div>
-
-                <div className="create-user__locations-table create-user__locations-table--oem">
-                  <div className="create-user__locations-row create-user__locations-row--head">
-                    <span>Código</span>
-                    <span>Descripción</span>
-                    <span>Acciones</span>
-                  </div>
-
-                  {showOemForm && (
-                    <div className="create-user__locations-row create-user__locations-row--form">
-                      <span>
-                        <input
-                          type="text"
-                          placeholder="Código OEM"
-                          value={oemDraft.codigo}
-                          onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
-                          disabled={loading}
-                        />
-                      </span>
-                      <span>
-                        <input
-                          type="text"
-                          placeholder="Descripción (opcional)"
-                          value={oemDraft.descripcion}
-                          onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
-                          disabled={loading}
-                        />
-                      </span>
-                      <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button
-                          type="button"
-                          className="create-user__ghost"
-                          onClick={handleAddOem}
-                          disabled={loading}
-                        >
-                          Agregar
-                        </button>
-                      </span>
-                    </div>
-                  )}
-
-                  {!oemItems.length && !showOemForm && (
-                    <div className="create-user__locations-row create-user__locations-row--empty">
-                      <span>Sin OEMs registrados.</span>
-                    </div>
-                  )}
-
-                  {oemItems.map((item, index) => (
-                    <div key={`${item.codigo}-${index}`} className="create-user__locations-row">
-                      <span>{item.codigo || '-'}</span>
-                      <span>{item.descripcion || '—'}</span>
-                      <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button
-                          type="button"
-                          className="create-user__locations-remove"
-                          onClick={() => handleRemoveOem(item.codigo)}
-                          disabled={loading}
-                          aria-label="Eliminar OEM"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {oemError && <div className="create-user__error">{oemError}</div>}
-              </section>
-            )}
 
             {activeTab === 'ubicaciones' && (
               <section className="create-user__section">
@@ -2100,8 +2025,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                   })}
                 </div>
 
-                {locationError && <div className="create-user__error">{locationError}</div>}
-                {editError && <div className="create-user__error">{editError}</div>}
               </section>
             )}
           </div>
@@ -2132,6 +2055,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateProducto
+
+
 
 
 

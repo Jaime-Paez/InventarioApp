@@ -145,7 +145,7 @@ const isCheckboxSelection = (event) => {
   )
 }
 
-function SalidasTable({ token, user }) {
+function SalidasTable({ token, user, createBranchId = '' }) {
   const toast = useRef(null)
   const preloadSalidaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
@@ -178,6 +178,13 @@ function SalidasTable({ token, user }) {
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
   const lastSearchRef = useRef({ ...initialSearchCriteria })
   const SEARCH_PADDING = 12
+  const normalizedCreateBranchIdRaw = String(createBranchId || '').trim()
+  const normalizedCreateBranchId = (
+    normalizedCreateBranchIdRaw.toLowerCase() === 'all' ? 'all' : normalizedCreateBranchIdRaw
+  )
+  const hasSpecificCreateBranch = Boolean(
+    normalizedCreateBranchId && normalizedCreateBranchId !== 'all'
+  )
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -215,6 +222,10 @@ function SalidasTable({ token, user }) {
     const tableSortField = options?.tableSortField ?? null
     const tableSortOrder = options?.tableSortOrder ?? null
     const subtype = String(options?.subtypeFilter || 'all').trim()
+    const branchContextIdRaw = String(
+      options?.branchContextId ?? normalizedCreateBranchId
+    ).trim()
+    const branchContextId = branchContextIdRaw.toLowerCase() === 'all' ? 'all' : branchContextIdRaw
 
     params.set('tipo', 'salida')
     params.set('page', String(page))
@@ -244,6 +255,10 @@ function SalidasTable({ token, user }) {
       params.set('subtipo', subtype)
     }
 
+    if (branchContextId && branchContextId !== 'all') {
+      params.set('sucursal_id', branchContextId)
+    }
+
     const hasExplicitGlobalSearch = Object.prototype.hasOwnProperty.call(options, 'globalSearchValue')
     const globalSearch = hasExplicitGlobalSearch
       ? String(options?.globalSearchValue ?? '').trim()
@@ -264,7 +279,7 @@ function SalidasTable({ token, user }) {
     params.set('ordering', ordering || '-fecha,-id')
 
     return `${API_URL}/movimientos/movimiento_inventario/tabla/?${params.toString()}`
-  }, [])
+  }, [normalizedCreateBranchId])
 
   const fetchMovimientos = useCallback(
     async (options = {}) => {
@@ -276,6 +291,10 @@ function SalidasTable({ token, user }) {
       const tableSortField = options?.tableSortField ?? null
       const tableSortOrder = options?.tableSortOrder ?? null
       const subtype = String(options?.subtypeFilter || 'all').trim()
+      const branchContextIdRaw = String(
+        options?.branchContextId ?? normalizedCreateBranchId
+      ).trim()
+      const branchContextId = branchContextIdRaw.toLowerCase() === 'all' ? 'all' : branchContextIdRaw
       const criteria = options?.criteria ?? lastSearchRef.current
       const globalSearchValue = Object.prototype.hasOwnProperty.call(options, 'globalSearchValue')
         ? options?.globalSearchValue
@@ -294,6 +313,7 @@ function SalidasTable({ token, user }) {
           tableSortOrder,
           globalSearchValue,
           subtypeFilter: subtype,
+          branchContextId,
         })
 
         const response = await authFetch(url, {}, token)
@@ -323,7 +343,7 @@ function SalidasTable({ token, user }) {
       }
       return []
     },
-    [buildMovimientosListUrl, normalizeList, pageSize, token]
+    [buildMovimientosListUrl, normalizedCreateBranchId, normalizeList, pageSize, token]
   )
 
   const preloadSalidaCatalogs = useCallback(async () => {
@@ -391,9 +411,10 @@ function SalidasTable({ token, user }) {
       tableSortOrder: sortOrder,
       globalSearchValue: globalFilterValue,
       subtypeFilter,
+      branchContextId: normalizedCreateBranchId,
       criteria: lastSearchRef.current,
     })
-  }, [token, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter])
+  }, [token, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter, normalizedCreateBranchId])
 
   useEffect(() => {
     setSalidaCatalogsPreloaded(false)
@@ -465,9 +486,21 @@ function SalidasTable({ token, user }) {
           ? options?.globalSearchValue
           : globalFilterValue,
         subtypeFilter: options?.subtypeFilter ?? subtypeFilter,
+        branchContextId: Object.prototype.hasOwnProperty.call(options, 'branchContextId')
+          ? options?.branchContextId
+          : normalizedCreateBranchId,
       }),
-    [currentPage, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter]
+    [currentPage, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter, normalizedCreateBranchId]
   )
+
+  useEffect(() => {
+    if (!token) return
+    setSelectedRows([])
+    refreshData({
+      page: 1,
+      branchContextId: normalizedCreateBranchId,
+    })
+  }, [normalizedCreateBranchId, refreshData, token])
 
   const clearFilter = () => {
     if (globalSearchDebounceRef.current) {
@@ -617,6 +650,15 @@ function SalidasTable({ token, user }) {
   }
 
   const handleOpenCreateModal = async () => {
+    if (!hasSpecificCreateBranch) {
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Selecciona sucursal',
+        detail: 'Selecciona una sucursal especifica para crear una salida.',
+        life: 3000,
+      })
+      return
+    }
     try {
       await preloadSalidaCatalogs()
     } catch {
@@ -939,6 +981,7 @@ function SalidasTable({ token, user }) {
         onError={showErrorToast}
         preloadedTipoMovimientos={prefetchedTipoMovimientos}
         preloadedSubTipos={prefetchedSubTiposSalida}
+        prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}
       />
 
       <SalidaDetails

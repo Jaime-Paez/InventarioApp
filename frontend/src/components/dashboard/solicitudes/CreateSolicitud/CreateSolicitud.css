@@ -159,6 +159,81 @@
   display: inline-flex;
 }
 
+.create-solicitud__reminder-helper {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--color-text-secondary);
+}
+
+.create-solicitud__reminder-admins,
+.create-solicitud__reminder-users {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.create-solicitud__reminder-admins h5,
+.create-solicitud__reminder-users h5 {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+}
+
+.create-solicitud__reminder-admins--invalid {
+  border-color: var(--color-error-border);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-error-border) 32%, transparent);
+}
+
+.dashboard-shell.dark .create-solicitud__reminder-admins--invalid {
+  border-color: var(--color-error-border-dark);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-error-border-dark) 36%, transparent);
+}
+
+.create-solicitud__reminder-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.create-solicitud__reminder-user-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.create-solicitud__reminder-user-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-elevated, var(--color-surface));
+}
+
+.create-solicitud__reminder-user-item input {
+  margin-top: 2px;
+}
+
+.create-solicitud__reminder-user-item > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.create-solicitud__reminder-user-item strong {
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.create-solicitud__reminder-user-item small {
+  color: var(--color-text-secondary);
+  line-height: 1.2;
+  word-break: break-word;
+}
+
 @media (max-width: 1200px) {
   .create-solicitud__products-table .create-user__locations-row {
     grid-template-columns:

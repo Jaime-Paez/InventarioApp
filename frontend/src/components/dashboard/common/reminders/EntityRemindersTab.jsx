@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Plus } from 'lucide-react'
 import { API_URL, authFetch } from '../../../../utils/api'
 import {
@@ -30,7 +30,7 @@ const getNowDateParts = () => {
   }
 }
 
-function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLabel }) {
+function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLabel, onError }) {
   const [allReminders, setAllReminders] = useState(() => readRemindersFromStorage())
   const [users, setUsers] = useState([])
   const [loadingUsers, setLoadingUsers] = useState(false)
@@ -41,6 +41,15 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
   const [description, setDescription] = useState('')
   const [selectedRecipientIds, setSelectedRecipientIds] = useState([])
   const [submitError, setSubmitError] = useState('')
+  const missingContextToastRef = useRef(false)
+
+  const notifyError = useCallback(
+    (message) => {
+      if (!message) return
+      onError?.(message)
+    },
+    [onError]
+  )
 
   const currentUserName = useMemo(() => formatCurrentUserName(currentUser), [currentUser])
   const currentUserIdValues = useMemo(
@@ -64,6 +73,26 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
       label: String(entityLabel || '').trim(),
     }
   }, [entityType, entityId, entityLabel])
+
+  useEffect(() => {
+    if (!usersError) return
+    notifyError(usersError)
+  }, [notifyError, usersError])
+
+  useEffect(() => {
+    if (!submitError) return
+    notifyError(submitError)
+  }, [notifyError, submitError])
+
+  useEffect(() => {
+    if (reminderContext) {
+      missingContextToastRef.current = false
+      return
+    }
+    if (missingContextToastRef.current) return
+    missingContextToastRef.current = true
+    notifyError('No se pudo resolver el registro para recordatorios.')
+  }, [notifyError, reminderContext])
 
   const selectableUsers = useMemo(
     () => users.filter((userItem) => userItem.id !== creatorRecipientId),
@@ -331,13 +360,9 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
         </button>
       </div>
 
-      {!reminderContext && (
-        <div className="create-user__error">No se pudo resolver el registro para recordatorios.</div>
-      )}
-
       {activeView === 'create' ? (
         <div className="entity-reminders__pane entity-reminders__pane--form">
-          <form className="entity-reminders__form" onSubmit={handleCreateReminder}>
+          <form className="entity-reminders__form" noValidate onSubmit={handleCreateReminder}>
             <div className="entity-reminders__grid">
               <label className="create-user__field">
                 <span>Fecha</span>
@@ -376,8 +401,6 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
             </div>
 
             <p className="entity-reminders__helper">El creador siempre esta incluido.</p>
-            {usersError && <div className="create-user__error">{usersError}</div>}
-
             <div className="entity-reminders__recipient-list">
               {!selectableUsers.length && !loadingUsers && (
                 <p className="entity-reminders__empty">No hay mas usuarios disponibles.</p>
@@ -400,8 +423,6 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
                 )
               })}
             </div>
-
-            {submitError && <div className="create-user__error">{submitError}</div>}
 
             <div className="entity-reminders__actions">
               <button
@@ -482,3 +503,4 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
 }
 
 export default EntityRemindersTab
+

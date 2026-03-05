@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Loader2, Plus, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
@@ -41,6 +41,7 @@ function RecordatoriosPopup({
   onCreateReminder,
   onMarkReminderSeen,
   darkMode,
+  onError,
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const [users, setUsers] = useState([])
@@ -53,6 +54,14 @@ function RecordatoriosPopup({
   const [submitError, setSubmitError] = useState('')
   const [activeView, setActiveView] = useState('list')
   const previousViewRef = useRef('list')
+
+  const notifyError = useCallback(
+    (message) => {
+      if (!message) return
+      onError?.(message)
+    },
+    [onError]
+  )
 
   const currentUserIdSet = useMemo(
     () => new Set((Array.isArray(currentUserIds) ? currentUserIds : []).map(normalizeId).filter(Boolean)),
@@ -83,6 +92,16 @@ function RecordatoriosPopup({
     setActiveView('list')
     previousViewRef.current = 'list'
   }, [open, currentPrimaryUserId])
+
+  useEffect(() => {
+    if (!usersError) return
+    notifyError(usersError)
+  }, [notifyError, usersError])
+
+  useEffect(() => {
+    if (!submitError) return
+    notifyError(submitError)
+  }, [notifyError, submitError])
 
   useEffect(() => {
     if (!open) return undefined
@@ -294,7 +313,7 @@ function RecordatoriosPopup({
 
         <div className="recordatorios-popup__content">
           {activeView === 'create' ? (
-            <form className="recordatorios-popup__form recordatorios-popup__form--fullscreen" onSubmit={handleSubmit}>
+            <form className="recordatorios-popup__form recordatorios-popup__form--fullscreen" noValidate onSubmit={handleSubmit}>
               <div className="recordatorios-popup__section-head">
                 <h4>Nuevo recordatorio</h4>
                 {loadingUsers && (
@@ -338,8 +357,6 @@ function RecordatoriosPopup({
                 </div>
                 <p className="recordatorios-popup__helper">El creador siempre esta incluido.</p>
 
-                {usersError && <p className="recordatorios-popup__error">{usersError}</p>}
-
                 <div className="recordatorios-popup__recipient-list recordatorios-popup__recipient-list--fullscreen">
                   {!selectableUsers.length && !loadingUsers && (
                     <p className="recordatorios-popup__empty-list">No hay mas usuarios disponibles.</p>
@@ -363,8 +380,6 @@ function RecordatoriosPopup({
                   })}
                 </div>
               </section>
-
-              {submitError && <p className="recordatorios-popup__error">{submitError}</p>}
 
               <div className="recordatorios-popup__actions">
                 <button
@@ -460,3 +475,4 @@ function RecordatoriosPopup({
 }
 
 export default RecordatoriosPopup
+

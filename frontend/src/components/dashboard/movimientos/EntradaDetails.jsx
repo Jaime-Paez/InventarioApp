@@ -249,14 +249,25 @@ const extractClienteFromDescripcion = (value) => {
   return { cliente, descripcion }
 }
 
-function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted, onError, currentUser }) {
+function EntradaDetails({
+  open,
+  entradaId,
+  previewData = null,
+  readOnly = false,
+  token,
+  onClose,
+  onUpdated,
+  onDeleted,
+  onError,
+  currentUser,
+}) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(null)
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [error, setError] = useState('')
+  const [, setError] = useState('')
 
   const [branches, setBranches] = useState([])
   const [tipoMovimientos, setTipoMovimientos] = useState([])
@@ -321,6 +332,14 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
     },
     [onError]
   )
+
+  useEffect(() => {
+    if (!detailError) return
+    notifyError(detailError)
+  }, [detailError, notifyError])
+
+  const hasPreviewData = Boolean(previewData?.es_solicitud_traslado)
+  const isReadOnlyMode = Boolean(readOnly || hasPreviewData)
 
   const entradaTipoId = useMemo(() => {
     const entrada = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('ent'))
@@ -709,6 +728,86 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
     }
   }, [])
 
+  const hydrateFromPreviewData = useCallback((preview) => {
+    const requestId = String(preview?.solicitud_traslado_id || '').trim()
+    const noDocumento = String(preview?.no_documento || '').trim()
+    const fecha = String(preview?.fecha || '').trim() || todayISO()
+    const descripcion = String(preview?.descripcion || '').trim()
+    const estadoNombre = String(preview?.estado_nombre || '').trim() || 'Pendiente'
+    const subTipoNombre = String(preview?.sub_tipo_nombre || '').trim() || 'Traslado (Solicitud)'
+    const solicitanteNombre = String(preview?.sucursal_nombre || '').trim() || '-'
+    const proveedoraNombre = String(preview?.sucursal_objetivo_nombre || '').trim() || '-'
+
+    const solicitanteIdRaw = String(preview?.sucursal_solicitante_id || '').trim()
+    const proveedoraIdRaw = String(preview?.sucursal_proveedora_id || '').trim()
+    const solicitanteId = solicitanteIdRaw || `solicitud-${requestId || 'origen'}`
+    const proveedoraId = proveedoraIdRaw || `solicitud-${requestId || 'destino'}-objetivo`
+
+    const detalles = (Array.isArray(preview?.detalles) ? preview.detalles : []).map((detalle, index) => {
+      const cantidad = parseIntValue(detalle?.cantidad) || 0
+      const valor = parseNumber(detalle?.valor)
+      const valorTotalRaw = parseNumber(detalle?.valor_total)
+      const resolvedValor = Number.isFinite(valor) ? valor : 0
+      const resolvedTotal = Number.isFinite(valorTotalRaw) ? valorTotalRaw : cantidad * resolvedValor
+      return {
+        uid: `sol-${requestId || 'tmp'}-${index}`,
+        productoId: String(detalle?.producto_id || ''),
+        productoCodigo: String(detalle?.producto_codigo || '').trim(),
+        productoNombre: String(detalle?.producto_nombre || '').trim(),
+        estadoProductoId: '',
+        estadoProductoNombre: '',
+        cantidad,
+        valor: resolvedValor,
+        valor_total: resolvedTotal,
+      }
+    })
+
+    setBranches([
+      { id: solicitanteId, nombre: solicitanteNombre },
+      { id: proveedoraId, nombre: proveedoraNombre },
+    ])
+    setTipoMovimientos([])
+    setSubTipos([{ id: 'solicitud-traslado', nombre: subTipoNombre }])
+    setEstados([{ id: 'solicitud-pendiente', nombre: estadoNombre }])
+    setProductos([])
+    setEstadosProducto([])
+    setStockByProduct({})
+
+    const nextForm = {
+      sucursalId: solicitanteId,
+      subTipoId: 'solicitud-traslado',
+      subTipoNombre,
+      estadoId: 'solicitud-pendiente',
+      estadoNombre,
+      fecha,
+      no_documento: noDocumento,
+      descripcion,
+      funcional: true,
+      sucursalObjetivoId: proveedoraId,
+      cliente: '',
+      descuento: '',
+      iva_rate: String(DEFAULT_IVA_RATE),
+    }
+
+    setFormData(nextForm)
+    setClienteQuery('')
+    setSelectedCliente(null)
+    setClienteForm(initialClienteForm)
+    setShowClienteDropdown(false)
+    setClienteOptions([])
+    setClienteLoading(false)
+    setDetails(detalles)
+    setOriginalData({
+      form: { ...nextForm },
+      clienteForm: { ...initialClienteForm },
+      detalles: detalles.map((detail) => ({ ...detail })),
+    })
+    setDetailDraft(initialDetail)
+    setDetailError('')
+    setActiveTab('general')
+    setIsEditing(false)
+  }, [])
+
   const loadData = useCallback(async () => {
     if (!token || !entradaId) return
     setLoadingData(true)
@@ -865,8 +964,13 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
     setIsResizingModal(false)
     modalRestoreRef.current = null
     setError('')
+    if (hasPreviewData) {
+      hydrateFromPreviewData(previewData)
+      setLoadingData(false)
+      return
+    }
     loadData()
-  }, [open, loadData])
+  }, [open, loadData, hasPreviewData, hydrateFromPreviewData, previewData])
 
   useEffect(
     () => () => {
@@ -882,6 +986,11 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
       setLoadingData(true)
     }
   }, [open])
+
+  useEffect(() => {
+    if (!isReadOnlyMode || !isEditing) return
+    setIsEditing(false)
+  }, [isEditing, isReadOnlyMode])
 
   const updateProductDropdownPlacement = useCallback(() => {
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
@@ -1413,6 +1522,7 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
   }
 
   const handleSave = async () => {
+    if (isReadOnlyMode) return
     if (!isEditing || saving) return
     setError('')
 
@@ -1566,6 +1676,7 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
   }
 
   const handleDelete = async () => {
+    if (isReadOnlyMode) return
     if (!isEditing || deleteLoading) return
     setDeleteLoading(true)
 
@@ -1594,7 +1705,7 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
 
   if (!shouldRender) return null
 
-  const editorDisabled = !isEditing || saving || loadingData
+  const editorDisabled = !isEditing || saving || loadingData || isReadOnlyMode
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {
@@ -1605,22 +1716,27 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
-  const modalClassName = [
-    'create-user__modal',
-    'create-salida__modal',
-    isClosing ? 'create-user__modal--closing' : '',
-    isResizingModal ? 'create-salida__modal--resizing' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
   const selectedEstadoName =
     estados.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
     estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
     formData.estadoNombre ||
     ''
+  const showPendingSolicitudRibbon =
+    hasPreviewData && normalizeValue(selectedEstadoName).includes('pend')
+  const modalClassName = [
+    'create-user__modal',
+    'create-salida__modal',
+    showPendingSolicitudRibbon ? 'entrada-details__modal--pending' : '',
+    isClosing ? 'create-user__modal--closing' : '',
+    isResizingModal ? 'create-salida__modal--resizing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
   const headerTipo = selectedSubTipo?.nombre || formData.subTipoNombre || 'Tipo de entrada'
   const headerDocumento = String(formData.no_documento || '').trim() || 'No. de entrada'
-  const modalTitle = `${headerTipo}: ${headerDocumento}`
+  const modalTitle = hasPreviewData
+    ? `Solicitud de traslado: ${headerDocumento}`
+    : `${headerTipo}: ${headerDocumento}`
 
   return (
     <div
@@ -1630,6 +1746,15 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
       style={overlayStyle}
     >
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
+        {showPendingSolicitudRibbon && (
+          <div
+            className="entrada-details__pending-ribbon"
+            aria-label="Solicitud pendiente"
+            title="Solicitud esperando a ser aceptada"
+          >
+            Solicitud pendiente
+          </div>
+        )}
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
             <h3>{modalTitle}</h3>
@@ -1656,7 +1781,7 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
           </div>
         </header>
 
-        <form className="create-user__form" onSubmit={(event) => event.preventDefault()}>
+        <form className="create-user__form" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={(event) => event.preventDefault()}>
           {loadingData && (
             <div className="create-user__loading-overlay" role="status" aria-live="polite">
               <i className="pi pi-spin pi-spinner" aria-hidden="true" />
@@ -1680,13 +1805,15 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
                 Datos del cliente
               </button>
             )}
-            <button
-              type="button"
-              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('recordatorios')}
-            >
-              Recordatorios
-            </button>
+            {!isReadOnlyMode && (
+              <button
+                type="button"
+                className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
+                onClick={() => setActiveTab('recordatorios')}
+              >
+                Recordatorios
+              </button>
+            )}
           </div>
           <div className="create-user__content create-salida__content">
               <div className="create-user__body">
@@ -1765,7 +1892,14 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
                       </label>
                     )}
 
-                    {isTraslado && (
+                    {isTraslado && isReadOnlyMode && (
+                      <label className="create-user__field">
+                        <span>Estado del movimiento</span>
+                        <input type="text" value={selectedEstadoName} readOnly disabled />
+                      </label>
+                    )}
+
+                    {isTraslado && !isReadOnlyMode && (
                       <label className="create-user__field">
                         <span>Estado del movimiento</span>
                         <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={editorDisabled}>
@@ -1872,126 +2006,128 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
                       <span>Acciones</span>
                     </div>
 
-                    <div className="create-user__locations-row create-user__locations-row--form">
-                      <span className="create-salida__product-picker">
-                        <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
-                          <button
-                            type="button"
-                            className="create-user__dropdown-trigger"
-                            ref={productDropdownTriggerRef}
-                            disabled={editorDisabled || (isTraslado && (!formData.sucursalId || stockLoading))}
-                            onClick={() => {
-                              const isOpening = !showProductDropdown
-                              if (isOpening) {
-                                setProductDropdownDirection('down')
-                                setProductDropdownMaxHeight(null)
-                                setProductQuery('')
-                                setProductOptions([])
-                                requestAnimationFrame(() => {
-                                  updateProductDropdownPlacement()
-                                })
-                              }
-                              setShowProductDropdown((prev) => !prev)
-                            }}
-                          >
-                            <span>
-                              {selectedDraftProduct
-                                ? formatProductoOptionLabel(selectedDraftProduct)
-                                : 'Selecciona un producto'}
-                            </span>
-                            <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
-                          </button>
-
-                          {showProductDropdown && (
-                            <div
-                              className={`create-user__dropdown-panel ${
-                                productDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                              }`}
-                              style={productDropdownMaxHeight ? { maxHeight: `${productDropdownMaxHeight}px` } : undefined}
-                            >
-                              <div className="create-user__dropdown-search">
-                                <i className="pi pi-search" />
-                                <input
-                                  type="text"
-                                  placeholder={isTraslado ? 'Buscar en sucursal' : 'Buscar productos'}
-                                  value={productQuery}
-                                  onChange={(event) => setProductQuery(event.target.value)}
-                                  autoFocus
-                                />
-                              </div>
-
-                              <div
-                                className="create-user__dropdown-results"
-                                style={
-                                  productDropdownMaxHeight
-                                    ? { maxHeight: `${Math.max(productDropdownMaxHeight - 72, 84)}px` }
-                                    : undefined
+                    {!isReadOnlyMode && (
+                      <div className="create-user__locations-row create-user__locations-row--form">
+                        <span className="create-salida__product-picker">
+                          <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
+                            <button
+                              type="button"
+                              className="create-user__dropdown-trigger"
+                              ref={productDropdownTriggerRef}
+                              disabled={editorDisabled || (isTraslado && (!formData.sucursalId || stockLoading))}
+                              onClick={() => {
+                                const isOpening = !showProductDropdown
+                                if (isOpening) {
+                                  setProductDropdownDirection('down')
+                                  setProductDropdownMaxHeight(null)
+                                  setProductQuery('')
+                                  setProductOptions([])
+                                  requestAnimationFrame(() => {
+                                    updateProductDropdownPlacement()
+                                  })
                                 }
+                                setShowProductDropdown((prev) => !prev)
+                              }}
+                            >
+                              <span>
+                                {selectedDraftProduct
+                                  ? formatProductoOptionLabel(selectedDraftProduct)
+                                  : 'Selecciona un producto'}
+                              </span>
+                              <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
+                            </button>
+
+                            {showProductDropdown && (
+                              <div
+                                className={`create-user__dropdown-panel ${
+                                  productDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                }`}
+                                style={productDropdownMaxHeight ? { maxHeight: `${productDropdownMaxHeight}px` } : undefined}
                               >
-                                {productLoading && <small className="muted">Buscando productos...</small>}
-                                {!productLoading && !productQuery.trim() && <small className="muted">Escribe para buscar.</small>}
-                                {!productLoading && productQuery.trim() && !productOptions.length && (
-                                  <small className="muted">Sin resultados.</small>
-                                )}
-                                {productOptions.map((producto) => {
-                                  const isSelected = String(producto.id) === String(detailDraft.productoId)
-                                  const available = Number(stockByProduct[String(producto.id)] ?? 0)
-                                  return (
-                                    <button
-                                      key={producto.id}
-                                      type="button"
-                                      className="create-user__result-option"
-                                      onMouseDown={(event) => event.preventDefault()}
-                                      onClick={(event) => {
-                                        event.preventDefault()
-                                        event.stopPropagation()
-                                        handleProductSelect(producto)
-                                      }}
-                                    >
-                                      <div className="create-user__result-info">
-                                        <strong>{formatProductoOptionLabel(producto)}</strong>
-                                        <small>{isTraslado ? `Disponible: ${available}` : `ID: ${producto.id}`}</small>
-                                      </div>
-                                      {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
-                                    </button>
-                                  )
-                                })}
+                                <div className="create-user__dropdown-search">
+                                  <i className="pi pi-search" />
+                                  <input
+                                    type="text"
+                                    placeholder={isTraslado ? 'Buscar en sucursal' : 'Buscar productos'}
+                                    value={productQuery}
+                                    onChange={(event) => setProductQuery(event.target.value)}
+                                    autoFocus
+                                  />
+                                </div>
+
+                                <div
+                                  className="create-user__dropdown-results"
+                                  style={
+                                    productDropdownMaxHeight
+                                      ? { maxHeight: `${Math.max(productDropdownMaxHeight - 72, 84)}px` }
+                                      : undefined
+                                  }
+                                >
+                                  {productLoading && <small className="muted">Buscando productos...</small>}
+                                  {!productLoading && !productQuery.trim() && <small className="muted">Escribe para buscar.</small>}
+                                  {!productLoading && productQuery.trim() && !productOptions.length && (
+                                    <small className="muted">Sin resultados.</small>
+                                  )}
+                                  {productOptions.map((producto) => {
+                                    const isSelected = String(producto.id) === String(detailDraft.productoId)
+                                    const available = Number(stockByProduct[String(producto.id)] ?? 0)
+                                    return (
+                                      <button
+                                        key={producto.id}
+                                        type="button"
+                                        className="create-user__result-option"
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={(event) => {
+                                          event.preventDefault()
+                                          event.stopPropagation()
+                                          handleProductSelect(producto)
+                                        }}
+                                      >
+                                        <div className="create-user__result-info">
+                                          <strong>{formatProductoOptionLabel(producto)}</strong>
+                                          <small>{isTraslado ? `Disponible: ${available}` : `ID: ${producto.id}`}</small>
+                                        </div>
+                                        {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      </span>
-                      <span>
-                        <input
-                          name="cantidad"
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={detailDraft.cantidad}
-                          onChange={handleDetailChange}
-                          disabled={editorDisabled}
-                        />
-                      </span>
-                      <span>
-                        <input
-                          name="valor"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={detailDraft.valor}
-                          readOnly
-                          disabled={editorDisabled}
-                        />
-                      </span>
-                      <span>
-                        <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
-                      </span>
-                      <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button type="button" className="create-user__ghost" onClick={handleAddDetail} disabled={editorDisabled}>
-                          Agregar
-                        </button>
-                      </span>
-                    </div>
+                            )}
+                          </div>
+                        </span>
+                        <span>
+                          <input
+                            name="cantidad"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={detailDraft.cantidad}
+                            onChange={handleDetailChange}
+                            disabled={editorDisabled}
+                          />
+                        </span>
+                        <span>
+                          <input
+                            name="valor"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={detailDraft.valor}
+                            readOnly
+                            disabled={editorDisabled}
+                          />
+                        </span>
+                        <span>
+                          <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
+                        </span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button type="button" className="create-user__ghost" onClick={handleAddDetail} disabled={editorDisabled}>
+                            Agregar
+                          </button>
+                        </span>
+                      </div>
+                    )}
 
                     {!details.length && (
                       <div className="create-user__locations-row create-user__locations-row--empty">
@@ -2007,9 +2143,13 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
                         <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
-                          <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={editorDisabled}>
-                            x
-                          </button>
+                          {!isReadOnlyMode ? (
+                            <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={editorDisabled}>
+                              x
+                            </button>
+                          ) : (
+                            <span>-</span>
+                          )}
                         </span>
                       </div>
                     ))}
@@ -2037,7 +2177,6 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
                     </div>
                   </div>
 
-                  {detailError && <div className="create-user__error">{detailError}</div>}
                 </section>
                   </>
                 )}
@@ -2175,19 +2314,18 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
                   </section>
                 )}
 
-                {activeTab === 'recordatorios' && (
+                {!isReadOnlyMode && activeTab === 'recordatorios' && (
                   <EntityRemindersTab
                     token={token}
                     currentUser={currentUser}
                     entityType="entrada"
                     entityId={entradaId}
                     entityLabel={modalTitle}
+                    onError={notifyError}
                   />
                 )}
               </div>
             </div>
-
-          {error && <div className="create-user__error">{error}</div>}
 
           <div className="create-user__footer">
             <div style={{ display: 'flex', gap: 8 }}>
@@ -2197,19 +2335,21 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
                 onClick={isEditing ? handleCancelEdit : onClose}
                 disabled={saving || loadingData}
               >
-                Cancelar
+                {isReadOnlyMode && !isEditing ? 'Cerrar' : 'Cancelar'}
               </button>
-              <button
-                type="button"
-                className="create-user__action create-user__action--secondary"
-                onClick={() => setIsEditing((prev) => !prev)}
-                disabled={loadingData || saving || deleteLoading}
-              >
-                {isEditing ? 'Solo lectura' : 'Editar'}
-              </button>
+              {!isReadOnlyMode && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={() => setIsEditing((prev) => !prev)}
+                  disabled={loadingData || saving || deleteLoading}
+                >
+                  {isEditing ? 'Solo lectura' : 'Editar'}
+                </button>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {isEditing && (
+              {isEditing && !isReadOnlyMode && (
                 <>
                   <button
                     type="button"
@@ -2245,5 +2385,7 @@ function EntradaDetails({ open, entradaId, token, onClose, onUpdated, onDeleted,
 }
 
 export default EntradaDetails
+
+
 
 

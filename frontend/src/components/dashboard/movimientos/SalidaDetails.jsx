@@ -256,7 +256,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [error, setError] = useState('')
+  const [, setError] = useState('')
 
   const [branches, setBranches] = useState([])
   const [tipoMovimientos, setTipoMovimientos] = useState([])
@@ -321,6 +321,11 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     },
     [onError]
   )
+
+  useEffect(() => {
+    if (!detailError) return
+    notifyError(detailError)
+  }, [detailError, notifyError])
 
   const salidaTipoId = useMemo(() => {
     const salida = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('sal'))
@@ -1630,7 +1635,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
           </div>
         </header>
 
-        <form className="create-user__form" onSubmit={(event) => event.preventDefault()}>
+        <form className="create-user__form" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={(event) => event.preventDefault()}>
           {loadingData && (
             <div className="create-user__loading-overlay" role="status" aria-live="polite">
               <i className="pi pi-spin pi-spinner" aria-hidden="true" />
@@ -2011,7 +2016,6 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
                     </div>
                   </div>
 
-                  {detailError && <div className="create-user__error">{detailError}</div>}
                 </section>
                   </>
                 )}
@@ -2156,12 +2160,11 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
                     entityType="salida"
                     entityId={salidaId}
                     entityLabel={modalTitle}
+                    onError={notifyError}
                   />
                 )}
               </div>
             </div>
-
-          {error && <div className="create-user__error">{error}</div>}
 
           <div className="create-user__footer">
             <div style={{ display: 'flex', gap: 8 }}>
@@ -2219,4 +2222,6 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
 }
 
 export default SalidaDetails
+
+
 

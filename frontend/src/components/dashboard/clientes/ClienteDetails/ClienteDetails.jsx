@@ -854,6 +854,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
                   `${formData.nombres || ''} ${formData.apellidos || ''}`.trim() ||
                   (clienteId ? `Cliente #${clienteId}` : 'Cliente')
                 }
+                onError={notifyError}
               />
             )}
           </div>

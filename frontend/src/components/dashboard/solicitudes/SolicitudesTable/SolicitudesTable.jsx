@@ -1542,6 +1542,7 @@ function SolicitudesTable({ token, onSelect, user }) {
         onCreated={handleCreated}
         token={token}
         onError={showErrorToast}
+        currentUser={user}
       />
 
       <SolicitudDetails

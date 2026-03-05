@@ -3,6 +3,16 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSolicitud.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
+import {
+  createReminderId,
+  emitRemindersSync,
+  extractUserId,
+  formatCurrentUserName,
+  normalizeId,
+  readRemindersFromStorage,
+  sanitizeRecipient,
+  writeRemindersToStorage,
+} from '../../common/reminders/remindersStorage'
 
 const MIN_WIDTH = 860
 const MIN_HEIGHT = 620
@@ -29,8 +39,25 @@ const initialProductoDraft = {
 const requiredClienteManualFields = ['cedula_ruc', 'nombres', 'apellidos', 'correo', 'telefono', 'direccion']
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
+const getNowDateParts = () => {
+  const now = new Date()
+  return {
+    date: now.toISOString().slice(0, 10),
+    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+  }
+}
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeString = (value) => String(value ?? '').trim().toLowerCase()
+const hasUsersModuleAccess = (permissions) =>
+  (Array.isArray(permissions) ? permissions : []).some((permission) => {
+    if (normalizeString(permission?.modulo) !== 'usuarios') return false
+    return Boolean(
+      permission?.puede_crear ||
+        permission?.puede_leer ||
+        permission?.puede_actualizar ||
+        permission?.puede_eliminar
+    )
+  })
 
 const parseApiErrorValue = (value) => {
   if (!value) return ''
@@ -115,7 +142,7 @@ const formatClienteLabel = (cliente) => {
   return ''
 }
 
-function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
+function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser }) {
   const [cliente, setCliente] = useState(initialCliente)
   const [selectedCliente, setSelectedCliente] = useState(null)
   const [clienteResultados, setClienteResultados] = useState([])
@@ -143,6 +170,10 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   const [productoAttempted, setProductoAttempted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
+  const [reminderUsers, setReminderUsers] = useState([])
+  const [reminderUsersLoading, setReminderUsersLoading] = useState(false)
+  const [reminderUsersError, setReminderUsersError] = useState('')
+  const [selectedReminderUserIds, setSelectedReminderUserIds] = useState([])
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -161,6 +192,14 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
   const sizeRef = useRef(size)
   const positionRef = useRef(position)
   const restoreRef = useRef(null)
+
+  const currentCreatorId = useMemo(() => normalizeId(extractUserId(currentUser)), [currentUser])
+  const currentCreatorName = useMemo(() => formatCurrentUserName(currentUser), [currentUser])
+  const currentCreatorEmail = String(currentUser?.correo || currentUser?.email || '').trim()
+  const isCurrentUserAdmin = useMemo(
+    () => hasUsersModuleAccess(currentUser?.permisos),
+    [currentUser]
+  )
 
   const notifyError = useCallback(
     (message) => {
@@ -210,6 +249,10 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     setSubmitAttempted(false)
     setProductoAttempted(false)
     setLoading(false)
+    setReminderUsers([])
+    setReminderUsersLoading(false)
+    setReminderUsersError('')
+    setSelectedReminderUserIds([])
     setIsMaximized(false)
     restoreRef.current = null
 
@@ -246,11 +289,90 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     }
   }, [notifyError, token])
 
+  const fetchReminderUsers = useCallback(async () => {
+    if (!token) {
+      setReminderUsers([])
+      setReminderUsersLoading(false)
+      setReminderUsersError('')
+      return
+    }
+
+    setReminderUsersLoading(true)
+    setReminderUsersError('')
+
+    const ensureCurrentCreator = (list) => {
+      if (!currentCreatorId) return list
+      if (list.some((userItem) => userItem.id === currentCreatorId)) return list
+
+      return [
+        {
+          id: currentCreatorId,
+          name: currentCreatorName || 'Usuario',
+          email: currentCreatorEmail,
+          isAdmin: isCurrentUserAdmin,
+        },
+        ...list,
+      ]
+    }
+
+    try {
+      const list = []
+      let url = `${API_URL}/usuarios/listado/?page_size=200`
+
+      while (url) {
+        const response = await authFetch(url, {}, token)
+        if (!response.ok) throw new Error('No se pudo cargar la lista de usuarios para recordatorios.')
+
+        const data = await response.json()
+        if (Array.isArray(data)) {
+          list.push(...data)
+          url = null
+        } else {
+          const pageResults = Array.isArray(data?.results) ? data.results : []
+          list.push(...pageResults)
+          url = data?.next || null
+        }
+      }
+
+      const normalized = []
+      const seenIds = new Set()
+
+      list.forEach((item) => {
+        const id = normalizeId(extractUserId(item))
+        if (!id || seenIds.has(id)) return
+        seenIds.add(id)
+        normalized.push({
+          id,
+          name: formatCurrentUserName(item),
+          email: String(item?.correo || item?.email || '').trim(),
+          isAdmin: hasUsersModuleAccess(item?.permisos_resumen),
+        })
+      })
+
+      const withCurrentCreator = ensureCurrentCreator(normalized).sort((a, b) =>
+        String(a?.name || '').localeCompare(String(b?.name || ''), 'es', { sensitivity: 'base' })
+      )
+
+      setReminderUsers(withCurrentCreator)
+    } catch (err) {
+      setReminderUsersError(err?.message || 'No se pudieron cargar los usuarios para recordatorios.')
+      setReminderUsers(ensureCurrentCreator([]))
+    } finally {
+      setReminderUsersLoading(false)
+    }
+  }, [currentCreatorEmail, currentCreatorId, currentCreatorName, isCurrentUserAdmin, token])
+
   useEffect(() => {
     if (!open) return
     clearAll()
     fetchSucursales()
-  }, [open, clearAll, fetchSucursales])
+    fetchReminderUsers()
+  }, [open, clearAll, fetchReminderUsers, fetchSucursales])
+
+  useEffect(() => {
+    if (!reminderUsersError) return
+    notifyError(reminderUsersError)
+  }, [notifyError, reminderUsersError])
 
   useEffect(
     () => () => {
@@ -849,6 +971,70 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     setProductos((prev) => prev.filter((item) => item.uid !== uid))
   }
 
+  const adminReminderRecipients = useMemo(() => {
+    const recipients = reminderUsers
+      .filter((userItem) => userItem.isAdmin)
+      .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
+      .filter(Boolean)
+
+    if (!recipients.length && currentCreatorId) {
+      const fallbackRecipient = sanitizeRecipient({
+        id: currentCreatorId,
+        name: currentCreatorName || 'Administrador',
+      })
+      if (fallbackRecipient) recipients.push(fallbackRecipient)
+    }
+
+    return recipients.filter(
+      (recipient, index, list) =>
+        list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+    )
+  }, [currentCreatorId, currentCreatorName, reminderUsers])
+
+  const adminReminderRecipientIds = useMemo(
+    () => new Set(adminReminderRecipients.map((recipient) => normalizeId(recipient?.id)).filter(Boolean)),
+    [adminReminderRecipients]
+  )
+
+  const selectableReminderUsers = useMemo(
+    () => reminderUsers.filter((userItem) => !adminReminderRecipientIds.has(normalizeId(userItem.id))),
+    [adminReminderRecipientIds, reminderUsers]
+  )
+
+  const selectedReminderRecipients = useMemo(() => {
+    if (!selectedReminderUserIds.length) return []
+    const usersMap = new Map(reminderUsers.map((userItem) => [normalizeId(userItem.id), userItem]))
+    return selectedReminderUserIds
+      .map((recipientId) => usersMap.get(normalizeId(recipientId)))
+      .filter(Boolean)
+      .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
+      .filter(Boolean)
+      .filter(
+        (recipient, index, list) =>
+          list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+      )
+  }, [reminderUsers, selectedReminderUserIds])
+
+  const toggleReminderUser = (userId) => {
+    const normalized = normalizeId(userId)
+    if (!normalized || adminReminderRecipientIds.has(normalized)) return
+
+    setSelectedReminderUserIds((prev) =>
+      prev.includes(normalized)
+        ? prev.filter((id) => id !== normalized)
+        : [...prev, normalized]
+    )
+  }
+
+  useEffect(() => {
+    setSelectedReminderUserIds((prev) => {
+      if (!prev.length) return prev
+      const validIds = new Set(selectableReminderUsers.map((userItem) => normalizeId(userItem.id)).filter(Boolean))
+      const filtered = prev.filter((id) => validIds.has(normalizeId(id)))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [selectableReminderUsers])
+
   const hasAnyManualClienteData = useMemo(
     () => Object.values(cliente).some((value) => String(value || '').trim()),
     [cliente]
@@ -859,27 +1045,40 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
     [cliente]
   )
   const isClientReady = !mustCompleteManualClient || hasManualClienteData
-  const canSubmit = Boolean(sucursalId) && productos.length > 0 && isClientReady
+  const hasAdminRecipients = adminReminderRecipients.length > 0
+  const canSubmit = Boolean(sucursalId) && productos.length > 0 && isClientReady && hasAdminRecipients && !reminderUsersLoading
 
   const getSubmitValidationMessage = useCallback(() => {
     if (!sucursalId) return 'Debe seleccionar una sucursal.'
     if (!productos.length) return 'Debe agregar al menos un producto solicitado.'
+    if (reminderUsersLoading) return 'Espera a que se carguen los usuarios para recordatorios.'
+    if (!hasAdminRecipients) return 'No se pudo resolver un administrador para el recordatorio obligatorio.'
     if (!isClientReady) return 'Si ingresa datos del cliente, la cedula es obligatoria y debe completar todos los campos.'
     return ''
-  }, [sucursalId, productos.length, isClientReady])
+  }, [hasAdminRecipients, isClientReady, productos.length, reminderUsersLoading, sucursalId])
 
   const registerInvalidSubmitAttempt = useCallback(() => {
     setSubmitAttempted(true)
 
     if (!sucursalId || !productos.length) {
       setActiveTab('productos')
+    } else if (reminderUsersLoading || !hasAdminRecipients) {
+      setActiveTab('recordatorio')
     } else if (!isClientReady) {
       setActiveTab('cliente')
     }
 
     const validationMessage = getSubmitValidationMessage()
     if (validationMessage) notifyError(validationMessage)
-  }, [getSubmitValidationMessage, isClientReady, notifyError, productos.length, sucursalId])
+  }, [
+    getSubmitValidationMessage,
+    hasAdminRecipients,
+    isClientReady,
+    notifyError,
+    productos.length,
+    reminderUsersLoading,
+    sucursalId,
+  ])
 
   const handleCreateButtonClick = (event) => {
     if (loading || canSubmit) return
@@ -950,6 +1149,55 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
         throw new Error(resolveApiErrorMessage(data, 'No se pudo crear la solicitud.'))
       }
 
+      const reminderRecipients = [...adminReminderRecipients, ...selectedReminderRecipients]
+        .map((recipient) => sanitizeRecipient(recipient))
+        .filter(Boolean)
+        .filter(
+          (recipient, index, list) =>
+            list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+        )
+
+      if (reminderRecipients.length) {
+        const createdSolicitudes = parseApiList(data)
+        const creatorId = normalizeId(currentCreatorId)
+        const creatorName = String(currentCreatorName || 'Usuario').trim() || 'Usuario'
+        const now = getNowDateParts()
+        const newReminders = createdSolicitudes
+          .map((solicitudItem) => {
+            const solicitudId = normalizeId(solicitudItem?.id)
+            if (!solicitudId) return null
+            return {
+              id: createReminderId(),
+              date: now.date,
+              time: now.time,
+              description: `Nueva solicitud #${solicitudId}. Revisar gestion pendiente.`,
+              creator: {
+                id: creatorId,
+                name: creatorName,
+              },
+              recipients: reminderRecipients,
+              context: {
+                type: 'solicitud',
+                id: solicitudId,
+                label: `Solicitud #${solicitudId}`,
+              },
+              createdAt: new Date().toISOString(),
+              completedBy: [],
+            }
+          })
+          .filter(Boolean)
+
+        if (newReminders.length) {
+          const existingReminders = readRemindersFromStorage()
+          writeRemindersToStorage([...newReminders, ...existingReminders])
+          emitRemindersSync()
+        } else {
+          notifyError('La solicitud se creo, pero no se pudo generar el recordatorio obligatorio.')
+        }
+      } else {
+        notifyError('La solicitud se creo, pero no se pudo generar el recordatorio obligatorio.')
+      }
+
       onCreated?.(data)
     } catch (err) {
       notifyError(err?.message || 'Ocurrio un error al crear la solicitud.')
@@ -1011,7 +1259,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
           </div>
         </header>
 
-        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones de solicitud">
             <button
               type="button"
@@ -1019,6 +1267,13 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
               onClick={() => setActiveTab('productos')}
             >
               Productos
+            </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'recordatorio' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('recordatorio')}
+            >
+              Usuarios a recordar
             </button>
             <button
               type="button"
@@ -1478,6 +1733,67 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
                 )}
               </section>
             )}
+
+            {activeTab === 'recordatorio' && (
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <div>
+                    <p className="create-user__eyebrow">Recordatorio</p>
+                    <h4>Usuarios a quienes recordar</h4>
+                  </div>
+                </div>
+
+                <p className="create-solicitud__reminder-helper">
+                  Al crear la solicitud se genera automaticamente un recordatorio para administradores y usuarios seleccionados.
+                </p>
+
+                <div className={`create-solicitud__reminder-admins${submitAttempted && !hasAdminRecipients ? ' create-solicitud__reminder-admins--invalid' : ''}`}>
+                  <h5>Administradores incluidos</h5>
+                  {reminderUsersLoading ? (
+                    <p className="muted">Cargando administradores...</p>
+                  ) : (
+                    <div className="create-solicitud__reminder-chip-list">
+                      {adminReminderRecipients.map((recipient) => (
+                        <span key={`admin-recipient-${recipient.id}`} className="create-solicitud__chip">
+                          {recipient.name}
+                        </span>
+                      ))}
+                      {!adminReminderRecipients.length && (
+                        <small className="muted">No se detectaron administradores con permisos del modulo usuarios.</small>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="create-solicitud__reminder-users">
+                  <h5>Usuarios adicionales</h5>
+                  <div className="create-solicitud__reminder-user-list">
+                    {!reminderUsersLoading && !selectableReminderUsers.length && (
+                      <small className="muted">No hay usuarios adicionales disponibles.</small>
+                    )}
+
+                    {selectableReminderUsers.map((userItem) => {
+                      const userId = normalizeId(userItem?.id)
+                      const checked = selectedReminderUserIds.includes(userId)
+                      return (
+                        <label key={`reminder-user-${userId}`} className="create-solicitud__reminder-user-item">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleReminderUser(userId)}
+                            disabled={loading || reminderUsersLoading}
+                          />
+                          <div>
+                            <strong>{userItem.name || 'Usuario'}</strong>
+                            {userItem.email && <small>{userItem.email}</small>}
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              </section>
+            )}
           </div>
 
           <div className="create-user__footer">
@@ -1514,6 +1830,8 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateSolicitud
+
+
 
 
 

@@ -40,6 +40,51 @@
   color: var(--color-button-primary);
 }
 
+.users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud > td {
+  background: color-mix(in srgb, #facc15 20%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #ca8a04 32%, transparent) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud:hover > td {
+  background: color-mix(in srgb, #facc15 30%, var(--table-color-hover)) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud.selected-row-shadow > td,
+.users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #facc15 34%, var(--table-color-selected)) !important;
+}
+
+.entradas-pending-state-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #facc15 34%, transparent);
+  color: #854d0e !important;
+  font-weight: 700;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud > td {
+  background: color-mix(in srgb, #facc15 24%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #facc15 38%, var(--color-border-dark)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud:hover > td {
+  background: color-mix(in srgb, #facc15 30%, var(--table-color-dark-hover)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud.selected-row-shadow > td,
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #facc15 32%, var(--table-color-selected-dark)) !important;
+}
+
+.dashboard-shell.dark .entradas-pending-state-chip {
+  background: color-mix(in srgb, #facc15 42%, transparent);
+  color: #111827 !important;
+}
+
 @media (max-width: 900px) {
   .entradas-type-filter__btn.p-button {
     min-width: 84px;

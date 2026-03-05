@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, Moon, Search, SunMedium } from 'lucide-react'
+import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
 import {
@@ -24,6 +25,7 @@ function QuickActions({ darkMode, onToggleTheme, token, user }) {
   const wrapRef = useRef(null)
   const btnRefs = useRef([])
   const moveTimerRef = useRef(null)
+  const toast = useRef(null)
 
   const [blob, setBlob] = useState({ x: 0, y: 0, w: 0, h: 0, visible: false })
   const [isMoving, setIsMoving] = useState(false)
@@ -34,6 +36,16 @@ function QuickActions({ darkMode, onToggleTheme, token, user }) {
   const currentUserIdValues = useMemo(() => Array.from(currentUserIds), [currentUserIds])
   const currentPrimaryUserId = currentUserIdValues[0] || ''
   const currentUserName = useMemo(() => formatCurrentUserName(user), [user])
+
+  const showErrorToast = useCallback((message) => {
+    if (!message) return
+    toast.current?.show({
+      severity: 'error',
+      summary: 'Error',
+      detail: message,
+      life: 3400,
+    })
+  }, [])
 
   const hasPendingReminder = useMemo(
     () => reminders.some((reminder) => isReminderPendingForCurrentUser(reminder, currentUserIds)),
@@ -201,6 +213,7 @@ function QuickActions({ darkMode, onToggleTheme, token, user }) {
 
   return (
     <>
+      <Toast ref={toast} />
       <div
         ref={wrapRef}
         className={`quick-actions ${darkMode ? 'dark' : 'light'}`}
@@ -268,6 +281,7 @@ function QuickActions({ darkMode, onToggleTheme, token, user }) {
         onCreateReminder={handleCreateReminder}
         onMarkReminderSeen={handleMarkReminderSeen}
         darkMode={darkMode}
+        onError={showErrorToast}
       />
     </>
   )

@@ -146,7 +146,7 @@ const isCheckboxSelection = (event) => {
   )
 }
 
-function EntradasTable({ token, user }) {
+function EntradasTable({ token, user, createBranchId = '' }) {
   const toast = useRef(null)
   const preloadEntradaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
@@ -167,6 +167,7 @@ function EntradasTable({ token, user }) {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [selectedSolicitudPreview, setSelectedSolicitudPreview] = useState(null)
   const [selectedRows, setSelectedRows] = useState([])
   const [prefetchedTipoMovimientos, setPrefetchedTipoMovimientos] = useState([])
   const [prefetchedSubTiposEntrada, setPrefetchedSubTiposEntrada] = useState([])
@@ -179,6 +180,13 @@ function EntradasTable({ token, user }) {
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
   const lastSearchRef = useRef({ ...initialSearchCriteria })
   const SEARCH_PADDING = 12
+  const normalizedCreateBranchIdRaw = String(createBranchId || '').trim()
+  const normalizedCreateBranchId = (
+    normalizedCreateBranchIdRaw.toLowerCase() === 'all' ? 'all' : normalizedCreateBranchIdRaw
+  )
+  const hasSpecificCreateBranch = Boolean(
+    normalizedCreateBranchId && normalizedCreateBranchId !== 'all'
+  )
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -216,6 +224,10 @@ function EntradasTable({ token, user }) {
     const tableSortField = options?.tableSortField ?? null
     const tableSortOrder = options?.tableSortOrder ?? null
     const subtype = String(options?.subtypeFilter || 'all').trim()
+    const branchContextIdRaw = String(
+      options?.branchContextId ?? normalizedCreateBranchId
+    ).trim()
+    const branchContextId = branchContextIdRaw.toLowerCase() === 'all' ? 'all' : branchContextIdRaw
 
     params.set('tipo', 'entrada')
     params.set('page', String(page))
@@ -245,6 +257,10 @@ function EntradasTable({ token, user }) {
       params.set('subtipo', subtype)
     }
 
+    if (branchContextId && branchContextId !== 'all') {
+      params.set('sucursal_id', branchContextId)
+    }
+
     const hasExplicitGlobalSearch = Object.prototype.hasOwnProperty.call(options, 'globalSearchValue')
     const globalSearch = hasExplicitGlobalSearch
       ? String(options?.globalSearchValue ?? '').trim()
@@ -265,7 +281,7 @@ function EntradasTable({ token, user }) {
     params.set('ordering', ordering || '-fecha,-id')
 
     return `${API_URL}/movimientos/movimiento_inventario/tabla/?${params.toString()}`
-  }, [])
+  }, [normalizedCreateBranchId])
 
   const fetchMovimientos = useCallback(
     async (options = {}) => {
@@ -277,6 +293,10 @@ function EntradasTable({ token, user }) {
       const tableSortField = options?.tableSortField ?? null
       const tableSortOrder = options?.tableSortOrder ?? null
       const subtype = String(options?.subtypeFilter || 'all').trim()
+      const branchContextIdRaw = String(
+        options?.branchContextId ?? normalizedCreateBranchId
+      ).trim()
+      const branchContextId = branchContextIdRaw.toLowerCase() === 'all' ? 'all' : branchContextIdRaw
       const criteria = options?.criteria ?? lastSearchRef.current
       const globalSearchValue = Object.prototype.hasOwnProperty.call(options, 'globalSearchValue')
         ? options?.globalSearchValue
@@ -295,6 +315,7 @@ function EntradasTable({ token, user }) {
           tableSortOrder,
           globalSearchValue,
           subtypeFilter: subtype,
+          branchContextId,
         })
 
         const response = await authFetch(url, {}, token)
@@ -324,7 +345,7 @@ function EntradasTable({ token, user }) {
       }
       return []
     },
-    [buildMovimientosListUrl, normalizeList, pageSize, token]
+    [buildMovimientosListUrl, normalizedCreateBranchId, normalizeList, pageSize, token]
   )
 
   const preloadEntradaCatalogs = useCallback(async () => {
@@ -392,9 +413,10 @@ function EntradasTable({ token, user }) {
       tableSortOrder: sortOrder,
       globalSearchValue: globalFilterValue,
       subtypeFilter,
+      branchContextId: normalizedCreateBranchId,
       criteria: lastSearchRef.current,
     })
-  }, [token, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter])
+  }, [token, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter, normalizedCreateBranchId])
 
   useEffect(() => {
     setEntradaCatalogsPreloaded(false)
@@ -467,9 +489,21 @@ function EntradasTable({ token, user }) {
           ? options?.globalSearchValue
           : globalFilterValue,
         subtypeFilter: options?.subtypeFilter ?? subtypeFilter,
+        branchContextId: Object.prototype.hasOwnProperty.call(options, 'branchContextId')
+          ? options?.branchContextId
+          : normalizedCreateBranchId,
       }),
-    [currentPage, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter]
+    [currentPage, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter, normalizedCreateBranchId]
   )
+
+  useEffect(() => {
+    if (!token) return
+    setSelectedRows([])
+    refreshData({
+      page: 1,
+      branchContextId: normalizedCreateBranchId,
+    })
+  }, [normalizedCreateBranchId, refreshData, token])
 
   const clearFilter = () => {
     if (globalSearchDebounceRef.current) {
@@ -566,8 +600,17 @@ function EntradasTable({ token, user }) {
   const cellWithTooltip = (rowData, field) => {
     const content = rowData?.[field] ?? '-'
     const textColor = content === '-' ? '#9ca3af' : undefined
+    const isPendingSolicitud =
+      Boolean(rowData?.es_solicitud_traslado) &&
+      normalizeValue(rowData?.estado_nombre).includes('pend')
+    const className = [
+      'cell-tooltip',
+      field === 'estado_nombre' && isPendingSolicitud ? 'entradas-pending-state-chip' : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
     return (
-      <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: textColor }}>
+      <span className={className} data-pr-tooltip={String(content)} style={{ color: textColor }}>
         {String(content)}
       </span>
     )
@@ -593,17 +636,31 @@ function EntradasTable({ token, user }) {
     const target = event?.originalEvent?.target
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
 
+    if (event?.data?.es_solicitud_traslado) {
+      setSelectedSolicitudPreview(event?.data || null)
+      setSelectedId(null)
+      setShowDetailsModal(true)
+      return
+    }
+
+    setSelectedSolicitudPreview(null)
     const id = event?.data?.id
     if (id == null) return
     setSelectedId(id)
     setShowDetailsModal(true)
   }
 
-  const handleCreated = () => {
+  const handleCreated = (createdPayload) => {
     setShowCreateModal(false)
     setSelectedRows([])
     refreshData({ page: 1 })
-    toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Entrada creada correctamente', life: 2500 })
+    const isSolicitudTraslado = Boolean(createdPayload?.sucursal_solicitante_id && createdPayload?.sucursal_proveedora_id)
+    toast.current?.show({
+      severity: 'success',
+      summary: 'Exito',
+      detail: isSolicitudTraslado ? 'Solicitud creada correctamente' : 'Entrada creada correctamente',
+      life: 2500,
+    })
   }
 
   const handleUpdated = () => {
@@ -619,6 +676,15 @@ function EntradasTable({ token, user }) {
   }
 
   const handleOpenCreateModal = async () => {
+    if (!hasSpecificCreateBranch) {
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Selecciona sucursal',
+        detail: 'Selecciona una sucursal especifica para crear una entrada.',
+        life: 3000,
+      })
+      return
+    }
     try {
       await preloadEntradaCatalogs()
     } catch {
@@ -853,7 +919,19 @@ function EntradasTable({ token, user }) {
             'funcional_label',
           ]}
           onRowClick={handleRowClick}
-          rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
+          rowClassName={(rowData) => {
+            const classes = []
+            if (selectedRowIds.includes(normId(rowData?.id))) {
+              classes.push('selected-row-shadow')
+            }
+            if (
+              rowData?.es_solicitud_traslado &&
+              normalizeValue(rowData?.estado_nombre).includes('pend')
+            ) {
+              classes.push('entradas-row--pending-solicitud')
+            }
+            return classes.join(' ')
+          }}
           selectionMode="multiple"
           selection={selectedRows}
           onSelectionChange={(event) => {
@@ -941,12 +1019,19 @@ function EntradasTable({ token, user }) {
         onError={showErrorToast}
         preloadedTipoMovimientos={prefetchedTipoMovimientos}
         preloadedSubTipos={prefetchedSubTiposEntrada}
+        prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}
+        currentUser={user}
       />
 
       <EntradaDetails
         open={showDetailsModal}
         entradaId={selectedId}
-        onClose={() => setShowDetailsModal(false)}
+        previewData={selectedSolicitudPreview}
+        readOnly={Boolean(selectedSolicitudPreview)}
+        onClose={() => {
+          setShowDetailsModal(false)
+          setSelectedSolicitudPreview(null)
+        }}
         token={token}
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}

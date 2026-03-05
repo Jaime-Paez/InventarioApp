@@ -71,12 +71,14 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
       }
       setSolicitud(data)
     } catch (err) {
+      const message = err?.message || 'Ocurrió un error al cargar la solicitud.'
       setSolicitud(null)
-      setError(err?.message || 'Ocurrió un error al cargar la solicitud.')
+      setError(message)
+      notifyError(message)
     } finally {
       setLoading(false)
     }
-  }, [solicitudId, token])
+  }, [notifyError, solicitudId, token])
 
   useEffect(() => {
     if (!open) return
@@ -484,6 +486,7 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
                 entityType="solicitud"
                 entityId={solicitudId}
                 entityLabel={solicitudId ? `Solicitud #${solicitudId}` : 'Solicitud'}
+                onError={notifyError}
               />
             )}
 
@@ -494,8 +497,6 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
             )}
           </div>
         </div>
-
-        {error && <div className="create-user__error">{error}</div>}
 
         <div className="create-user__footer">
           <div className="user-details__footer-left">

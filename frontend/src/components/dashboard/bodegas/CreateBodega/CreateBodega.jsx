@@ -134,7 +134,12 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
   const normalizeKey = (value) => String(value ?? '').trim().toLowerCase()
 
   const sanitizeLocations = (locations) =>
-    locations.map(({ subdivision_draft: _draft, subdivisions_list: _list, ...location }) => location)
+    locations.map((location) => {
+      const sanitized = { ...location }
+      delete sanitized.subdivision_draft
+      delete sanitized.subdivisions_list
+      return sanitized
+    })
 
   const fetchAll = async (url) => {
     let next = url
@@ -588,7 +593,7 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
           </div>
         </header>
 
-        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones de la bodega">
             <button type="button" className="create-user__tab create-user__tab--active" disabled>
               General
@@ -703,5 +708,7 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
 }
 
 export default CreateBodega
+
+
 
 

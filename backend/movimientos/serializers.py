@@ -185,6 +185,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
 
         if detalles_data is not None:
             repeated = set()
+            stock_cache = {}
             for item in detalles_data:
                 producto = item.get("producto")
                 producto_id = getattr(producto, "id", None)
@@ -198,6 +199,26 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
                         {"detalles": "No puedes repetir el mismo producto en la solicitud."}
                     )
                 repeated.add(producto_id)
+
+                if sucursal_proveedora is not None:
+                    available = stock_cache.get(int(producto_id))
+                    if available is None:
+                        available = self._get_available_stock_in_branch(
+                            sucursal_id=int(sucursal_proveedora.id),
+                            producto_id=int(producto_id),
+                        )
+                        stock_cache[int(producto_id)] = available
+                    if cantidad > available:
+                        codigo = str(getattr(producto, "codigo", "") or "").strip()
+                        label = codigo or f"ID {producto_id}"
+                        raise serializers.ValidationError(
+                            {
+                                "detalles": (
+                                    f"Stock insuficiente en sucursal proveedora para '{label}'. "
+                                    f"Disponible: {available}."
+                                )
+                            }
+                        )
         return attrs
 
     def create(self, validated_data):
@@ -207,6 +228,25 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             for detalle in detalles_data:
                 SolicitudTrasladoDetalle.objects.create(solicitud=solicitud, **detalle)
         return solicitud
+
+    @staticmethod
+    def _get_available_stock_in_branch(sucursal_id, producto_id):
+        if not sucursal_id or not producto_id:
+            return 0
+
+        rows = Inventario.objects.filter(
+            producto_id=int(producto_id),
+            subdivision__division__bodega__sucursal_id=int(sucursal_id),
+        ).values_list("cantidad", flat=True)
+
+        total = 0
+        for raw in rows:
+            try:
+                total += int(raw or 0)
+            except (TypeError, ValueError):
+                continue
+
+        return max(total, 0)
 
 
 class MovimientoInventarioSerializer(serializers.ModelSerializer):

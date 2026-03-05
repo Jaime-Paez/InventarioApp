@@ -132,6 +132,16 @@ function ProductoDetails({
     [onError]
   )
 
+  useEffect(() => {
+    if (!oemError) return
+    notifyError(oemError)
+  }, [notifyError, oemError])
+
+  useEffect(() => {
+    if (!alternoError) return
+    notifyError(alternoError)
+  }, [alternoError, notifyError])
+
   const normalizeValue = (value) =>
   String(value ?? '')
     .normalize('NFD')
@@ -1589,7 +1599,6 @@ function ProductoDetails({
                     ))}
                   </div>
 
-                  {oemError && <div className="create-user__error">{oemError}</div>}
                 </section>
 
               </>
@@ -1741,7 +1750,6 @@ function ProductoDetails({
                   ))}
                 </div>
 
-                {alternoError && <div className="create-user__error">{alternoError}</div>}
               </section>
             )}
 
@@ -1764,6 +1772,7 @@ function ProductoDetails({
                     inventarioEntries={resolvedInventoryContext?.inventarioEntries || []}
                     disabled={editorDisabled}
                     onSaved={resolvedInventoryContext?.onSaved}
+                    onError={notifyError}
                   />
                 )}
                 {!inventoryLoading && !resolvedInventoryContext && (
@@ -1782,6 +1791,7 @@ function ProductoDetails({
                 entityType="producto"
                 entityId={productoId}
                 entityLabel={formData.nombre || (productoId ? `Producto #${productoId}` : 'Producto')}
+                onError={notifyError}
               />
             )}
 

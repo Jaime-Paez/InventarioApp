@@ -172,10 +172,11 @@ function CreateSalida({
   onError,
   preloadedTipoMovimientos = [],
   preloadedSubTipos = [],
+  prefilledSucursalId = '',
 }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [, setError] = useState('')
 
   const [branches, setBranches] = useState([])
   const [tipoMovimientos, setTipoMovimientos] = useState(() => preloadedTipoMovimientos)
@@ -188,7 +189,7 @@ function CreateSalida({
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
   const [showProductDropdown, setShowProductDropdown] = useState(false)
-  const [productDropdownDirection, setProductDropdownDirection] = useState('down')
+  const [productDropdownDirection, setProductDropdownDirection] = useState('up')
   const [productDropdownMaxHeight, setProductDropdownMaxHeight] = useState(null)
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
@@ -249,6 +250,11 @@ function CreateSalida({
     [onError]
   )
 
+  useEffect(() => {
+    if (!detailError) return
+    notifyError(detailError)
+  }, [detailError, notifyError])
+
   const salidaTipoId = useMemo(() => {
     const salida = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('sal'))
     return salida?.id ?? ''
@@ -276,6 +282,13 @@ function CreateSalida({
   const isSelectorStep = !formData.subTipoId
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'No. de Traslado' : 'No. de Factura'
+  const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
+  const selectedSucursalId = String(formData.sucursalId || '').trim()
+  const hasSelectedSucursal = Boolean(selectedSucursalId)
+  const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
+  const destinationBranches = useMemo(() => {
+    return branches.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
+  }, [branches, selectedSucursalId])
 
   const devolucionEstadoOptions = useMemo(
     () =>
@@ -373,19 +386,6 @@ function CreateSalida({
   const totalConIva = subtotalNeto * (1 + ivaRateValue)
   const ivaPercent = (ivaRateValue * 100).toFixed(2).replace(/\.00$/, '')
   const descuentoPercentLabel = descuentoPercent.toFixed(2).replace(/\.00$/, '')
-  const isDocumentChecking = documentStatus === DOCUMENT_STATUS.checking
-  const isDocumentAvailable = documentStatus === DOCUMENT_STATUS.available
-  const isExistingClienteReady = useExistingCliente && Boolean(selectedCliente?.id)
-  const isNewClienteReady =
-    useNewCliente && clienteRequiredFields.every((field) => String(clienteForm[field] || '').trim())
-  const isVentaClienteReady = !isVenta || isExistingClienteReady || isNewClienteReady
-  const hasSolicitudTrasladoSelected = Boolean(String(formData.solicitudTrasladoId || '').trim())
-  const canSubmit = !loading
-    && isDocumentAvailable
-    && !isDocumentChecking
-    && isVentaClienteReady
-    && (!isTraslado || hasSolicitudTrasladoSelected)
-
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
@@ -425,7 +425,7 @@ function CreateSalida({
   const searchProducts = useCallback(
     async (query) => {
       const term = String(query ?? '').trim()
-      if (!term || !token || (isTraslado && !formData.sucursalId)) {
+      if (!term || !token || !hasSelectedSucursal) {
         setProductOptions([])
         return
       }
@@ -452,7 +452,7 @@ function CreateSalida({
         setProductLoading(false)
       }
     },
-    [formData.sucursalId, isTraslado, stockByProduct, token]
+    [hasSelectedSucursal, isTraslado, stockByProduct, token]
   )
 
   const searchClientes = useCallback(
@@ -729,12 +729,16 @@ function CreateSalida({
       documentCheckTimerRef.current = null
     }
     documentCheckSequenceRef.current = 0
-    setFormData({ ...initialForm, fecha: todayISO() })
+    setFormData({
+      ...initialForm,
+      fecha: todayISO(),
+      sucursalId: normalizedPrefilledSucursalId,
+    })
     setDetails([])
     setDetailDraft(initialDetail)
     setDetailError('')
     setShowProductDropdown(false)
-    setProductDropdownDirection('down')
+    setProductDropdownDirection('up')
     setProductDropdownMaxHeight(null)
     setProductQuery('')
     setProductOptions([])
@@ -756,7 +760,16 @@ function CreateSalida({
     modalRestoreRef.current = null
     setError('')
     fetchCatalogs()
-  }, [open, fetchCatalogs])
+  }, [fetchCatalogs, normalizedPrefilledSucursalId, open])
+
+  useEffect(() => {
+    if (!open) return
+    if (!normalizedPrefilledSucursalId) return
+    setFormData((prev) => {
+      if (String(prev.sucursalId || '').trim()) return prev
+      return { ...prev, sucursalId: normalizedPrefilledSucursalId }
+    })
+  }, [normalizedPrefilledSucursalId, open])
 
   useEffect(
     () => () => {
@@ -774,21 +787,12 @@ function CreateSalida({
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
     const triggerRect = productDropdownTriggerRef.current.getBoundingClientRect()
     const spacing = 10
-    const availableBelow = Math.max(
-      Math.floor(window.innerHeight - triggerRect.bottom - VIEWPORT_PADDING - spacing),
-      0
-    )
     const availableAbove = Math.max(
       Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing),
       0
     )
-    const preferredPanelHeight = 270
-    const openUp =
-      availableBelow < preferredPanelHeight && availableAbove > availableBelow
-
-    setProductDropdownDirection((prev) => (prev === (openUp ? 'up' : 'down') ? prev : openUp ? 'up' : 'down'))
-    const availableSpace = openUp ? availableAbove : availableBelow
-    const nextMaxHeight = Math.max(140, Math.min(320, availableSpace))
+    setProductDropdownDirection((prev) => (prev === 'up' ? prev : 'up'))
+    const nextMaxHeight = Math.max(140, Math.min(320, availableAbove))
     setProductDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
   }, [showProductDropdown])
 
@@ -1156,6 +1160,8 @@ function CreateSalida({
     const { name, value, type, checked } = event.target
     const nextValue = type === 'checkbox' ? checked : value
     setFormData((prev) => {
+      if (name === 'sucursalId' && isSucursalPrincipalLocked) return prev
+
       const next = {
         ...prev,
         [name]: nextValue,
@@ -1163,9 +1169,13 @@ function CreateSalida({
 
       if (name === 'sucursalId' && String(prev.sucursalId) !== String(nextValue)) {
         next.solicitudTrasladoId = ''
-        if (isTraslado) {
+        if (isTraslado || String(next.sucursalObjetivoId || '').trim() === String(nextValue || '').trim()) {
           next.sucursalObjetivoId = ''
         }
+      }
+
+      if (name === 'sucursalObjetivoId' && String(prev.sucursalId || '').trim() === String(nextValue || '').trim()) {
+        next.sucursalObjetivoId = ''
       }
 
       if (name === 'subTipoId' && String(prev.subTipoId) !== String(nextValue)) {
@@ -1382,6 +1392,11 @@ function CreateSalida({
       return
     }
 
+    if (requiresSucursalObjetivo && String(formData.sucursalId) === String(formData.sucursalObjetivoId)) {
+      notifyError('La sucursal destino debe ser diferente a la sucursal principal.')
+      return
+    }
+
     if (!formData.estadoId) {
       notifyError('No se pudo resolver el estado del movimiento.')
       return
@@ -1593,7 +1608,7 @@ function CreateSalida({
           </div>
         </header>
 
-        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
           {!formData.subTipoId ? (
             <div className="create-salida__selector-shell">
               <section className="create-user__section create-salida__selector-card">
@@ -1685,7 +1700,13 @@ function CreateSalida({
 
                     <label className="create-user__field">
                       <span>Sucursal</span>
-                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={loading} required>
+                      <select
+                        name="sucursalId"
+                        value={formData.sucursalId}
+                        onChange={handleChange}
+                        disabled={loading || isSucursalPrincipalLocked}
+                        required
+                      >
                         <option value="">Selecciona una sucursal</option>
                         {branches.map((branch) => (
                           <option key={branch.id} value={branch.id}>
@@ -1735,7 +1756,7 @@ function CreateSalida({
                           required={requiresSucursalObjetivo}
                         >
                           <option value="">Selecciona una sucursal</option>
-                          {branches.map((branch) => (
+                          {destinationBranches.map((branch) => (
                             <option key={branch.id} value={branch.id}>
                               {branch.nombre || `Sucursal ${branch.id}`}
                             </option>
@@ -1856,11 +1877,17 @@ function CreateSalida({
                             type="button"
                             className="create-user__dropdown-trigger"
                             ref={productDropdownTriggerRef}
-                            disabled={loading || isTraslado}
+                            disabled={loading || isTraslado || !hasSelectedSucursal}
+                            title={
+                              !hasSelectedSucursal
+                                ? 'Selecciona una sucursal primero.'
+                                : (isTraslado ? 'Selecciona una solicitud de traslado.' : undefined)
+                            }
                             onClick={() => {
+                              if (!hasSelectedSucursal || isTraslado) return
                               const isOpening = !showProductDropdown
                               if (isOpening) {
-                                setProductDropdownDirection('down')
+                                setProductDropdownDirection('up')
                                 setProductDropdownMaxHeight(null)
                                 setProductQuery('')
                                 setProductOptions([])
@@ -1890,11 +1917,15 @@ function CreateSalida({
                                 <i className="pi pi-search" />
                                 <input
                                   type="text"
-                                  placeholder={isTraslado ? 'Selecciona una solicitud de traslado' : 'Buscar productos'}
+                                  placeholder={
+                                    !hasSelectedSucursal
+                                      ? 'Selecciona una sucursal primero'
+                                      : (isTraslado ? 'Selecciona una solicitud de traslado' : 'Buscar productos')
+                                  }
                                   value={productQuery}
                                   onChange={(event) => setProductQuery(event.target.value)}
                                   autoFocus
-                                  disabled={isTraslado}
+                                  disabled={isTraslado || !hasSelectedSucursal}
                                 />
                               </div>
 
@@ -1907,7 +1938,12 @@ function CreateSalida({
                                 }
                               >
                                 {productLoading && <small className="muted">Buscando productos...</small>}
-                                {!productLoading && !productQuery.trim() && <small className="muted">Escribe para buscar.</small>}
+                                {!hasSelectedSucursal && !productLoading && (
+                                  <small className="muted">Selecciona una sucursal para buscar productos.</small>
+                                )}
+                                {!productLoading && hasSelectedSucursal && !productQuery.trim() && (
+                                  <small className="muted">Escribe para buscar.</small>
+                                )}
                                 {!productLoading && productQuery.trim() && !productOptions.length && (
                                   <small className="muted">Sin resultados.</small>
                                 )}
@@ -2014,7 +2050,6 @@ function CreateSalida({
                     </div>
                   </div>
 
-                  {detailError && <div className="create-user__error">{detailError}</div>}
                 </section>
                   </>
                 )}
@@ -2193,14 +2228,12 @@ function CreateSalida({
             </>
           )}
 
-          {error && <div className="create-user__error">{error}</div>}
-
           <div className="create-user__footer">
             <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={loading}>
               Cancelar
             </button>
             {formData.subTipoId && (
-              <button type="submit" className="create-user__action create-user__action--primary" disabled={!canSubmit}>
+              <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>
                 {loading ? 'Guardando...' : 'Crear salida'}
               </button>
             )}
@@ -2219,3 +2252,5 @@ function CreateSalida({
 }
 
 export default CreateSalida
+
+

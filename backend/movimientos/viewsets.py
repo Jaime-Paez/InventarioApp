@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import DecimalField, Q, Sum, Value
+from django.db.models import DecimalField, ExpressionWrapper, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
 from rest_framework import filters, status, viewsets
@@ -67,9 +67,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     def _serialize_table_rows(self, rows):
         payload = []
         for row in rows:
+            movement_id = int(row.get("id") or 0)
             payload.append(
                 {
-                    "id": int(row.get("id") or 0),
+                    "id": movement_id,
                     "no_documento": str(row.get("no_documento") or "").strip(),
                     "fecha": row.get("fecha"),
                     "sucursal_nombre": row.get("sucursal__nombre") or "-",
@@ -79,9 +80,261 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "funcional": bool(row.get("funcional")),
                     "funcional_label": "Si" if bool(row.get("funcional")) else "No",
                     "total": row.get("total_monto"),
+                    "es_solicitud_traslado": False,
+                    "solicitud_traslado_id": None,
+                    "_sort_id": movement_id,
                 }
             )
         return payload
+
+    def _serialize_solicitud_table_rows(self, solicitudes):
+        payload = []
+        status_labels = {
+            str(key).strip().lower(): str(label).strip()
+            for key, label in SolicitudTraslado.Estados.choices
+        }
+        for solicitud in solicitudes:
+            solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+            estado_key = str(getattr(solicitud, "estado", "") or "").strip().lower()
+            estado_label = status_labels.get(estado_key) or (
+                estado_key.capitalize() if estado_key else "-"
+            )
+            detalles_payload = []
+            detalles_rows = getattr(solicitud, "detalles", None)
+            if detalles_rows is not None:
+                for detalle in detalles_rows.all():
+                    producto = getattr(detalle, "producto", None)
+                    cantidad = int(getattr(detalle, "cantidad", 0) or 0)
+                    valor = getattr(detalle, "valor", Decimal("0")) or Decimal("0")
+                    valor_total = valor * cantidad
+                    detalles_payload.append(
+                        {
+                            "id": int(getattr(detalle, "id", 0) or 0),
+                            "producto_id": int(getattr(detalle, "producto_id", 0) or 0),
+                            "producto_codigo": str(
+                                getattr(producto, "codigo", "") or ""
+                            ).strip(),
+                            "producto_nombre": str(
+                                getattr(producto, "nombre", "") or ""
+                            ).strip(),
+                            "cantidad": cantidad,
+                            "valor": valor,
+                            "valor_total": valor_total,
+                        }
+                    )
+
+            payload.append(
+                {
+                    "id": f"solicitud-{solicitud_id}",
+                    "no_documento": str(
+                        getattr(solicitud, "no_documento", "") or ""
+                    ).strip(),
+                    "fecha": getattr(solicitud, "fecha", None),
+                    "sucursal_nombre": (
+                        getattr(getattr(solicitud, "sucursal_solicitante", None), "nombre", "")
+                        or "-"
+                    ),
+                    "sub_tipo_nombre": "Traslado (Solicitud)",
+                    "estado_nombre": estado_label,
+                    "sucursal_objetivo_nombre": (
+                        getattr(getattr(solicitud, "sucursal_proveedora", None), "nombre", "")
+                        or "-"
+                    ),
+                    "funcional": False,
+                    "funcional_label": "-",
+                    "total": getattr(solicitud, "total_monto", Decimal("0")),
+                    "es_solicitud_traslado": True,
+                    "solicitud_traslado_id": solicitud_id,
+                    "sucursal_solicitante_id": int(
+                        getattr(solicitud, "sucursal_solicitante_id", 0) or 0
+                    ),
+                    "sucursal_proveedora_id": int(
+                        getattr(solicitud, "sucursal_proveedora_id", 0) or 0
+                    ),
+                    "descripcion": str(getattr(solicitud, "descripcion", "") or "").strip(),
+                    "detalles": detalles_payload,
+                    "movimiento_salida_id": getattr(
+                        solicitud, "movimiento_salida_id", None
+                    ),
+                    "movimiento_entrada_id": getattr(
+                        solicitud, "movimiento_entrada_id", None
+                    ),
+                    "_sort_id": solicitud_id,
+                }
+            )
+        return payload
+
+    def _resolve_tabla_ordering_tokens(self):
+        raw = (self.request.query_params.get("ordering") or "").strip()
+        if not raw:
+            return ["-fecha", "-id"]
+        tokens = [token.strip() for token in raw.split(",") if token.strip()]
+        return tokens or ["-fecha", "-id"]
+
+    def _normalize_table_sort_value(self, value, field):
+        if field in {"total", "_sort_id"}:
+            try:
+                return Decimal(str(value))
+            except (InvalidOperation, TypeError, ValueError):
+                return Decimal("0")
+
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return 1 if value else 0
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value).strip().lower()
+
+    def _sort_table_payload(self, rows):
+        ordering_map = {
+            "id": "_sort_id",
+            "no_documento": "no_documento",
+            "fecha": "fecha",
+            "sucursal__nombre": "sucursal_nombre",
+            "sub_tipo_movimiento__nombre": "sub_tipo_nombre",
+            "estado_movimiento__nombre": "estado_nombre",
+            "sucursal_objetivo__nombre": "sucursal_objetivo_nombre",
+            "funcional": "funcional",
+            "total_monto": "total",
+        }
+
+        sorted_rows = list(rows)
+        for token in reversed(self._resolve_tabla_ordering_tokens()):
+            descending = token.startswith("-")
+            ordering_key = token[1:] if descending else token
+            field_name = ordering_map.get(ordering_key)
+            if not field_name:
+                continue
+            sorted_rows.sort(
+                key=lambda row: self._normalize_table_sort_value(
+                    row.get(field_name), field_name
+                ),
+                reverse=descending,
+            )
+        return sorted_rows
+
+    def _strip_internal_table_fields(self, rows):
+        sanitized = []
+        for row in rows:
+            sanitized.append(
+                {
+                    key: value
+                    for key, value in row.items()
+                    if not str(key).startswith("_")
+                }
+            )
+        return sanitized
+
+    def _get_solicitudes_for_entrada_table(self):
+        params = self.request.query_params
+        subtipo_short = str(params.get("subtipo") or "").strip().lower()
+        if subtipo_short and subtipo_short != "traslado":
+            return []
+
+        sub_tipo_text = str(params.get("sub_tipo") or "").strip().lower()
+        if sub_tipo_text and "trasl" not in sub_tipo_text:
+            return []
+
+        if self._resolve_funcional_value(params.get("funcional")) is False:
+            return []
+
+        detail_total_expr = ExpressionWrapper(
+            F("detalles__cantidad") * F("detalles__valor"),
+            output_field=DecimalField(max_digits=14, decimal_places=2),
+        )
+        queryset = (
+            SolicitudTraslado.objects.select_related(
+                "sucursal_solicitante",
+                "sucursal_proveedora",
+            )
+            .prefetch_related("detalles__producto")
+            .annotate(
+                total_monto=Coalesce(
+                    Sum(detail_total_expr),
+                    Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
+                )
+            )
+            .filter(movimiento_entrada__isnull=True)
+            .order_by("-fecha", "-id")
+        )
+
+        if not (self.request.user.is_staff or self.request.user.is_superuser):
+            allowed = get_allowed_sucursal_ids(
+                self.request.user,
+                RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+            )
+            if allowed is not None:
+                if not allowed:
+                    return []
+                queryset = queryset.filter(sucursal_solicitante_id__in=sorted(allowed))
+
+        raw_estado = (params.get("estado") or "").strip().lower()
+        allowed_states = {choice[0] for choice in SolicitudTraslado.Estados.choices}
+        if raw_estado:
+            if raw_estado in allowed_states:
+                queryset = queryset.filter(estado=raw_estado)
+            else:
+                queryset = queryset.filter(estado__icontains=raw_estado)
+        else:
+            queryset = queryset.filter(estado=SolicitudTraslado.Estados.PENDIENTE)
+
+        no_documento = (params.get("no_documento") or "").strip()
+        if no_documento:
+            queryset = queryset.filter(no_documento__icontains=no_documento)
+
+        fecha_desde = parse_date((params.get("fecha_desde") or "").strip())
+        if fecha_desde:
+            queryset = queryset.filter(fecha__gte=fecha_desde)
+
+        fecha_hasta = parse_date((params.get("fecha_hasta") or "").strip())
+        if fecha_hasta:
+            queryset = queryset.filter(fecha__lte=fecha_hasta)
+
+        sucursal_id_raw = (params.get("sucursal_id") or "").strip()
+        if sucursal_id_raw:
+            if not sucursal_id_raw.isdigit():
+                return []
+            queryset = queryset.filter(sucursal_solicitante_id=int(sucursal_id_raw))
+
+        sucursal_text = (params.get("sucursal") or "").strip()
+        if sucursal_text:
+            queryset = queryset.filter(sucursal_solicitante__nombre__icontains=sucursal_text)
+
+        sucursal_objetivo_text = (params.get("sucursal_objetivo") or "").strip()
+        if sucursal_objetivo_text:
+            queryset = queryset.filter(
+                sucursal_proveedora__nombre__icontains=sucursal_objetivo_text
+            )
+
+        search_term = (params.get("search") or "").strip()
+        if search_term:
+            normalized_search = search_term.lower()
+            search_query = (
+                Q(no_documento__icontains=search_term)
+                | Q(sucursal_solicitante__nombre__icontains=search_term)
+                | Q(sucursal_proveedora__nombre__icontains=search_term)
+                | Q(estado__icontains=search_term)
+            )
+            if normalized_search in {"traslado", "traslados", "trasl"}:
+                search_query |= Q(pk__isnull=False)
+            queryset = queryset.filter(search_query)
+
+        total_min = (params.get("total_min") or "").strip()
+        if total_min:
+            try:
+                queryset = queryset.filter(total_monto__gte=Decimal(total_min))
+            except (InvalidOperation, ValueError):
+                pass
+
+        total_max = (params.get("total_max") or "").strip()
+        if total_max:
+            try:
+                queryset = queryset.filter(total_monto__lte=Decimal(total_max))
+            except (InvalidOperation, ValueError):
+                pass
+
+        return self._serialize_solicitud_table_rows(queryset)
 
     def _resolve_tipo_param(self):
         raw = (self.request.query_params.get("tipo") or "").strip().lower()
@@ -168,6 +421,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         fecha_hasta = parse_date((params.get("fecha_hasta") or "").strip())
         if fecha_hasta:
             queryset = queryset.filter(fecha__lte=fecha_hasta)
+
+        sucursal_id_raw = (params.get("sucursal_id") or "").strip()
+        if sucursal_id_raw:
+            if sucursal_id_raw.isdigit():
+                queryset = queryset.filter(sucursal_id=int(sucursal_id_raw))
+            else:
+                queryset = queryset.none()
 
         sucursal = (params.get("sucursal") or "").strip()
         if sucursal:
@@ -282,13 +542,29 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "total_monto",
         )
 
-        page = self.paginate_queryset(table_rows)
-        if page is not None:
-            serialized = self._serialize_table_rows(page)
-            return self.get_paginated_response(serialized)
+        tipo_param = self._resolve_tipo_param()
+        if tipo_param != "entrada":
+            page = self.paginate_queryset(table_rows)
+            if page is not None:
+                serialized = self._serialize_table_rows(page)
+                return self.get_paginated_response(
+                    self._strip_internal_table_fields(serialized)
+                )
 
-        serialized = self._serialize_table_rows(table_rows)
-        return Response(serialized)
+            serialized = self._serialize_table_rows(table_rows)
+            return Response(self._strip_internal_table_fields(serialized))
+
+        serialized_movimientos = self._serialize_table_rows(table_rows)
+        serialized_solicitudes = self._get_solicitudes_for_entrada_table()
+        combined_rows = self._sort_table_payload(
+            [*serialized_movimientos, *serialized_solicitudes]
+        )
+
+        page = self.paginate_queryset(combined_rows)
+        if page is not None:
+            return self.get_paginated_response(self._strip_internal_table_fields(page))
+
+        return Response(self._strip_internal_table_fields(combined_rows))
 
     def _resolve_target_modules(self):
         permission_checker = MovimientoInventarioModulePermission()

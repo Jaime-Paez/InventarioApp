@@ -3,6 +3,16 @@ import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
+import {
+  createReminderId,
+  emitRemindersSync,
+  extractUserId,
+  formatCurrentUserName,
+  normalizeId,
+  readRemindersFromStorage,
+  sanitizeRecipient,
+  writeRemindersToStorage,
+} from '../common/reminders/remindersStorage'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -49,6 +59,52 @@ const normalizeValue = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+const normalizeString = (value) => String(value ?? '').trim().toLowerCase()
+const getNowDateParts = () => {
+  const now = new Date()
+  return {
+    date: now.toISOString().slice(0, 10),
+    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+  }
+}
+const hasUsersModuleAccess = (permissions) =>
+  (Array.isArray(permissions) ? permissions : []).some((permission) => {
+    if (normalizeString(permission?.modulo) !== 'usuarios') return false
+    return Boolean(
+      permission?.puede_crear ||
+        permission?.puede_leer ||
+        permission?.puede_actualizar ||
+        permission?.puede_eliminar
+    )
+  })
+
+const normalizeModuleScopes = (rawScopes) => {
+  const scopes = {}
+  ;(Array.isArray(rawScopes) ? rawScopes : []).forEach((item) => {
+    const moduleKey = normalizeString(item?.modulo)
+    if (!moduleKey) return
+    const ids = (Array.isArray(item?.sucursales_ids) ? item.sucursales_ids : [])
+      .map((branchId) => normalizeId(branchId))
+      .filter(Boolean)
+    if (!ids.length) return
+    scopes[moduleKey] = ids
+  })
+  return scopes
+}
+
+const hasModuleBranchAccess = (userItem, moduleKey, branchId) => {
+  const normalizedModule = normalizeString(moduleKey)
+  const normalizedBranchId = normalizeId(branchId)
+  if (!normalizedModule || !normalizedBranchId) return false
+  const ids = userItem?.moduleScopes?.[normalizedModule]
+  return Array.isArray(ids) && ids.includes(normalizedBranchId)
+}
+
+const formatSubTipoLabel = (subTipo) => {
+  const nombre = String(subTipo?.nombre || '').trim()
+  if (!nombre) return ''
+  return normalizeValue(nombre).includes('trasl') ? 'Solicitud' : nombre
+}
 
 const parseNumber = (value) => {
   const cleaned = String(value ?? '').replace(',', '.').trim()
@@ -171,10 +227,12 @@ function CreateEntrada({
   onError,
   preloadedTipoMovimientos = [],
   preloadedSubTipos = [],
+  prefilledSucursalId = '',
+  currentUser = null,
 }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [, setError] = useState('')
 
   const [branches, setBranches] = useState([])
   const [tipoMovimientos, setTipoMovimientos] = useState(() => preloadedTipoMovimientos)
@@ -187,7 +245,7 @@ function CreateEntrada({
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
   const [showProductDropdown, setShowProductDropdown] = useState(false)
-  const [productDropdownDirection, setProductDropdownDirection] = useState('down')
+  const [productDropdownDirection, setProductDropdownDirection] = useState('up')
   const [productDropdownMaxHeight, setProductDropdownMaxHeight] = useState(null)
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
@@ -200,8 +258,12 @@ function CreateEntrada({
   const [clienteQuery, setClienteQuery] = useState('')
   const [clienteOptions, setClienteOptions] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
-  const [, setStockByProduct] = useState({})
-  const [, setStockLoading] = useState(false)
+  const [stockByProduct, setStockByProduct] = useState({})
+  const [stockLoading, setStockLoading] = useState(false)
+  const [reminderUsers, setReminderUsers] = useState([])
+  const [reminderUsersLoading, setReminderUsersLoading] = useState(false)
+  const [reminderUsersError, setReminderUsersError] = useState('')
+  const [selectedReminderUserIds, setSelectedReminderUserIds] = useState([])
   const [documentStatus, setDocumentStatus] = useState(DOCUMENT_STATUS.invalid)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -246,6 +308,19 @@ function CreateEntrada({
     [onError]
   )
 
+  const currentCreatorId = useMemo(() => normalizeId(extractUserId(currentUser)), [currentUser])
+  const currentCreatorName = useMemo(() => formatCurrentUserName(currentUser), [currentUser])
+  const currentCreatorEmail = String(currentUser?.correo || currentUser?.email || '').trim()
+  const isCurrentUserAdmin = useMemo(
+    () => hasUsersModuleAccess(currentUser?.permisos),
+    [currentUser]
+  )
+
+  useEffect(() => {
+    if (!detailError) return
+    notifyError(detailError)
+  }, [detailError, notifyError])
+
   const entradaTipoId = useMemo(() => {
     const entrada = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('ent'))
     return entrada?.id ?? ''
@@ -275,6 +350,16 @@ function CreateEntrada({
   const isSelectorStep = !formData.subTipoId
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'No. de Solicitud' : (isCompraEntrada ? 'No. de Compra' : 'No. de Factura')
+  const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
+  const selectedSucursalId = String(formData.sucursalId || '').trim()
+  const hasSelectedSucursal = Boolean(selectedSucursalId)
+  const selectedProveedorSucursalId = String(formData.sucursalObjetivoId || '').trim()
+  const hasSelectedProveedorSucursal = Boolean(selectedProveedorSucursalId)
+  const hasProductSourceBranch = isTraslado ? hasSelectedProveedorSucursal : hasSelectedSucursal
+  const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
+  const destinationBranches = useMemo(() => {
+    return branches.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
+  }, [branches, selectedSucursalId])
 
   const devolucionEstadoOptions = useMemo(
     () =>
@@ -397,23 +482,109 @@ function CreateEntrada({
   const totalConIva = subtotalNeto * (1 + ivaRateValue)
   const ivaPercent = (ivaRateValue * 100).toFixed(2).replace(/\.00$/, '')
   const descuentoPercentLabel = descuentoPercent.toFixed(2).replace(/\.00$/, '')
-  const isDocumentChecking = documentStatus === DOCUMENT_STATUS.checking
-  const isDocumentAvailable = documentStatus === DOCUMENT_STATUS.available
-  const hasTransferRequestDocument = Boolean(String(formData.no_documento || '').trim())
-  const isDocumentReady = isTraslado
-    ? hasTransferRequestDocument
-    : (isDocumentAvailable && !isDocumentChecking)
-  const isExistingClienteReady = useExistingCliente && Boolean(selectedCliente?.id)
-  const isNewClienteReady =
-    useNewCliente && clienteRequiredFields.every((field) => String(clienteForm[field] || '').trim())
-  const isVentaClienteReady = !isVenta || isExistingClienteReady || isNewClienteReady
-  const canSubmit = !loading && isDocumentReady && isVentaClienteReady
   const estadoSelectOptions = isVenta ? ventaEstadoOptions : (isCompraEntrada ? compraEstadoOptions : estadoOptions)
 
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
   )
+  const proveedorBranchName = useMemo(() => {
+    if (!isTraslado) return ''
+    const selectedBranch = branches.find(
+      (branch) => String(branch?.id || '') === String(formData.sucursalObjetivoId || '')
+    )
+    return String(selectedBranch?.nombre || '').trim()
+  }, [branches, formData.sucursalObjetivoId, isTraslado])
+  const showProveedorStockInfo = isTraslado && Boolean(String(formData.sucursalObjetivoId || '').trim())
+  const selectedDraftProductId = String(detailDraft.productoId || '').trim()
+  const selectedDraftCantidad = parseIntValue(detailDraft.cantidad)
+  const selectedDraftStockDisponible = useMemo(() => {
+    if (!showProveedorStockInfo || !selectedDraftProductId) return 0
+    const raw = Number(stockByProduct[selectedDraftProductId] ?? 0)
+    return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 0
+  }, [selectedDraftProductId, showProveedorStockInfo, stockByProduct])
+  const selectedDraftCantidadYaSolicitada = useMemo(() => {
+    if (!selectedDraftProductId) return 0
+    return details.reduce((acc, detail) => {
+      if (String(detail.productoId || '') !== selectedDraftProductId) return acc
+      const qty = parseIntValue(detail.cantidad)
+      return acc + (Number.isFinite(qty) ? qty : 0)
+    }, 0)
+  }, [details, selectedDraftProductId])
+  const selectedDraftStockRestante = Math.max(
+    selectedDraftStockDisponible - selectedDraftCantidadYaSolicitada,
+    0
+  )
+  const draftCantidadExceedsProveedorStock = Boolean(
+    showProveedorStockInfo &&
+    selectedDraftProductId &&
+    Number.isFinite(selectedDraftCantidad) &&
+    selectedDraftCantidad > selectedDraftStockRestante
+  )
+  const disableAddByProveedorStock = Boolean(
+    showProveedorStockInfo &&
+    selectedDraftProductId &&
+    (
+      selectedDraftStockRestante <= 0 ||
+      draftCantidadExceedsProveedorStock
+    )
+  )
+  const proveedorStockDisabledMessage = 'No hay suficientes en la sucursal proveedora.'
+  const proveedorStockDisabledMessageWithAvailable = (
+    `${proveedorStockDisabledMessage} Disponible: ${selectedDraftStockRestante}.`
+  )
+  const reminderBranchUsers = useMemo(() => {
+    if (!isTraslado || !selectedProveedorSucursalId) return []
+    return reminderUsers.filter((userItem) =>
+      hasModuleBranchAccess(userItem, 'movimientos_salidas', selectedProveedorSucursalId)
+    )
+  }, [isTraslado, reminderUsers, selectedProveedorSucursalId])
+
+  const adminReminderRecipients = useMemo(() => {
+    const recipients = reminderBranchUsers
+      .filter((userItem) => userItem.isAdmin)
+      .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
+      .filter(Boolean)
+
+    if (!recipients.length && isCurrentUserAdmin && currentCreatorId) {
+      const fallback = sanitizeRecipient({
+        id: currentCreatorId,
+        name: currentCreatorName || 'Administrador',
+      })
+      if (fallback) recipients.push(fallback)
+    }
+
+    return recipients.filter(
+      (recipient, index, list) =>
+        list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+    )
+  }, [currentCreatorId, currentCreatorName, isCurrentUserAdmin, reminderBranchUsers])
+
+  const adminReminderRecipientIds = useMemo(
+    () => new Set(adminReminderRecipients.map((recipient) => normalizeId(recipient?.id)).filter(Boolean)),
+    [adminReminderRecipients]
+  )
+
+  const selectableReminderUsers = useMemo(
+    () => reminderBranchUsers.filter((userItem) => !adminReminderRecipientIds.has(normalizeId(userItem.id))),
+    [adminReminderRecipientIds, reminderBranchUsers]
+  )
+
+  const selectedReminderRecipients = useMemo(() => {
+    if (!selectedReminderUserIds.length) return []
+    const usersMap = new Map(reminderBranchUsers.map((userItem) => [normalizeId(userItem.id), userItem]))
+    return selectedReminderUserIds
+      .map((recipientId) => usersMap.get(normalizeId(recipientId)))
+      .filter(Boolean)
+      .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
+      .filter(Boolean)
+      .filter(
+        (recipient, index, list) =>
+          list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+      )
+  }, [reminderBranchUsers, selectedReminderUserIds])
+
+  const hasAdminReminderRecipients = adminReminderRecipients.length > 0
 
   useEffect(() => {
     if (!preloadedTipoMovimientos.length) return
@@ -438,7 +609,7 @@ function CreateEntrada({
   const searchProducts = useCallback(
     async (query) => {
       const term = String(query ?? '').trim()
-      if (!term || !token) {
+      if (!term || !token || !hasProductSourceBranch) {
         setProductOptions([])
         return
       }
@@ -460,7 +631,7 @@ function CreateEntrada({
         setProductLoading(false)
       }
     },
-    [token]
+    [hasProductSourceBranch, token]
   )
 
   const searchClientes = useCallback(
@@ -592,6 +763,26 @@ function CreateEntrada({
     setClienteLoading(false)
   }, [isVenta])
 
+  useEffect(() => {
+    if (!isTraslado && activeTab === 'recordatorio') {
+      setActiveTab('general')
+    }
+  }, [activeTab, isTraslado])
+
+  useEffect(() => {
+    if (!reminderUsersError) return
+    notifyError(reminderUsersError)
+  }, [notifyError, reminderUsersError])
+
+  useEffect(() => {
+    setSelectedReminderUserIds((prev) => {
+      if (!prev.length) return prev
+      const validIds = new Set(selectableReminderUsers.map((userItem) => normalizeId(userItem.id)).filter(Boolean))
+      const filtered = prev.filter((id) => validIds.has(normalizeId(id)))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [selectableReminderUsers])
+
   const fetchCatalogs = useCallback(async () => {
     if (!token) return
     try {
@@ -654,6 +845,89 @@ function CreateEntrada({
     }
   }, [notifyError, token])
 
+  const fetchReminderUsers = useCallback(async () => {
+    if (!token) {
+      setReminderUsers([])
+      setReminderUsersLoading(false)
+      setReminderUsersError('')
+      return
+    }
+
+    setReminderUsersLoading(true)
+    setReminderUsersError('')
+
+    const ensureCurrentCreator = (list) => {
+      if (!currentCreatorId) return list
+      if (list.some((userItem) => normalizeId(userItem.id) === currentCreatorId)) return list
+
+      return [
+        {
+          id: currentCreatorId,
+          name: currentCreatorName || 'Usuario',
+          email: currentCreatorEmail,
+          isAdmin: isCurrentUserAdmin,
+          moduleScopes: normalizeModuleScopes(currentUser?.sucursales_por_modulo),
+        },
+        ...list,
+      ]
+    }
+
+    try {
+      const rows = []
+      let url = `${API_URL}/usuarios/listado/?page_size=200`
+
+      while (url) {
+        const response = await authFetch(url, {}, token)
+        if (!response.ok) {
+          throw new Error('No se pudo cargar la lista de usuarios para recordatorios.')
+        }
+
+        const payload = await response.json().catch(() => ({}))
+        if (Array.isArray(payload)) {
+          rows.push(...payload)
+          url = null
+        } else {
+          const pageResults = Array.isArray(payload?.results) ? payload.results : []
+          rows.push(...pageResults)
+          url = payload?.next || null
+        }
+      }
+
+      const seenIds = new Set()
+      const normalizedUsers = []
+      rows.forEach((item) => {
+        const userId = normalizeId(extractUserId(item))
+        if (!userId || seenIds.has(userId)) return
+        seenIds.add(userId)
+
+        normalizedUsers.push({
+          id: userId,
+          name: formatCurrentUserName(item),
+          email: String(item?.correo || item?.email || '').trim(),
+          isAdmin: hasUsersModuleAccess(item?.permisos_resumen),
+          moduleScopes: normalizeModuleScopes(item?.sucursales_por_modulo),
+        })
+      })
+
+      const withCreator = ensureCurrentCreator(normalizedUsers).sort((a, b) =>
+        String(a?.name || '').localeCompare(String(b?.name || ''), 'es', { sensitivity: 'base' })
+      )
+      setReminderUsers(withCreator)
+    } catch (err) {
+      setReminderUsersError(err?.message || 'No se pudieron cargar los usuarios para recordatorios.')
+      setReminderUsers(ensureCurrentCreator([]))
+    } finally {
+      setReminderUsersLoading(false)
+    }
+  }, [
+    currentCreatorEmail,
+    currentCreatorId,
+    currentCreatorName,
+    currentUser,
+    isCurrentUserAdmin,
+    token,
+  ])
+
   const fetchStockByBranch = useCallback(
     async (sucursalId) => {
       if (!token || !sucursalId) {
@@ -701,12 +975,16 @@ function CreateEntrada({
       documentCheckTimerRef.current = null
     }
     documentCheckSequenceRef.current = 0
-    setFormData({ ...initialForm, fecha: todayISO() })
+    setFormData({
+      ...initialForm,
+      fecha: todayISO(),
+      sucursalId: normalizedPrefilledSucursalId,
+    })
     setDetails([])
     setDetailDraft(initialDetail)
     setDetailError('')
     setShowProductDropdown(false)
-    setProductDropdownDirection('down')
+    setProductDropdownDirection('up')
     setProductDropdownMaxHeight(null)
     setProductQuery('')
     setProductOptions([])
@@ -720,13 +998,27 @@ function CreateEntrada({
     setClienteOptions([])
     setClienteLoading(false)
     setStockByProduct({})
+    setReminderUsers([])
+    setReminderUsersLoading(false)
+    setReminderUsersError('')
+    setSelectedReminderUserIds([])
     setDocumentStatus(DOCUMENT_STATUS.invalid)
     setIsMaximized(false)
     setIsResizingModal(false)
     modalRestoreRef.current = null
     setError('')
     fetchCatalogs()
-  }, [open, fetchCatalogs])
+    fetchReminderUsers()
+  }, [fetchCatalogs, fetchReminderUsers, normalizedPrefilledSucursalId, open])
+
+  useEffect(() => {
+    if (!open) return
+    if (!normalizedPrefilledSucursalId) return
+    setFormData((prev) => {
+      if (String(prev.sucursalId || '').trim()) return prev
+      return { ...prev, sucursalId: normalizedPrefilledSucursalId }
+    })
+  }, [normalizedPrefilledSucursalId, open])
 
   useEffect(
     () => () => {
@@ -744,21 +1036,12 @@ function CreateEntrada({
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
     const triggerRect = productDropdownTriggerRef.current.getBoundingClientRect()
     const spacing = 10
-    const availableBelow = Math.max(
-      Math.floor(window.innerHeight - triggerRect.bottom - VIEWPORT_PADDING - spacing),
-      0
-    )
     const availableAbove = Math.max(
       Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing),
       0
     )
-    const preferredPanelHeight = 270
-    const openUp =
-      availableBelow < preferredPanelHeight && availableAbove > availableBelow
-
-    setProductDropdownDirection((prev) => (prev === (openUp ? 'up' : 'down') ? prev : openUp ? 'up' : 'down'))
-    const availableSpace = openUp ? availableAbove : availableBelow
-    const nextMaxHeight = Math.max(140, Math.min(320, availableSpace))
+    setProductDropdownDirection((prev) => (prev === 'up' ? prev : 'up'))
+    const nextMaxHeight = Math.max(140, Math.min(320, availableAbove))
     setProductDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
   }, [showProductDropdown])
 
@@ -1052,10 +1335,27 @@ function CreateEntrada({
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }))
+    const nextValue = type === 'checkbox' ? checked : value
+    setFormData((prev) => {
+      if (name === 'sucursalId' && isSucursalPrincipalLocked) return prev
+
+      const next = {
+        ...prev,
+        [name]: nextValue,
+      }
+
+      if (name === 'sucursalId') {
+        if (String(next.sucursalObjetivoId || '').trim() === String(nextValue || '').trim()) {
+          next.sucursalObjetivoId = ''
+        }
+      }
+
+      if (name === 'sucursalObjetivoId' && String(prev.sucursalId || '').trim() === String(nextValue || '').trim()) {
+        next.sucursalObjetivoId = ''
+      }
+
+      return next
+    })
   }
 
   const handleUseExistingCliente = () => {
@@ -1166,6 +1466,37 @@ function CreateEntrada({
       setDetailError('El producto seleccionado no tiene un precio valido.')
       return
     }
+    if (isTraslado) {
+      if (!formData.sucursalObjetivoId) {
+        notifyError('Selecciona la sucursal proveedora para validar disponibilidad.')
+        return
+      }
+      if (stockLoading) {
+        notifyError('Espera a que se actualice el stock de la sucursal proveedora.')
+        return
+      }
+      const remaining = (
+        productoId === selectedDraftProductId
+          ? selectedDraftStockRestante
+          : Math.max(
+              Number(stockByProduct[productoId] ?? 0) -
+                details.reduce((acc, detail) => {
+                  if (String(detail.productoId) !== productoId) return acc
+                  const qty = parseIntValue(detail.cantidad)
+                  return acc + (Number.isFinite(qty) ? qty : 0)
+                }, 0),
+              0
+            )
+      )
+      if (remaining <= 0) {
+        notifyError(`${proveedorStockDisabledMessage} Disponible: 0.`)
+        return
+      }
+      if (cantidad > remaining) {
+        notifyError(`${proveedorStockDisabledMessage} Disponible: ${remaining}.`)
+        return
+      }
+    }
     if (!estadoProductoId) {
       setDetailError('No hay estado de producto configurado.')
       return
@@ -1193,6 +1524,27 @@ function CreateEntrada({
     setShowProductDropdown(false)
     setProductQuery('')
     setProductOptions([])
+  }
+
+  const handleBlockedAddByProveedorStock = useCallback(
+    (event) => {
+      if (!disableAddByProveedorStock) return
+      event?.preventDefault?.()
+      event?.stopPropagation?.()
+      notifyError(proveedorStockDisabledMessageWithAvailable)
+    },
+    [disableAddByProveedorStock, notifyError, proveedorStockDisabledMessageWithAvailable]
+  )
+
+  const toggleReminderUser = (userId) => {
+    const normalizedId = normalizeId(userId)
+    if (!normalizedId || adminReminderRecipientIds.has(normalizedId)) return
+
+    setSelectedReminderUserIds((prev) =>
+      prev.includes(normalizedId)
+        ? prev.filter((id) => id !== normalizedId)
+        : [...prev, normalizedId]
+    )
   }
 
   const handleRemoveDetail = (uid) => {
@@ -1276,6 +1628,18 @@ function CreateEntrada({
         return
       }
 
+      if (reminderUsersLoading) {
+        setActiveTab('recordatorio')
+        notifyError('Espera a que se carguen los usuarios para recordatorios.')
+        return
+      }
+
+      if (!hasAdminReminderRecipients) {
+        setActiveTab('recordatorio')
+        notifyError('No se pudo resolver un administrador para el recordatorio obligatorio.')
+        return
+      }
+
       setLoading(true)
       try {
         const payload = {
@@ -1304,6 +1668,56 @@ function CreateEntrada({
         if (!response.ok) {
           const detail = resolveApiErrorMessage(data, 'No se pudo crear la solicitud de traslado.')
           throw new Error(detail)
+        }
+
+        const reminderRecipients = [...adminReminderRecipients, ...selectedReminderRecipients]
+          .map((recipient) => sanitizeRecipient(recipient))
+          .filter(Boolean)
+          .filter(
+            (recipient, index, list) =>
+              list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+          )
+
+        if (reminderRecipients.length) {
+          const creatorId = normalizeId(currentCreatorId)
+          const creatorName = String(currentCreatorName || 'Usuario').trim() || 'Usuario'
+          const now = getNowDateParts()
+          const solicitudId = normalizeId(data?.id)
+          const solicitudDoc = String(data?.no_documento || formData.no_documento || '').trim()
+          const solicitudLabel = solicitudDoc
+            ? `Solicitud de traslado #${solicitudDoc}`
+            : `Solicitud de traslado #${solicitudId || 'N/A'}`
+
+          const reminderPayload = {
+            id: createReminderId(),
+            date: now.date,
+            time: now.time,
+            description: `${solicitudLabel}. Revisar gestion pendiente.`,
+            creator: {
+              id: creatorId,
+              name: creatorName,
+            },
+            recipients: reminderRecipients,
+            context: solicitudId
+              ? {
+                type: 'solicitud_traslado',
+                id: solicitudId,
+                label: solicitudLabel,
+              }
+              : null,
+            createdAt: new Date().toISOString(),
+            completedBy: [],
+          }
+
+          try {
+            const existingReminders = readRemindersFromStorage()
+            writeRemindersToStorage([reminderPayload, ...existingReminders])
+            emitRemindersSync()
+          } catch {
+            notifyError('La solicitud se creo, pero no se pudo generar el recordatorio obligatorio.')
+          }
+        } else {
+          notifyError('La solicitud se creo, pero no se pudo generar el recordatorio obligatorio.')
         }
 
         onCreated?.(data)
@@ -1459,6 +1873,8 @@ function CreateEntrada({
   ]
     .filter(Boolean)
     .join(' ')
+  const showTabs = isVenta || isTraslado
+  const showGeneralTab = !showTabs || activeTab === 'general'
 
   return (
     <div
@@ -1494,7 +1910,7 @@ function CreateEntrada({
           </div>
         </header>
 
-        <form className="create-user__form create-user__form--create" onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
           {!formData.subTipoId ? (
             <div className="create-salida__selector-shell">
               <section className="create-user__section create-salida__selector-card">
@@ -1518,7 +1934,7 @@ function CreateEntrada({
                       <option value="">Selecciona un tipo</option>
                       {subTiposEntrada.map((subTipo) => (
                         <option key={subTipo.id} value={subTipo.id}>
-                          {subTipo.nombre}
+                          {formatSubTipoLabel(subTipo)}
                         </option>
                       ))}
                     </select>
@@ -1528,7 +1944,7 @@ function CreateEntrada({
             </div>
           ) : (
             <>
-              {isVenta && (
+              {showTabs && (
                 <div className="create-user__tabs create-salida__tabs" role="tablist" aria-label="Secciones de entrada">
                   <button
                     type="button"
@@ -1537,19 +1953,30 @@ function CreateEntrada({
                   >
                     Datos de entrada
                   </button>
-                  <button
-                    type="button"
-                    className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
-                    onClick={() => setActiveTab('cliente')}
-                  >
-                    Datos del cliente
-                  </button>
+                  {isTraslado && (
+                    <button
+                      type="button"
+                      className={`create-user__tab ${activeTab === 'recordatorio' ? 'create-user__tab--active' : ''}`}
+                      onClick={() => setActiveTab('recordatorio')}
+                    >
+                      Recordatorio
+                    </button>
+                  )}
+                  {isVenta && (
+                    <button
+                      type="button"
+                      className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
+                      onClick={() => setActiveTab('cliente')}
+                    >
+                      Datos del cliente
+                    </button>
+                  )}
                 </div>
               )}
 
               <div className="create-user__content create-salida__content">
               <div className="create-user__body">
-                {(activeTab === 'general' || !isVenta) && (
+                {showGeneralTab && (
                   <>
                     <section className="create-user__section">
                   <div className="create-user__section-header">
@@ -1573,7 +2000,7 @@ function CreateEntrada({
                         <option value="">Selecciona un tipo</option>
                         {subTiposEntrada.map((subTipo) => (
                           <option key={subTipo.id} value={subTipo.id}>
-                            {subTipo.nombre}
+                            {formatSubTipoLabel(subTipo)}
                           </option>
                         ))}
                       </select>
@@ -1586,7 +2013,13 @@ function CreateEntrada({
 
                     <label className="create-user__field">
                       <span>Sucursal</span>
-                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={loading} required>
+                      <select
+                        name="sucursalId"
+                        value={formData.sucursalId}
+                        onChange={handleChange}
+                        disabled={loading || isSucursalPrincipalLocked}
+                        required
+                      >
                         <option value="">Selecciona una sucursal</option>
                         {branches.map((branch) => (
                           <option key={branch.id} value={branch.id}>
@@ -1607,7 +2040,7 @@ function CreateEntrada({
                           required={requiresSucursalObjetivo}
                         >
                           <option value="">Selecciona una sucursal</option>
-                          {branches.map((branch) => (
+                          {destinationBranches.map((branch) => (
                             <option key={branch.id} value={branch.id}>
                               {branch.nombre || `Sucursal ${branch.id}`}
                             </option>
@@ -1735,11 +2168,19 @@ function CreateEntrada({
                             type="button"
                             className="create-user__dropdown-trigger"
                             ref={productDropdownTriggerRef}
-                            disabled={loading}
+                            disabled={loading || !hasProductSourceBranch}
+                            title={
+                              !hasProductSourceBranch
+                                ? (isTraslado
+                                    ? 'Selecciona una sucursal proveedora primero.'
+                                    : 'Selecciona una sucursal primero.')
+                                : undefined
+                            }
                             onClick={() => {
+                              if (!hasProductSourceBranch) return
                               const isOpening = !showProductDropdown
                               if (isOpening) {
-                                setProductDropdownDirection('down')
+                                setProductDropdownDirection('up')
                                 setProductDropdownMaxHeight(null)
                                 setProductQuery('')
                                 setProductOptions([])
@@ -1769,10 +2210,17 @@ function CreateEntrada({
                                 <i className="pi pi-search" />
                                 <input
                                   type="text"
-                                  placeholder="Buscar productos"
+                                  placeholder={
+                                    hasProductSourceBranch
+                                      ? 'Buscar productos'
+                                      : (isTraslado
+                                          ? 'Selecciona una sucursal proveedora primero'
+                                          : 'Selecciona una sucursal primero')
+                                  }
                                   value={productQuery}
                                   onChange={(event) => setProductQuery(event.target.value)}
                                   autoFocus
+                                  disabled={!hasProductSourceBranch}
                                 />
                               </div>
 
@@ -1785,12 +2233,27 @@ function CreateEntrada({
                                 }
                               >
                                 {productLoading && <small className="muted">Buscando productos...</small>}
-                                {!productLoading && !productQuery.trim() && <small className="muted">Escribe para buscar.</small>}
+                                {showProveedorStockInfo && stockLoading && !productLoading && (
+                                  <small className="muted">Actualizando stock de la sucursal proveedora...</small>
+                                )}
+                                {!hasProductSourceBranch && !productLoading && (
+                                  <small className="muted">
+                                    {isTraslado
+                                      ? 'Selecciona una sucursal proveedora para buscar productos.'
+                                      : 'Selecciona una sucursal para buscar productos.'}
+                                  </small>
+                                )}
+                                {!productLoading && hasProductSourceBranch && !productQuery.trim() && (
+                                  <small className="muted">Escribe para buscar.</small>
+                                )}
                                 {!productLoading && productQuery.trim() && !productOptions.length && (
                                   <small className="muted">Sin resultados.</small>
                                 )}
                                 {productOptions.map((producto) => {
                                   const isSelected = String(producto.id) === String(detailDraft.productoId)
+                                  const stockEnSucursalProveedora = Number(
+                                    stockByProduct[String(producto.id)] ?? 0
+                                  )
                                   return (
                                     <button
                                       key={producto.id}
@@ -1805,7 +2268,15 @@ function CreateEntrada({
                                     >
                                       <div className="create-user__result-info">
                                         <strong>{formatProductoOptionLabel(producto)}</strong>
-                                        <small>ID: {producto.id}</small>
+                                        <small>
+                                          ID: {producto.id}
+                                          {showProveedorStockInfo && (
+                                            ` | Stock en ${proveedorBranchName || 'sucursal proveedora'}: ${Math.max(
+                                              0,
+                                              Math.trunc(stockEnSucursalProveedora)
+                                            )}`
+                                          )}
+                                        </small>
                                       </div>
                                       {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
                                     </button>
@@ -1818,6 +2289,7 @@ function CreateEntrada({
                       </span>
                       <span>
                         <input
+                          className={draftCantidadExceedsProveedorStock ? 'create-salida__input--invalid' : ''}
                           name="cantidad"
                           type="number"
                           min="1"
@@ -1825,6 +2297,7 @@ function CreateEntrada({
                           value={detailDraft.cantidad}
                           onChange={handleDetailChange}
                           disabled={loading}
+                          aria-invalid={draftCantidadExceedsProveedorStock ? 'true' : 'false'}
                         />
                       </span>
                       <span>
@@ -1842,7 +2315,20 @@ function CreateEntrada({
                         <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
                       </span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button type="button" className="create-user__ghost" onClick={handleAddDetail} disabled={loading}>
+                        <button
+                          type="button"
+                          className={`create-user__ghost${disableAddByProveedorStock ? ' create-salida__ghost-disabled' : ''}`}
+                          title={disableAddByProveedorStock ? proveedorStockDisabledMessageWithAvailable : ''}
+                          aria-disabled={disableAddByProveedorStock ? 'true' : 'false'}
+                          onClick={(event) => {
+                            if (disableAddByProveedorStock) {
+                              handleBlockedAddByProveedorStock(event)
+                              return
+                            }
+                            handleAddDetail()
+                          }}
+                          disabled={loading}
+                        >
                           Agregar
                         </button>
                       </span>
@@ -1892,7 +2378,6 @@ function CreateEntrada({
                     </div>
                   </div>
 
-                  {detailError && <div className="create-user__error">{detailError}</div>}
                 </section>
                   </>
                 )}
@@ -2066,19 +2551,87 @@ function CreateEntrada({
                     )}
                   </section>
                 )}
+
+                {isTraslado && activeTab === 'recordatorio' && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <p className="create-user__eyebrow">Recordatorio</p>
+                        <h4>Usuarios a quienes recordar</h4>
+                      </div>
+                    </div>
+
+                    <p className="create-salida__reminder-helper">
+                      Al crear la solicitud se genera automaticamente un recordatorio para administradores y usuarios seleccionados.
+                    </p>
+
+                    {!selectedProveedorSucursalId && (
+                      <small className="muted">Selecciona primero una sucursal proveedora para cargar usuarios.</small>
+                    )}
+
+                    <div className="create-salida__reminder-block">
+                      <h5>Administradores incluidos</h5>
+                      {reminderUsersLoading ? (
+                        <p className="muted">Cargando administradores...</p>
+                      ) : (
+                        <div className="create-salida__reminder-chip-list">
+                          {adminReminderRecipients.map((recipient) => (
+                            <span key={`entrada-admin-recipient-${recipient.id}`} className="create-salida__reminder-chip">
+                              {recipient.name}
+                            </span>
+                          ))}
+                          {!adminReminderRecipients.length && (
+                            <small className="muted">
+                              No se detectaron administradores para la sucursal proveedora seleccionada.
+                            </small>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="create-salida__reminder-block">
+                      <h5>Usuarios adicionales</h5>
+                      <div className="create-salida__reminder-user-list">
+                        {!selectedProveedorSucursalId && (
+                          <small className="muted">Debes seleccionar una sucursal proveedora.</small>
+                        )}
+                        {selectedProveedorSucursalId && !reminderUsersLoading && !selectableReminderUsers.length && (
+                          <small className="muted">No hay usuarios disponibles para esta sucursal.</small>
+                        )}
+
+                        {selectableReminderUsers.map((userItem) => {
+                          const userId = normalizeId(userItem?.id)
+                          const checked = selectedReminderUserIds.includes(userId)
+                          return (
+                            <label key={`entrada-reminder-user-${userId}`} className="create-salida__reminder-user-item">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleReminderUser(userId)}
+                                disabled={loading || reminderUsersLoading || !selectedProveedorSucursalId}
+                              />
+                              <div>
+                                <strong>{userItem.name || 'Usuario'}</strong>
+                                {userItem.email && <small>{userItem.email}</small>}
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </section>
+                )}
               </div>
             </div>
             </>
           )}
-
-          {error && <div className="create-user__error">{error}</div>}
 
           <div className="create-user__footer">
             <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={loading}>
               Cancelar
             </button>
             {formData.subTipoId && (
-              <button type="submit" className="create-user__action create-user__action--primary" disabled={!canSubmit}>
+              <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>
                 {loading ? 'Guardando...' : 'Crear entrada'}
               </button>
             )}
@@ -2097,4 +2650,3 @@ function CreateEntrada({
 }
 
 export default CreateEntrada
-
