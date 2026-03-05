@@ -57,6 +57,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
 
   const [isTogglingTheme, setIsTogglingTheme] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const [loginData, setLoginData] = useState({
     email: '',
@@ -91,6 +92,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
       onLoginSuccess(data.usuario, data.token, permisos, data.usuario_interno_id)
       setStatusMessage('¡Bienvenido de nuevo!')
       setLoginData({ email: '', password: '' })
+      setShowPassword(false)
     } catch (error) {
       console.error('Error al iniciar sesión:', error)
       setAuthError('No se pudo contactar al servidor. Intenta de nuevo.')
@@ -172,15 +174,25 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
 
             <div className="form-row">
               <label htmlFor="password">Contraseña</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                value={loginData.password}
-                onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                placeholder="Contraseña"
-                required
-              />
+              <div className="password-input">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={loginData.password}
+                  onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                  placeholder="Contraseña"
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  <i className={`pi ${showPassword ? 'pi-eye-slash' : 'pi-eye'}`} aria-hidden="true" />
+                </button>
+              </div>
             </div>
 
             <button type="submit" className="primary-button" disabled={loading}>

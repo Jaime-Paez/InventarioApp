@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import './CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
@@ -53,8 +54,9 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordCopied, setPasswordCopied] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [permissionOptions, setPermissionOptions] = useState([])
-  const [branchScopedModules, setBranchScopedModules] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [moduleBranchMatrix, setModuleBranchMatrix] = useState({})
   const [permissionsLoading, setPermissionsLoading] = useState(false)
@@ -62,6 +64,8 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const [branchesLoading, setBranchesLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
+  const [selectedBranchId, setSelectedBranchId] = useState(null)
+  const [showPermissionsPopup, setShowPermissionsPopup] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
 
   const modalRef = useRef(null)
@@ -110,11 +114,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
       const data = await response.json().catch(() => ({}))
       const modulos = Array.isArray(data?.modulos) ? data.modulos : []
-      const modulosConSucursal = Array.isArray(data?.modulos_con_sucursales)
-        ? data.modulos_con_sucursales
-        : []
       setPermissionOptions(modulos)
-      setBranchScopedModules(modulosConSucursal)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
@@ -136,6 +136,10 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       const data = await response.json().catch(() => [])
       const items = Array.isArray(data) ? data : data?.results || []
       setBranches(items)
+      setSelectedBranchId((prev) => {
+        if (prev && items.some((branch) => branch.id === prev)) return prev
+        return items[0]?.id ?? null
+      })
     } catch (err) {
       notifyError(err.message || 'Ocurrió un problema al cargar las sucursales.')
     } finally {
@@ -149,10 +153,13 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     setPassword('')
     setConfirmPassword('')
     setPasswordCopied(false)
+    setShowPassword(false)
+    setShowConfirmPassword(false)
     setPermissionsMatrix({})
     setModuleBranchMatrix({})
-    setBranchScopedModules([])
     setBranches([])
+    setSelectedBranchId(null)
+    setShowPermissionsPopup(false)
     setActiveTab('general')
     setIsMaximized(false)
     restoreRef.current = null
@@ -188,49 +195,76 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     }))
   }
 
-  const togglePermission = (moduleKey, actionKey) => {
-    setPermissionsMatrix((prev) => {
-      const current = prev[moduleKey] || {
+  const isBranchScopedForModule = useCallback(
+    (moduleKey, branchId) => {
+      if (!branchId) return false
+      const scopedBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
+      return scopedBranches.includes(branchId)
+    },
+    [moduleBranchMatrix]
+  )
+
+  const togglePermissionForBranch = (moduleKey, actionKey) => {
+    if (!selectedBranchId) return
+
+    setPermissionsMatrix((prevPermissions) => {
+      const current = prevPermissions[moduleKey] || {
         puede_crear: false,
         puede_leer: false,
         puede_actualizar: false,
         puede_eliminar: false,
       }
+      const moduleBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
+      const branchScoped = moduleBranches.includes(selectedBranchId)
+      const currentlyChecked = branchScoped && Boolean(current[actionKey])
 
-      const nextValue = !current[actionKey]
-      const updatedEntry = { ...current, [actionKey]: nextValue }
-      const hasAction = ACTIONS.some((action) => updatedEntry[action.key])
+      if (!currentlyChecked) {
+        setModuleBranchMatrix((prevScopes) => {
+          const currentScopes = Array.isArray(prevScopes[moduleKey]) ? prevScopes[moduleKey] : []
+          if (currentScopes.includes(selectedBranchId)) return prevScopes
+          return { ...prevScopes, [moduleKey]: [...currentScopes, selectedBranchId] }
+        })
+        return {
+          ...prevPermissions,
+          [moduleKey]: { ...current, [actionKey]: true },
+        }
+      }
+
+      const otherScopedBranches = moduleBranches.filter((id) => id !== selectedBranchId)
+      if (otherScopedBranches.length > 0) {
+        setModuleBranchMatrix((prevScopes) => {
+          const currentScopes = Array.isArray(prevScopes[moduleKey]) ? prevScopes[moduleKey] : []
+          const nextScopes = currentScopes.filter((id) => id !== selectedBranchId)
+          if (!nextScopes.length) {
+            const { [moduleKey]: _ignored, ...rest } = prevScopes
+            return rest
+          }
+          return { ...prevScopes, [moduleKey]: nextScopes }
+        })
+        return prevPermissions
+      }
+
+      const updatedEntry = { ...current, [actionKey]: false }
+      const hasAction = ACTIONS.some((action) => Boolean(updatedEntry[action.key]))
 
       if (!hasAction) {
         setModuleBranchMatrix((prevScopes) => {
           const { [moduleKey]: _ignored, ...restScopes } = prevScopes
           return restScopes
         })
-        const { [moduleKey]: _ignored, ...rest } = prev
-        return rest
+        const { [moduleKey]: _ignored, ...restPermissions } = prevPermissions
+        return restPermissions
       }
 
-      return { ...prev, [moduleKey]: updatedEntry }
-    })
-  }
-
-  const toggleModuleBranch = (moduleKey, branchId) => {
-    setModuleBranchMatrix((prev) => {
-      const current = Array.isArray(prev[moduleKey]) ? prev[moduleKey] : []
-      const exists = current.includes(branchId)
-      const next = exists ? current.filter((id) => id !== branchId) : [...current, branchId]
-      if (!next.length) {
-        const { [moduleKey]: _ignored, ...rest } = prev
-        return rest
-      }
-      return { ...prev, [moduleKey]: next }
+      return { ...prevPermissions, [moduleKey]: updatedEntry }
     })
   }
 
   const renderPermissionRow = (module) => {
     const entryKey = module.key
     const current = permissionsMatrix[entryKey] || {}
-    const isDisabled = loading || permissionsLoading
+    const branchScoped = isBranchScopedForModule(entryKey, selectedBranchId)
+    const isDisabled = loading || permissionsLoading || branchesLoading || !selectedBranchId
 
     return (
       <div key={entryKey} className="permissions-matrix__row">
@@ -241,8 +275,8 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
           <label key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
             <input
               type="checkbox"
-              checked={Boolean(current?.[action.key])}
-              onChange={() => togglePermission(module.key, action.key)}
+              checked={branchScoped && Boolean(current?.[action.key])}
+              onChange={() => togglePermissionForBranch(module.key, action.key)}
               disabled={isDisabled}
             />
           </label>
@@ -312,6 +346,8 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       setPassword('')
       setConfirmPassword('')
       setPasswordCopied(false)
+      setShowPassword(false)
+      setShowConfirmPassword(false)
       setPermissionsMatrix({})
       setModuleBranchMatrix({})
       onCreated?.({ ...data, password })
@@ -462,6 +498,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       notifyError('No se pudo copiar la contraseña. Intenta nuevamente.')
     }
   }
+  const selectedBranch = branches.find((branch) => branch.id === selectedBranchId) || null
   const { shouldRender, isClosing } = useModalAnimation(open)
 
   if (!shouldRender) return null
@@ -504,7 +541,10 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
             <button
               type="button"
               className={`create-user__tab${activeTab === 'general' ? ' create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('general')}
+              onClick={() => {
+                setActiveTab('general')
+                setShowPermissionsPopup(false)
+              }}
               role="tab"
               aria-selected={activeTab === 'general'}
             >
@@ -512,25 +552,19 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
             </button>
             <button
               type="button"
-              className={`create-user__tab${activeTab === 'permisos' ? ' create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('permisos')}
+              className={`create-user__tab${activeTab === 'accesos' ? ' create-user__tab--active' : ''}`}
+              onClick={() => {
+                setActiveTab('accesos')
+                setShowPermissionsPopup(false)
+              }}
               role="tab"
-              aria-selected={activeTab === 'permisos'}
+              aria-selected={activeTab === 'accesos'}
             >
-              Permisos
-            </button>
-            <button
-              type="button"
-              className={`create-user__tab${activeTab === 'sucursales' ? ' create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('sucursales')}
-              role="tab"
-              aria-selected={activeTab === 'sucursales'}
-            >
-              Sucursales
+              Sucursales y permisos
             </button>
           </div>
 
-          <div className={`create-user__body${activeTab === 'permisos' ? ' create-user__body--permissions' : ''}`}>
+          <div className={`create-user__body${activeTab === 'accesos' ? ' create-user__body--permissions' : ''}`}>
             {activeTab === 'general' && (
               <>
                 <section className="create-user__section">
@@ -624,28 +658,48 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                             </button>
                           </div>
                         </div>
-                        <input
-                          name="password"
-                          type="text"
-                          placeholder="Contraseña"
-                          value={password}
-                          onChange={(event) => setPassword(event.target.value)}
-                          required
-                        />
+                        <div className="create-user__password-input">
+                          <input
+                            name="password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Contraseña"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            required
+                          />
+                          <button
+                            type="button"
+                            className="create-user__password-toggle"
+                            onClick={() => setShowPassword((prev) => !prev)}
+                            aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                          >
+                            <i className={`pi ${showPassword ? 'pi-eye-slash' : 'pi-eye'}`} aria-hidden="true" />
+                          </button>
+                        </div>
                       </label>
 
                       <label className="create-user__field create-user__field--password-confirm">
                         <div className="create-user__field-label">
                           <span>Confirmar contraseña</span>
                         </div>
-                        <input
-                          name="confirmPassword"
-                          type="text"
-                          placeholder="Repite la contraseña"
-                          value={confirmPassword}
-                          onChange={(event) => setConfirmPassword(event.target.value)}
-                          required
-                        />
+                        <div className="create-user__password-input">
+                          <input
+                            name="confirmPassword"
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            placeholder="Repite la contraseña"
+                            value={confirmPassword}
+                            onChange={(event) => setConfirmPassword(event.target.value)}
+                            required
+                          />
+                          <button
+                            type="button"
+                            className="create-user__password-toggle"
+                            onClick={() => setShowConfirmPassword((prev) => !prev)}
+                            aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                          >
+                            <i className={`pi ${showConfirmPassword ? 'pi-eye-slash' : 'pi-eye'}`} aria-hidden="true" />
+                          </button>
+                        </div>
                       </label>
                     </div>
 
@@ -663,34 +717,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
               </>
             )}
 
-            {activeTab === 'permisos' && (
-              <section className="create-user__section create-user__section--permissions">
-                <div className="create-user__section-header">
-                  <div>
-                    <p className="create-user__eyebrow">Acceso y permisos</p>
-                    <h4>Permisos</h4>
-                  </div>
-                  {(permissionsLoading || !permissionOptions.length) && (
-                    <small className="muted">{permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}</small>
-                  )}
-                </div>
-
-                <div className="permissions-matrix__table" role="grid">
-                  <div className="permissions-matrix__row permissions-matrix__row--head">
-                    <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
-                    {ACTIONS.map((action) => (
-                      <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
-                        {action.label}
-                      </div>
-                    ))}
-                  </div>
-
-                  {permissionOptions.map((module) => renderPermissionRow(module))}
-                </div>
-              </section>
-            )}
-
-            {activeTab === 'sucursales' && (
+            {activeTab === 'accesos' && (
               <section className="create-user__section">
                 {(branchesLoading || !branches.length) && (
                   <div className="create-user__section-header">
@@ -698,35 +725,26 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                   </div>
                 )}
 
-                <div className="create-user__module-scopes">
-                  {branchScopedModules.map((module) => {
-                    const moduleEntry = permissionsMatrix[module.key] || {}
-                    const hasModulePermission = ACTIONS.some((action) => Boolean(moduleEntry[action.key]))
-                    const selectedForModule = moduleBranchMatrix[module.key] || []
+                <div className="create-user__branch-list create-user__branch-list--full">
+                  {branches.map((branch) => {
+                    const isSelected = branch.id === selectedBranchId
                     return (
-                      <div key={module.key} className="create-user__module-scope-card">
-                        <div className="create-user__module-scope-head">
-                          <strong>{module.label}</strong>
-                          {!hasModulePermission && (
-                            <small className="muted">Activa al menos un permiso de este módulo para asignar sucursales.</small>
-                          )}
+                      <div key={branch.id} className={`create-user__branch-item${isSelected ? ' create-user__branch-item--active' : ''}`}>
+                        <div className="create-user__branch-meta">
+                          <strong>{branch.nombre}</strong>
+                          {branch.direccion ? <small>{branch.direccion}</small> : null}
                         </div>
-                        <div className="create-user__branches">
-                          {branches.map((branch) => (
-                            <label key={`${module.key}-${branch.id}`} className="create-user__branch-option">
-                              <input
-                                type="checkbox"
-                                checked={selectedForModule.includes(branch.id)}
-                                onChange={() => toggleModuleBranch(module.key, branch.id)}
-                                disabled={loading || branchesLoading || !hasModulePermission}
-                              />
-                              <div className="create-user__branch-info">
-                                <span>{branch.nombre}</span>
-                                {branch.direccion ? <small>{branch.direccion}</small> : null}
-                              </div>
-                            </label>
-                          ))}
-                        </div>
+                        <button
+                          type="button"
+                          className="create-user__ghost create-user__branch-select"
+                          onClick={() => {
+                            setSelectedBranchId(branch.id)
+                            setShowPermissionsPopup(true)
+                          }}
+                          disabled={loading || branchesLoading}
+                        >
+                          Ver permisos
+                        </button>
                       </div>
                     )
                   })}
@@ -744,6 +762,55 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
             </button>
           </div>
         </form>
+
+        {showPermissionsPopup && selectedBranch && typeof document !== 'undefined' && createPortal(
+          <div
+            className="create-user__permissions-popup-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Permisos de ${selectedBranch.nombre}`}
+            onClick={() => setShowPermissionsPopup(false)}
+          >
+            <div className="create-user__permissions-popup" onClick={(event) => event.stopPropagation()}>
+              <div className="create-user__permissions-popup-head">
+                <div>
+                  <p className="create-user__eyebrow">Permisos por sucursal</p>
+                  <h4>{selectedBranch.nombre}</h4>
+                </div>
+                <button
+                  type="button"
+                  className="create-user__icon-button"
+                  onClick={() => setShowPermissionsPopup(false)}
+                  aria-label="Cerrar permisos"
+                >
+                  <i className="pi pi-times" aria-hidden="true" />
+                </button>
+              </div>
+
+              {(permissionsLoading || !permissionOptions.length) && (
+                <small className="muted">
+                  {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
+                </small>
+              )}
+
+              <div className="create-user__permissions-popup-body">
+                <div className="permissions-matrix__table" role="grid">
+                  <div className="permissions-matrix__row permissions-matrix__row--head">
+                    <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
+                    {ACTIONS.map((action) => (
+                      <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
+                        {action.label}
+                      </div>
+                    ))}
+                  </div>
+
+                  {permissionOptions.map((module) => renderPermissionRow(module))}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
         <button
           type="button"

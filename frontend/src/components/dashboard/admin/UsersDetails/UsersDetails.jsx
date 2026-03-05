@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Eye, Info, Pencil } from 'lucide-react'
 import '../CreateUsuario/CreateUsuario.css'
 import './UsersDetails.css'
@@ -80,8 +81,12 @@ const emptyForm = {
 function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onError }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordCopied, setPasswordCopied] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [permissionOptions, setPermissionOptions] = useState([])
-  const [branchScopedModules, setBranchScopedModules] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [moduleBranchMatrix, setModuleBranchMatrix] = useState({})
   const [permissionsLoading, setPermissionsLoading] = useState(false)
@@ -94,6 +99,8 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
+  const [selectedBranchId, setSelectedBranchId] = useState(null)
+  const [showPermissionsPopup, setShowPermissionsPopup] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -153,37 +160,76 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     }))
   }
 
-  const togglePermission = (moduleKey, actionKey) => {
-    if (!isEditing) return
-    setPermissionsMatrix((prev) => {
-      const current = prev[moduleKey] || {
+  const isBranchScopedForModule = useCallback(
+    (moduleKey, branchId) => {
+      if (!branchId) return false
+      const scopedBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
+      return scopedBranches.includes(branchId)
+    },
+    [moduleBranchMatrix]
+  )
+
+  const togglePermissionForBranch = (moduleKey, actionKey) => {
+    if (!isEditing || !selectedBranchId) return
+
+    setPermissionsMatrix((prevPermissions) => {
+      const current = prevPermissions[moduleKey] || {
         puede_crear: false,
         puede_leer: false,
         puede_actualizar: false,
         puede_eliminar: false,
       }
+      const moduleBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
+      const branchScoped = moduleBranches.includes(selectedBranchId)
+      const currentlyChecked = branchScoped && Boolean(current[actionKey])
 
-      const nextValue = !current[actionKey]
-      const updatedEntry = { ...current, [actionKey]: nextValue }
-      const hasAction = ACTIONS.some((action) => updatedEntry[action.key])
+      if (!currentlyChecked) {
+        setModuleBranchMatrix((prevScopes) => {
+          const currentScopes = Array.isArray(prevScopes[moduleKey]) ? prevScopes[moduleKey] : []
+          if (currentScopes.includes(selectedBranchId)) return prevScopes
+          return { ...prevScopes, [moduleKey]: [...currentScopes, selectedBranchId] }
+        })
+        return {
+          ...prevPermissions,
+          [moduleKey]: { ...current, [actionKey]: true },
+        }
+      }
+
+      const otherScopedBranches = moduleBranches.filter((id) => id !== selectedBranchId)
+      if (otherScopedBranches.length > 0) {
+        setModuleBranchMatrix((prevScopes) => {
+          const currentScopes = Array.isArray(prevScopes[moduleKey]) ? prevScopes[moduleKey] : []
+          const nextScopes = currentScopes.filter((id) => id !== selectedBranchId)
+          if (!nextScopes.length) {
+            const { [moduleKey]: _ignored, ...rest } = prevScopes
+            return rest
+          }
+          return { ...prevScopes, [moduleKey]: nextScopes }
+        })
+        return prevPermissions
+      }
+
+      const updatedEntry = { ...current, [actionKey]: false }
+      const hasAction = ACTIONS.some((action) => Boolean(updatedEntry[action.key]))
 
       if (!hasAction) {
         setModuleBranchMatrix((prevScopes) => {
           const { [moduleKey]: _ignored, ...restScopes } = prevScopes
           return restScopes
         })
-        const { [moduleKey]: _ignored, ...rest } = prev
-        return rest
+        const { [moduleKey]: _ignored, ...restPermissions } = prevPermissions
+        return restPermissions
       }
 
-      return { ...prev, [moduleKey]: updatedEntry }
+      return { ...prevPermissions, [moduleKey]: updatedEntry }
     })
   }
 
   const renderPermissionRow = (module) => {
     const entryKey = module.key
     const current = permissionsMatrix[entryKey] || {}
-    const isDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading
+    const branchScoped = isBranchScopedForModule(entryKey, selectedBranchId)
+    const isDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading || branchesLoading || !selectedBranchId
 
     return (
       <div
@@ -195,8 +241,8 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
           <label key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
             <input
               type="checkbox"
-              checked={Boolean(current?.[action.key])}
-              onChange={() => togglePermission(module.key, action.key)}
+              checked={branchScoped && Boolean(current?.[action.key])}
+              onChange={() => togglePermissionForBranch(module.key, action.key)}
               disabled={isDisabled}
             />
           </label>
@@ -218,11 +264,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
 
       const data = await response.json().catch(() => ({}))
       const modulos = Array.isArray(data?.modulos) ? data.modulos : []
-      const modulosConSucursal = Array.isArray(data?.modulos_con_sucursales)
-        ? data.modulos_con_sucursales
-        : []
       setPermissionOptions(modulos)
-      setBranchScopedModules(modulosConSucursal)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
@@ -244,26 +286,16 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       const data = await response.json().catch(() => [])
       const items = Array.isArray(data) ? data : data?.results || []
       setBranches(items)
+      setSelectedBranchId((prev) => {
+        if (prev && items.some((branch) => branch.id === prev)) return prev
+        return items[0]?.id ?? null
+      })
     } catch (err) {
       notifyError(err.message || 'Ocurrió un problema al cargar las sucursales.')
     } finally {
       setBranchesLoading(false)
     }
   }, [notifyError, token])
-
-  const toggleModuleBranch = (moduleKey, branchId) => {
-    if (!isEditing) return
-    setModuleBranchMatrix((prev) => {
-      const current = Array.isArray(prev[moduleKey]) ? prev[moduleKey] : []
-      const exists = current.includes(branchId)
-      const next = exists ? current.filter((id) => id !== branchId) : [...current, branchId]
-      if (!next.length) {
-        const { [moduleKey]: _ignored, ...rest } = prev
-        return rest
-      }
-      return { ...prev, [moduleKey]: next }
-    })
-  }
 
   const fetchUser = useCallback(async () => {
     if (!userId) return
@@ -287,6 +319,11 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       setPermissionsMatrix(buildMatrixFromList(normalized.permisos_personalizados))
       setModuleBranchMatrix(buildModuleBranchMatrixFromList(normalized.sucursales_por_modulo))
       setIsEditing(false)
+      setPassword('')
+      setConfirmPassword('')
+      setPasswordCopied(false)
+      setShowPassword(false)
+      setShowConfirmPassword(false)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al obtener la información del usuario.')
     } finally {
@@ -299,10 +336,16 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setIsEditing(false)
     setFormData(emptyForm)
     setOriginalData(emptyForm)
+    setPassword('')
+    setConfirmPassword('')
+    setPasswordCopied(false)
+    setShowPassword(false)
+    setShowConfirmPassword(false)
     setPermissionsMatrix({})
     setModuleBranchMatrix({})
-    setBranchScopedModules([])
     setBranches([])
+    setSelectedBranchId(null)
+    setShowPermissionsPopup(false)
     setSubmitAttempted(false)
     setActiveTab('general')
     setIsMaximized(false)
@@ -466,9 +509,48 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
         setPermissionsMatrix(buildMatrixFromList(originalData.permisos_personalizados))
         setModuleBranchMatrix(buildModuleBranchMatrixFromList(originalData.sucursales_por_modulo))
         setSubmitAttempted(false)
+        setPassword('')
+        setConfirmPassword('')
+        setPasswordCopied(false)
+        setShowPassword(false)
+        setShowConfirmPassword(false)
+        setShowPermissionsPopup(false)
+      } else {
+        setPassword('')
+        setConfirmPassword('')
+        setPasswordCopied(false)
+        setShowPassword(false)
+        setShowConfirmPassword(false)
+        setShowPermissionsPopup(false)
       }
       return next
     })
+  }
+
+  const generatePassword = () => {
+    if (!isEditing || loadingData || saving || deleteLoading) return
+    const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789!@$%#?'
+    let result = ''
+    for (let i = 0; i < 12; i += 1) {
+      result += charset.charAt(Math.floor(Math.random() * charset.length))
+    }
+    setPassword(result)
+    setConfirmPassword(result)
+    setPasswordCopied(false)
+    setShowPassword(false)
+    setShowConfirmPassword(false)
+    setShowPermissionsPopup(false)
+  }
+
+  const copyPassword = async () => {
+    if (!password) return
+    try {
+      await navigator.clipboard.writeText(password)
+      setPasswordCopied(true)
+      setTimeout(() => setPasswordCopied(false), 2500)
+    } catch {
+      notifyError('No se pudo copiar la contraseña. Intenta nuevamente.')
+    }
   }
 
   const handleSubmit = async (event) => {
@@ -486,6 +568,22 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       cargo: formData.cargo.trim(),
       permisos_personalizados: serializeMatrix(permissionsMatrix),
       sucursales_por_modulo: serializeModuleBranchMatrix(moduleBranchMatrix),
+    }
+
+    if (password || confirmPassword) {
+      if (password.length < 8) {
+        setSaving(false)
+        notifyError('La nueva contraseña debe tener al menos 8 caracteres.')
+        return
+      }
+
+      if (password !== confirmPassword) {
+        setSaving(false)
+        notifyError('La confirmación de la nueva contraseña no coincide.')
+        return
+      }
+
+      payload.password = password
     }
 
     if (!payload.nombres || !payload.apellidos || !payload.correo) {
@@ -509,6 +607,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
         const detail =
           data?.detail ||
           data?.correo?.[0] ||
+          data?.password?.[0] ||
           data?.nombres?.[0] ||
           data?.roles?.[0] ||
           data?.sucursales_por_modulo?.[0] ||
@@ -524,6 +623,12 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       setModuleBranchMatrix(buildModuleBranchMatrixFromList(normalized.sucursales_por_modulo))
       setSubmitAttempted(false)
       setIsEditing(false)
+      setPassword('')
+      setConfirmPassword('')
+      setPasswordCopied(false)
+      setShowPassword(false)
+      setShowConfirmPassword(false)
+      setShowPermissionsPopup(false)
       onUpdated?.(data)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al actualizar el usuario.')
@@ -565,7 +670,13 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setIsEditing(false)
     setSubmitAttempted(false)
     setShowDeleteDialog(false)
+    setPassword('')
+    setConfirmPassword('')
+    setPasswordCopied(false)
+    setShowPassword(false)
+    setShowConfirmPassword(false)
   }
+  const selectedBranch = branches.find((branch) => branch.id === selectedBranchId) || null
   const { shouldRender, isClosing } = useModalAnimation(open)
 
   if (!shouldRender) return null
@@ -619,7 +730,10 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
           <button
             type="button"
             className={`create-user__tab${activeTab === 'general' ? ' create-user__tab--active' : ''}`}
-            onClick={() => setActiveTab('general')}
+            onClick={() => {
+              setActiveTab('general')
+              setShowPermissionsPopup(false)
+            }}
             role="tab"
             aria-selected={activeTab === 'general'}
           >
@@ -627,25 +741,19 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
           </button>
           <button
             type="button"
-            className={`create-user__tab${activeTab === 'permisos' ? ' create-user__tab--active' : ''}`}
-            onClick={() => setActiveTab('permisos')}
+            className={`create-user__tab${activeTab === 'accesos' ? ' create-user__tab--active' : ''}`}
+            onClick={() => {
+              setActiveTab('accesos')
+              setShowPermissionsPopup(false)
+            }}
             role="tab"
-            aria-selected={activeTab === 'permisos'}
+            aria-selected={activeTab === 'accesos'}
           >
-            Permisos
-          </button>
-          <button
-            type="button"
-            className={`create-user__tab${activeTab === 'sucursales' ? ' create-user__tab--active' : ''}`}
-            onClick={() => setActiveTab('sucursales')}
-            role="tab"
-            aria-selected={activeTab === 'sucursales'}
-          >
-            Sucursales
+            Sucursales y permisos
           </button>
         </div>
 
-        <div className={`create-user__body${activeTab === 'permisos' ? ' create-user__body--permissions' : ''}`}>
+        <div className={`create-user__body${activeTab === 'accesos' ? ' create-user__body--permissions' : ''}`}>
           {activeTab === 'general' && (
             <section className="create-user__section">
               <div className="create-user__section-header">
@@ -724,56 +832,104 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
               <div className="create-user__section-header">
                 <div>
                   <p className="create-user__eyebrow">Perfil</p>
-                  <h4>Activación</h4>
+                  <h4>Activación y contraseña</h4>
                 </div>
                 {loadingData && <small className="muted">Cargando datos...</small>}
               </div>
 
               <div className="create-user__access-grid">
-                <label className="create-user__checkbox">
-                  <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} disabled={!isEditing || loadingData || saving} />
-                  <div>
-                    <span>Cuenta activa</span>
-                    <p>El usuario podrá iniciar sesión y operar el sistema.</p>
-                  </div>
-                </label>
+                <div className="create-user__access-left">
+                  <label className="create-user__field create-user__field--password">
+                    <div className="create-user__field-label">
+                      <span>Nueva contraseña</span>
+                      <div className="create-user__password-actions">
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={generatePassword}
+                          disabled={!isEditing || loadingData || saving || deleteLoading}
+                        >
+                          Generar
+                        </button>
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={copyPassword}
+                          disabled={!isEditing || loadingData || saving || deleteLoading || !password}
+                        >
+                          {passwordCopied ? 'Copiada' : 'Copiar'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="create-user__password-input">
+                      <input
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Deja vacía para mantener la actual"
+                        value={password}
+                        onChange={(event) => {
+                          if (!isEditing) return
+                          setPassword(event.target.value)
+                          setPasswordCopied(false)
+                        }}
+                        disabled={!isEditing || loadingData || saving || deleteLoading}
+                      />
+                      <button
+                        type="button"
+                        className="create-user__password-toggle"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        disabled={!isEditing || loadingData || saving || deleteLoading}
+                        aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      >
+                        <i className={`pi ${showPassword ? 'pi-eye-slash' : 'pi-eye'}`} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </label>
+
+                  <label className="create-user__field create-user__field--password-confirm">
+                    <div className="create-user__field-label">
+                      <span>Confirmar nueva contraseña</span>
+                    </div>
+                    <div className="create-user__password-input">
+                      <input
+                        name="confirmPassword"
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        placeholder="Repite la nueva contraseña"
+                        value={confirmPassword}
+                        onChange={(event) => {
+                          if (!isEditing) return
+                          setConfirmPassword(event.target.value)
+                        }}
+                        disabled={!isEditing || loadingData || saving || deleteLoading}
+                      />
+                      <button
+                        type="button"
+                        className="create-user__password-toggle"
+                        onClick={() => setShowConfirmPassword((prev) => !prev)}
+                        disabled={!isEditing || loadingData || saving || deleteLoading}
+                        aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      >
+                        <i className={`pi ${showConfirmPassword ? 'pi-eye-slash' : 'pi-eye'}`} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="create-user__access-right">
+                  <label className="create-user__checkbox">
+                    <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} disabled={!isEditing || loadingData || saving} />
+                    <div>
+                      <span>Cuenta activa</span>
+                      <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                    </div>
+                  </label>
+                </div>
               </div>
 
             </section>
           )}
 
-          {activeTab === 'permisos' && (
-            <section className="create-user__section create-user__section--permissions">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">Acceso y permisos</p>
-                  <h4>Permisos</h4>
-                </div>
-                {(permissionsLoading || !permissionOptions.length) && (
-                  <small className="muted">
-                    {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
-                  </small>
-                )}
-              </div>
-
-              <div className="permissions-matrix__table" role="grid">
-                <div className="permissions-matrix__row permissions-matrix__row--head">
-                  <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
-                  {ACTIONS.map((action) => (
-                    <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
-                      {action.label}
-                    </div>
-                  ))}
-                </div>
-
-                {permissionOptions.map((module) => (
-                  renderPermissionRow(module)
-                ))}
-              </div>
-              </section>
-            )}
-
-            {activeTab === 'sucursales' && (
+          {activeTab === 'accesos' && (
               <section className="create-user__section">
                 {(branchesLoading || !branches.length) && (
                   <div className="create-user__section-header">
@@ -783,38 +939,26 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
                   </div>
                 )}
 
-                <div className="create-user__module-scopes">
-                  {branchScopedModules.map((module) => {
-                    const moduleEntry = permissionsMatrix[module.key] || {}
-                    const hasModulePermission = ACTIONS.some((action) => Boolean(moduleEntry[action.key]))
-                    const selectedForModule = moduleBranchMatrix[module.key] || []
-                    const rowDisabled =
-                      !isEditing || loadingData || saving || deleteLoading || branchesLoading || !hasModulePermission
-
+                <div className="create-user__branch-list create-user__branch-list--full">
+                  {branches.map((branch) => {
+                    const isSelected = branch.id === selectedBranchId
                     return (
-                      <div key={module.key} className="create-user__module-scope-card">
-                        <div className="create-user__module-scope-head">
-                          <strong>{module.label}</strong>
-                          {!hasModulePermission && (
-                            <small className="muted">Activa al menos un permiso de este módulo para asignar sucursales.</small>
-                          )}
+                      <div key={branch.id} className={`create-user__branch-item${isSelected ? ' create-user__branch-item--active' : ''}`}>
+                        <div className="create-user__branch-meta">
+                          <strong>{branch.nombre}</strong>
+                          {branch.direccion ? <small>{branch.direccion}</small> : null}
                         </div>
-                        <div className="create-user__branches">
-                          {branches.map((branch) => (
-                            <label key={`${module.key}-${branch.id}`} className="create-user__branch-option">
-                              <input
-                                type="checkbox"
-                                checked={selectedForModule.includes(branch.id)}
-                                onChange={() => toggleModuleBranch(module.key, branch.id)}
-                                disabled={rowDisabled}
-                              />
-                              <div className="create-user__branch-info">
-                                <span>{branch.nombre}</span>
-                                {branch.direccion ? <small>{branch.direccion}</small> : null}
-                              </div>
-                            </label>
-                          ))}
-                        </div>
+                        <button
+                          type="button"
+                          className="create-user__ghost create-user__branch-select"
+                          onClick={() => {
+                            setSelectedBranchId(branch.id)
+                            setShowPermissionsPopup(true)
+                          }}
+                          disabled={!isEditing || loadingData || saving || deleteLoading || branchesLoading}
+                        >
+                          Ver permisos
+                        </button>
                       </div>
                     )
                   })}
@@ -876,6 +1020,57 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
             </div>
           </div>
       </form>
+
+      {showPermissionsPopup && selectedBranch && typeof document !== 'undefined' && createPortal(
+        <div
+          className="create-user__permissions-popup-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Permisos de ${selectedBranch.nombre}`}
+          onClick={() => setShowPermissionsPopup(false)}
+        >
+          <div className="create-user__permissions-popup" onClick={(event) => event.stopPropagation()}>
+            <div className="create-user__permissions-popup-head">
+              <div>
+                <p className="create-user__eyebrow">Permisos por sucursal</p>
+                <h4>{selectedBranch.nombre}</h4>
+              </div>
+              <button
+                type="button"
+                className="create-user__icon-button"
+                onClick={() => setShowPermissionsPopup(false)}
+                aria-label="Cerrar permisos"
+              >
+                <i className="pi pi-times" aria-hidden="true" />
+              </button>
+            </div>
+
+            {(permissionsLoading || !permissionOptions.length) && (
+              <small className="muted">
+                {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
+              </small>
+            )}
+
+            <div className="create-user__permissions-popup-body">
+              <div className="permissions-matrix__table" role="grid">
+                <div className="permissions-matrix__row permissions-matrix__row--head">
+                  <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
+                  {ACTIONS.map((action) => (
+                    <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
+                      {action.label}
+                    </div>
+                  ))}
+                </div>
+
+                {permissionOptions.map((module) => (
+                  renderPermissionRow(module)
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {showDeleteDialog && (
         <div className="user-details__confirm-overlay" role="alertdialog" aria-modal="true" aria-label="Confirmar eliminación">

@@ -4,6 +4,8 @@ import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
 import { Tooltip } from 'primereact/tooltip'
+import { OverlayPanel } from 'primereact/overlaypanel'
+import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
 
 import CreateEntrada from './CreateEntrada'
@@ -148,6 +150,7 @@ const isCheckboxSelection = (event) => {
 
 function EntradasTable({ token, user, createBranchId = '' }) {
   const toast = useRef(null)
+  const opColumns = useRef(null)
   const preloadEntradaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
   const fetchSeqRef = useRef(0)
@@ -187,6 +190,21 @@ function EntradasTable({ token, user, createBranchId = '' }) {
   const hasSpecificCreateBranch = Boolean(
     normalizedCreateBranchId && normalizedCreateBranchId !== 'all'
   )
+  const columnsData = useMemo(
+    () => [
+      { nombrevar: 'no_documento', header: 'Documento', filterPlaceholder: 'Buscar por documento' },
+      { nombrevar: 'fecha', header: 'Fecha', filterPlaceholder: 'Buscar por fecha' },
+      { nombrevar: 'sucursal_nombre', header: 'Sucursal', filterPlaceholder: 'Buscar por sucursal' },
+      { nombrevar: 'sub_tipo_nombre', header: 'Tipo', filterPlaceholder: 'Buscar por tipo' },
+      { nombrevar: 'sucursal_objetivo_nombre', header: 'Destino', filterPlaceholder: 'Buscar por destino' },
+      { nombrevar: 'estado_nombre', header: 'Estado', filterPlaceholder: 'Buscar por estado' },
+      { nombrevar: 'total', header: 'Total', filterPlaceholder: 'Buscar por total' },
+      { nombrevar: 'funcional_label', header: 'Funcional', filterPlaceholder: 'Buscar por funcional' },
+    ],
+    []
+  )
+  const [selectedColumns, setSelectedColumns] = useState(columnsData)
+  const selectedColumnsRef = useRef(selectedColumns)
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -198,6 +216,32 @@ function EntradasTable({ token, user, createBranchId = '' }) {
       }),
     []
   )
+
+  useEffect(() => {
+    selectedColumnsRef.current = selectedColumns
+  }, [selectedColumns])
+
+  useEffect(() => {
+    const stored = localStorage.getItem('entradas-table-columns')
+    if (stored) setSelectedColumns(JSON.parse(stored))
+    return () => {
+      localStorage.setItem('entradas-table-columns', JSON.stringify(selectedColumnsRef.current))
+    }
+  }, [])
+
+  useEffect(() => {
+    setSelectedColumns((prev) => {
+      if (!prev || !prev.length) return columnsData
+      const prevKeys = new Set(prev.map((col) => col?.nombrevar))
+      const next = columnsData.filter((col) => prevKeys.has(col.nombrevar))
+      columnsData.forEach((col) => {
+        if (!next.some((item) => item.nombrevar === col.nombrevar)) {
+          next.push(col)
+        }
+      })
+      return next
+    })
+  }, [columnsData])
 
   const normalizeList = useCallback(
     (list) =>
@@ -597,6 +641,20 @@ function EntradasTable({ token, user, createBranchId = '' }) {
     })
   }
 
+  const handleCheckboxChangeColumn = (column) => {
+    if (selectedColumns.some((item) => item.nombrevar === column.nombrevar)) {
+      setSelectedColumns(selectedColumns.filter((item) => item.nombrevar !== column.nombrevar))
+    } else {
+      setSelectedColumns([...selectedColumns, column])
+    }
+  }
+
+  const handleOrderChange = (event) => {
+    const columnOrder = (Array.isArray(event?.columns) ? event.columns : []).map((col) => col.props.field)
+    const sorted = columnOrder.map((field) => selectedColumns.find((col) => col.nombrevar === field)).filter(Boolean)
+    if (sorted.length) setSelectedColumns(sorted)
+  }
+
   const cellWithTooltip = (rowData, field) => {
     const content = rowData?.[field] ?? '-'
     const textColor = content === '-' ? '#9ca3af' : undefined
@@ -719,17 +777,8 @@ function EntradasTable({ token, user, createBranchId = '' }) {
   }
 
   const exportColumns = useMemo(
-    () => [
-      { key: 'no_documento', header: 'Documento' },
-      { key: 'fecha', header: 'Fecha' },
-      { key: 'sucursal_nombre', header: 'Sucursal' },
-      { key: 'sub_tipo_nombre', header: 'Tipo' },
-      { key: 'sucursal_objetivo_nombre', header: 'Destino' },
-      { key: 'estado_nombre', header: 'Estado' },
-      { key: 'total', header: 'Total' },
-      { key: 'funcional_label', header: 'Funcional' },
-    ],
-    []
+    () => selectedColumns.map((col) => ({ key: col.nombrevar, header: col.header })),
+    [selectedColumns]
   )
 
   const getExportValue = useCallback((row, field) => {
@@ -750,6 +799,10 @@ function EntradasTable({ token, user, createBranchId = '' }) {
   }, [])
 
   const handleExportExcel = useCallback(async () => {
+    if (!exportColumns.length) {
+      notifyExportWarning('Selecciona al menos una columna para exportar.')
+      return
+    }
     const rows = getRowsToExport()
     if (!rows.length) {
       notifyExportWarning('No hay registros para exportar.')
@@ -764,6 +817,10 @@ function EntradasTable({ token, user, createBranchId = '' }) {
   }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
 
   const handleExportPdf = useCallback(async () => {
+    if (!exportColumns.length) {
+      notifyExportWarning('Selecciona al menos una columna para exportar.')
+      return
+    }
     const rows = getRowsToExport()
     if (!rows.length) {
       notifyExportWarning('No hay registros para exportar.')
@@ -823,6 +880,10 @@ function EntradasTable({ token, user, createBranchId = '' }) {
 
         <button className="rounded-icon-btn" type="button" onClick={clearFilter} title="Limpiar filtros">
           <i className="pi pi-filter-slash" />
+        </button>
+
+        <button className="rounded-icon-btn" type="button" onClick={(event) => opColumns.current?.toggle(event)} title="Campos">
+          <i className="pi pi-sliders-h" />
         </button>
       </div>
       <div className="users-header__right">
@@ -903,6 +964,7 @@ function EntradasTable({ token, user, createBranchId = '' }) {
           sortOrder={sortOrder || 0}
           onSort={handleSortChange}
           reorderableColumns
+          onColReorder={handleOrderChange}
           resizableColumns
           columnResizeMode="fit"
           filters={filters}
@@ -951,64 +1013,45 @@ function EntradasTable({ token, user, createBranchId = '' }) {
             reorderable={false}
           />
 
-          <Column
-            field="no_documento"
-            header="Documento"
-            body={(rowData) => cellWithTooltip(rowData, 'no_documento')}
-            sortable
-            filter
-            className={columnClassName('no_documento')}
-          />
-          <Column
-            field="fecha"
-            header="Fecha"
-            body={(rowData) => cellWithTooltip(rowData, 'fecha')}
-            sortable
-            filter
-            className={columnClassName('fecha')}
-          />
-          <Column
-            field="sucursal_nombre"
-            header="Sucursal"
-            body={(rowData) => cellWithTooltip(rowData, 'sucursal_nombre')}
-            sortable
-            filter
-            className={columnClassName('sucursal_nombre')}
-          />
-          <Column
-            field="sub_tipo_nombre"
-            header="Tipo"
-            body={(rowData) => cellWithTooltip(rowData, 'sub_tipo_nombre')}
-            sortable
-            filter
-            className={columnClassName('sub_tipo_nombre')}
-          />
-          <Column
-            field="sucursal_objetivo_nombre"
-            header="Destino"
-            body={(rowData) => cellWithTooltip(rowData, 'sucursal_objetivo_nombre')}
-            sortable
-            filter
-            className={columnClassName('sucursal_objetivo_nombre')}
-          />
-          <Column
-            field="estado_nombre"
-            header="Estado"
-            body={(rowData) => cellWithTooltip(rowData, 'estado_nombre')}
-            sortable
-            filter
-            className={columnClassName('estado_nombre')}
-          />
-          <Column field="total" header="Total" body={totalBodyTemplate} sortable filter className={columnClassName('total')} />
-          <Column
-            field="funcional_label"
-            header="Funcional"
-            body={(rowData) => cellWithTooltip(rowData, 'funcional_label')}
-            sortable
-            filter
-            className={columnClassName('funcional_label')}
-          />
+          {selectedColumns.map((column) => {
+            const field = column.nombrevar
+            const bodyTemplate = field === 'total'
+              ? totalBodyTemplate
+              : (rowData) => cellWithTooltip(rowData, field)
+            return (
+              <Column
+                key={field}
+                field={field}
+                header={column.header}
+                body={bodyTemplate}
+                sortable
+                reorderable
+                filter
+                filterPlaceholder={column.filterPlaceholder}
+                className={columnClassName(field)}
+              />
+            )
+          })}
         </DataTable>
+
+        <OverlayPanel ref={opColumns} className="table-options-list">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <strong>Campos</strong>
+          </div>
+
+          {columnsData.map((col) => (
+            <div key={col.nombrevar} className="p-field-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+              <Checkbox
+                inputId={`entradas-col-${col.nombrevar}`}
+                name="entradas-columns"
+                value={col}
+                onChange={() => handleCheckboxChangeColumn(col)}
+                checked={selectedColumns.some((item) => item.nombrevar === col.nombrevar)}
+              />
+              <label htmlFor={`entradas-col-${col.nombrevar}`}>{col.header}</label>
+            </div>
+          ))}
+        </OverlayPanel>
       </div>
 
       <CreateEntrada

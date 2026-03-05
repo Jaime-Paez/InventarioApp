@@ -164,6 +164,40 @@ input:focus {
   border-color: var(--color-primary-dark);
 }
 
+.password-input {
+  position: relative;
+  width: 100%;
+}
+
+.password-input input {
+  padding-right: 2.2rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.password-toggle:hover {
+  opacity: 1;
+}
+
+.login-page.dark .password-toggle {
+  color: var(--color-text-dark);
+}
+
 .primary-button {
   background: var(--color-primary);
   color: var(--color-button-primary);

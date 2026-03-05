@@ -481,6 +481,45 @@
   border-radius: 10px;
 }
 
+.create-user__password-input {
+  position: relative;
+  width: 100%;
+}
+
+.create-user__password-input input {
+  padding-right: 2.2rem;
+}
+
+.create-user__password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.create-user__password-toggle:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.create-user__password-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dashboard-shell.dark .create-user__password-toggle {
+  color: var(--color-text-dark);
+}
+
 .create-user__field small {
   font-size: var(--font-size-base);
   color: var(--color-text-primary);
@@ -711,8 +750,152 @@
   gap: 12px;
 }
 
+.create-user__access-workspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.create-user__branch-list {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.create-user__branch-list--full {
+  max-height: none;
+}
+
+.create-user__branch-item {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.create-user__branch-item--active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.create-user__branch-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.create-user__branch-meta strong {
+  font-size: var(--font-size-base);
+}
+
+.create-user__branch-meta small {
+  color: var(--color-text-primary);
+  opacity: 0.7;
+}
+
+.create-user__branch-select {
+  white-space: nowrap;
+}
+
+.create-user__permissions-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 180px;
+}
+
+.create-user__permissions-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.create-user__permissions-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.create-user__permissions-popup {
+  width: min(960px, calc(100vw - 32px));
+  max-height: min(80vh, 720px);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--modal-color);
+  box-shadow: var(--shadow-panel);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.create-user__permissions-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.create-user__permissions-popup-head h4 {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.create-user__permissions-popup-body {
+  overflow: auto;
+  min-height: 0;
+}
+
+.dashboard-shell.dark .create-user__branch-list,
+.dashboard-shell.dark .create-user__branch-item,
+.dashboard-shell.dark .create-user__permissions-panel {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__branch-item--active {
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary-dark) 22%, transparent);
+}
+
+.dashboard-shell.dark .create-user__branch-meta small {
+  color: var(--color-text-dark);
+  opacity: 0.74;
+}
+
+.dashboard-shell.dark .create-user__permissions-popup {
+  background: var(--table-color-dark);
+  border-color: var(--color-border);
+}
+
 @media (max-width: 920px) {
   .create-user__access-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .create-user__access-workspace {
     grid-template-columns: 1fr;
   }
 }
