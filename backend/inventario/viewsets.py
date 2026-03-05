@@ -28,6 +28,7 @@ from usuarios.permissions import (
 from usuarios.sucursal_scope import (
     apply_sucursal_scope,
     ensure_sucursal_allowed,
+    get_allowed_sucursal_ids,
 )
 
 from .models import Bodega, Division, Inventario, SubDivision, Sucursal
@@ -64,6 +65,13 @@ class SucursalViewSet(viewsets.ModelViewSet):
             self._resolve_scope_module_key(),
             "id",
         )
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        module_key = self._resolve_scope_module_key()
+        allowed = get_allowed_sucursal_ids(request.user, module_key)
+        response["X-Sucursal-Scope-Unrestricted"] = "1" if allowed is None else "0"
+        return response
 
 
 class BodegaViewSet(viewsets.ModelViewSet):
@@ -498,16 +506,27 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         return serialized
 
+    @action(detail=False, methods=["get"], url_path="sucursales-tabla")
+    def sucursales_tabla(self, request, *args, **kwargs):
+        branches = (
+            Sucursal.objects.all()
+            .order_by("-id")
+            .values("id", "nombre", "direccion")
+        )
+        payload = [
+            {
+                "id": int(branch.get("id") or 0),
+                "nombre": str(branch.get("nombre") or "").strip(),
+                "direccion": str(branch.get("direccion") or "").strip(),
+            }
+            for branch in branches
+            if int(branch.get("id") or 0) > 0
+        ]
+        return Response(payload)
+
     @action(detail=False, methods=["get"], url_path="tabla")
     def tabla(self, request, *args, **kwargs):
-        branches = list(
-            apply_sucursal_scope(
-                Sucursal.objects.all().order_by("-id"),
-                request.user,
-                RolPermiso.Modulos.INVENTARIO,
-                "id",
-            )
-        )
+        branches = list(Sucursal.objects.all().order_by("-id"))
         allowed_branch_ids = [int(branch.id) for branch in branches]
         if not allowed_branch_ids:
             page = self.paginate_queryset([])
@@ -620,12 +639,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = apply_sucursal_scope(
-            queryset,
-            self.request.user,
-            RolPermiso.Modulos.INVENTARIO,
-            "subdivision__division__bodega__sucursal_id",
-        )
+        if self.request.method not in ("GET", "HEAD", "OPTIONS"):
+            queryset = apply_sucursal_scope(
+                queryset,
+                self.request.user,
+                RolPermiso.Modulos.INVENTARIO,
+                "subdivision__division__bodega__sucursal_id",
+            )
         queryset = queryset.annotate(
             pieza_original_label_text=Case(
                 When(producto__pieza_original=True, then=Value("Si")),

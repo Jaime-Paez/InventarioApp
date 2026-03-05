@@ -226,7 +226,7 @@ function InventarioTable({ token, user }) {
     if (!token) return
     try {
       const [branchesRes, bodegasRes, subdivisionsRes] = await Promise.all([
-        authFetch(`${API_URL}/inventario/sucursales/?modulo=inventario&page_size=500`, {}, token),
+        authFetch(`${API_URL}/inventario/inventario/sucursales-tabla/`, {}, token),
         authFetch(`${API_URL}/inventario/bodegas/?page_size=500`, {}, token),
         authFetch(`${API_URL}/inventario/subdivisiones/?page_size=500`, {}, token),
       ])

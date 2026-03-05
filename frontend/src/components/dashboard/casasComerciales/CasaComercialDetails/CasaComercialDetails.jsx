@@ -32,7 +32,18 @@ const normalizeCountrySearch = (value) =>
     .trim()
     .toLowerCase()
 
-function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated, onDeleted, onDuplicated, onError }) {
+function CasaComercialDetails({
+  open,
+  casaComercialId,
+  token,
+  onClose,
+  onUpdated,
+  onDeleted,
+  onDuplicated,
+  onError,
+  allowEdit = true,
+  allowDelete = true,
+}) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [countries, setCountries] = useState([])
@@ -188,6 +199,16 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
   }, [open])
 
   useEffect(() => {
+    if (allowEdit || !isEditing) return
+    setIsEditing(false)
+  }, [allowEdit, isEditing])
+
+  useEffect(() => {
+    if (allowDelete || !showDeleteDialog) return
+    setShowDeleteDialog(false)
+  }, [allowDelete, showDeleteDialog])
+
+  useEffect(() => {
     if (!open || !showCountryDropdown) return
     if (countrySearchTimerRef.current) clearTimeout(countrySearchTimerRef.current)
 
@@ -316,6 +337,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
   }
 
   const handleDelete = async () => {
+    if (!allowDelete) return
     if (!isEditing || deleteLoading || !casaComercialId) return
     setDeleteLoading(true)
     try {
@@ -397,6 +419,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
   }
 
   const handleToggleEdit = () => {
+    if (!allowEdit) return
     setIsEditing((prev) => {
       const next = !prev
       if (!next) {
@@ -738,15 +761,17 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
             >
               Cancelar
             </button>
-            <button
-              type="button"
-              className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-              onClick={handleToggleEdit}
-              disabled={loadingData || saving}
-            >
-              <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>
-              {isEditing ? 'Solo lectura' : 'Editar'}
-            </button>
+            {allowEdit && (
+              <button
+                type="button"
+                className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
+                onClick={handleToggleEdit}
+                disabled={loadingData || saving}
+              >
+                <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>
+                {isEditing ? 'Solo lectura' : 'Editar'}
+              </button>
+            )}
           </div>
 
           <div className="user-details__footer-right">
@@ -760,14 +785,16 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
                 >
                   {duplicateLoading ? 'Duplicando...' : 'Duplicar a marca'}
                 </button>
-                <button
-                  type="button"
-                  className="create-user__action user-details__delete"
-                  onClick={() => setShowDeleteDialog(true)}
-                  disabled={saving || duplicateLoading}
-                >
-                  Eliminar
-                </button>
+                {allowDelete && (
+                  <button
+                    type="button"
+                    className="create-user__action user-details__delete"
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={saving || duplicateLoading}
+                  >
+                    Eliminar
+                  </button>
+                )}
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"
@@ -789,7 +816,7 @@ function CasaComercialDetails({ open, casaComercialId, token, onClose, onUpdated
         />
       </div>
 
-      {showDeleteDialog && (
+      {allowDelete && showDeleteDialog && (
         <div className="user-details__confirm-overlay">
           <div className="user-details__confirm-dialog">
             <div className="user-details__confirm-icon">

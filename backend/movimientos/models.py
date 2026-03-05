@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
@@ -90,6 +91,15 @@ class SolicitudTraslado(models.Model):
         choices=Estados.choices,
         default=Estados.PENDIENTE,
     )
+    motivo_rechazo = models.TextField(blank=True, default="")
+    rechazada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="solicitudes_traslado_rechazadas",
+        null=True,
+        blank=True,
+    )
+    rechazada_en = models.DateTimeField(null=True, blank=True)
     movimiento_salida = models.OneToOneField(
         "movimientos.MovimientoInventario",
         on_delete=models.SET_NULL,

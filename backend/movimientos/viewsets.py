@@ -1,15 +1,17 @@
 from decimal import Decimal, InvalidOperation
+from datetime import date
 
 from django.db.models import DecimalField, ExpressionWrapper, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
+from django.utils import timezone
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
-from inventario.models import Inventario
+from inventario.models import Inventario, Sucursal
 from solicitudes.models import Cliente
 
 from usuarios.models import RolPermiso
@@ -18,6 +20,7 @@ from usuarios.sucursal_scope import (
     ensure_sucursal_allowed_for_modules,
     get_allowed_sucursal_ids,
 )
+from tipos.models import EstadoMovimiento, SubTipoMovimiento, TipoMovimiento
 
 from .models import MovimientoInventario, SolicitudTraslado
 from .serializers import MovimientoInventarioSerializer, SolicitudTrasladoSerializer
@@ -617,9 +620,68 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             self.request.user,
             module_keys,
             getattr(sucursal_objetivo, "id", None),
-                field_label="sucursal objetivo",
+            field_label="sucursal objetivo",
             )
         serializer.save()
+
+    def _get_solicitud_traslado(self, solicitud_id):
+        return (
+            SolicitudTraslado.objects.select_related(
+                "sucursal_solicitante",
+                "sucursal_proveedora",
+                "movimiento_salida",
+                "movimiento_entrada",
+                "rechazada_por",
+            )
+            .prefetch_related("detalles__producto")
+            .filter(pk=solicitud_id)
+            .first()
+        )
+
+    def _resolve_transfer_approval_catalogs(self):
+        tipo_salida = (
+            TipoMovimiento.objects.filter(nombre__istartswith="sal")
+            .order_by("id")
+            .first()
+        )
+        if tipo_salida is None:
+            return None, None, None
+
+        subtipo_traslado = (
+            SubTipoMovimiento.objects.filter(
+                tipo_movimiento=tipo_salida,
+                nombre__icontains="trasl",
+            )
+            .order_by("id")
+            .first()
+        )
+        if subtipo_traslado is None:
+            return None, None, None
+
+        estado_enviado = (
+            EstadoMovimiento.objects.filter(nombre__icontains="enviad")
+            .order_by("id")
+            .first()
+        )
+        if estado_enviado is None:
+            return None, None, None
+
+        return tipo_salida, subtipo_traslado, estado_enviado
+
+    @staticmethod
+    def _build_unique_transfer_document(tipo_movimiento, base_document):
+        raw_base = str(base_document or "").strip() or "TR-SALIDA"
+        candidate = raw_base[:80]
+        index = 1
+        while MovimientoInventario.objects.filter(
+            tipo_movimiento=tipo_movimiento,
+            no_documento__iexact=candidate,
+        ).exists():
+            suffix = f"-{index}"
+            trimmed = raw_base[: max(1, 80 - len(suffix))]
+            candidate = f"{trimmed}{suffix}"
+            index += 1
+        return candidate
 
     @action(detail=False, methods=["get", "post"], url_path="solicitudes-traslado")
     def solicitudes_traslado(self, request):
@@ -705,6 +767,181 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         serializer = SolicitudTrasladoSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="sucursales-traslado-proveedoras",
+    )
+    def sucursales_traslado_proveedoras(self, request):
+        """
+        Lista sucursales proveedoras para solicitudes de traslado.
+        Este endpoint no aplica alcance por sucursal para permitir solicitar
+        a cualquier sucursal distinta de la propia.
+        """
+        exclude_id_raw = (
+            request.query_params.get("sucursal_solicitante_id")
+            or request.query_params.get("exclude_id")
+            or ""
+        ).strip()
+
+        queryset = Sucursal.objects.all().order_by("nombre", "id")
+        if exclude_id_raw:
+            if not exclude_id_raw.isdigit():
+                return Response(
+                    {"detail": "Debes enviar un sucursal_solicitante_id valido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.exclude(id=int(exclude_id_raw))
+
+        payload = [
+            {
+                "id": int(branch.id),
+                "nombre": str(branch.nombre or "").strip(),
+                "direccion": str(branch.direccion or "").strip(),
+            }
+            for branch in queryset
+        ]
+        return Response(payload, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)",
+    )
+    def detalle_solicitud_traslado(self, request, solicitud_id=None):
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            solicitud.sucursal_proveedora_id,
+            field_label="sucursal proveedora",
+        )
+
+        serializer = SolicitudTrasladoSerializer(instance=solicitud)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/decision",
+    )
+    def decision_solicitud_traslado(self, request, solicitud_id=None):
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            solicitud.sucursal_proveedora_id,
+            field_label="sucursal proveedora",
+        )
+
+        if solicitud.estado != SolicitudTraslado.Estados.PENDIENTE:
+            return Response(
+                {
+                    "detail": (
+                        "La solicitud ya fue procesada y no admite nuevas decisiones."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        decision = str(request.data.get("decision") or "").strip().lower()
+        if decision in {"aceptar", "aprobar", "aprobada", "approve", "approved"}:
+            tipo_salida, subtipo_traslado, estado_enviado = (
+                self._resolve_transfer_approval_catalogs()
+            )
+            if not all([tipo_salida, subtipo_traslado, estado_enviado]):
+                return Response(
+                    {
+                        "detail": (
+                            "Faltan catalogos para aprobar la solicitud de traslado."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            document_number = self._build_unique_transfer_document(
+                tipo_salida,
+                f"TR-SAL-{solicitud.no_documento}",
+            )
+            movement_payload = {
+                "sucursal_id": int(solicitud.sucursal_proveedora_id),
+                "tipo_movimiento_id": int(tipo_salida.id),
+                "sub_tipo_movimiento_id": int(subtipo_traslado.id),
+                "estado_movimiento_id": int(estado_enviado.id),
+                "descripcion": str(solicitud.descripcion or "").strip(),
+                "funcional": True,
+                "sucursal_objetivo_id": int(solicitud.sucursal_solicitante_id),
+                "fecha": date.today().isoformat(),
+                "no_documento": document_number,
+                "solicitud_traslado_id": int(solicitud.id),
+            }
+
+            serializer = self.get_serializer(data=movement_payload)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            solicitud.refresh_from_db()
+
+            output = SolicitudTrasladoSerializer(instance=solicitud)
+            return Response(
+                {
+                    "detail": "Solicitud aprobada correctamente.",
+                    "decision": "aceptada",
+                    "solicitud": output.data,
+                    "movimiento_salida_id": solicitud.movimiento_salida_id,
+                    "movimiento_entrada_id": solicitud.movimiento_entrada_id,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if decision in {"rechazar", "rechazada", "reject", "rejected"}:
+            motivo = str(request.data.get("motivo") or "").strip()
+            if not motivo:
+                return Response(
+                    {"motivo": "Debes indicar un motivo para rechazar la solicitud."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            solicitud.estado = SolicitudTraslado.Estados.CANCELADA
+            solicitud.motivo_rechazo = motivo
+            solicitud.rechazada_por = request.user
+            solicitud.rechazada_en = timezone.now()
+            solicitud.save(
+                update_fields=[
+                    "estado",
+                    "motivo_rechazo",
+                    "rechazada_por",
+                    "rechazada_en",
+                    "updated_at",
+                ]
+            )
+
+            output = SolicitudTrasladoSerializer(instance=solicitud)
+            return Response(
+                {
+                    "detail": "Solicitud rechazada correctamente.",
+                    "decision": "rechazada",
+                    "solicitud": output.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            {"detail": "Debes enviar una decision valida (aceptar o rechazar)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     @action(detail=False, methods=["get"], url_path="buscar-cliente")
     def buscar_cliente(self, request):
@@ -805,6 +1042,41 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             field_label="sucursal",
         )
 
+        rows = (
+            Inventario.objects.filter(
+                subdivision__division__bodega__sucursal_id=sucursal_id
+            )
+            .values("producto_id", "producto__codigo", "producto__nombre")
+            .annotate(cantidad_disponible=Sum("cantidad"))
+            .filter(cantidad_disponible__gt=0)
+            .order_by("producto__nombre", "producto__codigo")
+        )
+
+        payload = [
+            {
+                "producto_id": int(row["producto_id"]),
+                "codigo": row.get("producto__codigo") or "",
+                "nombre": row.get("producto__nombre") or "",
+                "cantidad_disponible": int(row.get("cantidad_disponible") or 0),
+            }
+            for row in rows
+        ]
+        return Response(payload)
+
+    @action(detail=False, methods=["get"], url_path="stock-sucursal-global")
+    def stock_sucursal_global(self, request):
+        """
+        Stock por sucursal sin alcance por sucursal del usuario.
+        Usado para solicitudes de traslado en Entradas.
+        """
+        sucursal_id_raw = (request.query_params.get("sucursal_id") or "").strip()
+        if not sucursal_id_raw.isdigit():
+            return Response(
+                {"detail": "Debes enviar un sucursal_id valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sucursal_id = int(sucursal_id_raw)
         rows = (
             Inventario.objects.filter(
                 subdivision__division__bodega__sucursal_id=sucursal_id

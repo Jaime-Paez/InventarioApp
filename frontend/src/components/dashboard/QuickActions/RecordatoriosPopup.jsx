@@ -5,10 +5,16 @@ import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
 import {
   buildReminderStatusForUser,
+  createReminderId,
   extractUserId,
   formatCurrentUserName,
   formatReminderDateTime,
+  getReminderDecisionStatus,
+  isReminderForContext,
+  isSpecialTransferDecisionReminder,
   normalizeId,
+  reminderCompletedByIds,
+  sanitizeRecipient,
 } from '../common/reminders/remindersStorage'
 import './RecordatoriosPopup.css'
 
@@ -27,7 +33,10 @@ const formatReminderContext = (reminder) => {
   const type = String(reminder?.context?.type || '').trim()
   if (!type) return 'General'
 
-  return type.charAt(0).toUpperCase() + type.slice(1)
+  if (type === 'solicitud_traslado') return 'Solicitud de traslado'
+
+  const formatted = type.replace(/[_-]+/g, ' ')
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1)
 }
 
 function RecordatoriosPopup({
@@ -42,6 +51,9 @@ function RecordatoriosPopup({
   onMarkReminderSeen,
   darkMode,
   onError,
+  onApplyRemindersUpdate,
+  focusReminderId,
+  onFocusReminderHandled,
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const [users, setUsers] = useState([])
@@ -54,6 +66,12 @@ function RecordatoriosPopup({
   const [submitError, setSubmitError] = useState('')
   const [activeView, setActiveView] = useState('list')
   const previousViewRef = useRef('list')
+  const [activeDecisionReminderId, setActiveDecisionReminderId] = useState('')
+  const [decisionDetail, setDecisionDetail] = useState(null)
+  const [decisionLoading, setDecisionLoading] = useState(false)
+  const [decisionSubmitting, setDecisionSubmitting] = useState(false)
+  const [decisionError, setDecisionError] = useState('')
+  const [rejectionReason, setRejectionReason] = useState('')
 
   const notifyError = useCallback(
     (message) => {
@@ -76,13 +94,78 @@ function RecordatoriosPopup({
   const creatorRecipientId = currentPrimaryUserId || extractUserId(currentUser)
   const creatorRecipientName = currentUserName || formatCurrentUserName(currentUser)
 
+  const activeDecisionReminder = useMemo(() => {
+    const normalizedId = normalizeId(activeDecisionReminderId)
+    if (!normalizedId) return null
+    return (Array.isArray(reminders) ? reminders : []).find(
+      (reminder) => normalizeId(reminder?.id) === normalizedId
+    ) || null
+  }, [activeDecisionReminderId, reminders])
+
+  const closeDecisionPanel = useCallback(() => {
+    setActiveDecisionReminderId('')
+    setDecisionDetail(null)
+    setDecisionLoading(false)
+    setDecisionSubmitting(false)
+    setDecisionError('')
+    setRejectionReason('')
+  }, [])
+
+  const loadDecisionDetail = useCallback(
+    async (reminder) => {
+      const solicitudId = normalizeId(reminder?.context?.id)
+      if (!solicitudId || !token) {
+        setDecisionDetail(null)
+        return
+      }
+
+      setDecisionLoading(true)
+      setDecisionError('')
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/`,
+          {},
+          token
+        )
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          const detail = String(data?.detail || '').trim() || 'No se pudo cargar la solicitud de traslado.'
+          throw new Error(detail)
+        }
+        setDecisionDetail(data)
+      } catch (error) {
+        const message = error?.message || 'No se pudo cargar la solicitud de traslado.'
+        setDecisionError(message)
+      } finally {
+        setDecisionLoading(false)
+      }
+    },
+    [token]
+  )
+
+  const openDecisionPanel = useCallback(
+    (reminder) => {
+      const reminderId = normalizeId(reminder?.id)
+      if (!reminderId) return
+      setActiveDecisionReminderId(reminderId)
+      setDecisionDetail(null)
+      setDecisionError('')
+      setRejectionReason('')
+      loadDecisionDetail(reminder)
+    },
+    [loadDecisionDetail]
+  )
+
   const selectableUsers = useMemo(
     () => users.filter((userItem) => userItem.id !== creatorRecipientId),
     [users, creatorRecipientId]
   )
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      closeDecisionPanel()
+      return
+    }
     const defaults = getNowDateParts()
     setDate(defaults.date)
     setTime(defaults.time)
@@ -91,7 +174,8 @@ function RecordatoriosPopup({
     setSubmitError('')
     setActiveView('list')
     previousViewRef.current = 'list'
-  }, [open, currentPrimaryUserId])
+    closeDecisionPanel()
+  }, [open, currentPrimaryUserId, closeDecisionPanel])
 
   useEffect(() => {
     if (!usersError) return
@@ -195,12 +279,32 @@ function RecordatoriosPopup({
     if (!open) return undefined
 
     const handleEscape = (event) => {
-      if (event.key === 'Escape') onClose?.()
+      if (event.key !== 'Escape') return
+      if (activeDecisionReminderId) {
+        closeDecisionPanel()
+        return
+      }
+      onClose?.()
     }
 
     window.addEventListener('keydown', handleEscape)
     return () => window.removeEventListener('keydown', handleEscape)
-  }, [open, onClose])
+  }, [open, onClose, activeDecisionReminderId, closeDecisionPanel])
+
+  useEffect(() => {
+    if (!open) return
+    const targetReminderId = normalizeId(focusReminderId)
+    if (!targetReminderId) return
+
+    const reminder = (Array.isArray(reminders) ? reminders : []).find(
+      (item) => normalizeId(item?.id) === targetReminderId
+    )
+    if (reminder && isSpecialTransferDecisionReminder(reminder)) {
+      setActiveView('list')
+      openDecisionPanel(reminder)
+    }
+    onFocusReminderHandled?.()
+  }, [focusReminderId, onFocusReminderHandled, open, openDecisionPanel, reminders])
 
   const toggleRecipient = (recipientId) => {
     const normalizedId = normalizeId(recipientId)
@@ -286,6 +390,116 @@ function RecordatoriosPopup({
     setSubmitError('')
     setActiveView(previousViewRef.current || 'list')
   }
+
+  const handleTransferDecision = async (decisionType) => {
+    const reminder = activeDecisionReminder
+    const solicitudId = normalizeId(reminder?.context?.id)
+    if (!solicitudId || !token) {
+      setDecisionError('No se pudo resolver la solicitud del recordatorio.')
+      return
+    }
+
+    const decision = String(decisionType || '').trim().toLowerCase()
+    if (decision === 'rechazar' && !String(rejectionReason || '').trim()) {
+      setDecisionError('Debes escribir un motivo de rechazo.')
+      return
+    }
+
+    setDecisionSubmitting(true)
+    setDecisionError('')
+
+    try {
+      const payload =
+        decision === 'rechazar'
+          ? { decision: 'rechazar', motivo: String(rejectionReason || '').trim() }
+          : { decision: 'aceptar' }
+
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/decision/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = String(data?.detail || data?.motivo || '').trim() || 'No se pudo registrar la decision.'
+        throw new Error(detail)
+      }
+
+      const resolvedDecision = decision === 'rechazar' ? 'rechazada' : 'aceptada'
+      const resolutionDate = new Date().toISOString()
+      const context = reminder?.context || null
+      const rejectionReasonValue = String(rejectionReason || '').trim()
+
+      onApplyRemindersUpdate?.((prev) =>
+        (Array.isArray(prev) ? prev : []).map((item) => {
+          if (!isSpecialTransferDecisionReminder(item)) return item
+          if (!isReminderForContext(item, context)) return item
+
+          const completedBySet = new Set(reminderCompletedByIds(item))
+          ;(Array.isArray(item?.recipients) ? item.recipients : []).forEach((recipient) => {
+            const recipientId = normalizeId(recipient?.id)
+            if (recipientId) completedBySet.add(recipientId)
+          })
+
+          return {
+            ...item,
+            completedBy: Array.from(completedBySet),
+            decision: {
+              status: resolvedDecision,
+              reason: resolvedDecision === 'rechazada' ? rejectionReasonValue : '',
+              by: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
+              at: resolutionDate,
+            },
+          }
+        })
+      )
+
+      if (resolvedDecision === 'rechazada') {
+        const creatorRecipient = sanitizeRecipient(reminder?.creator)
+        if (creatorRecipient?.id) {
+          const nowParts = getNowDateParts()
+          const requesterLabel = String(reminder?.context?.label || `Solicitud de traslado #${solicitudId}`).trim()
+          const rejectorName = String(creatorRecipientName || 'Usuario').trim() || 'Usuario'
+          onApplyRemindersUpdate?.((prev) => [
+            {
+              id: createReminderId(),
+              date: nowParts.date,
+              time: nowParts.time,
+              description: `${requesterLabel} rechazada por ${rejectorName}. Motivo: ${rejectionReasonValue}`,
+              creator: {
+                id: creatorRecipientId,
+                name: creatorRecipientName,
+              },
+              recipients: [creatorRecipient],
+              context: reminder?.context || null,
+              kind: 'recordatorio_general',
+              createdAt: resolutionDate,
+              completedBy: [],
+            },
+            ...(Array.isArray(prev) ? prev : []),
+          ])
+        }
+      }
+
+      const responseSolicitud = data?.solicitud
+      if (responseSolicitud) {
+        setDecisionDetail(responseSolicitud)
+      }
+      closeDecisionPanel()
+    } catch (error) {
+      const message = error?.message || 'No se pudo registrar la decision.'
+      setDecisionError(message)
+    } finally {
+      setDecisionSubmitting(false)
+    }
+  }
+
+  const activeDecisionStatus = getReminderDecisionStatus(activeDecisionReminder)
+  const canSubmitDecision = activeDecisionStatus === 'pendiente'
+  const decisionDetalles = Array.isArray(decisionDetail?.detalles) ? decisionDetail.detalles : []
 
   if (!shouldRender || typeof document === 'undefined') return null
 
@@ -427,6 +641,13 @@ function RecordatoriosPopup({
                     <tbody>
                       {reminders.map((reminder) => {
                         const status = buildReminderStatusForUser(reminder, currentUserIdSet)
+                        const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
+                        const decisionStatus = getReminderDecisionStatus(reminder)
+                        const canResolveDecision = (
+                          isSpecialReminder &&
+                          decisionStatus === 'pendiente' &&
+                          status.className !== 'info'
+                        )
                         const recipients = Array.isArray(reminder?.recipients) ? reminder.recipients : []
                         const recipientNames = recipients
                           .map((recipient) => String(recipient?.name || '').trim())
@@ -446,7 +667,15 @@ function RecordatoriosPopup({
                               </span>
                             </td>
                             <td>
-                              {status.canMarkSeen ? (
+                              {canResolveDecision ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => openDecisionPanel(reminder)}
+                                >
+                                  Resolver solicitud
+                                </button>
+                              ) : status.canMarkSeen ? (
                                 <button
                                   type="button"
                                   className="recordatorios-popup__mark-seen"
@@ -454,6 +683,8 @@ function RecordatoriosPopup({
                                 >
                                   Marcar como visto
                                 </button>
+                              ) : isSpecialReminder ? (
+                                <span className="recordatorios-popup__action-placeholder">Decision registrada</span>
                               ) : (
                                 <span className="recordatorios-popup__action-placeholder">No aplica</span>
                               )}
@@ -468,6 +699,135 @@ function RecordatoriosPopup({
             </section>
           )}
         </div>
+
+        {activeDecisionReminder && (
+          <div className="recordatorios-popup__decision-overlay" onMouseDown={() => closeDecisionPanel()}>
+            <div className="recordatorios-popup__decision-card" onMouseDown={(event) => event.stopPropagation()}>
+              <header className="recordatorios-popup__decision-head">
+                <div>
+                  <h4>Solicitud de traslado</h4>
+                  <p>{activeDecisionReminder?.context?.label || 'Detalle de solicitud'}</p>
+                </div>
+                <button
+                  type="button"
+                  className="recordatorios-popup__close"
+                  onClick={closeDecisionPanel}
+                  aria-label="Cerrar decision"
+                >
+                  <X />
+                </button>
+              </header>
+
+              <div className="recordatorios-popup__decision-body">
+                {decisionLoading && (
+                  <p className="recordatorios-popup__decision-muted">
+                    <Loader2 />
+                    Cargando detalle de solicitud...
+                  </p>
+                )}
+
+                {!decisionLoading && (
+                  <>
+                    <div className="recordatorios-popup__decision-grid">
+                      <label>
+                        <span>Documento</span>
+                        <strong>{decisionDetail?.no_documento || '-'}</strong>
+                      </label>
+                      <label>
+                        <span>Fecha</span>
+                        <strong>{decisionDetail?.fecha || '-'}</strong>
+                      </label>
+                      <label>
+                        <span>Sucursal solicitante</span>
+                        <strong>{decisionDetail?.sucursal_solicitante || '-'}</strong>
+                      </label>
+                      <label>
+                        <span>Sucursal proveedora</span>
+                        <strong>{decisionDetail?.sucursal_proveedora || '-'}</strong>
+                      </label>
+                    </div>
+
+                    <label className="recordatorios-popup__decision-description">
+                      <span>Descripcion</span>
+                      <p>{String(decisionDetail?.descripcion || '').trim() || '-'}</p>
+                    </label>
+
+                    <div className="recordatorios-popup__decision-table-wrap">
+                      <table className="recordatorios-popup__decision-table">
+                        <thead>
+                          <tr>
+                            <th>Codigo</th>
+                            <th>Producto</th>
+                            <th>Cantidad</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!decisionDetalles.length && (
+                            <tr>
+                              <td colSpan={3}>Sin productos en esta solicitud.</td>
+                            </tr>
+                          )}
+                          {decisionDetalles.map((detalle) => (
+                            <tr key={detalle.id || `${detalle.producto_id}-${detalle.cantidad}`}>
+                              <td>{detalle?.producto_codigo || '-'}</td>
+                              <td>{detalle?.producto_nombre || '-'}</td>
+                              <td>{detalle?.cantidad || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+                {decisionError && <p className="recordatorios-popup__error">{decisionError}</p>}
+
+                {canSubmitDecision && (
+                  <label className="recordatorios-popup__field recordatorios-popup__field--full">
+                    <span>Motivo de rechazo (obligatorio si rechazas)</span>
+                    <textarea
+                      value={rejectionReason}
+                      onChange={(event) => setRejectionReason(event.target.value)}
+                      placeholder="Explica por que rechazas la solicitud"
+                      disabled={decisionSubmitting}
+                    />
+                  </label>
+                )}
+              </div>
+
+              <div className="recordatorios-popup__decision-actions">
+                <button
+                  type="button"
+                  className="recordatorios-popup__button recordatorios-popup__button--ghost"
+                  onClick={closeDecisionPanel}
+                  disabled={decisionSubmitting}
+                >
+                  Cerrar
+                </button>
+                {canSubmitDecision && (
+                  <>
+                    <button
+                      type="button"
+                      className="recordatorios-popup__button recordatorios-popup__button--danger"
+                      onClick={() => handleTransferDecision('rechazar')}
+                      disabled={decisionSubmitting || decisionLoading}
+                    >
+                      {decisionSubmitting ? 'Guardando...' : 'Rechazar'}
+                    </button>
+                    <button
+                      type="button"
+                      className="recordatorios-popup__button recordatorios-popup__button--primary"
+                      onClick={() => handleTransferDecision('aceptar')}
+                      disabled={decisionSubmitting || decisionLoading}
+                    >
+                      {decisionSubmitting ? 'Guardando...' : 'Aceptar'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>,
     document.body

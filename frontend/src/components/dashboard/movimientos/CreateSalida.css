@@ -85,9 +85,92 @@
   background: var(--color-surface);
 }
 
+.create-salida__reminder-block--matrix {
+  padding: 10px;
+}
+
 .create-salida__reminder-block h5 {
   margin: 0 0 8px;
   font-size: 0.92rem;
+}
+
+.create-salida__reminder-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.create-salida__reminder-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-elevated, var(--color-surface));
+  color: var(--color-text-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.create-salida__reminder-table-wrap {
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.create-salida__reminder-table {
+  margin-top: 0;
+}
+
+.create-salida__reminder-table .permissions-matrix__row {
+  grid-template-columns: minmax(170px, 1.2fr) minmax(220px, 1.8fr) minmax(98px, 0.75fr);
+}
+
+.create-salida__reminder-table .permissions-matrix__row--head {
+  position: static;
+}
+
+.create-salida__reminder-table .permissions-matrix__cell {
+  padding: 10px 12px;
+}
+
+.create-salida__reminder-email {
+  justify-content: flex-start;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.create-salida__reminder-row--empty {
+  grid-template-columns: 1fr !important;
+}
+
+.create-salida__reminder-row--empty .permissions-matrix__cell {
+  justify-content: flex-start;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.create-salida__reminder-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-text-primary);
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.create-salida__reminder-block--invalid {
+  border-color: var(--color-error-border);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-error-border) 32%, transparent);
 }
 
 .create-salida__reminder-chip-list {
@@ -155,6 +238,28 @@
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
   border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-salida__reminder-count {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-salida__reminder-email {
+  color: var(--color-text-dark);
+  opacity: 0.8;
+}
+
+.dashboard-shell.dark .create-salida__reminder-badge {
+  border-color: color-mix(in srgb, var(--color-primary-dark) 42%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .create-salida__reminder-block--invalid {
+  border-color: var(--color-error-border-dark);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-error-border-dark) 36%, transparent);
 }
 
 @keyframes create-salida-reveal {
@@ -322,6 +427,10 @@
   .create-salida__products-table {
     overflow-x: auto;
     overflow-y: visible;
+  }
+
+  .create-salida__reminder-table {
+    min-width: 540px;
   }
 
   .entrada-details__pending-ribbon {

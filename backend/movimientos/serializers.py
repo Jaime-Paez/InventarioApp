@@ -118,6 +118,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
     detalles = SolicitudTrasladoDetalleSerializer(many=True)
     movimiento_salida_id = serializers.IntegerField(source="movimiento_salida.id", read_only=True)
     movimiento_entrada_id = serializers.IntegerField(source="movimiento_entrada.id", read_only=True)
+    rechazada_por_nombre = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = SolicitudTraslado
@@ -133,6 +134,10 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "sucursal_proveedora_id",
             "movimiento_salida_id",
             "movimiento_entrada_id",
+            "motivo_rechazo",
+            "rechazada_por",
+            "rechazada_por_nombre",
+            "rechazada_en",
             "detalles",
             "created_at",
             "updated_at",
@@ -140,11 +145,26 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "estado",
+            "motivo_rechazo",
+            "rechazada_por",
+            "rechazada_por_nombre",
+            "rechazada_en",
             "movimiento_salida_id",
             "movimiento_entrada_id",
             "created_at",
             "updated_at",
         ]
+
+    def get_rechazada_por_nombre(self, obj):
+        user = getattr(obj, "rechazada_por", None)
+        if user is None:
+            return ""
+
+        full_name = str(getattr(user, "get_full_name", lambda: "")() or "").strip()
+        if full_name:
+            return full_name
+
+        return str(getattr(user, "email", "") or "").strip()
 
     def validate_no_documento(self, value):
         normalized = str(value or "").strip()

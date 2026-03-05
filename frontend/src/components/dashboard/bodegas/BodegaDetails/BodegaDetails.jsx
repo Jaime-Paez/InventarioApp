@@ -18,7 +18,17 @@ const emptyForm = {
   ubicaciones: [],
 }
 
-function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, onError }) {
+function BodegaDetails({
+  open,
+  bodegaId,
+  token,
+  onClose,
+  onUpdated,
+  onDeleted,
+  onError,
+  allowEdit = true,
+  allowDelete = true,
+}) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [loadingData, setLoadingData] = useState(false)
@@ -210,6 +220,16 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
       setLoadingData(true)
     }
   }, [open])
+
+  useEffect(() => {
+    if (allowEdit || !isEditing) return
+    setIsEditing(false)
+  }, [allowEdit, isEditing])
+
+  useEffect(() => {
+    if (allowDelete || !showDeleteDialog) return
+    setShowDeleteDialog(false)
+  }, [allowDelete, showDeleteDialog])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -531,6 +551,7 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
   )
 
   const handleSave = async () => {
+    if (!allowEdit) return
     if (!isEditing || saving || !bodegaId) return
     setSaving(true)
 
@@ -583,6 +604,7 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
   }
 
   const handleDelete = async () => {
+    if (!allowDelete) return
     if (!isEditing || deleteLoading || !bodegaId) return
     setDeleteLoading(true)
     try {
@@ -893,15 +915,17 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
 
         <div className="create-user__footer">
           <div className="user-details__footer-left">
-            <button
-              type="button"
-              className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-              onClick={() => setIsEditing((prev) => !prev)}
-              disabled={loadingData || saving}
-            >
-              <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>
-              {isEditing ? 'Ver' : 'Editar'}
-            </button>
+            {allowEdit && (
+              <button
+                type="button"
+                className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
+                onClick={() => setIsEditing((prev) => !prev)}
+                disabled={loadingData || saving}
+              >
+                <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>
+                {isEditing ? 'Ver' : 'Editar'}
+              </button>
+            )}
 
             {isEditing && (
               <button
@@ -916,22 +940,26 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
           </div>
 
           <div className="user-details__footer-right">
-            <button
-              type="button"
-              className="create-user__action user-details__delete"
-              onClick={() => setShowDeleteDialog(true)}
-              disabled={!isEditing || saving}
-            >
-              Eliminar
-            </button>
-            <button
-              type="button"
-              className="create-user__action create-user__action--primary"
-              onClick={handleSave}
-              disabled={isViewMode || saving}
-            >
-              {saving ? 'Guardando...' : 'Guardar cambios'}
-            </button>
+            {allowDelete && (
+              <button
+                type="button"
+                className="create-user__action user-details__delete"
+                onClick={() => setShowDeleteDialog(true)}
+                disabled={!isEditing || saving}
+              >
+                Eliminar
+              </button>
+            )}
+            {allowEdit && (
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={handleSave}
+                disabled={isViewMode || saving}
+              >
+                {saving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -943,7 +971,7 @@ function BodegaDetails({ open, bodegaId, token, onClose, onUpdated, onDeleted, o
         />
       </div>
 
-      {showDeleteDialog && (
+      {allowDelete && showDeleteDialog && (
         <div className="user-details__confirm-overlay">
           <div className="user-details__confirm-dialog">
             <div className="user-details__confirm-icon">

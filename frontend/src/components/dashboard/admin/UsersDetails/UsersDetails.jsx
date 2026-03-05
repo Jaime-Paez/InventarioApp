@@ -14,6 +14,7 @@ const ACTIONS = [
   { key: 'puede_actualizar', label: 'Editar' },
   { key: 'puede_eliminar', label: 'Eliminar' },
 ]
+const normalizeIdentityValue = (value) => String(value || '').trim().toLowerCase()
 
 const buildMatrixFromList = (permisos = []) => {
   const matrix = {}
@@ -55,8 +56,13 @@ const buildModuleBranchMatrixFromList = (scopes = []) => {
   return matrix
 }
 
-const serializeModuleBranchMatrix = (matrix) =>
-  Object.entries(matrix)
+const serializeModuleBranchMatrix = (matrix, allowedModules = []) => {
+  const allowedSet = Array.isArray(allowedModules) && allowedModules.length > 0
+    ? new Set(allowedModules)
+    : null
+
+  return Object.entries(matrix)
+    .filter(([modulo]) => !allowedSet || allowedSet.has(modulo))
     .map(([modulo, sucursales]) => ({
       modulo,
       sucursales_ids: Array.from(
@@ -64,6 +70,7 @@ const serializeModuleBranchMatrix = (matrix) =>
       ),
     }))
     .filter((entry) => entry.sucursales_ids.length > 0)
+}
 
 const emptyForm = {
   nombres: '',
@@ -78,7 +85,17 @@ const emptyForm = {
   roles: [],
 }
 
-function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onError }) {
+function UsersDetails({
+  open,
+  userId,
+  token,
+  onClose,
+  onUpdated,
+  onDeleted,
+  onError,
+  allowEdit = true,
+  allowDelete = true,
+}) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [password, setPassword] = useState('')
@@ -89,6 +106,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const [permissionOptions, setPermissionOptions] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [moduleBranchMatrix, setModuleBranchMatrix] = useState({})
+  const [branchScopedModules, setBranchScopedModules] = useState([])
   const [permissionsLoading, setPermissionsLoading] = useState(false)
   const [branches, setBranches] = useState([])
   const [branchesLoading, setBranchesLoading] = useState(false)
@@ -162,15 +180,17 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
 
   const isBranchScopedForModule = useCallback(
     (moduleKey, branchId) => {
+      if (!branchScopedModules.includes(moduleKey)) return true
       if (!branchId) return false
       const scopedBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
       return scopedBranches.includes(branchId)
     },
-    [moduleBranchMatrix]
+    [branchScopedModules, moduleBranchMatrix]
   )
 
   const togglePermissionForBranch = (moduleKey, actionKey) => {
-    if (!isEditing || !selectedBranchId) return
+    const moduleUsesBranchScope = branchScopedModules.includes(moduleKey)
+    if (!isEditing || (moduleUsesBranchScope && !selectedBranchId)) return
 
     setPermissionsMatrix((prevPermissions) => {
       const current = prevPermissions[moduleKey] || {
@@ -179,6 +199,27 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
         puede_actualizar: false,
         puede_eliminar: false,
       }
+
+      if (!moduleUsesBranchScope) {
+        const updatedEntry = { ...current, [actionKey]: !current[actionKey] }
+        const hasAction = ACTIONS.some((action) => updatedEntry[action.key])
+
+        if (!hasAction) {
+          setModuleBranchMatrix((prevScopes) => {
+            if (!(moduleKey in prevScopes)) return prevScopes
+            const { [moduleKey]: _ignored, ...restScopes } = prevScopes
+            return restScopes
+          })
+          const { [moduleKey]: _ignored, ...restPermissions } = prevPermissions
+          return restPermissions
+        }
+
+        return {
+          ...prevPermissions,
+          [moduleKey]: updatedEntry,
+        }
+      }
+
       const moduleBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
       const branchScoped = moduleBranches.includes(selectedBranchId)
       const currentlyChecked = branchScoped && Boolean(current[actionKey])
@@ -228,8 +269,9 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   const renderPermissionRow = (module) => {
     const entryKey = module.key
     const current = permissionsMatrix[entryKey] || {}
+    const moduleUsesBranchScope = branchScopedModules.includes(entryKey)
     const branchScoped = isBranchScopedForModule(entryKey, selectedBranchId)
-    const isDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading || branchesLoading || !selectedBranchId
+    const isDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading || branchesLoading || (moduleUsesBranchScope && !selectedBranchId)
 
     return (
       <div
@@ -264,7 +306,13 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
 
       const data = await response.json().catch(() => ({}))
       const modulos = Array.isArray(data?.modulos) ? data.modulos : []
+      const scopedModules = Array.isArray(data?.modulos_con_sucursales) ? data.modulos_con_sucursales : []
       setPermissionOptions(modulos)
+      setBranchScopedModules(
+        scopedModules
+          .map((module) => module?.key)
+          .filter((key) => typeof key === 'string' && key.length > 0)
+      )
     } catch (err) {
       notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
@@ -343,6 +391,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setShowConfirmPassword(false)
     setPermissionsMatrix({})
     setModuleBranchMatrix({})
+    setBranchScopedModules([])
     setBranches([])
     setSelectedBranchId(null)
     setShowPermissionsPopup(false)
@@ -360,6 +409,16 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       setLoadingData(true)
     }
   }, [open])
+
+  useEffect(() => {
+    if (allowEdit || !isEditing) return
+    setIsEditing(false)
+  }, [allowEdit, isEditing])
+
+  useEffect(() => {
+    if (allowDelete || !showDeleteDialog) return
+    setShowDeleteDialog(false)
+  }, [allowDelete, showDeleteDialog])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -501,6 +560,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   }
 
   const handleToggleEdit = () => {
+    if (!allowEdit) return
     if (loadingData || saving || deleteLoading) return
     setIsEditing((prev) => {
       const next = !prev
@@ -567,7 +627,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
       telefono: formData.telefono.trim(),
       cargo: formData.cargo.trim(),
       permisos_personalizados: serializeMatrix(permissionsMatrix),
-      sucursales_por_modulo: serializeModuleBranchMatrix(moduleBranchMatrix),
+      sucursales_por_modulo: serializeModuleBranchMatrix(moduleBranchMatrix, branchScopedModules),
     }
 
     if (password || confirmPassword) {
@@ -638,6 +698,11 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
   }
 
   const handleDelete = async () => {
+    if (!allowDelete) return
+    if (isProtectedAdministratorUser) {
+      notifyError('No se puede eliminar el usuario Administrador.')
+      return
+    }
     if (!isEditing || deleteLoading || !userId) return
     setShowDeleteDialog(false)
     setDeleteLoading(true)
@@ -676,6 +741,11 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
     setShowPassword(false)
     setShowConfirmPassword(false)
   }
+  const protectedUserName =
+    normalizeIdentityValue(originalData.nombres) === 'administrador' &&
+    normalizeIdentityValue(originalData.apellidos) === 'administrador'
+  const protectedUserEmail = normalizeIdentityValue(originalData.correo) === 'administrador@mail.com'
+  const isProtectedAdministratorUser = protectedUserName || protectedUserEmail
   const selectedBranch = branches.find((branch) => branch.id === selectedBranchId) || null
   const { shouldRender, isClosing } = useModalAnimation(open)
 
@@ -972,38 +1042,41 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
               <button type="button" className="create-user__action create-user__action--cancel" onClick={handleClose}>
                 Cancelar
               </button>
-              <button
-                type="button"
-                className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-                onClick={handleToggleEdit}
-                disabled={loadingData || saving || deleteLoading}
-              >
-                {isEditing ? (
-                  <>
-                    <span className="user-details__toggle-icon" aria-hidden="true">
-                      <Eye size={16} />
-                    </span>
-                    <span>Solo lectura</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="user-details__toggle-icon" aria-hidden="true">
-                      <Pencil size={16} />
-                    </span>
-                    <span>Editar</span>
-                  </>
-                )}
-              </button>
+              {allowEdit && (
+                <button
+                  type="button"
+                  className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
+                  onClick={handleToggleEdit}
+                  disabled={loadingData || saving || deleteLoading}
+                >
+                  {isEditing ? (
+                    <>
+                      <span className="user-details__toggle-icon" aria-hidden="true">
+                        <Eye size={16} />
+                      </span>
+                      <span>Solo lectura</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="user-details__toggle-icon" aria-hidden="true">
+                        <Pencil size={16} />
+                      </span>
+                      <span>Editar</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
             <div className="user-details__footer-right">
-              {isEditing && (
+              {isEditing && allowDelete && (
                 <>
                   <button
                     type="button"
                     className="create-user__action user-details__delete"
                     onClick={() => setShowDeleteDialog(true)}
-                    disabled={deleteLoading || saving || loadingData}
+                    disabled={deleteLoading || saving || loadingData || isProtectedAdministratorUser}
+                    title={isProtectedAdministratorUser ? 'El usuario Administrador no se puede eliminar.' : undefined}
                   >
                     {deleteLoading ? 'Eliminando...' : 'Eliminar'}
                   </button>
@@ -1072,7 +1145,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
         document.body
       )}
 
-      {showDeleteDialog && (
+      {allowDelete && showDeleteDialog && (
         <div className="user-details__confirm-overlay" role="alertdialog" aria-modal="true" aria-label="Confirmar eliminación">
           <div className="user-details__confirm-dialog">
             <div className="user-details__confirm-icon" aria-hidden="true">
@@ -1103,7 +1176,7 @@ function UsersDetails({ open, userId, token, onClose, onUpdated, onDeleted, onEr
         </div>
       )}
 
-      {showDeleteDialog && (
+      {allowDelete && showDeleteDialog && (
         <div className="user-details__confirm-overlay" role="alertdialog" aria-modal="true" aria-label="Confirmar eliminación">
           <div className="user-details__confirm-dialog">
             <div className="user-details__confirm-icon" aria-hidden="true">

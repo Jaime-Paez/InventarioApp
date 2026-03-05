@@ -29,6 +29,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
   animation: recordatorios-dialog-in 180ms ease both;
 }
 
@@ -337,6 +338,16 @@
   background: var(--color-primary-strong);
 }
 
+.recordatorios-popup__button--danger {
+  background: var(--color-error-bg);
+  border-color: var(--color-error-border);
+  color: var(--color-error-text);
+}
+
+.recordatorios-popup__button--danger:hover {
+  background: color-mix(in srgb, var(--color-error-bg) 82%, var(--color-error-text) 18%);
+}
+
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__button {
   border-color: #36414c;
   background: #1f2328;
@@ -350,6 +361,12 @@
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__button--primary:hover {
   background: var(--color-primary-dark-strong);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__button--danger {
+  background: var(--color-error-bg-dark);
+  border-color: var(--color-error-border-dark);
+  color: var(--color-error-text-dark);
 }
 
 .recordatorios-popup__history {
@@ -482,6 +499,16 @@
   color: var(--color-error-text);
 }
 
+.recordatorios-popup__status--accepted {
+  background: color-mix(in srgb, var(--color-success-text) 20%, transparent);
+  color: var(--color-success-text);
+}
+
+.recordatorios-popup__status--rejected {
+  background: color-mix(in srgb, var(--color-error-text) 16%, transparent);
+  color: var(--color-error-text);
+}
+
 .recordatorios-popup__status--info {
   background: color-mix(in srgb, var(--color-border) 24%, transparent);
   color: color-mix(in srgb, currentColor 75%, transparent);
@@ -498,6 +525,16 @@
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__status--expired {
+  background: color-mix(in srgb, var(--color-error-text-dark) 20%, transparent);
+  color: var(--color-error-text-dark);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__status--accepted {
+  background: color-mix(in srgb, var(--color-success-text-dark) 18%, transparent);
+  color: var(--color-success-text-dark);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__status--rejected {
   background: color-mix(in srgb, var(--color-error-text-dark) 20%, transparent);
   color: var(--color-error-text-dark);
 }
@@ -520,8 +557,24 @@
   background: color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
+.recordatorios-popup__mark-seen--decision {
+  border-color: color-mix(in srgb, var(--color-primary) 52%, transparent);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+
+.recordatorios-popup__mark-seen--decision:hover {
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__mark-seen {
   border-color: color-mix(in srgb, var(--color-primary-dark) 48%, transparent);
+  color: var(--color-primary-dark-soft);
+  background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__mark-seen--decision {
+  border-color: color-mix(in srgb, var(--color-primary-dark) 52%, transparent);
   color: var(--color-primary-dark-soft);
   background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
 }
@@ -550,6 +603,150 @@
   border-color: var(--color-error-border-dark);
   background: var(--color-error-bg-dark);
   color: var(--color-error-text-dark);
+}
+
+.recordatorios-popup__decision-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.46);
+}
+
+.recordatorios-popup__decision-card {
+  width: min(860px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-card {
+  border-color: #36414c;
+  background: #1f2328;
+}
+
+.recordatorios-popup__decision-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 74%, transparent);
+}
+
+.recordatorios-popup__decision-head h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.recordatorios-popup__decision-head p {
+  margin: 4px 0 0;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+}
+
+.recordatorios-popup__decision-body {
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.recordatorios-popup__decision-muted {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: color-mix(in srgb, currentColor 74%, transparent);
+}
+
+.recordatorios-popup__decision-muted svg {
+  width: 14px;
+  height: 14px;
+  animation: recordatorios-spin 0.8s linear infinite;
+}
+
+.recordatorios-popup__decision-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.recordatorios-popup__decision-grid label {
+  display: grid;
+  gap: 4px;
+}
+
+.recordatorios-popup__decision-grid label > span {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, currentColor 68%, transparent);
+}
+
+.recordatorios-popup__decision-description {
+  display: grid;
+  gap: 4px;
+}
+
+.recordatorios-popup__decision-description > span {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, currentColor 68%, transparent);
+}
+
+.recordatorios-popup__decision-description p {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  padding: 9px 10px;
+  line-height: 1.4;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-description p {
+  border-color: #36414c;
+  background: #242a31;
+}
+
+.recordatorios-popup__decision-table-wrap {
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  border-radius: 10px;
+  overflow: auto;
+}
+
+.recordatorios-popup__decision-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 420px;
+}
+
+.recordatorios-popup__decision-table th,
+.recordatorios-popup__decision-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  text-align: left;
+}
+
+.recordatorios-popup__decision-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.recordatorios-popup__decision-actions {
+  padding: 10px 14px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 74%, transparent);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 @keyframes recordatorios-overlay-in {
@@ -639,5 +836,14 @@
 
   .recordatorios-popup__table {
     min-width: 980px;
+  }
+
+  .recordatorios-popup__decision-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .recordatorios-popup__decision-card {
+    width: 100%;
+    max-height: calc(100% - 12px);
   }
 }

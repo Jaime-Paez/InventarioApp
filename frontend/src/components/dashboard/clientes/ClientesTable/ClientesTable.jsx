@@ -55,9 +55,12 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
-function ClientesTable({ token, onSelect, user }) {
+function ClientesTable({ token, onSelect, user, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const canCreate = moduleActions?.puede_crear ?? true
+  const canEdit = moduleActions?.puede_actualizar ?? true
+  const canDelete = moduleActions?.puede_eliminar ?? true
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -1082,7 +1085,9 @@ function ClientesTable({ token, onSelect, user }) {
 
       <div className="users-page__top">
         <div className="users-page__actions">
-          <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
+          {canCreate && (
+            <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
+          )}
           <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
         </div>
       </div>
@@ -1427,6 +1432,8 @@ function ClientesTable({ token, onSelect, user }) {
         onDeleted={handleDeleted}
         onError={showErrorToast}
         currentUser={user}
+        allowEdit={canEdit}
+        allowDelete={canDelete}
       />
 
       {shouldRenderSearchModal && (

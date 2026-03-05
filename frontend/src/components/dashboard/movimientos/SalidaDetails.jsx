@@ -249,7 +249,18 @@ const extractClienteFromDescripcion = (value) => {
   return { cliente, descripcion }
 }
 
-function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, onError, currentUser }) {
+function SalidaDetails({
+  open,
+  salidaId,
+  token,
+  onClose,
+  onUpdated,
+  onDeleted,
+  onError,
+  currentUser,
+  allowEdit = true,
+  allowDelete = true,
+}) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(null)
   const [loadingData, setLoadingData] = useState(false)
@@ -862,6 +873,11 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
     }
   }, [open])
 
+  useEffect(() => {
+    if (allowEdit || !isEditing) return
+    setIsEditing(false)
+  }, [allowEdit, isEditing])
+
   const updateProductDropdownPlacement = useCallback(() => {
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
     const triggerRect = productDropdownTriggerRef.current.getBoundingClientRect()
@@ -1392,6 +1408,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   }
 
   const handleSave = async () => {
+    if (!allowEdit) return
     if (!isEditing || saving) return
     setError('')
 
@@ -1545,6 +1562,7 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
   }
 
   const handleDelete = async () => {
+    if (!allowDelete) return
     if (!isEditing || deleteLoading) return
     setDeleteLoading(true)
 
@@ -2176,34 +2194,40 @@ function SalidaDetails({ open, salidaId, token, onClose, onUpdated, onDeleted, o
               >
                 Cancelar
               </button>
-              <button
-                type="button"
-                className="create-user__action create-user__action--secondary"
-                onClick={() => setIsEditing((prev) => !prev)}
-                disabled={loadingData || saving || deleteLoading}
-              >
-                {isEditing ? 'Solo lectura' : 'Editar'}
-              </button>
+              {allowEdit && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={() => setIsEditing((prev) => !prev)}
+                  disabled={loadingData || saving || deleteLoading}
+                >
+                  {isEditing ? 'Solo lectura' : 'Editar'}
+                </button>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {isEditing && (
                 <>
-                  <button
-                    type="button"
-                    className="create-user__action create-user__action--secondary"
-                    onClick={handleDelete}
-                    disabled={deleteLoading || saving}
-                  >
-                    {deleteLoading ? 'Eliminando...' : 'Eliminar'}
-                  </button>
-                  <button
-                    type="button"
-                    className="create-user__action create-user__action--primary"
-                    onClick={handleSave}
-                    disabled={saving || loadingData}
-                  >
-                    {saving ? 'Guardando...' : 'Guardar cambios'}
-                  </button>
+                  {allowDelete && (
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--secondary"
+                      onClick={handleDelete}
+                      disabled={deleteLoading || saving}
+                    >
+                      {deleteLoading ? 'Eliminando...' : 'Eliminar'}
+                    </button>
+                  )}
+                  {allowEdit && (
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--primary"
+                      onClick={handleSave}
+                      disabled={saving || loadingData}
+                    >
+                      {saving ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+                  )}
                 </>
               )}
             </div>

@@ -1,5 +1,6 @@
 export const REMINDERS_STORAGE_KEY = 'inventario-recordatorios-v1'
 export const REMINDERS_SYNC_EVENT = 'inventario-reminders-sync'
+export const SPECIAL_TRANSFER_DECISION_KIND = 'solicitud_traslado_decision'
 
 export const normalizeId = (value) => (value == null ? '' : String(value).trim())
 export const normalizeText = (value) => String(value || '').trim().toLowerCase()
@@ -64,6 +65,19 @@ export const getReminderTimestamp = (reminder) => {
   return Number.isFinite(parsed) ? parsed : Number.NaN
 }
 
+export const getReminderDeadlineTimestamp = (reminder) => {
+  const explicitDeadline = String(reminder?.deadlineAt || '').trim()
+  if (explicitDeadline) {
+    const explicit = Date.parse(explicitDeadline)
+    if (Number.isFinite(explicit)) return explicit
+  }
+
+  const date = String(reminder?.date || '').trim()
+  if (!date) return Number.NaN
+  const parsed = Date.parse(`${date}T23:59:59`)
+  return Number.isFinite(parsed) ? parsed : Number.NaN
+}
+
 export const formatReminderDateTime = (reminder) => {
   const date = String(reminder?.date || '').trim()
   const time = String(reminder?.time || '').trim()
@@ -101,6 +115,47 @@ const sanitizeReminderContext = (rawContext) => {
   }
 }
 
+const parseIsoTimestamp = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const timestamp = Date.parse(raw)
+  if (!Number.isFinite(timestamp)) return ''
+  return new Date(timestamp).toISOString()
+}
+
+const normalizeDecisionStatus = (value) => {
+  const normalized = normalizeText(value)
+  if (
+    normalized === 'aceptada' ||
+    normalized === 'aprobada' ||
+    normalized === 'approved'
+  ) {
+    return 'aceptada'
+  }
+  if (
+    normalized === 'rechazada' ||
+    normalized === 'rechazar' ||
+    normalized === 'rejected'
+  ) {
+    return 'rechazada'
+  }
+  return 'pendiente'
+}
+
+const sanitizeReminderDecision = (rawDecision) => {
+  const status = normalizeDecisionStatus(rawDecision?.status || rawDecision?.estado)
+  const reason = String(rawDecision?.reason || rawDecision?.motivo || '').trim()
+  const by = sanitizeRecipient(rawDecision?.by || rawDecision?.usuario)
+  const at = parseIsoTimestamp(rawDecision?.at || rawDecision?.fecha)
+
+  return {
+    status,
+    reason,
+    by,
+    at,
+  }
+}
+
 export const sanitizeReminder = (reminder) => {
   const date = String(reminder?.date || reminder?.fecha || '').trim()
   const time = String(reminder?.time || reminder?.hora || '').trim()
@@ -129,6 +184,9 @@ export const sanitizeReminder = (reminder) => {
       label: reminder?.contextLabel,
     }
   )
+  const kind = normalizeId(reminder?.kind || reminder?.tipo)
+  const deadlineAt = parseIsoTimestamp(reminder?.deadlineAt || reminder?.deadline_at)
+  const decision = sanitizeReminderDecision(reminder?.decision || reminder?.resolucion)
 
   return {
     id: normalizeId(reminder?.id) || createReminderId(),
@@ -141,7 +199,10 @@ export const sanitizeReminder = (reminder) => {
     },
     recipients,
     context,
-    createdAt: String(reminder?.createdAt || reminder?.creado_en || new Date().toISOString()),
+    kind,
+    deadlineAt,
+    decision,
+    createdAt: parseIsoTimestamp(reminder?.createdAt || reminder?.creado_en) || new Date().toISOString(),
     completedBy: reminderCompletedByIds(reminder),
   }
 }
@@ -199,9 +260,23 @@ export const isReminderSeenByCurrentUser = (reminder, userIdSet) => {
   return reminderCompletedByIds(reminder).some((id) => userIdSet.has(id))
 }
 
+export const isSpecialTransferDecisionReminder = (reminder) =>
+  normalizeId(reminder?.kind) === SPECIAL_TRANSFER_DECISION_KIND
+
+export const getReminderDecisionStatus = (reminder) =>
+  normalizeDecisionStatus(reminder?.decision?.status)
+
+export const isSpecialReminderResolved = (reminder) => {
+  if (!isSpecialTransferDecisionReminder(reminder)) return false
+  const status = getReminderDecisionStatus(reminder)
+  return status === 'aceptada' || status === 'rechazada'
+}
+
 export const isReminderPendingForCurrentUser = (reminder, userIdSet) => {
   if (!isReminderForCurrentUser(reminder, userIdSet)) return false
   if (isReminderSeenByCurrentUser(reminder, userIdSet)) return false
+  if (isSpecialReminderResolved(reminder)) return false
+  if (isSpecialTransferDecisionReminder(reminder)) return true
 
   const timestamp = getReminderTimestamp(reminder)
   if (!Number.isFinite(timestamp)) return true
@@ -243,11 +318,29 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
   const recipientIds = reminderRecipientIds(reminder)
   const isForCurrentUser = recipientIds.some((id) => userIdSet.has(id))
   const seenByCurrentUser = reminderCompletedByIds(reminder).some((id) => userIdSet.has(id))
+  const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
+  const decisionStatus = getReminderDecisionStatus(reminder)
 
   if (!isForCurrentUser) {
     return {
       label: 'Informativo',
       className: 'info',
+      canMarkSeen: false,
+    }
+  }
+
+  if (isSpecialReminder && decisionStatus === 'aceptada') {
+    return {
+      label: 'Aceptada',
+      className: 'accepted',
+      canMarkSeen: false,
+    }
+  }
+
+  if (isSpecialReminder && decisionStatus === 'rechazada') {
+    return {
+      label: 'Rechazada',
+      className: 'rejected',
       canMarkSeen: false,
     }
   }
@@ -260,18 +353,20 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
     }
   }
 
-  const timestamp = getReminderTimestamp(reminder)
+  const timestamp = isSpecialReminder
+    ? getReminderDeadlineTimestamp(reminder)
+    : getReminderTimestamp(reminder)
   if (Number.isFinite(timestamp) && timestamp < Date.now()) {
     return {
-      label: 'Vencido',
+      label: isSpecialReminder ? 'Urgente' : 'Vencido',
       className: 'expired',
-      canMarkSeen: true,
+      canMarkSeen: !isSpecialReminder,
     }
   }
 
   return {
-    label: 'Pendiente',
+    label: isSpecialReminder ? 'Por decidir' : 'Pendiente',
     className: 'pending',
-    canMarkSeen: true,
+    canMarkSeen: !isSpecialReminder,
   }
 }

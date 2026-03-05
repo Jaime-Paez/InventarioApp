@@ -31,7 +31,7 @@ const parseQuantity = (value) => {
   return Math.max(0, Math.floor(parsed))
 }
 
-function CreateProducto({ open, onClose, onCreated, token, onError }) {
+function CreateProducto({ open, onClose, onCreated, token, onError, showCostField = true }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
@@ -1548,21 +1548,23 @@ function CreateProducto({ open, onClose, onCreated, token, onError }) {
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
-                      <span>Costo</span>
-                      <div className="create-user__money">
-                        <span>$</span>
-                        <input
-                          name="costo_minimo"
-                          type="number"
-                          step="0.01"
-                          placeholder="Costo al comprar"
-                          value={formData.costo_minimo}
-                          onChange={handleChange}
-                          disabled={loading}
-                        />
-                      </div>
-                    </label>
+                    {showCostField && (
+                      <label className="create-user__field">
+                        <span>Costo</span>
+                        <div className="create-user__money">
+                          <span>$</span>
+                          <input
+                            name="costo_minimo"
+                            type="number"
+                            step="0.01"
+                            placeholder="Costo al comprar"
+                            value={formData.costo_minimo}
+                            onChange={handleChange}
+                            disabled={loading}
+                          />
+                        </div>
+                      </label>
+                    )}
 
                     <label className="create-user__field">
                       <span>Precio</span>

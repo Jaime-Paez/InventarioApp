@@ -30,8 +30,13 @@ const serializeMatrix = (matrix) =>
     })
     .filter(Boolean)
 
-const serializeModuleBranchMatrix = (matrix) =>
-  Object.entries(matrix)
+const serializeModuleBranchMatrix = (matrix, allowedModules = []) => {
+  const allowedSet = Array.isArray(allowedModules) && allowedModules.length > 0
+    ? new Set(allowedModules)
+    : null
+
+  return Object.entries(matrix)
+    .filter(([modulo]) => !allowedSet || allowedSet.has(modulo))
     .map(([modulo, sucursales]) => ({
       modulo,
       sucursales_ids: Array.from(
@@ -39,6 +44,7 @@ const serializeModuleBranchMatrix = (matrix) =>
       ),
     }))
     .filter((entry) => entry.sucursales_ids.length > 0)
+}
 
 const initialForm = {
   nombres: '',
@@ -59,6 +65,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const [permissionOptions, setPermissionOptions] = useState([])
   const [permissionsMatrix, setPermissionsMatrix] = useState({})
   const [moduleBranchMatrix, setModuleBranchMatrix] = useState({})
+  const [branchScopedModules, setBranchScopedModules] = useState([])
   const [permissionsLoading, setPermissionsLoading] = useState(false)
   const [branches, setBranches] = useState([])
   const [branchesLoading, setBranchesLoading] = useState(false)
@@ -114,7 +121,13 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
       const data = await response.json().catch(() => ({}))
       const modulos = Array.isArray(data?.modulos) ? data.modulos : []
+      const scopedModules = Array.isArray(data?.modulos_con_sucursales) ? data.modulos_con_sucursales : []
       setPermissionOptions(modulos)
+      setBranchScopedModules(
+        scopedModules
+          .map((module) => module?.key)
+          .filter((key) => typeof key === 'string' && key.length > 0)
+      )
     } catch (err) {
       notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
@@ -157,6 +170,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     setShowConfirmPassword(false)
     setPermissionsMatrix({})
     setModuleBranchMatrix({})
+    setBranchScopedModules([])
     setBranches([])
     setSelectedBranchId(null)
     setShowPermissionsPopup(false)
@@ -197,15 +211,17 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
   const isBranchScopedForModule = useCallback(
     (moduleKey, branchId) => {
+      if (!branchScopedModules.includes(moduleKey)) return true
       if (!branchId) return false
       const scopedBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
       return scopedBranches.includes(branchId)
     },
-    [moduleBranchMatrix]
+    [branchScopedModules, moduleBranchMatrix]
   )
 
   const togglePermissionForBranch = (moduleKey, actionKey) => {
-    if (!selectedBranchId) return
+    const moduleUsesBranchScope = branchScopedModules.includes(moduleKey)
+    if (moduleUsesBranchScope && !selectedBranchId) return
 
     setPermissionsMatrix((prevPermissions) => {
       const current = prevPermissions[moduleKey] || {
@@ -214,6 +230,27 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
         puede_actualizar: false,
         puede_eliminar: false,
       }
+
+      if (!moduleUsesBranchScope) {
+        const updatedEntry = { ...current, [actionKey]: !current[actionKey] }
+        const hasAction = ACTIONS.some((action) => updatedEntry[action.key])
+
+        if (!hasAction) {
+          setModuleBranchMatrix((prevScopes) => {
+            if (!(moduleKey in prevScopes)) return prevScopes
+            const { [moduleKey]: _ignored, ...restScopes } = prevScopes
+            return restScopes
+          })
+          const { [moduleKey]: _ignored, ...restPermissions } = prevPermissions
+          return restPermissions
+        }
+
+        return {
+          ...prevPermissions,
+          [moduleKey]: updatedEntry,
+        }
+      }
+
       const moduleBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
       const branchScoped = moduleBranches.includes(selectedBranchId)
       const currentlyChecked = branchScoped && Boolean(current[actionKey])
@@ -263,8 +300,9 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const renderPermissionRow = (module) => {
     const entryKey = module.key
     const current = permissionsMatrix[entryKey] || {}
+    const moduleUsesBranchScope = branchScopedModules.includes(entryKey)
     const branchScoped = isBranchScopedForModule(entryKey, selectedBranchId)
-    const isDisabled = loading || permissionsLoading || branchesLoading || !selectedBranchId
+    const isDisabled = loading || permissionsLoading || branchesLoading || (moduleUsesBranchScope && !selectedBranchId)
 
     return (
       <div key={entryKey} className="permissions-matrix__row">
@@ -297,7 +335,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       telefono: formData.telefono.trim(),
       cargo: formData.cargo.trim(),
       permisos_personalizados: serializeMatrix(permissionsMatrix),
-      sucursales_por_modulo: serializeModuleBranchMatrix(moduleBranchMatrix),
+      sucursales_por_modulo: serializeModuleBranchMatrix(moduleBranchMatrix, branchScopedModules),
     }
 
     if (!payload.nombres || !payload.apellidos || !payload.correo) {

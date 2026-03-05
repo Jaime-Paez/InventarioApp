@@ -260,6 +260,8 @@ function EntradaDetails({
   onDeleted,
   onError,
   currentUser,
+  allowEdit = true,
+  allowDelete = true,
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(null)
@@ -992,6 +994,11 @@ function EntradaDetails({
     setIsEditing(false)
   }, [isEditing, isReadOnlyMode])
 
+  useEffect(() => {
+    if (allowEdit || !isEditing) return
+    setIsEditing(false)
+  }, [allowEdit, isEditing])
+
   const updateProductDropdownPlacement = useCallback(() => {
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
     const triggerRect = productDropdownTriggerRef.current.getBoundingClientRect()
@@ -1522,6 +1529,7 @@ function EntradaDetails({
   }
 
   const handleSave = async () => {
+    if (!allowEdit) return
     if (isReadOnlyMode) return
     if (!isEditing || saving) return
     setError('')
@@ -1676,6 +1684,7 @@ function EntradaDetails({
   }
 
   const handleDelete = async () => {
+    if (!allowDelete) return
     if (isReadOnlyMode) return
     if (!isEditing || deleteLoading) return
     setDeleteLoading(true)
@@ -2337,7 +2346,7 @@ function EntradaDetails({
               >
                 {isReadOnlyMode && !isEditing ? 'Cerrar' : 'Cancelar'}
               </button>
-              {!isReadOnlyMode && (
+              {!isReadOnlyMode && allowEdit && (
                 <button
                   type="button"
                   className="create-user__action create-user__action--secondary"
@@ -2351,22 +2360,26 @@ function EntradaDetails({
             <div style={{ display: 'flex', gap: 8 }}>
               {isEditing && !isReadOnlyMode && (
                 <>
-                  <button
-                    type="button"
-                    className="create-user__action create-user__action--secondary"
-                    onClick={handleDelete}
-                    disabled={deleteLoading || saving}
-                  >
-                    {deleteLoading ? 'Eliminando...' : 'Eliminar'}
-                  </button>
-                  <button
-                    type="button"
-                    className="create-user__action create-user__action--primary"
-                    onClick={handleSave}
-                    disabled={saving || loadingData}
-                  >
-                    {saving ? 'Guardando...' : 'Guardar cambios'}
-                  </button>
+                  {allowDelete && (
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--secondary"
+                      onClick={handleDelete}
+                      disabled={deleteLoading || saving}
+                    >
+                      {deleteLoading ? 'Eliminando...' : 'Eliminar'}
+                    </button>
+                  )}
+                  {allowEdit && (
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--primary"
+                      onClick={handleSave}
+                      disabled={saving || loadingData}
+                    >
+                      {saving ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+                  )}
                 </>
               )}
             </div>

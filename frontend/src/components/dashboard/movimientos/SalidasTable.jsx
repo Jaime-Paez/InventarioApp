@@ -147,13 +147,16 @@ const isCheckboxSelection = (event) => {
   )
 }
 
-function SalidasTable({ token, user, createBranchId = '' }) {
+function SalidasTable({ token, user, createBranchId = '', moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const preloadSalidaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
   const fetchSeqRef = useRef(0)
   const loadedTokenRef = useRef(null)
+  const canCreate = moduleActions?.puede_crear ?? true
+  const canEdit = moduleActions?.puede_actualizar ?? true
+  const canDelete = moduleActions?.puede_eliminar ?? true
 
   const [movimientos, setMovimientos] = useState([])
   const [totalRecords, setTotalRecords] = useState(0)
@@ -708,6 +711,7 @@ function SalidasTable({ token, user, createBranchId = '' }) {
   }
 
   const handleOpenCreateModal = async () => {
+    if (!canCreate) return
     if (!hasSpecificCreateBranch) {
       toast.current?.show({
         severity: 'warn',
@@ -879,7 +883,9 @@ function SalidasTable({ token, user, createBranchId = '' }) {
 
       <div className="users-page__top">
         <div className="users-page__actions">
-          <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={handleOpenCreateModal} type="button" />
+          {canCreate && (
+            <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={handleOpenCreateModal} type="button" />
+          )}
           <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
           <div className="salidas-type-filter" role="group" aria-label="Filtros de tipo de salida">
             {SUBTYPE_FILTERS.map((option) => {
@@ -1036,6 +1042,8 @@ function SalidasTable({ token, user, createBranchId = '' }) {
         onDeleted={handleDeleted}
         onError={showErrorToast}
         currentUser={user}
+        allowEdit={canEdit}
+        allowDelete={canDelete}
       />
 
       {shouldRenderSearchModal && (

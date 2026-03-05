@@ -26,7 +26,17 @@ const ECUADOR_BOUNDS = {
   maxLng: -75.2,
 }
 
-function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDeleted, onError }) {
+function SucursalDetails({
+  open,
+  sucursalId,
+  token,
+  onClose,
+  onUpdated,
+  onDeleted,
+  onError,
+  allowEdit = true,
+  allowDelete = true,
+}) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [loadingData, setLoadingData] = useState(false)
@@ -206,6 +216,16 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
       setLoadingData(true)
     }
   }, [open])
+
+  useEffect(() => {
+    if (allowEdit || !isEditing) return
+    setIsEditing(false)
+  }, [allowEdit, isEditing])
+
+  useEffect(() => {
+    if (allowDelete || !showDeleteDialog) return
+    setShowDeleteDialog(false)
+  }, [allowDelete, showDeleteDialog])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -439,6 +459,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   }
 
   const handleToggleEdit = () => {
+    if (!allowEdit) return
     if (loadingData || saving || deleteLoading) return
     setIsEditing((prev) => {
       const next = !prev
@@ -505,6 +526,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
   }
 
   const handleDelete = async () => {
+    if (!allowDelete) return
     if (!isEditing || deleteLoading || !sucursalId) return
     setShowDeleteDialog(false)
     setDeleteLoading(true)
@@ -669,32 +691,34 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
               <button type="button" className="create-user__action create-user__action--cancel" onClick={handleClose}>
                 Cancelar
               </button>
-              <button
-                type="button"
-                className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-                onClick={handleToggleEdit}
-                disabled={loadingData || saving || deleteLoading}
-              >
-                {isEditing ? (
-                  <>
-                    <span className="user-details__toggle-icon" aria-hidden="true">
-                      <Eye size={16} />
-                    </span>
-                    <span>Solo lectura</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="user-details__toggle-icon" aria-hidden="true">
-                      <Pencil size={16} />
-                    </span>
-                    <span>Editar</span>
-                  </>
-                )}
-              </button>
+              {allowEdit && (
+                <button
+                  type="button"
+                  className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
+                  onClick={handleToggleEdit}
+                  disabled={loadingData || saving || deleteLoading}
+                >
+                  {isEditing ? (
+                    <>
+                      <span className="user-details__toggle-icon" aria-hidden="true">
+                        <Eye size={16} />
+                      </span>
+                      <span>Solo lectura</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="user-details__toggle-icon" aria-hidden="true">
+                        <Pencil size={16} />
+                      </span>
+                      <span>Editar</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
             <div className="user-details__footer-right">
-              {isEditing && (
+              {isEditing && allowDelete && (
                 <>
                   <button
                     type="button"
@@ -718,7 +742,7 @@ function SucursalDetails({ open, sucursalId, token, onClose, onUpdated, onDelete
           </div>
         </form>
 
-        {showDeleteDialog && (
+        {allowDelete && showDeleteDialog && (
           <div className="user-details__confirm-overlay" role="alertdialog" aria-modal="true" aria-label="Confirmar eliminación">
             <div className="user-details__confirm-dialog">
               <div className="user-details__confirm-icon" aria-hidden="true">

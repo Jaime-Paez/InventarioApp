@@ -148,13 +148,16 @@ const isCheckboxSelection = (event) => {
   )
 }
 
-function EntradasTable({ token, user, createBranchId = '' }) {
+function EntradasTable({ token, user, createBranchId = '', moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const preloadEntradaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
   const fetchSeqRef = useRef(0)
   const loadedTokenRef = useRef(null)
+  const canCreate = moduleActions?.puede_crear ?? true
+  const canEdit = moduleActions?.puede_actualizar ?? true
+  const canDelete = moduleActions?.puede_eliminar ?? true
 
   const [movimientos, setMovimientos] = useState([])
   const [totalRecords, setTotalRecords] = useState(0)
@@ -734,15 +737,7 @@ function EntradasTable({ token, user, createBranchId = '' }) {
   }
 
   const handleOpenCreateModal = async () => {
-    if (!hasSpecificCreateBranch) {
-      toast.current?.show({
-        severity: 'warn',
-        summary: 'Selecciona sucursal',
-        detail: 'Selecciona una sucursal especifica para crear una entrada.',
-        life: 3000,
-      })
-      return
-    }
+    if (!canCreate) return
     try {
       await preloadEntradaCatalogs()
     } catch {
@@ -905,7 +900,9 @@ function EntradasTable({ token, user, createBranchId = '' }) {
 
       <div className="users-page__top">
         <div className="users-page__actions">
-          <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={handleOpenCreateModal} type="button" />
+          {canCreate && (
+            <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={handleOpenCreateModal} type="button" />
+          )}
           <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
           <div className="entradas-type-filter" role="group" aria-label="Filtros de tipo de entrada">
             {SUBTYPE_FILTERS.map((option) => {
@@ -1080,6 +1077,8 @@ function EntradasTable({ token, user, createBranchId = '' }) {
         onDeleted={handleDeleted}
         onError={showErrorToast}
         currentUser={user}
+        allowEdit={canEdit}
+        allowDelete={canDelete}
       />
 
       {shouldRenderSearchModal && (

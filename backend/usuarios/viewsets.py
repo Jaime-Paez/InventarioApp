@@ -3,6 +3,7 @@ from django.db import transaction
 from rest_framework import filters, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -62,8 +63,23 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     search_fields = ["first_name", "last_name", "email", "roles__nombre"]
     ordering_fields = ["last_name", "first_name", "email"]
 
+    @staticmethod
+    def _is_protected_admin_user(instance):
+        first_name = str(instance.first_name or "").strip().lower()
+        last_name = str(instance.last_name or "").strip().lower()
+        email = str(instance.email or "").strip().lower()
+        username = str(instance.username or "").strip().lower()
+
+        return (
+            (first_name == "administrador" and last_name == "administrador")
+            or email == "administrador@mail.com"
+            or username == "administrador@mail.com"
+        )
+
     @transaction.atomic
     def perform_destroy(self, instance):
+        if self._is_protected_admin_user(instance):
+            raise PermissionDenied("No se puede eliminar el usuario Administrador.")
         email = instance.email
         instance.delete()
         remove_personalized_role_for_email(email)

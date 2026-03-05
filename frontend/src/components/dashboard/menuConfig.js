@@ -105,6 +105,37 @@ export const buildPermissionIndex = (permissions) => {
   return index
 }
 
+const MODULE_ACTION_KEYS = ['puede_crear', 'puede_leer', 'puede_actualizar', 'puede_eliminar']
+
+export const getModuleActions = (moduleKey, permissionIndex) => {
+  if (!permissionIndex || !moduleKey) {
+    return {
+      puede_crear: true,
+      puede_leer: true,
+      puede_actualizar: true,
+      puede_eliminar: true,
+    }
+  }
+
+  const permiso = permissionIndex.get(moduleKey)
+  return {
+    puede_crear: Boolean(permiso?.puede_crear),
+    puede_leer: Boolean(permiso?.puede_leer),
+    puede_actualizar: Boolean(permiso?.puede_actualizar),
+    puede_eliminar: Boolean(permiso?.puede_eliminar),
+  }
+}
+
+export const moduleHasAnyAction = (moduleKey, permissionIndex, actionKeys = MODULE_ACTION_KEYS) => {
+  const actions = getModuleActions(moduleKey, permissionIndex)
+  return actionKeys.some((key) => Boolean(actions?.[key]))
+}
+
+export const moduleHasAllActions = (moduleKey, permissionIndex, actionKeys = MODULE_ACTION_KEYS) => {
+  const actions = getModuleActions(moduleKey, permissionIndex)
+  return actionKeys.every((key) => Boolean(actions?.[key]))
+}
+
 const hasPermissionForTarget = (moduleKey, permissionIndex) => {
   if (!permissionIndex || !moduleKey) return true
   const permiso = permissionIndex.get(moduleKey)

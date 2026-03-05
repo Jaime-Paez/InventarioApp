@@ -14,11 +14,24 @@ import InventarioTable from '../inventario/InventarioTable/InventarioTable'
 import EntradasTable from '../movimientos/EntradasTable'
 import SalidasTable from '../movimientos/SalidasTable'
 import './Workspace.css'
-import { labelHasAccess } from '../menuConfig'
+import { getModuleActions, labelHasAccess } from '../menuConfig'
 import { API_URL, authFetch } from '../../../utils/api'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const MOVIMIENTOS_SCOPE_BY_TAB = {
+  Entradas: 'movimientos_entradas',
+  Salidas: 'movimientos_salidas',
+}
+const MODULE_KEY_BY_TAB = {
+  Inventario: 'inventario',
+  Administrar: 'usuarios',
+  Sucursales: 'sucursales_sucursales',
+  Bodegas: 'sucursales_bodegas',
+  Marcas: 'proveedores_marcas',
+  'Casas comerciales': 'proveedores_casas',
+  Productos: 'productos',
+  Solicitudes: 'solicitudes',
+  Clientes: 'clientes',
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
 }
@@ -41,6 +54,10 @@ function Workspace({
   const [movementBranchOptions, setMovementBranchOptions] = useState({
     Entradas: [],
     Salidas: [],
+  })
+  const [movementBranchCanViewAll, setMovementBranchCanViewAll] = useState({
+    Entradas: false,
+    Salidas: false,
   })
   const [movementBranchSelection, setMovementBranchSelection] = useState({
     Entradas: ALL_BRANCH_OPTION_ID,
@@ -87,21 +104,29 @@ function Workspace({
 
         const payload = await response.json().catch(() => ({}))
         const branches = parseApiList(payload)
+        const canViewAll = String(
+          response.headers.get('X-Sucursal-Scope-Unrestricted') ||
+          response.headers.get('x-sucursal-scope-unrestricted') ||
+          ''
+        ).trim() === '1'
 
         setMovementBranchOptions((prev) => ({ ...prev, [tab]: branches }))
+        setMovementBranchCanViewAll((prev) => ({ ...prev, [tab]: canViewAll }))
         setMovementBranchSelection((prev) => {
           const current = String(prev?.[tab] || '').trim()
+          const firstBranchId = String(branches?.[0]?.id || '').trim()
           const exists = (
-            current === ALL_BRANCH_OPTION_ID ||
+            (canViewAll && current === ALL_BRANCH_OPTION_ID) ||
             (current && branches.some((branch) => String(branch?.id) === current))
           )
-          const next = exists ? current : ALL_BRANCH_OPTION_ID
+          const next = exists ? current : (canViewAll ? ALL_BRANCH_OPTION_ID : firstBranchId)
           if (String(prev?.[tab] || '') === next) return prev
           return { ...prev, [tab]: next }
         })
       } catch {
         setMovementBranchOptions((prev) => ({ ...prev, [tab]: [] }))
-        setMovementBranchSelection((prev) => ({ ...prev, [tab]: ALL_BRANCH_OPTION_ID }))
+        setMovementBranchCanViewAll((prev) => ({ ...prev, [tab]: false }))
+        setMovementBranchSelection((prev) => ({ ...prev, [tab]: '' }))
       }
     },
     [token]
@@ -110,6 +135,7 @@ function Workspace({
   useEffect(() => {
     if (!token) {
       setMovementBranchOptions({ Entradas: [], Salidas: [] })
+      setMovementBranchCanViewAll({ Entradas: false, Salidas: false })
       setMovementBranchSelection({
         Entradas: ALL_BRANCH_OPTION_ID,
         Salidas: ALL_BRANCH_OPTION_ID,
@@ -129,10 +155,13 @@ function Workspace({
   }, [])
 
   const activeMovementBranches = movementBranchOptions?.[activeItem] || []
+  const activeMovementCanViewAll = Boolean(movementBranchCanViewAll?.[activeItem])
   const activeMovementBranchMenuOptions = (
     activeMovementBranches.length
-      ? [ALL_BRANCH_OPTION, ...activeMovementBranches]
-      : [ALL_BRANCH_OPTION]
+      ? (activeMovementCanViewAll
+        ? [ALL_BRANCH_OPTION, ...activeMovementBranches]
+        : activeMovementBranches)
+      : []
   )
   const activeMovementBranchId = String(movementBranchSelection?.[activeItem] || '').trim()
   const activeMovementBranchLabel = (
@@ -144,7 +173,7 @@ function Workspace({
   ).trim()
   const showMovementBranchSwitcher = (
     (activeItem === 'Entradas' || activeItem === 'Salidas') &&
-    activeMovementBranches.length > 0
+    activeMovementBranchMenuOptions.length > 0
   )
 
   useEffect(() => {
@@ -183,6 +212,8 @@ function Workspace({
   const renderTabContent = (tab) => {
     const hasAccess = labelHasAccess(tab, permissionIndex)
     const TabComponent = tabComponentMap[tab]
+    const moduleKey = MODULE_KEY_BY_TAB[tab] || ''
+    const moduleActions = getModuleActions(moduleKey, permissionIndex)
 
     if (!TabComponent) {
       return (
@@ -210,7 +241,16 @@ function Workspace({
         ? movementBranchSelection.Salidas
         : ''
 
-    return <TabComponent token={token} user={user} createBranchId={createBranchId} />
+    return (
+      <TabComponent
+        token={token}
+        user={user}
+        createBranchId={createBranchId}
+        moduleKey={moduleKey}
+        moduleActions={moduleActions}
+        permissionIndex={permissionIndex}
+      />
+    )
   }
 
   const renderContent = () => {

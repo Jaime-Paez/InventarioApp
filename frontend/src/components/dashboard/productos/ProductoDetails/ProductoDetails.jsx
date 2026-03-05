@@ -54,6 +54,9 @@ function ProductoDetails({
   onError,
   inventoryContext,
   currentUser,
+  allowEdit = true,
+  allowDelete = true,
+  showCostField = true,
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
@@ -460,6 +463,16 @@ function ProductoDetails({
       setInventoryLoading(false)
     }
   }, [inventoryContext, open])
+
+  useEffect(() => {
+    if (allowEdit || !isEditing) return
+    setIsEditing(false)
+  }, [allowEdit, isEditing])
+
+  useEffect(() => {
+    if (allowDelete || !showDeleteDialog) return
+    setShowDeleteDialog(false)
+  }, [allowDelete, showDeleteDialog])
 
   useEffect(() => {
     const term = marcaQuery.trim()
@@ -870,6 +883,7 @@ function ProductoDetails({
   )
 
   const handleSave = async () => {
+    if (!allowEdit) return
     if (!isEditing || saving || !productoId) return
     setSubmitAttempted(true)
     setSaving(true)
@@ -997,6 +1011,7 @@ function ProductoDetails({
   }
 
   const handleDelete = async () => {
+    if (!allowDelete) return
     if (!isEditing || deleteLoading || !productoId) return
     setDeleteLoading(true)
     try {
@@ -1461,20 +1476,22 @@ function ProductoDetails({
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
-                      <span>Costo</span>
-                      <div className="create-user__money">
-                        <span>$</span>
-                        <input
-                          name="costo_minimo"
-                          type="number"
-                          step="0.01"
-                          value={formData.costo_minimo}
-                          onChange={handleChange}
-                          disabled={editorDisabled}
-                        />
-                      </div>
-                    </label>
+                    {showCostField && (
+                      <label className="create-user__field">
+                        <span>Costo</span>
+                        <div className="create-user__money">
+                          <span>$</span>
+                          <input
+                            name="costo_minimo"
+                            type="number"
+                            step="0.01"
+                            value={formData.costo_minimo}
+                            onChange={handleChange}
+                            disabled={editorDisabled}
+                          />
+                        </div>
+                      </label>
+                    )}
 
                     <label className="create-user__field">
                       <span>Precio</span>
@@ -1811,7 +1828,7 @@ function ProductoDetails({
           </div>
 
           <div className="user-details__footer-right">
-            {!isEditing && (
+            {!isEditing && allowEdit && (
               <button
                 type="button"
                 className="create-user__action create-user__action--edit user-details__edit-toggle"
@@ -1827,22 +1844,26 @@ function ProductoDetails({
             )}
             {isEditing && (
               <>
-                <button
-                  type="button"
-                  className="create-user__action user-details__delete"
-                  onClick={() => setShowDeleteDialog(true)}
-                  disabled={saving}
-                >
-                  Eliminar
-                </button>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--primary"
-                  onClick={handleSave}
-                  disabled={saving}
-                >
-                  {saving ? 'Guardando...' : 'Guardar cambios'}
-                </button>
+                {allowDelete && (
+                  <button
+                    type="button"
+                    className="create-user__action user-details__delete"
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={saving}
+                  >
+                    Eliminar
+                  </button>
+                )}
+                {allowEdit && (
+                  <button
+                    type="button"
+                    className="create-user__action create-user__action--primary"
+                    onClick={handleSave}
+                    disabled={saving}
+                  >
+                    {saving ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -1856,7 +1877,7 @@ function ProductoDetails({
         />
       </div>
 
-      {showDeleteDialog && (
+      {allowDelete && showDeleteDialog && (
         <div className="user-details__confirm-overlay">
           <div className="user-details__confirm-dialog">
             <div className="user-details__confirm-icon">

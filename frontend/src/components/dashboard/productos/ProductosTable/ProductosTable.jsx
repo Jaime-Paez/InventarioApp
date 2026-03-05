@@ -21,6 +21,7 @@ import {
   buildPrimeOrdering,
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
+import { moduleHasAllActions, moduleHasAnyAction } from '../../menuConfig'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -60,9 +61,21 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
-function ProductosTable({ token, onSelect, user }) {
+function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const canCreate = moduleActions?.puede_crear ?? true
+  const canEdit = moduleActions?.puede_actualizar ?? true
+  const canDelete = moduleActions?.puede_eliminar ?? true
+  const isAdminByRole = Boolean(
+    user?.is_superuser ||
+      user?.is_staff ||
+      user?.es_administrador ||
+      String(user?.rol || '').trim().toLowerCase() === 'administrador'
+  )
+  const isAdminByUsersPermissions = moduleHasAnyAction('usuarios', permissionIndex)
+  const hasFullProductPermissions = moduleHasAllActions('productos', permissionIndex)
+  const canSeeCost = isAdminByRole || isAdminByUsersPermissions || hasFullProductPermissions
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -150,7 +163,9 @@ function ProductosTable({ token, onSelect, user }) {
     addIfPresent('marca', criteria?.marca)
     addIfPresent('casa_comercial', criteria?.casa_comercial)
     addIfPresent('pieza_original', criteria?.pieza_original)
-    addIfPresent('costo_minimo', criteria?.costo_minimo)
+    if (canSeeCost) {
+      addIfPresent('costo_minimo', criteria?.costo_minimo)
+    }
     addIfPresent('precio', criteria?.precio)
     addIfPresent('fecha_creacion', criteria?.fecha_creacion)
 
@@ -170,7 +185,7 @@ function ProductosTable({ token, onSelect, user }) {
     if (ordering) params.set('ordering', ordering)
 
     return `${API_URL}/productos/listado/?${params.toString()}`
-  }, [])
+  }, [canSeeCost])
 
   const fetchProducts = useCallback(
     async (criteria, page = 1, rows = pageSize, options = {}) => {
@@ -725,8 +740,12 @@ function ProductosTable({ token, onSelect, user }) {
     ],
     []
   )
+  const visibleColumnsData = useMemo(
+    () => (canSeeCost ? columnsData : columnsData.filter((column) => column.nombrevar !== 'costo_minimo')),
+    [canSeeCost, columnsData]
+  )
 
-  const [selectedColumns, setSelectedColumns] = useState(columnsData)
+  const [selectedColumns, setSelectedColumns] = useState(visibleColumnsData)
   const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
 
@@ -747,12 +766,24 @@ function ProductosTable({ token, onSelect, user }) {
           filterPlaceholder: 'Buscar por casa comercial',
         }
       })
-      setSelectedColumns(migrated)
+      const availableFields = new Set(visibleColumnsData.map((column) => column.nombrevar))
+      const visibleColumns = migrated.filter((column) => availableFields.has(column?.nombrevar))
+      setSelectedColumns(visibleColumns.length ? visibleColumns : visibleColumnsData)
     }
     return () => {
       localStorage.setItem('productos-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
-  }, [])
+  }, [visibleColumnsData])
+
+  useEffect(() => {
+    const availableFields = new Set(visibleColumnsData.map((column) => column.nombrevar))
+    setSelectedColumns((prev) => {
+      const filtered = (Array.isArray(prev) ? prev : []).filter((column) => availableFields.has(column?.nombrevar))
+      if (!filtered.length) return visibleColumnsData
+      if (filtered.length === prev.length) return prev
+      return filtered
+    })
+  }, [visibleColumnsData])
 
   const handleCheckboxChangeColumn = (column) => {
     if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
@@ -1072,15 +1103,15 @@ function ProductosTable({ token, onSelect, user }) {
 
   useEffect(() => {
     setSelectedColumns((prev) => {
-      if (!prev || !prev.length) return columnsData
+      if (!prev || !prev.length) return visibleColumnsData
       const prevKeys = new Set(prev.map((c) => c.nombrevar))
-      const next = columnsData.filter((col) => prevKeys.has(col.nombrevar))
-      columnsData.forEach((col) => {
+      const next = visibleColumnsData.filter((col) => prevKeys.has(col.nombrevar))
+      visibleColumnsData.forEach((col) => {
         if (!prevKeys.has(col.nombrevar)) next.push(col)
       })
       return next
     })
-  }, [columnsData])
+  }, [visibleColumnsData])
 
   useEffect(() => {
     const handleWindowResize = () => {
@@ -1375,7 +1406,9 @@ function ProductosTable({ token, onSelect, user }) {
 
       <div className="users-page__top">
         <div className="users-page__actions">
-          <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
+          {canCreate && (
+            <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
+          )}
           <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
         </div>
       </div>
@@ -1449,7 +1482,7 @@ function ProductosTable({ token, onSelect, user }) {
             'pieza_original_label',
             'precio',
             'precio_con_iva',
-            'costo_minimo',
+            ...(canSeeCost ? ['costo_minimo'] : []),
             'casa_comercial_nombre',
             'casas_comerciales_nombres',
           ]}
@@ -1581,7 +1614,7 @@ function ProductosTable({ token, onSelect, user }) {
             <strong>Campos</strong>
           </div>
 
-          {columnsData.map((col) => (
+          {visibleColumnsData.map((col) => (
             <div key={col.nombrevar} className="p-field-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
               <Checkbox
                 inputId={col.nombrevar}
@@ -1739,6 +1772,7 @@ function ProductosTable({ token, onSelect, user }) {
         onCreated={handleCreated}
         token={token}
         onError={showErrorToast}
+        showCostField={canSeeCost}
       />
 
       <ProductoDetails
@@ -1752,6 +1786,9 @@ function ProductosTable({ token, onSelect, user }) {
         onDeleted={handleDeleted}
         onError={showErrorToast}
         currentUser={user}
+        allowEdit={canEdit}
+        allowDelete={canDelete}
+        showCostField={canSeeCost}
       />
 
       {shouldRenderSearchModal && (
@@ -1961,10 +1998,12 @@ function ProductosTable({ token, onSelect, user }) {
                       </select>
                     </label>
 
-                    <label className="create-user__field">
-                      <span>Costo minimo</span>
-                      <input name="costo_minimo" type="text" placeholder="Ej: 10.50" value={searchCriteria.costo_minimo} onChange={handleSearchInputChange} />
-                    </label>
+                    {canSeeCost && (
+                      <label className="create-user__field">
+                        <span>Costo minimo</span>
+                        <input name="costo_minimo" type="text" placeholder="Ej: 10.50" value={searchCriteria.costo_minimo} onChange={handleSearchInputChange} />
+                      </label>
+                    )}
 
                     <label className="create-user__field">
                       <span>Precio sugerido</span>

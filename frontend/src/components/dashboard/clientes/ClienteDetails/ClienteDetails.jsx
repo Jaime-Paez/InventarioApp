@@ -28,7 +28,18 @@ const emptyAuto = {
   color: '',
 }
 
-function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted, onError, currentUser }) {
+function ClienteDetails({
+  open,
+  clienteId,
+  token,
+  onClose,
+  onUpdated,
+  onDeleted,
+  onError,
+  currentUser,
+  allowEdit = true,
+  allowDelete = true,
+}) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [autos, setAutos] = useState([])
@@ -247,6 +258,16 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
     }
   }, [open])
 
+  useEffect(() => {
+    if (allowEdit || !isEditing) return
+    setIsEditing(false)
+  }, [allowEdit, isEditing])
+
+  useEffect(() => {
+    if (allowDelete || !showDeleteDialog) return
+    setShowDeleteDialog(false)
+  }, [allowDelete, showDeleteDialog])
+
   useLayoutEffect(() => {
     if (!open) return
     const { availableWidth, availableHeight } = getViewportMetrics()
@@ -369,6 +390,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
   }
 
   const handleDelete = async () => {
+    if (!allowDelete) return
     if (!isEditing || deleteLoading || !clienteId) return
     setDeleteLoading(true)
     try {
@@ -401,6 +423,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
   }
 
   const handleToggleEdit = () => {
+    if (!allowEdit) return
     setIsEditing((prev) => {
       const next = !prev
       if (!next) {
@@ -870,28 +893,32 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
             >
               Cancelar
             </button>
-            <button
-              type="button"
-              className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-              onClick={handleToggleEdit}
-              disabled={loadingData || saving}
-            >
-              <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>
-              {isEditing ? 'Solo lectura' : 'Editar'}
-            </button>
+            {allowEdit && (
+              <button
+                type="button"
+                className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
+                onClick={handleToggleEdit}
+                disabled={loadingData || saving}
+              >
+                <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>
+                {isEditing ? 'Solo lectura' : 'Editar'}
+              </button>
+            )}
           </div>
 
           <div className="user-details__footer-right">
             {isEditing && (
               <>
-                <button
-                  type="button"
-                  className="create-user__action user-details__delete"
-                  onClick={() => setShowDeleteDialog(true)}
-                  disabled={saving}
-                >
-                  Eliminar
-                </button>
+                {allowDelete && (
+                  <button
+                    type="button"
+                    className="create-user__action user-details__delete"
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={saving}
+                  >
+                    Eliminar
+                  </button>
+                )}
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"
@@ -913,7 +940,7 @@ function ClienteDetails({ open, clienteId, token, onClose, onUpdated, onDeleted,
         />
       </div>
 
-      {showDeleteDialog && (
+      {allowDelete && showDeleteDialog && (
         <div className="user-details__confirm-overlay">
           <div className="user-details__confirm-dialog">
             <div className="user-details__confirm-icon">

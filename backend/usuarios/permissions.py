@@ -141,6 +141,23 @@ class ConfiguracionModulePermission(ModulePermission):
 class MovimientoInventarioModulePermission(ModulePermission):
     """Valida permisos dependiendo del tipo de movimiento (entrada/salida)."""
 
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        action = getattr(view, "action", "")
+        if action == "decision_solicitud_traslado" and request.method == "POST":
+            permission_index = self._get_permission_index(request)
+            module_permissions = permission_index.get(
+                RolPermiso.Modulos.MOVIMIENTOS_SALIDAS, {}
+            )
+            return bool(
+                module_permissions.get("puede_crear")
+                or module_permissions.get("puede_actualizar")
+            )
+
+        return super().has_permission(request, view)
+
     def get_target_module_keys(self, request, view):
         from tipos.models import TipoMovimiento  # Import tardío para evitar ciclos
 
@@ -148,6 +165,8 @@ class MovimientoInventarioModulePermission(ModulePermission):
         if action == "solicitudes_traslado":
             if request.method in ("POST", "PUT", "PATCH", "DELETE"):
                 return [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS]
+            return [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS]
+        if action in {"detalle_solicitud_traslado", "decision_solicitud_traslado"}:
             return [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS]
 
         tipo_movimiento = None

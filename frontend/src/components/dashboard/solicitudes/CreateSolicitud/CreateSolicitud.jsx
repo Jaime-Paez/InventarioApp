@@ -53,7 +53,6 @@ const hasUsersModuleAccess = (permissions) =>
     if (normalizeString(permission?.modulo) !== 'usuarios') return false
     return Boolean(
       permission?.puede_crear ||
-        permission?.puede_leer ||
         permission?.puede_actualizar ||
         permission?.puede_eliminar
     )
@@ -1046,23 +1045,31 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser
   )
   const isClientReady = !mustCompleteManualClient || hasManualClienteData
   const hasAdminRecipients = adminReminderRecipients.length > 0
-  const canSubmit = Boolean(sucursalId) && productos.length > 0 && isClientReady && hasAdminRecipients && !reminderUsersLoading
+  const hasAdditionalReminderRecipients = selectedReminderRecipients.length > 0
+  const canSubmit =
+    Boolean(sucursalId) &&
+    productos.length > 0 &&
+    isClientReady &&
+    hasAdminRecipients &&
+    hasAdditionalReminderRecipients &&
+    !reminderUsersLoading
 
   const getSubmitValidationMessage = useCallback(() => {
     if (!sucursalId) return 'Debe seleccionar una sucursal.'
     if (!productos.length) return 'Debe agregar al menos un producto solicitado.'
     if (reminderUsersLoading) return 'Espera a que se carguen los usuarios para recordatorios.'
     if (!hasAdminRecipients) return 'No se pudo resolver un administrador para el recordatorio obligatorio.'
+    if (!hasAdditionalReminderRecipients) return 'Debes seleccionar al menos un usuario adicional para el recordatorio.'
     if (!isClientReady) return 'Si ingresa datos del cliente, la cedula es obligatoria y debe completar todos los campos.'
     return ''
-  }, [hasAdminRecipients, isClientReady, productos.length, reminderUsersLoading, sucursalId])
+  }, [hasAdditionalReminderRecipients, hasAdminRecipients, isClientReady, productos.length, reminderUsersLoading, sucursalId])
 
   const registerInvalidSubmitAttempt = useCallback(() => {
     setSubmitAttempted(true)
 
     if (!sucursalId || !productos.length) {
       setActiveTab('productos')
-    } else if (reminderUsersLoading || !hasAdminRecipients) {
+    } else if (reminderUsersLoading || !hasAdminRecipients || !hasAdditionalReminderRecipients) {
       setActiveTab('recordatorio')
     } else if (!isClientReady) {
       setActiveTab('cliente')
@@ -1072,6 +1079,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser
     if (validationMessage) notifyError(validationMessage)
   }, [
     getSubmitValidationMessage,
+    hasAdditionalReminderRecipients,
     hasAdminRecipients,
     isClientReady,
     notifyError,
@@ -1765,8 +1773,11 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser
                   )}
                 </div>
 
-                <div className="create-solicitud__reminder-users">
+                <div className={`create-solicitud__reminder-users${!reminderUsersLoading && !hasAdditionalReminderRecipients ? ' create-solicitud__reminder-users--invalid' : ''}`}>
                   <h5>Usuarios adicionales</h5>
+                  {!reminderUsersLoading && !hasAdditionalReminderRecipients && (
+                    <small className="create-user__field-error">Debes seleccionar al menos un usuario adicional.</small>
+                  )}
                   <div className="create-solicitud__reminder-user-list">
                     {!reminderUsersLoading && !selectableReminderUsers.length && (
                       <small className="muted">No hay usuarios adicionales disponibles.</small>
