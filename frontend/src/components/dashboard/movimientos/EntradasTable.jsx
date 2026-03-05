@@ -199,7 +199,7 @@ function EntradasTable({ token, user, createBranchId = '', moduleActions }) {
       { nombrevar: 'fecha', header: 'Fecha', filterPlaceholder: 'Buscar por fecha' },
       { nombrevar: 'sucursal_nombre', header: 'Sucursal', filterPlaceholder: 'Buscar por sucursal' },
       { nombrevar: 'sub_tipo_nombre', header: 'Tipo', filterPlaceholder: 'Buscar por tipo' },
-      { nombrevar: 'sucursal_objetivo_nombre', header: 'Destino', filterPlaceholder: 'Buscar por destino' },
+      { nombrevar: 'sucursal_objetivo_nombre', header: 'Sucursal proveedora', filterPlaceholder: 'Buscar por sucursal proveedora' },
       { nombrevar: 'estado_nombre', header: 'Estado', filterPlaceholder: 'Buscar por estado' },
       { nombrevar: 'total', header: 'Total', filterPlaceholder: 'Buscar por total' },
       { nombrevar: 'funcional_label', header: 'Funcional', filterPlaceholder: 'Buscar por funcional' },
@@ -1191,11 +1191,11 @@ function EntradasTable({ token, user, createBranchId = '', moduleActions }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Sucursal destino</span>
+                      <span>Sucursal proveedora</span>
                       <input
                         name="sucursal_objetivo"
                         type="text"
-                        placeholder="Ej: Norte"
+                        placeholder="Ej: Tumbaco"
                         value={searchCriteria.sucursal_objetivo}
                         onChange={handleSearchInputChange}
                       />
