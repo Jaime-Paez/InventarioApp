@@ -270,7 +270,7 @@ function Workspace({
     }
   }, [isMovementBranchMenuOpen])
 
-  const renderTabContent = (tab) => {
+  const renderTabContent = (tab, isActive = false) => {
     const hasAccess = labelHasAccess(tab, permissionIndex)
     const TabComponent = tabComponentMap[tab]
     const moduleKey = MODULE_KEY_BY_TAB[tab] || ''
@@ -306,6 +306,7 @@ function Workspace({
       <TabComponent
         token={token}
         user={user}
+        isTabActive={tab === 'Entradas' ? isActive : undefined}
         createBranchId={createBranchId}
         moduleKey={moduleKey}
         moduleActions={moduleActions}
@@ -333,7 +334,7 @@ function Workspace({
           className={`workspace__tab-panel ${isActive ? 'active' : ''}`}
           aria-hidden={!isActive}
         >
-          {renderTabContent(tab)}
+          {renderTabContent(tab, isActive)}
         </div>
       )
     })

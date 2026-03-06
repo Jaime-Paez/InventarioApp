@@ -13,6 +13,7 @@ import EntradaDetails from './EntradaDetails'
 import './EntradasTable.css'
 import '../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../common/useModalAnimation'
+import { REMINDERS_TRANSFER_NOTIFICATION_EVENT } from '../common/reminders/remindersStorage'
 import { API_URL, authFetch } from '../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
@@ -151,6 +152,7 @@ const isCheckboxSelection = (event) => {
 function EntradasTable({
   token,
   user,
+  isTabActive = false,
   createBranchId = '',
   moduleActions,
   pendingTransferEntradaRequest = null,
@@ -163,6 +165,9 @@ function EntradasTable({
   const fetchSeqRef = useRef(0)
   const loadedTokenRef = useRef(null)
   const handledTransferRequestKeyRef = useRef('')
+  const notificationRefreshInFlightRef = useRef(false)
+  const pendingNotificationRefreshRef = useRef(false)
+  const refreshDataRef = useRef(() => Promise.resolve([]))
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
@@ -552,6 +557,42 @@ function EntradasTable({
       }),
     [currentPage, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter, normalizedCreateBranchId]
   )
+
+  useEffect(() => {
+    refreshDataRef.current = refreshData
+  }, [refreshData])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !token || !isTabActive) return undefined
+
+    const runNotificationRefresh = () => {
+      if (notificationRefreshInFlightRef.current) {
+        pendingNotificationRefreshRef.current = true
+        return
+      }
+      notificationRefreshInFlightRef.current = true
+      void refreshDataRef.current({
+        branchContextId: normalizedCreateBranchId,
+      }).finally(() => {
+        notificationRefreshInFlightRef.current = false
+        if (!pendingNotificationRefreshRef.current) return
+        pendingNotificationRefreshRef.current = false
+        runNotificationRefresh()
+      })
+    }
+
+    const handleTransferReminderNotification = () => {
+      runNotificationRefresh()
+    }
+
+    window.addEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleTransferReminderNotification)
+
+    return () => {
+      notificationRefreshInFlightRef.current = false
+      pendingNotificationRefreshRef.current = false
+      window.removeEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleTransferReminderNotification)
+    }
+  }, [isTabActive, normalizedCreateBranchId, token])
 
   useEffect(() => {
     if (!token) return

@@ -2,6 +2,7 @@ import { API_URL, authFetch, resolveAuthToken } from '../../../../utils/api'
 
 export const REMINDERS_STORAGE_KEY = 'inventario-recordatorios-v1'
 export const REMINDERS_SYNC_EVENT = 'inventario-reminders-sync'
+export const REMINDERS_TRANSFER_NOTIFICATION_EVENT = 'inventario-reminders-transfer-notification'
 export const SPECIAL_TRANSFER_DECISION_KIND = 'solicitud_traslado_decision'
 export const REMINDERS_BACKEND_ENDPOINT = `${API_URL}/recordatorios/estado/`
 
@@ -329,6 +330,15 @@ export const writeRemindersToStorage = (reminders) => {
 export const emitRemindersSync = () => {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new Event(REMINDERS_SYNC_EVENT))
+}
+
+export const emitTransferReminderNotification = (detail = {}) => {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(
+    new CustomEvent(REMINDERS_TRANSFER_NOTIFICATION_EVENT, {
+      detail,
+    })
+  )
 }
 
 export const isReminderForCurrentUser = (reminder, userIdSet) => {

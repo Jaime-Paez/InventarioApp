@@ -9,6 +9,7 @@ import {
   REMINDERS_SYNC_EVENT,
   buildUserIdSet,
   createReminderId,
+  emitTransferReminderNotification,
   emitRemindersSync,
   fetchRemindersFromBackend,
   formatCurrentUserName,
@@ -294,14 +295,18 @@ function QuickActions({
     }
 
     const seenIds = seenUrgentReminderIdsRef.current
-    let hasNewReminder = false
+    const newReminderIds = []
     nextIds.forEach((id) => {
-      if (!seenIds.has(id)) hasNewReminder = true
+      if (!seenIds.has(id)) newReminderIds.push(id)
     })
     seenUrgentReminderIdsRef.current = nextIds
 
-    if (hasNewReminder) {
+    if (newReminderIds.length) {
       playNotificationTone()
+      emitTransferReminderNotification({
+        type: 'solicitud_traslado_pendiente',
+        reminderIds: newReminderIds,
+      })
     }
   }, [eligibleUrgentDecisionReminders, playNotificationTone])
 
@@ -329,14 +334,18 @@ function QuickActions({
     }
 
     const seenIds = seenTransferResponseReminderIdsRef.current
-    let hasNewReminder = false
+    const newReminderIds = []
     nextIds.forEach((id) => {
-      if (!seenIds.has(id)) hasNewReminder = true
+      if (!seenIds.has(id)) newReminderIds.push(id)
     })
     seenTransferResponseReminderIdsRef.current = nextIds
 
-    if (hasNewReminder) {
+    if (newReminderIds.length) {
       playNotificationTone()
+      emitTransferReminderNotification({
+        type: 'solicitud_traslado_resuelta',
+        reminderIds: newReminderIds,
+      })
     }
   }, [pendingTransferResponseReminders, playNotificationTone])
 
