@@ -36,8 +36,6 @@ const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
 const URGENT_DECISION_SHIELD_COLOR = '#0b4f79'
 const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
-const URGENT_DECISION_SHIELD_Z_INDEX = 1300
-const URGENT_SHIPMENT_SHIELD_Z_INDEX = 45
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
 const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-state'
@@ -712,7 +710,14 @@ function QuickActions({
   }, [urgentProgressById])
 
   const urgentShieldStyles = useMemo(() => {
-    if (!urgentShieldTargets.length || isReminderModalOpen || typeof window === 'undefined') return []
+    if (
+      !urgentShieldTargets.length ||
+      isReminderModalOpen ||
+      isTransferSendModalOpen ||
+      typeof window === 'undefined'
+    ) {
+      return []
+    }
     void clockTick
     const viewportWidth = window.innerWidth
     const maxCanvas = Math.max(window.innerWidth, window.innerHeight) * 1.35
@@ -753,10 +758,6 @@ function QuickActions({
         const anchorCenter = resolveAnchorCenter(anchor)
         const centerX = anchorCenter.x - offset
         const centerY = anchorCenter.y + offset
-        const shieldZIndex =
-          target?.kind === 'pending_shipment'
-            ? URGENT_SHIPMENT_SHIELD_Z_INDEX
-            : Math.max(1200, URGENT_DECISION_SHIELD_Z_INDEX - index)
 
         return {
           id: targetId,
@@ -776,12 +777,19 @@ function QuickActions({
               target?.kind === 'pending_shipment'
                 ? URGENT_SHIPMENT_SHIELD_COLOR
                 : URGENT_DECISION_SHIELD_COLOR,
-            zIndex: String(shieldZIndex),
+            zIndex: String(Math.max(1200, 1299 - index)),
           },
         }
       })
       .filter(Boolean)
-  }, [clockTick, isReminderModalOpen, urgentProgressById, urgentShieldTargets, urgentVisualProgressById])
+  }, [
+    clockTick,
+    isReminderModalOpen,
+    isTransferSendModalOpen,
+    urgentProgressById,
+    urgentShieldTargets,
+    urgentVisualProgressById,
+  ])
 
   const activeUrgentShield = useMemo(() => {
     if (!urgentShieldStyles.length) return null
