@@ -267,6 +267,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
             .order_by("-fecha", "-id")
         )
+        # Evita duplicados en la tabla de Entradas:
+        # cuando la solicitud ya genero movimiento (envio/entrada), se muestra
+        # solo el movimiento de inventario real.
+        queryset = queryset.filter(
+            movimiento_salida_id__isnull=True,
+            movimiento_entrada_id__isnull=True,
+        )
 
         if not (self.request.user.is_staff or self.request.user.is_superuser):
             allowed = get_allowed_sucursal_ids(
