@@ -148,13 +148,21 @@ const isCheckboxSelection = (event) => {
   )
 }
 
-function EntradasTable({ token, user, createBranchId = '', moduleActions }) {
+function EntradasTable({
+  token,
+  user,
+  createBranchId = '',
+  moduleActions,
+  pendingTransferEntradaRequest = null,
+  onPendingTransferEntradaRequestHandled,
+}) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const preloadEntradaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
   const fetchSeqRef = useRef(0)
   const loadedTokenRef = useRef(null)
+  const handledTransferRequestKeyRef = useRef('')
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
@@ -749,6 +757,41 @@ function EntradasTable({ token, user, createBranchId = '', moduleActions }) {
     }
     setShowCreateModal(true)
   }
+
+  useEffect(() => {
+    const request = pendingTransferEntradaRequest
+    const requestKey = String(request?.requestKey || '').trim()
+    if (!requestKey) return
+    if (handledTransferRequestKeyRef.current === requestKey) return
+
+    const markHandled = () => {
+      handledTransferRequestKeyRef.current = requestKey
+      onPendingTransferEntradaRequestHandled?.()
+    }
+
+    const previewData = request?.previewData
+    const solicitudId = String(request?.solicitudId || previewData?.solicitud_traslado_id || '').trim()
+    if (!solicitudId || !previewData) {
+      markHandled()
+      return
+    }
+
+    const targetBranchId = String(
+      request?.sucursalSolicitanteId || previewData?.sucursal_solicitante_id || ''
+    ).trim()
+    if (targetBranchId && normalizedCreateBranchId !== 'all' && normalizedCreateBranchId !== targetBranchId) {
+      return
+    }
+
+    setSelectedId(null)
+    setSelectedSolicitudPreview(previewData)
+    setShowDetailsModal(true)
+    markHandled()
+  }, [
+    normalizedCreateBranchId,
+    onPendingTransferEntradaRequestHandled,
+    pendingTransferEntradaRequest,
+  ])
 
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target

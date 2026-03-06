@@ -412,6 +412,8 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
   const seenByCurrentUser = reminderCompletedByIds(reminder).some((id) => userIdSet.has(id))
   const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
   const decisionStatus = getReminderDecisionStatus(reminder)
+  const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
+  const isTransferContext = contextType === 'solicitud_traslado'
 
   if (!isForCurrentUser) {
     return {
@@ -421,7 +423,7 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
     }
   }
 
-  if (isSpecialReminder && decisionStatus === 'aceptada') {
+  if ((isSpecialReminder || isTransferContext) && decisionStatus === 'aceptada') {
     return {
       label: 'Aceptada',
       className: 'accepted',
@@ -429,7 +431,7 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
     }
   }
 
-  if (isSpecialReminder && decisionStatus === 'rechazada') {
+  if ((isSpecialReminder || isTransferContext) && decisionStatus === 'rechazada') {
     return {
       label: 'Rechazada',
       className: 'rejected',

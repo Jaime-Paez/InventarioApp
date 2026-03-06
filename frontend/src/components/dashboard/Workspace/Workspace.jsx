@@ -67,6 +67,7 @@ function Workspace({
   const [isMovementBranchMenuOpen, setIsMovementBranchMenuOpen] = useState(false)
   const movementBranchMenuRef = useRef(null)
   const [pendingTransferSalidaRequest, setPendingTransferSalidaRequest] = useState(null)
+  const [pendingTransferEntradaRequest, setPendingTransferEntradaRequest] = useState(null)
 
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
@@ -181,8 +182,37 @@ function Workspace({
     })
   }, [onSelectTab, permissionIndex])
 
-  const handleTransferRequestHandled = useCallback(() => {
+  const handleTransferSalidaRequestHandled = useCallback(() => {
     setPendingTransferSalidaRequest(null)
+  }, [])
+
+  const handleOpenTransferRequestInEntradas = useCallback((payload) => {
+    const previewData = payload?.previewData || null
+    const solicitudId = String(payload?.solicitudId || previewData?.solicitud_traslado_id || '').trim()
+    if (!solicitudId) return
+    if (!labelHasAccess('Entradas', permissionIndex)) return
+
+    const sucursalSolicitanteId = String(
+      payload?.sucursalSolicitanteId ||
+      previewData?.sucursal_solicitante_id ||
+      ''
+    ).trim()
+
+    if (sucursalSolicitanteId) {
+      setMovementBranchSelection((prev) => ({ ...prev, Entradas: sucursalSolicitanteId }))
+    }
+
+    onSelectTab?.('Entradas')
+    setPendingTransferEntradaRequest({
+      requestKey: `${Date.now()}-${solicitudId}`,
+      solicitudId,
+      sucursalSolicitanteId,
+      previewData,
+    })
+  }, [onSelectTab, permissionIndex])
+
+  const handleTransferEntradaRequestHandled = useCallback(() => {
+    setPendingTransferEntradaRequest(null)
   }, [])
 
   const activeMovementBranches = movementBranchOptions?.[activeItem] || []
@@ -281,8 +311,12 @@ function Workspace({
         moduleActions={moduleActions}
         permissionIndex={permissionIndex}
         pendingTransferSalidaRequest={tab === 'Salidas' ? pendingTransferSalidaRequest : null}
+        pendingTransferEntradaRequest={tab === 'Entradas' ? pendingTransferEntradaRequest : null}
         onPendingTransferSalidaRequestHandled={
-          tab === 'Salidas' ? handleTransferRequestHandled : undefined
+          tab === 'Salidas' ? handleTransferSalidaRequestHandled : undefined
+        }
+        onPendingTransferEntradaRequestHandled={
+          tab === 'Entradas' ? handleTransferEntradaRequestHandled : undefined
         }
       />
     )
@@ -321,6 +355,7 @@ function Workspace({
           user={user}
           allowUrgentShield={allowUrgentShield}
           onTransferDecisionAccepted={handleTransferDecisionAccepted}
+          onOpenTransferRequestInEntradas={handleOpenTransferRequestInEntradas}
         />
       </div>
 

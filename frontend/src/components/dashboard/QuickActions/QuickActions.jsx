@@ -11,6 +11,7 @@ import {
   emitRemindersSync,
   fetchRemindersFromBackend,
   formatCurrentUserName,
+  getReminderDecisionStatus,
   getReminderDeadlineTimestamp,
   isReminderCreatedByCurrentUser,
   isReminderForCurrentUser,
@@ -28,6 +29,7 @@ const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
 const URGENT_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
+const REMINDERS_POLL_MS = 4000
 const URGENT_SHIELD_COLORS = ['#0b4f79', '#0e7490', '#0f766e', '#b45309', '#b91c1c', '#9a3412']
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
@@ -38,6 +40,15 @@ const normalizeReminderContextType = (value) =>
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
+
+const isResolvedTransferResponseReminder = (reminder) => {
+  const contextType = normalizeReminderContextType(reminder?.context?.type)
+  if (contextType !== 'solicitud_traslado') return false
+  if (isSpecialTransferDecisionReminder(reminder)) return false
+
+  const decisionStatus = getReminderDecisionStatus(reminder)
+  return decisionStatus === 'aceptada' || decisionStatus === 'rechazada'
+}
 
 const resolveUrgentDecisionProgress = (reminder, nowValue) => {
   const deadline = getReminderDeadlineTimestamp(reminder)
@@ -62,12 +73,17 @@ function QuickActions({
   token,
   user,
   onTransferDecisionAccepted,
+  onOpenTransferRequestInEntradas,
   allowUrgentShield = true,
 }) {
   const wrapRef = useRef(null)
   const btnRefs = useRef([])
   const reminderButtonRef = useRef(null)
   const moveTimerRef = useRef(null)
+  const remindersPollInFlightRef = useRef(false)
+  const audioContextRef = useRef(null)
+  const didInitUrgentSnapshotRef = useRef(false)
+  const seenUrgentReminderIdsRef = useRef(new Set())
   const toast = useRef(null)
 
   const [blob, setBlob] = useState({ x: 0, y: 0, w: 0, h: 0, visible: false })
@@ -93,6 +109,48 @@ function QuickActions({
       life: 3400,
     })
   }, [])
+
+  const ensureAudioContext = useCallback(() => {
+    if (typeof window === 'undefined') return null
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextCtor) return null
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextCtor()
+    }
+    return audioContextRef.current
+  }, [])
+
+  const playNotificationTone = useCallback(() => {
+    const context = ensureAudioContext()
+    if (!context) return
+
+    const play = () => {
+      try {
+        const now = context.currentTime
+        const gain = context.createGain()
+        const oscillator = context.createOscillator()
+        oscillator.type = 'sine'
+        oscillator.frequency.setValueAtTime(932, now)
+
+        gain.gain.setValueAtTime(0.0001, now)
+        gain.gain.exponentialRampToValueAtTime(0.035, now + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24)
+
+        oscillator.connect(gain)
+        gain.connect(context.destination)
+        oscillator.start(now)
+        oscillator.stop(now + 0.25)
+      } catch {
+        // Ignore audio errors (browser policies/devices).
+      }
+    }
+
+    if (context.state === 'suspended') {
+      void context.resume().then(play).catch(() => {})
+      return
+    }
+    play()
+  }, [ensureAudioContext])
 
   const hasPendingReminder = useMemo(
     () => reminders.some((reminder) => isReminderPendingForCurrentUser(reminder, currentUserIds)),
@@ -140,7 +198,38 @@ function QuickActions({
   }, [user])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const unlockAudio = () => {
+      const context = ensureAudioContext()
+      if (!context || context.state !== 'suspended') return
+      void context.resume().catch(() => {})
+    }
+
+    window.addEventListener('pointerdown', unlockAudio, { once: true })
+    window.addEventListener('keydown', unlockAudio, { once: true })
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio)
+      window.removeEventListener('keydown', unlockAudio)
+    }
+  }, [ensureAudioContext])
+
+  useEffect(
+    () => () => {
+      const context = audioContextRef.current
+      audioContextRef.current = null
+      if (context && typeof context.close === 'function') {
+        void context.close().catch(() => {})
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
     urgentVisualReminderIdsRef.current = new Set()
+    seenUrgentReminderIdsRef.current = new Set()
+    didInitUrgentSnapshotRef.current = false
     setUrgentVisualProgressById({})
   }, [canDecideTransferRequest, token, currentPrimaryUserId])
 
@@ -151,6 +240,31 @@ function QuickActions({
       return contextType === 'solicitud_traslado'
     })
   }, [allowUrgentShield, canDecideTransferRequest, pendingSpecialDecisionReminders])
+
+  useEffect(() => {
+    const nextIds = new Set(
+      eligibleUrgentDecisionReminders
+        .map((reminder) => normalizeId(reminder?.id))
+        .filter(Boolean)
+    )
+
+    if (!didInitUrgentSnapshotRef.current) {
+      seenUrgentReminderIdsRef.current = nextIds
+      didInitUrgentSnapshotRef.current = true
+      return
+    }
+
+    const seenIds = seenUrgentReminderIdsRef.current
+    let hasNewReminder = false
+    nextIds.forEach((id) => {
+      if (!seenIds.has(id)) hasNewReminder = true
+    })
+    seenUrgentReminderIdsRef.current = nextIds
+
+    if (hasNewReminder) {
+      playNotificationTone()
+    }
+  }, [eligibleUrgentDecisionReminders, playNotificationTone])
 
   const urgentDecisionProgressById = useMemo(() => {
     const map = {}
@@ -374,12 +488,18 @@ function QuickActions({
   }, [activeUrgentShield])
 
   const personalReminders = useMemo(() => {
-    const related = reminders.filter(
-      (reminder) =>
-        isReminderForCurrentUser(reminder, currentUserIds) ||
-        isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)
-    )
+    const related = reminders.filter((reminder) => {
+      if (!isReminderForCurrentUser(reminder, currentUserIds)) return false
 
+      if (
+        isResolvedTransferResponseReminder(reminder) &&
+        isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)
+      ) {
+        return false
+      }
+
+      return true
+    })
     return sortRemindersForCurrentUser(related, currentUserIds)
   }, [reminders, currentUserIds, currentUserName])
 
@@ -458,23 +578,46 @@ function QuickActions({
   }, [isReminderModalOpen, urgentShieldStyles.length])
 
   useEffect(() => {
-    let cancelled = false
-
-    const hydrateReminders = async () => {
-      if (!token) {
-        setReminders([])
-        return
-      }
-
-      const remote = await fetchRemindersFromBackend(token)
-      if (cancelled) return
-      setReminders(remote)
+    if (typeof window === 'undefined') return undefined
+    if (!token) {
+      setReminders([])
+      return undefined
     }
 
-    hydrateReminders()
+    let cancelled = false
+
+    const syncRemindersFromServer = async () => {
+      if (remindersPollInFlightRef.current) return
+      remindersPollInFlightRef.current = true
+      try {
+        const remote = await fetchRemindersFromBackend(token)
+        if (cancelled) return
+        setReminders(remote)
+      } finally {
+        remindersPollInFlightRef.current = false
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return
+      void syncRemindersFromServer()
+    }
+
+    const handleFocus = () => {
+      void syncRemindersFromServer()
+    }
+
+    void syncRemindersFromServer()
+    const intervalId = window.setInterval(syncRemindersFromServer, REMINDERS_POLL_MS)
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
 
     return () => {
       cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
     }
   }, [token])
 
@@ -697,6 +840,7 @@ function QuickActions({
         focusReminderId={focusReminderId}
         onFocusReminderHandled={() => setFocusReminderId('')}
         onTransferDecisionAccepted={onTransferDecisionAccepted}
+        onOpenTransferRequestInEntradas={onOpenTransferRequestInEntradas}
       />
     </>
   )

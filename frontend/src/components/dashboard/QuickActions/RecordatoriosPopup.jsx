@@ -38,6 +38,117 @@ const formatReminderContext = (reminder) => {
   return formatted.charAt(0).toUpperCase() + formatted.slice(1)
 }
 
+const normalizeReminderContextType = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+
+const extractTransferDocumentNumber = (value) => {
+  const match = String(value || '').match(/#([A-Za-z0-9._-]+)/)
+  return match ? String(match[1] || '').trim() : ''
+}
+
+const parseNumber = (value) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const resolveTransferEstadoLabel = (rawEstadoLabel, rawEstado) => {
+  const estadoLabel = String(rawEstadoLabel || '').trim()
+  if (estadoLabel) return estadoLabel
+
+  const estado = String(rawEstado || '').trim().toLowerCase()
+  if (estado === 'cancelada' || estado === 'rechazada') return 'Rechazada'
+  if (estado === 'aprobada' || estado === 'aceptada') return 'Solicitud aceptada'
+  if (estado === 'pendiente') return 'Solicitud pendiente'
+  return 'Solicitud pendiente'
+}
+
+const mapTransferRowToEntradaPreview = (row) => {
+  const solicitudId = String(row?.solicitud_traslado_id || '').trim()
+  const detalles = (Array.isArray(row?.detalles) ? row.detalles : []).map((detalle) => {
+    const cantidad = parseNumber(detalle?.cantidad)
+    const valor = parseNumber(detalle?.valor)
+    const valorTotalRaw = Number(detalle?.valor_total)
+    const valorTotal = Number.isFinite(valorTotalRaw) ? valorTotalRaw : cantidad * valor
+    return {
+      id: detalle?.id,
+      producto_id: detalle?.producto_id,
+      producto_codigo: String(detalle?.producto_codigo || '').trim(),
+      producto_nombre: String(detalle?.producto_nombre || '').trim(),
+      cantidad,
+      valor,
+      valor_total: valorTotal,
+    }
+  })
+
+  const totalRaw = Number(row?.total)
+  const total = Number.isFinite(totalRaw)
+    ? totalRaw
+    : detalles.reduce((acc, detalle) => acc + parseNumber(detalle?.valor_total), 0)
+
+  return {
+    id: row?.id || (solicitudId ? `solicitud-${solicitudId}` : undefined),
+    no_documento: String(row?.no_documento || '').trim(),
+    fecha: row?.fecha || '',
+    sucursal_nombre: String(row?.sucursal_nombre || '').trim() || '-',
+    sub_tipo_nombre: String(row?.sub_tipo_nombre || '').trim() || 'Traslado (Solicitud)',
+    estado_nombre: String(row?.estado_nombre || '').trim() || 'Solicitud pendiente',
+    sucursal_objetivo_nombre: String(row?.sucursal_objetivo_nombre || '').trim() || '-',
+    funcional: false,
+    funcional_label: '-',
+    total,
+    es_solicitud_traslado: true,
+    solicitud_traslado_id: solicitudId || null,
+    sucursal_solicitante_id: row?.sucursal_solicitante_id || '',
+    sucursal_proveedora_id: row?.sucursal_proveedora_id || '',
+    descripcion: String(row?.descripcion || '').trim(),
+    detalles,
+    movimiento_salida_id: row?.movimiento_salida_id ?? null,
+    movimiento_entrada_id: row?.movimiento_entrada_id ?? null,
+  }
+}
+
+const mapTransferDetailToEntradaPreview = (detail) => {
+  const solicitudId = String(detail?.id || '').trim()
+  const detalles = (Array.isArray(detail?.detalles) ? detail.detalles : []).map((detalle) => {
+    const cantidad = parseNumber(detalle?.cantidad)
+    const valor = parseNumber(detalle?.valor)
+    const valorTotal = cantidad * valor
+    return {
+      id: detalle?.id,
+      producto_id: detalle?.producto_id,
+      producto_codigo: String(detalle?.producto_codigo || '').trim(),
+      producto_nombre: String(detalle?.producto_nombre || '').trim(),
+      cantidad,
+      valor,
+      valor_total: valorTotal,
+    }
+  })
+
+  return {
+    id: solicitudId ? `solicitud-${solicitudId}` : undefined,
+    no_documento: String(detail?.no_documento || '').trim(),
+    fecha: detail?.fecha || '',
+    sucursal_nombre: String(detail?.sucursal_solicitante || '').trim() || '-',
+    sub_tipo_nombre: 'Traslado (Solicitud)',
+    estado_nombre: resolveTransferEstadoLabel(detail?.estado_label, detail?.estado),
+    sucursal_objetivo_nombre: String(detail?.sucursal_proveedora || '').trim() || '-',
+    funcional: false,
+    funcional_label: '-',
+    total: detalles.reduce((acc, detalle) => acc + parseNumber(detalle?.valor_total), 0),
+    es_solicitud_traslado: true,
+    solicitud_traslado_id: solicitudId || null,
+    sucursal_solicitante_id: detail?.sucursal_solicitante_id || '',
+    sucursal_proveedora_id: detail?.sucursal_proveedora_id || '',
+    descripcion: String(detail?.descripcion || '').trim(),
+    detalles,
+    movimiento_salida_id: detail?.movimiento_salida_id ?? null,
+    movimiento_entrada_id: detail?.movimiento_entrada_id ?? null,
+  }
+}
+
 const parseDateKey = (value) => {
   const raw = String(value || '').trim()
   const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
@@ -152,6 +263,7 @@ function RecordatoriosPopup({
   focusReminderId,
   onFocusReminderHandled,
   onTransferDecisionAccepted,
+  onOpenTransferRequestInEntradas,
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const [users, setUsers] = useState([])
@@ -173,6 +285,7 @@ function RecordatoriosPopup({
   const [isRejectReasonModalOpen, setIsRejectReasonModalOpen] = useState(false)
   const [rejectReasonError, setRejectReasonError] = useState('')
   const [selectedTimelineDate, setSelectedTimelineDate] = useState(() => getTodayDateKey())
+  const [openingTransferReminderId, setOpeningTransferReminderId] = useState('')
 
   const notifyError = useCallback(
     (message) => {
@@ -350,6 +463,7 @@ function RecordatoriosPopup({
   useEffect(() => {
     if (!open) {
       closeDecisionPanel()
+      setOpeningTransferReminderId('')
       return
     }
     const defaults = getNowDateParts()
@@ -361,6 +475,7 @@ function RecordatoriosPopup({
     setSelectedTimelineDate(defaults.date)
     setActiveView('list')
     previousViewRef.current = 'list'
+    setOpeningTransferReminderId('')
     closeDecisionPanel()
   }, [open, currentPrimaryUserId, closeDecisionPanel])
 
@@ -674,6 +789,12 @@ function RecordatoriosPopup({
               context: reminder?.context || null,
               kind: 'recordatorio_general',
               createdAt: resolutionDate,
+              decision: {
+                status: 'rechazada',
+                reason: rejectionReasonValue,
+                by: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
+                at: resolutionDate,
+              },
               completedBy: [],
             },
             ...(Array.isArray(prev) ? prev : []),
@@ -730,6 +851,115 @@ function RecordatoriosPopup({
       setIsRejectReasonModalOpen(false)
     }
   }
+
+  const fetchTransferPreviewFromEntradaTable = useCallback(
+    async (reminder) => {
+      if (!token) return null
+
+      const solicitudId = normalizeId(reminder?.context?.id)
+      const documentNumber = extractTransferDocumentNumber(reminder?.context?.label || reminder?.description)
+      const params = new URLSearchParams()
+      params.set('tipo', 'entrada')
+      params.set('subtipo', 'traslado')
+      params.set('page', '1')
+      params.set('page_size', '100')
+      if (documentNumber) {
+        params.set('no_documento', documentNumber)
+      } else if (solicitudId) {
+        params.set('search', solicitudId)
+      }
+
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/tabla/?${params.toString()}`,
+        {},
+        token
+      )
+      if (!response.ok) return null
+
+      const data = await response.json().catch(() => ({}))
+      const rows = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []
+      if (!rows.length) return null
+
+      const findBySolicitudId = (row) =>
+        Boolean(row?.es_solicitud_traslado) &&
+        normalizeId(row?.solicitud_traslado_id) === solicitudId
+      const findByDocument = (row) =>
+        Boolean(row?.es_solicitud_traslado) &&
+        String(row?.no_documento || '').trim().toLowerCase() === documentNumber.toLowerCase()
+
+      const targetRow = (
+        (solicitudId ? rows.find(findBySolicitudId) : null) ||
+        (documentNumber ? rows.find(findByDocument) : null) ||
+        rows.find((row) => Boolean(row?.es_solicitud_traslado)) ||
+        null
+      )
+
+      if (!targetRow) return null
+      return mapTransferRowToEntradaPreview(targetRow)
+    },
+    [token]
+  )
+
+  const fetchTransferPreviewFromDetail = useCallback(
+    async (solicitudId) => {
+      if (!token || !solicitudId) return null
+
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/`,
+        {},
+        token
+      )
+      if (!response.ok) return null
+
+      const data = await response.json().catch(() => ({}))
+      if (!data || typeof data !== 'object') return null
+      return mapTransferDetailToEntradaPreview(data)
+    },
+    [token]
+  )
+
+  const handleOpenTransferInEntradas = useCallback(
+    async (reminder) => {
+      if (typeof onOpenTransferRequestInEntradas !== 'function') return
+      const solicitudId = normalizeId(reminder?.context?.id)
+      const reminderId = normalizeId(reminder?.id) || solicitudId
+      if (!solicitudId) {
+        notifyError('No se encontro la solicitud asociada a este recordatorio.')
+        return
+      }
+
+      setOpeningTransferReminderId(reminderId)
+      try {
+        const previewFromTable = await fetchTransferPreviewFromEntradaTable(reminder)
+        const previewFromDetail = previewFromTable
+          ? null
+          : await fetchTransferPreviewFromDetail(solicitudId)
+        const previewData = previewFromTable || previewFromDetail
+        if (!previewData) {
+          throw new Error('No se pudo abrir la solicitud en Entradas.')
+        }
+
+        onOpenTransferRequestInEntradas({
+          requestKey: `${Date.now()}-${solicitudId}`,
+          solicitudId,
+          sucursalSolicitanteId: String(previewData?.sucursal_solicitante_id || '').trim(),
+          previewData,
+        })
+        onClose?.()
+      } catch (error) {
+        notifyError(error?.message || 'No se pudo abrir la solicitud en Entradas.')
+      } finally {
+        setOpeningTransferReminderId('')
+      }
+    },
+    [
+      fetchTransferPreviewFromDetail,
+      fetchTransferPreviewFromEntradaTable,
+      notifyError,
+      onClose,
+      onOpenTransferRequestInEntradas,
+    ]
+  )
 
   if (!shouldRender || typeof document === 'undefined') return null
 
@@ -947,10 +1177,22 @@ function RecordatoriosPopup({
                         const status = buildReminderStatusForUser(reminder, currentUserIdSet)
                         const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
                         const decisionStatus = getReminderDecisionStatus(reminder)
+                        const isTransferContextReminder =
+                          normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado'
                         const canResolveDecision = (
                           isSpecialReminder &&
                           decisionStatus === 'pendiente' &&
                           status.className !== 'info'
+                        )
+                        const canOpenTransferInEntradas = (
+                          isTransferContextReminder &&
+                          !isSpecialReminder &&
+                          decisionStatus === 'rechazada' &&
+                          typeof onOpenTransferRequestInEntradas === 'function'
+                        )
+                        const isOpeningTransfer = (
+                          normalizeId(openingTransferReminderId) &&
+                          normalizeId(openingTransferReminderId) === normalizeId(reminder?.id)
                         )
                         const recipients = Array.isArray(reminder?.recipients) ? reminder.recipients : []
                         const recipientNames = recipients
@@ -992,6 +1234,15 @@ function RecordatoriosPopup({
                                   onClick={() => openDecisionPanel(reminder)}
                                 >
                                   Resolver solicitud
+                                </button>
+                              ) : canOpenTransferInEntradas ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => handleOpenTransferInEntradas(reminder)}
+                                  disabled={isOpeningTransfer}
+                                >
+                                  {isOpeningTransfer ? 'Abriendo...' : 'Ver en entradas'}
                                 </button>
                               ) : status.canMarkSeen ? (
                                 <button
