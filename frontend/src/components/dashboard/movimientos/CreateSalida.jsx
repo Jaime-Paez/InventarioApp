@@ -422,6 +422,12 @@ function CreateSalida({
     selectedSolicitudTraslado?.sucursal_solicitante || ''
   ).trim()
   const transferTargetBranchLabel = solicitudRequesterBranchName || 'sucursal solicitante'
+  const transferTargetBranchButtonLabel = useMemo(() => {
+    const raw = String(transferTargetBranchLabel || '').trim()
+    if (!raw) return 'sucursal solicitante'
+    const compact = raw.replace(/\s*\([^)]*\)\s*$/, '').trim()
+    return compact || raw
+  }, [transferTargetBranchLabel])
   const transferSourceBranchLabel =
     selectedSucursalName ||
     String(selectedSolicitudTraslado?.sucursal_proveedora || '').trim() ||
@@ -1805,7 +1811,7 @@ function CreateSalida({
     .filter(Boolean)
     .join(' ')
   const transferSubmitLabel = isTraslado
-    ? `Enviar a nombre de ${transferTargetBranchLabel}`
+    ? `Envia a ${transferTargetBranchButtonLabel}`
     : 'Crear salida'
   const transferSummaryLabel = selectedSolicitudDoc || formData.solicitudTrasladoId || 'N/A'
 
