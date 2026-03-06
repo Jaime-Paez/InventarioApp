@@ -38,6 +38,7 @@ const URGENT_DECISION_SHIELD_COLOR = '#0b4f79'
 const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
+const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-state'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
@@ -128,6 +129,7 @@ function QuickActions({
   const [isMoving, setIsMoving] = useState(false)
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false)
   const [isPendingShipmentsOpen, setIsPendingShipmentsOpen] = useState(false)
+  const [isTransferSendModalOpen, setIsTransferSendModalOpen] = useState(false)
   const [reminders, setReminders] = useState(() => readRemindersFromStorage())
   const [pendingShipments, setPendingShipments] = useState([])
   const [pendingShipmentsLoading, setPendingShipmentsLoading] = useState(false)
@@ -136,6 +138,7 @@ function QuickActions({
   const [focusReminderId, setFocusReminderId] = useState('')
   const [urgentVisualProgressById, setUrgentVisualProgressById] = useState({})
   const urgentVisualReminderIdsRef = useRef(new Set())
+  const wasTransferSendModalOpenRef = useRef(false)
 
   const currentUserIds = useMemo(() => buildUserIdSet(user), [user])
   const currentUserIdValues = useMemo(() => Array.from(currentUserIds), [currentUserIds])
@@ -392,6 +395,28 @@ function QuickActions({
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
+
+    const handleTransferSalidaModalState = (event) => {
+      const isOpen = Boolean(event?.detail?.open)
+      setIsTransferSendModalOpen(isOpen)
+    }
+
+    window.addEventListener(TRANSFER_SALIDA_MODAL_STATE_EVENT, handleTransferSalidaModalState)
+    return () => {
+      window.removeEventListener(TRANSFER_SALIDA_MODAL_STATE_EVENT, handleTransferSalidaModalState)
+    }
+  }, [])
+
+  useEffect(() => {
+    const wasOpen = wasTransferSendModalOpenRef.current
+    wasTransferSendModalOpenRef.current = isTransferSendModalOpen
+    if (!wasOpen || isTransferSendModalOpen) return
+    if (!canDecideTransferRequest || !token) return
+    void fetchPendingTransferShipments({ silent: true })
+  }, [canDecideTransferRequest, fetchPendingTransferShipments, isTransferSendModalOpen, token])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
     if (!token || !canDecideTransferRequest) return undefined
 
     let cancelled = false
@@ -460,7 +485,7 @@ function QuickActions({
   }, [allowUrgentShield, canDecideTransferRequest, pendingSpecialDecisionReminders])
 
   const pendingShipmentUrgentTargets = useMemo(() => {
-    if (!allowUrgentShield || !canDecideTransferRequest || !hasPendingShipments) return []
+    if (!allowUrgentShield || !canDecideTransferRequest || !hasPendingShipments || isTransferSendModalOpen) return []
 
     return (Array.isArray(pendingShipments) ? pendingShipments : [])
       .map((solicitud) => {
@@ -492,7 +517,7 @@ function QuickActions({
         if (!Number.isFinite(timeA) && Number.isFinite(timeB)) return 1
         return String(a?.solicitudId || '').localeCompare(String(b?.solicitudId || ''))
       })
-  }, [allowUrgentShield, canDecideTransferRequest, hasPendingShipments, pendingShipments])
+  }, [allowUrgentShield, canDecideTransferRequest, hasPendingShipments, isTransferSendModalOpen, pendingShipments])
 
   const urgentDecisionTargets = useMemo(
     () =>
@@ -1207,6 +1232,7 @@ function QuickActions({
           payloadSolicitud = detail
         }
 
+        setIsTransferSendModalOpen(true)
         onTransferDecisionAccepted({
           solicitudId,
           solicitud: payloadSolicitud,
@@ -1216,6 +1242,7 @@ function QuickActions({
         })
         setIsPendingShipmentsOpen(false)
       } catch (error) {
+        setIsTransferSendModalOpen(false)
         showErrorToast(error?.message || 'No se pudo abrir la salida pendiente.')
       } finally {
         setOpeningPendingShipmentId('')

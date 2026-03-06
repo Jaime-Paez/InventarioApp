@@ -136,6 +136,7 @@ const initialSearchCriteria = {
 }
 
 const normId = (value) => (value == null ? null : String(value))
+const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-state'
 const isCheckboxSelection = (event) => {
   const type = event?.type
   if (type === 'checkbox' || type === 'all') return true
@@ -215,6 +216,10 @@ function SalidasTable({
   )
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
   const selectedColumnsRef = useRef(selectedColumns)
+  const isTransferSendCreateOpen = Boolean(
+    showCreateModal &&
+    String(createPrefillTransferRequest?.solicitudId || '').trim()
+  )
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -477,6 +482,28 @@ function SalidasTable({
     setPrefetchedTipoMovimientos([])
     setPrefetchedSubTiposSalida([])
   }, [token])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    window.dispatchEvent(
+      new CustomEvent(TRANSFER_SALIDA_MODAL_STATE_EVENT, {
+        detail: {
+          open: isTransferSendCreateOpen,
+        },
+      })
+    )
+
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent(TRANSFER_SALIDA_MODAL_STATE_EVENT, {
+          detail: {
+            open: false,
+          },
+        })
+      )
+    }
+  }, [isTransferSendCreateOpen])
 
   useEffect(() => {
     preloadSalidaCatalogs()
