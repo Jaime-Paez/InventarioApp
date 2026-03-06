@@ -36,6 +36,8 @@ const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
 const URGENT_DECISION_SHIELD_COLOR = '#0b4f79'
 const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
+const URGENT_DECISION_SHIELD_Z_INDEX = 1300
+const URGENT_SHIPMENT_SHIELD_Z_INDEX = 45
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
 const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-state'
@@ -751,6 +753,10 @@ function QuickActions({
         const anchorCenter = resolveAnchorCenter(anchor)
         const centerX = anchorCenter.x - offset
         const centerY = anchorCenter.y + offset
+        const shieldZIndex =
+          target?.kind === 'pending_shipment'
+            ? URGENT_SHIPMENT_SHIELD_Z_INDEX
+            : Math.max(1200, URGENT_DECISION_SHIELD_Z_INDEX - index)
 
         return {
           id: targetId,
@@ -770,7 +776,7 @@ function QuickActions({
               target?.kind === 'pending_shipment'
                 ? URGENT_SHIPMENT_SHIELD_COLOR
                 : URGENT_DECISION_SHIELD_COLOR,
-            zIndex: String(Math.max(1200, 1299 - index)),
+            zIndex: String(shieldZIndex),
           },
         }
       })

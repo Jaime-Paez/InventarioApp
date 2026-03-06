@@ -512,6 +512,16 @@ function CreateSalida({
   const selectedSolicitudDoc = String(
     selectedSolicitudTraslado?.no_documento || selectedSolicitudTraslado?.id || ''
   ).trim()
+  const transferDraftStateLabel = useMemo(() => {
+    if (!isTraslado) return ''
+    if (!String(formData.solicitudTrasladoId || '').trim()) return ''
+    const normalizedRequestState = normalizeValue(
+      selectedSolicitudTraslado?.estado_label || selectedSolicitudTraslado?.estado
+    )
+    if (normalizedRequestState.includes('rechaz')) return 'Rechazado'
+    if (normalizedRequestState.includes('cancel')) return 'Cancelado'
+    return 'Aceptado'
+  }, [formData.solicitudTrasladoId, isTraslado, selectedSolicitudTraslado])
   const solicitudRequesterBranchId = String(
     selectedSolicitudTraslado?.sucursal_solicitante_id || ''
   ).trim()
@@ -2233,11 +2243,13 @@ function CreateSalida({
                         <input
                           type="text"
                           value={
-                            estadoReadOnlyOptions.find(
-                              (estado) =>
-                                String(estado.id) ===
-                                String(formData.estadoId || resolvedEstadoMovimientoId)
-                            )?.nombre || ''
+                            isTraslado
+                              ? transferDraftStateLabel
+                              : (estadoReadOnlyOptions.find(
+                                  (estado) =>
+                                    String(estado.id) ===
+                                    String(formData.estadoId || resolvedEstadoMovimientoId)
+                                )?.nombre || '')
                           }
                           readOnly
                           disabled
