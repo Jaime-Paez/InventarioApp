@@ -168,6 +168,7 @@ function CreateSalida({
   open,
   onClose,
   onCreated,
+  onTransferCancelled,
   token,
   onError,
   preloadedTipoMovimientos = [],
@@ -208,6 +209,11 @@ function CreateSalida({
   const [solicitudesTraslado, setSolicitudesTraslado] = useState([])
   const [solicitudesTrasladoLoading, setSolicitudesTrasladoLoading] = useState(false)
   const [documentStatus, setDocumentStatus] = useState(DOCUMENT_STATUS.invalid)
+  const [isTransferSendConfirmOpen, setIsTransferSendConfirmOpen] = useState(false)
+  const [isTransferCancelModalOpen, setIsTransferCancelModalOpen] = useState(false)
+  const [transferCancelReason, setTransferCancelReason] = useState('')
+  const [transferCancelReasonError, setTransferCancelReasonError] = useState('')
+  const [transferCancelSubmitting, setTransferCancelSubmitting] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -288,6 +294,12 @@ function CreateSalida({
   const selectedSucursalId = String(formData.sucursalId || '').trim()
   const hasSelectedSucursal = Boolean(selectedSucursalId)
   const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
+  const selectedSucursalName = useMemo(() => {
+    const branch = branches.find(
+      (item) => String(item?.id || '').trim() === selectedSucursalId
+    )
+    return String(branch?.nombre || '').trim()
+  }, [branches, selectedSucursalId])
   const destinationBranches = useMemo(() => {
     return branches.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
   }, [branches, selectedSucursalId])
@@ -400,6 +412,40 @@ function CreateSalida({
       ) || null,
     [formData.solicitudTrasladoId, solicitudesTraslado]
   )
+  const selectedSolicitudDoc = String(
+    selectedSolicitudTraslado?.no_documento || selectedSolicitudTraslado?.id || ''
+  ).trim()
+  const solicitudRequesterBranchId = String(
+    selectedSolicitudTraslado?.sucursal_solicitante_id || ''
+  ).trim()
+  const solicitudRequesterBranchName = String(
+    selectedSolicitudTraslado?.sucursal_solicitante || ''
+  ).trim()
+  const transferTargetBranchLabel = solicitudRequesterBranchName || 'sucursal solicitante'
+  const transferSourceBranchLabel =
+    selectedSucursalName ||
+    String(selectedSolicitudTraslado?.sucursal_proveedora || '').trim() ||
+    'sucursal proveedora'
+  const transferDestinationBranches = useMemo(() => {
+    if (!isTraslado) return destinationBranches
+    if (!solicitudRequesterBranchId) return destinationBranches
+    const hasTarget = destinationBranches.some(
+      (branch) => String(branch?.id || '').trim() === solicitudRequesterBranchId
+    )
+    if (hasTarget) return destinationBranches
+    return [
+      {
+        id: solicitudRequesterBranchId,
+        nombre: transferTargetBranchLabel,
+      },
+      ...destinationBranches,
+    ]
+  }, [
+    destinationBranches,
+    isTraslado,
+    solicitudRequesterBranchId,
+    transferTargetBranchLabel,
+  ])
   const prefillTransferRequestKey = String(prefillTransferRequest?.requestKey || '').trim()
   const prefillTransferSolicitudId = String(prefillTransferRequest?.solicitudId || '').trim()
 
@@ -763,6 +809,11 @@ function CreateSalida({
     setSolicitudesTraslado([])
     setSolicitudesTrasladoLoading(false)
     setDocumentStatus(DOCUMENT_STATUS.invalid)
+    setIsTransferSendConfirmOpen(false)
+    setIsTransferCancelModalOpen(false)
+    setTransferCancelReason('')
+    setTransferCancelReasonError('')
+    setTransferCancelSubmitting(false)
     setIsMaximized(false)
     setIsResizingModal(false)
     modalRestoreRef.current = null
@@ -1005,9 +1056,25 @@ function CreateSalida({
     if (!selectedSolicitudTraslado) return
 
     const objetivoId = String(selectedSolicitudTraslado.sucursal_solicitante_id || '').trim()
+    const autoTransferDescription = [
+      selectedSolicitudDoc ? `Envio de traslado #${selectedSolicitudDoc}.` : 'Envio de traslado.',
+      `Desde ${transferSourceBranchLabel} hacia ${transferTargetBranchLabel}.`,
+    ].join(' ')
     setFormData((prev) => {
-      if (String(prev.sucursalObjetivoId) === objetivoId) return prev
-      return { ...prev, sucursalObjetivoId: objetivoId }
+      const next = { ...prev }
+      let changed = false
+
+      if (String(next.sucursalObjetivoId) !== objetivoId) {
+        next.sucursalObjetivoId = objetivoId
+        changed = true
+      }
+
+      if (!String(next.descripcion || '').trim() && autoTransferDescription) {
+        next.descripcion = autoTransferDescription
+        changed = true
+      }
+
+      return changed ? next : prev
     })
 
     const estadoProductoId = String(defaultEstadoProductoId || '').trim()
@@ -1056,7 +1123,10 @@ function CreateSalida({
     isTraslado,
     open,
     productos,
+    selectedSolicitudDoc,
     selectedSolicitudTraslado,
+    transferSourceBranchLabel,
+    transferTargetBranchLabel,
   ])
 
   useLayoutEffect(() => {
@@ -1442,74 +1512,73 @@ function CreateSalida({
     return `Cliente: ${cliente}\n${descripcionBase}`
   }
 
-  const handleSubmit = async (event) => {
-    event.preventDefault()
+  const submitSalida = async ({ skipTransferConfirmation = false } = {}) => {
     setError('')
 
     if (!salidaTipoId) {
       notifyError('No se encontro el tipo de movimiento de salida.')
-      return
+      return false
     }
 
     if (!formData.subTipoId) {
       notifyError('Selecciona el tipo de salida.')
-      return
+      return false
     }
 
     if (!formData.sucursalId) {
       notifyError('Selecciona la sucursal.')
-      return
+      return false
     }
 
     if (isTraslado && !formData.solicitudTrasladoId) {
       notifyError('Selecciona una solicitud de traslado aceptada.')
-      return
+      return false
     }
 
     if (isTraslado && !selectedSolicitudTraslado) {
       notifyError('La solicitud seleccionada ya no esta disponible. Recarga e intenta de nuevo.')
-      return
+      return false
     }
 
     if (requiresSucursalObjetivo && !formData.sucursalObjetivoId) {
       notifyError('Selecciona la sucursal destino.')
-      return
+      return false
     }
 
     if (requiresSucursalObjetivo && String(formData.sucursalId) === String(formData.sucursalObjetivoId)) {
       notifyError('La sucursal destino debe ser diferente a la sucursal principal.')
-      return
+      return false
     }
 
     if (!formData.estadoId) {
       notifyError('No se pudo resolver el estado del movimiento.')
-      return
+      return false
     }
 
     if (!formData.fecha) {
       notifyError('No se pudo resolver la fecha del movimiento.')
-      return
+      return false
     }
 
     if (!String(formData.no_documento || '').trim()) {
       notifyError('Ingresa el numero de documento.')
-      return
+      return false
     }
 
     const documentoDisponible = await validateDocumentNumber(formData.no_documento)
     if (!documentoDisponible) {
       notifyError('No se puede usar dos iguales.')
-      return
+      return false
     }
 
     if (!details.length) {
       notifyError('Agrega al menos un producto.')
-      return
+      return false
     }
 
     if (details.some((detail) => !detail.productoId || !detail.estadoProductoId)) {
       notifyError('Hay productos con datos incompletos.')
-      return
+      return false
     }
 
     const descuentoIngresado = isVenta ? parseNumber(formData.descuento) : 0
@@ -1519,7 +1588,12 @@ function CreateSalida({
       (!Number.isFinite(descuentoIngresado) || descuentoIngresado < 0 || descuentoIngresado > 100)
     ) {
       notifyError('El descuento debe ser un porcentaje entre 0 y 100.')
-      return
+      return false
+    }
+
+    if (isTraslado && !skipTransferConfirmation) {
+      setIsTransferSendConfirmOpen(true)
+      return false
     }
 
     setLoading(true)
@@ -1629,10 +1703,83 @@ function CreateSalida({
       }
 
       onCreated?.(data)
+      return true
     } catch (err) {
       notifyError(err.message || 'Ocurrio un error al crear la salida.')
+      return false
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSubmit = (event) => {
+    event.preventDefault()
+    void submitSalida()
+  }
+
+  const handleConfirmTransferSend = () => {
+    if (loading) return
+    setIsTransferSendConfirmOpen(false)
+    void submitSalida({ skipTransferConfirmation: true })
+  }
+
+  const openTransferCancelModal = () => {
+    if (!isTraslado || !formData.solicitudTrasladoId) return
+    setTransferCancelReason('')
+    setTransferCancelReasonError('')
+    setIsTransferCancelModalOpen(true)
+  }
+
+  const closeTransferCancelModal = () => {
+    if (transferCancelSubmitting) return
+    setTransferCancelReasonError('')
+    setIsTransferCancelModalOpen(false)
+  }
+
+  const handleConfirmTransferCancel = async () => {
+    if (transferCancelSubmitting) return
+
+    const solicitudId = String(formData.solicitudTrasladoId || '').trim()
+    if (!solicitudId) {
+      setTransferCancelReasonError('No se encontro la solicitud de traslado a cancelar.')
+      return
+    }
+
+    const motivo = String(transferCancelReason || '').trim()
+    if (!motivo) {
+      setTransferCancelReasonError('Debes indicar el motivo de cancelacion.')
+      return
+    }
+
+    setTransferCancelSubmitting(true)
+    setTransferCancelReasonError('')
+
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/cancelar-envio/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ motivo }),
+        },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = resolveApiErrorMessage(data, 'No se pudo cancelar el envio.')
+        throw new Error(detail)
+      }
+
+      setIsTransferCancelModalOpen(false)
+      if (typeof onTransferCancelled === 'function') {
+        onTransferCancelled(data)
+      } else {
+        onClose?.()
+      }
+    } catch (error) {
+      const message = error?.message || 'No se pudo cancelar el envio.'
+      setTransferCancelReasonError(message)
+    } finally {
+      setTransferCancelSubmitting(false)
     }
   }
 
@@ -1657,6 +1804,10 @@ function CreateSalida({
   ]
     .filter(Boolean)
     .join(' ')
+  const transferSubmitLabel = isTraslado
+    ? `Enviar a nombre de ${transferTargetBranchLabel}`
+    : 'Crear salida'
+  const transferSummaryLabel = selectedSolicitudDoc || formData.solicitudTrasladoId || 'N/A'
 
   return (
     <div
@@ -1783,7 +1934,7 @@ function CreateSalida({
                     </label>
 
                     <label className="create-user__field">
-                      <span>Sucursal</span>
+                      <span>{isTraslado ? 'Sucursal proveedora (enviadora)' : 'Sucursal'}</span>
                       <select
                         name="sucursalId"
                         value={formData.sucursalId}
@@ -1831,7 +1982,7 @@ function CreateSalida({
 
                     {requiresSucursalObjetivo && (
                       <label className="create-user__field">
-                        <span>{isTraslado ? 'Sucursal solicitante' : 'Sucursal Destino'}</span>
+                        <span>{isTraslado ? 'Sucursal solicitante (destino)' : 'Sucursal destino'}</span>
                         <select
                           name="sucursalObjetivoId"
                           value={formData.sucursalObjetivoId}
@@ -1840,7 +1991,7 @@ function CreateSalida({
                           required={requiresSucursalObjetivo}
                         >
                           <option value="">Selecciona una sucursal</option>
-                          {destinationBranches.map((branch) => (
+                          {transferDestinationBranches.map((branch) => (
                             <option key={branch.id} value={branch.id}>
                               {branch.nombre || `Sucursal ${branch.id}`}
                             </option>
@@ -2316,13 +2467,106 @@ function CreateSalida({
             <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={loading}>
               Cancelar
             </button>
-            {formData.subTipoId && (
-              <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>
-                {loading ? 'Guardando...' : 'Crear salida'}
-              </button>
-            )}
+            <div className="create-salida__footer-actions">
+              {formData.subTipoId && isTraslado && formData.solicitudTrasladoId && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary create-salida__action--danger"
+                  onClick={openTransferCancelModal}
+                  disabled={loading || transferCancelSubmitting}
+                >
+                  Cancelar envio
+                </button>
+              )}
+              {formData.subTipoId && (
+                <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>
+                  {loading ? 'Guardando...' : transferSubmitLabel}
+                </button>
+              )}
+            </div>
           </div>
         </form>
+
+        {isTransferSendConfirmOpen && (
+          <div
+            className="create-salida__confirm-overlay"
+            onMouseDown={() => {
+              if (loading) return
+              setIsTransferSendConfirmOpen(false)
+            }}
+          >
+            <div className="create-salida__confirm-card" onMouseDown={(event) => event.stopPropagation()}>
+              <h4>Confirmar envio</h4>
+              <p>
+                Vas a enviar la solicitud <strong>{transferSummaryLabel}</strong> de{' '}
+                <strong>{transferSourceBranchLabel}</strong> a <strong>{transferTargetBranchLabel}</strong>.
+              </p>
+              <p className="create-salida__confirm-warning">
+                Se restara el inventario y el traslado quedara en estado envio.
+              </p>
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={() => setIsTransferSendConfirmOpen(false)}
+                  disabled={loading}
+                >
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleConfirmTransferSend}
+                  disabled={loading}
+                >
+                  {loading ? 'Enviando...' : 'Confirmar envio'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isTransferCancelModalOpen && (
+          <div className="create-salida__confirm-overlay" onMouseDown={closeTransferCancelModal}>
+            <div className="create-salida__confirm-card create-salida__confirm-card--cancel" onMouseDown={(event) => event.stopPropagation()}>
+              <h4>Cancelar envio</h4>
+              <p>
+                La solicitud <strong>{transferSummaryLabel}</strong> pasara a estado rechazada/cancelada.
+              </p>
+              <label className="create-salida__confirm-field">
+                <span>Motivo de cancelacion (obligatorio)</span>
+                <textarea
+                  value={transferCancelReason}
+                  onChange={(event) => setTransferCancelReason(event.target.value)}
+                  rows={4}
+                  maxLength={400}
+                  disabled={transferCancelSubmitting}
+                />
+              </label>
+              {transferCancelReasonError && (
+                <p className="create-salida__confirm-error">{transferCancelReasonError}</p>
+              )}
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={closeTransferCancelModal}
+                  disabled={transferCancelSubmitting}
+                >
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-salida__action--danger-solid"
+                  onClick={handleConfirmTransferCancel}
+                  disabled={transferCancelSubmitting}
+                >
+                  {transferCancelSubmitting ? 'Cancelando...' : 'Confirmar cancelacion'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <button
           type="button"

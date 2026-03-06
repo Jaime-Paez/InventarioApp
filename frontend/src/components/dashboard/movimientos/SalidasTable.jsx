@@ -708,6 +708,19 @@ function SalidasTable({
     toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Salida creada correctamente', life: 2500 })
   }
 
+  const handleTransferCancelled = () => {
+    setCreatePrefillTransferRequest(null)
+    setShowCreateModal(false)
+    setSelectedRows([])
+    refreshData({ page: 1 })
+    toast.current?.show({
+      severity: 'success',
+      summary: 'Envio cancelado',
+      detail: 'La solicitud de traslado fue cancelada correctamente.',
+      life: 2800,
+    })
+  }
+
   const handleUpdated = () => {
     refreshData()
     toast.current?.show({ severity: 'success', summary: 'Actualizado', detail: 'Salida actualizada correctamente', life: 2500 })
@@ -1098,6 +1111,7 @@ function SalidasTable({
           setCreatePrefillTransferRequest(null)
         }}
         onCreated={handleCreated}
+        onTransferCancelled={handleTransferCancelled}
         token={token}
         onError={showErrorToast}
         preloadedTipoMovimientos={prefetchedTipoMovimientos}

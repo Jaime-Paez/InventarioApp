@@ -370,12 +370,154 @@
   filter: none;
 }
 
+.create-salida__footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.create-salida__action--danger {
+  border-color: color-mix(in srgb, #dc2626 45%, var(--color-border));
+  color: #991b1b;
+  background: color-mix(in srgb, #fef2f2 86%, white);
+}
+
+.create-salida__action--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, #fee2e2 88%, white);
+}
+
+.create-salida__action--danger-solid {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
+
+.create-salida__action--danger-solid:hover:not(:disabled) {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+.create-salida__confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, #020617 20%, transparent);
+  backdrop-filter: blur(1px);
+}
+
+.create-salida__confirm-card {
+  width: min(560px, calc(100vw - 52px));
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--modal-color);
+  box-shadow: var(--shadow-panel);
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.create-salida__confirm-card h4 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.create-salida__confirm-card p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.create-salida__confirm-warning {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, #2563eb 34%, #bfdbfe);
+  background: color-mix(in srgb, #eff6ff 86%, white);
+  color: #1e3a8a;
+  font-size: 0.9rem;
+}
+
+.create-salida__confirm-card--cancel .create-salida__confirm-warning {
+  border-color: color-mix(in srgb, #dc2626 38%, #fecaca);
+  background: color-mix(in srgb, #fef2f2 88%, white);
+  color: #7f1d1d;
+}
+
+.create-salida__confirm-field {
+  display: grid;
+  gap: 6px;
+}
+
+.create-salida__confirm-field > span {
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.create-salida__confirm-field textarea {
+  resize: vertical;
+  min-height: 92px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  padding: 10px;
+  font: inherit;
+  color: inherit;
+  background: var(--color-surface, #ffffff);
+}
+
+.create-salida__confirm-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  font-size: 0.88rem;
+}
+
+.create-salida__confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .dashboard-shell.dark .create-salida__totals-row {
   background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
 }
 
 .dashboard-shell.dark .create-salida__totals-row--strong {
   background: color-mix(in srgb, var(--color-primary-dark) 28%, transparent);
+}
+
+.dashboard-shell.dark .create-salida__action--danger {
+  border-color: color-mix(in srgb, #ef4444 46%, var(--color-border));
+  color: #fecaca;
+  background: color-mix(in srgb, #7f1d1d 56%, #111827);
+}
+
+.dashboard-shell.dark .create-salida__confirm-card {
+  background: var(--table-color-dark);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-salida__confirm-warning {
+  border-color: color-mix(in srgb, #60a5fa 35%, var(--color-border));
+  background: color-mix(in srgb, #1e3a8a 26%, #111827);
+  color: #bfdbfe;
+}
+
+.dashboard-shell.dark .create-salida__confirm-card--cancel .create-salida__confirm-warning {
+  border-color: color-mix(in srgb, #ef4444 44%, var(--color-border));
+  background: color-mix(in srgb, #7f1d1d 44%, #111827);
+  color: #fecaca;
 }
 
 .entrada-details__modal--pending {
@@ -473,6 +615,15 @@
 }
 
 @media (max-width: 640px) {
+  .create-salida__footer-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .create-salida__confirm-overlay {
+    padding: 12px;
+  }
+
   .create-salida__products-table {
     overflow-x: auto;
     overflow-y: visible;

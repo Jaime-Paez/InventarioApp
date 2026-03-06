@@ -4,6 +4,7 @@ import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
+import { API_URL, authFetch } from '../../../utils/api'
 import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
@@ -36,6 +37,7 @@ const URGENT_SHIELD_COLORS = ['#0b4f79', '#0e7490', '#0f766e', '#b45309', '#b91c
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
 
+const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
 const normalizeReminderContextType = (value) =>
   String(value || '')
@@ -81,6 +83,7 @@ function QuickActions({
   const wrapRef = useRef(null)
   const btnRefs = useRef([])
   const reminderButtonRef = useRef(null)
+  const pendingShipmentsRef = useRef(null)
   const moveTimerRef = useRef(null)
   const remindersPollInFlightRef = useRef(false)
   const audioContextRef = useRef(null)
@@ -94,7 +97,11 @@ function QuickActions({
   const [blob, setBlob] = useState({ x: 0, y: 0, w: 0, h: 0, visible: false })
   const [isMoving, setIsMoving] = useState(false)
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false)
+  const [isPendingShipmentsOpen, setIsPendingShipmentsOpen] = useState(false)
   const [reminders, setReminders] = useState(() => readRemindersFromStorage())
+  const [pendingShipments, setPendingShipments] = useState([])
+  const [pendingShipmentsLoading, setPendingShipmentsLoading] = useState(false)
+  const [openingPendingShipmentId, setOpeningPendingShipmentId] = useState('')
   const [clockTick, setClockTick] = useState(() => Date.now())
   const [focusReminderId, setFocusReminderId] = useState('')
   const [urgentVisualProgressById, setUrgentVisualProgressById] = useState({})
@@ -104,6 +111,16 @@ function QuickActions({
   const currentUserIdValues = useMemo(() => Array.from(currentUserIds), [currentUserIds])
   const currentPrimaryUserId = currentUserIdValues[0] || ''
   const currentUserName = useMemo(() => formatCurrentUserName(user), [user])
+  const hasPendingShipments = pendingShipments.length > 0
+  const canDecideTransferRequest = useMemo(() => {
+    if (user?.is_staff || user?.is_superuser) return true
+    if (!Array.isArray(user?.permisos)) return true
+    const permissions = user.permisos
+    const salidasPermission = permissions.find(
+      (permission) => String(permission?.modulo || '').trim().toLowerCase() === 'movimientos_salidas'
+    )
+    return Boolean(salidasPermission?.puede_crear || salidasPermission?.puede_actualizar)
+  }, [user])
 
   const showErrorToast = useCallback((message) => {
     if (!message) return
@@ -114,6 +131,66 @@ function QuickActions({
       life: 3400,
     })
   }, [])
+
+  const fetchTransferSolicitudDetail = useCallback(
+    async (solicitudId) => {
+      const normalizedId = normalizeId(solicitudId)
+      if (!token || !normalizedId) return null
+
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(normalizedId)}/`,
+        {},
+        token
+      )
+      if (!response.ok) return null
+
+      const payload = await response.json().catch(() => ({}))
+      return payload && typeof payload === 'object' ? payload : null
+    },
+    [token]
+  )
+
+  const fetchPendingTransferShipments = useCallback(async () => {
+    if (!token || !canDecideTransferRequest) {
+      setPendingShipments([])
+      return []
+    }
+
+    setPendingShipmentsLoading(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/?estado=aprobada&page_size=200`,
+        {},
+        token
+      )
+      if (!response.ok) {
+        throw new Error('No se pudieron cargar los envios pendientes.')
+      }
+
+      const payload = await response.json().catch(() => ({}))
+      const rows = parseApiList(payload)
+        .filter(
+          (solicitud) => !solicitud?.movimiento_salida_id && !solicitud?.movimiento_entrada_id
+        )
+        .sort((a, b) => {
+          const dateA = Date.parse(String(a?.fecha || ''))
+          const dateB = Date.parse(String(b?.fecha || ''))
+          if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+            return dateB - dateA
+          }
+          return Number(b?.id || 0) - Number(a?.id || 0)
+        })
+
+      setPendingShipments(rows)
+      return rows
+    } catch (error) {
+      setPendingShipments([])
+      showErrorToast(error?.message || 'No se pudieron cargar los envios pendientes.')
+      return []
+    } finally {
+      setPendingShipmentsLoading(false)
+    }
+  }, [canDecideTransferRequest, showErrorToast, token])
 
   const ensureAudioContext = useCallback(() => {
     if (typeof window === 'undefined') return null
@@ -206,16 +283,6 @@ function QuickActions({
     [currentUserIds, reminders]
   )
 
-  const canDecideTransferRequest = useMemo(() => {
-    if (user?.is_staff || user?.is_superuser) return true
-    if (!Array.isArray(user?.permisos)) return true
-    const permissions = user.permisos
-    const salidasPermission = permissions.find(
-      (permission) => String(permission?.modulo || '').trim().toLowerCase() === 'movimientos_salidas'
-    )
-    return Boolean(salidasPermission?.puede_crear || salidasPermission?.puede_actualizar)
-  }, [user])
-
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
 
@@ -272,6 +339,45 @@ function QuickActions({
     didInitTransferResponseSnapshotRef.current = false
     setUrgentVisualProgressById({})
   }, [canDecideTransferRequest, token, currentPrimaryUserId])
+
+  useEffect(() => {
+    if (!canDecideTransferRequest || !token) {
+      setPendingShipments([])
+      setPendingShipmentsLoading(false)
+      setIsPendingShipmentsOpen(false)
+      setOpeningPendingShipmentId('')
+      return
+    }
+    void fetchPendingTransferShipments()
+  }, [canDecideTransferRequest, fetchPendingTransferShipments, token])
+
+  useEffect(() => {
+    if (hasPendingShipments) return
+    setIsPendingShipmentsOpen(false)
+  }, [hasPendingShipments])
+
+  useEffect(() => {
+    if (!isPendingShipmentsOpen) return undefined
+
+    const handleClickOutside = (event) => {
+      if (pendingShipmentsRef.current?.contains(event.target)) return
+      setIsPendingShipmentsOpen(false)
+    }
+
+    const handleEscape = (event) => {
+      if (event.key !== 'Escape') return
+      setIsPendingShipmentsOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside, { passive: true })
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [isPendingShipmentsOpen])
 
   const eligibleUrgentDecisionReminders = useMemo(() => {
     if (!allowUrgentShield || !canDecideTransferRequest) return []
@@ -838,6 +944,7 @@ function QuickActions({
         })
       }
 
+      setIsPendingShipmentsOpen(false)
       setIsReminderModalOpen(true)
     },
     [applyReminderUpdate, currentUserIdValues, currentUserIds]
@@ -847,6 +954,55 @@ function QuickActions({
     setIsReminderModalOpen(false)
     setFocusReminderId('')
   }, [])
+
+  const togglePendingShipmentsPanel = async () => {
+    if (!canDecideTransferRequest) return
+    if (isPendingShipmentsOpen) {
+      setIsPendingShipmentsOpen(false)
+      return
+    }
+    setIsPendingShipmentsOpen(true)
+    await fetchPendingTransferShipments()
+  }
+
+  const handleOpenPendingShipment = useCallback(
+    async (solicitud) => {
+      if (typeof onTransferDecisionAccepted !== 'function') return
+      const solicitudId = normalizeId(solicitud?.id)
+      if (!solicitudId) {
+        showErrorToast('No se pudo abrir la solicitud seleccionada.')
+        return
+      }
+
+      setOpeningPendingShipmentId(solicitudId)
+      try {
+        let payloadSolicitud = solicitud
+        const needsDetail =
+          !payloadSolicitud ||
+          !Array.isArray(payloadSolicitud?.detalles) ||
+          !payloadSolicitud.detalles.length
+        if (needsDetail) {
+          const detail = await fetchTransferSolicitudDetail(solicitudId)
+          if (!detail) throw new Error('No se pudo obtener el detalle de la solicitud.')
+          payloadSolicitud = detail
+        }
+
+        onTransferDecisionAccepted({
+          solicitudId,
+          solicitud: payloadSolicitud,
+          nextAction: {
+            sucursal_proveedora_id: String(payloadSolicitud?.sucursal_proveedora_id || '').trim(),
+          },
+        })
+        setIsPendingShipmentsOpen(false)
+      } catch (error) {
+        showErrorToast(error?.message || 'No se pudo abrir la salida pendiente.')
+      } finally {
+        setOpeningPendingShipmentId('')
+      }
+    },
+    [fetchTransferSolicitudDetail, onTransferDecisionAccepted, showErrorToast]
+  )
 
   const handleUrgentShieldClick = (reminderId) => {
     openReminderModal(reminderId)
@@ -871,65 +1027,141 @@ function QuickActions({
           )}
         </button>
       ))}
-      <div
-        ref={wrapRef}
-        className={`quick-actions ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}
-        onMouseLeave={hideBlob}
-      >
-        <span
-          className={[
-            'quick-actions__blob',
-            blob.visible ? 'is-visible' : '',
-            isMoving ? 'is-moving' : '',
-          ].join(' ')}
-          style={{
-            transform: `translate3d(${blob.x}px, ${blob.y}px, 0)`,
-            width: `${blob.w}px`,
-            height: `${blob.h}px`,
-          }}
-          aria-hidden="true"
-        />
+      <div className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}>
+        {canDecideTransferRequest && hasPendingShipments && (
+          <div
+            ref={pendingShipmentsRef}
+            className={`quick-actions__pending-shipments${isPendingShipmentsOpen ? ' is-open' : ''}`}
+          >
+            <button
+              type="button"
+              className="quick-actions__pending-shipments-trigger"
+              onClick={() => void togglePendingShipmentsPanel()}
+              aria-label="Envios pendientes"
+            >
+              <span>Envios pendientes</span>
+              <span className="quick-actions__pending-shipments-count">
+                {pendingShipmentsLoading ? '...' : pendingShipments.length}
+              </span>
+            </button>
 
-        <button
-          ref={setBtnRef(0)}
-          type="button"
-          className="quick-actions__button"
-          aria-label="Buscar"
-          onMouseEnter={() => showAndMove(0)}
-          onFocus={() => showAndMove(0)}
-        >
-          <Search />
-        </button>
+            {isPendingShipmentsOpen && (
+              <div className="quick-actions__pending-shipments-panel" role="dialog" aria-label="Envios pendientes">
+                <div className="quick-actions__pending-shipments-head">
+                  <strong>Solicitudes por enviar</strong>
+                  <button
+                    type="button"
+                    className="quick-actions__pending-shipments-refresh"
+                    onClick={() => void fetchPendingTransferShipments()}
+                    disabled={pendingShipmentsLoading}
+                    aria-label="Actualizar envios pendientes"
+                  >
+                    <i className="pi pi-refresh" aria-hidden="true" />
+                  </button>
+                </div>
 
-        <button
-          ref={handleReminderButtonRef}
-          type="button"
-          className={`quick-actions__button quick-actions__button--reminders${isReminderModalOpen ? ' is-active' : ''}`}
-          aria-label="Recordatorios"
-          onClick={() => openReminderModal()}
-          onMouseEnter={() => showAndMove(1)}
-          onFocus={() => showAndMove(1)}
-        >
-          <Bell />
-          {hasPendingReminder && (
-            <span
-              className="quick-actions__pending-dot"
-              aria-hidden="true"
-            />
-          )}
-        </button>
+                <div className="quick-actions__pending-shipments-list">
+                  {pendingShipmentsLoading ? (
+                    <p className="quick-actions__pending-shipments-empty">Cargando envios pendientes...</p>
+                  ) : !pendingShipments.length ? (
+                    <p className="quick-actions__pending-shipments-empty">No hay envios pendientes.</p>
+                  ) : (
+                    pendingShipments.map((solicitud) => {
+                      const solicitudId = normalizeId(solicitud?.id)
+                      const isOpening = solicitudId && openingPendingShipmentId === solicitudId
+                      const doc = String(solicitud?.no_documento || solicitudId || '').trim()
+                      const solicitante = String(solicitud?.sucursal_solicitante || '').trim() || 'Sucursal solicitante'
+                      const fecha = String(solicitud?.fecha || '').trim()
 
-        <button
-          ref={setBtnRef(2)}
-          type="button"
-          className="quick-actions__button"
-          aria-label={darkMode ? 'Activar modo claro' : 'Activar modo oscuro'}
-          onClick={onToggleTheme}
-          onMouseEnter={() => showAndMove(2)}
-          onFocus={() => showAndMove(2)}
+                      return (
+                        <button
+                          key={`pending-shipment-${solicitudId || doc || 'row'}`}
+                          type="button"
+                          className="quick-actions__pending-shipments-item"
+                          onClick={() => void handleOpenPendingShipment(solicitud)}
+                          disabled={Boolean(isOpening)}
+                        >
+                          <span className="quick-actions__pending-shipments-item-title">
+                            {doc ? `#${doc}` : 'Solicitud sin documento'}
+                          </span>
+                          <span className="quick-actions__pending-shipments-item-meta">
+                            Destino: {solicitante}
+                          </span>
+                          <span className="quick-actions__pending-shipments-item-meta">
+                            {isOpening
+                              ? 'Abriendo...'
+                              : (fecha ? `Fecha: ${fecha}` : 'Abrir en salidas')}
+                          </span>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div
+          ref={wrapRef}
+          className={`quick-actions ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}
+          onMouseLeave={hideBlob}
         >
-          {darkMode ? <SunMedium /> : <Moon />}
-        </button>
+          <span
+            className={[
+              'quick-actions__blob',
+              blob.visible ? 'is-visible' : '',
+              isMoving ? 'is-moving' : '',
+            ].join(' ')}
+            style={{
+              transform: `translate3d(${blob.x}px, ${blob.y}px, 0)`,
+              width: `${blob.w}px`,
+              height: `${blob.h}px`,
+            }}
+            aria-hidden="true"
+          />
+
+          <button
+            ref={setBtnRef(0)}
+            type="button"
+            className="quick-actions__button"
+            aria-label="Buscar"
+            onMouseEnter={() => showAndMove(0)}
+            onFocus={() => showAndMove(0)}
+          >
+            <Search />
+          </button>
+
+          <button
+            ref={handleReminderButtonRef}
+            type="button"
+            className={`quick-actions__button quick-actions__button--reminders${isReminderModalOpen ? ' is-active' : ''}`}
+            aria-label="Recordatorios"
+            onClick={() => openReminderModal()}
+            onMouseEnter={() => showAndMove(1)}
+            onFocus={() => showAndMove(1)}
+          >
+            <Bell />
+            {hasPendingReminder && (
+              <span
+                className="quick-actions__pending-dot"
+                aria-hidden="true"
+              />
+            )}
+          </button>
+
+          <button
+            ref={setBtnRef(2)}
+            type="button"
+            className="quick-actions__button"
+            aria-label={darkMode ? 'Activar modo claro' : 'Activar modo oscuro'}
+            onClick={onToggleTheme}
+            onMouseEnter={() => showAndMove(2)}
+            onFocus={() => showAndMove(2)}
+          >
+            {darkMode ? <SunMedium /> : <Moon />}
+          </button>
+        </div>
       </div>
 
       <RecordatoriosPopup

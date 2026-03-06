@@ -882,6 +882,77 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/cancelar-envio",
+    )
+    def cancelar_envio_solicitud_traslado(self, request, solicitud_id=None):
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            solicitud.sucursal_proveedora_id,
+            field_label="sucursal proveedora",
+        )
+
+        if solicitud.estado != SolicitudTraslado.Estados.APROBADA:
+            return Response(
+                {
+                    "detail": (
+                        "Solo puedes cancelar una solicitud aceptada pendiente de envio."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if solicitud.movimiento_salida_id or solicitud.movimiento_entrada_id:
+            return Response(
+                {
+                    "detail": (
+                        "La solicitud ya fue procesada y no puede cancelarse."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        motivo = str(request.data.get("motivo") or "").strip()
+        if not motivo:
+            return Response(
+                {"motivo": "Debes indicar un motivo para cancelar el envio."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        solicitud.estado = SolicitudTraslado.Estados.CANCELADA
+        solicitud.motivo_rechazo = motivo
+        solicitud.rechazada_por = request.user
+        solicitud.rechazada_en = timezone.now()
+        solicitud.save(
+            update_fields=[
+                "estado",
+                "motivo_rechazo",
+                "rechazada_por",
+                "rechazada_en",
+                "updated_at",
+            ]
+        )
+
+        output = SolicitudTrasladoSerializer(instance=solicitud)
+        return Response(
+            {
+                "detail": "Envio cancelado correctamente.",
+                "decision": "rechazada",
+                "solicitud": output.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=False, methods=["get"], url_path="buscar-cliente")
     def buscar_cliente(self, request):
         raw_query = (

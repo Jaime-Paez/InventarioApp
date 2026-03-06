@@ -1,3 +1,146 @@
+.quick-actions__dock {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 30;
+}
+
+.quick-actions__dock.has-urgent-shield {
+  z-index: 1310;
+}
+
+.workspace__toolbar .quick-actions__dock .quick-actions {
+  margin-left: 0;
+}
+
+.quick-actions__pending-shipments {
+  position: relative;
+  z-index: 1;
+}
+
+.quick-actions__pending-shipments-trigger {
+  border: 1px solid color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 15%, var(--color-surface));
+  color: var(--color-text-primary);
+  min-height: 30px;
+  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.quick-actions__pending-shipments-trigger:hover {
+  filter: brightness(0.98);
+}
+
+.quick-actions__pending-shipments-count {
+  min-width: 22px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 38%, var(--color-border));
+  background: var(--color-surface);
+  color: var(--color-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.quick-actions__pending-shipments-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(360px, calc(100vw - 24px));
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--modal-color);
+  box-shadow: var(--shadow-panel);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.quick-actions__pending-shipments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quick-actions__pending-shipments-head strong {
+  font-size: 0.86rem;
+}
+
+.quick-actions__pending-shipments-refresh {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.quick-actions__pending-shipments-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(58vh, 420px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.quick-actions__pending-shipments-item {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+  color: var(--color-text-primary);
+  width: 100%;
+  text-align: left;
+  padding: 8px 9px;
+  display: grid;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.quick-actions__pending-shipments-item:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface));
+}
+
+.quick-actions__pending-shipments-item:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.quick-actions__pending-shipments-item-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.quick-actions__pending-shipments-item-meta {
+  font-size: 0.76rem;
+  color: var(--color-text-secondary);
+  line-height: 1.2;
+}
+
+.quick-actions__pending-shipments-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
 .quick-actions {
   position: relative;
   z-index: 30;
@@ -165,6 +308,45 @@
   background: rgba(17, 24, 39, 1);
 }
 
+.quick-actions__dock.dark .quick-actions__pending-shipments-trigger {
+  background: color-mix(in srgb, var(--color-primary-dark) 24%, rgba(17, 24, 39, 0.9));
+  border-color: color-mix(in srgb, var(--color-primary-dark) 34%, var(--color-border));
+  color: var(--color-text-dark);
+}
+
+.quick-actions__dock.dark .quick-actions__pending-shipments-count {
+  background: rgba(17, 24, 39, 0.75);
+  color: var(--color-primary-dark);
+  border-color: color-mix(in srgb, var(--color-primary-dark) 45%, var(--color-border));
+}
+
+.quick-actions__dock.dark .quick-actions__pending-shipments-panel {
+  background: var(--table-color-dark);
+  border-color: var(--color-border);
+}
+
+.quick-actions__dock.dark .quick-actions__pending-shipments-refresh {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: var(--color-text-dark);
+}
+
+.quick-actions__dock.dark .quick-actions__pending-shipments-item {
+  background: color-mix(in srgb, var(--color-primary-dark) 16%, rgba(17, 24, 39, 0.95));
+  border-color: var(--color-border);
+  color: var(--color-text-dark);
+}
+
+.quick-actions__dock.dark .quick-actions__pending-shipments-item:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-primary-dark) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-dark) 22%, rgba(17, 24, 39, 0.95));
+}
+
+.quick-actions__dock.dark .quick-actions__pending-shipments-item-meta,
+.quick-actions__dock.dark .quick-actions__pending-shipments-empty {
+  color: rgba(255, 255, 255, 0.72);
+}
+
 .quick-actions__button--reminders.is-active {
   background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
@@ -244,11 +426,28 @@
 
 /* MOBILE */
 @media (max-width: 900px) {
+  .quick-actions__dock {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .quick-actions__pending-shipments-trigger {
+    min-height: 28px;
+    padding: 4px 10px;
+    font-size: 0.74rem;
+  }
+
+  .quick-actions__pending-shipments-panel {
+    right: -4px;
+    width: min(330px, calc(100vw - 16px));
+  }
+
   .quick-actions {
     position: relative;
     top: auto;
     right: auto;
-    margin-left: auto;
+    margin-left: 0;
     margin-top: 0;
   }
 
