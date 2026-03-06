@@ -112,6 +112,7 @@ function QuickActions({
   const pendingShipmentsTriggerRef = useRef(null)
   const moveTimerRef = useRef(null)
   const remindersPollInFlightRef = useRef(false)
+  const pendingShipmentsPollInFlightRef = useRef(false)
   const audioContextRef = useRef(null)
   const notificationAudioRef = useRef(null)
   const didInitUrgentSnapshotRef = useRef(false)
@@ -178,13 +179,15 @@ function QuickActions({
     [token]
   )
 
-  const fetchPendingTransferShipments = useCallback(async () => {
+  const fetchPendingTransferShipments = useCallback(async ({ silent = false } = {}) => {
     if (!token || !canDecideTransferRequest) {
       setPendingShipments([])
       return []
     }
 
-    setPendingShipmentsLoading(true)
+    if (pendingShipmentsPollInFlightRef.current) return []
+    pendingShipmentsPollInFlightRef.current = true
+    if (!silent) setPendingShipmentsLoading(true)
     try {
       const response = await authFetch(
         `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/?estado=aprobada&page_size=200`,
@@ -212,11 +215,16 @@ function QuickActions({
       setPendingShipments(rows)
       return rows
     } catch (error) {
-      setPendingShipments([])
-      showErrorToast(error?.message || 'No se pudieron cargar los envios pendientes.')
+      if (!silent) {
+        setPendingShipments([])
+      }
+      if (!silent) {
+        showErrorToast(error?.message || 'No se pudieron cargar los envios pendientes.')
+      }
       return []
     } finally {
-      setPendingShipmentsLoading(false)
+      pendingShipmentsPollInFlightRef.current = false
+      if (!silent) setPendingShipmentsLoading(false)
     }
   }, [canDecideTransferRequest, showErrorToast, token])
 
@@ -379,6 +387,39 @@ function QuickActions({
       return
     }
     void fetchPendingTransferShipments()
+  }, [canDecideTransferRequest, fetchPendingTransferShipments, token])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    if (!token || !canDecideTransferRequest) return undefined
+
+    let cancelled = false
+
+    const syncPendingShipments = async () => {
+      if (cancelled) return
+      await fetchPendingTransferShipments({ silent: true })
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return
+      void syncPendingShipments()
+    }
+
+    const handleFocus = () => {
+      void syncPendingShipments()
+    }
+
+    void syncPendingShipments()
+    const intervalId = window.setInterval(syncPendingShipments, REMINDERS_POLL_MS)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [canDecideTransferRequest, fetchPendingTransferShipments, token])
 
   useEffect(() => {
