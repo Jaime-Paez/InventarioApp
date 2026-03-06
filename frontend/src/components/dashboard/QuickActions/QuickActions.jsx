@@ -35,6 +35,7 @@ const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
 const URGENT_SHIELD_COLORS = ['#0b4f79', '#0e7490', '#0f766e', '#b45309', '#b91c1c', '#9a3412']
+const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
 
@@ -740,7 +741,10 @@ function QuickActions({
             left: `${centerX - size / 2}px`,
             top: `${centerY - size / 2}px`,
             '--urgency': String(progress.toFixed(3)),
-            '--urgent-color': URGENT_SHIELD_COLORS[index % URGENT_SHIELD_COLORS.length],
+            '--urgent-color':
+              target?.kind === 'pending_shipment'
+                ? URGENT_SHIPMENT_SHIELD_COLOR
+                : URGENT_SHIELD_COLORS[index % URGENT_SHIELD_COLORS.length],
             zIndex: String(Math.max(1200, 1299 - index)),
           },
         }
