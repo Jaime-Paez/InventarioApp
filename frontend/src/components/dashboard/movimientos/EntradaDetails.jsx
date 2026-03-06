@@ -262,6 +262,8 @@ function EntradaDetails({
   currentUser,
   allowEdit = true,
   allowDelete = true,
+  onCreateNewTransferFromRejected,
+  creatingTransferFromRejected = false,
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(null)
@@ -1769,6 +1771,15 @@ function EntradaDetails({
     hasPreviewData &&
     (normalizedSelectedEstadoName.includes('rechaz') || normalizedSelectedEstadoName.includes('cancel'))
   const showSolicitudRibbon = isPendingSolicitudRibbon || isRejectedSolicitudRibbon
+  const solicitudRejectionReason = String(previewData?.motivo_rechazo || '').trim()
+  const resolvedSolicitudRejectionReason = (
+    solicitudRejectionReason || 'Sin motivo de rechazo registrado.'
+  )
+  const canCreateNewTransferFromRejected = Boolean(
+    hasPreviewData &&
+    isRejectedSolicitudRibbon &&
+    typeof onCreateNewTransferFromRejected === 'function'
+  )
   const modalClassName = [
     'create-user__modal',
     'create-salida__modal',
@@ -1783,6 +1794,11 @@ function EntradaDetails({
   const modalTitle = hasPreviewData
     ? `Solicitud de traslado: ${headerDocumento}`
     : `${headerTipo}: ${headerDocumento}`
+
+  const handleCreateNewTransferFromRejected = () => {
+    if (!canCreateNewTransferFromRejected || creatingTransferFromRejected) return
+    onCreateNewTransferFromRejected?.(previewData)
+  }
 
   return (
     <div
@@ -1861,6 +1877,12 @@ function EntradaDetails({
               </button>
             )}
           </div>
+          {isRejectedSolicitudRibbon && activeTab === 'general' && (
+            <div className="entrada-details__rejection-reason" role="note" aria-live="polite">
+              <strong>Motivo de rechazo:</strong>
+              <span>{resolvedSolicitudRejectionReason}</span>
+            </div>
+          )}
           <div className="create-user__content create-salida__content">
               <div className="create-user__body">
                 {activeTab === 'general' && (
@@ -2391,6 +2413,16 @@ function EntradaDetails({
                   disabled={loadingData || saving || deleteLoading}
                 >
                   {isEditing ? 'Solo lectura' : 'Editar'}
+                </button>
+              )}
+              {canCreateNewTransferFromRejected && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleCreateNewTransferFromRejected}
+                  disabled={loadingData || creatingTransferFromRejected}
+                >
+                  {creatingTransferFromRejected ? 'Preparando...' : 'Crear nueva solicitud basada en esta'}
                 </button>
               )}
             </div>

@@ -3,6 +3,7 @@ import { Bell, Moon, Search, SunMedium } from 'lucide-react'
 import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
+import notificationAudioSrc from '../common/reminders/notifications.mp3'
 import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
@@ -82,8 +83,11 @@ function QuickActions({
   const moveTimerRef = useRef(null)
   const remindersPollInFlightRef = useRef(false)
   const audioContextRef = useRef(null)
+  const notificationAudioRef = useRef(null)
   const didInitUrgentSnapshotRef = useRef(false)
   const seenUrgentReminderIdsRef = useRef(new Set())
+  const didInitTransferResponseSnapshotRef = useRef(false)
+  const seenTransferResponseReminderIdsRef = useRef(new Set())
   const toast = useRef(null)
 
   const [blob, setBlob] = useState({ x: 0, y: 0, w: 0, h: 0, visible: false })
@@ -121,6 +125,20 @@ function QuickActions({
   }, [])
 
   const playNotificationTone = useCallback(() => {
+    const audio = notificationAudioRef.current
+    if (audio) {
+      try {
+        audio.currentTime = 0
+        const playPromise = audio.play()
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => {})
+        }
+        return
+      } catch {
+        // Fallback below if audio playback fails.
+      }
+    }
+
     const context = ensureAudioContext()
     if (!context) return
 
@@ -217,6 +235,17 @@ function QuickActions({
 
   useEffect(
     () => () => {
+      const notificationAudio = notificationAudioRef.current
+      notificationAudioRef.current = null
+      if (notificationAudio) {
+        try {
+          notificationAudio.pause()
+          notificationAudio.src = ''
+        } catch {
+          // Ignore cleanup errors.
+        }
+      }
+
       const context = audioContextRef.current
       audioContextRef.current = null
       if (context && typeof context.close === 'function') {
@@ -227,9 +256,19 @@ function QuickActions({
   )
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const audio = new Audio(notificationAudioSrc)
+    audio.preload = 'auto'
+    audio.volume = 0.9
+    notificationAudioRef.current = audio
+  }, [])
+
+  useEffect(() => {
     urgentVisualReminderIdsRef.current = new Set()
     seenUrgentReminderIdsRef.current = new Set()
     didInitUrgentSnapshotRef.current = false
+    seenTransferResponseReminderIdsRef.current = new Set()
+    didInitTransferResponseSnapshotRef.current = false
     setUrgentVisualProgressById({})
   }, [canDecideTransferRequest, token, currentPrimaryUserId])
 
@@ -265,6 +304,41 @@ function QuickActions({
       playNotificationTone()
     }
   }, [eligibleUrgentDecisionReminders, playNotificationTone])
+
+  const pendingTransferResponseReminders = useMemo(
+    () =>
+      reminders.filter((reminder) => {
+        if (!isResolvedTransferResponseReminder(reminder)) return false
+        if (!isReminderForCurrentUser(reminder, currentUserIds)) return false
+        return !reminderCompletedByIds(reminder).some((id) => currentUserIds.has(id))
+      }),
+    [currentUserIds, reminders]
+  )
+
+  useEffect(() => {
+    const nextIds = new Set(
+      pendingTransferResponseReminders
+        .map((reminder) => normalizeId(reminder?.id))
+        .filter(Boolean)
+    )
+
+    if (!didInitTransferResponseSnapshotRef.current) {
+      seenTransferResponseReminderIdsRef.current = nextIds
+      didInitTransferResponseSnapshotRef.current = true
+      return
+    }
+
+    const seenIds = seenTransferResponseReminderIdsRef.current
+    let hasNewReminder = false
+    nextIds.forEach((id) => {
+      if (!seenIds.has(id)) hasNewReminder = true
+    })
+    seenTransferResponseReminderIdsRef.current = nextIds
+
+    if (hasNewReminder) {
+      playNotificationTone()
+    }
+  }, [pendingTransferResponseReminders, playNotificationTone])
 
   const urgentDecisionProgressById = useMemo(() => {
     const map = {}
@@ -317,10 +391,7 @@ function QuickActions({
   const urgentShieldStyles = useMemo(() => {
     if (!eligibleUrgentDecisionReminders.length || isReminderModalOpen || typeof window === 'undefined') return []
     void clockTick
-    const button = reminderButtonRef.current
-    if (!button) return []
-
-    const rect = button.getBoundingClientRect()
+    const viewportWidth = window.innerWidth
     const maxCanvas = Math.max(window.innerWidth, window.innerHeight) * 1.35
     const isMobileViewport = window.innerWidth <= 900
     const stackOffset = isMobileViewport
@@ -336,8 +407,8 @@ function QuickActions({
         )
         const size = Math.max(44, Math.round(44 + maxCanvas * progress))
         const offset = index * stackOffset
-        const centerX = rect.right - offset
-        const centerY = rect.top + offset
+        const centerX = viewportWidth - offset
+        const centerY = offset
 
         return {
           reminderId,
@@ -651,7 +722,7 @@ function QuickActions({
     }
   }, [])
 
-  const applyReminderUpdate = (updater) => {
+  const applyReminderUpdate = useCallback((updater) => {
     setReminders((prev) => {
       const source = Array.isArray(prev) ? prev : []
       const next = typeof updater === 'function' ? updater(source) : updater
@@ -659,7 +730,7 @@ function QuickActions({
       emitRemindersSync()
       return normalized
     })
-  }
+  }, [])
 
   const handleCreateReminder = ({ date, time, description, recipients, context }) => {
     const normalizedDate = String(date || '').trim()
@@ -730,9 +801,37 @@ function QuickActions({
       if (normalizedReminderId) {
         setFocusReminderId(normalizedReminderId)
       }
+
+      if (currentUserIdValues.length) {
+        applyReminderUpdate((prev) => {
+          let changed = false
+          const next = (Array.isArray(prev) ? prev : []).map((reminder) => {
+            if (!isResolvedTransferResponseReminder(reminder)) return reminder
+            if (!isReminderForCurrentUser(reminder, currentUserIds)) return reminder
+
+            const completedBySet = new Set(reminderCompletedByIds(reminder))
+            let reminderChanged = false
+            currentUserIdValues.forEach((id) => {
+              if (!completedBySet.has(id)) {
+                completedBySet.add(id)
+                changed = true
+                reminderChanged = true
+              }
+            })
+
+            if (!reminderChanged) return reminder
+            return {
+              ...reminder,
+              completedBy: Array.from(completedBySet),
+            }
+          })
+          return changed ? next : prev
+        })
+      }
+
       setIsReminderModalOpen(true)
     },
-    []
+    [applyReminderUpdate, currentUserIdValues, currentUserIds]
   )
 
   const closeReminderModal = useCallback(() => {

@@ -355,8 +355,37 @@ export const isReminderSeenByCurrentUser = (reminder, userIdSet) => {
 export const isSpecialTransferDecisionReminder = (reminder) =>
   normalizeId(reminder?.kind) === SPECIAL_TRANSFER_DECISION_KIND
 
-export const getReminderDecisionStatus = (reminder) =>
-  normalizeDecisionStatus(reminder?.decision?.status)
+const inferTransferDecisionStatusFromDescription = (reminder) => {
+  const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
+  if (contextType !== 'solicitud_traslado') return 'pendiente'
+
+  const description = normalizeText(reminder?.description)
+  if (!description) return 'pendiente'
+
+  if (
+    description.includes('fue rechazada') ||
+    description.includes('solicitud rechazada') ||
+    description.includes('rechazada por')
+  ) {
+    return 'rechazada'
+  }
+
+  if (
+    description.includes('fue aceptada') ||
+    description.includes('solicitud aceptada') ||
+    description.includes('aceptada por')
+  ) {
+    return 'aceptada'
+  }
+
+  return 'pendiente'
+}
+
+export const getReminderDecisionStatus = (reminder) => {
+  const explicitStatus = normalizeDecisionStatus(reminder?.decision?.status)
+  if (explicitStatus !== 'pendiente') return explicitStatus
+  return inferTransferDecisionStatusFromDescription(reminder)
+}
 
 export const isSpecialReminderResolved = (reminder) => {
   if (!isSpecialTransferDecisionReminder(reminder)) return false
@@ -367,6 +396,16 @@ export const isSpecialReminderResolved = (reminder) => {
 export const isReminderPendingForCurrentUser = (reminder, userIdSet) => {
   if (!isReminderForCurrentUser(reminder, userIdSet)) return false
   if (isReminderSeenByCurrentUser(reminder, userIdSet)) return false
+
+  const decisionStatus = getReminderDecisionStatus(reminder)
+  const isTransferContext =
+    normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_') === 'solicitud_traslado'
+  const isTransferResponseReminder =
+    isTransferContext &&
+    !isSpecialTransferDecisionReminder(reminder) &&
+    (decisionStatus === 'aceptada' || decisionStatus === 'rechazada')
+  if (isTransferResponseReminder) return true
+
   if (isSpecialReminderResolved(reminder)) return false
   if (isSpecialTransferDecisionReminder(reminder)) return true
 

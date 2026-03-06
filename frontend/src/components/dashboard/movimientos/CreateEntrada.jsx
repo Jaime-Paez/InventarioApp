@@ -227,6 +227,7 @@ function CreateEntrada({
   preloadedTipoMovimientos = [],
   preloadedSubTipos = [],
   prefilledSucursalId = '',
+  prefilledTransferRequest = null,
   currentUser = null,
 }) {
   const [formData, setFormData] = useState(initialForm)
@@ -281,6 +282,7 @@ function CreateEntrada({
   const modalSizeRef = useRef(modalSize)
   const modalPositionRef = useRef(modalPosition)
   const modalRestoreRef = useRef(null)
+  const appliedPrefillTransferKeyRef = useRef('')
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const getViewportMetrics = useCallback((compactMode = false) => {
@@ -1046,6 +1048,88 @@ function CreateEntrada({
   }, [fetchCatalogs, fetchReminderUsers, normalizedPrefilledSucursalId, open])
 
   useEffect(() => {
+    if (!open) {
+      appliedPrefillTransferKeyRef.current = ''
+      return
+    }
+
+    const request = prefilledTransferRequest
+    const requestKey = String(request?.requestKey || '').trim()
+    if (!requestKey) return
+    if (appliedPrefillTransferKeyRef.current === requestKey) return
+
+    const preview = request?.previewData
+    if (!preview || typeof preview !== 'object') return
+
+    const trasladoSubTipo = (subTiposEntrada.length ? subTiposEntrada : subTipos).find(
+      (item) => normalizeValue(item?.nombre).includes('trasl')
+    )
+    if (!trasladoSubTipo?.id) return
+
+    const solicitanteId = String(
+      preview?.sucursal_solicitante_id || preview?.sucursalId || normalizedPrefilledSucursalId || ''
+    ).trim()
+    const proveedoraId = String(
+      preview?.sucursal_proveedora_id || preview?.sucursalObjetivoId || ''
+    ).trim()
+
+    const prefilledDetalles = (Array.isArray(preview?.detalles) ? preview.detalles : [])
+      .map((detalle, index) => {
+        const productoId = String(detalle?.producto_id || detalle?.productoId || '').trim()
+        if (!productoId) return null
+
+        const cantidad = parseIntValue(detalle?.cantidad)
+        const valor = parseNumber(detalle?.valor)
+        const safeCantidad = Number.isFinite(cantidad) && cantidad > 0 ? cantidad : 0
+        const safeValor = Number.isFinite(valor) && valor >= 0 ? valor : 0
+        const valorTotalRaw = parseNumber(detalle?.valor_total)
+        const valorTotal = Number.isFinite(valorTotalRaw) ? valorTotalRaw : safeCantidad * safeValor
+
+        return {
+          uid: `prefill-${requestKey}-${index}`,
+          productoId,
+          productoCodigo: String(detalle?.producto_codigo || detalle?.productoCodigo || '').trim(),
+          productoNombre: String(detalle?.producto_nombre || detalle?.productoNombre || '').trim(),
+          estadoProductoId: '',
+          estadoProductoNombre: '',
+          cantidad: safeCantidad,
+          valor: safeValor,
+          valor_total: valorTotal,
+        }
+      })
+      .filter(Boolean)
+
+    setFormData((prev) => ({
+      ...prev,
+      sucursalId: solicitanteId || prev.sucursalId,
+      subTipoId: String(trasladoSubTipo.id),
+      estadoId: '',
+      fecha: todayISO(),
+      no_documento: '',
+      descripcion: String(preview?.descripcion || '').trim(),
+      funcional: true,
+      sucursalObjetivoId: proveedoraId,
+      cliente: '',
+      descuento: '',
+    }))
+    setDetails(prefilledDetalles)
+    setDetailDraft(initialDetail)
+    setDetailError('')
+    setActiveTab('general')
+    setShowProductDropdown(false)
+    setProductQuery('')
+    setProductOptions([])
+    setDocumentStatus(DOCUMENT_STATUS.invalid)
+    appliedPrefillTransferKeyRef.current = requestKey
+  }, [
+    normalizedPrefilledSucursalId,
+    open,
+    prefilledTransferRequest,
+    subTipos,
+    subTiposEntrada,
+  ])
+
+  useEffect(() => {
     if (!open) return
     if (!normalizedPrefilledSucursalId) return
     setFormData((prev) => {
@@ -1692,7 +1776,20 @@ function CreateEntrada({
       return
     }
 
-    if (details.some((detail) => !detail.productoId || !detail.estadoProductoId)) {
+    const hasIncompleteDetail = details.some((detail) => {
+      const productoId = String(detail?.productoId || '').trim()
+      const cantidad = parseIntValue(detail?.cantidad)
+      const valor = parseNumber(detail?.valor)
+      const estadoProductoId = String(detail?.estadoProductoId || '').trim()
+
+      if (!productoId) return true
+      if (!Number.isFinite(cantidad) || cantidad <= 0) return true
+      if (!Number.isFinite(valor) || valor < 0) return true
+      if (!isTraslado && !estadoProductoId) return true
+      return false
+    })
+
+    if (hasIncompleteDetail) {
       notifyError('Hay productos con datos incompletos.')
       return
     }

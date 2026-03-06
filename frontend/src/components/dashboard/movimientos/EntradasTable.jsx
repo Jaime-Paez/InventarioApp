@@ -179,6 +179,8 @@ function EntradasTable({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createPrefillTransferRequest, setCreatePrefillTransferRequest] = useState(null)
+  const [creatingFromRejectedRequest, setCreatingFromRejectedRequest] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [selectedSolicitudPreview, setSelectedSolicitudPreview] = useState(null)
@@ -724,6 +726,7 @@ function EntradasTable({
   }
 
   const handleCreated = (createdPayload) => {
+    setCreatePrefillTransferRequest(null)
     setShowCreateModal(false)
     setSelectedRows([])
     refreshData({ page: 1 })
@@ -755,8 +758,64 @@ function EntradasTable({
     } catch {
       // Si falla la precarga, el modal se abre y carga sus catalogos como respaldo.
     }
+    setCreatePrefillTransferRequest(null)
     setShowCreateModal(true)
   }
+
+  const handleCreateFromRejectedSolicitud = useCallback(async (previewPayload) => {
+    if (!canCreate) {
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Sin permiso',
+        detail: 'No tienes permisos para crear solicitudes de traslado.',
+        life: 3200,
+      })
+      return
+    }
+
+    const preview = previewPayload && typeof previewPayload === 'object'
+      ? previewPayload
+      : selectedSolicitudPreview
+    if (!preview || !preview.es_solicitud_traslado) return
+
+    const estado = normalizeValue(preview?.estado_nombre || preview?.estado || '')
+    const isRejected = estado.includes('rechaz') || estado.includes('cancel')
+    if (!isRejected) return
+
+    if (creatingFromRejectedRequest) return
+    setCreatingFromRejectedRequest(true)
+
+    try {
+      await preloadEntradaCatalogs()
+      const requestKey = `${Date.now()}-${String(preview?.solicitud_traslado_id || preview?.id || '').trim()}`
+      setCreatePrefillTransferRequest({
+        requestKey,
+        previewData: preview,
+      })
+      setShowDetailsModal(false)
+      setSelectedSolicitudPreview(null)
+      setSelectedId(null)
+      setShowCreateModal(true)
+    } catch {
+      // Si falla la precarga, el modal puede cargar catalogos internamente.
+      const requestKey = `${Date.now()}-${String(preview?.solicitud_traslado_id || preview?.id || '').trim()}`
+      setCreatePrefillTransferRequest({
+        requestKey,
+        previewData: preview,
+      })
+      setShowDetailsModal(false)
+      setSelectedSolicitudPreview(null)
+      setSelectedId(null)
+      setShowCreateModal(true)
+    } finally {
+      setCreatingFromRejectedRequest(false)
+    }
+  }, [
+    canCreate,
+    creatingFromRejectedRequest,
+    preloadEntradaCatalogs,
+    selectedSolicitudPreview,
+  ])
 
   useEffect(() => {
     const request = pendingTransferEntradaRequest
@@ -1102,13 +1161,17 @@ function EntradasTable({
 
       <CreateEntrada
         open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => {
+          setShowCreateModal(false)
+          setCreatePrefillTransferRequest(null)
+        }}
         onCreated={handleCreated}
         token={token}
         onError={showErrorToast}
         preloadedTipoMovimientos={prefetchedTipoMovimientos}
         preloadedSubTipos={prefetchedSubTiposEntrada}
         prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}
+        prefilledTransferRequest={createPrefillTransferRequest}
         currentUser={user}
       />
 
@@ -1128,6 +1191,8 @@ function EntradasTable({
         currentUser={user}
         allowEdit={canEdit}
         allowDelete={canDelete}
+        onCreateNewTransferFromRejected={canCreate ? handleCreateFromRejectedSolicitud : undefined}
+        creatingTransferFromRejected={creatingFromRejectedRequest}
       />
 
       {shouldRenderSearchModal && (

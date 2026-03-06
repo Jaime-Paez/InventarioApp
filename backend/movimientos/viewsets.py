@@ -157,6 +157,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         getattr(solicitud, "sucursal_proveedora_id", 0) or 0
                     ),
                     "descripcion": str(getattr(solicitud, "descripcion", "") or "").strip(),
+                    "motivo_rechazo": str(
+                        getattr(solicitud, "motivo_rechazo", "") or ""
+                    ).strip(),
                     "detalles": detalles_payload,
                     "movimiento_salida_id": getattr(
                         solicitud, "movimiento_salida_id", None

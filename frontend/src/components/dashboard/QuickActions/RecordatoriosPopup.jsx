@@ -38,6 +38,39 @@ const formatReminderContext = (reminder) => {
   return formatted.charAt(0).toUpperCase() + formatted.slice(1)
 }
 
+const buildTransferResponseDescription = (reminder, decisionStatus) => {
+  const contextType = normalizeReminderContextType(reminder?.context?.type)
+  if (contextType !== 'solicitud_traslado') return String(reminder?.description || '').trim() || '-'
+
+  const contextLabel = String(reminder?.context?.label || '').trim()
+  const contextReferenceRaw = contextLabel.replace(/^solicitud de traslado\s*/i, '').trim()
+  const contextId = normalizeId(reminder?.context?.id)
+  const contextReference = contextReferenceRaw || (contextId ? `#${contextId}` : '')
+
+  if (decisionStatus === 'rechazada') {
+    const explicitReason = String(reminder?.decision?.reason || '').trim()
+    const description = String(reminder?.description || '').trim()
+    const reasonMatch = description.match(/motivo:\s*(.+)$/i)
+    const reason = explicitReason || String(reasonMatch?.[1] || '').trim()
+
+    if (contextReference) {
+      return reason
+        ? `Su solicitud de traslado ${contextReference} fue rechazada. Motivo: ${reason}`
+        : `Su solicitud de traslado ${contextReference} fue rechazada.`
+    }
+    return reason
+      ? `Su solicitud de traslado fue rechazada. Motivo: ${reason}`
+      : 'Su solicitud de traslado fue rechazada.'
+  }
+
+  if (decisionStatus === 'aceptada') {
+    if (contextReference) return `Su solicitud de traslado ${contextReference} fue aceptada.`
+    return 'Su solicitud de traslado fue aceptada.'
+  }
+
+  return String(reminder?.description || '').trim() || '-'
+}
+
 const normalizeReminderContextType = (value) =>
   String(value || '')
     .trim()
@@ -104,6 +137,7 @@ const mapTransferRowToEntradaPreview = (row) => {
     sucursal_solicitante_id: row?.sucursal_solicitante_id || '',
     sucursal_proveedora_id: row?.sucursal_proveedora_id || '',
     descripcion: String(row?.descripcion || '').trim(),
+    motivo_rechazo: String(row?.motivo_rechazo || '').trim(),
     detalles,
     movimiento_salida_id: row?.movimiento_salida_id ?? null,
     movimiento_entrada_id: row?.movimiento_entrada_id ?? null,
@@ -143,6 +177,7 @@ const mapTransferDetailToEntradaPreview = (detail) => {
     sucursal_solicitante_id: detail?.sucursal_solicitante_id || '',
     sucursal_proveedora_id: detail?.sucursal_proveedora_id || '',
     descripcion: String(detail?.descripcion || '').trim(),
+    motivo_rechazo: String(detail?.motivo_rechazo || '').trim(),
     detalles,
     movimiento_salida_id: detail?.movimiento_salida_id ?? null,
     movimiento_entrada_id: detail?.movimiento_entrada_id ?? null,
@@ -774,13 +809,18 @@ function RecordatoriosPopup({
         if (creatorRecipient?.id) {
           const nowParts = getNowDateParts()
           const requesterLabel = String(reminder?.context?.label || `Solicitud de traslado #${solicitudId}`).trim()
-          const rejectorName = String(creatorRecipientName || 'Usuario').trim() || 'Usuario'
+          const requesterReference = requesterLabel.replace(/^solicitud de traslado\s*/i, '').trim()
+          const fallbackReference = solicitudId ? `#${solicitudId}` : ''
+          const transferReference = requesterReference || fallbackReference
+          const responseDescription = transferReference
+            ? `Su solicitud de traslado ${transferReference} fue rechazada. Motivo: ${rejectionReasonValue}`
+            : `Su solicitud de traslado fue rechazada. Motivo: ${rejectionReasonValue}`
           onApplyRemindersUpdate?.((prev) => [
             {
               id: createReminderId(),
               date: nowParts.date,
               time: nowParts.time,
-              description: `${requesterLabel} rechazada por ${rejectorName}. Motivo: ${rejectionReasonValue}`,
+              description: responseDescription,
               creator: {
                 id: creatorRecipientId,
                 name: creatorRecipientName,
@@ -1187,7 +1227,7 @@ function RecordatoriosPopup({
                         const canOpenTransferInEntradas = (
                           isTransferContextReminder &&
                           !isSpecialReminder &&
-                          decisionStatus === 'rechazada' &&
+                          (decisionStatus === 'rechazada' || status.className === 'rejected') &&
                           typeof onOpenTransferRequestInEntradas === 'function'
                         )
                         const isOpeningTransfer = (
@@ -1199,6 +1239,11 @@ function RecordatoriosPopup({
                           .map((recipient) => String(recipient?.name || '').trim())
                           .filter(Boolean)
                           .join(', ')
+                        const timelineDescription = (
+                          isTransferContextReminder && !isSpecialReminder
+                            ? buildTransferResponseDescription(reminder, decisionStatus)
+                            : String(reminder?.description || '').trim() || '-'
+                        )
 
                         return (
                           <article key={reminder.id} className="recordatorios-popup__timeline-item">
@@ -1209,8 +1254,8 @@ function RecordatoriosPopup({
                               </span>
                             </div>
 
-                            <p className="recordatorios-popup__timeline-item-description" title={String(reminder?.description || '-')}>
-                              {reminder?.description || '-'}
+                            <p className="recordatorios-popup__timeline-item-description" title={timelineDescription}>
+                              {timelineDescription}
                             </p>
 
                             <p className="recordatorios-popup__timeline-item-context">
