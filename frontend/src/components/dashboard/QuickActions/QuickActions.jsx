@@ -29,7 +29,8 @@ import {
 } from '../common/reminders/remindersStorage'
 
 const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
-const URGENT_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
+const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
+const URGENT_SHIPMENT_MESSAGE = 'Tienes un envio pendiente por despachar.'
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
@@ -45,6 +46,16 @@ const normalizeReminderContextType = (value) =>
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
 
+const parseEntityTimestamp = (...values) => {
+  for (const value of values) {
+    const raw = String(value || '').trim()
+    if (!raw) continue
+    const timestamp = Date.parse(raw)
+    if (Number.isFinite(timestamp)) return timestamp
+  }
+  return Number.NaN
+}
+
 const isResolvedTransferResponseReminder = (reminder) => {
   const contextType = normalizeReminderContextType(reminder?.context?.type)
   if (contextType !== 'solicitud_traslado') return false
@@ -56,7 +67,7 @@ const isResolvedTransferResponseReminder = (reminder) => {
 
 const resolveUrgentDecisionProgress = (reminder, nowValue) => {
   const deadline = getReminderDeadlineTimestamp(reminder)
-  const createdAt = Date.parse(String(reminder?.createdAt || ''))
+  const createdAt = parseEntityTimestamp(reminder?.createdAt)
   const now = Number(nowValue || Date.now())
 
   if (!Number.isFinite(createdAt)) {
@@ -69,6 +80,20 @@ const resolveUrgentDecisionProgress = (reminder, nowValue) => {
   const growthWindow = Math.min(URGENT_SHIELD_NEAR_FULL_MS, deadlineWindow)
   const ratio = elapsed / growthWindow
   return clamp01(ratio)
+}
+
+const resolveUrgentShipmentProgress = (shipment, nowValue) => {
+  const createdAt = parseEntityTimestamp(
+    shipment?.created_at,
+    shipment?.createdAt,
+    shipment?.updated_at,
+    shipment?.fecha
+  )
+  const now = Number(nowValue || Date.now())
+
+  if (!Number.isFinite(createdAt)) return 0
+  const elapsed = Math.max(0, now - createdAt)
+  return clamp01(elapsed / URGENT_SHIELD_NEAR_FULL_MS)
 }
 
 function QuickActions({
@@ -84,12 +109,15 @@ function QuickActions({
   const btnRefs = useRef([])
   const reminderButtonRef = useRef(null)
   const pendingShipmentsRef = useRef(null)
+  const pendingShipmentsTriggerRef = useRef(null)
   const moveTimerRef = useRef(null)
   const remindersPollInFlightRef = useRef(false)
   const audioContextRef = useRef(null)
   const notificationAudioRef = useRef(null)
   const didInitUrgentSnapshotRef = useRef(false)
   const seenUrgentReminderIdsRef = useRef(new Set())
+  const didInitPendingShipmentUrgentSnapshotRef = useRef(false)
+  const seenPendingShipmentUrgentIdsRef = useRef(new Set())
   const didInitTransferResponseSnapshotRef = useRef(false)
   const seenTransferResponseReminderIdsRef = useRef(new Set())
   const toast = useRef(null)
@@ -262,8 +290,8 @@ function QuickActions({
             isReminderPendingForCurrentUser(reminder, currentUserIds)
         )
         .sort((a, b) => {
-          const createdAtA = Date.parse(String(a?.createdAt || ''))
-          const createdAtB = Date.parse(String(b?.createdAt || ''))
+          const createdAtA = parseEntityTimestamp(a?.createdAt)
+          const createdAtB = parseEntityTimestamp(b?.createdAt)
           if (Number.isFinite(createdAtA) && Number.isFinite(createdAtB) && createdAtA !== createdAtB) {
             return createdAtA - createdAtB
           }
@@ -335,6 +363,8 @@ function QuickActions({
     urgentVisualReminderIdsRef.current = new Set()
     seenUrgentReminderIdsRef.current = new Set()
     didInitUrgentSnapshotRef.current = false
+    seenPendingShipmentUrgentIdsRef.current = new Set()
+    didInitPendingShipmentUrgentSnapshotRef.current = false
     seenTransferResponseReminderIdsRef.current = new Set()
     didInitTransferResponseSnapshotRef.current = false
     setUrgentVisualProgressById({})
@@ -387,6 +417,80 @@ function QuickActions({
     })
   }, [allowUrgentShield, canDecideTransferRequest, pendingSpecialDecisionReminders])
 
+  const pendingShipmentUrgentTargets = useMemo(() => {
+    if (!allowUrgentShield || !canDecideTransferRequest || !hasPendingShipments) return []
+
+    return (Array.isArray(pendingShipments) ? pendingShipments : [])
+      .map((solicitud) => {
+        const solicitudId = normalizeId(solicitud?.id)
+        if (!solicitudId) return null
+
+        return {
+          id: `pending-shipment-${solicitudId}`,
+          kind: 'pending_shipment',
+          anchor: 'pending_shipments',
+          message: URGENT_SHIPMENT_MESSAGE,
+          priorityTimestamp: parseEntityTimestamp(
+            solicitud?.created_at,
+            solicitud?.createdAt,
+            solicitud?.fecha
+          ),
+          solicitudId,
+          solicitud,
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const timeA = Number(a?.priorityTimestamp)
+        const timeB = Number(b?.priorityTimestamp)
+        if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) {
+          return timeA - timeB
+        }
+        if (Number.isFinite(timeA) && !Number.isFinite(timeB)) return -1
+        if (!Number.isFinite(timeA) && Number.isFinite(timeB)) return 1
+        return String(a?.solicitudId || '').localeCompare(String(b?.solicitudId || ''))
+      })
+  }, [allowUrgentShield, canDecideTransferRequest, hasPendingShipments, pendingShipments])
+
+  const urgentDecisionTargets = useMemo(
+    () =>
+      eligibleUrgentDecisionReminders
+        .map((reminder) => {
+          const reminderId = normalizeId(reminder?.id)
+          if (!reminderId) return null
+
+          const date = String(reminder?.date || '').trim()
+          const time = String(reminder?.time || '').trim()
+          const dateTimeCandidate = date ? `${date}T${time || '00:00'}:00` : ''
+
+          return {
+            id: reminderId,
+            reminderId,
+            kind: 'decision',
+            anchor: 'top_right',
+            message: URGENT_DECISION_MESSAGE,
+            priorityTimestamp: parseEntityTimestamp(reminder?.createdAt, dateTimeCandidate),
+            reminder,
+          }
+        })
+        .filter(Boolean),
+    [eligibleUrgentDecisionReminders]
+  )
+
+  const urgentShieldTargets = useMemo(() => {
+    const merged = [...urgentDecisionTargets, ...pendingShipmentUrgentTargets]
+    return merged.sort((a, b) => {
+      const timeA = Number(a?.priorityTimestamp)
+      const timeB = Number(b?.priorityTimestamp)
+      if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) {
+        return timeA - timeB
+      }
+      if (Number.isFinite(timeA) && !Number.isFinite(timeB)) return -1
+      if (!Number.isFinite(timeA) && Number.isFinite(timeB)) return 1
+      return String(a?.id || '').localeCompare(String(b?.id || ''))
+    })
+  }, [pendingShipmentUrgentTargets, urgentDecisionTargets])
+
   useEffect(() => {
     const nextIds = new Set(
       eligibleUrgentDecisionReminders
@@ -415,6 +519,35 @@ function QuickActions({
       })
     }
   }, [eligibleUrgentDecisionReminders, playNotificationTone])
+
+  useEffect(() => {
+    const nextIds = new Set(
+      pendingShipmentUrgentTargets
+        .map((target) => normalizeId(target?.id))
+        .filter(Boolean)
+    )
+
+    if (!didInitPendingShipmentUrgentSnapshotRef.current) {
+      seenPendingShipmentUrgentIdsRef.current = nextIds
+      didInitPendingShipmentUrgentSnapshotRef.current = true
+      return
+    }
+
+    const seenIds = seenPendingShipmentUrgentIdsRef.current
+    const newPendingShipmentIds = []
+    nextIds.forEach((id) => {
+      if (!seenIds.has(id)) newPendingShipmentIds.push(id)
+    })
+    seenPendingShipmentUrgentIdsRef.current = nextIds
+
+    if (newPendingShipmentIds.length) {
+      playNotificationTone()
+      emitTransferReminderNotification({
+        type: 'solicitud_traslado_envio_pendiente',
+        reminderIds: newPendingShipmentIds,
+      })
+    }
+  }, [pendingShipmentUrgentTargets, playNotificationTone])
 
   const pendingTransferResponseReminders = useMemo(
     () =>
@@ -455,19 +588,25 @@ function QuickActions({
     }
   }, [pendingTransferResponseReminders, playNotificationTone])
 
-  const urgentDecisionProgressById = useMemo(() => {
+  const urgentProgressById = useMemo(() => {
     const map = {}
     const now = Number(clockTick || Date.now())
-    eligibleUrgentDecisionReminders.forEach((reminder) => {
-      const reminderId = normalizeId(reminder?.id)
-      if (!reminderId) return
-      map[reminderId] = resolveUrgentDecisionProgress(reminder, now)
+    urgentShieldTargets.forEach((target) => {
+      const targetId = normalizeId(target?.id)
+      if (!targetId) return
+
+      if (target?.kind === 'pending_shipment') {
+        map[targetId] = resolveUrgentShipmentProgress(target?.solicitud, now)
+        return
+      }
+
+      map[targetId] = resolveUrgentDecisionProgress(target?.reminder, now)
     })
     return map
-  }, [clockTick, eligibleUrgentDecisionReminders])
+  }, [clockTick, urgentShieldTargets])
 
   useEffect(() => {
-    const nextIds = Object.keys(urgentDecisionProgressById)
+    const nextIds = Object.keys(urgentProgressById)
     if (!nextIds.length) {
       urgentVisualReminderIdsRef.current = new Set()
       setUrgentVisualProgressById({})
@@ -487,24 +626,24 @@ function QuickActions({
           return
         }
         const previous = Number(prev?.[id])
-        next[id] = Number.isFinite(previous) ? previous : Number(urgentDecisionProgressById[id] || 0)
+        next[id] = Number.isFinite(previous) ? previous : Number(urgentProgressById[id] || 0)
       })
       return next
     })
 
     if (newIds.length && typeof window !== 'undefined') {
       const frameId = window.requestAnimationFrame(() => {
-        setUrgentVisualProgressById({ ...urgentDecisionProgressById })
+        setUrgentVisualProgressById({ ...urgentProgressById })
       })
       return () => window.cancelAnimationFrame(frameId)
     }
 
-    setUrgentVisualProgressById({ ...urgentDecisionProgressById })
+    setUrgentVisualProgressById({ ...urgentProgressById })
     return undefined
-  }, [urgentDecisionProgressById])
+  }, [urgentProgressById])
 
   const urgentShieldStyles = useMemo(() => {
-    if (!eligibleUrgentDecisionReminders.length || isReminderModalOpen || typeof window === 'undefined') return []
+    if (!urgentShieldTargets.length || isReminderModalOpen || typeof window === 'undefined') return []
     void clockTick
     const viewportWidth = window.innerWidth
     const maxCanvas = Math.max(window.innerWidth, window.innerHeight) * 1.35
@@ -512,21 +651,47 @@ function QuickActions({
     const stackOffset = isMobileViewport
       ? URGENT_SHIELD_STACK_OFFSET_MOBILE
       : URGENT_SHIELD_STACK_OFFSET_DESKTOP
+    const stackByAnchor = new Map()
+    const resolveAnchorCenter = (anchor) => {
+      if (anchor === 'pending_shipments') {
+        const rect = pendingShipmentsTriggerRef.current?.getBoundingClientRect()
+        if (rect && Number.isFinite(rect.left) && Number.isFinite(rect.top)) {
+          return {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          }
+        }
+      }
+      return {
+        x: viewportWidth,
+        y: 0,
+      }
+    }
 
-    return eligibleUrgentDecisionReminders
-      .map((reminder, index) => {
-        const reminderId = normalizeId(reminder?.id)
-        if (!reminderId) return null
+    return urgentShieldTargets
+      .map((target, index) => {
+        const targetId = normalizeId(target?.id)
+        if (!targetId) return null
+
+        const anchor = String(target?.anchor || 'top_right')
+        const anchorStackIndex = Number(stackByAnchor.get(anchor) || 0)
+        stackByAnchor.set(anchor, anchorStackIndex + 1)
         const progress = clamp01(
-          urgentVisualProgressById[reminderId] ?? urgentDecisionProgressById[reminderId]
+          urgentVisualProgressById[targetId] ?? urgentProgressById[targetId]
         )
         const size = Math.max(44, Math.round(44 + maxCanvas * progress))
-        const offset = index * stackOffset
-        const centerX = viewportWidth - offset
-        const centerY = offset
+        const offset = anchorStackIndex * stackOffset
+        const anchorCenter = resolveAnchorCenter(anchor)
+        const centerX = anchorCenter.x - offset
+        const centerY = anchorCenter.y + offset
 
         return {
-          reminderId,
+          id: targetId,
+          reminderId: normalizeId(target?.reminderId),
+          kind: target?.kind || 'decision',
+          solicitudId: normalizeId(target?.solicitudId),
+          message: String(target?.message || '').trim() || URGENT_DECISION_MESSAGE,
+          target,
           progress,
           style: {
             width: `${size}px`,
@@ -535,22 +700,24 @@ function QuickActions({
             top: `${centerY - size / 2}px`,
             '--urgency': String(progress.toFixed(3)),
             '--urgent-color': URGENT_SHIELD_COLORS[index % URGENT_SHIELD_COLORS.length],
-            zIndex: String(1200 + index),
+            zIndex: String(Math.max(1200, 1299 - index)),
           },
         }
       })
       .filter(Boolean)
-  }, [clockTick, eligibleUrgentDecisionReminders, isReminderModalOpen, urgentDecisionProgressById, urgentVisualProgressById])
+  }, [clockTick, isReminderModalOpen, urgentProgressById, urgentShieldTargets, urgentVisualProgressById])
 
   const activeUrgentShield = useMemo(() => {
     if (!urgentShieldStyles.length) return null
-    return urgentShieldStyles[urgentShieldStyles.length - 1]
+    return urgentShieldStyles[0]
   }, [urgentShieldStyles])
 
   const urgentMessageStyle = useMemo(() => {
     if (!activeUrgentShield?.style) return null
     const progress = clamp01(activeUrgentShield.progress)
     if (progress < URGENT_MESSAGE_REVEAL_PROGRESS) return null
+    const activeUrgentMessage = String(activeUrgentShield?.message || URGENT_DECISION_MESSAGE).trim()
+    if (!activeUrgentMessage) return null
 
     const shieldSize = Number.parseFloat(activeUrgentShield.style.width)
     const shieldLeft = Number.parseFloat(activeUrgentShield.style.left)
@@ -597,7 +764,7 @@ function QuickActions({
 
     const estimateHeight = (boxWidth, size) => {
       const charsPerLine = Math.max(10, Math.floor(boxWidth / Math.max(1, size * 0.55)))
-      const lines = Math.max(1, Math.ceil(URGENT_MESSAGE.length / charsPerLine))
+      const lines = Math.max(1, Math.ceil(activeUrgentMessage.length / charsPerLine))
       return Math.max(size * 1.25, lines * size * 1.22)
     }
 
@@ -697,6 +864,14 @@ function QuickActions({
     btnRefs.current[1] = element
     const hadButton = Boolean(reminderButtonRef.current)
     reminderButtonRef.current = element
+    if (!hadButton && element) {
+      setClockTick(Date.now())
+    }
+  }, [])
+
+  const handlePendingShipmentsTriggerRef = useCallback((element) => {
+    const hadButton = Boolean(pendingShipmentsTriggerRef.current)
+    pendingShipmentsTriggerRef.current = element
     if (!hadButton && element) {
       setClockTick(Date.now())
     }
@@ -1004,25 +1179,45 @@ function QuickActions({
     [fetchTransferSolicitudDetail, onTransferDecisionAccepted, showErrorToast]
   )
 
-  const handleUrgentShieldClick = (reminderId) => {
-    openReminderModal(reminderId)
-  }
+  const handleUrgentShieldClick = useCallback(
+    (shield) => {
+      if (!shield) return
+      if (shield.kind === 'pending_shipment') {
+        if (shield.target?.solicitud) {
+          void handleOpenPendingShipment(shield.target.solicitud)
+          return
+        }
+        if (!isPendingShipmentsOpen) {
+          setIsPendingShipmentsOpen(true)
+        }
+        void fetchPendingTransferShipments()
+        return
+      }
+
+      openReminderModal(shield.reminderId)
+    },
+    [fetchPendingTransferShipments, handleOpenPendingShipment, isPendingShipmentsOpen, openReminderModal]
+  )
 
   return (
     <>
       <Toast ref={toast} />
-      {urgentShieldStyles.map((shield, index) => (
+      {urgentShieldStyles.map((shield) => (
         <button
-          key={`quick-actions-urgent-shield-${shield.reminderId}`}
+          key={`quick-actions-urgent-shield-${shield.id}`}
           type="button"
           className="quick-actions__urgent-shield"
           style={shield.style}
-          onClick={() => handleUrgentShieldClick(shield.reminderId)}
-          aria-label="Resolver solicitud de traslado pendiente"
+          onClick={() => handleUrgentShieldClick(shield)}
+          aria-label={
+            shield.kind === 'pending_shipment'
+              ? 'Abrir envio pendiente de traslado'
+              : 'Resolver solicitud de traslado pendiente'
+          }
         >
-          {index === urgentShieldStyles.length - 1 && urgentMessageStyle && (
+          {shield.id === activeUrgentShield?.id && urgentMessageStyle && (
             <span className="quick-actions__urgent-message" style={urgentMessageStyle} aria-hidden="true">
-              {URGENT_MESSAGE}
+              {activeUrgentShield?.message || URGENT_DECISION_MESSAGE}
             </span>
           )}
         </button>
@@ -1034,6 +1229,7 @@ function QuickActions({
             className={`quick-actions__pending-shipments${isPendingShipmentsOpen ? ' is-open' : ''}`}
           >
             <button
+              ref={handlePendingShipmentsTriggerRef}
               type="button"
               className="quick-actions__pending-shipments-trigger"
               onClick={() => void togglePendingShipmentsPanel()}
