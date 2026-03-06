@@ -3,6 +3,14 @@ import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
+import {
+  createReminderId,
+  emitRemindersSync,
+  normalizeId as normalizeReminderId,
+  readRemindersFromStorage,
+  sanitizeRecipient,
+  writeRemindersToStorage,
+} from '../common/reminders/remindersStorage'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -44,6 +52,11 @@ const initialClienteForm = {
 }
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
+const normalizeReminderContextType = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
 const normalizeValue = (value) =>
   String(value ?? '')
     .normalize('NFD')
@@ -97,6 +110,21 @@ const todayISO = () => {
   const month = String(today.getMonth() + 1).padStart(2, '0')
   const day = String(today.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+const nowReminderDateTime = () => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+
+  return {
+    date: `${year}-${month}-${day}`,
+    time: `${hours}:${minutes}`,
+    iso: now.toISOString(),
+  }
 }
 
 const formatCurrency = (value) => {
@@ -169,6 +197,7 @@ function CreateSalida({
   onClose,
   onCreated,
   onTransferCancelled,
+  currentUser = null,
   token,
   onError,
   preloadedTipoMovimientos = [],
@@ -432,6 +461,30 @@ function CreateSalida({
     selectedSucursalName ||
     String(selectedSolicitudTraslado?.sucursal_proveedora || '').trim() ||
     'sucursal proveedora'
+  const currentActorRecipient = useMemo(() => {
+    const userId = String(
+      currentUser?.usuarioInternoId ||
+        currentUser?.usuario_interno_id ||
+        currentUser?.usuario_id ||
+        currentUser?.user_id ||
+        currentUser?.id ||
+        'system'
+    ).trim()
+    const name = [
+      currentUser?.nombres || currentUser?.nombre || currentUser?.first_name,
+      currentUser?.apellidos || currentUser?.apellido || currentUser?.last_name,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim() || currentUser?.username || currentUser?.correo || 'Usuario'
+
+    return (
+      sanitizeRecipient({ id: userId, name }) || {
+        id: 'system',
+        name: 'Usuario',
+      }
+    )
+  }, [currentUser])
   const transferDestinationBranches = useMemo(() => {
     if (!isTraslado) return destinationBranches
     if (!solicitudRequesterBranchId) return destinationBranches
@@ -454,6 +507,81 @@ function CreateSalida({
   ])
   const prefillTransferRequestKey = String(prefillTransferRequest?.requestKey || '').trim()
   const prefillTransferSolicitudId = String(prefillTransferRequest?.solicitudId || '').trim()
+  const appendTransferCancellationReminder = useCallback(
+    (solicitud, motivo) => {
+      const solicitudId = String(
+        solicitud?.id || formData.solicitudTrasladoId || prefillTransferSolicitudId || ''
+      ).trim()
+      if (!solicitudId) return
+
+      const existingReminders = readRemindersFromStorage()
+      const contextMatchesSolicitud = (reminder) =>
+        normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado' &&
+        normalizeReminderId(reminder?.context?.id) === solicitudId
+
+      const contextReminder = (
+        existingReminders.find(
+          (reminder) =>
+            contextMatchesSolicitud(reminder) &&
+            normalizeReminderId(reminder?.kind) === 'solicitud_traslado_decision'
+        ) ||
+        existingReminders.find(contextMatchesSolicitud) ||
+        null
+      )
+
+      const requesterRecipient = sanitizeRecipient(contextReminder?.creator)
+      if (!requesterRecipient?.id) {
+        notifyError(
+          'El envio se cancelo, pero no se pudo enviar el recordatorio al solicitante.'
+        )
+        return
+      }
+
+      const transferDoc = String(solicitud?.no_documento || selectedSolicitudDoc || '').trim()
+      const contextLabel = transferDoc
+        ? `Solicitud de traslado #${transferDoc}`
+        : `Solicitud de traslado #${solicitudId}`
+      const transferReference = contextLabel.replace(/^solicitud de traslado\s*/i, '').trim() || `#${solicitudId}`
+      const reason = String(motivo || '').trim()
+      const description = transferReference
+        ? `Su solicitud de traslado ${transferReference} fue rechazada. Motivo: ${reason}`
+        : `Su solicitud de traslado fue rechazada. Motivo: ${reason}`
+      const now = nowReminderDateTime()
+
+      const reminder = {
+        id: createReminderId(),
+        date: now.date,
+        time: now.time,
+        description,
+        creator: currentActorRecipient,
+        recipients: [requesterRecipient],
+        context: {
+          type: 'solicitud_traslado',
+          id: solicitudId,
+          label: contextLabel,
+        },
+        kind: 'recordatorio_general',
+        createdAt: now.iso,
+        decision: {
+          status: 'rechazada',
+          reason,
+          by: currentActorRecipient,
+          at: now.iso,
+        },
+        completedBy: [],
+      }
+
+      writeRemindersToStorage([reminder, ...existingReminders])
+      emitRemindersSync()
+    },
+    [
+      currentActorRecipient,
+      formData.solicitudTrasladoId,
+      notifyError,
+      prefillTransferSolicitudId,
+      selectedSolicitudDoc,
+    ]
+  )
 
   useEffect(() => {
     if (!preloadedTipoMovimientos.length) return
@@ -1775,6 +1903,7 @@ function CreateSalida({
         throw new Error(detail)
       }
 
+      appendTransferCancellationReminder(data?.solicitud || selectedSolicitudTraslado, motivo)
       setIsTransferCancelModalOpen(false)
       if (typeof onTransferCancelled === 'function') {
         onTransferCancelled(data)
@@ -1811,7 +1940,7 @@ function CreateSalida({
     .filter(Boolean)
     .join(' ')
   const transferSubmitLabel = isTraslado
-    ? `Envia a ${transferTargetBranchButtonLabel}`
+    ? `Enviar a ${transferTargetBranchButtonLabel}`
     : 'Crear salida'
   const transferSummaryLabel = selectedSolicitudDoc || formData.solicitudTrasladoId || 'N/A'
 

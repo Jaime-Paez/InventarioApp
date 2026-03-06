@@ -1112,6 +1112,7 @@ function SalidasTable({
         }}
         onCreated={handleCreated}
         onTransferCancelled={handleTransferCancelled}
+        currentUser={user}
         token={token}
         onError={showErrorToast}
         preloadedTipoMovimientos={prefetchedTipoMovimientos}
