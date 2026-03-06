@@ -947,7 +947,7 @@ function RecordatoriosPopup({
     [token]
   )
 
-  const fetchTransferPreviewFromDetail = useCallback(
+  const fetchTransferSolicitudDetail = useCallback(
     async (solicitudId) => {
       if (!token || !solicitudId) return null
 
@@ -960,9 +960,18 @@ function RecordatoriosPopup({
 
       const data = await response.json().catch(() => ({}))
       if (!data || typeof data !== 'object') return null
-      return mapTransferDetailToEntradaPreview(data)
+      return data
     },
     [token]
+  )
+
+  const fetchTransferPreviewFromDetail = useCallback(
+    async (solicitudId) => {
+      const detail = await fetchTransferSolicitudDetail(solicitudId)
+      if (!detail) return null
+      return mapTransferDetailToEntradaPreview(detail)
+    },
+    [fetchTransferSolicitudDetail]
   )
 
   const handleOpenTransferInEntradas = useCallback(
@@ -1005,6 +1014,45 @@ function RecordatoriosPopup({
       notifyError,
       onClose,
       onOpenTransferRequestInEntradas,
+    ]
+  )
+
+  const handleCreateSalidaFromReminder = useCallback(
+    async (reminder) => {
+      if (typeof onTransferDecisionAccepted !== 'function') return
+      const solicitudId = normalizeId(reminder?.context?.id)
+      const reminderId = normalizeId(reminder?.id) || solicitudId
+      if (!solicitudId) {
+        notifyError('No se encontro la solicitud asociada a este recordatorio.')
+        return
+      }
+
+      setOpeningTransferReminderId(reminderId)
+      try {
+        const solicitudDetail = await fetchTransferSolicitudDetail(solicitudId)
+        if (!solicitudDetail) {
+          throw new Error('No se pudo abrir la solicitud en Salidas.')
+        }
+
+        onTransferDecisionAccepted({
+          solicitudId,
+          solicitud: solicitudDetail,
+          nextAction: {
+            sucursal_proveedora_id: String(solicitudDetail?.sucursal_proveedora_id || '').trim(),
+          },
+        })
+        onClose?.()
+      } catch (error) {
+        notifyError(error?.message || 'No se pudo abrir la solicitud en Salidas.')
+      } finally {
+        setOpeningTransferReminderId('')
+      }
+    },
+    [
+      fetchTransferSolicitudDetail,
+      notifyError,
+      onClose,
+      onTransferDecisionAccepted,
     ]
   )
 
@@ -1231,6 +1279,12 @@ function RecordatoriosPopup({
                           decisionStatus === 'pendiente' &&
                           status.className !== 'info'
                         )
+                        const canCreateSalidaFromReminder = (
+                          isSpecialReminder &&
+                          isTransferContextReminder &&
+                          decisionStatus === 'aceptada' &&
+                          typeof onTransferDecisionAccepted === 'function'
+                        )
                         const canOpenTransferInEntradas = (
                           isTransferContextReminder &&
                           !isSpecialReminder &&
@@ -1291,6 +1345,15 @@ function RecordatoriosPopup({
                                   onClick={() => openDecisionPanel(reminder)}
                                 >
                                   Resolver solicitud
+                                </button>
+                              ) : canCreateSalidaFromReminder ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => handleCreateSalidaFromReminder(reminder)}
+                                  disabled={isOpeningTransfer}
+                                >
+                                  {isOpeningTransfer ? 'Abriendo...' : 'Crear salida'}
                                 </button>
                               ) : canOpenTransferInEntradas ? (
                                 <button
