@@ -373,11 +373,20 @@ function RecordatoriosPopup({
           const timestampB = getReminderDateTimeTimestamp(b)
 
           if (Number.isFinite(timestampA) && Number.isFinite(timestampB)) {
-            return timestampA - timestampB
+            return timestampB - timestampA
           }
           if (Number.isFinite(timestampA)) return -1
           if (Number.isFinite(timestampB)) return 1
-          return String(a?.id || '').localeCompare(String(b?.id || ''))
+
+          const createdAtA = Date.parse(String(a?.createdAt || ''))
+          const createdAtB = Date.parse(String(b?.createdAt || ''))
+          if (Number.isFinite(createdAtA) && Number.isFinite(createdAtB)) {
+            return createdAtB - createdAtA
+          }
+          if (Number.isFinite(createdAtA)) return -1
+          if (Number.isFinite(createdAtB)) return 1
+
+          return String(b?.id || '').localeCompare(String(a?.id || ''))
         })
       )
     })

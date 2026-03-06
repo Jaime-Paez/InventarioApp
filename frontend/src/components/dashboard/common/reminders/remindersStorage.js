@@ -447,7 +447,7 @@ export const sortRemindersForCurrentUser = (reminders, userIdSet) => {
     const timeA = getReminderTimestamp(a)
     const timeB = getReminderTimestamp(b)
 
-    if (Number.isFinite(timeA) && Number.isFinite(timeB)) return timeA - timeB
+    if (Number.isFinite(timeA) && Number.isFinite(timeB)) return timeB - timeA
     if (Number.isFinite(timeA)) return -1
     if (Number.isFinite(timeB)) return 1
 
