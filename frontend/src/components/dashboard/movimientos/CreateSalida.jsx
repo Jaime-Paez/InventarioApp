@@ -63,6 +63,39 @@ const normalizeValue = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+const matchesNormalizedStem = (value, stem) =>
+  normalizeValue(value)
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .some((token) => token.startsWith(stem))
+const findEstadoByPreference = (options, preferred = []) => {
+  const list = Array.isArray(options) ? options : []
+  if (!list.length) return null
+
+  for (const key of preferred) {
+    const exact = list.find((estado) => normalizeValue(estado?.nombre) === key)
+    if (exact?.id) return exact
+  }
+
+  const stemByKey = {
+    enviado: 'envi',
+    recibido: 'recib',
+    'parcialmente recibido': 'parcial',
+    proformado: 'proform',
+    facturado: 'factur',
+    vendido: 'vend',
+    'en camino': 'camin',
+  }
+  for (const key of preferred) {
+    const stem = stemByKey[key]
+    if (!stem) continue
+    const partial = list.find((estado) => matchesNormalizedStem(estado?.nombre, stem))
+    if (partial?.id) return partial
+  }
+
+  return list.find((estado) => estado?.id != null) || null
+}
 
 const parseNumber = (value) => {
   const cleaned = String(value ?? '').replace(',', '.').trim()
@@ -340,8 +373,17 @@ function CreateSalida({
   )
 
   const trasladoEstadoOptions = useMemo(() => {
-    const allowed = new Set(['enviado', 'recibido', 'parcialmente recibido'])
-    return estados.filter((estado) => allowed.has(normalizeValue(estado?.nombre)))
+    const strictAllowed = new Set(['enviado', 'recibido', 'parcialmente recibido'])
+    const strictMatches = estados.filter((estado) =>
+      strictAllowed.has(normalizeValue(estado?.nombre))
+    )
+    if (strictMatches.length) return strictMatches
+    return estados.filter(
+      (estado) =>
+        matchesNormalizedStem(estado?.nombre, 'envi') ||
+        matchesNormalizedStem(estado?.nombre, 'recib') ||
+        matchesNormalizedStem(estado?.nombre, 'parcial')
+    )
   }, [estados])
 
   const ventaEstadoOptions = useMemo(() => {
@@ -357,10 +399,18 @@ function CreateSalida({
   }, [devolucionEstadoOptions, isDevolucion, isTraslado, isVenta, trasladoEstadoOptions, ventaEstadoOptions])
 
   const defaultEstadoMovimientoId = useMemo(() => {
-    if (!estadoOptions.length) return ''
+    if (!estadoOptions.length) {
+      if (!isTraslado) return ''
+      const fallback = findEstadoByPreference(estados, [
+        'enviado',
+        'recibido',
+        'parcialmente recibido',
+      ])
+      return fallback?.id ? String(fallback.id) : ''
+    }
 
     if (isTraslado) {
-      const enviado = estadoOptions.find((estado) => normalizeValue(estado?.nombre) === 'enviado')
+      const enviado = findEstadoByPreference(estadoOptions, ['enviado'])
       return String(enviado?.id ?? estadoOptions[0].id)
     }
 
@@ -371,14 +421,32 @@ function CreateSalida({
     if (isVenta) {
       const preferredOrder = ['proformado', 'facturado', 'vendido']
       for (const key of preferredOrder) {
-        const matched = estadoOptions.find((estado) => normalizeValue(estado?.nombre) === key)
+        const matched = findEstadoByPreference(estadoOptions, [key])
         if (matched?.id) return String(matched.id)
       }
       return String(estadoOptions[0].id)
     }
 
     return String(estadoOptions[0].id)
-  }, [estadoOptions, isDevolucion, isTraslado, isVenta])
+  }, [estadoOptions, estados, isDevolucion, isTraslado, isVenta])
+
+  const estadoReadOnlyOptions = useMemo(
+    () => (estadoOptions.length ? estadoOptions : estados),
+    [estadoOptions, estados]
+  )
+
+  const resolvedEstadoMovimientoId = useMemo(() => {
+    const selectedId = String(formData.estadoId || '').trim()
+    if (selectedId) return selectedId
+    if (defaultEstadoMovimientoId) return defaultEstadoMovimientoId
+    if (!isTraslado) return ''
+    const fallback = findEstadoByPreference(estados, [
+      'enviado',
+      'recibido',
+      'parcialmente recibido',
+    ])
+    return fallback?.id ? String(fallback.id) : ''
+  }, [defaultEstadoMovimientoId, estados, formData.estadoId, isTraslado])
 
   const defaultEstadoProductoId = useMemo(() => {
     if (!estadosProducto.length) return ''
@@ -712,11 +780,16 @@ function CreateSalida({
   )
 
   useEffect(() => {
-    if (!open || !formData.subTipoId || !defaultEstadoMovimientoId) return
-    setFormData((prev) =>
-      prev.estadoId === defaultEstadoMovimientoId ? prev : { ...prev, estadoId: defaultEstadoMovimientoId }
-    )
-  }, [defaultEstadoMovimientoId, formData.subTipoId, open])
+    if (!open || !formData.subTipoId || !resolvedEstadoMovimientoId) return
+    setFormData((prev) => {
+      const currentEstadoId = String(prev.estadoId || '').trim()
+      const currentStateValid =
+        currentEstadoId &&
+        estadoReadOnlyOptions.some((estado) => String(estado.id) === currentEstadoId)
+      if (currentStateValid) return prev
+      return { ...prev, estadoId: resolvedEstadoMovimientoId }
+    })
+  }, [estadoReadOnlyOptions, formData.subTipoId, open, resolvedEstadoMovimientoId])
 
   useEffect(() => {
     if (!formData.subTipoId) return
@@ -1648,6 +1721,7 @@ function CreateSalida({
 
   const submitSalida = async ({ skipTransferConfirmation = false } = {}) => {
     setError('')
+    const estadoMovimientoId = String(formData.estadoId || resolvedEstadoMovimientoId || '').trim()
 
     if (!salidaTipoId) {
       notifyError('No se encontro el tipo de movimiento de salida.')
@@ -1684,9 +1758,12 @@ function CreateSalida({
       return false
     }
 
-    if (!formData.estadoId) {
+    if (!estadoMovimientoId) {
       notifyError('No se pudo resolver el estado del movimiento.')
       return false
+    }
+    if (estadoMovimientoId !== String(formData.estadoId || '').trim()) {
+      setFormData((prev) => ({ ...prev, estadoId: estadoMovimientoId }))
     }
 
     if (!formData.fecha) {
@@ -1800,7 +1877,7 @@ function CreateSalida({
         descripcion: buildDescripcion(ventaClienteLabel),
         funcional: isDevolucion ? Boolean(formData.funcional) : true,
         sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
-        estado_movimiento_id: Number(formData.estadoId),
+        estado_movimiento_id: Number(estadoMovimientoId),
         descuento,
         fecha: formData.fecha,
         no_documento: formData.no_documento.trim(),
@@ -2155,7 +2232,13 @@ function CreateSalida({
                         <span>Estado del movimiento</span>
                         <input
                           type="text"
-                          value={estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre || ''}
+                          value={
+                            estadoReadOnlyOptions.find(
+                              (estado) =>
+                                String(estado.id) ===
+                                String(formData.estadoId || resolvedEstadoMovimientoId)
+                            )?.nombre || ''
+                          }
                           readOnly
                           disabled
                         />
@@ -2614,7 +2697,11 @@ function CreateSalida({
                 </button>
               )}
               {formData.subTipoId && (
-                <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>
+                <button
+                  type="submit"
+                  className="create-user__action create-user__action--primary"
+                  disabled={loading || !resolvedEstadoMovimientoId}
+                >
                   {loading ? 'Guardando...' : transferSubmitLabel}
                 </button>
               )}
