@@ -157,6 +157,7 @@
 }
 
 .quick-actions.has-urgent-shield {
+  z-index: 1310;
   background: rgba(255, 255, 255, 1);
 }
 
@@ -199,9 +200,11 @@
   margin: 0;
   pointer-events: auto;
   cursor: pointer;
-  background: var(--color-primary);
+  background: var(--urgent-color, var(--color-primary));
   opacity: 1;
-  box-shadow: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 10px 22px rgba(2, 6, 23, 0.12);
   overflow: hidden;
   transform-origin: center;
   will-change: width, height, left, top, opacity;
@@ -215,8 +218,10 @@
 }
 
 .quick-actions.dark .quick-actions__urgent-shield {
-  background: var(--color-primary-dark);
-  box-shadow: none;
+  background: var(--urgent-color, var(--color-primary-dark));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.13),
+    0 10px 24px rgba(2, 6, 23, 0.26);
 }
 
 .quick-actions__urgent-message {

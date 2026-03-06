@@ -1195,11 +1195,43 @@ function EntradaDetails({
   }, [getViewportMetrics, isMaximized, open])
 
   const handleModalMouseDown = (event) => {
-    if (isMaximized || !modalRef.current) return
     const target = event?.target
     if (target?.closest?.('.create-user__icon-button') || target?.closest?.('.create-user__resize-handle')) {
       return
     }
+
+    if (isMaximized) {
+      const restore = modalRestoreRef.current
+      const fallbackSize = modalSizeRef.current
+      const restoredSize = restore?.size || fallbackSize
+      const restoredPosition = restore?.position || {
+        x: Math.max((window.innerWidth - restoredSize.width) / 2, VIEWPORT_PADDING),
+        y: Math.max((window.innerHeight - restoredSize.height) / 2, VIEWPORT_PADDING),
+      }
+
+      modalSizeRef.current = restoredSize
+      modalPositionRef.current = restoredPosition
+      setModalSize(restoredSize)
+      setModalPosition(restoredPosition)
+      setIsMaximized(false)
+
+      const offsetX = Math.min(
+        Math.max(event.clientX - restoredPosition.x, 24),
+        Math.max(restoredSize.width - 24, 24)
+      )
+      const offsetY = Math.min(
+        Math.max(event.clientY - restoredPosition.y, 12),
+        56
+      )
+      modalDrag.current = {
+        active: true,
+        offsetX,
+        offsetY,
+      }
+      return
+    }
+
+    if (!modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
     modalDrag.current = {
       active: true,

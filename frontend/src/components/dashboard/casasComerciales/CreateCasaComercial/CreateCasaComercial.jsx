@@ -262,7 +262,37 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
   const selectedFlagUrl = getFlagUrl(selectedCountry?.codigo_pais)
 
   const handleMouseDown = (event) => {
-    if (isMaximized) return
+    if (isMaximized) {
+      const restore = restoreRef.current
+      const fallbackSize = sizeRef.current
+      const restoredSize = restore?.size || fallbackSize
+      const restoredPosition = restore?.position || {
+        x: Math.max((window.innerWidth - restoredSize.width) / 2, VIEWPORT_PADDING),
+        y: Math.max((window.innerHeight - restoredSize.height) / 2, VIEWPORT_PADDING),
+      }
+
+      sizeRef.current = restoredSize
+      positionRef.current = restoredPosition
+      setSize(restoredSize)
+      setPosition(restoredPosition)
+      setIsMaximized(false)
+
+      const offsetX = Math.min(
+        Math.max(event.clientX - restoredPosition.x, 24),
+        Math.max(restoredSize.width - 24, 24)
+      )
+      const offsetY = Math.min(
+        Math.max(event.clientY - restoredPosition.y, 12),
+        56
+      )
+      dragData.current = {
+        active: true,
+        offsetX,
+        offsetY,
+      }
+      return
+    }
+
     if (!modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
     dragData.current = {

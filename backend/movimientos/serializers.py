@@ -215,6 +215,32 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
                 }
             )
 
+        if sucursal_solicitante is not None and sucursal_proveedora is not None:
+            pending_qs = SolicitudTraslado.objects.filter(
+                sucursal_solicitante_id=int(sucursal_solicitante.id),
+                sucursal_proveedora_id=int(sucursal_proveedora.id),
+                estado=SolicitudTraslado.Estados.PENDIENTE,
+            )
+            if self.instance is not None:
+                pending_qs = pending_qs.exclude(pk=self.instance.pk)
+
+            existing_document = str(
+                pending_qs.order_by("-created_at", "-id")
+                .values_list("no_documento", flat=True)
+                .first()
+                or ""
+            ).strip()
+            if existing_document:
+                raise serializers.ValidationError(
+                    {
+                        "sucursal_proveedora_id": (
+                            "Ya existe una solicitud pendiente para estas sucursales "
+                            f"({existing_document}). Debes aceptarla o rechazarla antes "
+                            "de crear otra."
+                        )
+                    }
+                )
+
         detalles_data = attrs.get("detalles")
         if self.instance is None and not detalles_data:
             raise serializers.ValidationError(

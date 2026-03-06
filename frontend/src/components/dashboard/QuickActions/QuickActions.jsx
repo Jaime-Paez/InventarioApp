@@ -3,7 +3,6 @@ import { Bell, Moon, Search, SunMedium } from 'lucide-react'
 import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
-import { API_URL, authFetch } from '../../../utils/api'
 import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
@@ -29,6 +28,33 @@ const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
 const URGENT_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
+const URGENT_SHIELD_COLORS = ['#0b4f79', '#0e7490', '#0f766e', '#b45309', '#b91c1c', '#9a3412']
+const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
+const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
+
+const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
+const normalizeReminderContextType = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+
+const resolveUrgentDecisionProgress = (reminder, nowValue) => {
+  const deadline = getReminderDeadlineTimestamp(reminder)
+  const createdAt = Date.parse(String(reminder?.createdAt || ''))
+  const now = Number(nowValue || Date.now())
+
+  if (!Number.isFinite(createdAt)) {
+    if (!Number.isFinite(deadline)) return 0
+    return now >= deadline ? 1 : 0
+  }
+
+  const elapsed = Math.max(0, now - createdAt)
+  const deadlineWindow = Number.isFinite(deadline) ? Math.max(1, deadline - createdAt) : Number.POSITIVE_INFINITY
+  const growthWindow = Math.min(URGENT_SHIELD_NEAR_FULL_MS, deadlineWindow)
+  const ratio = elapsed / growthWindow
+  return clamp01(ratio)
+}
 
 function QuickActions({
   darkMode,
@@ -50,10 +76,8 @@ function QuickActions({
   const [reminders, setReminders] = useState(() => readRemindersFromStorage())
   const [clockTick, setClockTick] = useState(() => Date.now())
   const [focusReminderId, setFocusReminderId] = useState('')
-  const [urgentVisualProgress, setUrgentVisualProgress] = useState(0)
-  const [eligibleUrgentReminderId, setEligibleUrgentReminderId] = useState('')
-  const urgentVisualReminderIdRef = useRef('')
-  const urgentEligibilityBySolicitudRef = useRef(new Map())
+  const [urgentVisualProgressById, setUrgentVisualProgressById] = useState({})
+  const urgentVisualReminderIdsRef = useRef(new Set())
 
   const currentUserIds = useMemo(() => buildUserIdSet(user), [user])
   const currentUserIdValues = useMemo(() => Array.from(currentUserIds), [currentUserIds])
@@ -84,166 +108,153 @@ function QuickActions({
             isReminderPendingForCurrentUser(reminder, currentUserIds)
         )
         .sort((a, b) => {
+          const createdAtA = Date.parse(String(a?.createdAt || ''))
+          const createdAtB = Date.parse(String(b?.createdAt || ''))
+          if (Number.isFinite(createdAtA) && Number.isFinite(createdAtB) && createdAtA !== createdAtB) {
+            return createdAtA - createdAtB
+          }
+          if (Number.isFinite(createdAtA) && !Number.isFinite(createdAtB)) return -1
+          if (!Number.isFinite(createdAtA) && Number.isFinite(createdAtB)) return 1
+
           const deadlineA = getReminderDeadlineTimestamp(a)
           const deadlineB = getReminderDeadlineTimestamp(b)
-          if (Number.isFinite(deadlineA) && Number.isFinite(deadlineB)) return deadlineA - deadlineB
-          if (Number.isFinite(deadlineA)) return -1
-          if (Number.isFinite(deadlineB)) return 1
-          return String(a?.createdAt || '').localeCompare(String(b?.createdAt || ''))
+          if (Number.isFinite(deadlineA) && Number.isFinite(deadlineB) && deadlineA !== deadlineB) {
+            return deadlineA - deadlineB
+          }
+          if (Number.isFinite(deadlineA) && !Number.isFinite(deadlineB)) return -1
+          if (!Number.isFinite(deadlineA) && Number.isFinite(deadlineB)) return 1
+
+          return String(a?.id || '').localeCompare(String(b?.id || ''))
         }),
     [currentUserIds, reminders]
   )
 
   const canDecideTransferRequest = useMemo(() => {
     if (user?.is_staff || user?.is_superuser) return true
-    const permissions = Array.isArray(user?.permisos) ? user.permisos : []
+    if (!Array.isArray(user?.permisos)) return true
+    const permissions = user.permisos
     const salidasPermission = permissions.find(
-      (permission) => normalizeId(permission?.modulo) === 'movimientos_salidas'
+      (permission) => String(permission?.modulo || '').trim().toLowerCase() === 'movimientos_salidas'
     )
     return Boolean(salidasPermission?.puede_crear || salidasPermission?.puede_actualizar)
   }, [user])
 
   useEffect(() => {
-    urgentEligibilityBySolicitudRef.current.clear()
-    setEligibleUrgentReminderId('')
+    urgentVisualReminderIdsRef.current = new Set()
+    setUrgentVisualProgressById({})
   }, [canDecideTransferRequest, token, currentPrimaryUserId])
 
-  useEffect(() => {
-    let cancelled = false
+  const eligibleUrgentDecisionReminders = useMemo(() => {
+    if (!allowUrgentShield || !canDecideTransferRequest) return []
+    return pendingSpecialDecisionReminders.filter((reminder) => {
+      const contextType = normalizeReminderContextType(reminder?.context?.type)
+      return contextType === 'solicitud_traslado'
+    })
+  }, [allowUrgentShield, canDecideTransferRequest, pendingSpecialDecisionReminders])
 
-    const resolveEligibleReminder = async () => {
-      setEligibleUrgentReminderId('')
-      if (!allowUrgentShield || !token || !canDecideTransferRequest) return
-
-      for (const reminder of pendingSpecialDecisionReminders) {
-        if (cancelled) return
-        const reminderId = normalizeId(reminder?.id)
-        const contextType = normalizeId(reminder?.context?.type)
-        const solicitudId = normalizeId(reminder?.context?.id)
-        if (!reminderId || contextType !== 'solicitud_traslado' || !solicitudId) continue
-
-        const cached = urgentEligibilityBySolicitudRef.current.get(solicitudId)
-        if (cached === true) {
-          setEligibleUrgentReminderId(reminderId)
-          return
-        }
-        if (cached === false) continue
-
-        try {
-          const response = await authFetch(
-            `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/`,
-            {},
-            token
-          )
-          const isEligible = Boolean(response?.ok)
-          urgentEligibilityBySolicitudRef.current.set(solicitudId, isEligible)
-          if (isEligible) {
-            setEligibleUrgentReminderId(reminderId)
-            return
-          }
-        } catch {
-          urgentEligibilityBySolicitudRef.current.set(solicitudId, false)
-        }
-      }
-    }
-
-    void resolveEligibleReminder()
-    return () => {
-      cancelled = true
-    }
-  }, [allowUrgentShield, canDecideTransferRequest, pendingSpecialDecisionReminders, token])
-
-  const urgentDecisionReminder = useMemo(() => {
-    const normalizedEligibleId = normalizeId(eligibleUrgentReminderId)
-    if (!normalizedEligibleId) return null
-    return (
-      pendingSpecialDecisionReminders.find(
-        (reminder) => normalizeId(reminder?.id) === normalizedEligibleId
-      ) || null
-    )
-  }, [eligibleUrgentReminderId, pendingSpecialDecisionReminders])
-
-  const urgentDecisionProgress = useMemo(() => {
-    if (!urgentDecisionReminder) return 0
-    const deadline = getReminderDeadlineTimestamp(urgentDecisionReminder)
-    const createdAt = Date.parse(String(urgentDecisionReminder?.createdAt || ''))
+  const urgentDecisionProgressById = useMemo(() => {
+    const map = {}
     const now = Number(clockTick || Date.now())
-
-    if (!Number.isFinite(createdAt)) {
-      if (!Number.isFinite(deadline)) return 0
-      return now >= deadline ? 1 : 0
-    }
-
-    const elapsed = Math.max(0, now - createdAt)
-    const deadlineWindow = Number.isFinite(deadline) ? Math.max(1, deadline - createdAt) : Number.POSITIVE_INFINITY
-    const growthWindow = Math.min(URGENT_SHIELD_NEAR_FULL_MS, deadlineWindow)
-    const ratio = elapsed / growthWindow
-    return Math.max(0, Math.min(1, ratio))
-  }, [clockTick, urgentDecisionReminder])
-
-  const gatedUrgentDecisionReminder = allowUrgentShield ? urgentDecisionReminder : null
-  const urgentDecisionReminderId = useMemo(
-    () => normalizeId(gatedUrgentDecisionReminder?.id),
-    [gatedUrgentDecisionReminder]
-  )
+    eligibleUrgentDecisionReminders.forEach((reminder) => {
+      const reminderId = normalizeId(reminder?.id)
+      if (!reminderId) return
+      map[reminderId] = resolveUrgentDecisionProgress(reminder, now)
+    })
+    return map
+  }, [clockTick, eligibleUrgentDecisionReminders])
 
   useEffect(() => {
-    if (!urgentDecisionReminderId) {
-      urgentVisualReminderIdRef.current = ''
-      setUrgentVisualProgress(0)
+    const nextIds = Object.keys(urgentDecisionProgressById)
+    if (!nextIds.length) {
+      urgentVisualReminderIdsRef.current = new Set()
+      setUrgentVisualProgressById({})
       return undefined
     }
 
-    const reminderChanged = urgentVisualReminderIdRef.current !== urgentDecisionReminderId
-    if (reminderChanged) {
-      urgentVisualReminderIdRef.current = urgentDecisionReminderId
-      setUrgentVisualProgress(0)
+    const nextIdSet = new Set(nextIds)
+    const previousIds = urgentVisualReminderIdsRef.current
+    const newIds = nextIds.filter((id) => !previousIds.has(id))
+    urgentVisualReminderIdsRef.current = nextIdSet
 
-      if (typeof window === 'undefined') {
-        setUrgentVisualProgress(urgentDecisionProgress)
-        return undefined
-      }
+    setUrgentVisualProgressById((prev) => {
+      const next = {}
+      nextIds.forEach((id) => {
+        if (newIds.includes(id)) {
+          next[id] = 0
+          return
+        }
+        const previous = Number(prev?.[id])
+        next[id] = Number.isFinite(previous) ? previous : Number(urgentDecisionProgressById[id] || 0)
+      })
+      return next
+    })
 
+    if (newIds.length && typeof window !== 'undefined') {
       const frameId = window.requestAnimationFrame(() => {
-        setUrgentVisualProgress(urgentDecisionProgress)
+        setUrgentVisualProgressById({ ...urgentDecisionProgressById })
       })
       return () => window.cancelAnimationFrame(frameId)
     }
 
-    setUrgentVisualProgress(urgentDecisionProgress)
+    setUrgentVisualProgressById({ ...urgentDecisionProgressById })
     return undefined
-  }, [urgentDecisionReminderId, urgentDecisionProgress])
+  }, [urgentDecisionProgressById])
 
-  const urgentShieldStyle = useMemo(() => {
-    if (!gatedUrgentDecisionReminder || isReminderModalOpen || typeof window === 'undefined') return null
+  const urgentShieldStyles = useMemo(() => {
+    if (!eligibleUrgentDecisionReminders.length || isReminderModalOpen || typeof window === 'undefined') return []
     void clockTick
     const button = reminderButtonRef.current
-    if (!button) return null
+    if (!button) return []
 
     const rect = button.getBoundingClientRect()
-    const centerX = rect.right
-    const centerY = rect.top
     const maxCanvas = Math.max(window.innerWidth, window.innerHeight) * 1.35
-    const size = Math.max(44, Math.round(44 + maxCanvas * urgentVisualProgress))
+    const isMobileViewport = window.innerWidth <= 900
+    const stackOffset = isMobileViewport
+      ? URGENT_SHIELD_STACK_OFFSET_MOBILE
+      : URGENT_SHIELD_STACK_OFFSET_DESKTOP
 
-    return {
-      width: `${size}px`,
-      height: `${size}px`,
-      left: `${centerX - size / 2}px`,
-      top: `${centerY - size / 2}px`,
-      '--urgency': String(urgentVisualProgress.toFixed(3)),
-    }
-  }, [clockTick, gatedUrgentDecisionReminder, isReminderModalOpen, urgentVisualProgress])
+    return eligibleUrgentDecisionReminders
+      .map((reminder, index) => {
+        const reminderId = normalizeId(reminder?.id)
+        if (!reminderId) return null
+        const progress = clamp01(
+          urgentVisualProgressById[reminderId] ?? urgentDecisionProgressById[reminderId]
+        )
+        const size = Math.max(44, Math.round(44 + maxCanvas * progress))
+        const offset = index * stackOffset
+        const centerX = rect.right - offset
+        const centerY = rect.top + offset
+
+        return {
+          reminderId,
+          progress,
+          style: {
+            width: `${size}px`,
+            height: `${size}px`,
+            left: `${centerX - size / 2}px`,
+            top: `${centerY - size / 2}px`,
+            '--urgency': String(progress.toFixed(3)),
+            '--urgent-color': URGENT_SHIELD_COLORS[index % URGENT_SHIELD_COLORS.length],
+            zIndex: String(1200 + index),
+          },
+        }
+      })
+      .filter(Boolean)
+  }, [clockTick, eligibleUrgentDecisionReminders, isReminderModalOpen, urgentDecisionProgressById, urgentVisualProgressById])
+
+  const activeUrgentShield = useMemo(() => {
+    if (!urgentShieldStyles.length) return null
+    return urgentShieldStyles[urgentShieldStyles.length - 1]
+  }, [urgentShieldStyles])
 
   const urgentMessageStyle = useMemo(() => {
-    if (!urgentShieldStyle) return null
-    const clamp01 = (value) => Math.max(0, Math.min(1, value))
-    const progress = clamp01(urgentVisualProgress)
+    if (!activeUrgentShield?.style) return null
+    const progress = clamp01(activeUrgentShield.progress)
     if (progress < URGENT_MESSAGE_REVEAL_PROGRESS) return null
 
-    const shieldSize = Number.parseFloat(urgentShieldStyle.width)
-    const shieldLeft = Number.parseFloat(urgentShieldStyle.left)
-    const shieldTop = Number.parseFloat(urgentShieldStyle.top)
+    const shieldSize = Number.parseFloat(activeUrgentShield.style.width)
+    const shieldLeft = Number.parseFloat(activeUrgentShield.style.left)
+    const shieldTop = Number.parseFloat(activeUrgentShield.style.top)
     if (!Number.isFinite(shieldSize) || !Number.isFinite(shieldLeft) || !Number.isFinite(shieldTop)) {
       return null
     }
@@ -360,7 +371,7 @@ function QuickActions({
       transform: 'translate(-50%, -50%)',
       lineHeight: isMobileViewport ? '1.1' : '1.2',
     }
-  }, [urgentShieldStyle, urgentVisualProgress])
+  }, [activeUrgentShield])
 
   const personalReminders = useMemo(() => {
     const related = reminders.filter(
@@ -441,10 +452,10 @@ function QuickActions({
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !gatedUrgentDecisionReminder || isReminderModalOpen) return undefined
+    if (typeof window === 'undefined' || !urgentShieldStyles.length || isReminderModalOpen) return undefined
     const timer = window.setInterval(() => setClockTick(Date.now()), URGENT_SHIELD_TICK_MS)
     return () => window.clearInterval(timer)
-  }, [gatedUrgentDecisionReminder, isReminderModalOpen])
+  }, [isReminderModalOpen, urgentShieldStyles.length])
 
   useEffect(() => {
     let cancelled = false
@@ -468,7 +479,7 @@ function QuickActions({
   }, [token])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !gatedUrgentDecisionReminder || isReminderModalOpen) return undefined
+    if (typeof window === 'undefined' || !urgentShieldStyles.length || isReminderModalOpen) return undefined
     const syncLayout = () => setClockTick(Date.now())
 
     window.addEventListener('resize', syncLayout)
@@ -478,7 +489,7 @@ function QuickActions({
       window.removeEventListener('resize', syncLayout)
       window.removeEventListener('scroll', syncLayout, true)
     }
-  }, [gatedUrgentDecisionReminder, isReminderModalOpen])
+  }, [isReminderModalOpen, urgentShieldStyles.length])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -586,32 +597,32 @@ function QuickActions({
     setFocusReminderId('')
   }, [])
 
-  const handleUrgentShieldClick = () => {
-    const reminderId = normalizeId(urgentDecisionReminder?.id)
+  const handleUrgentShieldClick = (reminderId) => {
     openReminderModal(reminderId)
   }
 
   return (
     <>
       <Toast ref={toast} />
-      {urgentShieldStyle && (
+      {urgentShieldStyles.map((shield, index) => (
         <button
+          key={`quick-actions-urgent-shield-${shield.reminderId}`}
           type="button"
           className="quick-actions__urgent-shield"
-          style={urgentShieldStyle}
-          onClick={handleUrgentShieldClick}
+          style={shield.style}
+          onClick={() => handleUrgentShieldClick(shield.reminderId)}
           aria-label="Resolver solicitud de traslado pendiente"
         >
-          {urgentMessageStyle && (
+          {index === urgentShieldStyles.length - 1 && urgentMessageStyle && (
             <span className="quick-actions__urgent-message" style={urgentMessageStyle} aria-hidden="true">
               {URGENT_MESSAGE}
             </span>
           )}
         </button>
-      )}
+      ))}
       <div
         ref={wrapRef}
-        className={`quick-actions ${darkMode ? 'dark' : 'light'}${urgentShieldStyle ? ' has-urgent-shield' : ''}`}
+        className={`quick-actions ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}
         onMouseLeave={hideBlob}
       >
         <span
