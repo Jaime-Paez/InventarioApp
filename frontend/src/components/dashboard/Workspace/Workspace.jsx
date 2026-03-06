@@ -50,6 +50,7 @@ function Workspace({
   token,
   permissionIndex,
   isLeaving = false,
+  allowUrgentShield = true,
 }) {
   const [movementBranchOptions, setMovementBranchOptions] = useState({
     Entradas: [],
@@ -318,6 +319,7 @@ function Workspace({
           onToggleTheme={onToggleTheme}
           token={token}
           user={user}
+          allowUrgentShield={allowUrgentShield}
           onTransferDecisionAccepted={handleTransferDecisionAccepted}
         />
       </div>

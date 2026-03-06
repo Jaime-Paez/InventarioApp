@@ -26,8 +26,17 @@ import {
 
 const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
 const URGENT_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
+const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
+const URGENT_SHIELD_TICK_MS = 1000
 
-function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecisionAccepted }) {
+function QuickActions({
+  darkMode,
+  onToggleTheme,
+  token,
+  user,
+  onTransferDecisionAccepted,
+  allowUrgentShield = true,
+}) {
   const wrapRef = useRef(null)
   const btnRefs = useRef([])
   const reminderButtonRef = useRef(null)
@@ -40,6 +49,8 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
   const [reminders, setReminders] = useState(() => readRemindersFromStorage())
   const [clockTick, setClockTick] = useState(() => Date.now())
   const [focusReminderId, setFocusReminderId] = useState('')
+  const [urgentVisualProgress, setUrgentVisualProgress] = useState(0)
+  const urgentVisualReminderIdRef = useRef('')
 
   const currentUserIds = useMemo(() => buildUserIdSet(user), [user])
   const currentUserIdValues = useMemo(() => Array.from(currentUserIds), [currentUserIds])
@@ -98,28 +109,66 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
     return Math.max(0, Math.min(1, ratio))
   }, [clockTick, urgentDecisionReminder])
 
+  const gatedUrgentDecisionReminder = allowUrgentShield ? urgentDecisionReminder : null
+  const urgentDecisionReminderId = useMemo(
+    () => normalizeId(gatedUrgentDecisionReminder?.id),
+    [gatedUrgentDecisionReminder]
+  )
+
+  useEffect(() => {
+    if (!urgentDecisionReminderId) {
+      urgentVisualReminderIdRef.current = ''
+      setUrgentVisualProgress(0)
+      return undefined
+    }
+
+    const reminderChanged = urgentVisualReminderIdRef.current !== urgentDecisionReminderId
+    if (reminderChanged) {
+      urgentVisualReminderIdRef.current = urgentDecisionReminderId
+      setUrgentVisualProgress(0)
+
+      if (typeof window === 'undefined') {
+        setUrgentVisualProgress(urgentDecisionProgress)
+        return undefined
+      }
+
+      const frameId = window.requestAnimationFrame(() => {
+        setUrgentVisualProgress(urgentDecisionProgress)
+      })
+      return () => window.cancelAnimationFrame(frameId)
+    }
+
+    setUrgentVisualProgress(urgentDecisionProgress)
+    return undefined
+  }, [urgentDecisionReminderId, urgentDecisionProgress])
+
   const urgentShieldStyle = useMemo(() => {
-    if (!urgentDecisionReminder || isReminderModalOpen || typeof window === 'undefined') return null
+    if (!gatedUrgentDecisionReminder || isReminderModalOpen || typeof window === 'undefined') return null
+    void clockTick
     const button = reminderButtonRef.current
     if (!button) return null
 
     const rect = button.getBoundingClientRect()
-    const centerX = rect.left + rect.width / 2 + 8
-    const centerY = rect.top + rect.height / 2 - 6
+    const centerX = rect.right
+    const centerY = rect.top
     const maxCanvas = Math.max(window.innerWidth, window.innerHeight) * 1.35
-    const size = Math.max(44, Math.round(44 + maxCanvas * urgentDecisionProgress))
+    const size = Math.max(44, Math.round(44 + maxCanvas * urgentVisualProgress))
 
     return {
       width: `${size}px`,
       height: `${size}px`,
       left: `${centerX - size / 2}px`,
       top: `${centerY - size / 2}px`,
-      '--urgency': String(urgentDecisionProgress.toFixed(3)),
+      '--urgency': String(urgentVisualProgress.toFixed(3)),
     }
-  }, [isReminderModalOpen, urgentDecisionProgress, urgentDecisionReminder, clockTick])
+  }, [clockTick, gatedUrgentDecisionReminder, isReminderModalOpen, urgentVisualProgress])
 
   const urgentMessageStyle = useMemo(() => {
     if (!urgentShieldStyle) return null
+    const clamp01 = (value) => Math.max(0, Math.min(1, value))
+    const progress = clamp01(urgentVisualProgress)
+    if (progress < URGENT_MESSAGE_REVEAL_PROGRESS) return null
+
     const shieldSize = Number.parseFloat(urgentShieldStyle.width)
     const shieldLeft = Number.parseFloat(urgentShieldStyle.left)
     const shieldTop = Number.parseFloat(urgentShieldStyle.top)
@@ -128,10 +177,12 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
       return null
     }
 
-    const clamp01 = (value) => Math.max(0, Math.min(1, value))
-    const progress = clamp01(urgentDecisionProgress)
     const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
     const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight
+    const isMobileViewport = viewportWidth <= 900
+    const mobileScale = isMobileViewport
+      ? Math.max(0.7, Math.min(1, viewportWidth / 420))
+      : 1
 
     const shieldCenterX = shieldLeft + shieldSize / 2
     const shieldCenterY = shieldTop + shieldSize / 2
@@ -140,18 +191,27 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
     const vectorX = viewportCenterX - shieldCenterX
     const vectorY = viewportCenterY - shieldCenterY
 
-    const edgePadding = 12
+    const edgePadding = isMobileViewport ? 8 : 12
     const radius = shieldSize / 2
     const usableRadius = Math.max(1, radius - edgePadding)
 
-    const minFont = 12
-    const maxFont = 64
+    const minFont = isMobileViewport ? 10 : 12
+    const maxFont = isMobileViewport ? Math.round(34 * mobileScale) : 64
     let fontSize = Math.round(minFont + (maxFont - minFont) * progress)
 
-    const minWidth = 240
-    const maxWidth = Math.min(980, viewportWidth - edgePadding * 2)
+    const minWidth = isMobileViewport
+      ? Math.max(120, Math.round(viewportWidth * 0.34))
+      : 240
+    const maxWidth = isMobileViewport
+      ? Math.min(420, Math.round(viewportWidth * 0.78))
+      : Math.min(980, viewportWidth - edgePadding * 2)
+    const absoluteMinWidth = isMobileViewport ? 120 : 180
+    const shieldInset = isMobileViewport ? 30 : 16
     let width = Math.round(minWidth + (maxWidth - minWidth) * progress)
-    width = Math.max(180, Math.min(width, maxWidth, Math.max(180, shieldSize - 16)))
+    width = Math.max(
+      absoluteMinWidth,
+      Math.min(width, maxWidth, Math.max(absoluteMinWidth, shieldSize - shieldInset))
+    )
 
     const estimateHeight = (boxWidth, size) => {
       const charsPerLine = Math.max(10, Math.floor(boxWidth / Math.max(1, size * 0.55)))
@@ -174,7 +234,7 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
       halfDiagonal = Math.hypot(width / 2, height / 2)
     }
 
-    while (halfDiagonal > usableRadius && fontSize > 6) {
+    while (halfDiagonal > usableRadius && fontSize > (isMobileViewport ? 5 : 6)) {
       fontSize -= 1
       height = estimateHeight(width, fontSize)
       halfDiagonal = Math.hypot(width / 2, height / 2)
@@ -224,8 +284,9 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
       top: `${centerY}px`,
       width: `${width}px`,
       fontSize: `${fontSize}px`,
+      lineHeight: isMobileViewport ? '1.1' : '1.2',
     }
-  }, [urgentDecisionProgress, urgentShieldStyle])
+  }, [urgentShieldStyle, urgentVisualProgress])
 
   const personalReminders = useMemo(() => {
     const related = reminders.filter(
@@ -306,10 +367,10 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined
-    const timer = window.setInterval(() => setClockTick(Date.now()), 30000)
+    if (typeof window === 'undefined' || !gatedUrgentDecisionReminder || isReminderModalOpen) return undefined
+    const timer = window.setInterval(() => setClockTick(Date.now()), URGENT_SHIELD_TICK_MS)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [gatedUrgentDecisionReminder, isReminderModalOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -333,7 +394,7 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
   }, [token])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !urgentDecisionReminder || isReminderModalOpen) return undefined
+    if (typeof window === 'undefined' || !gatedUrgentDecisionReminder || isReminderModalOpen) return undefined
     const syncLayout = () => setClockTick(Date.now())
 
     window.addEventListener('resize', syncLayout)
@@ -343,7 +404,7 @@ function QuickActions({ darkMode, onToggleTheme, token, user, onTransferDecision
       window.removeEventListener('resize', syncLayout)
       window.removeEventListener('scroll', syncLayout, true)
     }
-  }, [urgentDecisionReminder, isReminderModalOpen])
+  }, [gatedUrgentDecisionReminder, isReminderModalOpen])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined

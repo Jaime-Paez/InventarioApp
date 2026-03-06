@@ -124,6 +124,7 @@ function DashboardLayout({
         onToggleTheme={onToggleTheme}
         permissionIndex={permissionIndex}
         isLeaving={isLeaving}
+        allowUrgentShield={entryAnimationDone}
       />
 
       {!isSidebarOpen && (

@@ -73,7 +73,8 @@ function RecordatoriosPopup({
   const [decisionSubmitting, setDecisionSubmitting] = useState(false)
   const [decisionError, setDecisionError] = useState('')
   const [rejectionReason, setRejectionReason] = useState('')
-  const [isRejectFlowActive, setIsRejectFlowActive] = useState(false)
+  const [isRejectReasonModalOpen, setIsRejectReasonModalOpen] = useState(false)
+  const [rejectReasonError, setRejectReasonError] = useState('')
 
   const notifyError = useCallback(
     (message) => {
@@ -111,7 +112,8 @@ function RecordatoriosPopup({
     setDecisionSubmitting(false)
     setDecisionError('')
     setRejectionReason('')
-    setIsRejectFlowActive(false)
+    setIsRejectReasonModalOpen(false)
+    setRejectReasonError('')
   }, [])
 
   const loadDecisionDetail = useCallback(
@@ -154,7 +156,8 @@ function RecordatoriosPopup({
       setDecisionDetail(null)
       setDecisionError('')
       setRejectionReason('')
-      setIsRejectFlowActive(false)
+      setIsRejectReasonModalOpen(false)
+      setRejectReasonError('')
       loadDecisionDetail(reminder)
     },
     [loadDecisionDetail]
@@ -285,6 +288,11 @@ function RecordatoriosPopup({
     const handleEscape = (event) => {
       if (event.key !== 'Escape') return
       if (activeDecisionReminderId) {
+        if (isRejectReasonModalOpen) {
+          setIsRejectReasonModalOpen(false)
+          setRejectReasonError('')
+          return
+        }
         closeDecisionPanel()
         return
       }
@@ -293,7 +301,7 @@ function RecordatoriosPopup({
 
     window.addEventListener('keydown', handleEscape)
     return () => window.removeEventListener('keydown', handleEscape)
-  }, [open, onClose, activeDecisionReminderId, closeDecisionPanel])
+  }, [open, onClose, activeDecisionReminderId, closeDecisionPanel, isRejectReasonModalOpen])
 
   useEffect(() => {
     if (!open) return
@@ -400,17 +408,18 @@ function RecordatoriosPopup({
     const solicitudId = normalizeId(reminder?.context?.id)
     if (!solicitudId || !token) {
       setDecisionError('No se pudo resolver la solicitud del recordatorio.')
-      return
+      return false
     }
 
     const decision = String(decisionType || '').trim().toLowerCase()
     if (decision === 'rechazar' && !String(rejectionReason || '').trim()) {
-      setDecisionError('Debes escribir un motivo de rechazo.')
-      return
+      setRejectReasonError('Debes escribir un motivo de rechazo.')
+      return false
     }
 
     setDecisionSubmitting(true)
     setDecisionError('')
+    setRejectReasonError('')
 
     try {
       const payload =
@@ -500,12 +509,14 @@ function RecordatoriosPopup({
         })
         closeDecisionPanel()
         onClose?.()
-        return
+        return true
       }
       closeDecisionPanel()
+      return true
     } catch (error) {
       const message = error?.message || 'No se pudo registrar la decision.'
       setDecisionError(message)
+      return false
     } finally {
       setDecisionSubmitting(false)
     }
@@ -514,16 +525,26 @@ function RecordatoriosPopup({
   const activeDecisionStatus = getReminderDecisionStatus(activeDecisionReminder)
   const canSubmitDecision = activeDecisionStatus === 'pendiente'
   const decisionDetalles = Array.isArray(decisionDetail?.detalles) ? decisionDetail.detalles : []
-  const showRejectReasonField = canSubmitDecision && isRejectFlowActive
 
   const handleRejectButtonClick = () => {
     if (!canSubmitDecision || decisionSubmitting || decisionLoading) return
-    if (!isRejectFlowActive) {
-      setIsRejectFlowActive(true)
-      setDecisionError('')
-      return
+    setDecisionError('')
+    setRejectReasonError('')
+    setIsRejectReasonModalOpen(true)
+  }
+
+  const handleCloseRejectReasonModal = () => {
+    if (decisionSubmitting) return
+    setRejectReasonError('')
+    setIsRejectReasonModalOpen(false)
+  }
+
+  const handleConfirmRejectDecision = async () => {
+    if (decisionSubmitting || decisionLoading) return
+    const resolved = await handleTransferDecision('rechazar')
+    if (resolved) {
+      setIsRejectReasonModalOpen(false)
     }
-    handleTransferDecision('rechazar')
   }
 
   if (!shouldRender || typeof document === 'undefined') return null
@@ -806,18 +827,6 @@ function RecordatoriosPopup({
                 )}
 
                 {decisionError && <p className="recordatorios-popup__error">{decisionError}</p>}
-
-                {showRejectReasonField && (
-                  <label className="recordatorios-popup__field recordatorios-popup__field--full">
-                    <span>Motivo de rechazo (obligatorio si rechazas)</span>
-                    <textarea
-                      value={rejectionReason}
-                      onChange={(event) => setRejectionReason(event.target.value)}
-                      placeholder="Explica por que rechazas la solicitud"
-                      disabled={decisionSubmitting}
-                    />
-                  </label>
-                )}
               </div>
 
               <div className="recordatorios-popup__decision-actions">
@@ -829,7 +838,7 @@ function RecordatoriosPopup({
                       onClick={handleRejectButtonClick}
                       disabled={decisionSubmitting || decisionLoading}
                     >
-                      {decisionSubmitting ? 'Guardando...' : (isRejectFlowActive ? 'Confirmar rechazo' : 'Rechazar')}
+                      {decisionSubmitting ? 'Guardando...' : 'Rechazar'}
                     </button>
                     <button
                       type="button"
@@ -850,6 +859,58 @@ function RecordatoriosPopup({
                   Cerrar
                 </button>
               </div>
+
+              {isRejectReasonModalOpen && (
+                <div className="recordatorios-popup__reject-overlay" onMouseDown={handleCloseRejectReasonModal}>
+                  <div className="recordatorios-popup__reject-card" onMouseDown={(event) => event.stopPropagation()}>
+                    <header className="recordatorios-popup__reject-head">
+                      <h5>Motivo de rechazo</h5>
+                      <button
+                        type="button"
+                        className="recordatorios-popup__close"
+                        onClick={handleCloseRejectReasonModal}
+                        disabled={decisionSubmitting}
+                        aria-label="Cerrar motivo de rechazo"
+                      >
+                        <X />
+                      </button>
+                    </header>
+
+                    <div className="recordatorios-popup__reject-body">
+                      <label className="recordatorios-popup__field recordatorios-popup__field--full">
+                        <span>Descripcion (obligatoria)</span>
+                        <textarea
+                          value={rejectionReason}
+                          onChange={(event) => setRejectionReason(event.target.value)}
+                          placeholder="Explica por que rechazas la solicitud"
+                          disabled={decisionSubmitting}
+                        />
+                      </label>
+                      {rejectReasonError && <p className="recordatorios-popup__error">{rejectReasonError}</p>}
+                      {decisionError && <p className="recordatorios-popup__error">{decisionError}</p>}
+                    </div>
+
+                    <div className="recordatorios-popup__reject-actions">
+                      <button
+                        type="button"
+                        className="recordatorios-popup__button recordatorios-popup__button--ghost"
+                        onClick={handleCloseRejectReasonModal}
+                        disabled={decisionSubmitting}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--reject"
+                        onClick={handleConfirmRejectDecision}
+                        disabled={decisionSubmitting || decisionLoading}
+                      >
+                        {decisionSubmitting ? 'Guardando...' : 'Confirmar rechazo'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

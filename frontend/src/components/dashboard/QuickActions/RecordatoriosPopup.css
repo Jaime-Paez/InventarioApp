@@ -621,6 +621,7 @@
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
   background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -820,6 +821,59 @@
   color: color-mix(in srgb, currentColor 90%, transparent);
 }
 
+.recordatorios-popup__reject-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.recordatorios-popup__reject-card {
+  width: min(540px, calc(100% - 8px));
+  max-height: calc(100% - 8px);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__reject-card {
+  border-color: #36414c;
+  background: #1f2328;
+}
+
+.recordatorios-popup__reject-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 74%, transparent);
+}
+
+.recordatorios-popup__reject-head h5 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.recordatorios-popup__reject-body {
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.recordatorios-popup__reject-actions {
+  padding: 0 14px 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 @keyframes recordatorios-overlay-in {
   from {
     opacity: 0;
@@ -916,5 +970,15 @@
   .recordatorios-popup__decision-card {
     width: 100%;
     max-height: calc(100% - 12px);
+  }
+
+  .recordatorios-popup__reject-card {
+    width: 100%;
+    max-height: calc(100% - 12px);
+  }
+
+  .recordatorios-popup__reject-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
   }
 }
