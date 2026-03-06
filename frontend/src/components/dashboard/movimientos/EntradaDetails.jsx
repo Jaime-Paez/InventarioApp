@@ -1770,7 +1770,20 @@ function EntradaDetails({
   const isRejectedSolicitudRibbon =
     hasPreviewData &&
     (normalizedSelectedEstadoName.includes('rechaz') || normalizedSelectedEstadoName.includes('cancel'))
-  const showSolicitudRibbon = isPendingSolicitudRibbon || isRejectedSolicitudRibbon
+  const isAcceptedSolicitudRibbon =
+    hasPreviewData &&
+    (normalizedSelectedEstadoName.includes('acept') || normalizedSelectedEstadoName.includes('aprob'))
+  const showSolicitudRibbon = isPendingSolicitudRibbon || isRejectedSolicitudRibbon || isAcceptedSolicitudRibbon
+  const solicitudRibbonLabel = isRejectedSolicitudRibbon
+    ? 'Solicitud rechazada'
+    : (isAcceptedSolicitudRibbon ? 'Solicitud aceptada' : 'Solicitud pendiente')
+  const solicitudRibbonTitle = isRejectedSolicitudRibbon
+    ? 'Solicitud rechazada por la sucursal proveedora'
+    : (
+      isAcceptedSolicitudRibbon
+        ? 'Solicitud aceptada por la sucursal proveedora'
+        : 'Solicitud esperando a ser aceptada'
+    )
   const solicitudRejectionReason = String(previewData?.motivo_rechazo || '').trim()
   const resolvedSolicitudRejectionReason = (
     solicitudRejectionReason || 'Sin motivo de rechazo registrado.'
@@ -1810,11 +1823,15 @@ function EntradaDetails({
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
         {showSolicitudRibbon && (
           <div
-            className={`entrada-details__pending-ribbon${isRejectedSolicitudRibbon ? ' entrada-details__pending-ribbon--rejected' : ''}`}
-            aria-label={isRejectedSolicitudRibbon ? 'Solicitud rechazada' : 'Solicitud pendiente'}
-            title={isRejectedSolicitudRibbon ? 'Solicitud rechazada por la sucursal proveedora' : 'Solicitud esperando a ser aceptada'}
+            className={`entrada-details__pending-ribbon${
+              isRejectedSolicitudRibbon
+                ? ' entrada-details__pending-ribbon--rejected'
+                : (isAcceptedSolicitudRibbon ? ' entrada-details__pending-ribbon--accepted' : '')
+            }`}
+            aria-label={solicitudRibbonLabel}
+            title={solicitudRibbonTitle}
           >
-            {isRejectedSolicitudRibbon ? 'Solicitud rechazada' : 'Solicitud pendiente'}
+            {solicitudRibbonLabel}
           </div>
         )}
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>

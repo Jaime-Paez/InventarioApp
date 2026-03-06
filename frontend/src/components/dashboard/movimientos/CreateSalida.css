@@ -425,6 +425,18 @@
   box-shadow: 0 12px 20px color-mix(in srgb, #dc2626 54%, transparent);
 }
 
+.entrada-details__pending-ribbon--accepted {
+  background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
+  color: #ecfdf5;
+  box-shadow: 0 10px 18px color-mix(in srgb, #16a34a 44%, transparent);
+}
+
+.dashboard-shell.dark .entrada-details__pending-ribbon--accepted {
+  background: linear-gradient(135deg, #16a34a 0%, #166534 100%);
+  color: #dcfce7;
+  box-shadow: 0 12px 20px color-mix(in srgb, #16a34a 54%, transparent);
+}
+
 .entrada-details__rejection-reason {
   margin: 6px 18px 0;
   padding: 10px 12px;

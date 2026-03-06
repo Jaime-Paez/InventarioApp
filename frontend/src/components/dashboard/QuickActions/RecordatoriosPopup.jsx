@@ -804,42 +804,49 @@ function RecordatoriosPopup({
         })
       )
 
-      if (resolvedDecision === 'rechazada') {
-        const creatorRecipient = sanitizeRecipient(reminder?.creator)
-        if (creatorRecipient?.id) {
-          const nowParts = getNowDateParts()
-          const requesterLabel = String(reminder?.context?.label || `Solicitud de traslado #${solicitudId}`).trim()
-          const requesterReference = requesterLabel.replace(/^solicitud de traslado\s*/i, '').trim()
-          const fallbackReference = solicitudId ? `#${solicitudId}` : ''
-          const transferReference = requesterReference || fallbackReference
-          const responseDescription = transferReference
-            ? `Su solicitud de traslado ${transferReference} fue rechazada. Motivo: ${rejectionReasonValue}`
-            : `Su solicitud de traslado fue rechazada. Motivo: ${rejectionReasonValue}`
-          onApplyRemindersUpdate?.((prev) => [
-            {
-              id: createReminderId(),
-              date: nowParts.date,
-              time: nowParts.time,
-              description: responseDescription,
-              creator: {
-                id: creatorRecipientId,
-                name: creatorRecipientName,
-              },
-              recipients: [creatorRecipient],
-              context: reminder?.context || null,
-              kind: 'recordatorio_general',
-              createdAt: resolutionDate,
-              decision: {
-                status: 'rechazada',
-                reason: rejectionReasonValue,
-                by: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
-                at: resolutionDate,
-              },
-              completedBy: [],
+      const creatorRecipient = sanitizeRecipient(reminder?.creator)
+      if (creatorRecipient?.id) {
+        const nowParts = getNowDateParts()
+        const requesterLabel = String(reminder?.context?.label || `Solicitud de traslado #${solicitudId}`).trim()
+        const requesterReference = requesterLabel.replace(/^solicitud de traslado\s*/i, '').trim()
+        const fallbackReference = solicitudId ? `#${solicitudId}` : ''
+        const transferReference = requesterReference || fallbackReference
+        const responseDescription = resolvedDecision === 'rechazada'
+          ? (
+            transferReference
+              ? `Su solicitud de traslado ${transferReference} fue rechazada. Motivo: ${rejectionReasonValue}`
+              : `Su solicitud de traslado fue rechazada. Motivo: ${rejectionReasonValue}`
+          )
+          : (
+            transferReference
+              ? `Su solicitud de traslado ${transferReference} fue aceptada.`
+              : 'Su solicitud de traslado fue aceptada.'
+          )
+
+        onApplyRemindersUpdate?.((prev) => [
+          {
+            id: createReminderId(),
+            date: nowParts.date,
+            time: nowParts.time,
+            description: responseDescription,
+            creator: {
+              id: creatorRecipientId,
+              name: creatorRecipientName,
             },
-            ...(Array.isArray(prev) ? prev : []),
-          ])
-        }
+            recipients: [creatorRecipient],
+            context: reminder?.context || null,
+            kind: 'recordatorio_general',
+            createdAt: resolutionDate,
+            decision: {
+              status: resolvedDecision,
+              reason: resolvedDecision === 'rechazada' ? rejectionReasonValue : '',
+              by: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
+              at: resolutionDate,
+            },
+            completedBy: [],
+          },
+          ...(Array.isArray(prev) ? prev : []),
+        ])
       }
 
       const responseSolicitud = data?.solicitud
@@ -1227,7 +1234,12 @@ function RecordatoriosPopup({
                         const canOpenTransferInEntradas = (
                           isTransferContextReminder &&
                           !isSpecialReminder &&
-                          (decisionStatus === 'rechazada' || status.className === 'rejected') &&
+                          (
+                            decisionStatus === 'rechazada' ||
+                            decisionStatus === 'aceptada' ||
+                            status.className === 'rejected' ||
+                            status.className === 'accepted'
+                          ) &&
                           typeof onOpenTransferRequestInEntradas === 'function'
                         )
                         const isOpeningTransfer = (
