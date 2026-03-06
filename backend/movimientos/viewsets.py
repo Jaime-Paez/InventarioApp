@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from django.db import transaction
 from django.db.models import DecimalField, ExpressionWrapper, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
@@ -20,6 +21,7 @@ from usuarios.sucursal_scope import (
 )
 from .models import MovimientoInventario, SolicitudTraslado
 from .serializers import MovimientoInventarioSerializer, SolicitudTrasladoSerializer
+from .stock_availability import get_available_transfer_quantities_by_product
 
 
 class MovimientoInventarioViewSet(viewsets.ModelViewSet):
@@ -816,21 +818,99 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         decision = str(request.data.get("decision") or "").strip().lower()
         if decision in {"aceptar", "aprobar", "aprobada", "approve", "approved"}:
-            solicitud.estado = SolicitudTraslado.Estados.APROBADA
-            solicitud.motivo_rechazo = ""
-            solicitud.rechazada_por = None
-            solicitud.rechazada_en = None
-            solicitud.save(
-                update_fields=[
-                    "estado",
-                    "motivo_rechazo",
-                    "rechazada_por",
-                    "rechazada_en",
-                    "updated_at",
-                ]
-            )
+            with transaction.atomic():
+                solicitud_locked = (
+                    SolicitudTraslado.objects.select_for_update()
+                    .select_related(
+                        "sucursal_solicitante",
+                        "sucursal_proveedora",
+                        "movimiento_salida",
+                        "movimiento_entrada",
+                        "rechazada_por",
+                    )
+                    .prefetch_related("detalles__producto")
+                    .filter(pk=solicitud.id)
+                    .first()
+                )
+                if solicitud_locked is None:
+                    return Response(
+                        {"detail": "No se encontro la solicitud de traslado."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
 
-            output = SolicitudTrasladoSerializer(instance=solicitud)
+                if solicitud_locked.estado != SolicitudTraslado.Estados.PENDIENTE:
+                    return Response(
+                        {
+                            "detail": (
+                                "La solicitud ya fue procesada y no admite nuevas decisiones."
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                detalles = list(solicitud_locked.detalles.select_related("producto").all())
+                product_ids = sorted(
+                    {
+                        int(getattr(detalle, "producto_id", 0) or 0)
+                        for detalle in detalles
+                        if int(getattr(detalle, "producto_id", 0) or 0) > 0
+                    }
+                )
+
+                if product_ids:
+                    # Bloquea filas de inventario para serializar aceptaciones concurrentes.
+                    list(
+                        Inventario.objects.select_for_update()
+                        .filter(
+                            subdivision__division__bodega__sucursal_id=solicitud_locked.sucursal_proveedora_id,
+                            producto_id__in=product_ids,
+                        )
+                        .values_list("id", flat=True)
+                    )
+
+                    available_by_product = get_available_transfer_quantities_by_product(
+                        sucursal_id=solicitud_locked.sucursal_proveedora_id,
+                        product_ids=product_ids,
+                        exclude_solicitud_id=solicitud_locked.id,
+                    )
+
+                    for detalle in detalles:
+                        product_id = int(getattr(detalle, "producto_id", 0) or 0)
+                        if product_id <= 0:
+                            continue
+                        required = int(getattr(detalle, "cantidad", 0) or 0)
+                        available = int(available_by_product.get(product_id, 0) or 0)
+                        if required <= available:
+                            continue
+
+                        producto = getattr(detalle, "producto", None)
+                        codigo = str(getattr(producto, "codigo", "") or "").strip()
+                        label = codigo or f"ID {product_id}"
+                        return Response(
+                            {
+                                "detail": (
+                                    f"No se puede aceptar la solicitud. "
+                                    f"Stock disponible para '{label}': {available}."
+                                )
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                solicitud_locked.estado = SolicitudTraslado.Estados.APROBADA
+                solicitud_locked.motivo_rechazo = ""
+                solicitud_locked.rechazada_por = None
+                solicitud_locked.rechazada_en = None
+                solicitud_locked.save(
+                    update_fields=[
+                        "estado",
+                        "motivo_rechazo",
+                        "rechazada_por",
+                        "rechazada_en",
+                        "updated_at",
+                    ]
+                )
+
+            output = SolicitudTrasladoSerializer(instance=solicitud_locked)
             return Response(
                 {
                     "detail": "Solicitud aceptada correctamente.",
@@ -838,8 +918,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "solicitud": output.data,
                     "next_action": {
                         "type": "crear_salida",
-                        "solicitud_id": int(solicitud.id),
-                        "sucursal_proveedora_id": int(solicitud.sucursal_proveedora_id),
+                        "solicitud_id": int(solicitud_locked.id),
+                        "sucursal_proveedora_id": int(solicitud_locked.sucursal_proveedora_id),
                     },
                 },
                 status=status.HTTP_200_OK,
@@ -1057,20 +1137,33 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 subdivision__division__bodega__sucursal_id=sucursal_id
             )
             .values("producto_id", "producto__codigo", "producto__nombre")
-            .annotate(cantidad_disponible=Sum("cantidad"))
-            .filter(cantidad_disponible__gt=0)
+            .annotate(cantidad_fisica=Sum("cantidad"))
+            .filter(cantidad_fisica__gt=0)
             .order_by("producto__nombre", "producto__codigo")
         )
+        rows = list(rows)
+        product_ids = [int(row.get("producto_id") or 0) for row in rows if int(row.get("producto_id") or 0) > 0]
+        available_by_product = get_available_transfer_quantities_by_product(
+            sucursal_id=sucursal_id,
+            product_ids=product_ids,
+        )
 
-        payload = [
-            {
-                "producto_id": int(row["producto_id"]),
-                "codigo": row.get("producto__codigo") or "",
-                "nombre": row.get("producto__nombre") or "",
-                "cantidad_disponible": int(row.get("cantidad_disponible") or 0),
-            }
-            for row in rows
-        ]
+        payload = []
+        for row in rows:
+            product_id = int(row.get("producto_id") or 0)
+            if product_id <= 0:
+                continue
+            available = int(available_by_product.get(product_id, 0) or 0)
+            if available <= 0:
+                continue
+            payload.append(
+                {
+                    "producto_id": product_id,
+                    "codigo": row.get("producto__codigo") or "",
+                    "nombre": row.get("producto__nombre") or "",
+                    "cantidad_disponible": available,
+                }
+            )
         return Response(payload)
 
     @action(detail=False, methods=["get"], url_path="stock-sucursal-global")
@@ -1092,18 +1185,31 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 subdivision__division__bodega__sucursal_id=sucursal_id
             )
             .values("producto_id", "producto__codigo", "producto__nombre")
-            .annotate(cantidad_disponible=Sum("cantidad"))
-            .filter(cantidad_disponible__gt=0)
+            .annotate(cantidad_fisica=Sum("cantidad"))
+            .filter(cantidad_fisica__gt=0)
             .order_by("producto__nombre", "producto__codigo")
         )
+        rows = list(rows)
+        product_ids = [int(row.get("producto_id") or 0) for row in rows if int(row.get("producto_id") or 0) > 0]
+        available_by_product = get_available_transfer_quantities_by_product(
+            sucursal_id=sucursal_id,
+            product_ids=product_ids,
+        )
 
-        payload = [
-            {
-                "producto_id": int(row["producto_id"]),
-                "codigo": row.get("producto__codigo") or "",
-                "nombre": row.get("producto__nombre") or "",
-                "cantidad_disponible": int(row.get("cantidad_disponible") or 0),
-            }
-            for row in rows
-        ]
+        payload = []
+        for row in rows:
+            product_id = int(row.get("producto_id") or 0)
+            if product_id <= 0:
+                continue
+            available = int(available_by_product.get(product_id, 0) or 0)
+            if available <= 0:
+                continue
+            payload.append(
+                {
+                    "producto_id": product_id,
+                    "codigo": row.get("producto__codigo") or "",
+                    "nombre": row.get("producto__nombre") or "",
+                    "cantidad_disponible": available,
+                }
+            )
         return Response(payload)

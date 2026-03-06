@@ -23,6 +23,7 @@ from .models import (
     SolicitudTraslado,
     SolicitudTrasladoDetalle,
 )
+from .stock_availability import get_available_transfer_quantities_by_product
 
 
 def normalize_name(value):
@@ -270,6 +271,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
                         available = self._get_available_stock_in_branch(
                             sucursal_id=int(sucursal_proveedora.id),
                             producto_id=int(producto_id),
+                            exclude_solicitud_id=getattr(self.instance, "id", None),
                         )
                         stock_cache[int(producto_id)] = available
                     if cantidad > available:
@@ -294,23 +296,17 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
         return solicitud
 
     @staticmethod
-    def _get_available_stock_in_branch(sucursal_id, producto_id):
+    def _get_available_stock_in_branch(sucursal_id, producto_id, exclude_solicitud_id=None):
         if not sucursal_id or not producto_id:
             return 0
 
-        rows = Inventario.objects.filter(
-            producto_id=int(producto_id),
-            subdivision__division__bodega__sucursal_id=int(sucursal_id),
-        ).values_list("cantidad", flat=True)
-
-        total = 0
-        for raw in rows:
-            try:
-                total += int(raw or 0)
-            except (TypeError, ValueError):
-                continue
-
-        return max(total, 0)
+        product_id = int(producto_id)
+        available_map = get_available_transfer_quantities_by_product(
+            sucursal_id=int(sucursal_id),
+            product_ids=[product_id],
+            exclude_solicitud_id=exclude_solicitud_id,
+        )
+        return max(int(available_map.get(product_id, 0)), 0)
 
 
 class MovimientoInventarioSerializer(serializers.ModelSerializer):
