@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, Plus, X } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Plus, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
 import {
@@ -8,7 +8,6 @@ import {
   createReminderId,
   extractUserId,
   formatCurrentUserName,
-  formatReminderDateTime,
   getReminderDecisionStatus,
   isReminderForContext,
   isSpecialTransferDecisionReminder,
@@ -21,7 +20,7 @@ import './RecordatoriosPopup.css'
 const getNowDateParts = () => {
   const now = new Date()
   return {
-    date: now.toISOString().slice(0, 10),
+    date: formatDateKey(now),
     time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
   }
 }
@@ -37,6 +36,104 @@ const formatReminderContext = (reminder) => {
 
   const formatted = type.replace(/[_-]+/g, ' ')
   return formatted.charAt(0).toUpperCase() + formatted.slice(1)
+}
+
+const parseDateKey = (value) => {
+  const raw = String(value || '').trim()
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const parsed = new Date(year, month - 1, day)
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null
+  }
+  return parsed
+}
+
+const formatDateKey = (value) => {
+  const date = value instanceof Date ? value : parseDateKey(value)
+  if (!date || Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+const getTodayDateKey = () => formatDateKey(new Date())
+
+const addDaysToDateKey = (value, delta) => {
+  const parsed = parseDateKey(value) || new Date()
+  const shifted = new Date(parsed)
+  shifted.setDate(shifted.getDate() + Number(delta || 0))
+  return formatDateKey(shifted)
+}
+
+const getWeekStartDate = (value) => {
+  const parsed = parseDateKey(value) || new Date()
+  const start = new Date(parsed)
+  const day = start.getDay()
+  const diffToMonday = (day + 6) % 7
+  start.setDate(start.getDate() - diffToMonday)
+  return start
+}
+
+const formatWeekRangeLabel = (startDate, endDate) => {
+  if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) return ''
+  if (!(endDate instanceof Date) || Number.isNaN(endDate.getTime())) return ''
+
+  const startLabel = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' }).format(startDate)
+  const endLabel = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }).format(endDate)
+  return `${startLabel} - ${endLabel}`
+}
+
+const formatTimelineDayName = (dateKey) => {
+  const parsed = parseDateKey(dateKey)
+  if (!parsed) return '-'
+  const label = new Intl.DateTimeFormat('es-CO', { weekday: 'short' }).format(parsed)
+  return label.replace('.', '')
+}
+
+const formatTimelineDayDate = (dateKey) => {
+  const parsed = parseDateKey(dateKey)
+  if (!parsed) return '-'
+  return new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: '2-digit' }).format(parsed)
+}
+
+const formatTimelineFullDate = (dateKey) => {
+  const parsed = parseDateKey(dateKey)
+  if (!parsed) return 'Fecha no disponible'
+  return new Intl.DateTimeFormat('es-CO', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  }).format(parsed)
+}
+
+const getReminderDateTimeTimestamp = (reminder) => {
+  const dateKey = formatDateKey(reminder?.date)
+  if (!dateKey) return Number.NaN
+
+  const rawTime = String(reminder?.time || '').trim()
+  const timestamp = Date.parse(`${dateKey}T${rawTime || '00:00'}:00`)
+  if (Number.isFinite(timestamp)) return timestamp
+
+  const fallback = Date.parse(`${dateKey}T00:00:00`)
+  return Number.isFinite(fallback) ? fallback : Number.NaN
+}
+
+const formatReminderTimeLabel = (reminder) => {
+  const timestamp = getReminderDateTimeTimestamp(reminder)
+  if (!Number.isFinite(timestamp)) return String(reminder?.time || 'Sin hora')
+  return new Intl.DateTimeFormat('es-CO', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestamp))
 }
 
 function RecordatoriosPopup({
@@ -75,6 +172,7 @@ function RecordatoriosPopup({
   const [rejectionReason, setRejectionReason] = useState('')
   const [isRejectReasonModalOpen, setIsRejectReasonModalOpen] = useState(false)
   const [rejectReasonError, setRejectReasonError] = useState('')
+  const [selectedTimelineDate, setSelectedTimelineDate] = useState(() => getTodayDateKey())
 
   const notifyError = useCallback(
     (message) => {
@@ -104,6 +202,87 @@ function RecordatoriosPopup({
       (reminder) => normalizeId(reminder?.id) === normalizedId
     ) || null
   }, [activeDecisionReminderId, reminders])
+
+  const normalizedSelectedTimelineDate = useMemo(
+    () => formatDateKey(selectedTimelineDate) || getTodayDateKey(),
+    [selectedTimelineDate]
+  )
+
+  const remindersByDate = useMemo(() => {
+    const grouped = new Map()
+    ;(Array.isArray(reminders) ? reminders : []).forEach((reminder) => {
+      const dateKey = formatDateKey(reminder?.date)
+      if (!dateKey) return
+      if (!grouped.has(dateKey)) grouped.set(dateKey, [])
+      grouped.get(dateKey).push(reminder)
+    })
+
+    grouped.forEach((dayReminders, dateKey) => {
+      grouped.set(
+        dateKey,
+        [...dayReminders].sort((a, b) => {
+          const timestampA = getReminderDateTimeTimestamp(a)
+          const timestampB = getReminderDateTimeTimestamp(b)
+
+          if (Number.isFinite(timestampA) && Number.isFinite(timestampB)) {
+            return timestampA - timestampB
+          }
+          if (Number.isFinite(timestampA)) return -1
+          if (Number.isFinite(timestampB)) return 1
+          return String(a?.id || '').localeCompare(String(b?.id || ''))
+        })
+      )
+    })
+
+    return grouped
+  }, [reminders])
+
+  const selectedDayReminders = useMemo(
+    () => remindersByDate.get(normalizedSelectedTimelineDate) || [],
+    [remindersByDate, normalizedSelectedTimelineDate]
+  )
+
+  const timelineWeekDays = useMemo(() => {
+    const start = getWeekStartDate(normalizedSelectedTimelineDate)
+
+    return Array.from({ length: 7 }, (_, offset) => {
+      const date = new Date(start)
+      date.setDate(start.getDate() + offset)
+      const dateKey = formatDateKey(date)
+      const count = (remindersByDate.get(dateKey) || []).length
+      return {
+        dateKey,
+        count,
+        dayName: formatTimelineDayName(dateKey),
+        dayDate: formatTimelineDayDate(dateKey),
+      }
+    })
+  }, [normalizedSelectedTimelineDate, remindersByDate])
+
+  const maxWeekDayCount = useMemo(
+    () => Math.max(1, ...timelineWeekDays.map((day) => day.count)),
+    [timelineWeekDays]
+  )
+
+  const timelineWeekRangeLabel = useMemo(() => {
+    const first = timelineWeekDays[0]?.dateKey
+    const last = timelineWeekDays[timelineWeekDays.length - 1]?.dateKey
+    if (!first || !last) return ''
+    return formatWeekRangeLabel(parseDateKey(first), parseDateKey(last))
+  }, [timelineWeekDays])
+
+  const selectedTimelineFullDateLabel = useMemo(
+    () => formatTimelineFullDate(normalizedSelectedTimelineDate),
+    [normalizedSelectedTimelineDate]
+  )
+
+  const shiftTimelineDay = useCallback((offset) => {
+    setSelectedTimelineDate((current) => addDaysToDateKey(current, offset))
+  }, [])
+
+  const handleGoTodayTimeline = useCallback(() => {
+    setSelectedTimelineDate(getTodayDateKey())
+  }, [])
 
   const closeDecisionPanel = useCallback(() => {
     setActiveDecisionReminderId('')
@@ -179,6 +358,7 @@ function RecordatoriosPopup({
     setDescription('')
     setSelectedRecipientIds([])
     setSubmitError('')
+    setSelectedTimelineDate(defaults.date)
     setActiveView('list')
     previousViewRef.current = 'list'
     closeDecisionPanel()
@@ -311,6 +491,10 @@ function RecordatoriosPopup({
     const reminder = (Array.isArray(reminders) ? reminders : []).find(
       (item) => normalizeId(item?.id) === targetReminderId
     )
+    const reminderDateKey = formatDateKey(reminder?.date)
+    if (reminderDateKey) {
+      setSelectedTimelineDate(reminderDateKey)
+    }
     if (reminder && isSpecialTransferDecisionReminder(reminder)) {
       setActiveView('list')
       openDecisionPanel(reminder)
@@ -671,21 +855,95 @@ function RecordatoriosPopup({
               {!Array.isArray(reminders) || !reminders.length ? (
                 <p className="recordatorios-popup__empty-list">No hay recordatorios personales.</p>
               ) : (
-                <div className="recordatorios-popup__table-wrap">
-                  <table className="recordatorios-popup__table">
-                    <thead>
-                      <tr>
-                        <th>Fecha y hora</th>
-                        <th>Descripcion</th>
-                        <th>Creador</th>
-                        <th>Dirigido a</th>
-                        <th>Modulo</th>
-                        <th>Estado</th>
-                        <th>Accion</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reminders.map((reminder) => {
+                <>
+                  <section className="recordatorios-popup__timeline" aria-label="Linea de tiempo semanal">
+                    <div className="recordatorios-popup__timeline-head">
+                      <button
+                        type="button"
+                        className="recordatorios-popup__timeline-arrow"
+                        onClick={() => shiftTimelineDay(-7)}
+                        aria-label="Semana anterior"
+                      >
+                        <ChevronLeft />
+                      </button>
+
+                      <div className="recordatorios-popup__timeline-title">
+                        <h5>Resumen semanal</h5>
+                        <p>{timelineWeekRangeLabel}</p>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="recordatorios-popup__timeline-arrow"
+                        onClick={() => shiftTimelineDay(7)}
+                        aria-label="Semana siguiente"
+                      >
+                        <ChevronRight />
+                      </button>
+                    </div>
+
+                    <div className="recordatorios-popup__timeline-week" role="tablist" aria-label="Dias de la semana">
+                      {timelineWeekDays.map((day) => {
+                        const isSelected = day.dateKey === normalizedSelectedTimelineDate
+                        const density = day.count / maxWeekDayCount
+                        return (
+                          <button
+                            key={day.dateKey}
+                            type="button"
+                            role="tab"
+                            aria-selected={isSelected}
+                            className={`recordatorios-popup__timeline-day${isSelected ? ' is-selected' : ''}`}
+                            style={{ '--recordatorios-density': String(density) }}
+                            onClick={() => setSelectedTimelineDate(day.dateKey)}
+                          >
+                            <span className="recordatorios-popup__timeline-day-name">{day.dayName}</span>
+                            <span className="recordatorios-popup__timeline-day-date">{day.dayDate}</span>
+                            <span className="recordatorios-popup__timeline-day-count">{day.count} rec.</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    <div className="recordatorios-popup__timeline-controls">
+                      <button
+                        type="button"
+                        className="recordatorios-popup__timeline-control"
+                        onClick={() => shiftTimelineDay(-1)}
+                      >
+                        <ChevronLeft />
+                        Dia anterior
+                      </button>
+
+                      <button
+                        type="button"
+                        className="recordatorios-popup__timeline-control recordatorios-popup__timeline-control--today"
+                        onClick={handleGoTodayTimeline}
+                      >
+                        <CalendarDays />
+                        Hoy
+                      </button>
+
+                      <button
+                        type="button"
+                        className="recordatorios-popup__timeline-control"
+                        onClick={() => shiftTimelineDay(1)}
+                      >
+                        Dia siguiente
+                        <ChevronRight />
+                      </button>
+                    </div>
+                  </section>
+
+                  <div className="recordatorios-popup__timeline-day-header">
+                    <h5>{selectedTimelineFullDateLabel}</h5>
+                    <p>{selectedDayReminders.length} recordatorio(s)</p>
+                  </div>
+
+                  <div className="recordatorios-popup__timeline-list">
+                    {!selectedDayReminders.length ? (
+                      <p className="recordatorios-popup__empty-list">No hay recordatorios para este dia.</p>
+                    ) : (
+                      selectedDayReminders.map((reminder) => {
                         const status = buildReminderStatusForUser(reminder, currentUserIdSet)
                         const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
                         const decisionStatus = getReminderDecisionStatus(reminder)
@@ -701,18 +959,32 @@ function RecordatoriosPopup({
                           .join(', ')
 
                         return (
-                          <tr key={reminder.id}>
-                            <td>{formatReminderDateTime(reminder)}</td>
-                            <td>{reminder?.description || '-'}</td>
-                            <td>{reminder?.creator?.name || 'Usuario'}</td>
-                            <td>{recipientNames || 'Sin destinatarios'}</td>
-                            <td>{formatReminderContext(reminder)}</td>
-                            <td>
+                          <article key={reminder.id} className="recordatorios-popup__timeline-item">
+                            <div className="recordatorios-popup__timeline-item-head">
+                              <p className="recordatorios-popup__timeline-item-time">{formatReminderTimeLabel(reminder)}</p>
                               <span className={`recordatorios-popup__status recordatorios-popup__status--${status.className}`}>
                                 {status.label}
                               </span>
-                            </td>
-                            <td>
+                            </div>
+
+                            <p className="recordatorios-popup__timeline-item-description" title={String(reminder?.description || '-')}>
+                              {reminder?.description || '-'}
+                            </p>
+
+                            <p className="recordatorios-popup__timeline-item-context">
+                              {formatReminderContext(reminder)}
+                            </p>
+
+                            <div className="recordatorios-popup__timeline-item-meta">
+                              <span>
+                                <strong>Creador:</strong> {reminder?.creator?.name || 'Usuario'}
+                              </span>
+                              <span>
+                                <strong>Dirigido a:</strong> {recipientNames || 'Sin destinatarios'}
+                              </span>
+                            </div>
+
+                            <div className="recordatorios-popup__timeline-item-actions">
                               {canResolveDecision ? (
                                 <button
                                   type="button"
@@ -734,13 +1006,13 @@ function RecordatoriosPopup({
                               ) : (
                                 <span className="recordatorios-popup__action-placeholder">No aplica</span>
                               )}
-                            </td>
-                          </tr>
+                            </div>
+                          </article>
                         )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                      })
+                    )}
+                  </div>
+                </>
               )}
             </section>
           )}

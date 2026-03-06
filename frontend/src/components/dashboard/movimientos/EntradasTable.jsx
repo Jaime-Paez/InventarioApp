@@ -661,12 +661,16 @@ function EntradasTable({ token, user, createBranchId = '', moduleActions }) {
   const cellWithTooltip = (rowData, field) => {
     const content = rowData?.[field] ?? '-'
     const textColor = content === '-' ? '#9ca3af' : undefined
-    const isPendingSolicitud =
-      Boolean(rowData?.es_solicitud_traslado) &&
-      normalizeValue(rowData?.estado_nombre).includes('pend')
+    const normalizedEstado = normalizeValue(rowData?.estado_nombre)
+    const isSolicitudTraslado = Boolean(rowData?.es_solicitud_traslado)
+    const isPendingSolicitud = isSolicitudTraslado && normalizedEstado.includes('pend')
+    const isRejectedSolicitud =
+      isSolicitudTraslado &&
+      (normalizedEstado.includes('rechaz') || normalizedEstado.includes('cancel'))
     const className = [
       'cell-tooltip',
       field === 'estado_nombre' && isPendingSolicitud ? 'entradas-pending-state-chip' : '',
+      field === 'estado_nombre' && isRejectedSolicitud ? 'entradas-rejected-state-chip' : '',
     ]
       .filter(Boolean)
       .join(' ')
@@ -980,14 +984,16 @@ function EntradasTable({ token, user, createBranchId = '', moduleActions }) {
           onRowClick={handleRowClick}
           rowClassName={(rowData) => {
             const classes = []
+            const normalizedEstado = normalizeValue(rowData?.estado_nombre)
+            const isSolicitudTraslado = Boolean(rowData?.es_solicitud_traslado)
             if (selectedRowIds.includes(normId(rowData?.id))) {
               classes.push('selected-row-shadow')
             }
-            if (
-              rowData?.es_solicitud_traslado &&
-              normalizeValue(rowData?.estado_nombre).includes('pend')
-            ) {
+            if (isSolicitudTraslado && normalizedEstado.includes('pend')) {
               classes.push('entradas-row--pending-solicitud')
+            }
+            if (isSolicitudTraslado && (normalizedEstado.includes('rechaz') || normalizedEstado.includes('cancel'))) {
+              classes.push('entradas-row--rejected-solicitud')
             }
             return classes.join(' ')
           }}

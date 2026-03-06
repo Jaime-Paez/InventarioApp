@@ -1,6 +1,6 @@
 .quick-actions {
   position: relative;
-  z-index: 1310;
+  z-index: 30;
   margin-right: 12px;
   display: inline-flex;
   align-items: center;
@@ -202,7 +202,7 @@
   background: var(--color-primary);
   opacity: 1;
   box-shadow: none;
-  overflow: visible;
+  overflow: hidden;
   transform-origin: center;
   will-change: width, height, left, top, opacity;
   transition:
@@ -220,20 +220,21 @@
 }
 
 .quick-actions__urgent-message {
-  position: fixed;
-  z-index: 1305;
-  transform: translate(-50%, -50%);
+  position: absolute;
+  z-index: 1;
   color: #fff;
   font-weight: 800;
   line-height: 1.2;
   text-align: center;
-  max-width: 90vw;
-  padding: 0 12px;
+  max-width: none;
+  padding: 0 10px;
   pointer-events: none;
   user-select: none;
   white-space: normal;
   overflow-wrap: anywhere;
   text-wrap: balance;
+  transition: opacity 240ms linear, transform 260ms ease-out;
+  will-change: opacity, transform;
 }
 
 /* MOBILE */
@@ -247,7 +248,6 @@
   }
 
   .quick-actions__urgent-message {
-    max-width: 72vw;
     padding: 0 8px;
     font-weight: 780;
   }
@@ -255,7 +255,7 @@
 
 @keyframes quick-actions-urgent-shield-enter {
   0% {
-    opacity: 0;
+    opacity: 1;
     transform: scale(0.08);
   }
 

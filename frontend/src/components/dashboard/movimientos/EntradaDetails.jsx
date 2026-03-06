@@ -1730,12 +1730,17 @@ function EntradaDetails({
     estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
     formData.estadoNombre ||
     ''
-  const showPendingSolicitudRibbon =
-    hasPreviewData && normalizeValue(selectedEstadoName).includes('pend')
+  const normalizedSelectedEstadoName = normalizeValue(selectedEstadoName)
+  const isPendingSolicitudRibbon =
+    hasPreviewData && normalizedSelectedEstadoName.includes('pend')
+  const isRejectedSolicitudRibbon =
+    hasPreviewData &&
+    (normalizedSelectedEstadoName.includes('rechaz') || normalizedSelectedEstadoName.includes('cancel'))
+  const showSolicitudRibbon = isPendingSolicitudRibbon || isRejectedSolicitudRibbon
   const modalClassName = [
     'create-user__modal',
     'create-salida__modal',
-    showPendingSolicitudRibbon ? 'entrada-details__modal--pending' : '',
+    showSolicitudRibbon ? 'entrada-details__modal--pending' : '',
     isClosing ? 'create-user__modal--closing' : '',
     isResizingModal ? 'create-salida__modal--resizing' : '',
   ]
@@ -1755,13 +1760,13 @@ function EntradaDetails({
       style={overlayStyle}
     >
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
-        {showPendingSolicitudRibbon && (
+        {showSolicitudRibbon && (
           <div
-            className="entrada-details__pending-ribbon"
-            aria-label="Solicitud pendiente"
-            title="Solicitud esperando a ser aceptada"
+            className={`entrada-details__pending-ribbon${isRejectedSolicitudRibbon ? ' entrada-details__pending-ribbon--rejected' : ''}`}
+            aria-label={isRejectedSolicitudRibbon ? 'Solicitud rechazada' : 'Solicitud pendiente'}
+            title={isRejectedSolicitudRibbon ? 'Solicitud rechazada por la sucursal proveedora' : 'Solicitud esperando a ser aceptada'}
           >
-            Solicitud pendiente
+            {isRejectedSolicitudRibbon ? 'Solicitud rechazada' : 'Solicitud pendiente'}
           </div>
         )}
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>

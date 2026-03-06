@@ -3,6 +3,7 @@ import { Bell, Moon, Search, SunMedium } from 'lucide-react'
 import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
+import { API_URL, authFetch } from '../../../utils/api'
 import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
@@ -50,7 +51,9 @@ function QuickActions({
   const [clockTick, setClockTick] = useState(() => Date.now())
   const [focusReminderId, setFocusReminderId] = useState('')
   const [urgentVisualProgress, setUrgentVisualProgress] = useState(0)
+  const [eligibleUrgentReminderId, setEligibleUrgentReminderId] = useState('')
   const urgentVisualReminderIdRef = useRef('')
+  const urgentEligibilityBySolicitudRef = useRef(new Map())
 
   const currentUserIds = useMemo(() => buildUserIdSet(user), [user])
   const currentUserIdValues = useMemo(() => Array.from(currentUserIds), [currentUserIds])
@@ -72,24 +75,93 @@ function QuickActions({
     [reminders, currentUserIds]
   )
 
-  const urgentDecisionReminder = useMemo(() => {
-    const pendingSpecial = reminders
-      .filter(
-        (reminder) =>
-          isSpecialTransferDecisionReminder(reminder) &&
-          isReminderPendingForCurrentUser(reminder, currentUserIds)
-      )
-      .sort((a, b) => {
-        const deadlineA = getReminderDeadlineTimestamp(a)
-        const deadlineB = getReminderDeadlineTimestamp(b)
-        if (Number.isFinite(deadlineA) && Number.isFinite(deadlineB)) return deadlineA - deadlineB
-        if (Number.isFinite(deadlineA)) return -1
-        if (Number.isFinite(deadlineB)) return 1
-        return String(a?.createdAt || '').localeCompare(String(b?.createdAt || ''))
-      })
+  const pendingSpecialDecisionReminders = useMemo(
+    () =>
+      reminders
+        .filter(
+          (reminder) =>
+            isSpecialTransferDecisionReminder(reminder) &&
+            isReminderPendingForCurrentUser(reminder, currentUserIds)
+        )
+        .sort((a, b) => {
+          const deadlineA = getReminderDeadlineTimestamp(a)
+          const deadlineB = getReminderDeadlineTimestamp(b)
+          if (Number.isFinite(deadlineA) && Number.isFinite(deadlineB)) return deadlineA - deadlineB
+          if (Number.isFinite(deadlineA)) return -1
+          if (Number.isFinite(deadlineB)) return 1
+          return String(a?.createdAt || '').localeCompare(String(b?.createdAt || ''))
+        }),
+    [currentUserIds, reminders]
+  )
 
-    return pendingSpecial[0] || null
-  }, [reminders, currentUserIds])
+  const canDecideTransferRequest = useMemo(() => {
+    if (user?.is_staff || user?.is_superuser) return true
+    const permissions = Array.isArray(user?.permisos) ? user.permisos : []
+    const salidasPermission = permissions.find(
+      (permission) => normalizeId(permission?.modulo) === 'movimientos_salidas'
+    )
+    return Boolean(salidasPermission?.puede_crear || salidasPermission?.puede_actualizar)
+  }, [user])
+
+  useEffect(() => {
+    urgentEligibilityBySolicitudRef.current.clear()
+    setEligibleUrgentReminderId('')
+  }, [canDecideTransferRequest, token, currentPrimaryUserId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const resolveEligibleReminder = async () => {
+      setEligibleUrgentReminderId('')
+      if (!allowUrgentShield || !token || !canDecideTransferRequest) return
+
+      for (const reminder of pendingSpecialDecisionReminders) {
+        if (cancelled) return
+        const reminderId = normalizeId(reminder?.id)
+        const contextType = normalizeId(reminder?.context?.type)
+        const solicitudId = normalizeId(reminder?.context?.id)
+        if (!reminderId || contextType !== 'solicitud_traslado' || !solicitudId) continue
+
+        const cached = urgentEligibilityBySolicitudRef.current.get(solicitudId)
+        if (cached === true) {
+          setEligibleUrgentReminderId(reminderId)
+          return
+        }
+        if (cached === false) continue
+
+        try {
+          const response = await authFetch(
+            `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/`,
+            {},
+            token
+          )
+          const isEligible = Boolean(response?.ok)
+          urgentEligibilityBySolicitudRef.current.set(solicitudId, isEligible)
+          if (isEligible) {
+            setEligibleUrgentReminderId(reminderId)
+            return
+          }
+        } catch {
+          urgentEligibilityBySolicitudRef.current.set(solicitudId, false)
+        }
+      }
+    }
+
+    void resolveEligibleReminder()
+    return () => {
+      cancelled = true
+    }
+  }, [allowUrgentShield, canDecideTransferRequest, pendingSpecialDecisionReminders, token])
+
+  const urgentDecisionReminder = useMemo(() => {
+    const normalizedEligibleId = normalizeId(eligibleUrgentReminderId)
+    if (!normalizedEligibleId) return null
+    return (
+      pendingSpecialDecisionReminders.find(
+        (reminder) => normalizeId(reminder?.id) === normalizedEligibleId
+      ) || null
+    )
+  }, [eligibleUrgentReminderId, pendingSpecialDecisionReminders])
 
   const urgentDecisionProgress = useMemo(() => {
     if (!urgentDecisionReminder) return 0
@@ -172,7 +244,6 @@ function QuickActions({
     const shieldSize = Number.parseFloat(urgentShieldStyle.width)
     const shieldLeft = Number.parseFloat(urgentShieldStyle.left)
     const shieldTop = Number.parseFloat(urgentShieldStyle.top)
-
     if (!Number.isFinite(shieldSize) || !Number.isFinite(shieldLeft) || !Number.isFinite(shieldTop)) {
       return null
     }
@@ -278,12 +349,15 @@ function QuickActions({
     const travel = clamp01(Math.min(progress, maxTViewport, maxTCircle))
     const centerX = shieldCenterX + vectorX * travel
     const centerY = shieldCenterY + vectorY * travel
+    const localLeft = centerX - shieldLeft
+    const localTop = centerY - shieldTop
 
     return {
-      left: `${centerX}px`,
-      top: `${centerY}px`,
+      left: `${localLeft}px`,
+      top: `${localTop}px`,
       width: `${width}px`,
       fontSize: `${fontSize}px`,
+      transform: 'translate(-50%, -50%)',
       lineHeight: isMobileViewport ? '1.1' : '1.2',
     }
   }, [urgentShieldStyle, urgentVisualProgress])
@@ -527,12 +601,13 @@ function QuickActions({
           style={urgentShieldStyle}
           onClick={handleUrgentShieldClick}
           aria-label="Resolver solicitud de traslado pendiente"
-        />
-      )}
-      {urgentMessageStyle && (
-        <div className="quick-actions__urgent-message" style={urgentMessageStyle} aria-hidden="true">
-          {URGENT_MESSAGE}
-        </div>
+        >
+          {urgentMessageStyle && (
+            <span className="quick-actions__urgent-message" style={urgentMessageStyle} aria-hidden="true">
+              {URGENT_MESSAGE}
+            </span>
+          )}
+        </button>
       )}
       <div
         ref={wrapRef}
