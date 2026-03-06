@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, Moon, Search, SunMedium } from 'lucide-react'
+import { Bell, Loader2, Moon, Search, SunMedium } from 'lucide-react'
 import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
@@ -1303,7 +1303,14 @@ function QuickActions({
 
                 <div className="quick-actions__pending-shipments-list">
                   {pendingShipmentsLoading ? (
-                    <p className="quick-actions__pending-shipments-empty">Cargando envios pendientes...</p>
+                    <p
+                      className="quick-actions__pending-shipments-empty quick-actions__pending-shipments-loading"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <Loader2 size={14} />
+                      <span>Cargando envios pendientes...</span>
+                    </p>
                   ) : !pendingShipments.length ? (
                     <p className="quick-actions__pending-shipments-empty">No hay envios pendientes.</p>
                   ) : (

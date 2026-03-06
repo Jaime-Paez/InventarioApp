@@ -141,6 +141,16 @@
   color: var(--color-text-secondary);
 }
 
+.quick-actions__pending-shipments-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quick-actions__pending-shipments-loading svg {
+  animation: quick-actions-spin 0.8s linear infinite;
+}
+
 .quick-actions {
   position: relative;
   z-index: 30;
@@ -466,5 +476,15 @@
   100% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes quick-actions-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }
