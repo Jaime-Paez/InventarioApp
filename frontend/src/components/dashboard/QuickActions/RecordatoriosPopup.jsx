@@ -112,6 +112,9 @@ const resolveTransferEstadoLabel = (rawEstadoLabel, rawEstado) => {
 
 const mapTransferRowToEntradaPreview = (row) => {
   const solicitudId = String(row?.solicitud_traslado_id || '').trim()
+  const isSolicitudTraslado = Boolean(row?.es_solicitud_traslado)
+  const rowId = normalizeId(row?.id)
+  const movimientoEntradaId = normalizeId(row?.movimiento_entrada_id) || (!isSolicitudTraslado ? rowId : '')
   const detalles = (Array.isArray(row?.detalles) ? row.detalles : []).map((detalle) => {
     const cantidad = parseNumber(detalle?.cantidad)
     const valor = parseNumber(detalle?.valor)
@@ -144,15 +147,16 @@ const mapTransferRowToEntradaPreview = (row) => {
     funcional: false,
     funcional_label: '-',
     total,
-    es_solicitud_traslado: true,
+    es_solicitud_traslado: isSolicitudTraslado,
     solicitud_traslado_id: solicitudId || null,
+    sucursal_id: row?.sucursal_id || '',
     sucursal_solicitante_id: row?.sucursal_solicitante_id || '',
     sucursal_proveedora_id: row?.sucursal_proveedora_id || '',
     descripcion: String(row?.descripcion || '').trim(),
     motivo_rechazo: String(row?.motivo_rechazo || '').trim(),
     detalles,
     movimiento_salida_id: row?.movimiento_salida_id ?? null,
-    movimiento_entrada_id: row?.movimiento_entrada_id ?? null,
+    movimiento_entrada_id: movimientoEntradaId || null,
   }
 }
 
@@ -937,7 +941,7 @@ function RecordatoriosPopup({
       params.set('page', '1')
       params.set('page_size', '100')
       if (documentNumber) {
-        params.set('no_documento', documentNumber)
+        params.set('search', documentNumber)
       } else if (solicitudId) {
         params.set('search', solicitudId)
       }
@@ -953,16 +957,22 @@ function RecordatoriosPopup({
       const rows = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []
       if (!rows.length) return null
 
-      const findBySolicitudId = (row) =>
-        Boolean(row?.es_solicitud_traslado) &&
-        normalizeId(row?.solicitud_traslado_id) === solicitudId
-      const findByDocument = (row) =>
-        Boolean(row?.es_solicitud_traslado) &&
-        String(row?.no_documento || '').trim().toLowerCase() === documentNumber.toLowerCase()
+      const normalizedDocument = String(documentNumber || '').trim().toLowerCase()
+      const findBySolicitudId = (row) => normalizeId(row?.solicitud_traslado_id) === solicitudId
+      const findByDocument = (row) => {
+        if (!normalizedDocument) return false
+        const noDocumento = String(row?.no_documento || '').trim().toLowerCase()
+        const descripcion = String(row?.descripcion || '').trim().toLowerCase()
+        return noDocumento.includes(normalizedDocument) || descripcion.includes(`#${normalizedDocument}`)
+      }
+      const findRealEntrada = (row) => !Boolean(row?.es_solicitud_traslado)
 
       const targetRow = (
+        rows.find((row) => findBySolicitudId(row) && findRealEntrada(row)) ||
+        rows.find((row) => findByDocument(row) && findRealEntrada(row)) ||
         (solicitudId ? rows.find(findBySolicitudId) : null) ||
         (documentNumber ? rows.find(findByDocument) : null) ||
+        rows.find(findRealEntrada) ||
         rows.find((row) => Boolean(row?.es_solicitud_traslado)) ||
         null
       )
@@ -1154,9 +1164,11 @@ function RecordatoriosPopup({
 
       setOpeningTransferReminderId(reminderId)
       try {
-        const solicitudDetail = await fetchTransferSolicitudDetail(solicitudId)
-        const movimientoEntradaId = normalizeId(solicitudDetail?.movimiento_entrada_id)
         const previewFromTable = await fetchTransferPreviewFromEntradaTable(reminder)
+        const solicitudDetail = previewFromTable
+          ? null
+          : await fetchTransferSolicitudDetail(solicitudId)
+        const movimientoEntradaIdFromDetail = normalizeId(solicitudDetail?.movimiento_entrada_id)
         const previewFromDetail = previewFromTable
           ? null
           : (
@@ -1166,9 +1178,17 @@ function RecordatoriosPopup({
           )
         const previewData = previewFromTable || previewFromDetail
 
+        const previewEntradaIdRaw = (
+          previewData?.movimiento_entrada_id ||
+          (!previewData?.es_solicitud_traslado ? previewData?.id : '')
+        )
+        const previewEntradaId = normalizeId(previewEntradaIdRaw)
+        const movimientoEntradaId = movimientoEntradaIdFromDetail || previewEntradaId
+
         const sucursalSolicitanteId = String(
           solicitudDetail?.sucursal_solicitante_id ||
           previewData?.sucursal_solicitante_id ||
+          previewData?.sucursal_id ||
           ''
         ).trim()
 

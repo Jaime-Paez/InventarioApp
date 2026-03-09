@@ -201,6 +201,7 @@ function Workspace({
     const sucursalSolicitanteId = String(
       payload?.sucursalSolicitanteId ||
       previewData?.sucursal_solicitante_id ||
+      previewData?.sucursal_id ||
       ''
     ).trim()
 
