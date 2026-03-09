@@ -86,12 +86,16 @@ class BodegaViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        return apply_sucursal_scope(
+        queryset = apply_sucursal_scope(
             queryset,
             self.request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             "sucursal_id",
         )
+        sucursal_id = self.request.query_params.get("sucursal_id")
+        if sucursal_id:
+            queryset = queryset.filter(sucursal_id=sucursal_id)
+        return queryset
 
     def perform_create(self, serializer):
         sucursal = serializer.validated_data.get("sucursal")
@@ -131,12 +135,19 @@ class DivisionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        return apply_sucursal_scope(
+        queryset = apply_sucursal_scope(
             queryset,
             self.request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             "bodega__sucursal_id",
         )
+        sucursal_id = self.request.query_params.get("sucursal_id")
+        if sucursal_id:
+            queryset = queryset.filter(bodega__sucursal_id=sucursal_id)
+        bodega_id = self.request.query_params.get("bodega_id")
+        if bodega_id:
+            queryset = queryset.filter(bodega_id=bodega_id)
+        return queryset
 
     def perform_create(self, serializer):
         bodega = serializer.validated_data.get("bodega")
@@ -176,12 +187,22 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        return apply_sucursal_scope(
+        queryset = apply_sucursal_scope(
             queryset,
             self.request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             "division__bodega__sucursal_id",
         )
+        sucursal_id = self.request.query_params.get("sucursal_id")
+        if sucursal_id:
+            queryset = queryset.filter(division__bodega__sucursal_id=sucursal_id)
+        bodega_id = self.request.query_params.get("bodega_id")
+        if bodega_id:
+            queryset = queryset.filter(division__bodega_id=bodega_id)
+        division_id = self.request.query_params.get("division_id")
+        if division_id:
+            queryset = queryset.filter(division_id=division_id)
+        return queryset
 
     def perform_create(self, serializer):
         division = serializer.validated_data.get("division")

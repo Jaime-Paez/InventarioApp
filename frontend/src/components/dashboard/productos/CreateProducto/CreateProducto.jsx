@@ -31,6 +31,24 @@ const parseQuantity = (value) => {
   return Math.max(0, Math.floor(parsed))
 }
 
+const mergeByIdList = (current, incoming) => {
+  const map = new Map(
+    (Array.isArray(current) ? current : []).map((item) => [String(item?.id ?? ''), item]).filter(([key]) => key)
+  )
+  ;(Array.isArray(incoming) ? incoming : []).forEach((item) => {
+    const key = String(item?.id ?? '')
+    if (!key) return
+    map.set(key, item)
+  })
+  return Array.from(map.values())
+}
+
+const getBodegaSucursalId = (bodega) => String(bodega?.sucursal?.id ?? bodega?.sucursal_id ?? '')
+const getDivisionBodegaId = (division) => String(division?.bodega?.id ?? division?.bodega_id ?? '')
+const getSubdivisionDivisionId = (subdivision) => String(subdivision?.division?.id ?? subdivision?.division_id ?? '')
+const getSubdivisionBodegaId = (subdivision) =>
+  String(subdivision?.division?.bodega?.id ?? subdivision?.division?.bodega_id ?? '')
+
 function CreateProducto({ open, onClose, onCreated, token, onError, showCostField = true }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
@@ -55,6 +73,24 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
   const [bodegas, setBodegas] = useState([])
   const [divisions, setDivisions] = useState([])
   const [subdivisions, setSubdivisions] = useState([])
+  const [locationBranchOptions, setLocationBranchOptions] = useState([])
+  const [locationBodegaOptions, setLocationBodegaOptions] = useState([])
+  const [locationDivisionOptions, setLocationDivisionOptions] = useState([])
+  const [locationSubdivisionOptions, setLocationSubdivisionOptions] = useState([])
+  const [showLocationBranchDropdown, setShowLocationBranchDropdown] = useState(false)
+  const [showLocationBodegaDropdown, setShowLocationBodegaDropdown] = useState(false)
+  const [showLocationDivisionDropdown, setShowLocationDivisionDropdown] = useState(false)
+  const [showLocationSubdivisionDropdown, setShowLocationSubdivisionDropdown] = useState(false)
+  const [locationBranchQuery, setLocationBranchQuery] = useState('')
+  const [locationBodegaQuery, setLocationBodegaQuery] = useState('')
+  const [locationDivisionQuery, setLocationDivisionQuery] = useState('')
+  const [locationSubdivisionQuery, setLocationSubdivisionQuery] = useState('')
+  const [locationSearchLoading, setLocationSearchLoading] = useState({
+    sucursal: false,
+    bodega: false,
+    division: false,
+    subdivision: false,
+  })
   const [locationDraft, setLocationDraft] = useState({
     sucursalId: '',
     bodegaId: '',
@@ -83,6 +119,16 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
   const marcaDropdownRef = useRef(null)
   const casaDropdownRef = useRef(null)
   const alternoDropdownRef = useRef(null)
+  const locationBranchDropdownRef = useRef(null)
+  const locationBodegaDropdownRef = useRef(null)
+  const locationDivisionDropdownRef = useRef(null)
+  const locationSubdivisionDropdownRef = useRef(null)
+  const locationSearchSeqRef = useRef({
+    sucursal: 0,
+    bodega: 0,
+    division: 0,
+    subdivision: 0,
+  })
   const codigoPrefixRef = useRef('')
   const codigoCheckTimerRef = useRef(null)
   const codigoCheckSeqRef = useRef(0)
@@ -136,31 +182,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
     notifyError(editError)
   }, [editError, notifyError])
 
-  const fetchAllPages = useCallback(
-    async (initialUrl, errorMessage) => {
-      if (!token) return []
-      const allItems = []
-      let nextUrl = initialUrl
-
-      while (nextUrl) {
-        const response = await authFetch(nextUrl, {}, token)
-        if (!response.ok) throw new Error(errorMessage)
-        const payload = await response.json()
-
-        if (Array.isArray(payload)) {
-          allItems.push(...payload)
-          break
-        }
-
-        allItems.push(...parseApiList(payload))
-        nextUrl = payload?.next || null
-      }
-
-      return allItems
-    },
-    [token]
-  )
-
   const normalizeValue = (value) =>
   String(value ?? '')
     .normalize('NFD')
@@ -182,38 +203,18 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
     () => new Map(bodegas.map((bodega) => [String(bodega.id), bodega])),
     [bodegas]
   )
+  const divisionById = useMemo(
+    () => new Map(divisions.map((division) => [String(division.id), division])),
+    [divisions]
+  )
   const subdivisionById = useMemo(
     () => new Map(subdivisions.map((subdivision) => [String(subdivision.id), subdivision])),
     [subdivisions]
   )
-  const bodegasBySucursal = useMemo(() => {
-    const map = new Map()
-    bodegas.forEach((bodega) => {
-      const sucursalId = bodega?.sucursal?.id ?? bodega?.sucursal_id
-      if (!sucursalId) return
-      const key = String(sucursalId)
-      const list = map.get(key) || []
-      list.push(bodega)
-      map.set(key, list)
-    })
-    return map
-  }, [bodegas])
-  const divisionsByBodega = useMemo(() => {
-    const map = new Map()
-    divisions.forEach((division) => {
-      const bodegaId = division?.bodega?.id ?? division?.bodega_id
-      if (!bodegaId) return
-      const key = String(bodegaId)
-      const list = map.get(key) || []
-      list.push(division)
-      map.set(key, list)
-    })
-    return map
-  }, [divisions])
   const subdivisionsByDivision = useMemo(() => {
     const map = new Map()
     subdivisions.forEach((subdivision) => {
-      const divisionId = subdivision?.division?.id
+      const divisionId = getSubdivisionDivisionId(subdivision)
       if (!divisionId) return
       const key = String(divisionId)
       const list = map.get(key) || []
@@ -225,7 +226,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
   const subdivisionsByBodega = useMemo(() => {
     const map = new Map()
     subdivisions.forEach((subdivision) => {
-      const bodegaId = subdivision?.division?.bodega?.id
+      const bodegaId = getSubdivisionBodegaId(subdivision)
       if (!bodegaId) return
       const key = String(bodegaId)
       const list = map.get(key) || []
@@ -234,17 +235,22 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
     })
     return map
   }, [subdivisions])
-  const availableBodegas = useMemo(
-    () => (locationDraft.sucursalId ? bodegasBySucursal.get(locationDraft.sucursalId) || [] : []),
-    [bodegasBySucursal, locationDraft.sucursalId]
+  const selectedLocationBranch = useMemo(
+    () => (locationDraft.sucursalId ? branchById.get(String(locationDraft.sucursalId)) || null : null),
+    [branchById, locationDraft.sucursalId]
   )
-  const availableDivisions = useMemo(
-    () => (locationDraft.bodegaId ? divisionsByBodega.get(locationDraft.bodegaId) || [] : []),
-    [divisionsByBodega, locationDraft.bodegaId]
+  const selectedLocationBodega = useMemo(
+    () => (locationDraft.bodegaId ? bodegaById.get(String(locationDraft.bodegaId)) || null : null),
+    [bodegaById, locationDraft.bodegaId]
   )
-  const availableSubdivisions = useMemo(
-    () => (locationDraft.divisionId ? subdivisionsByDivision.get(locationDraft.divisionId) || [] : []),
-    [subdivisionsByDivision, locationDraft.divisionId]
+  const selectedLocationDivision = useMemo(
+    () => (locationDraft.divisionId ? divisionById.get(String(locationDraft.divisionId)) || null : null),
+    [divisionById, locationDraft.divisionId]
+  )
+  const selectedLocationSubdivision = useMemo(
+    () =>
+      locationDraft.subdivisionId ? subdivisionById.get(String(locationDraft.subdivisionId)) || null : null,
+    [locationDraft.subdivisionId, subdivisionById]
   )
 
   const createLocationUid = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -297,34 +303,178 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
     [notifyError, token]
   )
 
-  const fetchLocations = useCallback(async () => {
-    if (!token) return
-    setLocationsLoading(true)
-    try {
-      const [branchesData, bodegasData, divisionsData, subdivisionsData] = await Promise.all([
-        fetchAllPages(
-          `${API_URL}/inventario/sucursales/?modulo=productos&page_size=500`,
-          'No se pudieron cargar las sucursales.'
-        ),
-        fetchAllPages(`${API_URL}/inventario/bodegas/?page_size=500`, 'No se pudieron cargar las bodegas.'),
-        fetchAllPages(`${API_URL}/inventario/divisiones/?page_size=500`, 'No se pudieron cargar las divisiones.'),
-        fetchAllPages(
-          `${API_URL}/inventario/subdivisiones/?page_size=500`,
-          'No se pudieron cargar las subdivisiones.'
-        ),
-      ])
+  const setLocationLevelLoading = useCallback((level, value) => {
+    setLocationSearchLoading((prev) => ({
+      ...prev,
+      [level]: value,
+    }))
+  }, [])
 
-      setBranches(branchesData)
-      setBodegas(bodegasData)
-      setDivisions(divisionsData)
-      setSubdivisions(subdivisionsData)
-    } catch (err) {
-      notifyError(err?.message || 'Ocurrió un error al cargar las ubicaciones.')
-    } finally {
-      setLocationsLoading(false)
-    }
-  }, [fetchAllPages, notifyError, token])
+  const searchLocationBranches = useCallback(
+    async (query = '') => {
+      if (!token) return
+      const seq = ++locationSearchSeqRef.current.sucursal
+      const term = String(query ?? '').trim()
+      setLocationLevelLoading('sucursal', true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/inventario/sucursales/?modulo=productos&page_size=40${
+            term ? `&search=${encodeURIComponent(term)}` : ''
+          }`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar las sucursales.')
+        const payload = await response.json()
+        const list = parseApiList(payload)
+        if (seq !== locationSearchSeqRef.current.sucursal) return
+        setLocationBranchOptions(list)
+        setBranches((prev) => mergeByIdList(prev, list))
+      } catch (err) {
+        notifyError(err?.message || 'No se pudieron cargar las sucursales.')
+      } finally {
+        if (seq === locationSearchSeqRef.current.sucursal) {
+          setLocationLevelLoading('sucursal', false)
+        }
+      }
+    },
+    [notifyError, setLocationLevelLoading, token]
+  )
 
+  const searchLocationBodegas = useCallback(
+    async (query = '', sucursalId = '', sucursalNombre = '') => {
+      if (!token || !sucursalId) {
+        setLocationBodegaOptions([])
+        return
+      }
+      const seq = ++locationSearchSeqRef.current.bodega
+      const term = String(query ?? '').trim()
+
+      setLocationLevelLoading('bodega', true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/inventario/bodegas/?page_size=200&sucursal_id=${encodeURIComponent(
+            String(sucursalId)
+          )}${
+            term ? `&search=${encodeURIComponent(term)}` : ''
+          }`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar las bodegas.')
+        const payload = await response.json()
+        const list = parseApiList(payload)
+        if (seq !== locationSearchSeqRef.current.bodega) return
+        setLocationBodegaOptions(list)
+        setBodegas((prev) => mergeByIdList(prev, list))
+      } catch (err) {
+        notifyError(err?.message || 'No se pudieron cargar las bodegas.')
+      } finally {
+        if (seq === locationSearchSeqRef.current.bodega) {
+          setLocationLevelLoading('bodega', false)
+        }
+      }
+    },
+    [notifyError, setLocationLevelLoading, token]
+  )
+
+  const searchLocationDivisions = useCallback(
+    async (query = '', bodegaId = '', bodegaNombre = '') => {
+      if (!token || !bodegaId) {
+        setLocationDivisionOptions([])
+        return
+      }
+      const seq = ++locationSearchSeqRef.current.division
+      const term = String(query ?? '').trim()
+
+      setLocationLevelLoading('division', true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/inventario/divisiones/?page_size=200&bodega_id=${encodeURIComponent(
+            String(bodegaId)
+          )}${
+            term ? `&search=${encodeURIComponent(term)}` : ''
+          }`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar las divisiones.')
+        const payload = await response.json()
+        const list = parseApiList(payload)
+        if (seq !== locationSearchSeqRef.current.division) return
+        setLocationDivisionOptions(list)
+        setDivisions((prev) => mergeByIdList(prev, list))
+      } catch (err) {
+        notifyError(err?.message || 'No se pudieron cargar las divisiones.')
+      } finally {
+        if (seq === locationSearchSeqRef.current.division) {
+          setLocationLevelLoading('division', false)
+        }
+      }
+    },
+    [notifyError, setLocationLevelLoading, token]
+  )
+
+  const searchLocationSubdivisions = useCallback(
+    async (query = '', divisionId = '', divisionNombre = '') => {
+      if (!token || !divisionId) {
+        setLocationSubdivisionOptions([])
+        return
+      }
+      const seq = ++locationSearchSeqRef.current.subdivision
+      const term = String(query ?? '').trim()
+
+      setLocationLevelLoading('subdivision', true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/inventario/subdivisiones/?page_size=200&division_id=${encodeURIComponent(
+            String(divisionId)
+          )}${
+            term ? `&search=${encodeURIComponent(term)}` : ''
+          }`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar las subdivisiones.')
+        const payload = await response.json()
+        const list = parseApiList(payload)
+        if (seq !== locationSearchSeqRef.current.subdivision) return
+        setLocationSubdivisionOptions(list)
+        setSubdivisions((prev) => mergeByIdList(prev, list))
+      } catch (err) {
+        notifyError(err?.message || 'No se pudieron cargar las subdivisiones.')
+      } finally {
+        if (seq === locationSearchSeqRef.current.subdivision) {
+          setLocationLevelLoading('subdivision', false)
+        }
+      }
+    },
+    [notifyError, setLocationLevelLoading, token]
+  )
+
+  const ensureSubdivisionsForBodega = useCallback(
+    async (bodegaId, bodegaNombre = '') => {
+      const key = String(bodegaId || '')
+      if (!key || !token) return
+      if ((subdivisionsByBodega.get(key) || []).length) return
+
+      try {
+        const response = await authFetch(
+          `${API_URL}/inventario/subdivisiones/?page_size=200&bodega_id=${encodeURIComponent(key)}`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar las subdivisiones.')
+        const payload = await response.json()
+        const list = parseApiList(payload)
+        if (!list.length) return
+        setSubdivisions((prev) => mergeByIdList(prev, list))
+      } catch (err) {
+        notifyError(err?.message || 'No se pudieron cargar las subdivisiones.')
+      }
+    },
+    [notifyError, subdivisionsByBodega, token]
+  )
   const searchAlternos = useCallback(
     async (query) => {
       const term = String(query ?? '').trim()
@@ -379,6 +529,24 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
     setBodegas([])
     setDivisions([])
     setSubdivisions([])
+    setLocationBranchOptions([])
+    setLocationBodegaOptions([])
+    setLocationDivisionOptions([])
+    setLocationSubdivisionOptions([])
+    setShowLocationBranchDropdown(false)
+    setShowLocationBodegaDropdown(false)
+    setShowLocationDivisionDropdown(false)
+    setShowLocationSubdivisionDropdown(false)
+    setLocationBranchQuery('')
+    setLocationBodegaQuery('')
+    setLocationDivisionQuery('')
+    setLocationSubdivisionQuery('')
+    setLocationSearchLoading({
+      sucursal: false,
+      bodega: false,
+      division: false,
+      subdivision: false,
+    })
     setLocations([])
     setLocationDraft({
       sucursalId: '',
@@ -401,12 +569,21 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
       codigoCheckTimerRef.current = null
     }
     codigoCheckSeqRef.current = 0
+    locationSearchSeqRef.current = {
+      sucursal: 0,
+      bodega: 0,
+      division: 0,
+      subdivision: 0,
+    }
     setCodigoChecking(false)
     setCodigoError('')
     setBrands([])
     setSuppliers([])
-    fetchLocations()
-  }, [fetchLocations, open])
+    setLocationsLoading(true)
+    searchLocationBranches('').finally(() => {
+      setLocationsLoading(false)
+    })
+  }, [open, searchLocationBranches])
 
   useEffect(
     () => () => {
@@ -454,6 +631,74 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
   }, [alternoQuery, searchAlternos])
 
   useEffect(() => {
+    if (!open || !showLocationForm || !showLocationBranchDropdown) return
+    const handle = setTimeout(() => {
+      searchLocationBranches(locationBranchQuery)
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [locationBranchQuery, open, searchLocationBranches, showLocationBranchDropdown, showLocationForm])
+
+  useEffect(() => {
+    if (!open || !showLocationForm || !showLocationBodegaDropdown || !locationDraft.sucursalId) return
+    const handle = setTimeout(() => {
+      searchLocationBodegas(
+        locationBodegaQuery,
+        locationDraft.sucursalId,
+        selectedLocationBranch?.nombre || ''
+      )
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [
+    locationBodegaQuery,
+    locationDraft.sucursalId,
+    open,
+    searchLocationBodegas,
+    selectedLocationBranch,
+    showLocationBodegaDropdown,
+    showLocationForm,
+  ])
+
+  useEffect(() => {
+    if (!open || !showLocationForm || !showLocationDivisionDropdown || !locationDraft.bodegaId) return
+    const handle = setTimeout(() => {
+      searchLocationDivisions(
+        locationDivisionQuery,
+        locationDraft.bodegaId,
+        selectedLocationBodega?.nombre || ''
+      )
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [
+    locationDivisionQuery,
+    locationDraft.bodegaId,
+    open,
+    searchLocationDivisions,
+    selectedLocationBodega,
+    showLocationDivisionDropdown,
+    showLocationForm,
+  ])
+
+  useEffect(() => {
+    if (!open || !showLocationForm || !showLocationSubdivisionDropdown || !locationDraft.divisionId) return
+    const handle = setTimeout(() => {
+      searchLocationSubdivisions(
+        locationSubdivisionQuery,
+        locationDraft.divisionId,
+        selectedLocationDivision?.nombre || ''
+      )
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [
+    locationDraft.divisionId,
+    locationSubdivisionQuery,
+    open,
+    searchLocationSubdivisions,
+    selectedLocationDivision,
+    showLocationForm,
+    showLocationSubdivisionDropdown,
+  ])
+
+  useEffect(() => {
     const handleClick = (event) => {
       if (showAlternoDropdown && alternoDropdownRef.current && !alternoDropdownRef.current.contains(event.target)) {
         setShowAlternoDropdown(false)
@@ -464,10 +709,46 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
       if (showCasaDropdown && casaDropdownRef.current && !casaDropdownRef.current.contains(event.target)) {
         setShowCasaDropdown(false)
       }
+      if (
+        showLocationBranchDropdown &&
+        locationBranchDropdownRef.current &&
+        !locationBranchDropdownRef.current.contains(event.target)
+      ) {
+        setShowLocationBranchDropdown(false)
+      }
+      if (
+        showLocationBodegaDropdown &&
+        locationBodegaDropdownRef.current &&
+        !locationBodegaDropdownRef.current.contains(event.target)
+      ) {
+        setShowLocationBodegaDropdown(false)
+      }
+      if (
+        showLocationDivisionDropdown &&
+        locationDivisionDropdownRef.current &&
+        !locationDivisionDropdownRef.current.contains(event.target)
+      ) {
+        setShowLocationDivisionDropdown(false)
+      }
+      if (
+        showLocationSubdivisionDropdown &&
+        locationSubdivisionDropdownRef.current &&
+        !locationSubdivisionDropdownRef.current.contains(event.target)
+      ) {
+        setShowLocationSubdivisionDropdown(false)
+      }
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [showAlternoDropdown, showMarcaDropdown, showCasaDropdown])
+  }, [
+    showAlternoDropdown,
+    showCasaDropdown,
+    showLocationBodegaDropdown,
+    showLocationBranchDropdown,
+    showLocationDivisionDropdown,
+    showLocationSubdivisionDropdown,
+    showMarcaDropdown,
+  ])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -725,6 +1006,30 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
 
   const handleLocationSelect = (field, value) => {
     setLocationError('')
+    if (field === 'sucursalId') {
+      setLocationBodegaOptions([])
+      setLocationDivisionOptions([])
+      setLocationSubdivisionOptions([])
+      setLocationBodegaQuery('')
+      setLocationDivisionQuery('')
+      setLocationSubdivisionQuery('')
+      setShowLocationBodegaDropdown(false)
+      setShowLocationDivisionDropdown(false)
+      setShowLocationSubdivisionDropdown(false)
+    }
+    if (field === 'bodegaId') {
+      setLocationDivisionOptions([])
+      setLocationSubdivisionOptions([])
+      setLocationDivisionQuery('')
+      setLocationSubdivisionQuery('')
+      setShowLocationDivisionDropdown(false)
+      setShowLocationSubdivisionDropdown(false)
+    }
+    if (field === 'divisionId') {
+      setLocationSubdivisionOptions([])
+      setLocationSubdivisionQuery('')
+      setShowLocationSubdivisionDropdown(false)
+    }
     setLocationDraft((prev) => {
       if (field === 'sucursalId') {
         return {
@@ -755,6 +1060,34 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
         [field]: value,
       }
     })
+  }
+
+  const handleLocationBranchPick = (branch) => {
+    if (!branch?.id) return
+    handleLocationSelect('sucursalId', String(branch.id))
+    setShowLocationBranchDropdown(false)
+    setLocationBranchQuery('')
+  }
+
+  const handleLocationBodegaPick = (bodega) => {
+    if (!bodega?.id) return
+    handleLocationSelect('bodegaId', String(bodega.id))
+    setShowLocationBodegaDropdown(false)
+    setLocationBodegaQuery('')
+  }
+
+  const handleLocationDivisionPick = (division) => {
+    if (!division?.id) return
+    handleLocationSelect('divisionId', String(division.id))
+    setShowLocationDivisionDropdown(false)
+    setLocationDivisionQuery('')
+  }
+
+  const handleLocationSubdivisionPick = (subdivision) => {
+    if (!subdivision?.id) return
+    handleLocationSelect('subdivisionId', String(subdivision.id))
+    setShowLocationSubdivisionDropdown(false)
+    setLocationSubdivisionQuery('')
   }
 
   const handleAddLocation = () => {
@@ -788,9 +1121,20 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
     const safeQuantity = quantity && quantity > 0 ? quantity : 1
 
     const subdivision = subdivisionById.get(String(subdivisionId))
+    if (!subdivision) {
+      setLocationError('Selecciona una subdivision valida.')
+      return
+    }
+    const subdivisionDivisionId = getSubdivisionDivisionId(subdivision)
+    if (subdivisionDivisionId && subdivisionDivisionId !== String(divisionId)) {
+      setLocationError('La subdivision no pertenece a la division seleccionada.')
+      return
+    }
+
+    const division = divisionById.get(String(divisionId))
     const bodega = bodegaById.get(String(bodegaId))
     const branch = branchById.get(String(sucursalId))
-    const divisionName = subdivision?.division?.nombre || divisions.find((d) => String(d.id) === String(divisionId))?.nombre
+    const divisionName = division?.nombre || subdivision?.division?.nombre || '-'
 
     const nextEntry = {
       uid: createLocationUid(),
@@ -836,6 +1180,9 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
 
   const beginLocationEdit = (location, field) => {
     setEditError('')
+    if (field === 'subdivision') {
+      ensureSubdivisionsForBodega(location?.bodegaId, location?.bodegaNombre)
+    }
     setEditingLocationKey(location.uid)
     setEditingField(field)
     if (field === 'cantidad') {
@@ -1871,6 +2218,15 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                             ...current,
                             cantidad: current.cantidad || '1',
                           }))
+                          setLocationBranchQuery('')
+                          setLocationBodegaQuery('')
+                          setLocationDivisionQuery('')
+                          setLocationSubdivisionQuery('')
+                        } else {
+                          setShowLocationBranchDropdown(false)
+                          setShowLocationBodegaDropdown(false)
+                          setShowLocationDivisionDropdown(false)
+                          setShowLocationSubdivisionDropdown(false)
                         }
                         return next
                       })
@@ -1881,7 +2237,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                   </button>
                 </div>
 
-                <div className="create-user__locations-table">
+                <div className="create-user__locations-table create-user__locations-table--locations-selectors">
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>Sucursal</span>
                     <span>Bodega</span>
@@ -1892,60 +2248,232 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                   {showLocationForm && (
                     <div className="create-user__locations-row create-user__locations-row--form">
                       <span>
-                        <select
-                          value={locationDraft.sucursalId}
-                          onChange={(event) => handleLocationSelect('sucursalId', event.target.value)}
-                          disabled={loading || locationsLoading}
-                        >
-                          <option value="">Selecciona una sucursal</option>
-                          {branches.map((branch) => (
-                            <option key={branch.id} value={branch.id}>
-                              {branch.nombre || `Sucursal ${branch.id}`}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="create-user__dropdown" ref={locationBranchDropdownRef}>
+                          <button
+                            type="button"
+                            className="create-user__dropdown-trigger"
+                            onClick={() => {
+                              if (loading || locationsLoading) return
+                              setShowLocationBranchDropdown((prev) => !prev)
+                              setShowLocationBodegaDropdown(false)
+                              setShowLocationDivisionDropdown(false)
+                              setShowLocationSubdivisionDropdown(false)
+                            }}
+                            disabled={loading || locationsLoading}
+                          >
+                            <span>{selectedLocationBranch?.nombre || 'Selecciona una sucursal'}</span>
+                            <i className={`pi pi-chevron-${showLocationBranchDropdown ? 'up' : 'down'}`} />
+                          </button>
+
+                          {showLocationBranchDropdown && (
+                            <div className="create-user__dropdown-panel">
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar sucursal"
+                                  value={locationBranchQuery}
+                                  onChange={(event) => setLocationBranchQuery(event.target.value)}
+                                />
+                              </div>
+                              <div className="create-user__dropdown-results">
+                                {locationSearchLoading.sucursal && <small className="muted">Buscando...</small>}
+                                {!locationSearchLoading.sucursal && !locationBranchOptions.length && (
+                                  <small className="muted">Sin resultados.</small>
+                                )}
+                                {locationBranchOptions.map((branch) => (
+                                  <button
+                                    key={branch.id}
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      handleLocationBranchPick(branch)
+                                    }}
+                                    disabled={loading}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>{branch.nombre || `Sucursal ${branch.id}`}</strong>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </span>
                       <span>
-                        <select
-                          value={locationDraft.bodegaId}
-                          onChange={(event) => handleLocationSelect('bodegaId', event.target.value)}
-                          disabled={loading || locationsLoading || !locationDraft.sucursalId}
-                        >
-                          <option value="">Selecciona una bodega</option>
-                          {availableBodegas.map((bodega) => (
-                            <option key={bodega.id} value={bodega.id}>
-                              {bodega.nombre || `Bodega ${bodega.id}`}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="create-user__dropdown" ref={locationBodegaDropdownRef}>
+                          <button
+                            type="button"
+                            className="create-user__dropdown-trigger"
+                            onClick={() => {
+                              if (loading || locationsLoading || !locationDraft.sucursalId) return
+                              setShowLocationBodegaDropdown((prev) => !prev)
+                              setShowLocationBranchDropdown(false)
+                              setShowLocationDivisionDropdown(false)
+                              setShowLocationSubdivisionDropdown(false)
+                            }}
+                            disabled={loading || locationsLoading || !locationDraft.sucursalId}
+                          >
+                            <span>{selectedLocationBodega?.nombre || 'Selecciona una bodega'}</span>
+                            <i className={`pi pi-chevron-${showLocationBodegaDropdown ? 'up' : 'down'}`} />
+                          </button>
+
+                          {showLocationBodegaDropdown && (
+                            <div className="create-user__dropdown-panel">
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar bodega"
+                                  value={locationBodegaQuery}
+                                  onChange={(event) => setLocationBodegaQuery(event.target.value)}
+                                />
+                              </div>
+                              <div className="create-user__dropdown-results">
+                                {locationSearchLoading.bodega && <small className="muted">Buscando...</small>}
+                                {!locationSearchLoading.bodega && !locationBodegaOptions.length && (
+                                  <small className="muted">Sin resultados.</small>
+                                )}
+                                {locationBodegaOptions.map((bodega) => (
+                                  <button
+                                    key={bodega.id}
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      handleLocationBodegaPick(bodega)
+                                    }}
+                                    disabled={loading}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>{bodega.nombre || `Bodega ${bodega.id}`}</strong>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </span>
                       <span>
-                        <select
-                          value={locationDraft.divisionId}
-                          onChange={(event) => handleLocationSelect('divisionId', event.target.value)}
-                          disabled={loading || locationsLoading || !locationDraft.bodegaId}
-                        >
-                          <option value="">Selecciona una division</option>
-                          {availableDivisions.map((division) => (
-                            <option key={division.id} value={division.id}>
-                              {division.nombre || `Division ${division.id}`}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="create-user__dropdown" ref={locationDivisionDropdownRef}>
+                          <button
+                            type="button"
+                            className="create-user__dropdown-trigger"
+                            onClick={() => {
+                              if (loading || locationsLoading || !locationDraft.bodegaId) return
+                              setShowLocationDivisionDropdown((prev) => !prev)
+                              setShowLocationBranchDropdown(false)
+                              setShowLocationBodegaDropdown(false)
+                              setShowLocationSubdivisionDropdown(false)
+                            }}
+                            disabled={loading || locationsLoading || !locationDraft.bodegaId}
+                          >
+                            <span>{selectedLocationDivision?.nombre || 'Selecciona una division'}</span>
+                            <i className={`pi pi-chevron-${showLocationDivisionDropdown ? 'up' : 'down'}`} />
+                          </button>
+
+                          {showLocationDivisionDropdown && (
+                            <div className="create-user__dropdown-panel">
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar division"
+                                  value={locationDivisionQuery}
+                                  onChange={(event) => setLocationDivisionQuery(event.target.value)}
+                                />
+                              </div>
+                              <div className="create-user__dropdown-results">
+                                {locationSearchLoading.division && <small className="muted">Buscando...</small>}
+                                {!locationSearchLoading.division && !locationDivisionOptions.length && (
+                                  <small className="muted">Sin resultados.</small>
+                                )}
+                                {locationDivisionOptions.map((division) => (
+                                  <button
+                                    key={division.id}
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      handleLocationDivisionPick(division)
+                                    }}
+                                    disabled={loading}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>{division.nombre || `Division ${division.id}`}</strong>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </span>
                       <span>
-                        <select
-                          value={locationDraft.subdivisionId}
-                          onChange={(event) => handleLocationSelect('subdivisionId', event.target.value)}
-                          disabled={loading || locationsLoading || !locationDraft.divisionId}
-                        >
-                          <option value="">Selecciona una subdivision</option>
-                          {availableSubdivisions.map((subdivision) => (
-                            <option key={subdivision.id} value={subdivision.id}>
-                              {subdivision.nombre || `Subdivision ${subdivision.id}`}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="create-user__dropdown" ref={locationSubdivisionDropdownRef}>
+                          <button
+                            type="button"
+                            className="create-user__dropdown-trigger"
+                            onClick={() => {
+                              if (loading || locationsLoading || !locationDraft.divisionId) return
+                              setShowLocationSubdivisionDropdown((prev) => !prev)
+                              setShowLocationBranchDropdown(false)
+                              setShowLocationBodegaDropdown(false)
+                              setShowLocationDivisionDropdown(false)
+                            }}
+                            disabled={loading || locationsLoading || !locationDraft.divisionId}
+                          >
+                            <span>{selectedLocationSubdivision?.nombre || 'Selecciona una subdivision'}</span>
+                            <i className={`pi pi-chevron-${showLocationSubdivisionDropdown ? 'up' : 'down'}`} />
+                          </button>
+
+                          {showLocationSubdivisionDropdown && (
+                            <div className="create-user__dropdown-panel">
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar subdivision"
+                                  value={locationSubdivisionQuery}
+                                  onChange={(event) => setLocationSubdivisionQuery(event.target.value)}
+                                />
+                              </div>
+                              <div className="create-user__dropdown-results">
+                                {locationSearchLoading.subdivision && <small className="muted">Buscando...</small>}
+                                {!locationSearchLoading.subdivision && !locationSubdivisionOptions.length && (
+                                  <small className="muted">Sin resultados.</small>
+                                )}
+                                {locationSubdivisionOptions.map((subdivision) => (
+                                  <button
+                                    key={subdivision.id}
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      handleLocationSubdivisionPick(subdivision)
+                                    }}
+                                    disabled={loading}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>{subdivision.nombre || `Subdivision ${subdivision.id}`}</strong>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <input
@@ -2087,8 +2615,4 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
 }
 
 export default CreateProducto
-
-
-
-
 
