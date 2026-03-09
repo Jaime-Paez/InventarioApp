@@ -1538,6 +1538,20 @@ function RecordatoriosPopup({
                           ) &&
                           typeof onOpenTransferRequestInEntradas === 'function'
                         )
+                        const hasSentReminderForSameRequest = (
+                          isTransferContextReminder &&
+                          Boolean(solicitudId) &&
+                          (Array.isArray(reminders) ? reminders : []).some((candidate) => (
+                            normalizeReminderContextType(candidate?.context?.type) === 'solicitud_traslado' &&
+                            normalizeId(candidate?.context?.id) === solicitudId &&
+                            normalizeId(candidate?.id) !== normalizeId(reminder?.id) &&
+                            getReminderDecisionStatus(candidate) === 'enviado'
+                          ))
+                        )
+                        const shouldUseSentCopyOnTransferEntryAction = (
+                          decisionStatus === 'enviado' ||
+                          (decisionStatus === 'aceptada' && hasSentReminderForSameRequest)
+                        )
                         const isOpeningTransfer = (
                           normalizeId(openingTransferReminderId) &&
                           normalizeId(openingTransferReminderId) === normalizeId(reminder?.id)
@@ -1636,8 +1650,8 @@ function RecordatoriosPopup({
                                   {isOpeningTransfer
                                     ? 'Abriendo...'
                                     : (
-                                      decisionStatus === 'enviado'
-                                        ? 'Ver envio pendiente'
+                                      shouldUseSentCopyOnTransferEntryAction
+                                        ? 'Esta solicitud ya fue enviada, ver envio'
                                         : 'Ver en entradas'
                                     )}
                                 </button>
