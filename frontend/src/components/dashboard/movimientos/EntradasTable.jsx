@@ -714,6 +714,8 @@ function EntradasTable({
     const textColor = content === '-' ? '#9ca3af' : undefined
     const normalizedEstado = normalizeValue(rowData?.estado_nombre)
     const isSolicitudTraslado = Boolean(rowData?.es_solicitud_traslado)
+    const normalizedSubTipo = normalizeValue(rowData?.sub_tipo_nombre || rowData?.sub_tipo_movimiento)
+    const isTransferRow = isSolicitudTraslado || normalizedSubTipo.includes('trasl')
     const isPendingSolicitud = isSolicitudTraslado && normalizedEstado.includes('pend')
     const isRejectedSolicitud =
       isSolicitudTraslado &&
@@ -722,7 +724,7 @@ function EntradasTable({
       isSolicitudTraslado &&
       (normalizedEstado.includes('acept') || normalizedEstado.includes('aprob'))
     const isSentSolicitud =
-      isSolicitudTraslado &&
+      isTransferRow &&
       normalizedEstado.includes('envi')
     const className = [
       'cell-tooltip',
@@ -1137,6 +1139,8 @@ function EntradasTable({
             const classes = []
             const normalizedEstado = normalizeValue(rowData?.estado_nombre)
             const isSolicitudTraslado = Boolean(rowData?.es_solicitud_traslado)
+            const normalizedSubTipo = normalizeValue(rowData?.sub_tipo_nombre || rowData?.sub_tipo_movimiento)
+            const isTransferRow = isSolicitudTraslado || normalizedSubTipo.includes('trasl')
             if (selectedRowIds.includes(normId(rowData?.id))) {
               classes.push('selected-row-shadow')
             }
@@ -1149,7 +1153,7 @@ function EntradasTable({
             if (isSolicitudTraslado && (normalizedEstado.includes('acept') || normalizedEstado.includes('aprob'))) {
               classes.push('entradas-row--accepted-solicitud')
             }
-            if (isSolicitudTraslado && normalizedEstado.includes('envi')) {
+            if (isTransferRow && normalizedEstado.includes('envi')) {
               classes.push('entradas-row--sent-solicitud')
             }
             return classes.join(' ')

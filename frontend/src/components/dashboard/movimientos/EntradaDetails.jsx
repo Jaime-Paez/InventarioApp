@@ -1774,7 +1774,7 @@ function EntradaDetails({
     hasPreviewData &&
     (normalizedSelectedEstadoName.includes('acept') || normalizedSelectedEstadoName.includes('aprob'))
   const isSentSolicitudRibbon =
-    hasPreviewData &&
+    isTraslado &&
     normalizedSelectedEstadoName.includes('envi')
   const showSolicitudRibbon =
     isPendingSolicitudRibbon ||
