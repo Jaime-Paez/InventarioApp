@@ -827,7 +827,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         if decision in {"aceptar", "aprobar", "aprobada", "approve", "approved"}:
             with transaction.atomic():
                 solicitud_locked = (
-                    SolicitudTraslado.objects.select_for_update()
+                    SolicitudTraslado.objects.select_for_update(of=("self",))
                     .select_related(
                         "sucursal_solicitante",
                         "sucursal_proveedora",
