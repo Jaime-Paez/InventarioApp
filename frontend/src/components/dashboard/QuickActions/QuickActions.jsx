@@ -105,6 +105,7 @@ function QuickActions({
   user,
   onTransferDecisionAccepted,
   onOpenTransferRequestInEntradas,
+  onOpenTransferRequestInSalidas,
   allowUrgentShield = true,
 }) {
   const wrapRef = useRef(null)
@@ -1499,6 +1500,7 @@ function QuickActions({
         onFocusReminderHandled={() => setFocusReminderId('')}
         onTransferDecisionAccepted={onTransferDecisionAccepted}
         onOpenTransferRequestInEntradas={onOpenTransferRequestInEntradas}
+        onOpenTransferRequestInSalidas={onOpenTransferRequestInSalidas}
       />
     </>
   )

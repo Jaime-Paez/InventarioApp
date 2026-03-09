@@ -211,6 +211,38 @@ function Workspace({
     })
   }, [onSelectTab, permissionIndex])
 
+  const handleOpenTransferRequestInSalidas = useCallback((payload) => {
+    const solicitud = payload?.solicitud || null
+    const solicitudId = String(payload?.solicitudId || solicitud?.id || '').trim()
+    if (!solicitudId) return
+    if (!labelHasAccess('Salidas', permissionIndex)) return
+
+    const sucursalProveedoraId = String(
+      payload?.sucursalProveedoraId ||
+      solicitud?.sucursal_proveedora_id ||
+      ''
+    ).trim()
+    const movimientoSalidaId = String(
+      payload?.movimientoSalidaId ||
+      solicitud?.movimiento_salida_id ||
+      ''
+    ).trim()
+
+    if (sucursalProveedoraId) {
+      setMovementBranchSelection((prev) => ({ ...prev, Salidas: sucursalProveedoraId }))
+    }
+
+    onSelectTab?.('Salidas')
+    setPendingTransferSalidaRequest({
+      requestKey: `${Date.now()}-${solicitudId}`,
+      solicitudId,
+      sucursalProveedoraId,
+      movimientoSalidaId,
+      solicitud,
+      mode: 'view',
+    })
+  }, [onSelectTab, permissionIndex])
+
   const handleTransferEntradaRequestHandled = useCallback(() => {
     setPendingTransferEntradaRequest(null)
   }, [])
@@ -357,6 +389,7 @@ function Workspace({
           allowUrgentShield={allowUrgentShield}
           onTransferDecisionAccepted={handleTransferDecisionAccepted}
           onOpenTransferRequestInEntradas={handleOpenTransferRequestInEntradas}
+          onOpenTransferRequestInSalidas={handleOpenTransferRequestInSalidas}
         />
       </div>
 

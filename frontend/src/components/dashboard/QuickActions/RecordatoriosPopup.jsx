@@ -311,6 +311,7 @@ function RecordatoriosPopup({
   onFocusReminderHandled,
   onTransferDecisionAccepted,
   onOpenTransferRequestInEntradas,
+  onOpenTransferRequestInSalidas,
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const [users, setUsers] = useState([])
@@ -1051,21 +1052,37 @@ function RecordatoriosPopup({
       if (transferLifecycleBySolicitudId[solicitudId]) return
       if (transferLifecycleInFlightRef.current.has(solicitudId)) return
 
+      setTransferLifecycleBySolicitudId((prev) => {
+        if (prev[solicitudId]) return prev
+        return {
+          ...prev,
+          [solicitudId]: {
+            stage: '',
+            loading: true,
+          },
+        }
+      })
       transferLifecycleInFlightRef.current.add(solicitudId)
 
       void (async () => {
         try {
           const solicitudDetail = await fetchTransferSolicitudDetail(solicitudId)
           const stage = await resolveTransferLifecycleStage(solicitudDetail)
-          setTransferLifecycleBySolicitudId((prev) => {
-            if (prev[solicitudId]) return prev
-            return {
-              ...prev,
-              [solicitudId]: {
-                stage,
-              },
-            }
-          })
+          setTransferLifecycleBySolicitudId((prev) => ({
+            ...prev,
+            [solicitudId]: {
+              stage,
+              loading: false,
+            },
+          }))
+        } catch {
+          setTransferLifecycleBySolicitudId((prev) => ({
+            ...prev,
+            [solicitudId]: {
+              stage: 'aceptada',
+              loading: false,
+            },
+          }))
         } finally {
           transferLifecycleInFlightRef.current.delete(solicitudId)
         }
@@ -1079,6 +1096,51 @@ function RecordatoriosPopup({
     token,
     transferLifecycleBySolicitudId,
   ])
+
+  const handleOpenTransferInSalidas = useCallback(
+    async (reminder) => {
+      if (typeof onOpenTransferRequestInSalidas !== 'function') return
+      const solicitudId = normalizeId(reminder?.context?.id)
+      const reminderId = normalizeId(reminder?.id) || solicitudId
+      if (!solicitudId) {
+        notifyError('No se encontro la solicitud asociada a este recordatorio.')
+        return
+      }
+
+      setOpeningTransferReminderId(reminderId)
+      try {
+        const solicitudDetail = await fetchTransferSolicitudDetail(solicitudId)
+        if (!solicitudDetail) {
+          throw new Error('No se pudo abrir la solicitud en Salidas.')
+        }
+
+        const movimientoSalidaId = normalizeId(solicitudDetail?.movimiento_salida_id)
+        if (!movimientoSalidaId) {
+          throw new Error('La solicitud todavia no tiene una salida generada.')
+        }
+
+        onOpenTransferRequestInSalidas({
+          requestKey: `${Date.now()}-${solicitudId}`,
+          solicitudId,
+          sucursalProveedoraId: String(solicitudDetail?.sucursal_proveedora_id || '').trim(),
+          movimientoSalidaId,
+          solicitud: solicitudDetail,
+          mode: 'view',
+        })
+        onClose?.()
+      } catch (error) {
+        notifyError(error?.message || 'No se pudo abrir la salida asociada al traslado.')
+      } finally {
+        setOpeningTransferReminderId('')
+      }
+    },
+    [
+      fetchTransferSolicitudDetail,
+      notifyError,
+      onClose,
+      onOpenTransferRequestInSalidas,
+    ]
+  )
 
   const handleOpenTransferInEntradas = useCallback(
     async (reminder) => {
@@ -1380,6 +1442,15 @@ function RecordatoriosPopup({
                         const decisionStatus = getReminderDecisionStatus(reminder)
                         const isTransferContextReminder =
                           normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado'
+                        const solicitudId = normalizeId(reminder?.context?.id)
+                        const transferLifecycle = transferLifecycleBySolicitudId?.[solicitudId] || null
+                        const transferLifecycleStage = String(transferLifecycle?.stage || '').trim()
+                        const isTransferLifecycleLoading = (
+                          isSpecialReminder &&
+                          isTransferContextReminder &&
+                          decisionStatus === 'aceptada' &&
+                          (!transferLifecycle || Boolean(transferLifecycle?.loading))
+                        )
                         const canResolveDecision = (
                           isSpecialReminder &&
                           decisionStatus === 'pendiente' &&
@@ -1389,26 +1460,21 @@ function RecordatoriosPopup({
                           isSpecialReminder &&
                           isTransferContextReminder &&
                           decisionStatus === 'aceptada' &&
-                          (
-                            () => {
-                              const solicitudId = normalizeId(reminder?.context?.id)
-                              const stage = String(transferLifecycleBySolicitudId?.[solicitudId]?.stage || '').trim()
-                              return stage !== 'enviado' && stage !== 'recibido'
-                            }
-                          )() &&
+                          transferLifecycleStage === 'aceptada' &&
                           typeof onTransferDecisionAccepted === 'function'
                         )
-                        const canOpenTransferAfterSentOrReceived = (
+                        const canOpenSentTransferInSalidas = (
                           isSpecialReminder &&
                           isTransferContextReminder &&
                           decisionStatus === 'aceptada' &&
-                          (
-                            () => {
-                              const solicitudId = normalizeId(reminder?.context?.id)
-                              const stage = String(transferLifecycleBySolicitudId?.[solicitudId]?.stage || '').trim()
-                              return stage === 'enviado' || stage === 'recibido'
-                            }
-                          )() &&
+                          transferLifecycleStage === 'enviado' &&
+                          typeof onOpenTransferRequestInSalidas === 'function'
+                        )
+                        const canOpenReceivedTransferInEntradas = (
+                          isSpecialReminder &&
+                          isTransferContextReminder &&
+                          decisionStatus === 'aceptada' &&
+                          transferLifecycleStage === 'recibido' &&
                           typeof onOpenTransferRequestInEntradas === 'function'
                         )
                         const canOpenTransferInEntradas = (
@@ -1474,6 +1540,15 @@ function RecordatoriosPopup({
                                 >
                                   Resolver solicitud
                                 </button>
+                              ) : isTransferLifecycleLoading ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  disabled
+                                >
+                                  <Loader2 className="recordatorios-popup__inline-spinner" />
+                                  Validando estado...
+                                </button>
                               ) : canCreateSalidaFromReminder ? (
                                 <button
                                   type="button"
@@ -1483,22 +1558,25 @@ function RecordatoriosPopup({
                                 >
                                   {isOpeningTransfer ? 'Abriendo...' : 'Crear salida'}
                                 </button>
-                              ) : canOpenTransferAfterSentOrReceived ? (
+                              ) : canOpenSentTransferInSalidas ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => handleOpenTransferInSalidas(reminder)}
+                                  disabled={isOpeningTransfer}
+                                >
+                                  {isOpeningTransfer
+                                    ? 'Abriendo...'
+                                    : 'Esta solicitud ya fue enviada, ver envio'}
+                                </button>
+                              ) : canOpenReceivedTransferInEntradas ? (
                                 <button
                                   type="button"
                                   className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
                                   onClick={() => handleOpenTransferInEntradas(reminder)}
                                   disabled={isOpeningTransfer}
                                 >
-                                  {isOpeningTransfer
-                                    ? 'Abriendo...'
-                                    : (
-                                      String(
-                                        transferLifecycleBySolicitudId?.[normalizeId(reminder?.context?.id)]?.stage || ''
-                                      ).trim() === 'recibido'
-                                        ? 'Esta solicitud ya fue recibida, ver entrada'
-                                        : 'Esta solicitud ya fue enviada, ver envio'
-                                    )}
+                                  {isOpeningTransfer ? 'Abriendo...' : 'Esta solicitud ya fue recibida, ver entrada'}
                                 </button>
                               ) : canOpenTransferInEntradas ? (
                                 <button

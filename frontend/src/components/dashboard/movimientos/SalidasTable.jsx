@@ -801,6 +801,39 @@ function SalidasTable({
       onPendingTransferSalidaRequestHandled?.()
     }
 
+    const targetBranchId = String(request?.sucursalProveedoraId || '').trim()
+    if (
+      targetBranchId &&
+      normalizedCreateBranchId !== 'all' &&
+      normalizedCreateBranchId !== targetBranchId
+    ) {
+      return
+    }
+
+    const requestMode = String(request?.mode || '').trim().toLowerCase()
+    if (requestMode === 'view') {
+      const movimientoSalidaIdRaw = request?.movimientoSalidaId ?? request?.solicitud?.movimiento_salida_id
+      const movimientoSalidaId = String(movimientoSalidaIdRaw || '').trim()
+      if (!movimientoSalidaId) {
+        toast.current?.show({
+          severity: 'warn',
+          summary: 'Salida no disponible',
+          detail: 'La solicitud no tiene una salida asociada para visualizar.',
+          life: 3200,
+        })
+        markHandled()
+        return
+      }
+
+      const parsedId = Number(movimientoSalidaId)
+      setShowCreateModal(false)
+      setCreatePrefillTransferRequest(null)
+      setSelectedId(Number.isFinite(parsedId) ? parsedId : movimientoSalidaId)
+      setShowDetailsModal(true)
+      markHandled()
+      return
+    }
+
     if (!canCreate) {
       toast.current?.show({
         severity: 'warn',
@@ -809,11 +842,6 @@ function SalidasTable({
         life: 3200,
       })
       markHandled()
-      return
-    }
-
-    const targetBranchId = String(request?.sucursalProveedoraId || '').trim()
-    if (targetBranchId && normalizedCreateBranchId !== targetBranchId) {
       return
     }
 
