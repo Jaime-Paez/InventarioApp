@@ -879,9 +879,15 @@ function EntradasTable({
       onPendingTransferEntradaRequestHandled?.()
     }
 
+    const requestMode = String(request?.mode || '').trim().toLowerCase()
     const previewData = request?.previewData
     const solicitudId = String(request?.solicitudId || previewData?.solicitud_traslado_id || '').trim()
-    if (!solicitudId || !previewData) {
+    const movimientoEntradaId = String(
+      request?.movimientoEntradaId ||
+      previewData?.movimiento_entrada_id ||
+      ''
+    ).trim()
+    if (!solicitudId) {
       markHandled()
       return
     }
@@ -890,6 +896,20 @@ function EntradasTable({
       request?.sucursalSolicitanteId || previewData?.sucursal_solicitante_id || ''
     ).trim()
     if (targetBranchId && normalizedCreateBranchId !== 'all' && normalizedCreateBranchId !== targetBranchId) {
+      return
+    }
+
+    if (requestMode === 'view' && movimientoEntradaId) {
+      const parsedId = Number(movimientoEntradaId)
+      setSelectedSolicitudPreview(null)
+      setSelectedId(Number.isFinite(parsedId) ? parsedId : movimientoEntradaId)
+      setShowDetailsModal(true)
+      markHandled()
+      return
+    }
+
+    if (!previewData) {
+      markHandled()
       return
     }
 

@@ -1154,11 +1154,37 @@ function RecordatoriosPopup({
 
       setOpeningTransferReminderId(reminderId)
       try {
+        const solicitudDetail = await fetchTransferSolicitudDetail(solicitudId)
+        const movimientoEntradaId = normalizeId(solicitudDetail?.movimiento_entrada_id)
         const previewFromTable = await fetchTransferPreviewFromEntradaTable(reminder)
         const previewFromDetail = previewFromTable
           ? null
-          : await fetchTransferPreviewFromDetail(solicitudId)
+          : (
+            solicitudDetail
+              ? mapTransferDetailToEntradaPreview(solicitudDetail)
+              : await fetchTransferPreviewFromDetail(solicitudId)
+          )
         const previewData = previewFromTable || previewFromDetail
+
+        const sucursalSolicitanteId = String(
+          solicitudDetail?.sucursal_solicitante_id ||
+          previewData?.sucursal_solicitante_id ||
+          ''
+        ).trim()
+
+        if (movimientoEntradaId) {
+          onOpenTransferRequestInEntradas({
+            requestKey: `${Date.now()}-${solicitudId}`,
+            solicitudId,
+            sucursalSolicitanteId,
+            previewData,
+            movimientoEntradaId,
+            mode: 'view',
+          })
+          onClose?.()
+          return
+        }
+
         if (!previewData) {
           throw new Error('No se pudo abrir la solicitud en Entradas.')
         }
@@ -1166,8 +1192,9 @@ function RecordatoriosPopup({
         onOpenTransferRequestInEntradas({
           requestKey: `${Date.now()}-${solicitudId}`,
           solicitudId,
-          sucursalSolicitanteId: String(previewData?.sucursal_solicitante_id || '').trim(),
+          sucursalSolicitanteId,
           previewData,
+          mode: 'preview',
         })
         onClose?.()
       } catch (error) {
@@ -1177,6 +1204,7 @@ function RecordatoriosPopup({
       }
     },
     [
+      fetchTransferSolicitudDetail,
       fetchTransferPreviewFromDetail,
       fetchTransferPreviewFromEntradaTable,
       notifyError,

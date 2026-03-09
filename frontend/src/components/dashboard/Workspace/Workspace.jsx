@@ -191,6 +191,12 @@ function Workspace({
     const solicitudId = String(payload?.solicitudId || previewData?.solicitud_traslado_id || '').trim()
     if (!solicitudId) return
     if (!labelHasAccess('Entradas', permissionIndex)) return
+    const requestMode = String(payload?.mode || '').trim().toLowerCase()
+    const movimientoEntradaId = String(
+      payload?.movimientoEntradaId ||
+      previewData?.movimiento_entrada_id ||
+      ''
+    ).trim()
 
     const sucursalSolicitanteId = String(
       payload?.sucursalSolicitanteId ||
@@ -208,6 +214,8 @@ function Workspace({
       solicitudId,
       sucursalSolicitanteId,
       previewData,
+      movimientoEntradaId,
+      mode: requestMode === 'view' && movimientoEntradaId ? 'view' : 'preview',
     })
   }, [onSelectTab, permissionIndex])
 
