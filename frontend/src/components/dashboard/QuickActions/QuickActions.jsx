@@ -1963,7 +1963,7 @@ function QuickActions({
         </button>
       ))}
       <div className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}>
-        {canReceiveTransferRequest && (
+        {canReceiveTransferRequest && hasInTransitShipments && (
           <div
             ref={inTransitShipmentsRef}
             className={`quick-actions__pending-shipments quick-actions__in-transit${isInTransitShipmentsOpen ? ' is-open' : ''}`}
