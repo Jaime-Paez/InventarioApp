@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, Loader2, Moon, Search, SunMedium } from 'lucide-react'
+import { Bell, Loader2, Moon, Search, SunMedium, X } from 'lucide-react'
 import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
@@ -42,6 +42,20 @@ const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-stat
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
+const toPositiveInt = (value, fallback = 0) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.max(0, parsed)
+}
+const nowReminderDateTime = () => {
+  const now = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
+  return {
+    date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+    iso: now.toISOString(),
+  }
+}
 const normalizeReminderContextType = (value) =>
   String(value || '')
     .trim()
@@ -119,9 +133,12 @@ function QuickActions({
   const reminderButtonRef = useRef(null)
   const pendingShipmentsRef = useRef(null)
   const pendingShipmentsTriggerRef = useRef(null)
+  const inTransitShipmentsRef = useRef(null)
+  const inTransitShipmentsTriggerRef = useRef(null)
   const moveTimerRef = useRef(null)
   const remindersPollInFlightRef = useRef(false)
   const pendingShipmentsPollInFlightRef = useRef(false)
+  const inTransitShipmentsPollInFlightRef = useRef(false)
   const audioContextRef = useRef(null)
   const notificationAudioRef = useRef(null)
   const didInitUrgentSnapshotRef = useRef(false)
@@ -137,11 +154,22 @@ function QuickActions({
   const [isMoving, setIsMoving] = useState(false)
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false)
   const [isPendingShipmentsOpen, setIsPendingShipmentsOpen] = useState(false)
+  const [isInTransitShipmentsOpen, setIsInTransitShipmentsOpen] = useState(false)
   const [isTransferSendModalOpen, setIsTransferSendModalOpen] = useState(false)
+  const [isReceiveShipmentModalOpen, setIsReceiveShipmentModalOpen] = useState(false)
   const [reminders, setReminders] = useState(() => readRemindersFromStorage())
   const [pendingShipments, setPendingShipments] = useState([])
+  const [inTransitShipments, setInTransitShipments] = useState([])
   const [pendingShipmentsLoading, setPendingShipmentsLoading] = useState(false)
+  const [inTransitShipmentsLoading, setInTransitShipmentsLoading] = useState(false)
   const [openingPendingShipmentId, setOpeningPendingShipmentId] = useState('')
+  const [openingInTransitShipmentId, setOpeningInTransitShipmentId] = useState('')
+  const [activeInTransitShipment, setActiveInTransitShipment] = useState(null)
+  const [inTransitSubdivisions, setInTransitSubdivisions] = useState([])
+  const [inTransitSubdivisionsLoading, setInTransitSubdivisionsLoading] = useState(false)
+  const [receiveShipmentDraftByProductId, setReceiveShipmentDraftByProductId] = useState({})
+  const [receiveShipmentSubmitting, setReceiveShipmentSubmitting] = useState(false)
+  const [receiveShipmentError, setReceiveShipmentError] = useState('')
   const [clockTick, setClockTick] = useState(() => Date.now())
   const [focusReminderId, setFocusReminderId] = useState('')
   const [urgentVisualProgressById, setUrgentVisualProgressById] = useState({})
@@ -153,6 +181,7 @@ function QuickActions({
   const currentPrimaryUserId = currentUserIdValues[0] || ''
   const currentUserName = useMemo(() => formatCurrentUserName(user), [user])
   const hasPendingShipments = pendingShipments.length > 0
+  const hasInTransitShipments = inTransitShipments.length > 0
   const canDecideTransferRequest = useMemo(() => {
     if (user?.is_staff || user?.is_superuser) return true
     if (!Array.isArray(user?.permisos)) return true
@@ -161,6 +190,19 @@ function QuickActions({
       (permission) => String(permission?.modulo || '').trim().toLowerCase() === 'movimientos_salidas'
     )
     return Boolean(salidasPermission?.puede_crear || salidasPermission?.puede_actualizar)
+  }, [user])
+  const canReceiveTransferRequest = useMemo(() => {
+    if (user?.is_staff || user?.is_superuser) return true
+    if (!Array.isArray(user?.permisos)) return true
+    const permissions = user.permisos
+    const entradasPermission = permissions.find(
+      (permission) => String(permission?.modulo || '').trim().toLowerCase() === 'movimientos_entradas'
+    )
+    return Boolean(
+      entradasPermission?.puede_crear ||
+      entradasPermission?.puede_actualizar ||
+      entradasPermission?.puede_leer
+    )
   }, [user])
 
   const showErrorToast = useCallback((message) => {
@@ -239,6 +281,49 @@ function QuickActions({
       if (!silent) setPendingShipmentsLoading(false)
     }
   }, [canDecideTransferRequest, showErrorToast, token])
+
+  const fetchInTransitTransferShipments = useCallback(async ({ silent = false } = {}) => {
+    if (!token || !canReceiveTransferRequest) {
+      setInTransitShipments([])
+      return []
+    }
+
+    if (inTransitShipmentsPollInFlightRef.current) return []
+    inTransitShipmentsPollInFlightRef.current = true
+    if (!silent) setInTransitShipmentsLoading(true)
+
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/envios-en-camino/?page_size=200`,
+        {},
+        token
+      )
+      if (!response.ok) {
+        throw new Error('No se pudieron cargar los envios en camino.')
+      }
+
+      const payload = await response.json().catch(() => ({}))
+      const rows = parseApiList(payload).sort((a, b) => {
+        const dateA = parseEntityTimestamp(a?.fecha, a?.created_at, a?.updated_at)
+        const dateB = parseEntityTimestamp(b?.fecha, b?.created_at, b?.updated_at)
+        if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+          return dateB - dateA
+        }
+        return Number(b?.id || 0) - Number(a?.id || 0)
+      })
+      setInTransitShipments(rows)
+      return rows
+    } catch (error) {
+      if (!silent) setInTransitShipments([])
+      if (!silent) {
+        showErrorToast(error?.message || 'No se pudieron cargar los envios en camino.')
+      }
+      return []
+    } finally {
+      inTransitShipmentsPollInFlightRef.current = false
+      if (!silent) setInTransitShipmentsLoading(false)
+    }
+  }, [canReceiveTransferRequest, showErrorToast, token])
 
   const ensureAudioContext = useCallback(() => {
     if (typeof window === 'undefined') return null
@@ -421,6 +506,17 @@ function QuickActions({
   }, [canDecideTransferRequest, fetchPendingTransferShipments, token])
 
   useEffect(() => {
+    if (!canReceiveTransferRequest || !token) {
+      setInTransitShipments([])
+      setInTransitShipmentsLoading(false)
+      setIsInTransitShipmentsOpen(false)
+      setOpeningInTransitShipmentId('')
+      return
+    }
+    void fetchInTransitTransferShipments()
+  }, [canReceiveTransferRequest, fetchInTransitTransferShipments, token])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return undefined
 
     const handleTransferSalidaModalState = (event) => {
@@ -441,6 +537,12 @@ function QuickActions({
     if (!canDecideTransferRequest || !token) return
     void fetchPendingTransferShipments({ silent: true })
   }, [canDecideTransferRequest, fetchPendingTransferShipments, isTransferSendModalOpen, token])
+
+  useEffect(() => {
+    if (!token || !canReceiveTransferRequest) return
+    if (isReceiveShipmentModalOpen) return
+    void fetchInTransitTransferShipments({ silent: true })
+  }, [canReceiveTransferRequest, fetchInTransitTransferShipments, isReceiveShipmentModalOpen, token])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -476,9 +578,47 @@ function QuickActions({
   }, [canDecideTransferRequest, fetchPendingTransferShipments, token])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    if (!token || !canReceiveTransferRequest) return undefined
+
+    let cancelled = false
+
+    const syncInTransitShipments = async () => {
+      if (cancelled) return
+      await fetchInTransitTransferShipments({ silent: true })
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return
+      void syncInTransitShipments()
+    }
+
+    const handleFocus = () => {
+      void syncInTransitShipments()
+    }
+
+    void syncInTransitShipments()
+    const intervalId = window.setInterval(syncInTransitShipments, REMINDERS_POLL_MS)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [canReceiveTransferRequest, fetchInTransitTransferShipments, token])
+
+  useEffect(() => {
     if (hasPendingShipments) return
     setIsPendingShipmentsOpen(false)
   }, [hasPendingShipments])
+
+  useEffect(() => {
+    if (hasInTransitShipments) return
+    setIsInTransitShipmentsOpen(false)
+  }, [hasInTransitShipments])
 
   useEffect(() => {
     if (!isPendingShipmentsOpen) return undefined
@@ -502,6 +642,30 @@ function QuickActions({
       window.removeEventListener('keydown', handleEscape)
     }
   }, [isPendingShipmentsOpen])
+
+  useEffect(() => {
+    if (!isInTransitShipmentsOpen) return undefined
+
+    const handleClickOutside = (event) => {
+      if (inTransitShipmentsRef.current?.contains(event.target)) return
+      setIsInTransitShipmentsOpen(false)
+    }
+
+    const handleEscape = (event) => {
+      if (event.key !== 'Escape') return
+      setIsInTransitShipmentsOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside, { passive: true })
+    window.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [isInTransitShipmentsOpen])
 
   const eligibleUrgentDecisionReminders = useMemo(() => {
     if (!allowUrgentShield || !canDecideTransferRequest) return []
@@ -750,6 +914,7 @@ function QuickActions({
       !urgentShieldTargets.length ||
       isReminderModalOpen ||
       isTransferSendModalOpen ||
+      isReceiveShipmentModalOpen ||
       typeof window === 'undefined'
     ) {
       return []
@@ -821,6 +986,7 @@ function QuickActions({
   }, [
     clockTick,
     isReminderModalOpen,
+    isReceiveShipmentModalOpen,
     isTransferSendModalOpen,
     urgentProgressById,
     urgentShieldTargets,
@@ -976,6 +1142,43 @@ function QuickActions({
     return sortRemindersForCurrentUser(related, currentUserIds)
   }, [reminders, currentUserIds, currentUserName])
 
+  const inTransitSubdivisionById = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(inTransitSubdivisions) ? inTransitSubdivisions : []).map((subdivision) => [
+          normalizeId(subdivision?.id),
+          subdivision,
+        ])
+      ),
+    [inTransitSubdivisions]
+  )
+
+  const receiveShipmentRows = useMemo(
+    () =>
+      Object.values(receiveShipmentDraftByProductId || {}).map((row) => {
+        const sentQty = toPositiveInt(row?.cantidad_enviada, 0)
+        const receivedQty = Math.min(sentQty, toPositiveInt(row?.cantidad_recibida, 0))
+        const missingQty = Math.max(0, sentQty - receivedQty)
+        const assignedQty = (Array.isArray(row?.ubicaciones) ? row.ubicaciones : []).reduce(
+          (total, location) => total + toPositiveInt(location?.cantidad, 0),
+          0
+        )
+        return {
+          ...row,
+          cantidad_enviada: sentQty,
+          cantidad_recibida: receivedQty,
+          cantidad_faltante: missingQty,
+          cantidad_asignada: assignedQty,
+        }
+      }),
+    [receiveShipmentDraftByProductId]
+  )
+
+  const receiveShipmentTotalMissing = useMemo(
+    () => receiveShipmentRows.reduce((total, row) => total + toPositiveInt(row?.cantidad_faltante, 0), 0),
+    [receiveShipmentRows]
+  )
+
   const setBtnRef = (index) => (element) => {
     btnRefs.current[index] = element
   }
@@ -992,6 +1195,14 @@ function QuickActions({
   const handlePendingShipmentsTriggerRef = useCallback((element) => {
     const hadButton = Boolean(pendingShipmentsTriggerRef.current)
     pendingShipmentsTriggerRef.current = element
+    if (!hadButton && element) {
+      setClockTick(Date.now())
+    }
+  }, [])
+
+  const handleInTransitShipmentsTriggerRef = useCallback((element) => {
+    const hadButton = Boolean(inTransitShipmentsTriggerRef.current)
+    inTransitShipmentsTriggerRef.current = element
     if (!hadButton && element) {
       setClockTick(Date.now())
     }
@@ -1240,6 +1451,7 @@ function QuickActions({
       }
 
       setIsPendingShipmentsOpen(false)
+      setIsInTransitShipmentsOpen(false)
       setIsReminderModalOpen(true)
     },
     [applyReminderUpdate, currentUserIdValues, currentUserIds]
@@ -1250,14 +1462,124 @@ function QuickActions({
     setFocusReminderId('')
   }, [])
 
+  const closeReceiveShipmentModal = useCallback(() => {
+    setIsReceiveShipmentModalOpen(false)
+    setActiveInTransitShipment(null)
+    setReceiveShipmentDraftByProductId({})
+    setReceiveShipmentError('')
+    setReceiveShipmentSubmitting(false)
+  }, [])
+
+  const appendShipmentReceptionReminder = useCallback(
+    ({ shipment, result, totalMissing, items }) => {
+      const solicitudId = normalizeId(shipment?.id)
+      if (!solicitudId) return
+
+      const existingReminders = readRemindersFromStorage()
+      const contextMatchesSolicitud = (reminder) =>
+        normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado' &&
+        normalizeId(reminder?.context?.id) === solicitudId
+      const relatedReminders = existingReminders.filter(contextMatchesSolicitud)
+
+      const appendUniqueRecipient = (list, candidate) => {
+        const normalized = sanitizeRecipient(candidate)
+        if (!normalized?.id) return
+        const alreadyExists = list.some(
+          (recipient) => normalizeId(recipient?.id) === normalizeId(normalized.id)
+        )
+        if (!alreadyExists) list.push(normalized)
+      }
+
+      const reminderRecipients = []
+      relatedReminders.forEach((reminder) => {
+        appendUniqueRecipient(reminderRecipients, reminder?.creator)
+        ;(Array.isArray(reminder?.recipients) ? reminder.recipients : []).forEach((recipient) => {
+          appendUniqueRecipient(reminderRecipients, recipient)
+        })
+      })
+
+      const filteredRecipients = reminderRecipients.filter(
+        (recipient) => normalizeId(recipient?.id) !== normalizeId(currentPrimaryUserId)
+      )
+      if (!filteredRecipients.length) return
+
+      const now = nowReminderDateTime()
+      const requesterName = String(shipment?.sucursal_solicitante || '').trim() || 'Sucursal solicitante'
+      const providerName = String(shipment?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'
+      const contextLabel = `Solicitud de traslado #${String(shipment?.no_documento || solicitudId).trim()}`
+      const shortReference = contextLabel.replace(/^solicitud de traslado\s*/i, '').trim()
+      const missingLines = (Array.isArray(items) ? items : [])
+        .filter((item) => toPositiveInt(item?.cantidad_faltante, 0) > 0)
+        .map((item) => {
+          const productName = String(item?.producto_nombre || item?.producto_codigo || 'Producto').trim()
+          const missingQty = toPositiveInt(item?.cantidad_faltante, 0)
+          const notes = String(item?.novedad || '').trim()
+          return notes ? `${productName}: faltan ${missingQty} (${notes})` : `${productName}: faltan ${missingQty}`
+        })
+
+      const description = result === 'incompleto'
+        ? `${shortReference} llego incompleto en ${requesterName}. Faltantes: ${missingLines.join('; ') || totalMissing}.`
+        : `${shortReference} llego completo en ${requesterName}. Recepcion confirmada para ${providerName}.`
+
+      const currentActorRecipient = (
+        sanitizeRecipient({
+          id:
+            user?.usuarioInternoId ||
+            user?.usuario_interno_id ||
+            user?.usuario_id ||
+            user?.user_id ||
+            user?.id ||
+            'system',
+          name: currentUserName,
+        }) || {
+          id: 'system',
+          name: currentUserName || 'Usuario',
+        }
+      )
+
+      const reminder = {
+        id: createReminderId(),
+        date: now.date,
+        time: now.time,
+        description,
+        creator: currentActorRecipient,
+        recipients: filteredRecipients,
+        context: {
+          type: 'solicitud_traslado',
+          id: solicitudId,
+          label: contextLabel,
+        },
+        kind: 'recordatorio_general',
+        createdAt: now.iso,
+        completedBy: [],
+      }
+
+      writeRemindersToStorage([reminder, ...existingReminders])
+      emitRemindersSync()
+    },
+    [currentPrimaryUserId, currentUserName, user]
+  )
+
   const togglePendingShipmentsPanel = async () => {
     if (!canDecideTransferRequest) return
     if (isPendingShipmentsOpen) {
       setIsPendingShipmentsOpen(false)
       return
     }
+    setIsInTransitShipmentsOpen(false)
     setIsPendingShipmentsOpen(true)
     await fetchPendingTransferShipments()
+  }
+
+  const toggleInTransitShipmentsPanel = async () => {
+    if (!canReceiveTransferRequest) return
+    if (isInTransitShipmentsOpen) {
+      setIsInTransitShipmentsOpen(false)
+      return
+    }
+    setIsPendingShipmentsOpen(false)
+    setIsInTransitShipmentsOpen(true)
+    await fetchInTransitTransferShipments()
   }
 
   const handleOpenPendingShipment = useCallback(
@@ -1291,6 +1613,7 @@ function QuickActions({
           },
         })
         setIsPendingShipmentsOpen(false)
+        setIsInTransitShipmentsOpen(false)
       } catch (error) {
         setIsTransferSendModalOpen(false)
         showErrorToast(error?.message || 'No se pudo abrir la salida pendiente.')
@@ -1301,6 +1624,300 @@ function QuickActions({
     [fetchTransferSolicitudDetail, onTransferDecisionAccepted, showErrorToast]
   )
 
+  const handleOpenInTransitShipment = useCallback(
+    async (shipment) => {
+      if (!token) return
+      const shipmentId = normalizeId(shipment?.id)
+      if (!shipmentId) {
+        showErrorToast('No se pudo abrir el envio en camino.')
+        return
+      }
+
+      setOpeningInTransitShipmentId(shipmentId)
+      setReceiveShipmentError('')
+      setInTransitSubdivisionsLoading(true)
+
+      try {
+        const sucursalSolicitanteId = normalizeId(shipment?.sucursal_solicitante_id)
+        if (!sucursalSolicitanteId) {
+          throw new Error('No se pudo resolver la sucursal solicitante para recibir el traslado.')
+        }
+
+        const response = await authFetch(
+          `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(sucursalSolicitanteId)}`,
+          {},
+          token
+        )
+        if (!response.ok) {
+          throw new Error('No se pudieron cargar las subdivisiones para ubicar los productos.')
+        }
+        const payload = await response.json().catch(() => ({}))
+        const subdivisions = parseApiList(payload)
+        const details = Array.isArray(shipment?.detalles) ? shipment.detalles : []
+        if (!details.length) {
+          throw new Error('Este envio no tiene productos para registrar recepcion.')
+        }
+
+        const firstSubdivisionId = normalizeId(subdivisions?.[0]?.id)
+        const draft = {}
+        details.forEach((detail) => {
+          const productId = normalizeId(detail?.producto_id)
+          if (!productId) return
+          const cantidadEnviada = toPositiveInt(detail?.cantidad_enviada, 0)
+          draft[productId] = {
+            producto_id: toPositiveInt(detail?.producto_id, 0),
+            producto_codigo: String(detail?.producto_codigo || '').trim(),
+            producto_nombre: String(detail?.producto_nombre || '').trim(),
+            cantidad_enviada: cantidadEnviada,
+            cantidad_recibida: cantidadEnviada,
+            novedad: '',
+            ubicaciones: firstSubdivisionId
+              ? [{ subdivision_id: firstSubdivisionId, cantidad: cantidadEnviada }]
+              : [],
+            location_draft_subdivision_id: firstSubdivisionId || '',
+            location_draft_cantidad: cantidadEnviada,
+          }
+        })
+
+        setInTransitSubdivisions(subdivisions)
+        setReceiveShipmentDraftByProductId(draft)
+        setActiveInTransitShipment(shipment)
+        setIsInTransitShipmentsOpen(false)
+        setIsReceiveShipmentModalOpen(true)
+      } catch (error) {
+        showErrorToast(error?.message || 'No se pudo abrir el envio en camino.')
+      } finally {
+        setOpeningInTransitShipmentId('')
+        setInTransitSubdivisionsLoading(false)
+      }
+    },
+    [showErrorToast, token]
+  )
+
+  const handleReceiveShipmentDraftFieldChange = useCallback((productId, field, value) => {
+    const normalizedProductId = normalizeId(productId)
+    if (!normalizedProductId) return
+
+    setReceiveShipmentDraftByProductId((prev) => {
+      const current = prev?.[normalizedProductId]
+      if (!current) return prev
+
+      const nextRow = { ...current }
+      if (field === 'cantidad_recibida') {
+        const max = toPositiveInt(current?.cantidad_enviada, 0)
+        const parsed = Math.min(max, toPositiveInt(value, 0))
+        nextRow.cantidad_recibida = parsed
+        if (toPositiveInt(nextRow.location_draft_cantidad, 0) > parsed) {
+          nextRow.location_draft_cantidad = parsed
+        }
+        const assigned = (Array.isArray(nextRow.ubicaciones) ? nextRow.ubicaciones : []).reduce(
+          (total, row) => total + toPositiveInt(row?.cantidad, 0),
+          0
+        )
+        if (assigned > parsed) {
+          nextRow.ubicaciones = []
+        }
+      } else if (field === 'novedad') {
+        nextRow.novedad = String(value || '')
+      } else if (field === 'location_draft_subdivision_id') {
+        nextRow.location_draft_subdivision_id = normalizeId(value)
+      } else if (field === 'location_draft_cantidad') {
+        nextRow.location_draft_cantidad = Math.min(
+          toPositiveInt(nextRow?.cantidad_recibida, 0),
+          toPositiveInt(value, 0)
+        )
+      }
+
+      return {
+        ...prev,
+        [normalizedProductId]: nextRow,
+      }
+    })
+  }, [])
+
+  const handleAddReceiveShipmentLocation = useCallback((productId) => {
+    const normalizedProductId = normalizeId(productId)
+    if (!normalizedProductId) return
+
+    setReceiveShipmentDraftByProductId((prev) => {
+      const current = prev?.[normalizedProductId]
+      if (!current) return prev
+
+      const subdivisionId = normalizeId(current?.location_draft_subdivision_id)
+      const draftQty = toPositiveInt(current?.location_draft_cantidad, 0)
+      if (!subdivisionId || draftQty <= 0) return prev
+
+      const assigned = (Array.isArray(current?.ubicaciones) ? current.ubicaciones : []).reduce(
+        (total, row) => total + toPositiveInt(row?.cantidad, 0),
+        0
+      )
+      const toAssign = toPositiveInt(current?.cantidad_recibida, 0) - assigned
+      if (toAssign <= 0) return prev
+
+      const allowedQty = Math.min(draftQty, toAssign)
+      const nextLocations = Array.isArray(current?.ubicaciones) ? [...current.ubicaciones] : []
+      const locationIndex = nextLocations.findIndex(
+        (location) => normalizeId(location?.subdivision_id) === subdivisionId
+      )
+      if (locationIndex >= 0) {
+        const existing = nextLocations[locationIndex]
+        nextLocations[locationIndex] = {
+          ...existing,
+          cantidad: toPositiveInt(existing?.cantidad, 0) + allowedQty,
+        }
+      } else {
+        nextLocations.push({
+          subdivision_id: subdivisionId,
+          cantidad: allowedQty,
+        })
+      }
+
+      return {
+        ...prev,
+        [normalizedProductId]: {
+          ...current,
+          ubicaciones: nextLocations,
+        },
+      }
+    })
+  }, [])
+
+  const handleRemoveReceiveShipmentLocation = useCallback((productId, locationIndex) => {
+    const normalizedProductId = normalizeId(productId)
+    if (!normalizedProductId) return
+
+    setReceiveShipmentDraftByProductId((prev) => {
+      const current = prev?.[normalizedProductId]
+      if (!current) return prev
+      const nextLocations = Array.isArray(current?.ubicaciones)
+        ? current.ubicaciones.filter((_, index) => index !== locationIndex)
+        : []
+      return {
+        ...prev,
+        [normalizedProductId]: {
+          ...current,
+          ubicaciones: nextLocations,
+        },
+      }
+    })
+  }, [])
+
+  const handleSubmitShipmentReception = useCallback(
+    async (result) => {
+      if (!token || !activeInTransitShipment) return
+      const normalizedResult = normalizeId(result).toLowerCase()
+      if (normalizedResult !== 'completo' && normalizedResult !== 'incompleto') return
+
+      const rows = Object.values(receiveShipmentDraftByProductId || {})
+      if (!rows.length) {
+        setReceiveShipmentError('No hay productos para registrar recepcion.')
+        return
+      }
+
+      const builtItems = []
+      let totalMissing = 0
+      for (const row of rows) {
+        const productId = toPositiveInt(row?.producto_id, 0)
+        const sentQty = toPositiveInt(row?.cantidad_enviada, 0)
+        const receivedQty = Math.min(sentQty, toPositiveInt(row?.cantidad_recibida, 0))
+        const missingQty = Math.max(0, sentQty - receivedQty)
+        const locations = (Array.isArray(row?.ubicaciones) ? row.ubicaciones : [])
+          .map((location) => ({
+            subdivision_id: toPositiveInt(location?.subdivision_id, 0),
+            cantidad: toPositiveInt(location?.cantidad, 0),
+          }))
+          .filter((location) => location.subdivision_id > 0 && location.cantidad > 0)
+        const assigned = locations.reduce((total, location) => total + toPositiveInt(location.cantidad, 0), 0)
+
+        if (receivedQty > 0 && assigned !== receivedQty) {
+          setReceiveShipmentError(
+            `Debes ubicar completamente el producto ${row?.producto_nombre || row?.producto_codigo || productId}.`
+          )
+          return
+        }
+        if (missingQty > 0 && !String(row?.novedad || '').trim()) {
+          setReceiveShipmentError(
+            `Debes indicar la novedad del faltante para ${row?.producto_nombre || row?.producto_codigo || productId}.`
+          )
+          return
+        }
+
+        totalMissing += missingQty
+        builtItems.push({
+          producto_id: productId,
+          cantidad_recibida: receivedQty,
+          novedad: String(row?.novedad || '').trim(),
+          ubicaciones: locations,
+          cantidad_faltante: missingQty,
+          producto_nombre: row?.producto_nombre || '',
+          producto_codigo: row?.producto_codigo || '',
+        })
+      }
+
+      if (normalizedResult === 'completo' && totalMissing > 0) {
+        setReceiveShipmentError('No puedes marcar completo si hay faltantes.')
+        return
+      }
+      if (normalizedResult === 'incompleto' && totalMissing <= 0) {
+        setReceiveShipmentError('Para marcar incompleto debe existir al menos un faltante.')
+        return
+      }
+
+      setReceiveShipmentError('')
+      setReceiveShipmentSubmitting(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(
+            normalizeId(activeInTransitShipment?.id)
+          )}/confirmar-recepcion/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              resultado: normalizedResult,
+              items: builtItems.map((item) => ({
+                producto_id: item.producto_id,
+                cantidad_recibida: item.cantidad_recibida,
+                novedad: item.novedad,
+                ubicaciones: item.ubicaciones,
+              })),
+            }),
+          },
+          token
+        )
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(
+            String(payload?.detail || '').trim() || 'No se pudo confirmar la recepcion del envio.'
+          )
+        }
+
+        appendShipmentReceptionReminder({
+          shipment: activeInTransitShipment,
+          result: normalizedResult,
+          totalMissing,
+          items: builtItems,
+        })
+        setIsReceiveShipmentModalOpen(false)
+        setActiveInTransitShipment(null)
+        setReceiveShipmentDraftByProductId({})
+        await fetchInTransitTransferShipments({ silent: true })
+      } catch (error) {
+        setReceiveShipmentError(
+          error?.message || 'No se pudo confirmar la recepcion del envio.'
+        )
+      } finally {
+        setReceiveShipmentSubmitting(false)
+      }
+    },
+    [
+      activeInTransitShipment,
+      appendShipmentReceptionReminder,
+      fetchInTransitTransferShipments,
+      receiveShipmentDraftByProductId,
+      token,
+    ]
+  )
+
   const handleUrgentShieldClick = useCallback(
     (shield) => {
       if (!shield) return
@@ -1309,6 +1926,7 @@ function QuickActions({
           void handleOpenPendingShipment(shield.target.solicitud)
           return
         }
+        setIsInTransitShipmentsOpen(false)
         if (!isPendingShipmentsOpen) {
           setIsPendingShipmentsOpen(true)
         }
@@ -1345,6 +1963,90 @@ function QuickActions({
         </button>
       ))}
       <div className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}>
+        {canReceiveTransferRequest && (
+          <div
+            ref={inTransitShipmentsRef}
+            className={`quick-actions__pending-shipments quick-actions__in-transit${isInTransitShipmentsOpen ? ' is-open' : ''}`}
+          >
+            <button
+              ref={handleInTransitShipmentsTriggerRef}
+              type="button"
+              className="quick-actions__pending-shipments-trigger quick-actions__in-transit-trigger"
+              onClick={() => void toggleInTransitShipmentsPanel()}
+              aria-label="Envios en camino"
+            >
+              <span>Envios en camino</span>
+              <span className="quick-actions__pending-shipments-count">
+                {inTransitShipmentsLoading ? '...' : inTransitShipments.length}
+              </span>
+            </button>
+
+            {isInTransitShipmentsOpen && (
+              <div className="quick-actions__pending-shipments-panel quick-actions__in-transit-panel" role="dialog" aria-label="Envios en camino">
+                <div className="quick-actions__pending-shipments-head">
+                  <strong>Envios por recibir</strong>
+                  <button
+                    type="button"
+                    className="quick-actions__pending-shipments-refresh"
+                    onClick={() => void fetchInTransitTransferShipments()}
+                    disabled={inTransitShipmentsLoading}
+                    aria-label="Actualizar envios en camino"
+                  >
+                    <i className="pi pi-refresh" aria-hidden="true" />
+                  </button>
+                </div>
+
+                <div className="quick-actions__pending-shipments-list">
+                  {inTransitShipmentsLoading ? (
+                    <p
+                      className="quick-actions__pending-shipments-empty quick-actions__pending-shipments-loading"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <Loader2 size={14} />
+                      <span>Cargando envios en camino...</span>
+                    </p>
+                  ) : !inTransitShipments.length ? (
+                    <p className="quick-actions__pending-shipments-empty">No hay envios en camino.</p>
+                  ) : (
+                    inTransitShipments.map((shipment) => {
+                      const shipmentId = normalizeId(shipment?.id)
+                      const isOpening = shipmentId && openingInTransitShipmentId === shipmentId
+                      const doc = String(shipment?.no_documento || shipmentId || '').trim()
+                      const providerBranch = String(shipment?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'
+                      const receiveBranch = String(shipment?.sucursal_solicitante || '').trim() || 'Sucursal solicitante'
+                      const fecha = String(shipment?.fecha || '').trim()
+
+                      return (
+                        <button
+                          key={`in-transit-shipment-${shipmentId || doc || 'row'}`}
+                          type="button"
+                          className="quick-actions__pending-shipments-item quick-actions__in-transit-item"
+                          onClick={() => void handleOpenInTransitShipment(shipment)}
+                          disabled={Boolean(isOpening || inTransitSubdivisionsLoading)}
+                        >
+                          <span className="quick-actions__pending-shipments-item-title">
+                            {doc ? `#${doc}` : 'Traslado sin documento'}
+                          </span>
+                          <span className="quick-actions__pending-shipments-item-meta">
+                            Desde: {providerBranch}
+                          </span>
+                          <span className="quick-actions__pending-shipments-item-meta">
+                            Hacia: {receiveBranch}
+                          </span>
+                          <span className="quick-actions__pending-shipments-item-meta">
+                            {isOpening ? 'Abriendo...' : (fecha ? `Fecha: ${fecha}` : 'Abrir recepcion')}
+                          </span>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {canDecideTransferRequest && hasPendingShipments && (
           <div
             ref={pendingShipmentsRef}
@@ -1508,6 +2210,213 @@ function QuickActions({
         onOpenTransferRequestInEntradas={onOpenTransferRequestInEntradas}
         onOpenTransferRequestInSalidas={onOpenTransferRequestInSalidas}
       />
+
+      {isReceiveShipmentModalOpen && (
+        <div
+          className="quick-actions__receive-overlay"
+          onMouseDown={() => {
+            if (receiveShipmentSubmitting) return
+            closeReceiveShipmentModal()
+          }}
+        >
+          <div
+            className="quick-actions__receive-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Registrar recepcion de envio"
+          >
+            <header className="quick-actions__receive-head">
+              <div>
+                <h4>Envio en camino</h4>
+                <p>
+                  #{String(activeInTransitShipment?.no_documento || activeInTransitShipment?.id || '').trim()} desde{' '}
+                  {String(activeInTransitShipment?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="quick-actions__receive-close"
+                onClick={closeReceiveShipmentModal}
+                disabled={receiveShipmentSubmitting}
+                aria-label="Cerrar recepcion"
+              >
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="quick-actions__receive-body">
+              {inTransitSubdivisionsLoading ? (
+                <p className="quick-actions__receive-loading">
+                  <Loader2 size={14} />
+                  Cargando subdivisiones...
+                </p>
+              ) : (
+                <div className="quick-actions__receive-list">
+                  {receiveShipmentRows.map((row) => {
+                    const rowProductId = normalizeId(row?.producto_id)
+                    const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
+                    const assignedQty = toPositiveInt(row?.cantidad_asignada, 0)
+                    return (
+                      <article key={`receive-shipment-row-${rowProductId}`} className="quick-actions__receive-item">
+                        <div className="quick-actions__receive-item-head">
+                          <strong>
+                            {row?.producto_codigo ? `${row.producto_codigo} - ` : ''}
+                            {row?.producto_nombre || `Producto ${rowProductId}`}
+                          </strong>
+                          <span>Enviado: {toPositiveInt(row?.cantidad_enviada, 0)}</span>
+                        </div>
+
+                        <div className="quick-actions__receive-grid">
+                          <label>
+                            <span>Cantidad recibida</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={toPositiveInt(row?.cantidad_enviada, 0)}
+                              value={toPositiveInt(row?.cantidad_recibida, 0)}
+                              onChange={(event) =>
+                                handleReceiveShipmentDraftFieldChange(
+                                  rowProductId,
+                                  'cantidad_recibida',
+                                  event.target.value
+                                )}
+                              disabled={receiveShipmentSubmitting}
+                            />
+                          </label>
+                          <label>
+                            <span>Faltantes</span>
+                            <input type="number" value={missingQty} readOnly disabled />
+                          </label>
+                        </div>
+
+                        <div className="quick-actions__receive-location">
+                          <div className="quick-actions__receive-location-row">
+                            <select
+                              value={String(row?.location_draft_subdivision_id || '')}
+                              onChange={(event) =>
+                                handleReceiveShipmentDraftFieldChange(
+                                  rowProductId,
+                                  'location_draft_subdivision_id',
+                                  event.target.value
+                                )}
+                              disabled={receiveShipmentSubmitting || !inTransitSubdivisions.length}
+                            >
+                              <option value="">Selecciona subdivision</option>
+                              {inTransitSubdivisions.map((subdivision) => (
+                                <option key={`receive-subdivision-option-${subdivision.id}`} value={subdivision.id}>
+                                  {String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              min={0}
+                              max={toPositiveInt(row?.cantidad_recibida, 0)}
+                              value={toPositiveInt(row?.location_draft_cantidad, 0)}
+                              onChange={(event) =>
+                                handleReceiveShipmentDraftFieldChange(
+                                  rowProductId,
+                                  'location_draft_cantidad',
+                                  event.target.value
+                                )}
+                              disabled={receiveShipmentSubmitting}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAddReceiveShipmentLocation(rowProductId)}
+                              disabled={receiveShipmentSubmitting || !inTransitSubdivisions.length}
+                            >
+                              Agregar
+                            </button>
+                          </div>
+                          <p className="quick-actions__receive-location-meta">
+                            Ubicado: {assignedQty} / {toPositiveInt(row?.cantidad_recibida, 0)}
+                          </p>
+
+                          {!!(Array.isArray(row?.ubicaciones) ? row.ubicaciones.length : 0) && (
+                            <div className="quick-actions__receive-location-list">
+                              {(Array.isArray(row?.ubicaciones) ? row.ubicaciones : []).map((location, index) => {
+                                const subdivision = inTransitSubdivisionById.get(normalizeId(location?.subdivision_id))
+                                const subdivisionName = String(subdivision?.nombre || `Subdivision ${location?.subdivision_id || '-'}`).trim()
+                                return (
+                                  <div
+                                    key={`receive-location-${rowProductId}-${normalizeId(location?.subdivision_id)}-${index}`}
+                                    className="quick-actions__receive-location-chip"
+                                  >
+                                    <span>{subdivisionName}</span>
+                                    <strong>{toPositiveInt(location?.cantidad, 0)}</strong>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveReceiveShipmentLocation(rowProductId, index)}
+                                      disabled={receiveShipmentSubmitting}
+                                      aria-label="Quitar ubicacion"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {missingQty > 0 && (
+                          <label className="quick-actions__receive-note">
+                            <span>Novedad del faltante (obligatoria)</span>
+                            <textarea
+                              rows={2}
+                              value={String(row?.novedad || '')}
+                              onChange={(event) =>
+                                handleReceiveShipmentDraftFieldChange(
+                                  rowProductId,
+                                  'novedad',
+                                  event.target.value
+                                )}
+                              disabled={receiveShipmentSubmitting}
+                            />
+                          </label>
+                        )}
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+
+              {receiveShipmentError && (
+                <p className="quick-actions__receive-error">{receiveShipmentError}</p>
+              )}
+            </div>
+
+            <footer className="quick-actions__receive-actions">
+              <button
+                type="button"
+                className="quick-actions__receive-btn quick-actions__receive-btn--ghost"
+                onClick={closeReceiveShipmentModal}
+                disabled={receiveShipmentSubmitting}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="quick-actions__receive-btn quick-actions__receive-btn--danger"
+                onClick={() => void handleSubmitShipmentReception('incompleto')}
+                disabled={receiveShipmentSubmitting || receiveShipmentTotalMissing <= 0}
+              >
+                {receiveShipmentSubmitting ? 'Guardando...' : 'Pedido llego incompleto'}
+              </button>
+              <button
+                type="button"
+                className="quick-actions__receive-btn quick-actions__receive-btn--success"
+                onClick={() => void handleSubmitShipmentReception('completo')}
+                disabled={receiveShipmentSubmitting || receiveShipmentTotalMissing > 0}
+              >
+                {receiveShipmentSubmitting ? 'Guardando...' : 'Pedido llego completo'}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
     </>
   )
 }

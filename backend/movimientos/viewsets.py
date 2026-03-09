@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
-from django.db.models import DecimalField, ExpressionWrapper, F, Q, Sum, Value
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
 from django.utils import timezone
@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
-from inventario.models import Inventario, Sucursal
+from inventario.models import Inventario, SubDivision, Sucursal
 from solicitudes.models import Cliente
 
 from usuarios.models import RolPermiso
@@ -18,8 +18,14 @@ from usuarios.permissions import MovimientoInventarioModulePermission
 from usuarios.sucursal_scope import (
     ensure_sucursal_allowed_for_modules,
     get_allowed_sucursal_ids,
+    get_allowed_sucursal_ids_for_modules,
 )
-from .models import MovimientoInventario, SolicitudTraslado
+from .models import (
+    MovimientoInventario,
+    SolicitudTraslado,
+    TrasladoInconveniente,
+    TrasladoInconvenienteHistorial,
+)
 from .serializers import MovimientoInventarioSerializer, SolicitudTrasladoSerializer
 from .stock_availability import get_available_transfer_quantities_by_product
 
@@ -649,6 +655,113 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             .first()
         )
 
+    @staticmethod
+    def _normalize_state_name(value):
+        return str(value or "").strip().lower()
+
+    def _resolve_estado_movimiento(self, *candidates):
+        queryset = MovimientoInventario._meta.get_field("estado_movimiento").remote_field.model.objects.all()
+        for candidate in candidates:
+            token = self._normalize_state_name(candidate)
+            if not token:
+                continue
+            match = queryset.filter(nombre__icontains=token).order_by("id").first()
+            if match is not None:
+                return match
+        return queryset.order_by("id").first()
+
+    @staticmethod
+    def _resolve_user_display(user):
+        if user is None:
+            return ""
+        full_name = str(getattr(user, "get_full_name", lambda: "")() or "").strip()
+        if full_name:
+            return full_name
+        return str(getattr(user, "email", "") or "").strip()
+
+    def _serialize_inconveniente(self, inconveniente):
+        historial_rows = list(
+            inconveniente.historial.select_related("actor").all().order_by("-created_at", "-id")
+        )
+        historial_payload = [
+            {
+                "id": int(row.id),
+                "accion": str(row.accion or "").strip(),
+                "detalle": str(row.detalle or "").strip(),
+                "actor_id": int(row.actor_id) if row.actor_id else None,
+                "actor_nombre": self._resolve_user_display(getattr(row, "actor", None)),
+                "created_at": row.created_at,
+            }
+            for row in historial_rows
+        ]
+
+        return {
+            "id": int(inconveniente.id),
+            "solicitud_id": int(inconveniente.solicitud_id),
+            "solicitud_no_documento": str(
+                getattr(getattr(inconveniente, "solicitud", None), "no_documento", "") or ""
+            ).strip(),
+            "sucursal_solicitante_id": int(
+                getattr(getattr(inconveniente, "solicitud", None), "sucursal_solicitante_id", 0) or 0
+            ),
+            "sucursal_solicitante": str(
+                getattr(
+                    getattr(getattr(inconveniente, "solicitud", None), "sucursal_solicitante", None),
+                    "nombre",
+                    "",
+                )
+                or ""
+            ).strip(),
+            "sucursal_proveedora_id": int(
+                getattr(getattr(inconveniente, "solicitud", None), "sucursal_proveedora_id", 0) or 0
+            ),
+            "sucursal_proveedora": str(
+                getattr(
+                    getattr(getattr(inconveniente, "solicitud", None), "sucursal_proveedora", None),
+                    "nombre",
+                    "",
+                )
+                or ""
+            ).strip(),
+            "movimiento_entrada_id": int(inconveniente.movimiento_entrada_id),
+            "producto_id": int(inconveniente.producto_id),
+            "producto_codigo": str(getattr(getattr(inconveniente, "producto", None), "codigo", "") or "").strip(),
+            "producto_nombre": str(getattr(getattr(inconveniente, "producto", None), "nombre", "") or "").strip(),
+            "cantidad_faltante": int(inconveniente.cantidad_faltante or 0),
+            "estado": str(inconveniente.estado or "").strip(),
+            "resolucion": str(inconveniente.resolucion or "").strip(),
+            "sucursal_resolucion_id": int(inconveniente.sucursal_resolucion_id) if inconveniente.sucursal_resolucion_id else None,
+            "sucursal_resolucion": str(
+                getattr(getattr(inconveniente, "sucursal_resolucion", None), "nombre", "") or ""
+            ).strip(),
+            "subdivision_resolucion_id": int(inconveniente.subdivision_resolucion_id) if inconveniente.subdivision_resolucion_id else None,
+            "subdivision_resolucion": str(
+                getattr(getattr(inconveniente, "subdivision_resolucion", None), "nombre", "") or ""
+            ).strip(),
+            "motivo": str(inconveniente.motivo or "").strip(),
+            "creado_por_id": int(inconveniente.creado_por_id) if inconveniente.creado_por_id else None,
+            "creado_por_nombre": self._resolve_user_display(getattr(inconveniente, "creado_por", None)),
+            "resuelto_por_id": int(inconveniente.resuelto_por_id) if inconveniente.resuelto_por_id else None,
+            "resuelto_por_nombre": self._resolve_user_display(getattr(inconveniente, "resuelto_por", None)),
+            "created_at": inconveniente.created_at,
+            "updated_at": inconveniente.updated_at,
+            "historial": historial_payload,
+        }
+
+    @staticmethod
+    def _add_stock_to_subdivision(subdivision_id, producto_id, cantidad):
+        qty = int(cantidad or 0)
+        if qty <= 0:
+            return
+        inventory_row, _ = Inventario.objects.select_for_update().get_or_create(
+            subdivision_id=int(subdivision_id),
+            producto_id=int(producto_id),
+            referencia="",
+            defaults={"cantidad": 0},
+        )
+        inventory_row.cantidad = int(inventory_row.cantidad or 0) + qty
+        inventory_row.save(update_fields=["cantidad"])
+
     @action(detail=False, methods=["get", "post"], url_path="solicitudes-traslado")
     def solicitudes_traslado(self, request):
         if request.method.lower() == "post":
@@ -831,9 +944,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     .select_related(
                         "sucursal_solicitante",
                         "sucursal_proveedora",
-                        "movimiento_salida",
-                        "movimiento_entrada",
-                        "rechazada_por",
                     )
                     .prefetch_related("detalles__producto")
                     .filter(pk=solicitud.id)
@@ -1036,6 +1146,726 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 "detail": "Envio cancelado correctamente.",
                 "decision": "rechazada",
                 "solicitud": output.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get"], url_path="envios-en-camino")
+    def envios_en_camino(self, request):
+        queryset = (
+            SolicitudTraslado.objects.select_related(
+                "sucursal_solicitante",
+                "sucursal_proveedora",
+                "movimiento_salida",
+                "movimiento_entrada",
+                "movimiento_entrada__estado_movimiento",
+            )
+            .prefetch_related("movimiento_entrada__detalles__producto")
+            .filter(
+                estado=SolicitudTraslado.Estados.APROBADA,
+                movimiento_salida_id__isnull=False,
+                movimiento_entrada_id__isnull=False,
+            )
+            .order_by("-fecha", "-id")
+        )
+
+        sucursal_solicitante_raw = (request.query_params.get("sucursal_solicitante_id") or "").strip()
+        if sucursal_solicitante_raw:
+            if not sucursal_solicitante_raw.isdigit():
+                return Response(
+                    {"detail": "Debes enviar un sucursal_solicitante_id valido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(sucursal_solicitante_id=int(sucursal_solicitante_raw))
+
+        allowed = get_allowed_sucursal_ids(
+            request.user,
+            RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+        )
+        if allowed is not None:
+            if not allowed:
+                return Response([], status=status.HTTP_200_OK)
+            queryset = queryset.filter(sucursal_solicitante_id__in=sorted(allowed))
+
+        pending_issue_count_by_solicitud = {
+            int(row["solicitud_id"]): int(row["count"] or 0)
+            for row in (
+                TrasladoInconveniente.objects.filter(estado=TrasladoInconveniente.Estados.PENDIENTE)
+                .values("solicitud_id")
+                .annotate(count=Count("id"))
+            )
+        }
+
+        payload = []
+        for solicitud in queryset:
+            movimiento_entrada = getattr(solicitud, "movimiento_entrada", None)
+            if movimiento_entrada is None:
+                continue
+
+            estado_name = self._normalize_state_name(
+                getattr(getattr(movimiento_entrada, "estado_movimiento", None), "nombre", "")
+            )
+            if "recib" in estado_name or "parcial" in estado_name:
+                continue
+
+            detalles_payload = []
+            for detalle in movimiento_entrada.detalles.select_related("producto").all():
+                producto = getattr(detalle, "producto", None)
+                detalles_payload.append(
+                    {
+                        "detalle_id": int(detalle.id),
+                        "producto_id": int(getattr(detalle, "producto_id", 0) or 0),
+                        "producto_codigo": str(getattr(producto, "codigo", "") or "").strip(),
+                        "producto_nombre": str(getattr(producto, "nombre", "") or "").strip(),
+                        "cantidad_enviada": int(detalle.cantidad or 0),
+                        "valor": detalle.valor,
+                    }
+                )
+
+            payload.append(
+                {
+                    "id": int(solicitud.id),
+                    "no_documento": str(solicitud.no_documento or "").strip(),
+                    "fecha": solicitud.fecha,
+                    "sucursal_solicitante_id": int(solicitud.sucursal_solicitante_id),
+                    "sucursal_solicitante": str(getattr(solicitud.sucursal_solicitante, "nombre", "") or "").strip(),
+                    "sucursal_proveedora_id": int(solicitud.sucursal_proveedora_id),
+                    "sucursal_proveedora": str(getattr(solicitud.sucursal_proveedora, "nombre", "") or "").strip(),
+                    "movimiento_salida_id": int(solicitud.movimiento_salida_id or 0),
+                    "movimiento_entrada_id": int(solicitud.movimiento_entrada_id or 0),
+                    "estado_entrada": str(getattr(movimiento_entrada.estado_movimiento, "nombre", "") or "").strip(),
+                    "descripcion": str(solicitud.descripcion or "").strip(),
+                    "detalles": detalles_payload,
+                    "inconvenientes_pendientes": pending_issue_count_by_solicitud.get(int(solicitud.id), 0),
+                }
+            )
+
+        return Response(payload, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/confirmar-recepcion",
+    )
+    def confirmar_recepcion_traslado(self, request, solicitud_id=None):
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+            solicitud.sucursal_solicitante_id,
+            field_label="sucursal solicitante",
+        )
+
+        if solicitud.estado != SolicitudTraslado.Estados.APROBADA:
+            return Response(
+                {"detail": "La solicitud no esta aprobada para registrar recepcion."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not solicitud.movimiento_entrada_id:
+            return Response(
+                {"detail": "La solicitud no tiene una entrada asociada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        items = request.data.get("items")
+        if not isinstance(items, list) or not items:
+            return Response(
+                {"detail": "Debes enviar la lista de productos recibidos en `items`."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        resultado = self._normalize_state_name(
+            request.data.get("resultado") or request.data.get("estado_recepcion")
+        )
+        if resultado not in {"completo", "incompleto"}:
+            return Response(
+                {"detail": "Debes indicar `resultado` como completo o incompleto."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        movimiento_entrada = (
+            MovimientoInventario.objects.select_related("estado_movimiento")
+            .prefetch_related("detalles__producto")
+            .filter(pk=solicitud.movimiento_entrada_id)
+            .first()
+        )
+        if movimiento_entrada is None:
+            return Response(
+                {"detail": "No se encontro el movimiento de entrada asociado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        estado_actual = self._normalize_state_name(
+            getattr(getattr(movimiento_entrada, "estado_movimiento", None), "nombre", "")
+        )
+        if "recib" in estado_actual or "parcial" in estado_actual:
+            return Response(
+                {"detail": "La recepcion ya fue registrada anteriormente."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        detalles_por_producto = {
+            int(detalle.producto_id): detalle
+            for detalle in movimiento_entrada.detalles.select_related("producto").all()
+        }
+        if not detalles_por_producto:
+            return Response(
+                {"detail": "La entrada no tiene productos para registrar recepcion."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        processed_items = []
+        seen_product_ids = set()
+        total_faltante = 0
+        subdivision_ids_to_check = set()
+        for raw_item in items:
+            if not isinstance(raw_item, dict):
+                return Response(
+                    {"detail": "Cada item debe ser un objeto valido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                product_id = int(raw_item.get("producto_id"))
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "Cada item debe incluir un `producto_id` valido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if product_id in seen_product_ids:
+                return Response(
+                    {"detail": "No puedes repetir el mismo producto en la recepcion."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            seen_product_ids.add(product_id)
+
+            detalle = detalles_por_producto.get(product_id)
+            if detalle is None:
+                return Response(
+                    {"detail": f"El producto {product_id} no pertenece al traslado."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            cantidad_enviada = int(detalle.cantidad or 0)
+            try:
+                cantidad_recibida = int(raw_item.get("cantidad_recibida"))
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": f"Debes enviar una cantidad recibida valida para producto {product_id}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if cantidad_recibida < 0 or cantidad_recibida > cantidad_enviada:
+                return Response(
+                    {
+                        "detail": (
+                            f"La cantidad recibida para producto {product_id} debe estar entre 0 y {cantidad_enviada}."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            ubicaciones_raw = raw_item.get("ubicaciones")
+            if not isinstance(ubicaciones_raw, list):
+                ubicaciones_raw = []
+
+            ubicaciones = []
+            cantidad_ubicada = 0
+            for raw_ubicacion in ubicaciones_raw:
+                if not isinstance(raw_ubicacion, dict):
+                    return Response(
+                        {"detail": "Cada ubicacion debe ser un objeto valido."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                try:
+                    subdivision_id = int(raw_ubicacion.get("subdivision_id"))
+                    cantidad_ubicacion = int(raw_ubicacion.get("cantidad"))
+                except (TypeError, ValueError):
+                    return Response(
+                        {"detail": "Cada ubicacion debe incluir subdivision_id y cantidad validos."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                if cantidad_ubicacion <= 0:
+                    return Response(
+                        {"detail": "La cantidad por ubicacion debe ser mayor a 0."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                subdivision_ids_to_check.add(subdivision_id)
+                ubicaciones.append(
+                    {
+                        "subdivision_id": subdivision_id,
+                        "cantidad": cantidad_ubicacion,
+                    }
+                )
+                cantidad_ubicada += cantidad_ubicacion
+
+            if cantidad_recibida > 0 and not ubicaciones:
+                return Response(
+                    {
+                        "detail": (
+                            f"Debes ubicar el producto {product_id} en al menos una subdivision."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if cantidad_ubicada != cantidad_recibida:
+                return Response(
+                    {
+                        "detail": (
+                            f"La suma de ubicaciones para producto {product_id} ({cantidad_ubicada}) "
+                            f"debe coincidir con la cantidad recibida ({cantidad_recibida})."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            cantidad_faltante = int(cantidad_enviada - cantidad_recibida)
+            total_faltante += cantidad_faltante
+
+            processed_items.append(
+                {
+                    "producto_id": product_id,
+                    "detalle": detalle,
+                    "cantidad_enviada": cantidad_enviada,
+                    "cantidad_recibida": cantidad_recibida,
+                    "cantidad_faltante": cantidad_faltante,
+                    "ubicaciones": ubicaciones,
+                    "novedad": str(raw_item.get("novedad") or "").strip(),
+                }
+            )
+
+        expected_product_ids = set(detalles_por_producto.keys())
+        if seen_product_ids != expected_product_ids:
+            return Response(
+                {
+                    "detail": (
+                        "Debes confirmar la recepcion para todos los productos del traslado."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if resultado == "completo" and total_faltante > 0:
+            return Response(
+                {"detail": "No puedes marcar como completo si existen faltantes."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if resultado == "incompleto" and total_faltante <= 0:
+            return Response(
+                {"detail": "Para marcar incompleto debe existir al menos un faltante."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if subdivision_ids_to_check:
+            valid_subdivision_ids = set(
+                SubDivision.objects.filter(
+                    id__in=sorted(subdivision_ids_to_check),
+                    division__bodega__sucursal_id=solicitud.sucursal_solicitante_id,
+                ).values_list("id", flat=True)
+            )
+            if valid_subdivision_ids != subdivision_ids_to_check:
+                return Response(
+                    {"detail": "Una o mas subdivisiones no pertenecen a la sucursal solicitante."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        with transaction.atomic():
+            solicitud_locked = (
+                SolicitudTraslado.objects.select_for_update(of=("self",))
+                .filter(pk=solicitud.id)
+                .first()
+            )
+            if solicitud_locked is None:
+                return Response(
+                    {"detail": "No se encontro la solicitud de traslado."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            movimiento_entrada_locked = (
+                MovimientoInventario.objects.select_for_update(of=("self",))
+                .select_related("estado_movimiento")
+                .prefetch_related("detalles__producto")
+                .filter(pk=solicitud_locked.movimiento_entrada_id)
+                .first()
+            )
+            if movimiento_entrada_locked is None:
+                return Response(
+                    {"detail": "No se encontro el movimiento de entrada asociado."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            estado_actual_locked = self._normalize_state_name(
+                getattr(
+                    getattr(movimiento_entrada_locked, "estado_movimiento", None),
+                    "nombre",
+                    "",
+                )
+            )
+            if "recib" in estado_actual_locked or "parcial" in estado_actual_locked:
+                return Response(
+                    {"detail": "La recepcion ya fue registrada anteriormente."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            detalle_locked_by_producto = {
+                int(detalle.producto_id): detalle
+                for detalle in movimiento_entrada_locked.detalles.all()
+            }
+
+            requested_inventory_locks = Q(pk__in=[])
+            for item in processed_items:
+                product_id = int(item["producto_id"])
+                for ubicacion in item["ubicaciones"]:
+                    requested_inventory_locks |= Q(
+                        subdivision_id=int(ubicacion["subdivision_id"]),
+                        producto_id=product_id,
+                    )
+            if requested_inventory_locks:
+                list(Inventario.objects.select_for_update().filter(requested_inventory_locks).values_list("id", flat=True))
+
+            for item in processed_items:
+                detail_row = detalle_locked_by_producto.get(int(item["producto_id"]))
+                if detail_row is None:
+                    return Response(
+                        {"detail": "No se pudo resolver el detalle del traslado."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                cantidad_recibida = int(item["cantidad_recibida"] or 0)
+                detail_row.cantidad = cantidad_recibida
+                detail_row.valor_total = (detail_row.valor or Decimal("0")) * cantidad_recibida
+                detail_row.save(update_fields=["cantidad", "valor_total"])
+
+                for ubicacion in item["ubicaciones"]:
+                    self._add_stock_to_subdivision(
+                        subdivision_id=int(ubicacion["subdivision_id"]),
+                        producto_id=int(item["producto_id"]),
+                        cantidad=int(ubicacion["cantidad"]),
+                    )
+
+            estado_destino = self._resolve_estado_movimiento(
+                "recibido" if total_faltante <= 0 else "parcialmente recibido",
+                "recibido",
+            )
+            if estado_destino is None:
+                return Response(
+                    {"detail": "No se pudo resolver el estado de movimiento."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            movimiento_entrada_locked.estado_movimiento = estado_destino
+            movimiento_entrada_locked.save(update_fields=["estado_movimiento"])
+
+            inconvenientes_payload = []
+            for item in processed_items:
+                faltante = int(item["cantidad_faltante"] or 0)
+                if faltante <= 0:
+                    continue
+
+                inconveniente = TrasladoInconveniente.objects.create(
+                    solicitud=solicitud_locked,
+                    movimiento_entrada=movimiento_entrada_locked,
+                    producto_id=int(item["producto_id"]),
+                    cantidad_faltante=faltante,
+                    estado=TrasladoInconveniente.Estados.PENDIENTE,
+                    motivo=str(item.get("novedad") or "").strip(),
+                    creado_por=request.user,
+                )
+                TrasladoInconvenienteHistorial.objects.create(
+                    inconveniente=inconveniente,
+                    accion="detectado",
+                    detalle=(
+                        f"Faltante detectado en recepcion. Enviado: {item['cantidad_enviada']}, "
+                        f"recibido: {item['cantidad_recibida']}, faltante: {faltante}."
+                    ),
+                    actor=request.user,
+                )
+                inconveniente = (
+                    TrasladoInconveniente.objects.select_related(
+                        "solicitud",
+                        "solicitud__sucursal_solicitante",
+                        "solicitud__sucursal_proveedora",
+                        "producto",
+                        "creado_por",
+                        "resuelto_por",
+                        "sucursal_resolucion",
+                        "subdivision_resolucion",
+                    )
+                    .prefetch_related("historial__actor")
+                    .filter(pk=inconveniente.id)
+                    .first()
+                )
+                if inconveniente is not None:
+                    inconvenientes_payload.append(self._serialize_inconveniente(inconveniente))
+
+            solicitud_output = SolicitudTrasladoSerializer(instance=solicitud_locked).data
+
+        return Response(
+            {
+                "detail": (
+                    "Recepcion registrada como completa."
+                    if total_faltante <= 0
+                    else "Recepcion registrada con faltantes."
+                ),
+                "resultado": "completo" if total_faltante <= 0 else "incompleto",
+                "faltantes": int(total_faltante),
+                "solicitud": solicitud_output,
+                "inconvenientes": inconvenientes_payload,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get"], url_path="traslados-inconvenientes")
+    def traslados_inconvenientes(self, request):
+        queryset = (
+            TrasladoInconveniente.objects.select_related(
+                "solicitud",
+                "solicitud__sucursal_solicitante",
+                "solicitud__sucursal_proveedora",
+                "movimiento_entrada",
+                "producto",
+                "creado_por",
+                "resuelto_por",
+                "sucursal_resolucion",
+                "subdivision_resolucion",
+            )
+            .prefetch_related("historial__actor")
+            .order_by("-created_at", "-id")
+        )
+
+        estado = self._normalize_state_name(request.query_params.get("estado"))
+        if estado in {
+            TrasladoInconveniente.Estados.PENDIENTE,
+            TrasladoInconveniente.Estados.RESUELTO,
+            TrasladoInconveniente.Estados.PERDIDO,
+        }:
+            queryset = queryset.filter(estado=estado)
+
+        allowed = get_allowed_sucursal_ids_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS, RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+        )
+        if allowed is not None:
+            if not allowed:
+                return Response([], status=status.HTTP_200_OK)
+            queryset = queryset.filter(
+                Q(solicitud__sucursal_solicitante_id__in=sorted(allowed))
+                | Q(solicitud__sucursal_proveedora_id__in=sorted(allowed))
+            )
+
+        payload = [self._serialize_inconveniente(row) for row in queryset]
+        return Response(payload, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"traslados-inconvenientes/(?P<inconveniente_id>\d+)/resolver",
+    )
+    def resolver_traslado_inconveniente(self, request, inconveniente_id=None):
+        inconveniente = (
+            TrasladoInconveniente.objects.select_related(
+                "solicitud",
+                "solicitud__sucursal_solicitante",
+                "solicitud__sucursal_proveedora",
+                "movimiento_entrada",
+                "producto",
+                "creado_por",
+                "resuelto_por",
+                "sucursal_resolucion",
+                "subdivision_resolucion",
+            )
+            .prefetch_related("historial__actor")
+            .filter(pk=inconveniente_id)
+            .first()
+        )
+        if inconveniente is None:
+            return Response(
+                {"detail": "No se encontro el inconveniente de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        allowed = get_allowed_sucursal_ids_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS, RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+        )
+        if (
+            allowed is not None
+            and int(inconveniente.solicitud.sucursal_solicitante_id) not in allowed
+            and int(inconveniente.solicitud.sucursal_proveedora_id) not in allowed
+        ):
+            return Response(
+                {"detail": "No tienes acceso para resolver este inconveniente."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if inconveniente.estado != TrasladoInconveniente.Estados.PENDIENTE:
+            return Response(
+                {"detail": "Este inconveniente ya fue resuelto."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        decision = self._normalize_state_name(request.data.get("decision"))
+        motivo = str(request.data.get("motivo") or "").strip()
+
+        if decision not in {"sumar_solicitante", "sumar_proveedora", "perdido"}:
+            return Response(
+                {
+                    "detail": (
+                        "Debes enviar una decision valida: sumar_solicitante, sumar_proveedora o perdido."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            inconveniente_locked = (
+                TrasladoInconveniente.objects.select_for_update(of=("self",))
+                .select_related(
+                    "solicitud",
+                    "solicitud__sucursal_solicitante",
+                    "solicitud__sucursal_proveedora",
+                    "producto",
+                )
+                .filter(pk=inconveniente.id)
+                .first()
+            )
+            if inconveniente_locked is None:
+                return Response(
+                    {"detail": "No se encontro el inconveniente de traslado."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if inconveniente_locked.estado != TrasladoInconveniente.Estados.PENDIENTE:
+                return Response(
+                    {"detail": "Este inconveniente ya fue resuelto."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            cantidad_faltante = int(inconveniente_locked.cantidad_faltante or 0)
+            if cantidad_faltante <= 0:
+                return Response(
+                    {"detail": "El inconveniente no tiene cantidad faltante pendiente."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            sucursal_resolucion_id = None
+            subdivision_resolucion_id = None
+            resolucion = ""
+            estado_resultado = TrasladoInconveniente.Estados.RESUELTO
+
+            if decision in {"sumar_solicitante", "sumar_proveedora"}:
+                target_branch_id = (
+                    int(inconveniente_locked.solicitud.sucursal_solicitante_id)
+                    if decision == "sumar_solicitante"
+                    else int(inconveniente_locked.solicitud.sucursal_proveedora_id)
+                )
+                subdivision_id_raw = str(request.data.get("subdivision_id") or "").strip()
+                if not subdivision_id_raw.isdigit():
+                    return Response(
+                        {"detail": "Debes indicar una subdivision valida para sumar inventario."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                subdivision = (
+                    SubDivision.objects.select_related("division__bodega")
+                    .filter(pk=int(subdivision_id_raw))
+                    .first()
+                )
+                bodega = getattr(getattr(subdivision, "division", None), "bodega", None)
+                bodega_sucursal_id = int(getattr(bodega, "sucursal_id", 0) or 0)
+                if subdivision is None or bodega_sucursal_id != target_branch_id:
+                    return Response(
+                        {"detail": "La subdivision no pertenece a la sucursal seleccionada."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                self._add_stock_to_subdivision(
+                    subdivision_id=int(subdivision.id),
+                    producto_id=int(inconveniente_locked.producto_id),
+                    cantidad=cantidad_faltante,
+                )
+                sucursal_resolucion_id = target_branch_id
+                subdivision_resolucion_id = int(subdivision.id)
+                resolucion = (
+                    TrasladoInconveniente.Resoluciones.SUMAR_SOLICITANTE
+                    if decision == "sumar_solicitante"
+                    else TrasladoInconveniente.Resoluciones.SUMAR_PROVEEDORA
+                )
+            else:
+                resolucion = TrasladoInconveniente.Resoluciones.PERDIDO
+                estado_resultado = TrasladoInconveniente.Estados.PERDIDO
+
+            inconveniente_locked.estado = estado_resultado
+            inconveniente_locked.resolucion = resolucion
+            inconveniente_locked.sucursal_resolucion_id = sucursal_resolucion_id
+            inconveniente_locked.subdivision_resolucion_id = subdivision_resolucion_id
+            inconveniente_locked.motivo = motivo
+            inconveniente_locked.resuelto_por = request.user
+            inconveniente_locked.save(
+                update_fields=[
+                    "estado",
+                    "resolucion",
+                    "sucursal_resolucion",
+                    "subdivision_resolucion",
+                    "motivo",
+                    "resuelto_por",
+                    "updated_at",
+                ]
+            )
+
+            action_label = (
+                "sumado_a_sucursal"
+                if decision in {"sumar_solicitante", "sumar_proveedora"}
+                else "marcado_como_perdido"
+            )
+            detail_text = (
+                f"Se resolvio el faltante de {cantidad_faltante} unidades."
+                if decision in {"sumar_solicitante", "sumar_proveedora"}
+                else f"Se marco como perdido el faltante de {cantidad_faltante} unidades."
+            )
+            if motivo:
+                detail_text = f"{detail_text} Motivo: {motivo}"
+
+            TrasladoInconvenienteHistorial.objects.create(
+                inconveniente=inconveniente_locked,
+                accion=action_label,
+                detalle=detail_text,
+                actor=request.user,
+            )
+
+            inconveniente_out = (
+                TrasladoInconveniente.objects.select_related(
+                    "solicitud",
+                    "solicitud__sucursal_solicitante",
+                    "solicitud__sucursal_proveedora",
+                    "movimiento_entrada",
+                    "producto",
+                    "creado_por",
+                    "resuelto_por",
+                    "sucursal_resolucion",
+                    "subdivision_resolucion",
+                )
+                .prefetch_related("historial__actor")
+                .filter(pk=inconveniente_locked.id)
+                .first()
+            )
+
+        return Response(
+            {
+                "detail": "Inconveniente resuelto correctamente.",
+                "inconveniente": self._serialize_inconveniente(inconveniente_out),
             },
             status=status.HTTP_200_OK,
         )

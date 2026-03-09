@@ -207,3 +207,112 @@ class PagoMovimiento(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
         return f"{self.movimiento_inventario} - {self.tipo_pago.nombre}"
+
+
+class TrasladoInconveniente(models.Model):
+    """Inconvenientes detectados al recibir un traslado enviado."""
+
+    class Estados(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente"
+        RESUELTO = "resuelto", "Resuelto"
+        PERDIDO = "perdido", "Perdido"
+
+    class Resoluciones(models.TextChoices):
+        SUMAR_SOLICITANTE = "sumar_solicitante", "Sumar a sucursal solicitante"
+        SUMAR_PROVEEDORA = "sumar_proveedora", "Sumar a sucursal proveedora"
+        PERDIDO = "perdido", "Perdido / robado / no recuperado"
+
+    solicitud = models.ForeignKey(
+        SolicitudTraslado,
+        on_delete=models.CASCADE,
+        related_name="inconvenientes",
+    )
+    movimiento_entrada = models.ForeignKey(
+        MovimientoInventario,
+        on_delete=models.CASCADE,
+        related_name="inconvenientes_traslado",
+    )
+    producto = models.ForeignKey(
+        "productos.Producto",
+        on_delete=models.PROTECT,
+        related_name="inconvenientes_traslado",
+    )
+    cantidad_faltante = models.PositiveIntegerField(default=0)
+    estado = models.CharField(
+        max_length=20,
+        choices=Estados.choices,
+        default=Estados.PENDIENTE,
+    )
+    resolucion = models.CharField(
+        max_length=30,
+        choices=Resoluciones.choices,
+        blank=True,
+        default="",
+    )
+    sucursal_resolucion = models.ForeignKey(
+        "inventario.Sucursal",
+        on_delete=models.SET_NULL,
+        related_name="inconvenientes_traslado_resueltos",
+        null=True,
+        blank=True,
+    )
+    subdivision_resolucion = models.ForeignKey(
+        "inventario.SubDivision",
+        on_delete=models.SET_NULL,
+        related_name="inconvenientes_traslado_subdivisiones_resueltas",
+        null=True,
+        blank=True,
+    )
+    motivo = models.TextField(blank=True, default="")
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="inconvenientes_traslado_creados",
+        null=True,
+        blank=True,
+    )
+    resuelto_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="inconvenientes_traslado_resueltos_por",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Inconveniente de traslado"
+        verbose_name_plural = "Inconvenientes de traslado"
+
+    def __str__(self) -> str:
+        return f"{self.solicitud.no_documento} - {self.producto.codigo} ({self.cantidad_faltante})"
+
+
+class TrasladoInconvenienteHistorial(models.Model):
+    """Historial de decisiones tomadas sobre inconvenientes de traslado."""
+
+    inconveniente = models.ForeignKey(
+        TrasladoInconveniente,
+        on_delete=models.CASCADE,
+        related_name="historial",
+    )
+    accion = models.CharField(max_length=40)
+    detalle = models.TextField(blank=True, default="")
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="historial_inconvenientes_traslado",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Historial de inconveniente de traslado"
+        verbose_name_plural = "Historial de inconvenientes de traslado"
+
+    def __str__(self) -> str:
+        return f"{self.inconveniente_id} - {self.accion}"

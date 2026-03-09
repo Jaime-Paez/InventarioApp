@@ -3,6 +3,7 @@ import {
   ArrowRightLeft,
   CircleArrowDown,
   CircleArrowUp,
+  AlertTriangle,
   Tag,
   Map as MapIcon,
   Compass,
@@ -23,6 +24,11 @@ export const MENU_STRUCTURE = [
     children: [
       { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos_entradas' },
       { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos_salidas' },
+      {
+        label: 'Traslados con inconvenientes',
+        icon: AlertTriangle,
+        moduleKey: 'movimientos_entradas',
+      },
     ],
   },
   { label: 'Productos', icon: Tag, moduleKey: 'productos' },

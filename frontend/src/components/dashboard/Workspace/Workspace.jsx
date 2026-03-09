@@ -13,6 +13,7 @@ import Configuracion from '../configuracion/Configuracion/Configuracion'
 import InventarioTable from '../inventario/InventarioTable/InventarioTable'
 import EntradasTable from '../movimientos/EntradasTable'
 import SalidasTable from '../movimientos/SalidasTable'
+import TrasladosInconvenientesTable from '../movimientos/TrasladosInconvenientesTable'
 import './Workspace.css'
 import { getModuleActions, labelHasAccess } from '../menuConfig'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -21,6 +22,7 @@ const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.r
 const MOVIMIENTOS_SCOPE_BY_TAB = {
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
+  'Traslados con inconvenientes': 'movimientos_entradas',
 }
 const MODULE_KEY_BY_TAB = {
   Inventario: 'inventario',
@@ -89,6 +91,7 @@ function Workspace({
     Clientes: ClientesTable,
     Entradas: EntradasTable,
     Salidas: SalidasTable,
+    'Traslados con inconvenientes': TrasladosInconvenientesTable,
     Configuraciones: Configuracion,
   }
 
