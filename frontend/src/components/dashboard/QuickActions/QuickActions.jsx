@@ -79,6 +79,30 @@ const normalizeSearchText = (value) =>
     .trim()
     .toLowerCase()
 
+const normalizeString = (value) => String(value ?? '').trim().toLowerCase()
+
+const normalizeModuleScopes = (rawScopes) => {
+  const scopes = {}
+  ;(Array.isArray(rawScopes) ? rawScopes : []).forEach((item) => {
+    const moduleKey = normalizeString(item?.modulo)
+    if (!moduleKey) return
+    const ids = (Array.isArray(item?.sucursales_ids) ? item.sucursales_ids : [])
+      .map((branchId) => normalizeId(branchId))
+      .filter(Boolean)
+    if (!ids.length) return
+    scopes[moduleKey] = ids
+  })
+  return scopes
+}
+
+const hasModuleBranchAccess = (userItem, moduleKey, branchId) => {
+  const normalizedModule = normalizeString(moduleKey)
+  const normalizedBranchId = normalizeId(branchId)
+  if (!normalizedModule || !normalizedBranchId) return false
+  const ids = userItem?.moduleScopes?.[normalizedModule]
+  return Array.isArray(ids) && ids.includes(normalizedBranchId)
+}
+
 const isResolvedTransferResponseReminder = (reminder) => {
   const contextType = normalizeReminderContextType(reminder?.context?.type)
   if (contextType !== 'solicitud_traslado') return false
@@ -1701,8 +1725,68 @@ function QuickActions({
     isReceiveShipmentModalOpen,
   ])
 
+  const resolveProviderReminderRecipients = useCallback(
+    async (providerBranchId) => {
+      const normalizedProviderBranchId = normalizeId(providerBranchId)
+      if (!token || !normalizedProviderBranchId) return []
+
+      try {
+        const rows = []
+        let url = `${API_URL}/usuarios/listado/?page_size=200`
+        while (url) {
+          const response = await authFetch(url, {}, token)
+          if (!response.ok) return []
+
+          const payload = await response.json().catch(() => ({}))
+          if (Array.isArray(payload)) {
+            rows.push(...payload)
+            url = null
+          } else {
+            rows.push(...parseApiList(payload))
+            url = payload?.next || null
+          }
+        }
+
+        const seenUserIds = new Set()
+        const recipients = []
+        rows.forEach((item) => {
+          const recipient = sanitizeRecipient({
+            id:
+              item?.id ||
+              item?.usuario_id ||
+              item?.user_id ||
+              item?.usuarioInternoId ||
+              item?.usuario_interno_id,
+            name: formatCurrentUserName(item),
+          })
+          if (!recipient?.id) return
+
+          const normalizedRecipientId = normalizeId(recipient.id)
+          if (!normalizedRecipientId || seenUserIds.has(normalizedRecipientId)) return
+
+          const hasAccess = hasModuleBranchAccess(
+            {
+              moduleScopes: normalizeModuleScopes(item?.sucursales_por_modulo),
+            },
+            'movimientos_salidas',
+            normalizedProviderBranchId
+          )
+          if (!hasAccess) return
+
+          seenUserIds.add(normalizedRecipientId)
+          recipients.push(recipient)
+        })
+
+        return recipients
+      } catch {
+        return []
+      }
+    },
+    [token]
+  )
+
   const appendShipmentReceptionReminder = useCallback(
-    ({ shipment, result, totalMissing, items }) => {
+    async ({ shipment, result, totalMissing, items }) => {
       const solicitudId = normalizeId(shipment?.id)
       if (!solicitudId) return
 
@@ -1727,6 +1811,13 @@ function QuickActions({
         ;(Array.isArray(reminder?.recipients) ? reminder.recipients : []).forEach((recipient) => {
           appendUniqueRecipient(reminderRecipients, recipient)
         })
+      })
+
+      const providerRecipients = await resolveProviderReminderRecipients(
+        shipment?.sucursal_proveedora_id
+      )
+      providerRecipients.forEach((recipient) => {
+        appendUniqueRecipient(reminderRecipients, recipient)
       })
 
       const filteredRecipients = reminderRecipients.filter(
@@ -1788,7 +1879,7 @@ function QuickActions({
       writeRemindersToStorage([reminder, ...existingReminders])
       emitRemindersSync()
     },
-    [currentPrimaryUserId, currentUserName, user]
+    [currentPrimaryUserId, currentUserName, resolveProviderReminderRecipients, user]
   )
 
   const togglePendingShipmentsPanel = async () => {
@@ -2282,7 +2373,7 @@ function QuickActions({
           )
         }
 
-        appendShipmentReceptionReminder({
+        await appendShipmentReceptionReminder({
           shipment: activeInTransitShipment,
           result: normalizedResult,
           totalMissing,
