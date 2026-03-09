@@ -1634,19 +1634,22 @@ function SalidaDetails({
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
-  const modalClassName = [
-    'create-user__modal',
-    'create-salida__modal',
-    isClosing ? 'create-user__modal--closing' : '',
-    isResizingModal ? 'create-salida__modal--resizing' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
   const selectedEstadoName =
     estados.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
     estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
     formData.estadoNombre ||
     ''
+  const normalizedSelectedEstadoName = normalizeValue(selectedEstadoName)
+  const isSentTransferRibbon = isTraslado && normalizedSelectedEstadoName.includes('envi')
+  const modalClassName = [
+    'create-user__modal',
+    'create-salida__modal',
+    isSentTransferRibbon ? 'entrada-details__modal--pending' : '',
+    isClosing ? 'create-user__modal--closing' : '',
+    isResizingModal ? 'create-salida__modal--resizing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
   const headerTipo = selectedSubTipo?.nombre || formData.subTipoNombre || 'Tipo de salida'
   const headerDocumento = String(formData.no_documento || '').trim() || 'No. de salida'
   const modalTitle = `${headerTipo}: ${headerDocumento}`
@@ -1659,6 +1662,15 @@ function SalidaDetails({
       style={overlayStyle}
     >
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
+        {isSentTransferRibbon && (
+          <div
+            className="entrada-details__pending-ribbon entrada-details__pending-ribbon--sent"
+            aria-label="Solicitud enviada"
+            title="Solicitud enviada"
+          >
+            <span className="entrada-details__pending-ribbon-label">{'Solicitud\nenviada'}</span>
+          </div>
+        )}
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
             <h3>{modalTitle}</h3>
@@ -1759,7 +1771,7 @@ function SalidaDetails({
 
                     {requiresSucursalObjetivo && (
                       <label className="create-user__field">
-                        <span>Sucursal Destino</span>
+                        <span>{isTraslado ? 'Sucursal solicitante (destino)' : 'Sucursal Destino'}</span>
                         <select
                           name="sucursalObjetivoId"
                           value={formData.sucursalObjetivoId}

@@ -694,8 +694,18 @@ function SalidasTable({
   const cellWithTooltip = (rowData, field) => {
     const content = rowData?.[field] ?? '-'
     const textColor = content === '-' ? '#9ca3af' : undefined
+    const normalizedEstado = normalizeValue(rowData?.estado_nombre)
+    const normalizedSubTipo = normalizeValue(rowData?.sub_tipo_nombre || rowData?.sub_tipo_movimiento)
+    const isTransferRow = normalizedSubTipo.includes('trasl')
+    const isSentTransfer = isTransferRow && normalizedEstado.includes('envi')
+    const className = [
+      'cell-tooltip',
+      field === 'estado_nombre' && isSentTransfer ? 'salidas-sent-state-chip' : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
     return (
-      <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: textColor }}>
+      <span className={className} data-pr-tooltip={String(content)} style={{ color: textColor }}>
         {String(content)}
       </span>
     )
@@ -1070,7 +1080,19 @@ function SalidasTable({
             'funcional_label',
           ]}
           onRowClick={handleRowClick}
-          rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
+          rowClassName={(rowData) => {
+            const classes = []
+            const normalizedEstado = normalizeValue(rowData?.estado_nombre)
+            const normalizedSubTipo = normalizeValue(rowData?.sub_tipo_nombre || rowData?.sub_tipo_movimiento)
+            const isTransferRow = normalizedSubTipo.includes('trasl')
+            if (selectedRowIds.includes(normId(rowData?.id))) {
+              classes.push('selected-row-shadow')
+            }
+            if (isTransferRow && normalizedEstado.includes('envi')) {
+              classes.push('salidas-row--sent-traslado')
+            }
+            return classes.join(' ')
+          }}
           selectionMode="multiple"
           selection={selectedRows}
           onSelectionChange={(event) => {

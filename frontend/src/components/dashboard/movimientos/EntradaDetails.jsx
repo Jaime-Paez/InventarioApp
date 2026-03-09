@@ -1791,6 +1791,9 @@ function EntradaDetails({
         ? 'Solicitud aceptada por la sucursal proveedora'
         : (isSentSolicitudRibbon ? 'Solicitud en estado de envio (traslado).' : 'Solicitud esperando a ser aceptada')
     )
+  const solicitudRibbonDisplayLabel = isSentSolicitudRibbon
+    ? 'Solicitud\nenviada'
+    : solicitudRibbonLabel
   const solicitudRejectionReason = String(previewData?.motivo_rechazo || '').trim()
   const resolvedSolicitudRejectionReason = (
     solicitudRejectionReason || 'Sin motivo de rechazo registrado.'
@@ -1842,7 +1845,7 @@ function EntradaDetails({
             aria-label={solicitudRibbonLabel}
             title={solicitudRibbonTitle}
           >
-            {solicitudRibbonLabel}
+            <span className="entrada-details__pending-ribbon-label">{solicitudRibbonDisplayLabel}</span>
           </div>
         )}
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
@@ -1953,7 +1956,7 @@ function EntradaDetails({
 
                     {requiresSucursalObjetivo && (
                       <label className="create-user__field">
-                        <span>Sucursal Destino</span>
+                        <span>{isTraslado ? 'Sucursal proveedora' : 'Sucursal Destino'}</span>
                         <select
                           name="sucursalObjetivoId"
                           value={formData.sucursalObjetivoId}

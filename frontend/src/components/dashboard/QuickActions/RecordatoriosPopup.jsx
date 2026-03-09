@@ -82,6 +82,13 @@ const normalizeReminderContextType = (value) =>
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
 
+const normalizeStateText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+
 const extractTransferDocumentNumber = (value) => {
   const match = String(value || '').match(/#([A-Za-z0-9._-]+)/)
   return match ? String(match[1] || '').trim() : ''
@@ -326,6 +333,8 @@ function RecordatoriosPopup({
   const [rejectReasonError, setRejectReasonError] = useState('')
   const [selectedTimelineDate, setSelectedTimelineDate] = useState(() => getTodayDateKey())
   const [openingTransferReminderId, setOpeningTransferReminderId] = useState('')
+  const [transferLifecycleBySolicitudId, setTransferLifecycleBySolicitudId] = useState({})
+  const transferLifecycleInFlightRef = useRef(new Set())
 
   const notifyError = useCallback(
     (message) => {
@@ -513,6 +522,8 @@ function RecordatoriosPopup({
     if (!open) {
       closeDecisionPanel()
       setOpeningTransferReminderId('')
+      setTransferLifecycleBySolicitudId({})
+      transferLifecycleInFlightRef.current = new Set()
       return
     }
     const defaults = getNowDateParts()
@@ -979,6 +990,42 @@ function RecordatoriosPopup({
     [token]
   )
 
+  const resolveTransferLifecycleStage = useCallback(
+    async (solicitudDetail) => {
+      if (!solicitudDetail || typeof solicitudDetail !== 'object') return 'aceptada'
+
+      const hasSalida = Boolean(solicitudDetail?.movimiento_salida_id)
+      if (!hasSalida) return 'aceptada'
+
+      const movimientoEntradaId = normalizeId(solicitudDetail?.movimiento_entrada_id)
+      if (!movimientoEntradaId || !token) return 'enviado'
+
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/${encodeURIComponent(movimientoEntradaId)}/`,
+          {},
+          token
+        )
+        if (!response.ok) return 'enviado'
+
+        const movimientoEntrada = await response.json().catch(() => ({}))
+        const normalizedEstado = normalizeStateText(
+          movimientoEntrada?.estado_movimiento ||
+          movimientoEntrada?.estado_nombre ||
+          movimientoEntrada?.estado
+        )
+        if (normalizedEstado.includes('recib') || normalizedEstado.includes('parcial')) {
+          return 'recibido'
+        }
+      } catch {
+        // Ignore and keep default stage.
+      }
+
+      return 'enviado'
+    },
+    [token]
+  )
+
   const fetchTransferPreviewFromDetail = useCallback(
     async (solicitudId) => {
       const detail = await fetchTransferSolicitudDetail(solicitudId)
@@ -987,6 +1034,51 @@ function RecordatoriosPopup({
     },
     [fetchTransferSolicitudDetail]
   )
+
+  useEffect(() => {
+    if (!open || !token) return
+
+    const remindersToResolve = selectedDayReminders.filter((reminder) => {
+      const contextType = normalizeReminderContextType(reminder?.context?.type)
+      if (contextType !== 'solicitud_traslado') return false
+      if (!isSpecialTransferDecisionReminder(reminder)) return false
+      return getReminderDecisionStatus(reminder) === 'aceptada'
+    })
+
+    remindersToResolve.forEach((reminder) => {
+      const solicitudId = normalizeId(reminder?.context?.id)
+      if (!solicitudId) return
+      if (transferLifecycleBySolicitudId[solicitudId]) return
+      if (transferLifecycleInFlightRef.current.has(solicitudId)) return
+
+      transferLifecycleInFlightRef.current.add(solicitudId)
+
+      void (async () => {
+        try {
+          const solicitudDetail = await fetchTransferSolicitudDetail(solicitudId)
+          const stage = await resolveTransferLifecycleStage(solicitudDetail)
+          setTransferLifecycleBySolicitudId((prev) => {
+            if (prev[solicitudId]) return prev
+            return {
+              ...prev,
+              [solicitudId]: {
+                stage,
+              },
+            }
+          })
+        } finally {
+          transferLifecycleInFlightRef.current.delete(solicitudId)
+        }
+      })()
+    })
+  }, [
+    fetchTransferSolicitudDetail,
+    open,
+    resolveTransferLifecycleStage,
+    selectedDayReminders,
+    token,
+    transferLifecycleBySolicitudId,
+  ])
 
   const handleOpenTransferInEntradas = useCallback(
     async (reminder) => {
@@ -1297,7 +1389,27 @@ function RecordatoriosPopup({
                           isSpecialReminder &&
                           isTransferContextReminder &&
                           decisionStatus === 'aceptada' &&
+                          (
+                            () => {
+                              const solicitudId = normalizeId(reminder?.context?.id)
+                              const stage = String(transferLifecycleBySolicitudId?.[solicitudId]?.stage || '').trim()
+                              return stage !== 'enviado' && stage !== 'recibido'
+                            }
+                          )() &&
                           typeof onTransferDecisionAccepted === 'function'
+                        )
+                        const canOpenTransferAfterSentOrReceived = (
+                          isSpecialReminder &&
+                          isTransferContextReminder &&
+                          decisionStatus === 'aceptada' &&
+                          (
+                            () => {
+                              const solicitudId = normalizeId(reminder?.context?.id)
+                              const stage = String(transferLifecycleBySolicitudId?.[solicitudId]?.stage || '').trim()
+                              return stage === 'enviado' || stage === 'recibido'
+                            }
+                          )() &&
+                          typeof onOpenTransferRequestInEntradas === 'function'
                         )
                         const canOpenTransferInEntradas = (
                           isTransferContextReminder &&
@@ -1370,6 +1482,23 @@ function RecordatoriosPopup({
                                   disabled={isOpeningTransfer}
                                 >
                                   {isOpeningTransfer ? 'Abriendo...' : 'Crear salida'}
+                                </button>
+                              ) : canOpenTransferAfterSentOrReceived ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => handleOpenTransferInEntradas(reminder)}
+                                  disabled={isOpeningTransfer}
+                                >
+                                  {isOpeningTransfer
+                                    ? 'Abriendo...'
+                                    : (
+                                      String(
+                                        transferLifecycleBySolicitudId?.[normalizeId(reminder?.context?.id)]?.stage || ''
+                                      ).trim() === 'recibido'
+                                        ? 'Esta solicitud ya fue recibida, ver entrada'
+                                        : 'Esta solicitud ya fue enviada, ver envio'
+                                    )}
                                 </button>
                               ) : canOpenTransferInEntradas ? (
                                 <button
