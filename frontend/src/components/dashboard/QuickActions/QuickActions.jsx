@@ -109,6 +109,17 @@ const isResolvedTransferResponseReminder = (reminder) => {
   if (contextType !== 'solicitud_traslado') return false
   if (isSpecialTransferDecisionReminder(reminder)) return false
 
+  const reminderKind = normalizeId(reminder?.kind)
+  if (reminderKind === TRANSFER_RECEIPT_NOTIFICATION_KIND) return true
+
+  const normalizedDescription = normalizeSearchText(reminder?.description)
+  if (
+    normalizedDescription.includes('llego completo') ||
+    normalizedDescription.includes('llego incompleto')
+  ) {
+    return true
+  }
+
   const decisionStatus = getReminderDecisionStatus(reminder)
   return decisionStatus === 'aceptada' || decisionStatus === 'rechazada' || decisionStatus === 'enviado'
 }
