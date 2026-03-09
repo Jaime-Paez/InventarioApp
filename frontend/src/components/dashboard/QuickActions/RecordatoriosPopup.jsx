@@ -1538,14 +1538,28 @@ function RecordatoriosPopup({
                           ) &&
                           typeof onOpenTransferRequestInEntradas === 'function'
                         )
+                        const reminderTransferReference = (
+                          extractTransferDocumentNumber(reminder?.context?.label || reminder?.description) ||
+                          ''
+                        ).toLowerCase()
                         const hasSentReminderForSameRequest = (
                           isTransferContextReminder &&
-                          Boolean(solicitudId) &&
+                          (Boolean(solicitudId) || Boolean(reminderTransferReference)) &&
                           (Array.isArray(reminders) ? reminders : []).some((candidate) => (
                             normalizeReminderContextType(candidate?.context?.type) === 'solicitud_traslado' &&
-                            normalizeId(candidate?.context?.id) === solicitudId &&
                             normalizeId(candidate?.id) !== normalizeId(reminder?.id) &&
-                            getReminderDecisionStatus(candidate) === 'enviado'
+                            getReminderDecisionStatus(candidate) === 'enviado' &&
+                            (
+                              (Boolean(solicitudId) && normalizeId(candidate?.context?.id) === solicitudId) ||
+                              (
+                                Boolean(reminderTransferReference) &&
+                                (
+                                  extractTransferDocumentNumber(
+                                    candidate?.context?.label || candidate?.description
+                                  ) || ''
+                                ).toLowerCase() === reminderTransferReference
+                              )
+                            )
                           ))
                         )
                         const shouldUseSentCopyOnTransferEntryAction = (

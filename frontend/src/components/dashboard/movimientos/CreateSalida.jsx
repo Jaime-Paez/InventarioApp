@@ -695,9 +695,26 @@ function CreateSalida({
         )
       }
 
-      if (!requesterRecipient?.id) {
+      const appendUniqueRecipient = (list, candidate) => {
+        const normalized = sanitizeRecipient(candidate)
+        if (!normalized?.id) return
+        const alreadyExists = list.some(
+          (recipient) => normalizeReminderId(recipient?.id) === normalizeReminderId(normalized.id)
+        )
+        if (!alreadyExists) list.push(normalized)
+      }
+
+      const reminderRecipients = []
+      appendUniqueRecipient(reminderRecipients, requesterRecipient)
+      appendUniqueRecipient(reminderRecipients, contextReminder?.creator)
+      ;(Array.isArray(contextReminder?.recipients) ? contextReminder.recipients : []).forEach((recipient) => {
+        appendUniqueRecipient(reminderRecipients, recipient)
+      })
+      appendUniqueRecipient(reminderRecipients, currentActorRecipient)
+
+      if (!reminderRecipients.length) {
         notifyError(
-          'La salida se creo, pero no se pudo enviar el recordatorio de envio al solicitante.'
+          'La salida se creo, pero no se pudo enviar el recordatorio de envio.'
         )
         return
       }
@@ -718,7 +735,7 @@ function CreateSalida({
         time: now.time,
         description,
         creator: currentActorRecipient,
-        recipients: [requesterRecipient],
+        recipients: reminderRecipients,
         context: {
           type: 'solicitud_traslado',
           id: solicitudId,
