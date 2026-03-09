@@ -340,6 +340,95 @@ function QuickActions({
     }
   }, [canReceiveTransferRequest, showErrorToast, token])
 
+  const fetchPreferredReceiveSubdivisions = useCallback(
+    async ({ sucursalSolicitanteId, productIds }) => {
+      const targetBranchId = normalizeId(sucursalSolicitanteId)
+      const normalizedProductIds = Array.from(
+        new Set(
+          (Array.isArray(productIds) ? productIds : [])
+            .map((productId) => normalizeId(productId))
+            .filter(Boolean)
+        )
+      )
+      if (!token || !targetBranchId || !normalizedProductIds.length) {
+        return new Map()
+      }
+
+      const baseUrl = `${API_URL}/inventario/inventario/?producto_ids=${encodeURIComponent(
+        normalizedProductIds.join(',')
+      )}&page_size=500`
+      const allowedProductIds = new Set(normalizedProductIds)
+      const totalsByProduct = new Map()
+
+      try {
+        let nextUrl = baseUrl
+        let safety = 0
+        while (nextUrl && safety < 10) {
+          safety += 1
+          const response = await authFetch(nextUrl, {}, token)
+          if (!response.ok) {
+            return new Map()
+          }
+
+          const payload = await response.json().catch(() => ({}))
+          const rows = Array.isArray(payload) ? payload : parseApiList(payload)
+          rows.forEach((row) => {
+            const productId = normalizeId(row?.producto_id || row?.producto?.id || '')
+            if (!productId || !allowedProductIds.has(productId)) return
+
+            const subdivisionId = normalizeId(row?.subdivision_id || row?.subdivision?.id || '')
+            if (!subdivisionId) return
+
+            const branchId = normalizeId(
+              row?.subdivision?.division?.bodega?.sucursal?.id ||
+                row?.subdivision?.division?.bodega?.sucursal_id ||
+                ''
+            )
+            if (branchId !== targetBranchId) return
+
+            const qty = toPositiveInt(row?.cantidad, 0)
+            if (qty <= 0) return
+
+            const productTotals = totalsByProduct.get(productId) || new Map()
+            productTotals.set(subdivisionId, toPositiveInt(productTotals.get(subdivisionId), 0) + qty)
+            totalsByProduct.set(productId, productTotals)
+          })
+
+          if (Array.isArray(payload)) break
+          nextUrl = payload?.next || null
+        }
+
+        const preferredByProduct = new Map()
+        totalsByProduct.forEach((subdivisionTotals, productId) => {
+          let bestSubdivisionId = ''
+          let bestQty = -1
+          subdivisionTotals.forEach((qty, subdivisionId) => {
+            const numericSubdivisionId = Number.parseInt(String(subdivisionId), 10)
+            const numericBestSubdivisionId = Number.parseInt(String(bestSubdivisionId), 10)
+            const shouldReplace =
+              qty > bestQty ||
+              (qty === bestQty &&
+                Number.isFinite(numericSubdivisionId) &&
+                Number.isFinite(numericBestSubdivisionId) &&
+                numericSubdivisionId < numericBestSubdivisionId)
+            if (shouldReplace) {
+              bestSubdivisionId = subdivisionId
+              bestQty = qty
+            }
+          })
+          if (bestSubdivisionId) {
+            preferredByProduct.set(productId, bestSubdivisionId)
+          }
+        })
+
+        return preferredByProduct
+      } catch {
+        return new Map()
+      }
+    },
+    [token]
+  )
+
   const ensureAudioContext = useCallback(() => {
     if (typeof window === 'undefined') return null
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext
@@ -1831,6 +1920,11 @@ function QuickActions({
           throw new Error('Este envio no tiene productos para registrar recepcion.')
         }
 
+        const preferredSubdivisionByProductId = await fetchPreferredReceiveSubdivisions({
+          sucursalSolicitanteId,
+          productIds: details.map((detail) => detail?.producto_id),
+        })
+
         const localDivisionsByBodega = new Map()
         divisions.forEach((division) => {
           const bodegaId = normalizeId(division?.bodega?.id || division?.bodega_id || '')
@@ -1846,29 +1940,30 @@ function QuickActions({
           const current = localSubdivisionsByDivision.get(divisionId) || []
           localSubdivisionsByDivision.set(divisionId, [...current, subdivision])
         })
-
-        const fallbackBodegaFromSubdivision = normalizeId(
-          subdivisions?.[0]?.division?.bodega?.id || subdivisions?.[0]?.division?.bodega_id || ''
-        )
-        const firstBodegaId = normalizeId(bodegas?.[0]?.id) || fallbackBodegaFromSubdivision
-        const firstDivisionFromBodega = (firstBodegaId
-          ? localDivisionsByBodega.get(firstBodegaId) || []
-          : [])[0]
-        const fallbackDivisionFromSubdivision = normalizeId(
-          subdivisions?.[0]?.division?.id || subdivisions?.[0]?.division_id || ''
-        )
-        const firstDivisionId =
-          normalizeId(firstDivisionFromBodega?.id) || fallbackDivisionFromSubdivision
-        const firstSubdivisionForBodega =
-          (firstDivisionId ? localSubdivisionsByDivision.get(firstDivisionId) || [] : [])[0] ||
-          subdivisions?.[0] ||
-          null
-        const firstSubdivisionId = normalizeId(firstSubdivisionForBodega?.id)
+        const localSubdivisionsById = new Map()
+        subdivisions.forEach((subdivision) => {
+          const subdivisionId = normalizeId(subdivision?.id)
+          if (!subdivisionId) return
+          localSubdivisionsById.set(subdivisionId, subdivision)
+        })
         const draft = {}
         details.forEach((detail) => {
           const productId = normalizeId(detail?.producto_id)
           if (!productId) return
           const cantidadEnviada = toPositiveInt(detail?.cantidad_enviada, 0)
+          const preferredSubdivisionId = normalizeId(
+            preferredSubdivisionByProductId.get(productId) || ''
+          )
+          const preferredSubdivision = localSubdivisionsById.get(preferredSubdivisionId) || null
+          const preferredDivisionId = normalizeId(
+            preferredSubdivision?.division?.id || preferredSubdivision?.division_id || ''
+          )
+          const preferredBodegaId = normalizeId(
+            preferredSubdivision?.division?.bodega?.id || preferredSubdivision?.division?.bodega_id || ''
+          )
+          const hasSuggestedLocation = Boolean(
+            preferredSubdivisionId && preferredDivisionId && preferredBodegaId
+          )
           draft[productId] = {
             producto_id: toPositiveInt(detail?.producto_id, 0),
             producto_codigo: String(detail?.producto_codigo || '').trim(),
@@ -1876,16 +1971,16 @@ function QuickActions({
             cantidad_enviada: cantidadEnviada,
             cantidad_recibida: cantidadEnviada,
             novedad: '',
-            ubicaciones: firstSubdivisionId
-              ? [{ subdivision_id: firstSubdivisionId, cantidad: cantidadEnviada }]
+            ubicaciones: hasSuggestedLocation
+              ? [{ subdivision_id: preferredSubdivisionId, cantidad: cantidadEnviada }]
               : [],
-            location_draft_bodega_id: firstBodegaId || '',
+            location_draft_bodega_id: hasSuggestedLocation ? preferredBodegaId : '',
             location_draft_bodega_query_input: '',
             location_draft_bodega_query: '',
-            location_draft_division_id: firstDivisionId || '',
+            location_draft_division_id: hasSuggestedLocation ? preferredDivisionId : '',
             location_draft_division_query_input: '',
             location_draft_division_query: '',
-            location_draft_subdivision_id: firstSubdivisionId || '',
+            location_draft_subdivision_id: hasSuggestedLocation ? preferredSubdivisionId : '',
             location_draft_subdivision_query_input: '',
             location_draft_subdivision_query: '',
             location_draft_cantidad: cantidadEnviada,
@@ -1906,7 +2001,7 @@ function QuickActions({
         setInTransitSubdivisionsLoading(false)
       }
     },
-    [showErrorToast, token]
+    [fetchPreferredReceiveSubdivisions, showErrorToast, token]
   )
 
   const handleReceiveShipmentDraftFieldChange = useCallback((productId, field, value) => {
