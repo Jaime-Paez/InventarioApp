@@ -213,6 +213,21 @@
   color: var(--color-error-text);
 }
 
+.entity-reminders__status--accepted {
+  background: color-mix(in srgb, var(--color-success-text) 18%, transparent);
+  color: var(--color-success-text);
+}
+
+.entity-reminders__status--rejected {
+  background: color-mix(in srgb, var(--color-error-text) 18%, transparent);
+  color: var(--color-error-text);
+}
+
+.entity-reminders__status--sent {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
+}
+
 .entity-reminders__status--info {
   background: color-mix(in srgb, var(--color-border) 24%, transparent);
   color: color-mix(in srgb, currentColor 72%, transparent);

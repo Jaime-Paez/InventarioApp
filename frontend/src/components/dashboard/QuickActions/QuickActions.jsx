@@ -64,7 +64,7 @@ const isResolvedTransferResponseReminder = (reminder) => {
   if (isSpecialTransferDecisionReminder(reminder)) return false
 
   const decisionStatus = getReminderDecisionStatus(reminder)
-  return decisionStatus === 'aceptada' || decisionStatus === 'rechazada'
+  return decisionStatus === 'aceptada' || decisionStatus === 'rechazada' || decisionStatus === 'enviado'
 }
 
 const resolveUrgentDecisionProgress = (reminder, nowValue) => {

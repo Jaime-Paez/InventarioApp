@@ -660,6 +660,92 @@ function CreateSalida({
       selectedSolicitudDoc,
     ]
   )
+  const appendTransferShipmentReminder = useCallback(
+    (solicitud) => {
+      const solicitudId = String(
+        solicitud?.id || formData.solicitudTrasladoId || prefillTransferSolicitudId || ''
+      ).trim()
+      if (!solicitudId) return
+
+      const existingReminders = readRemindersFromStorage()
+      const contextMatchesSolicitud = (reminder) =>
+        normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado' &&
+        normalizeReminderId(reminder?.context?.id) === solicitudId
+
+      const contextReminder = (
+        existingReminders.find(
+          (reminder) =>
+            contextMatchesSolicitud(reminder) &&
+            normalizeReminderId(reminder?.kind) === 'solicitud_traslado_decision'
+        ) ||
+        existingReminders.find(contextMatchesSolicitud) ||
+        null
+      )
+
+      let requesterRecipient = sanitizeRecipient(contextReminder?.creator)
+      if (!requesterRecipient?.id) {
+        requesterRecipient = (
+          (Array.isArray(contextReminder?.recipients) ? contextReminder.recipients : [])
+            .map((recipient) => sanitizeRecipient(recipient))
+            .filter(Boolean)
+            .find(
+              (recipient) =>
+                normalizeReminderId(recipient?.id) !== normalizeReminderId(currentActorRecipient?.id)
+            ) || null
+        )
+      }
+
+      if (!requesterRecipient?.id) {
+        notifyError(
+          'La salida se creo, pero no se pudo enviar el recordatorio de envio al solicitante.'
+        )
+        return
+      }
+
+      const transferDoc = String(solicitud?.no_documento || selectedSolicitudDoc || '').trim()
+      const contextLabel = transferDoc
+        ? `Solicitud de traslado #${transferDoc}`
+        : `Solicitud de traslado #${solicitudId}`
+      const transferReference = contextLabel.replace(/^solicitud de traslado\s*/i, '').trim() || `#${solicitudId}`
+      const description = transferReference
+        ? `Su solicitud de traslado ${transferReference} fue enviada y esta en traslado.`
+        : 'Su solicitud de traslado fue enviada y esta en traslado.'
+      const now = nowReminderDateTime()
+
+      const reminder = {
+        id: createReminderId(),
+        date: now.date,
+        time: now.time,
+        description,
+        creator: currentActorRecipient,
+        recipients: [requesterRecipient],
+        context: {
+          type: 'solicitud_traslado',
+          id: solicitudId,
+          label: contextLabel,
+        },
+        kind: 'recordatorio_general',
+        createdAt: now.iso,
+        decision: {
+          status: 'enviado',
+          reason: '',
+          by: currentActorRecipient,
+          at: now.iso,
+        },
+        completedBy: [],
+      }
+
+      writeRemindersToStorage([reminder, ...existingReminders])
+      emitRemindersSync()
+    },
+    [
+      currentActorRecipient,
+      formData.solicitudTrasladoId,
+      notifyError,
+      prefillTransferSolicitudId,
+      selectedSolicitudDoc,
+    ]
+  )
 
   useEffect(() => {
     if (!preloadedTipoMovimientos.length) return
@@ -1921,6 +2007,10 @@ function CreateSalida({
       if (!response.ok) {
         const detail = resolveApiErrorMessage(data, 'No se pudo crear la salida.')
         throw new Error(detail)
+      }
+
+      if (isTraslado) {
+        appendTransferShipmentReminder(data?.solicitud || selectedSolicitudTraslado)
       }
 
       onCreated?.(data)

@@ -848,6 +848,11 @@
   color: var(--color-error-text);
 }
 
+.recordatorios-popup__status--sent {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
+}
+
 .recordatorios-popup__status--info {
   background: color-mix(in srgb, var(--color-border) 24%, transparent);
   color: color-mix(in srgb, currentColor 75%, transparent);
@@ -876,6 +881,11 @@
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__status--rejected {
   background: color-mix(in srgb, var(--color-error-text-dark) 20%, transparent);
   color: var(--color-error-text-dark);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__status--sent {
+  background: color-mix(in srgb, var(--color-primary-dark) 20%, transparent);
+  color: var(--color-primary-dark-soft);
 }
 
 .recordatorios-popup__mark-seen {

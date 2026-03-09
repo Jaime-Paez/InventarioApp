@@ -1773,16 +1773,23 @@ function EntradaDetails({
   const isAcceptedSolicitudRibbon =
     hasPreviewData &&
     (normalizedSelectedEstadoName.includes('acept') || normalizedSelectedEstadoName.includes('aprob'))
-  const showSolicitudRibbon = isPendingSolicitudRibbon || isRejectedSolicitudRibbon || isAcceptedSolicitudRibbon
+  const isSentSolicitudRibbon =
+    hasPreviewData &&
+    normalizedSelectedEstadoName.includes('envi')
+  const showSolicitudRibbon =
+    isPendingSolicitudRibbon ||
+    isRejectedSolicitudRibbon ||
+    isAcceptedSolicitudRibbon ||
+    isSentSolicitudRibbon
   const solicitudRibbonLabel = isRejectedSolicitudRibbon
     ? 'Solicitud rechazada'
-    : (isAcceptedSolicitudRibbon ? 'Solicitud aceptada' : 'Solicitud pendiente')
+    : (isAcceptedSolicitudRibbon ? 'Solicitud aceptada' : (isSentSolicitudRibbon ? 'Solicitud enviada' : 'Solicitud pendiente'))
   const solicitudRibbonTitle = isRejectedSolicitudRibbon
     ? 'Solicitud rechazada por la sucursal proveedora'
     : (
       isAcceptedSolicitudRibbon
         ? 'Solicitud aceptada por la sucursal proveedora'
-        : 'Solicitud esperando a ser aceptada'
+        : (isSentSolicitudRibbon ? 'Solicitud en estado de envio (traslado).' : 'Solicitud esperando a ser aceptada')
     )
   const solicitudRejectionReason = String(previewData?.motivo_rechazo || '').trim()
   const resolvedSolicitudRejectionReason = (
@@ -1826,7 +1833,11 @@ function EntradaDetails({
             className={`entrada-details__pending-ribbon${
               isRejectedSolicitudRibbon
                 ? ' entrada-details__pending-ribbon--rejected'
-                : (isAcceptedSolicitudRibbon ? ' entrada-details__pending-ribbon--accepted' : '')
+                : (
+                  isAcceptedSolicitudRibbon
+                    ? ' entrada-details__pending-ribbon--accepted'
+                    : (isSentSolicitudRibbon ? ' entrada-details__pending-ribbon--sent' : '')
+                )
             }`}
             aria-label={solicitudRibbonLabel}
             title={solicitudRibbonTitle}

@@ -137,6 +137,17 @@ const normalizeDecisionStatus = (value) => {
     return 'aceptada'
   }
   if (
+    normalized === 'enviado' ||
+    normalized === 'enviada' ||
+    normalized === 'en_transito' ||
+    normalized === 'en_traslado' ||
+    normalized === 'en traslado' ||
+    normalized === 'shipped' ||
+    normalized === 'sent'
+  ) {
+    return 'enviado'
+  }
+  if (
     normalized === 'rechazada' ||
     normalized === 'rechazar' ||
     normalized === 'rejected'
@@ -381,6 +392,17 @@ const inferTransferDecisionStatusFromDescription = (reminder) => {
   }
 
   if (
+    description.includes('fue enviada') ||
+    description.includes('fue enviado') ||
+    description.includes('solicitud enviada') ||
+    description.includes('esta en envio') ||
+    description.includes('está en envío') ||
+    description.includes('en traslado')
+  ) {
+    return 'enviado'
+  }
+
+  if (
     description.includes('fue aceptada') ||
     description.includes('solicitud aceptada') ||
     description.includes('aceptada por')
@@ -413,7 +435,7 @@ export const isReminderPendingForCurrentUser = (reminder, userIdSet) => {
   const isTransferResponseReminder =
     isTransferContext &&
     !isSpecialTransferDecisionReminder(reminder) &&
-    (decisionStatus === 'aceptada' || decisionStatus === 'rechazada')
+    (decisionStatus === 'aceptada' || decisionStatus === 'rechazada' || decisionStatus === 'enviado')
   if (isTransferResponseReminder) return true
 
   if (isSpecialReminderResolved(reminder)) return false
@@ -484,6 +506,14 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
     return {
       label: 'Rechazada',
       className: 'rejected',
+      canMarkSeen: false,
+    }
+  }
+
+  if ((isSpecialReminder || isTransferContext) && decisionStatus === 'enviado') {
+    return {
+      label: 'Enviado',
+      className: 'sent',
       canMarkSeen: false,
     }
   }

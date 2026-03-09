@@ -68,6 +68,11 @@ const buildTransferResponseDescription = (reminder, decisionStatus) => {
     return 'Su solicitud de traslado fue aceptada.'
   }
 
+  if (decisionStatus === 'enviado') {
+    if (contextReference) return `Su solicitud de traslado ${contextReference} fue enviada y esta en traslado.`
+    return 'Su solicitud de traslado fue enviada y esta en traslado.'
+  }
+
   return String(reminder?.description || '').trim() || '-'
 }
 
@@ -1300,8 +1305,10 @@ function RecordatoriosPopup({
                           (
                             decisionStatus === 'rechazada' ||
                             decisionStatus === 'aceptada' ||
+                            decisionStatus === 'enviado' ||
                             status.className === 'rejected' ||
-                            status.className === 'accepted'
+                            status.className === 'accepted' ||
+                            status.className === 'sent'
                           ) &&
                           typeof onOpenTransferRequestInEntradas === 'function'
                         )
@@ -1371,7 +1378,13 @@ function RecordatoriosPopup({
                                   onClick={() => handleOpenTransferInEntradas(reminder)}
                                   disabled={isOpeningTransfer}
                                 >
-                                  {isOpeningTransfer ? 'Abriendo...' : 'Ver en entradas'}
+                                  {isOpeningTransfer
+                                    ? 'Abriendo...'
+                                    : (
+                                      decisionStatus === 'enviado'
+                                        ? 'Ver envio pendiente'
+                                        : 'Ver en entradas'
+                                    )}
                                 </button>
                               ) : status.canMarkSeen ? (
                                 <button
