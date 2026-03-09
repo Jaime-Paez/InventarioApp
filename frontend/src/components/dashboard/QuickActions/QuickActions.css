@@ -501,8 +501,9 @@
 }
 
 .quick-actions__receive-grid input,
-.quick-actions__receive-location-row select,
 .quick-actions__receive-location-row input,
+.quick-actions__receive-dropdown-trigger,
+.quick-actions__receive-dropdown-search input,
 .quick-actions__receive-note textarea {
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -528,7 +529,87 @@
   grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(130px, 1fr) 82px auto;
 }
 
-.quick-actions__receive-location-row button {
+.quick-actions__receive-dropdown {
+  position: relative;
+}
+
+.quick-actions__receive-dropdown-trigger {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.quick-actions__receive-dropdown-trigger i {
+  font-size: 0.72rem;
+  opacity: 0.76;
+}
+
+.quick-actions__receive-dropdown-panel {
+  position: absolute;
+  z-index: 12;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--modal-color);
+  box-shadow: var(--shadow-panel);
+  padding: 8px;
+  display: grid;
+  gap: 7px;
+}
+
+.quick-actions__receive-dropdown-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.quick-actions__receive-dropdown-search svg {
+  flex: 0 0 auto;
+  opacity: 0.76;
+}
+
+.quick-actions__receive-dropdown-search input {
+  border: none;
+  outline: none;
+  min-height: 32px;
+  padding: 0;
+  width: 100%;
+  background: transparent;
+}
+
+.quick-actions__receive-dropdown-results {
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.quick-actions__receive-dropdown-option {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
+  color: var(--color-text-primary);
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.quick-actions__receive-dropdown-option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
+}
+
+.quick-actions__receive-location-add-btn {
   border: 1px solid color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
@@ -624,7 +705,9 @@
 
 .quick-actions__receive-btn:disabled,
 .quick-actions__receive-close:disabled,
-.quick-actions__receive-location-row button:disabled,
+.quick-actions__receive-location-add-btn:disabled,
+.quick-actions__receive-dropdown-trigger:disabled,
+.quick-actions__receive-dropdown-option:disabled,
 .quick-actions__receive-location-chip button:disabled {
   cursor: not-allowed;
   opacity: 0.62;

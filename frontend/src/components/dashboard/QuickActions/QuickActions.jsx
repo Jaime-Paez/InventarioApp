@@ -72,6 +72,13 @@ const parseEntityTimestamp = (...values) => {
   return Number.NaN
 }
 
+const normalizeSearchText = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+
 const isResolvedTransferResponseReminder = (reminder) => {
   const contextType = normalizeReminderContextType(reminder?.context?.type)
   if (contextType !== 'solicitud_traslado') return false
@@ -139,6 +146,8 @@ function QuickActions({
   const remindersPollInFlightRef = useRef(false)
   const pendingShipmentsPollInFlightRef = useRef(false)
   const inTransitShipmentsPollInFlightRef = useRef(false)
+  const receiveLocationSearchDebounceRef = useRef({})
+  const receiveLocationDropdownRefs = useRef({})
   const audioContextRef = useRef(null)
   const notificationAudioRef = useRef(null)
   const didInitUrgentSnapshotRef = useRef(false)
@@ -172,6 +181,10 @@ function QuickActions({
   const [receiveShipmentDraftByProductId, setReceiveShipmentDraftByProductId] = useState({})
   const [receiveShipmentSubmitting, setReceiveShipmentSubmitting] = useState(false)
   const [receiveShipmentError, setReceiveShipmentError] = useState('')
+  const [activeReceiveLocationDropdown, setActiveReceiveLocationDropdown] = useState({
+    productId: '',
+    field: '',
+  })
   const [clockTick, setClockTick] = useState(() => Date.now())
   const [focusReminderId, setFocusReminderId] = useState('')
   const [urgentVisualProgressById, setUrgentVisualProgressById] = useState({})
@@ -1155,6 +1168,28 @@ function QuickActions({
     [inTransitSubdivisions]
   )
 
+  const inTransitBodegaById = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(inTransitBodegas) ? inTransitBodegas : []).map((bodega) => [
+          normalizeId(bodega?.id),
+          bodega,
+        ])
+      ),
+    [inTransitBodegas]
+  )
+
+  const inTransitDivisionById = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(inTransitDivisions) ? inTransitDivisions : []).map((division) => [
+          normalizeId(division?.id),
+          division,
+        ])
+      ),
+    [inTransitDivisions]
+  )
+
   const inTransitDivisionsByBodegaId = useMemo(() => {
     const map = new Map()
     ;(Array.isArray(inTransitDivisions) ? inTransitDivisions : []).forEach((division) => {
@@ -1230,6 +1265,49 @@ function QuickActions({
     if (!hadButton && element) {
       setClockTick(Date.now())
     }
+  }, [])
+
+  const buildReceiveLocationDropdownKey = useCallback(
+    (productId, field) => `${normalizeId(productId)}::${String(field || '').trim().toLowerCase()}`,
+    []
+  )
+
+  const setReceiveLocationDropdownRef = useCallback(
+    (productId, field) => (element) => {
+      const key = buildReceiveLocationDropdownKey(productId, field)
+      if (!key) return
+      if (element) {
+        receiveLocationDropdownRefs.current[key] = element
+      } else {
+        delete receiveLocationDropdownRefs.current[key]
+      }
+    },
+    [buildReceiveLocationDropdownKey]
+  )
+
+  const isReceiveLocationDropdownOpen = useCallback(
+    (productId, field) =>
+      normalizeId(activeReceiveLocationDropdown?.productId) === normalizeId(productId) &&
+      String(activeReceiveLocationDropdown?.field || '').trim().toLowerCase() ===
+        String(field || '').trim().toLowerCase(),
+    [activeReceiveLocationDropdown]
+  )
+
+  const toggleReceiveLocationDropdown = useCallback((productId, field) => {
+    const normalizedProductId = normalizeId(productId)
+    const normalizedField = String(field || '').trim().toLowerCase()
+    if (!normalizedProductId || !normalizedField) return
+    setActiveReceiveLocationDropdown((prev) => {
+      const prevProductId = normalizeId(prev?.productId)
+      const prevField = String(prev?.field || '').trim().toLowerCase()
+      if (prevProductId === normalizedProductId && prevField === normalizedField) {
+        return { productId: '', field: '' }
+      }
+      return {
+        productId: normalizedProductId,
+        field: normalizedField,
+      }
+    })
   }, [])
 
   const measure = (index) => {
@@ -1487,6 +1565,12 @@ function QuickActions({
   }, [])
 
   const closeReceiveShipmentModal = useCallback(() => {
+    Object.values(receiveLocationSearchDebounceRef.current || {}).forEach((timerId) => {
+      clearTimeout(timerId)
+    })
+    receiveLocationSearchDebounceRef.current = {}
+    receiveLocationDropdownRefs.current = {}
+    setActiveReceiveLocationDropdown({ productId: '', field: '' })
     setIsReceiveShipmentModalOpen(false)
     setActiveInTransitShipment(null)
     setInTransitBodegas([])
@@ -1496,6 +1580,37 @@ function QuickActions({
     setReceiveShipmentError('')
     setReceiveShipmentSubmitting(false)
   }, [])
+
+  useEffect(
+    () => () => {
+      Object.values(receiveLocationSearchDebounceRef.current || {}).forEach((timerId) => {
+        clearTimeout(timerId)
+      })
+      receiveLocationSearchDebounceRef.current = {}
+      receiveLocationDropdownRefs.current = {}
+    },
+    []
+  )
+
+  useEffect(() => {
+    const activeProductId = normalizeId(activeReceiveLocationDropdown?.productId)
+    const activeField = String(activeReceiveLocationDropdown?.field || '').trim().toLowerCase()
+    if (!activeProductId || !activeField || !isReceiveShipmentModalOpen) return undefined
+
+    const key = buildReceiveLocationDropdownKey(activeProductId, activeField)
+    const handleMouseDown = (event) => {
+      const node = receiveLocationDropdownRefs.current?.[key]
+      if (!node || node.contains(event.target)) return
+      setActiveReceiveLocationDropdown({ productId: '', field: '' })
+    }
+
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [
+    activeReceiveLocationDropdown,
+    buildReceiveLocationDropdownKey,
+    isReceiveShipmentModalOpen,
+  ])
 
   const appendShipmentReceptionReminder = useCallback(
     ({ shipment, result, totalMissing, items }) => {
@@ -1765,8 +1880,14 @@ function QuickActions({
               ? [{ subdivision_id: firstSubdivisionId, cantidad: cantidadEnviada }]
               : [],
             location_draft_bodega_id: firstBodegaId || '',
+            location_draft_bodega_query_input: '',
+            location_draft_bodega_query: '',
             location_draft_division_id: firstDivisionId || '',
+            location_draft_division_query_input: '',
+            location_draft_division_query: '',
             location_draft_subdivision_id: firstSubdivisionId || '',
+            location_draft_subdivision_query_input: '',
+            location_draft_subdivision_query: '',
             location_draft_cantidad: cantidadEnviada,
           }
         })
@@ -1816,6 +1937,8 @@ function QuickActions({
       } else if (field === 'location_draft_bodega_id') {
         const selectedBodegaId = normalizeId(value)
         nextRow.location_draft_bodega_id = selectedBodegaId
+        nextRow.location_draft_bodega_query_input = ''
+        nextRow.location_draft_bodega_query = ''
         const bodegaDivisions = selectedBodegaId
           ? inTransitDivisionsByBodegaId.get(selectedBodegaId) || []
           : Array.isArray(inTransitDivisions)
@@ -1823,19 +1946,29 @@ function QuickActions({
             : []
         const firstDivisionId = normalizeId(bodegaDivisions?.[0]?.id)
         nextRow.location_draft_division_id = firstDivisionId
+        nextRow.location_draft_division_query_input = ''
+        nextRow.location_draft_division_query = ''
         const divisionSubdivisions = firstDivisionId
           ? inTransitSubdivisionsByDivisionId.get(firstDivisionId) || []
           : []
         nextRow.location_draft_subdivision_id = normalizeId(divisionSubdivisions?.[0]?.id)
+        nextRow.location_draft_subdivision_query_input = ''
+        nextRow.location_draft_subdivision_query = ''
       } else if (field === 'location_draft_division_id') {
         const selectedDivisionId = normalizeId(value)
         nextRow.location_draft_division_id = selectedDivisionId
+        nextRow.location_draft_division_query_input = ''
+        nextRow.location_draft_division_query = ''
         const divisionSubdivisions = selectedDivisionId
           ? inTransitSubdivisionsByDivisionId.get(selectedDivisionId) || []
           : []
         nextRow.location_draft_subdivision_id = normalizeId(divisionSubdivisions?.[0]?.id)
+        nextRow.location_draft_subdivision_query_input = ''
+        nextRow.location_draft_subdivision_query = ''
       } else if (field === 'location_draft_subdivision_id') {
         nextRow.location_draft_subdivision_id = normalizeId(value)
+        nextRow.location_draft_subdivision_query_input = ''
+        nextRow.location_draft_subdivision_query = ''
       } else if (field === 'location_draft_cantidad') {
         nextRow.location_draft_cantidad = Math.min(
           toPositiveInt(nextRow?.cantidad_recibida, 0),
@@ -1853,6 +1986,50 @@ function QuickActions({
     inTransitDivisionsByBodegaId,
     inTransitSubdivisionsByDivisionId,
   ])
+
+  const handleReceiveShipmentLocationSearchInput = useCallback((productId, field, value) => {
+    const normalizedProductId = normalizeId(productId)
+    const normalizedField = String(field || '').trim().toLowerCase()
+    if (!normalizedProductId || !normalizedField) return
+    const inputKey = `location_draft_${normalizedField}_query_input`
+    const queryKey = `location_draft_${normalizedField}_query`
+    const rawValue = String(value || '')
+
+    setReceiveShipmentDraftByProductId((prev) => {
+      const current = prev?.[normalizedProductId]
+      if (!current) return prev
+      return {
+        ...prev,
+        [normalizedProductId]: {
+          ...current,
+          [inputKey]: rawValue,
+        },
+      }
+    })
+
+    const timerKey = buildReceiveLocationDropdownKey(normalizedProductId, normalizedField)
+    const timers = receiveLocationSearchDebounceRef.current || {}
+    if (timers[timerKey]) {
+      clearTimeout(timers[timerKey])
+    }
+
+    timers[timerKey] = setTimeout(() => {
+      setReceiveShipmentDraftByProductId((prev) => {
+        const current = prev?.[normalizedProductId]
+        if (!current) return prev
+        return {
+          ...prev,
+          [normalizedProductId]: {
+            ...current,
+            [queryKey]: normalizeSearchText(rawValue),
+          },
+        }
+      })
+      delete timers[timerKey]
+    }, 260)
+
+    receiveLocationSearchDebounceRef.current = timers
+  }, [buildReceiveLocationDropdownKey])
 
   const handleAddReceiveShipmentLocation = useCallback((productId) => {
     const normalizedProductId = normalizeId(productId)
@@ -2377,13 +2554,38 @@ function QuickActions({
                     const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
                     const assignedQty = toPositiveInt(row?.cantidad_asignada, 0)
                     const selectedBodegaId = normalizeId(row?.location_draft_bodega_id)
+                    const selectedBodega = inTransitBodegaById.get(selectedBodegaId) || null
+                    const bodegaQuery = normalizeSearchText(row?.location_draft_bodega_query || '')
+                    const filteredBodegas = bodegaQuery
+                      ? inTransitBodegas.filter((bodega) =>
+                          normalizeSearchText(bodega?.nombre).includes(bodegaQuery)
+                        )
+                      : inTransitBodegas
                     const availableDivisions = selectedBodegaId
                       ? inTransitDivisionsByBodegaId.get(selectedBodegaId) || []
                       : []
                     const selectedDivisionId = normalizeId(row?.location_draft_division_id)
+                    const selectedDivision = inTransitDivisionById.get(selectedDivisionId) || null
+                    const divisionQuery = normalizeSearchText(row?.location_draft_division_query || '')
+                    const filteredDivisions = divisionQuery
+                      ? availableDivisions.filter((division) =>
+                          normalizeSearchText(division?.nombre).includes(divisionQuery)
+                        )
+                      : availableDivisions
                     const availableSubdivisions = selectedDivisionId
                       ? inTransitSubdivisionsByDivisionId.get(selectedDivisionId) || []
                       : []
+                    const subdivisionQuery = normalizeSearchText(
+                      row?.location_draft_subdivision_query || ''
+                    )
+                    const filteredSubdivisions = subdivisionQuery
+                      ? availableSubdivisions.filter((subdivision) =>
+                          normalizeSearchText(subdivision?.nombre).includes(subdivisionQuery)
+                        )
+                      : availableSubdivisions
+                    const selectedSubdivision = inTransitSubdivisionById.get(
+                      normalizeId(row?.location_draft_subdivision_id)
+                    ) || null
                     return (
                       <article key={`receive-shipment-row-${rowProductId}`} className="quick-actions__receive-item">
                         <div className="quick-actions__receive-item-head">
@@ -2419,59 +2621,209 @@ function QuickActions({
 
                         <div className="quick-actions__receive-location">
                           <div className="quick-actions__receive-location-row quick-actions__receive-location-row--compose">
-                            <select
-                              value={String(row?.location_draft_bodega_id || '')}
-                              onChange={(event) =>
-                                handleReceiveShipmentDraftFieldChange(
-                                  rowProductId,
-                                  'location_draft_bodega_id',
-                                  event.target.value
-                                )}
-                              disabled={receiveShipmentSubmitting || !inTransitBodegas.length}
+                            <div
+                              className="quick-actions__receive-dropdown"
+                              ref={setReceiveLocationDropdownRef(rowProductId, 'bodega')}
                             >
-                              <option value="">Selecciona bodega</option>
-                              {inTransitBodegas.map((bodega) => (
-                                <option key={`receive-bodega-option-${bodega.id}`} value={bodega.id}>
-                                  {String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}
-                                </option>
-                              ))}
-                            </select>
+                              <button
+                                type="button"
+                                className="quick-actions__receive-dropdown-trigger"
+                                onClick={() => toggleReceiveLocationDropdown(rowProductId, 'bodega')}
+                                disabled={receiveShipmentSubmitting || !inTransitBodegas.length}
+                              >
+                                <span>
+                                  {String(selectedBodega?.nombre || 'Selecciona bodega').trim()}
+                                </span>
+                                <i
+                                  className={`pi pi-chevron-${
+                                    isReceiveLocationDropdownOpen(rowProductId, 'bodega') ? 'up' : 'down'
+                                  }`}
+                                />
+                              </button>
 
-                            <select
-                              value={String(row?.location_draft_division_id || '')}
-                              onChange={(event) =>
-                                handleReceiveShipmentDraftFieldChange(
-                                  rowProductId,
-                                  'location_draft_division_id',
-                                  event.target.value
-                                )}
-                              disabled={receiveShipmentSubmitting || !availableDivisions.length}
-                            >
-                              <option value="">Selecciona division</option>
-                              {availableDivisions.map((division) => (
-                                <option key={`receive-division-option-${division.id}`} value={division.id}>
-                                  {String(division?.nombre || `Division ${division.id}`).trim()}
-                                </option>
-                              ))}
-                            </select>
+                              {isReceiveLocationDropdownOpen(rowProductId, 'bodega') && (
+                                <div className="quick-actions__receive-dropdown-panel">
+                                  <div className="quick-actions__receive-dropdown-search">
+                                    <Search size={13} />
+                                    <input
+                                      type="text"
+                                      placeholder="Buscar bodega"
+                                      value={String(row?.location_draft_bodega_query_input || '')}
+                                      onChange={(event) =>
+                                        handleReceiveShipmentLocationSearchInput(
+                                          rowProductId,
+                                          'bodega',
+                                          event.target.value
+                                        )
+                                      }
+                                      disabled={receiveShipmentSubmitting}
+                                    />
+                                  </div>
+                                  <div className="quick-actions__receive-dropdown-results">
+                                    {!filteredBodegas.length && <small className="muted">Sin resultados.</small>}
+                                    {filteredBodegas.map((bodega) => (
+                                      <button
+                                        key={`receive-bodega-option-${bodega.id}`}
+                                        type="button"
+                                        className="quick-actions__receive-dropdown-option"
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={(event) => {
+                                          event.preventDefault()
+                                          event.stopPropagation()
+                                          handleReceiveShipmentDraftFieldChange(
+                                            rowProductId,
+                                            'location_draft_bodega_id',
+                                            bodega.id
+                                          )
+                                          setActiveReceiveLocationDropdown({ productId: '', field: '' })
+                                        }}
+                                        disabled={receiveShipmentSubmitting}
+                                      >
+                                        <strong>{String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}</strong>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
 
-                            <select
-                              value={String(row?.location_draft_subdivision_id || '')}
-                              onChange={(event) =>
-                                handleReceiveShipmentDraftFieldChange(
-                                  rowProductId,
-                                  'location_draft_subdivision_id',
-                                  event.target.value
-                                )}
-                              disabled={receiveShipmentSubmitting || !availableSubdivisions.length}
+                            <div
+                              className="quick-actions__receive-dropdown"
+                              ref={setReceiveLocationDropdownRef(rowProductId, 'division')}
                             >
-                              <option value="">Selecciona subdivision</option>
-                              {availableSubdivisions.map((subdivision) => (
-                                <option key={`receive-subdivision-option-${subdivision.id}`} value={subdivision.id}>
-                                  {String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}
-                                </option>
-                              ))}
-                            </select>
+                              <button
+                                type="button"
+                                className="quick-actions__receive-dropdown-trigger"
+                                onClick={() => toggleReceiveLocationDropdown(rowProductId, 'division')}
+                                disabled={receiveShipmentSubmitting || !availableDivisions.length}
+                              >
+                                <span>
+                                  {String(selectedDivision?.nombre || 'Selecciona division').trim()}
+                                </span>
+                                <i
+                                  className={`pi pi-chevron-${
+                                    isReceiveLocationDropdownOpen(rowProductId, 'division') ? 'up' : 'down'
+                                  }`}
+                                />
+                              </button>
+
+                              {isReceiveLocationDropdownOpen(rowProductId, 'division') && (
+                                <div className="quick-actions__receive-dropdown-panel">
+                                  <div className="quick-actions__receive-dropdown-search">
+                                    <Search size={13} />
+                                    <input
+                                      type="text"
+                                      placeholder="Buscar division"
+                                      value={String(row?.location_draft_division_query_input || '')}
+                                      onChange={(event) =>
+                                        handleReceiveShipmentLocationSearchInput(
+                                          rowProductId,
+                                          'division',
+                                          event.target.value
+                                        )
+                                      }
+                                      disabled={receiveShipmentSubmitting}
+                                    />
+                                  </div>
+                                  <div className="quick-actions__receive-dropdown-results">
+                                    {!filteredDivisions.length && <small className="muted">Sin resultados.</small>}
+                                    {filteredDivisions.map((division) => (
+                                      <button
+                                        key={`receive-division-option-${division.id}`}
+                                        type="button"
+                                        className="quick-actions__receive-dropdown-option"
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={(event) => {
+                                          event.preventDefault()
+                                          event.stopPropagation()
+                                          handleReceiveShipmentDraftFieldChange(
+                                            rowProductId,
+                                            'location_draft_division_id',
+                                            division.id
+                                          )
+                                          setActiveReceiveLocationDropdown({ productId: '', field: '' })
+                                        }}
+                                        disabled={receiveShipmentSubmitting}
+                                      >
+                                        <strong>{String(division?.nombre || `Division ${division.id}`).trim()}</strong>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div
+                              className="quick-actions__receive-dropdown"
+                              ref={setReceiveLocationDropdownRef(rowProductId, 'subdivision')}
+                            >
+                              <button
+                                type="button"
+                                className="quick-actions__receive-dropdown-trigger"
+                                onClick={() => toggleReceiveLocationDropdown(rowProductId, 'subdivision')}
+                                disabled={receiveShipmentSubmitting || !availableSubdivisions.length}
+                              >
+                                <span>
+                                  {String(selectedSubdivision?.nombre || 'Selecciona subdivision').trim()}
+                                </span>
+                                <i
+                                  className={`pi pi-chevron-${
+                                    isReceiveLocationDropdownOpen(rowProductId, 'subdivision') ? 'up' : 'down'
+                                  }`}
+                                />
+                              </button>
+
+                              {isReceiveLocationDropdownOpen(rowProductId, 'subdivision') && (
+                                <div className="quick-actions__receive-dropdown-panel">
+                                  <div className="quick-actions__receive-dropdown-search">
+                                    <Search size={13} />
+                                    <input
+                                      type="text"
+                                      placeholder="Buscar subdivision"
+                                      value={String(row?.location_draft_subdivision_query_input || '')}
+                                      onChange={(event) =>
+                                        handleReceiveShipmentLocationSearchInput(
+                                          rowProductId,
+                                          'subdivision',
+                                          event.target.value
+                                        )
+                                      }
+                                      disabled={receiveShipmentSubmitting}
+                                    />
+                                  </div>
+                                  <div className="quick-actions__receive-dropdown-results">
+                                    {!filteredSubdivisions.length && (
+                                      <small className="muted">Sin resultados.</small>
+                                    )}
+                                    {filteredSubdivisions.map((subdivision) => (
+                                      <button
+                                        key={`receive-subdivision-option-${subdivision.id}`}
+                                        type="button"
+                                        className="quick-actions__receive-dropdown-option"
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={(event) => {
+                                          event.preventDefault()
+                                          event.stopPropagation()
+                                          handleReceiveShipmentDraftFieldChange(
+                                            rowProductId,
+                                            'location_draft_subdivision_id',
+                                            subdivision.id
+                                          )
+                                          setActiveReceiveLocationDropdown({ productId: '', field: '' })
+                                        }}
+                                        disabled={receiveShipmentSubmitting}
+                                      >
+                                        <strong>
+                                          {String(
+                                            subdivision?.nombre || `Subdivision ${subdivision.id}`
+                                          ).trim()}
+                                        </strong>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                             <input
                               type="number"
                               min={0}
@@ -2487,8 +2839,12 @@ function QuickActions({
                             />
                             <button
                               type="button"
+                              className="quick-actions__receive-location-add-btn"
                               onClick={() => handleAddReceiveShipmentLocation(rowProductId)}
-                              disabled={receiveShipmentSubmitting || !availableSubdivisions.length}
+                              disabled={
+                                receiveShipmentSubmitting ||
+                                !normalizeId(row?.location_draft_subdivision_id)
+                              }
                             >
                               Agregar
                             </button>

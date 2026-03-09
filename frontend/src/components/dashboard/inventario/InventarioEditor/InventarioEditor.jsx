@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../InventarioDetails/InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -14,6 +14,12 @@ const parseQuantity = (value) => {
   if (!Number.isFinite(parsed)) return null
   return Math.max(0, Math.floor(parsed))
 }
+const normalizeForSearch = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 
 const InventarioEditor = forwardRef(function InventarioEditor(
   {
@@ -45,6 +51,23 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const [editingField, setEditingField] = useState(null)
   const [editingValue, setEditingValue] = useState('')
   const [editError, setEditError] = useState('')
+  const [showLocationBranchDropdown, setShowLocationBranchDropdown] = useState(false)
+  const [showLocationBodegaDropdown, setShowLocationBodegaDropdown] = useState(false)
+  const [showLocationDivisionDropdown, setShowLocationDivisionDropdown] = useState(false)
+  const [showLocationSubdivisionDropdown, setShowLocationSubdivisionDropdown] = useState(false)
+  const [locationBranchQuery, setLocationBranchQuery] = useState('')
+  const [locationBodegaQuery, setLocationBodegaQuery] = useState('')
+  const [locationDivisionQuery, setLocationDivisionQuery] = useState('')
+  const [locationSubdivisionQuery, setLocationSubdivisionQuery] = useState('')
+  const [locationBranchDebouncedQuery, setLocationBranchDebouncedQuery] = useState('')
+  const [locationBodegaDebouncedQuery, setLocationBodegaDebouncedQuery] = useState('')
+  const [locationDivisionDebouncedQuery, setLocationDivisionDebouncedQuery] = useState('')
+  const [locationSubdivisionDebouncedQuery, setLocationSubdivisionDebouncedQuery] = useState('')
+
+  const locationBranchDropdownRef = useRef(null)
+  const locationBodegaDropdownRef = useRef(null)
+  const locationDivisionDropdownRef = useRef(null)
+  const locationSubdivisionDropdownRef = useRef(null)
 
   useEffect(() => {
     if (!locationError) return
@@ -151,6 +174,139 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     [subdivisionsByDivision, locationDraft.divisionId]
   )
 
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setLocationBranchDebouncedQuery(normalizeForSearch(locationBranchQuery)),
+      260
+    )
+    return () => window.clearTimeout(timer)
+  }, [locationBranchQuery])
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setLocationBodegaDebouncedQuery(normalizeForSearch(locationBodegaQuery)),
+      260
+    )
+    return () => window.clearTimeout(timer)
+  }, [locationBodegaQuery])
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setLocationDivisionDebouncedQuery(normalizeForSearch(locationDivisionQuery)),
+      260
+    )
+    return () => window.clearTimeout(timer)
+  }, [locationDivisionQuery])
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setLocationSubdivisionDebouncedQuery(normalizeForSearch(locationSubdivisionQuery)),
+      260
+    )
+    return () => window.clearTimeout(timer)
+  }, [locationSubdivisionQuery])
+
+  useEffect(() => {
+    if (
+      !showLocationBranchDropdown &&
+      !showLocationBodegaDropdown &&
+      !showLocationDivisionDropdown &&
+      !showLocationSubdivisionDropdown
+    ) {
+      return undefined
+    }
+
+    const handleOutsideClick = (event) => {
+      const target = event.target
+      if (
+        showLocationBranchDropdown &&
+        locationBranchDropdownRef.current &&
+        !locationBranchDropdownRef.current.contains(target)
+      ) {
+        setShowLocationBranchDropdown(false)
+      }
+      if (
+        showLocationBodegaDropdown &&
+        locationBodegaDropdownRef.current &&
+        !locationBodegaDropdownRef.current.contains(target)
+      ) {
+        setShowLocationBodegaDropdown(false)
+      }
+      if (
+        showLocationDivisionDropdown &&
+        locationDivisionDropdownRef.current &&
+        !locationDivisionDropdownRef.current.contains(target)
+      ) {
+        setShowLocationDivisionDropdown(false)
+      }
+      if (
+        showLocationSubdivisionDropdown &&
+        locationSubdivisionDropdownRef.current &&
+        !locationSubdivisionDropdownRef.current.contains(target)
+      ) {
+        setShowLocationSubdivisionDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [
+    showLocationBranchDropdown,
+    showLocationBodegaDropdown,
+    showLocationDivisionDropdown,
+    showLocationSubdivisionDropdown,
+  ])
+
+  const filteredLocationBranches = useMemo(() => {
+    if (!locationBranchDebouncedQuery) return branches
+    return branches.filter((branch) => {
+      const branchName = normalizeForSearch(branch?.nombre)
+      const branchAddress = normalizeForSearch(branch?.direccion)
+      return (
+        branchName.includes(locationBranchDebouncedQuery) ||
+        branchAddress.includes(locationBranchDebouncedQuery)
+      )
+    })
+  }, [branches, locationBranchDebouncedQuery])
+
+  const filteredLocationBodegas = useMemo(() => {
+    if (!locationBodegaDebouncedQuery) return availableBodegas
+    return availableBodegas.filter((bodega) =>
+      normalizeForSearch(bodega?.nombre).includes(locationBodegaDebouncedQuery)
+    )
+  }, [availableBodegas, locationBodegaDebouncedQuery])
+
+  const filteredLocationDivisions = useMemo(() => {
+    if (!locationDivisionDebouncedQuery) return availableDivisions
+    return availableDivisions.filter((division) =>
+      normalizeForSearch(division?.nombre).includes(locationDivisionDebouncedQuery)
+    )
+  }, [availableDivisions, locationDivisionDebouncedQuery])
+
+  const filteredLocationSubdivisions = useMemo(() => {
+    if (!locationSubdivisionDebouncedQuery) return availableSubdivisions
+    return availableSubdivisions.filter((subdivision) =>
+      normalizeForSearch(subdivision?.nombre).includes(locationSubdivisionDebouncedQuery)
+    )
+  }, [availableSubdivisions, locationSubdivisionDebouncedQuery])
+
+  const selectedLocationBranch = useMemo(
+    () => branchById.get(String(locationDraft.sucursalId || '')) || null,
+    [branchById, locationDraft.sucursalId]
+  )
+  const selectedLocationBodega = useMemo(
+    () => bodegaById.get(String(locationDraft.bodegaId || '')) || null,
+    [bodegaById, locationDraft.bodegaId]
+  )
+  const selectedLocationDivision = useMemo(
+    () => divisionById.get(String(locationDraft.divisionId || '')) || null,
+    [divisionById, locationDraft.divisionId]
+  )
+  const selectedLocationSubdivision = useMemo(
+    () => subdivisionById.get(String(locationDraft.subdivisionId || '')) || null,
+    [subdivisionById, locationDraft.subdivisionId]
+  )
+
   const editorDisabled = disabled || saving
   const createLocationUid = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -193,6 +349,18 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     setEditingLocationKey(null)
     setEditingField(null)
     setEditingValue('')
+    setShowLocationBranchDropdown(false)
+    setShowLocationBodegaDropdown(false)
+    setShowLocationDivisionDropdown(false)
+    setShowLocationSubdivisionDropdown(false)
+    setLocationBranchQuery('')
+    setLocationBodegaQuery('')
+    setLocationDivisionQuery('')
+    setLocationSubdivisionQuery('')
+    setLocationBranchDebouncedQuery('')
+    setLocationBodegaDebouncedQuery('')
+    setLocationDivisionDebouncedQuery('')
+    setLocationSubdivisionDebouncedQuery('')
   }, [inventarioEntries, subdivisionById, bodegaById, branchById, divisionById, productId])
 
   const handleLocationSelect = (field, value) => {
@@ -227,7 +395,40 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         [field]: value,
       }
     })
-}
+  }
+
+  const closeAllLocationDropdowns = () => {
+    setShowLocationBranchDropdown(false)
+    setShowLocationBodegaDropdown(false)
+    setShowLocationDivisionDropdown(false)
+    setShowLocationSubdivisionDropdown(false)
+  }
+
+  const handleLocationBranchPick = (branch) => {
+    handleLocationSelect('sucursalId', String(branch?.id || ''))
+    closeAllLocationDropdowns()
+    setLocationBodegaQuery('')
+    setLocationDivisionQuery('')
+    setLocationSubdivisionQuery('')
+  }
+
+  const handleLocationBodegaPick = (bodega) => {
+    handleLocationSelect('bodegaId', String(bodega?.id || ''))
+    closeAllLocationDropdowns()
+    setLocationDivisionQuery('')
+    setLocationSubdivisionQuery('')
+  }
+
+  const handleLocationDivisionPick = (division) => {
+    handleLocationSelect('divisionId', String(division?.id || ''))
+    closeAllLocationDropdowns()
+    setLocationSubdivisionQuery('')
+  }
+
+  const handleLocationSubdivisionPick = (subdivision) => {
+    handleLocationSelect('subdivisionId', String(subdivision?.id || ''))
+    closeAllLocationDropdowns()
+  }
 
   const handleAddLocation = () => {
     const sucursalId = locationDraft.sucursalId
@@ -291,6 +492,9 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       subdivisionId: '',
       cantidad: '1',
     }))
+    setLocationDivisionQuery('')
+    setLocationSubdivisionQuery('')
+    closeAllLocationDropdowns()
     setLocationError('')
   }
 
@@ -502,6 +706,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             className="create-user__ghost create-user__location-action"
             onClick={() => {
               setLocationError('')
+              closeAllLocationDropdowns()
               setShowLocationForm((prev) => {
                 const next = !prev
                 if (next) {
@@ -519,7 +724,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
           </button>
         </div>
 
-        <div className="create-user__locations-table create-user__locations-table--with-actions">
+        <div className="create-user__locations-table create-user__locations-table--with-actions create-user__locations-table--locations-selectors">
           <div className="create-user__locations-row create-user__locations-row--head">
             <span>Sucursal</span>
             <span>Bodega</span>
@@ -532,60 +737,228 @@ const InventarioEditor = forwardRef(function InventarioEditor(
           {showLocationForm && (
             <div className="create-user__locations-row create-user__locations-row--form">
               <span>
-                <select
-                  value={locationDraft.sucursalId}
-                  onChange={(event) => handleLocationSelect('sucursalId', event.target.value)}
-                  disabled={editorDisabled}
-                >
-                  <option value="">Selecciona una sucursal</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.nombre || `Sucursal ${branch.id}`}
-                    </option>
-                  ))}
-                </select>
+                <div className="create-user__dropdown" ref={locationBranchDropdownRef}>
+                  <button
+                    type="button"
+                    className="create-user__dropdown-trigger"
+                    onClick={() => {
+                      if (editorDisabled) return
+                      setShowLocationBranchDropdown((prev) => !prev)
+                      setShowLocationBodegaDropdown(false)
+                      setShowLocationDivisionDropdown(false)
+                      setShowLocationSubdivisionDropdown(false)
+                    }}
+                    disabled={editorDisabled}
+                  >
+                    <span>{selectedLocationBranch?.nombre || 'Selecciona una sucursal'}</span>
+                    <i className={`pi pi-chevron-${showLocationBranchDropdown ? 'up' : 'down'}`} />
+                  </button>
+
+                  {showLocationBranchDropdown && (
+                    <div className="create-user__dropdown-panel">
+                      <div className="create-user__dropdown-search">
+                        <i className="pi pi-search" />
+                        <input
+                          type="text"
+                          placeholder="Buscar sucursal"
+                          value={locationBranchQuery}
+                          onChange={(event) => setLocationBranchQuery(event.target.value)}
+                        />
+                      </div>
+                      <div className="create-user__dropdown-results">
+                        {!filteredLocationBranches.length && (
+                          <small className="muted">Sin resultados.</small>
+                        )}
+                        {filteredLocationBranches.map((branch) => (
+                          <button
+                            key={branch.id}
+                            type="button"
+                            className="create-user__result-option"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              handleLocationBranchPick(branch)
+                            }}
+                            disabled={editorDisabled}
+                          >
+                            <div className="create-user__result-info">
+                              <strong>{branch.nombre || `Sucursal ${branch.id}`}</strong>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </span>
               <span>
-                <select
-                  value={locationDraft.bodegaId}
-                  onChange={(event) => handleLocationSelect('bodegaId', event.target.value)}
-                  disabled={editorDisabled || !locationDraft.sucursalId}
-                >
-                  <option value="">Selecciona una bodega</option>
-                  {availableBodegas.map((bodega) => (
-                    <option key={bodega.id} value={bodega.id}>
-                      {bodega.nombre || `Bodega ${bodega.id}`}
-                    </option>
-                  ))}
-                </select>
+                <div className="create-user__dropdown" ref={locationBodegaDropdownRef}>
+                  <button
+                    type="button"
+                    className="create-user__dropdown-trigger"
+                    onClick={() => {
+                      if (editorDisabled || !locationDraft.sucursalId) return
+                      setShowLocationBodegaDropdown((prev) => !prev)
+                      setShowLocationBranchDropdown(false)
+                      setShowLocationDivisionDropdown(false)
+                      setShowLocationSubdivisionDropdown(false)
+                    }}
+                    disabled={editorDisabled || !locationDraft.sucursalId}
+                  >
+                    <span>{selectedLocationBodega?.nombre || 'Selecciona una bodega'}</span>
+                    <i className={`pi pi-chevron-${showLocationBodegaDropdown ? 'up' : 'down'}`} />
+                  </button>
+
+                  {showLocationBodegaDropdown && (
+                    <div className="create-user__dropdown-panel">
+                      <div className="create-user__dropdown-search">
+                        <i className="pi pi-search" />
+                        <input
+                          type="text"
+                          placeholder="Buscar bodega"
+                          value={locationBodegaQuery}
+                          onChange={(event) => setLocationBodegaQuery(event.target.value)}
+                        />
+                      </div>
+                      <div className="create-user__dropdown-results">
+                        {!filteredLocationBodegas.length && (
+                          <small className="muted">Sin resultados.</small>
+                        )}
+                        {filteredLocationBodegas.map((bodega) => (
+                          <button
+                            key={bodega.id}
+                            type="button"
+                            className="create-user__result-option"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              handleLocationBodegaPick(bodega)
+                            }}
+                            disabled={editorDisabled}
+                          >
+                            <div className="create-user__result-info">
+                              <strong>{bodega.nombre || `Bodega ${bodega.id}`}</strong>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </span>
               <span>
-                <select
-                  value={locationDraft.divisionId}
-                  onChange={(event) => handleLocationSelect('divisionId', event.target.value)}
-                  disabled={editorDisabled || !locationDraft.bodegaId}
-                >
-                  <option value="">Selecciona una division</option>
-                  {availableDivisions.map((division) => (
-                    <option key={division.id} value={division.id}>
-                      {division.nombre || `Division ${division.id}`}
-                    </option>
-                  ))}
-                </select>
+                <div className="create-user__dropdown" ref={locationDivisionDropdownRef}>
+                  <button
+                    type="button"
+                    className="create-user__dropdown-trigger"
+                    onClick={() => {
+                      if (editorDisabled || !locationDraft.bodegaId) return
+                      setShowLocationDivisionDropdown((prev) => !prev)
+                      setShowLocationBranchDropdown(false)
+                      setShowLocationBodegaDropdown(false)
+                      setShowLocationSubdivisionDropdown(false)
+                    }}
+                    disabled={editorDisabled || !locationDraft.bodegaId}
+                  >
+                    <span>{selectedLocationDivision?.nombre || 'Selecciona una division'}</span>
+                    <i className={`pi pi-chevron-${showLocationDivisionDropdown ? 'up' : 'down'}`} />
+                  </button>
+
+                  {showLocationDivisionDropdown && (
+                    <div className="create-user__dropdown-panel">
+                      <div className="create-user__dropdown-search">
+                        <i className="pi pi-search" />
+                        <input
+                          type="text"
+                          placeholder="Buscar division"
+                          value={locationDivisionQuery}
+                          onChange={(event) => setLocationDivisionQuery(event.target.value)}
+                        />
+                      </div>
+                      <div className="create-user__dropdown-results">
+                        {!filteredLocationDivisions.length && (
+                          <small className="muted">Sin resultados.</small>
+                        )}
+                        {filteredLocationDivisions.map((division) => (
+                          <button
+                            key={division.id}
+                            type="button"
+                            className="create-user__result-option"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              handleLocationDivisionPick(division)
+                            }}
+                            disabled={editorDisabled}
+                          >
+                            <div className="create-user__result-info">
+                              <strong>{division.nombre || `Division ${division.id}`}</strong>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </span>
               <span>
-                <select
-                  value={locationDraft.subdivisionId}
-                  onChange={(event) => handleLocationSelect('subdivisionId', event.target.value)}
-                  disabled={editorDisabled || !locationDraft.divisionId}
-                >
-                  <option value="">Selecciona una subdivision</option>
-                  {availableSubdivisions.map((subdivision) => (
-                    <option key={subdivision.id} value={subdivision.id}>
-                      {subdivision.nombre || `Subdivision ${subdivision.id}`}
-                    </option>
-                  ))}
-                </select>
+                <div className="create-user__dropdown" ref={locationSubdivisionDropdownRef}>
+                  <button
+                    type="button"
+                    className="create-user__dropdown-trigger"
+                    onClick={() => {
+                      if (editorDisabled || !locationDraft.divisionId) return
+                      setShowLocationSubdivisionDropdown((prev) => !prev)
+                      setShowLocationBranchDropdown(false)
+                      setShowLocationBodegaDropdown(false)
+                      setShowLocationDivisionDropdown(false)
+                    }}
+                    disabled={editorDisabled || !locationDraft.divisionId}
+                  >
+                    <span>{selectedLocationSubdivision?.nombre || 'Selecciona una subdivision'}</span>
+                    <i className={`pi pi-chevron-${showLocationSubdivisionDropdown ? 'up' : 'down'}`} />
+                  </button>
+
+                  {showLocationSubdivisionDropdown && (
+                    <div className="create-user__dropdown-panel">
+                      <div className="create-user__dropdown-search">
+                        <i className="pi pi-search" />
+                        <input
+                          type="text"
+                          placeholder="Buscar subdivision"
+                          value={locationSubdivisionQuery}
+                          onChange={(event) => setLocationSubdivisionQuery(event.target.value)}
+                        />
+                      </div>
+                      <div className="create-user__dropdown-results">
+                        {!filteredLocationSubdivisions.length && (
+                          <small className="muted">Sin resultados.</small>
+                        )}
+                        {filteredLocationSubdivisions.map((subdivision) => (
+                          <button
+                            key={subdivision.id}
+                            type="button"
+                            className="create-user__result-option"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              handleLocationSubdivisionPick(subdivision)
+                            }}
+                            disabled={editorDisabled}
+                          >
+                            <div className="create-user__result-info">
+                              <strong>{subdivision.nombre || `Subdivision ${subdivision.id}`}</strong>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </span>
               <span>
                 <input
