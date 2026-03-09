@@ -123,6 +123,7 @@ function QuickActions({
   const seenPendingShipmentUrgentIdsRef = useRef(new Set())
   const didInitTransferResponseSnapshotRef = useRef(false)
   const seenTransferResponseReminderIdsRef = useRef(new Set())
+  const didPlayInitialPendingToneRef = useRef(false)
   const toast = useRef(null)
 
   const [blob, setBlob] = useState({ x: 0, y: 0, w: 0, h: 0, visible: false })
@@ -288,6 +289,24 @@ function QuickActions({
     play()
   }, [ensureAudioContext])
 
+  const playInitialPendingToneIfNeeded = useCallback(
+    (ids, notificationDetail) => {
+      if (didPlayInitialPendingToneRef.current) return
+      const normalizedIds = Array.from(ids || []).map((id) => normalizeId(id)).filter(Boolean)
+      if (!normalizedIds.length) return
+
+      didPlayInitialPendingToneRef.current = true
+      playNotificationTone()
+      if (notificationDetail?.type) {
+        emitTransferReminderNotification({
+          ...notificationDetail,
+          reminderIds: normalizedIds,
+        })
+      }
+    },
+    [playNotificationTone]
+  )
+
   const hasPendingReminder = useMemo(
     () => reminders.some((reminder) => isReminderPendingForCurrentUser(reminder, currentUserIds)),
     [reminders, currentUserIds]
@@ -379,6 +398,7 @@ function QuickActions({
     didInitPendingShipmentUrgentSnapshotRef.current = false
     seenTransferResponseReminderIdsRef.current = new Set()
     didInitTransferResponseSnapshotRef.current = false
+    didPlayInitialPendingToneRef.current = false
     setUrgentVisualProgressById({})
   }, [canDecideTransferRequest, token, currentPrimaryUserId])
 
@@ -568,6 +588,9 @@ function QuickActions({
     if (!didInitUrgentSnapshotRef.current) {
       seenUrgentReminderIdsRef.current = nextIds
       didInitUrgentSnapshotRef.current = true
+      playInitialPendingToneIfNeeded(nextIds, {
+        type: 'solicitud_traslado_pendiente',
+      })
       return
     }
 
@@ -585,7 +608,7 @@ function QuickActions({
         reminderIds: newReminderIds,
       })
     }
-  }, [eligibleUrgentDecisionReminders, playNotificationTone])
+  }, [eligibleUrgentDecisionReminders, playInitialPendingToneIfNeeded, playNotificationTone])
 
   useEffect(() => {
     const nextIds = new Set(
@@ -597,6 +620,9 @@ function QuickActions({
     if (!didInitPendingShipmentUrgentSnapshotRef.current) {
       seenPendingShipmentUrgentIdsRef.current = nextIds
       didInitPendingShipmentUrgentSnapshotRef.current = true
+      playInitialPendingToneIfNeeded(nextIds, {
+        type: 'solicitud_traslado_envio_pendiente',
+      })
       return
     }
 
@@ -614,7 +640,7 @@ function QuickActions({
         reminderIds: newPendingShipmentIds,
       })
     }
-  }, [pendingShipmentUrgentTargets, playNotificationTone])
+  }, [pendingShipmentUrgentTargets, playInitialPendingToneIfNeeded, playNotificationTone])
 
   const pendingTransferResponseReminders = useMemo(
     () =>
@@ -636,6 +662,9 @@ function QuickActions({
     if (!didInitTransferResponseSnapshotRef.current) {
       seenTransferResponseReminderIdsRef.current = nextIds
       didInitTransferResponseSnapshotRef.current = true
+      playInitialPendingToneIfNeeded(nextIds, {
+        type: 'solicitud_traslado_resuelta',
+      })
       return
     }
 
@@ -653,7 +682,7 @@ function QuickActions({
         reminderIds: newReminderIds,
       })
     }
-  }, [pendingTransferResponseReminders, playNotificationTone])
+  }, [pendingTransferResponseReminders, playInitialPendingToneIfNeeded, playNotificationTone])
 
   const urgentProgressById = useMemo(() => {
     const map = {}
