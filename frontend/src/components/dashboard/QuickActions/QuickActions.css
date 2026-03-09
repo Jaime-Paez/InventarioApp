@@ -533,7 +533,7 @@
 }
 
 .quick-actions__receive-location-row--compose {
-  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(130px, 1fr) 82px auto;
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(130px, 1fr) auto;
 }
 
 .quick-actions__receive-dropdown {

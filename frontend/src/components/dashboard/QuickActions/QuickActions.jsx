@@ -2096,7 +2096,6 @@ function QuickActions({
             location_draft_subdivision_id: hasSuggestedLocation ? preferredSubdivisionId : '',
             location_draft_subdivision_query_input: '',
             location_draft_subdivision_query: '',
-            location_draft_cantidad: cantidadEnviada,
           }
         })
 
@@ -2130,9 +2129,6 @@ function QuickActions({
         const max = toPositiveInt(current?.cantidad_enviada, 0)
         const parsed = Math.min(max, toPositiveInt(value, 0))
         nextRow.cantidad_recibida = parsed
-        if (toPositiveInt(nextRow.location_draft_cantidad, 0) > parsed) {
-          nextRow.location_draft_cantidad = parsed
-        }
         const assigned = (Array.isArray(nextRow.ubicaciones) ? nextRow.ubicaciones : []).reduce(
           (total, row) => total + toPositiveInt(row?.cantidad, 0),
           0
@@ -2177,11 +2173,6 @@ function QuickActions({
         nextRow.location_draft_subdivision_id = normalizeId(value)
         nextRow.location_draft_subdivision_query_input = ''
         nextRow.location_draft_subdivision_query = ''
-      } else if (field === 'location_draft_cantidad') {
-        nextRow.location_draft_cantidad = Math.min(
-          toPositiveInt(nextRow?.cantidad_recibida, 0),
-          toPositiveInt(value, 0)
-        )
       }
 
       return {
@@ -2248,8 +2239,7 @@ function QuickActions({
       if (!current) return prev
 
       const subdivisionId = normalizeId(current?.location_draft_subdivision_id)
-      const draftQty = toPositiveInt(current?.location_draft_cantidad, 0)
-      if (!subdivisionId || draftQty <= 0) return prev
+      if (!subdivisionId) return prev
 
       const assigned = (Array.isArray(current?.ubicaciones) ? current.ubicaciones : []).reduce(
         (total, row) => total + toPositiveInt(row?.cantidad, 0),
@@ -2258,7 +2248,6 @@ function QuickActions({
       const toAssign = toPositiveInt(current?.cantidad_recibida, 0) - assigned
       if (toAssign <= 0) return prev
 
-      const allowedQty = Math.min(draftQty, toAssign)
       const nextLocations = Array.isArray(current?.ubicaciones) ? [...current.ubicaciones] : []
       const locationIndex = nextLocations.findIndex(
         (location) => normalizeId(location?.subdivision_id) === subdivisionId
@@ -2267,12 +2256,12 @@ function QuickActions({
         const existing = nextLocations[locationIndex]
         nextLocations[locationIndex] = {
           ...existing,
-          cantidad: toPositiveInt(existing?.cantidad, 0) + allowedQty,
+          cantidad: toPositiveInt(existing?.cantidad, 0) + toAssign,
         }
       } else {
         nextLocations.push({
           subdivision_id: subdivisionId,
-          cantidad: allowedQty,
+          cantidad: toAssign,
         })
       }
 
@@ -2763,6 +2752,10 @@ function QuickActions({
                     const rowProductId = normalizeId(row?.producto_id)
                     const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
                     const assignedQty = toPositiveInt(row?.cantidad_asignada, 0)
+                    const pendingAssignQty = Math.max(
+                      0,
+                      toPositiveInt(row?.cantidad_recibida, 0) - assignedQty
+                    )
                     const selectedBodegaId = normalizeId(row?.location_draft_bodega_id)
                     const selectedBodega = inTransitBodegaById.get(selectedBodegaId) || null
                     const bodegaQuery = normalizeSearchText(row?.location_draft_bodega_query || '')
@@ -3034,26 +3027,14 @@ function QuickActions({
                                 </div>
                               )}
                             </div>
-                            <input
-                              type="number"
-                              min={0}
-                              max={toPositiveInt(row?.cantidad_recibida, 0)}
-                              value={toPositiveInt(row?.location_draft_cantidad, 0)}
-                              onChange={(event) =>
-                                handleReceiveShipmentDraftFieldChange(
-                                  rowProductId,
-                                  'location_draft_cantidad',
-                                  event.target.value
-                                )}
-                              disabled={receiveShipmentSubmitting}
-                            />
                             <button
                               type="button"
                               className="quick-actions__receive-location-add-btn"
                               onClick={() => handleAddReceiveShipmentLocation(rowProductId)}
                               disabled={
                                 receiveShipmentSubmitting ||
-                                !normalizeId(row?.location_draft_subdivision_id)
+                                !normalizeId(row?.location_draft_subdivision_id) ||
+                                pendingAssignQty <= 0
                               }
                             >
                               Agregar
