@@ -653,9 +653,17 @@ function EntradaDetails({
       estadosProductoList,
     } = catalogs
 
-    const sucursalId = salida?.sucursal_id ?? findByName(branchesList, salida?.sucursal)?.id ?? ''
+    const linkedSolicitud = salida?.solicitud_traslado || null
+    const sucursalId =
+      salida?.sucursal_id ??
+      linkedSolicitud?.sucursal_solicitante_id ??
+      findByName(branchesList, salida?.sucursal)?.id ??
+      ''
     const sucursalObjetivoId =
-      salida?.sucursal_objetivo_id ?? findByName(branchesList, salida?.sucursal_objetivo)?.id ?? ''
+      salida?.sucursal_objetivo_id ??
+      linkedSolicitud?.sucursal_proveedora_id ??
+      findByName(branchesList, salida?.sucursal_objetivo || salida?.sucursal_proveedora)?.id ??
+      ''
     const subTipoLabel = String(salida?.sub_tipo_movimiento || '')
     const matchedSubTipo =
       (salida?.sub_tipo_movimiento_id &&
@@ -862,13 +870,35 @@ function EntradaDetails({
       ])
 
       const branchesList = parseApiList(branchesData)
+      const linkedSolicitud = salidaData?.solicitud_traslado || null
+      const resolvedBranches = [...branchesList]
+      const existingBranchIds = new Set(
+        resolvedBranches.map((branch) => String(branch?.id || '').trim()).filter(Boolean)
+      )
+      const appendBranchIfMissing = (branchIdRaw, branchNameRaw) => {
+        const branchId = String(branchIdRaw || '').trim()
+        if (!branchId || existingBranchIds.has(branchId)) return
+        resolvedBranches.push({
+          id: branchId,
+          nombre: String(branchNameRaw || '').trim() || `Sucursal ${branchId}`,
+        })
+        existingBranchIds.add(branchId)
+      }
+      appendBranchIfMissing(
+        linkedSolicitud?.sucursal_solicitante_id,
+        salidaData?.sucursal
+      )
+      appendBranchIfMissing(
+        linkedSolicitud?.sucursal_proveedora_id,
+        salidaData?.sucursal_objetivo || salidaData?.sucursal_proveedora
+      )
       const tiposList = parseApiList(tiposData)
       const subTiposList = parseApiList(subTiposData)
       const estadosList = parseApiList(estadosData)
       const productosList = parseApiList(productosData)
       const estadosProductoList = parseApiList(estadosProductoData)
 
-      setBranches(branchesList)
+      setBranches(resolvedBranches)
       setTipoMovimientos(tiposList)
       setSubTipos(subTiposList)
       setEstados(estadosList)
@@ -876,7 +906,7 @@ function EntradaDetails({
       setEstadosProducto(estadosProductoList)
 
       const normalized = buildFormData(salidaData, {
-        branchesList,
+        branchesList: resolvedBranches,
         subTiposList,
         estadosList,
         productosList,
