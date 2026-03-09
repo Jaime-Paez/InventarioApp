@@ -350,7 +350,7 @@ function Workspace({
       <TabComponent
         token={token}
         user={user}
-        isTabActive={tab === 'Entradas' ? isActive : undefined}
+        isTabActive={tab === 'Entradas' || tab === 'Salidas' ? isActive : undefined}
         createBranchId={createBranchId}
         moduleKey={moduleKey}
         moduleActions={moduleActions}

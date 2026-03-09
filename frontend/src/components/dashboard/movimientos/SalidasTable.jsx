@@ -20,6 +20,7 @@ import {
   buildPrimeOrdering,
   getPrimeGlobalFilterValue,
 } from '../../../utils/primeTableQuery'
+import { REMINDERS_TRANSFER_NOTIFICATION_EVENT } from '../common/reminders/remindersStorage'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeValue = (value) =>
@@ -151,6 +152,7 @@ const isCheckboxSelection = (event) => {
 function SalidasTable({
   token,
   user,
+  isTabActive = false,
   createBranchId = '',
   moduleActions,
   pendingTransferSalidaRequest = null,
@@ -161,6 +163,9 @@ function SalidasTable({
   const preloadSalidaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
   const fetchSeqRef = useRef(0)
+  const refreshDataRef = useRef(() => Promise.resolve([]))
+  const notificationRefreshInFlightRef = useRef(false)
+  const pendingNotificationRefreshRef = useRef(false)
   const loadedTokenRef = useRef(null)
   const handledTransferRequestKeyRef = useRef('')
   const canCreate = moduleActions?.puede_crear ?? true
@@ -575,6 +580,42 @@ function SalidasTable({
       }),
     [currentPage, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter, normalizedCreateBranchId]
   )
+
+  useEffect(() => {
+    refreshDataRef.current = refreshData
+  }, [refreshData])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !token || !isTabActive) return undefined
+
+    const runNotificationRefresh = () => {
+      if (notificationRefreshInFlightRef.current) {
+        pendingNotificationRefreshRef.current = true
+        return
+      }
+      notificationRefreshInFlightRef.current = true
+      void refreshDataRef.current({
+        branchContextId: normalizedCreateBranchId,
+      }).finally(() => {
+        notificationRefreshInFlightRef.current = false
+        if (!pendingNotificationRefreshRef.current) return
+        pendingNotificationRefreshRef.current = false
+        runNotificationRefresh()
+      })
+    }
+
+    const handleTransferReminderNotification = () => {
+      runNotificationRefresh()
+    }
+
+    window.addEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleTransferReminderNotification)
+
+    return () => {
+      notificationRefreshInFlightRef.current = false
+      pendingNotificationRefreshRef.current = false
+      window.removeEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleTransferReminderNotification)
+    }
+  }, [isTabActive, normalizedCreateBranchId, token])
 
   useEffect(() => {
     if (!token) return

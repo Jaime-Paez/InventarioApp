@@ -9,7 +9,7 @@ import {
   extractUserId,
   formatCurrentUserName,
   getReminderDecisionStatus,
-  isReminderCreatedByCurrentUser,
+  getTransferReceiptOutcome,
   isReminderForContext,
   isSpecialTransferDecisionReminder,
   normalizeId,
@@ -1109,13 +1109,16 @@ function RecordatoriosPopup({
   ])
 
   const handleOpenTransferInSalidas = useCallback(
-    async (reminder) => {
-      if (typeof onOpenTransferRequestInSalidas !== 'function') return
+    async (reminder, options = {}) => {
+      const suppressError = Boolean(options?.suppressError)
+      if (typeof onOpenTransferRequestInSalidas !== 'function') return false
       const solicitudId = normalizeId(reminder?.context?.id)
       const reminderId = normalizeId(reminder?.id) || solicitudId
       if (!solicitudId) {
-        notifyError('No se encontro la solicitud asociada a este recordatorio.')
-        return
+        if (!suppressError) {
+          notifyError('No se encontro la solicitud asociada a este recordatorio.')
+        }
+        return false
       }
 
       setOpeningTransferReminderId(reminderId)
@@ -1139,8 +1142,12 @@ function RecordatoriosPopup({
           mode: 'view',
         })
         onClose?.()
+        return true
       } catch (error) {
-        notifyError(error?.message || 'No se pudo abrir la salida asociada al traslado.')
+        if (!suppressError) {
+          notifyError(error?.message || 'No se pudo abrir la salida asociada al traslado.')
+        }
+        return false
       } finally {
         setOpeningTransferReminderId('')
       }
@@ -1154,13 +1161,16 @@ function RecordatoriosPopup({
   )
 
   const handleOpenTransferInEntradas = useCallback(
-    async (reminder) => {
-      if (typeof onOpenTransferRequestInEntradas !== 'function') return
+    async (reminder, options = {}) => {
+      const suppressError = Boolean(options?.suppressError)
+      if (typeof onOpenTransferRequestInEntradas !== 'function') return false
       const solicitudId = normalizeId(reminder?.context?.id)
       const reminderId = normalizeId(reminder?.id) || solicitudId
       if (!solicitudId) {
-        notifyError('No se encontro la solicitud asociada a este recordatorio.')
-        return
+        if (!suppressError) {
+          notifyError('No se encontro la solicitud asociada a este recordatorio.')
+        }
+        return false
       }
 
       setOpeningTransferReminderId(reminderId)
@@ -1203,7 +1213,7 @@ function RecordatoriosPopup({
             mode: 'view',
           })
           onClose?.()
-          return
+          return true
         }
 
         if (!previewData) {
@@ -1218,8 +1228,12 @@ function RecordatoriosPopup({
           mode: 'preview',
         })
         onClose?.()
+        return true
       } catch (error) {
-        notifyError(error?.message || 'No se pudo abrir la solicitud en Entradas.')
+        if (!suppressError) {
+          notifyError(error?.message || 'No se pudo abrir la solicitud en Entradas.')
+        }
+        return false
       } finally {
         setOpeningTransferReminderId('')
       }
@@ -1232,6 +1246,27 @@ function RecordatoriosPopup({
       onClose,
       onOpenTransferRequestInEntradas,
     ]
+  )
+
+  const handleOpenTransferByPreferredTarget = useCallback(
+    async (reminder, preferredTarget = 'entradas') => {
+      const firstTarget = String(preferredTarget || '').trim().toLowerCase() === 'salidas'
+        ? 'salidas'
+        : 'entradas'
+      const targets = firstTarget === 'salidas' ? ['salidas', 'entradas'] : ['entradas', 'salidas']
+
+      for (let index = 0; index < targets.length; index += 1) {
+        const target = targets[index]
+        const suppressError = index < targets.length - 1
+        const opened = target === 'salidas'
+          ? await handleOpenTransferInSalidas(reminder, { suppressError })
+          : await handleOpenTransferInEntradas(reminder, { suppressError })
+        if (opened) return true
+      }
+
+      return false
+    },
+    [handleOpenTransferInEntradas, handleOpenTransferInSalidas]
   )
 
   const handleCreateSalidaFromReminder = useCallback(
@@ -1489,6 +1524,8 @@ function RecordatoriosPopup({
                         const status = buildReminderStatusForUser(reminder, currentUserIdSet)
                         const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
                         const decisionStatus = getReminderDecisionStatus(reminder)
+                        const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
+                        const isTransferReceiptReminder = Boolean(transferReceiptOutcome)
                         const isTransferContextReminder =
                           normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado'
                         const solicitudId = normalizeId(reminder?.context?.id)
@@ -1532,12 +1569,32 @@ function RecordatoriosPopup({
                           (
                             decisionStatus === 'rechazada' ||
                             decisionStatus === 'aceptada' ||
-                            decisionStatus === 'enviado' ||
                             status.className === 'rejected' ||
-                            status.className === 'accepted' ||
-                            status.className === 'sent'
+                            status.className === 'accepted'
                           ) &&
                           typeof onOpenTransferRequestInEntradas === 'function'
+                        )
+                        const canOpenTransferSentByBestTarget = (
+                          isTransferContextReminder &&
+                          !isSpecialReminder &&
+                          decisionStatus === 'enviado' &&
+                          (
+                            typeof onOpenTransferRequestInSalidas === 'function' ||
+                            typeof onOpenTransferRequestInEntradas === 'function'
+                          )
+                        )
+                        const canOpenTransferReceiptByBestTarget = (
+                          isTransferContextReminder &&
+                          !isSpecialReminder &&
+                          isTransferReceiptReminder &&
+                          (
+                            typeof onOpenTransferRequestInSalidas === 'function' ||
+                            typeof onOpenTransferRequestInEntradas === 'function'
+                          )
+                        )
+                        const transferReceiptPrefersSalida = (
+                          isTransferReceiptReminder &&
+                          normalizeStateText(reminder?.description).includes('su envio de traslado')
                         )
                         const reminderTransferReference = (
                           extractTransferDocumentNumber(reminder?.context?.label || reminder?.description) ||
@@ -1570,18 +1627,6 @@ function RecordatoriosPopup({
                         const isOpeningTransfer = (
                           normalizeId(openingTransferReminderId) &&
                           normalizeId(openingTransferReminderId) === normalizeId(reminder?.id)
-                        )
-                        const isCreatedByCurrentUser = isReminderCreatedByCurrentUser(
-                          reminder,
-                          currentUserIdSet,
-                          creatorRecipientName
-                        )
-                        const canOpenSentTransferInSalidasDirect = (
-                          isTransferContextReminder &&
-                          !isSpecialReminder &&
-                          decisionStatus === 'enviado' &&
-                          isCreatedByCurrentUser &&
-                          typeof onOpenTransferRequestInSalidas === 'function'
                         )
                         const recipients = Array.isArray(reminder?.recipients) ? reminder.recipients : []
                         const recipientNames = recipients
@@ -1658,14 +1703,28 @@ function RecordatoriosPopup({
                                     ? 'Abriendo...'
                                     : 'Esta solicitud ya fue enviada, ver envio'}
                                 </button>
-                              ) : canOpenSentTransferInSalidasDirect ? (
+                              ) : canOpenTransferSentByBestTarget ? (
                                 <button
                                   type="button"
                                   className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => handleOpenTransferInSalidas(reminder)}
+                                  onClick={() => handleOpenTransferByPreferredTarget(reminder, 'salidas')}
                                   disabled={isOpeningTransfer}
                                 >
-                                  {isOpeningTransfer ? 'Abriendo...' : 'Ver envio'}
+                                  {isOpeningTransfer ? 'Abriendo...' : 'Ver envio pendiente'}
+                                </button>
+                              ) : canOpenTransferReceiptByBestTarget ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => handleOpenTransferByPreferredTarget(
+                                    reminder,
+                                    transferReceiptPrefersSalida ? 'salidas' : 'entradas'
+                                  )}
+                                  disabled={isOpeningTransfer}
+                                >
+                                  {isOpeningTransfer
+                                    ? 'Abriendo...'
+                                    : (transferReceiptPrefersSalida ? 'Ver salida' : 'Ver entrada')}
                                 </button>
                               ) : canOpenReceivedTransferInEntradas ? (
                                 <button
@@ -1686,13 +1745,9 @@ function RecordatoriosPopup({
                                   {isOpeningTransfer
                                     ? 'Abriendo...'
                                     : (
-                                      decisionStatus === 'enviado'
-                                        ? 'Ver envio pendiente'
-                                        : (
-                                          shouldUseSentCopyOnTransferEntryAction
-                                            ? 'Solicitud ya enviada, ver envio pendiente'
-                                            : 'Ver en entradas'
-                                        )
+                                      shouldUseSentCopyOnTransferEntryAction
+                                        ? 'Solicitud ya enviada, ver envio pendiente'
+                                        : 'Ver en entradas'
                                     )}
                                 </button>
                               ) : status.canMarkSeen ? (
