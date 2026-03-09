@@ -74,8 +74,8 @@
 }
 
 .quick-actions__in-transit-panel {
-  right: auto;
-  left: 0;
+  right: 0;
+  left: auto;
 }
 
 .quick-actions__pending-shipments-head {
@@ -731,8 +731,8 @@
   }
 
   .quick-actions__in-transit-panel {
-    left: 0;
-    right: auto;
+    right: -4px;
+    left: auto;
   }
 
   .quick-actions {
