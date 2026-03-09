@@ -165,6 +165,8 @@ function QuickActions({
   const [openingPendingShipmentId, setOpeningPendingShipmentId] = useState('')
   const [openingInTransitShipmentId, setOpeningInTransitShipmentId] = useState('')
   const [activeInTransitShipment, setActiveInTransitShipment] = useState(null)
+  const [inTransitBodegas, setInTransitBodegas] = useState([])
+  const [inTransitDivisions, setInTransitDivisions] = useState([])
   const [inTransitSubdivisions, setInTransitSubdivisions] = useState([])
   const [inTransitSubdivisionsLoading, setInTransitSubdivisionsLoading] = useState(false)
   const [receiveShipmentDraftByProductId, setReceiveShipmentDraftByProductId] = useState({})
@@ -1153,6 +1155,28 @@ function QuickActions({
     [inTransitSubdivisions]
   )
 
+  const inTransitDivisionsByBodegaId = useMemo(() => {
+    const map = new Map()
+    ;(Array.isArray(inTransitDivisions) ? inTransitDivisions : []).forEach((division) => {
+      const bodegaId = normalizeId(division?.bodega?.id || division?.bodega_id || '')
+      if (!bodegaId) return
+      const current = map.get(bodegaId) || []
+      map.set(bodegaId, [...current, division])
+    })
+    return map
+  }, [inTransitDivisions])
+
+  const inTransitSubdivisionsByDivisionId = useMemo(() => {
+    const map = new Map()
+    ;(Array.isArray(inTransitSubdivisions) ? inTransitSubdivisions : []).forEach((subdivision) => {
+      const divisionId = normalizeId(subdivision?.division?.id || subdivision?.division_id || '')
+      if (!divisionId) return
+      const current = map.get(divisionId) || []
+      map.set(divisionId, [...current, subdivision])
+    })
+    return map
+  }, [inTransitSubdivisions])
+
   const receiveShipmentRows = useMemo(
     () =>
       Object.values(receiveShipmentDraftByProductId || {}).map((row) => {
@@ -1465,6 +1489,9 @@ function QuickActions({
   const closeReceiveShipmentModal = useCallback(() => {
     setIsReceiveShipmentModalOpen(false)
     setActiveInTransitShipment(null)
+    setInTransitBodegas([])
+    setInTransitDivisions([])
+    setInTransitSubdivisions([])
     setReceiveShipmentDraftByProductId({})
     setReceiveShipmentError('')
     setReceiveShipmentSubmitting(false)
@@ -1635,6 +1662,9 @@ function QuickActions({
 
       setOpeningInTransitShipmentId(shipmentId)
       setReceiveShipmentError('')
+      setInTransitBodegas([])
+      setInTransitDivisions([])
+      setInTransitSubdivisions([])
       setInTransitSubdivisionsLoading(true)
 
       try {
@@ -1643,22 +1673,82 @@ function QuickActions({
           throw new Error('No se pudo resolver la sucursal solicitante para recibir el traslado.')
         }
 
-        const response = await authFetch(
-          `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(sucursalSolicitanteId)}`,
-          {},
-          token
-        )
-        if (!response.ok) {
+        const [bodegasResponse, divisionsResponse, subdivisionsResponse] = await Promise.all([
+          authFetch(
+            `${API_URL}/inventario/bodegas/?page_size=500&sucursal_id=${encodeURIComponent(
+              sucursalSolicitanteId
+            )}`,
+            {},
+            token
+          ),
+          authFetch(
+            `${API_URL}/inventario/divisiones/?page_size=500&sucursal_id=${encodeURIComponent(
+              sucursalSolicitanteId
+            )}`,
+            {},
+            token
+          ),
+          authFetch(
+            `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(
+              sucursalSolicitanteId
+            )}`,
+            {},
+            token
+          ),
+        ])
+        if (!bodegasResponse.ok) {
+          throw new Error('No se pudieron cargar las bodegas de la sucursal solicitante.')
+        }
+        if (!divisionsResponse.ok) {
+          throw new Error('No se pudieron cargar las divisiones de la sucursal solicitante.')
+        }
+        if (!subdivisionsResponse.ok) {
           throw new Error('No se pudieron cargar las subdivisiones para ubicar los productos.')
         }
-        const payload = await response.json().catch(() => ({}))
-        const subdivisions = parseApiList(payload)
+        const bodegasPayload = await bodegasResponse.json().catch(() => ({}))
+        const divisionsPayload = await divisionsResponse.json().catch(() => ({}))
+        const subdivisionsPayload = await subdivisionsResponse.json().catch(() => ({}))
+        const bodegas = parseApiList(bodegasPayload)
+        const divisions = parseApiList(divisionsPayload)
+        const subdivisions = parseApiList(subdivisionsPayload)
         const details = Array.isArray(shipment?.detalles) ? shipment.detalles : []
         if (!details.length) {
           throw new Error('Este envio no tiene productos para registrar recepcion.')
         }
 
-        const firstSubdivisionId = normalizeId(subdivisions?.[0]?.id)
+        const localDivisionsByBodega = new Map()
+        divisions.forEach((division) => {
+          const bodegaId = normalizeId(division?.bodega?.id || division?.bodega_id || '')
+          if (!bodegaId) return
+          const current = localDivisionsByBodega.get(bodegaId) || []
+          localDivisionsByBodega.set(bodegaId, [...current, division])
+        })
+
+        const localSubdivisionsByDivision = new Map()
+        subdivisions.forEach((subdivision) => {
+          const divisionId = normalizeId(subdivision?.division?.id || subdivision?.division_id || '')
+          if (!divisionId) return
+          const current = localSubdivisionsByDivision.get(divisionId) || []
+          localSubdivisionsByDivision.set(divisionId, [...current, subdivision])
+        })
+
+        const fallbackBodegaFromSubdivision = normalizeId(
+          subdivisions?.[0]?.division?.bodega?.id || subdivisions?.[0]?.division?.bodega_id || ''
+        )
+        const firstBodegaId = normalizeId(bodegas?.[0]?.id) || fallbackBodegaFromSubdivision
+        const firstDivisionFromBodega = (firstBodegaId
+          ? localDivisionsByBodega.get(firstBodegaId) || []
+          : [])[0]
+        const fallbackDivisionFromSubdivision = normalizeId(
+          subdivisions?.[0]?.division?.id || subdivisions?.[0]?.division_id || ''
+        )
+        const firstDivisionId =
+          normalizeId(firstDivisionFromBodega?.id) || fallbackDivisionFromSubdivision
+        const firstSubdivisionForBodega =
+          (firstDivisionId ? localSubdivisionsByDivision.get(firstDivisionId) || [] : [])[0] ||
+          subdivisions?.[0] ||
+          null
+        const firstSubdivisionId = normalizeId(firstSubdivisionForBodega?.id)
         const draft = {}
         details.forEach((detail) => {
           const productId = normalizeId(detail?.producto_id)
@@ -1674,11 +1764,15 @@ function QuickActions({
             ubicaciones: firstSubdivisionId
               ? [{ subdivision_id: firstSubdivisionId, cantidad: cantidadEnviada }]
               : [],
+            location_draft_bodega_id: firstBodegaId || '',
+            location_draft_division_id: firstDivisionId || '',
             location_draft_subdivision_id: firstSubdivisionId || '',
             location_draft_cantidad: cantidadEnviada,
           }
         })
 
+        setInTransitBodegas(bodegas)
+        setInTransitDivisions(divisions)
         setInTransitSubdivisions(subdivisions)
         setReceiveShipmentDraftByProductId(draft)
         setActiveInTransitShipment(shipment)
@@ -1719,6 +1813,27 @@ function QuickActions({
         }
       } else if (field === 'novedad') {
         nextRow.novedad = String(value || '')
+      } else if (field === 'location_draft_bodega_id') {
+        const selectedBodegaId = normalizeId(value)
+        nextRow.location_draft_bodega_id = selectedBodegaId
+        const bodegaDivisions = selectedBodegaId
+          ? inTransitDivisionsByBodegaId.get(selectedBodegaId) || []
+          : Array.isArray(inTransitDivisions)
+            ? inTransitDivisions
+            : []
+        const firstDivisionId = normalizeId(bodegaDivisions?.[0]?.id)
+        nextRow.location_draft_division_id = firstDivisionId
+        const divisionSubdivisions = firstDivisionId
+          ? inTransitSubdivisionsByDivisionId.get(firstDivisionId) || []
+          : []
+        nextRow.location_draft_subdivision_id = normalizeId(divisionSubdivisions?.[0]?.id)
+      } else if (field === 'location_draft_division_id') {
+        const selectedDivisionId = normalizeId(value)
+        nextRow.location_draft_division_id = selectedDivisionId
+        const divisionSubdivisions = selectedDivisionId
+          ? inTransitSubdivisionsByDivisionId.get(selectedDivisionId) || []
+          : []
+        nextRow.location_draft_subdivision_id = normalizeId(divisionSubdivisions?.[0]?.id)
       } else if (field === 'location_draft_subdivision_id') {
         nextRow.location_draft_subdivision_id = normalizeId(value)
       } else if (field === 'location_draft_cantidad') {
@@ -1733,7 +1848,11 @@ function QuickActions({
         [normalizedProductId]: nextRow,
       }
     })
-  }, [])
+  }, [
+    inTransitDivisions,
+    inTransitDivisionsByBodegaId,
+    inTransitSubdivisionsByDivisionId,
+  ])
 
   const handleAddReceiveShipmentLocation = useCallback((productId) => {
     const normalizedProductId = normalizeId(productId)
@@ -2249,7 +2368,7 @@ function QuickActions({
               {inTransitSubdivisionsLoading ? (
                 <p className="quick-actions__receive-loading">
                   <Loader2 size={14} />
-                  Cargando subdivisiones...
+                  Cargando bodegas, divisiones y subdivisiones...
                 </p>
               ) : (
                 <div className="quick-actions__receive-list">
@@ -2257,6 +2376,14 @@ function QuickActions({
                     const rowProductId = normalizeId(row?.producto_id)
                     const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
                     const assignedQty = toPositiveInt(row?.cantidad_asignada, 0)
+                    const selectedBodegaId = normalizeId(row?.location_draft_bodega_id)
+                    const availableDivisions = selectedBodegaId
+                      ? inTransitDivisionsByBodegaId.get(selectedBodegaId) || []
+                      : []
+                    const selectedDivisionId = normalizeId(row?.location_draft_division_id)
+                    const availableSubdivisions = selectedDivisionId
+                      ? inTransitSubdivisionsByDivisionId.get(selectedDivisionId) || []
+                      : []
                     return (
                       <article key={`receive-shipment-row-${rowProductId}`} className="quick-actions__receive-item">
                         <div className="quick-actions__receive-item-head">
@@ -2291,7 +2418,43 @@ function QuickActions({
                         </div>
 
                         <div className="quick-actions__receive-location">
-                          <div className="quick-actions__receive-location-row">
+                          <div className="quick-actions__receive-location-row quick-actions__receive-location-row--compose">
+                            <select
+                              value={String(row?.location_draft_bodega_id || '')}
+                              onChange={(event) =>
+                                handleReceiveShipmentDraftFieldChange(
+                                  rowProductId,
+                                  'location_draft_bodega_id',
+                                  event.target.value
+                                )}
+                              disabled={receiveShipmentSubmitting || !inTransitBodegas.length}
+                            >
+                              <option value="">Selecciona bodega</option>
+                              {inTransitBodegas.map((bodega) => (
+                                <option key={`receive-bodega-option-${bodega.id}`} value={bodega.id}>
+                                  {String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}
+                                </option>
+                              ))}
+                            </select>
+
+                            <select
+                              value={String(row?.location_draft_division_id || '')}
+                              onChange={(event) =>
+                                handleReceiveShipmentDraftFieldChange(
+                                  rowProductId,
+                                  'location_draft_division_id',
+                                  event.target.value
+                                )}
+                              disabled={receiveShipmentSubmitting || !availableDivisions.length}
+                            >
+                              <option value="">Selecciona division</option>
+                              {availableDivisions.map((division) => (
+                                <option key={`receive-division-option-${division.id}`} value={division.id}>
+                                  {String(division?.nombre || `Division ${division.id}`).trim()}
+                                </option>
+                              ))}
+                            </select>
+
                             <select
                               value={String(row?.location_draft_subdivision_id || '')}
                               onChange={(event) =>
@@ -2300,10 +2463,10 @@ function QuickActions({
                                   'location_draft_subdivision_id',
                                   event.target.value
                                 )}
-                              disabled={receiveShipmentSubmitting || !inTransitSubdivisions.length}
+                              disabled={receiveShipmentSubmitting || !availableSubdivisions.length}
                             >
                               <option value="">Selecciona subdivision</option>
-                              {inTransitSubdivisions.map((subdivision) => (
+                              {availableSubdivisions.map((subdivision) => (
                                 <option key={`receive-subdivision-option-${subdivision.id}`} value={subdivision.id}>
                                   {String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}
                                 </option>
@@ -2325,7 +2488,7 @@ function QuickActions({
                             <button
                               type="button"
                               onClick={() => handleAddReceiveShipmentLocation(rowProductId)}
-                              disabled={receiveShipmentSubmitting || !inTransitSubdivisions.length}
+                              disabled={receiveShipmentSubmitting || !availableSubdivisions.length}
                             >
                               Agregar
                             </button>
@@ -2339,12 +2502,19 @@ function QuickActions({
                               {(Array.isArray(row?.ubicaciones) ? row.ubicaciones : []).map((location, index) => {
                                 const subdivision = inTransitSubdivisionById.get(normalizeId(location?.subdivision_id))
                                 const subdivisionName = String(subdivision?.nombre || `Subdivision ${location?.subdivision_id || '-'}`).trim()
+                                const subdivisionBodegaName = String(
+                                  subdivision?.division?.bodega?.nombre || ''
+                                ).trim()
                                 return (
                                   <div
                                     key={`receive-location-${rowProductId}-${normalizeId(location?.subdivision_id)}-${index}`}
                                     className="quick-actions__receive-location-chip"
                                   >
-                                    <span>{subdivisionName}</span>
+                                    <span>
+                                      {subdivisionBodegaName
+                                        ? `${subdivisionBodegaName} / ${subdivisionName}`
+                                        : subdivisionName}
+                                    </span>
                                     <strong>{toPositiveInt(location?.cantidad, 0)}</strong>
                                     <button
                                       type="button"

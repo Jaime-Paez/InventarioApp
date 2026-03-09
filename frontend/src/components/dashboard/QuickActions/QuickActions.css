@@ -524,6 +524,10 @@
   gap: 6px;
 }
 
+.quick-actions__receive-location-row--compose {
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(130px, 1fr) 82px auto;
+}
+
 .quick-actions__receive-location-row button {
   border: 1px solid color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
   border-radius: 8px;
