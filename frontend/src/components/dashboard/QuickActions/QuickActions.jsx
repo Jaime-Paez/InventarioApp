@@ -2373,12 +2373,15 @@ function QuickActions({
           )
         }
 
-        await appendShipmentReceptionReminder({
-          shipment: activeInTransitShipment,
-          result: normalizedResult,
-          totalMissing,
-          items: builtItems,
-        })
+        const backendReminderSent = Boolean(payload?.recordatorio_enviado)
+        if (!backendReminderSent) {
+          await appendShipmentReceptionReminder({
+            shipment: activeInTransitShipment,
+            result: normalizedResult,
+            totalMissing,
+            items: builtItems,
+          })
+        }
         setIsReceiveShipmentModalOpen(false)
         setActiveInTransitShipment(null)
         setReceiveShipmentDraftByProductId({})

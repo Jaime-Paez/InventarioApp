@@ -1,4 +1,7 @@
 from decimal import Decimal, InvalidOperation
+from uuid import uuid4
+
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
@@ -10,16 +13,18 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
+from app.models import ReminderState
 from inventario.models import Inventario, SubDivision, Sucursal
 from solicitudes.models import Cliente
 
-from usuarios.models import RolPermiso
+from usuarios.models import RolPermiso, UsuarioModuloSucursal
 from usuarios.permissions import MovimientoInventarioModulePermission
 from usuarios.sucursal_scope import (
     ensure_sucursal_allowed_for_modules,
     get_allowed_sucursal_ids,
     get_allowed_sucursal_ids_for_modules,
 )
+from usuarios.utils import get_permisos_efectivos
 from .models import (
     MovimientoInventario,
     SolicitudTraslado,
@@ -678,6 +683,170 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         if full_name:
             return full_name
         return str(getattr(user, "email", "") or "").strip()
+
+    @staticmethod
+    def _normalize_reminder_recipient(user):
+        if user is None:
+            return None
+        user_id = str(getattr(user, "id", "") or "").strip()
+        if not user_id:
+            return None
+        full_name = str(getattr(user, "get_full_name", lambda: "")() or "").strip()
+        email = str(getattr(user, "email", "") or "").strip()
+        name = full_name or email or f"Usuario {user_id}"
+        return {
+            "id": user_id,
+            "name": name,
+        }
+
+    @staticmethod
+    def _user_has_module_permission(user, module_key):
+        if user is None or not getattr(user, "is_active", False):
+            return False
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return True
+
+        email = str(getattr(user, "email", "") or "").strip()
+        permisos = get_permisos_efectivos(user, email)
+        for permiso in permisos:
+            if str(permiso.get("modulo") or "").strip() != str(module_key):
+                continue
+            if (
+                bool(permiso.get("puede_crear"))
+                or bool(permiso.get("puede_actualizar"))
+                or bool(permiso.get("puede_leer"))
+            ):
+                return True
+        return False
+
+    def _resolve_transfer_provider_recipients(
+        self,
+        sucursal_proveedora_id,
+        *,
+        exclude_user_ids=None,
+    ):
+        provider_branch_id = int(sucursal_proveedora_id or 0)
+        if provider_branch_id <= 0:
+            return []
+
+        excluded = {str(user_id).strip() for user_id in (exclude_user_ids or []) if str(user_id).strip()}
+
+        scoped_user_ids = set(
+            UsuarioModuloSucursal.objects.filter(
+                modulo=RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+                sucursal_id=provider_branch_id,
+            ).values_list("usuario_id", flat=True)
+        )
+
+        User = get_user_model()
+        candidate_users = User.objects.filter(
+            is_active=True
+        ).filter(
+            Q(is_staff=True) | Q(is_superuser=True) | Q(id__in=sorted(scoped_user_ids))
+        ).order_by("id")
+
+        recipients = []
+        seen_recipient_ids = set()
+        for candidate in candidate_users:
+            recipient = self._normalize_reminder_recipient(candidate)
+            recipient_id = str(recipient.get("id") if recipient else "").strip()
+            if not recipient_id or recipient_id in excluded:
+                continue
+            if recipient_id in seen_recipient_ids:
+                continue
+            if not self._user_has_module_permission(candidate, RolPermiso.Modulos.MOVIMIENTOS_SALIDAS):
+                continue
+
+            seen_recipient_ids.add(recipient_id)
+            recipients.append(recipient)
+
+        return recipients
+
+    def _append_transfer_reception_reminder(
+        self,
+        *,
+        solicitud,
+        resultado,
+        total_faltante,
+        processed_items,
+        actor_user,
+    ):
+        if solicitud is None:
+            return False
+
+        actor_recipient = self._normalize_reminder_recipient(actor_user) or {
+            "id": "system",
+            "name": "Sistema",
+        }
+        actor_user_id = str(actor_recipient.get("id") or "").strip()
+
+        recipients = self._resolve_transfer_provider_recipients(
+            solicitud.sucursal_proveedora_id,
+            exclude_user_ids=[actor_user_id],
+        )
+        if not recipients:
+            return False
+
+        transfer_doc = str(getattr(solicitud, "no_documento", "") or "").strip()
+        transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{int(solicitud.id)}"
+        requester_name = str(
+            getattr(getattr(solicitud, "sucursal_solicitante", None), "nombre", "") or ""
+        ).strip() or "sucursal solicitante"
+        context_label = f"Solicitud de traslado {transfer_reference}"
+
+        normalized_resultado = self._normalize_state_name(resultado)
+        missing_lines = []
+        for item in processed_items or []:
+            faltante = int(item.get("cantidad_faltante") or 0)
+            if faltante <= 0:
+                continue
+            detalle = item.get("detalle")
+            product_name = str(
+                getattr(getattr(detalle, "producto", None), "nombre", "")
+                or getattr(getattr(detalle, "producto", None), "codigo", "")
+                or item.get("producto_id")
+            ).strip()
+            novedad = str(item.get("novedad") or "").strip()
+            if novedad:
+                missing_lines.append(f"{product_name}: faltan {faltante} ({novedad})")
+            else:
+                missing_lines.append(f"{product_name}: faltan {faltante}")
+
+        if normalized_resultado == "incompleto":
+            description = (
+                f"Su envio de traslado {transfer_reference} llego incompleto en {requester_name}. "
+                f"Faltantes: {'; '.join(missing_lines) or int(total_faltante)}."
+            )
+        else:
+            description = (
+                f"Su envio de traslado {transfer_reference} llego completo en {requester_name}."
+            )
+
+        now = timezone.localtime(timezone.now())
+        reminder = {
+            "id": str(uuid4()),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M"),
+            "description": description,
+            "creator": actor_recipient,
+            "recipients": recipients,
+            "context": {
+                "type": "solicitud_traslado",
+                "id": str(int(solicitud.id)),
+                "label": context_label,
+            },
+            "kind": "recordatorio_general",
+            "createdAt": timezone.now().isoformat(),
+            "completedBy": [],
+        }
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            existing_payload = store.payload if isinstance(store.payload, list) else []
+            store.payload = [reminder, *existing_payload]
+            store.save(update_fields=["payload", "updated_at"])
+
+        return True
 
     def _serialize_inconveniente(self, inconveniente):
         historial_rows = list(
@@ -1612,6 +1781,19 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
             solicitud_output = SolicitudTrasladoSerializer(instance=solicitud_locked).data
 
+        reception_result = "completo" if total_faltante <= 0 else "incompleto"
+        reminder_sent = False
+        try:
+            reminder_sent = self._append_transfer_reception_reminder(
+                solicitud=solicitud_locked,
+                resultado=reception_result,
+                total_faltante=total_faltante,
+                processed_items=processed_items,
+                actor_user=request.user,
+            )
+        except Exception:
+            reminder_sent = False
+
         return Response(
             {
                 "detail": (
@@ -1619,10 +1801,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     if total_faltante <= 0
                     else "Recepcion registrada con faltantes."
                 ),
-                "resultado": "completo" if total_faltante <= 0 else "incompleto",
+                "resultado": reception_result,
                 "faltantes": int(total_faltante),
                 "solicitud": solicitud_output,
                 "inconvenientes": inconvenientes_payload,
+                "recordatorio_enviado": bool(reminder_sent),
             },
             status=status.HTTP_200_OK,
         )
