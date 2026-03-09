@@ -898,7 +898,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 "id": str(int(solicitud.id)),
                 "label": context_label,
             },
-            "kind": "recordatorio_general",
+            "kind": "solicitud_traslado_recepcion",
             "createdAt": timezone.now().isoformat(),
             "completedBy": [],
         }

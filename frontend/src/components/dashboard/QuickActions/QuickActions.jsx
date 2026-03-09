@@ -8,6 +8,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
+  TRANSFER_RECEIPT_NOTIFICATION_KIND,
   buildUserIdSet,
   createReminderId,
   emitTransferReminderNotification,
@@ -1893,7 +1894,7 @@ function QuickActions({
           id: solicitudId,
           label: contextLabel,
         },
-        kind: 'recordatorio_general',
+        kind: TRANSFER_RECEIPT_NOTIFICATION_KIND,
         createdAt: now.iso,
         completedBy: [],
       }

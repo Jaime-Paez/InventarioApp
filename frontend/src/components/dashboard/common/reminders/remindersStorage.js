@@ -4,6 +4,7 @@ export const REMINDERS_STORAGE_KEY = 'inventario-recordatorios-v1'
 export const REMINDERS_SYNC_EVENT = 'inventario-reminders-sync'
 export const REMINDERS_TRANSFER_NOTIFICATION_EVENT = 'inventario-reminders-transfer-notification'
 export const SPECIAL_TRANSFER_DECISION_KIND = 'solicitud_traslado_decision'
+export const TRANSFER_RECEIPT_NOTIFICATION_KIND = 'solicitud_traslado_recepcion'
 export const REMINDERS_BACKEND_ENDPOINT = `${API_URL}/recordatorios/estado/`
 
 export const normalizeId = (value) => (value == null ? '' : String(value).trim())
@@ -376,6 +377,32 @@ export const isReminderSeenByCurrentUser = (reminder, userIdSet) => {
 export const isSpecialTransferDecisionReminder = (reminder) =>
   normalizeId(reminder?.kind) === SPECIAL_TRANSFER_DECISION_KIND
 
+const normalizeComparableText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+
+export const getTransferReceiptOutcome = (reminder) => {
+  const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
+  if (contextType !== 'solicitud_traslado') return ''
+
+  const kind = normalizeId(reminder?.kind)
+  const description = normalizeComparableText(reminder?.description)
+  if (!description) return ''
+
+  const mentionsTransferArrival = description.includes('envio de traslado') || kind === TRANSFER_RECEIPT_NOTIFICATION_KIND
+  if (!mentionsTransferArrival) return ''
+
+  if (description.includes('llego incompleto')) return 'incompleto'
+  if (description.includes('llego completo')) return 'completo'
+  return ''
+}
+
+export const isTransferReceiptNotificationReminder = (reminder) =>
+  Boolean(getTransferReceiptOutcome(reminder))
+
 const inferTransferDecisionStatusFromDescription = (reminder) => {
   const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
   if (contextType !== 'solicitud_traslado') return 'pendiente'
@@ -482,6 +509,7 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
   const isForCurrentUser = recipientIds.some((id) => userIdSet.has(id))
   const seenByCurrentUser = reminderCompletedByIds(reminder).some((id) => userIdSet.has(id))
   const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
+  const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
   const decisionStatus = getReminderDecisionStatus(reminder)
   const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
   const isTransferContext = contextType === 'solicitud_traslado'
@@ -489,6 +517,22 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
   if (!isForCurrentUser) {
     return {
       label: 'Informativo',
+      className: 'info',
+      canMarkSeen: false,
+    }
+  }
+
+  if (transferReceiptOutcome === 'completo') {
+    return {
+      label: 'Llego completo',
+      className: 'info',
+      canMarkSeen: false,
+    }
+  }
+
+  if (transferReceiptOutcome === 'incompleto') {
+    return {
+      label: 'Llego incompleto',
       className: 'info',
       canMarkSeen: false,
     }
