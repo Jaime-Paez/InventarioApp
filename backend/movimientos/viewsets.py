@@ -17,14 +17,13 @@ from app.models import ReminderState
 from inventario.models import Inventario, SubDivision, Sucursal
 from solicitudes.models import Cliente
 
-from usuarios.models import RolPermiso, UsuarioModuloSucursal
+from usuarios.models import RolPermiso, UsuarioModuloSucursal, UsuarioSucursal
 from usuarios.permissions import MovimientoInventarioModulePermission
 from usuarios.sucursal_scope import (
     ensure_sucursal_allowed_for_modules,
     get_allowed_sucursal_ids,
     get_allowed_sucursal_ids_for_modules,
 )
-from usuarios.utils import get_permisos_efectivos
 from .models import (
     MovimientoInventario,
     SolicitudTraslado,
@@ -80,6 +79,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         payload = []
         for row in rows:
             movement_id = int(row.get("id") or 0)
+            estado_nombre = str(row.get("estado_movimiento__nombre") or "-").strip() or "-"
+            tipo_nombre = self._normalize_state_name(row.get("tipo_movimiento__nombre"))
+            sub_tipo_nombre = self._normalize_state_name(row.get("sub_tipo_movimiento__nombre"))
+            estado_normalizado = self._normalize_state_name(estado_nombre)
+
+            if tipo_nombre.startswith("sal") and "trasl" in sub_tipo_nombre:
+                if "parcial" in estado_normalizado or "inconven" in estado_normalizado:
+                    estado_nombre = "Llego con inconvenientes"
+                elif "recib" in estado_normalizado or "llego" in estado_normalizado:
+                    estado_nombre = "Llego"
+
             payload.append(
                 {
                     "id": movement_id,
@@ -87,7 +97,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "fecha": row.get("fecha"),
                     "sucursal_nombre": row.get("sucursal__nombre") or "-",
                     "sub_tipo_nombre": row.get("sub_tipo_movimiento__nombre") or "-",
-                    "estado_nombre": row.get("estado_movimiento__nombre") or "-",
+                    "estado_nombre": estado_nombre,
                     "sucursal_objetivo_nombre": row.get("sucursal_objetivo__nombre") or "-",
                     "funcional": bool(row.get("funcional")),
                     "funcional_label": "Si" if bool(row.get("funcional")) else "No",
@@ -560,6 +570,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "no_documento",
             "fecha",
             "funcional",
+            "tipo_movimiento__nombre",
             "sucursal__nombre",
             "sub_tipo_movimiento__nombre",
             "estado_movimiento__nombre",
@@ -688,6 +699,27 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     def _normalize_reminder_recipient(user):
         if user is None:
             return None
+        if isinstance(user, dict):
+            user_id = str(
+                user.get("id")
+                or user.get("usuario_id")
+                or user.get("user_id")
+                or ""
+            ).strip()
+            if not user_id:
+                return None
+            name = str(
+                user.get("name")
+                or user.get("nombre")
+                or user.get("label")
+                or ""
+            ).strip()
+            email = str(user.get("email") or "").strip()
+            return {
+                "id": user_id,
+                "name": name or email or f"Usuario {user_id}",
+            }
+
         user_id = str(getattr(user, "id", "") or "").strip()
         if not user_id:
             return None
@@ -698,26 +730,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "id": user_id,
             "name": name,
         }
-
-    @staticmethod
-    def _user_has_module_permission(user, module_key):
-        if user is None or not getattr(user, "is_active", False):
-            return False
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
-            return True
-
-        email = str(getattr(user, "email", "") or "").strip()
-        permisos = get_permisos_efectivos(user, email)
-        for permiso in permisos:
-            if str(permiso.get("modulo") or "").strip() != str(module_key):
-                continue
-            if (
-                bool(permiso.get("puede_crear"))
-                or bool(permiso.get("puede_actualizar"))
-                or bool(permiso.get("puede_leer"))
-            ):
-                return True
-        return False
 
     def _resolve_transfer_provider_recipients(
         self,
@@ -737,12 +749,19 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 sucursal_id=provider_branch_id,
             ).values_list("usuario_id", flat=True)
         )
+        assigned_user_ids = set(
+            UsuarioSucursal.objects.filter(
+                sucursal_id=provider_branch_id,
+            ).values_list("usuario_id", flat=True)
+        )
 
         User = get_user_model()
         candidate_users = User.objects.filter(
             is_active=True
         ).filter(
-            Q(is_staff=True) | Q(is_superuser=True) | Q(id__in=sorted(scoped_user_ids))
+            Q(is_staff=True)
+            | Q(is_superuser=True)
+            | Q(id__in=sorted(scoped_user_ids | assigned_user_ids))
         ).order_by("id")
 
         recipients = []
@@ -754,11 +773,58 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 continue
             if recipient_id in seen_recipient_ids:
                 continue
-            if not self._user_has_module_permission(candidate, RolPermiso.Modulos.MOVIMIENTOS_SALIDAS):
-                continue
 
             seen_recipient_ids.add(recipient_id)
             recipients.append(recipient)
+
+        return recipients
+
+    def _resolve_transfer_context_recipients_from_payload(
+        self,
+        payload,
+        *,
+        solicitud_id,
+        exclude_user_ids=None,
+    ):
+        solicitud_token = str(solicitud_id or "").strip()
+        if not solicitud_token:
+            return []
+
+        excluded = {str(user_id).strip() for user_id in (exclude_user_ids or []) if str(user_id).strip()}
+        recipients = []
+        seen_recipient_ids = set()
+
+        def append_unique(candidate):
+            normalized = self._normalize_reminder_recipient(candidate)
+            if normalized is None:
+                return
+            recipient_id = str(normalized.get("id") or "").strip()
+            if not recipient_id or recipient_id in excluded:
+                return
+            if recipient_id in seen_recipient_ids:
+                return
+            seen_recipient_ids.add(recipient_id)
+            recipients.append(normalized)
+
+        for reminder in payload if isinstance(payload, list) else []:
+            context = reminder.get("context") if isinstance(reminder, dict) else None
+            if not isinstance(context, dict):
+                continue
+            context_type = (
+                str(context.get("type") or "")
+                .strip()
+                .lower()
+                .replace(" ", "_")
+                .replace("-", "_")
+            )
+            context_id = str(context.get("id") or "").strip()
+            if context_type != "solicitud_traslado" or context_id != solicitud_token:
+                continue
+            append_unique(reminder.get("creator") if isinstance(reminder, dict) else None)
+            for candidate in (
+                reminder.get("recipients", []) if isinstance(reminder, dict) else []
+            ):
+                append_unique(candidate)
 
         return recipients
 
@@ -784,9 +850,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             solicitud.sucursal_proveedora_id,
             exclude_user_ids=[actor_user_id],
         )
-        if not recipients:
-            return False
-
         transfer_doc = str(getattr(solicitud, "no_documento", "") or "").strip()
         transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{int(solicitud.id)}"
         requester_name = str(
@@ -843,6 +906,25 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
             existing_payload = store.payload if isinstance(store.payload, list) else []
+            context_recipients = self._resolve_transfer_context_recipients_from_payload(
+                existing_payload,
+                solicitud_id=int(solicitud.id),
+                exclude_user_ids=[actor_user_id],
+            )
+
+            if context_recipients:
+                existing_ids = {str(row.get("id") or "").strip() for row in recipients}
+                for row in context_recipients:
+                    row_id = str(row.get("id") or "").strip()
+                    if not row_id or row_id in existing_ids:
+                        continue
+                    existing_ids.add(row_id)
+                    recipients.append(row)
+
+            if not recipients:
+                return False
+
+            reminder["recipients"] = recipients
             store.payload = [reminder, *existing_payload]
             store.save(update_fields=["payload", "updated_at"])
 
@@ -1736,6 +1818,25 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
             movimiento_entrada_locked.estado_movimiento = estado_destino
             movimiento_entrada_locked.save(update_fields=["estado_movimiento"])
+
+            movimiento_salida_locked = None
+            if solicitud_locked.movimiento_salida_id:
+                movimiento_salida_locked = (
+                    MovimientoInventario.objects.select_for_update(of=("self",))
+                    .select_related("estado_movimiento")
+                    .filter(pk=solicitud_locked.movimiento_salida_id)
+                    .first()
+                )
+
+            if movimiento_salida_locked is not None:
+                salida_estado_destino = self._resolve_estado_movimiento(
+                    "llego con inconvenientes" if total_faltante > 0 else "llego",
+                    "parcialmente recibido" if total_faltante > 0 else "recibido",
+                    "recibido",
+                )
+                if salida_estado_destino is not None:
+                    movimiento_salida_locked.estado_movimiento = salida_estado_destino
+                    movimiento_salida_locked.save(update_fields=["estado_movimiento"])
 
             inconvenientes_payload = []
             for item in processed_items:

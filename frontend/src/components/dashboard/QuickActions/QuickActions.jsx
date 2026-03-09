@@ -1351,6 +1351,11 @@ function QuickActions({
     [receiveShipmentRows]
   )
 
+  const receiveShipmentAutoResult = useMemo(
+    () => (receiveShipmentTotalMissing > 0 ? 'incompleto' : 'completo'),
+    [receiveShipmentTotalMissing]
+  )
+
   const setBtnRef = (index) => (element) => {
     btnRefs.current[index] = element
   }
@@ -1750,6 +1755,18 @@ function QuickActions({
         const seenUserIds = new Set()
         const recipients = []
         rows.forEach((item) => {
+          const hasSalidaPermission = (Array.isArray(item?.permisos_resumen) ? item.permisos_resumen : []).some(
+            (permission) => {
+              if (normalizeString(permission?.modulo) !== 'movimientos_salidas') return false
+              return Boolean(
+                permission?.puede_crear ||
+                permission?.puede_actualizar ||
+                permission?.puede_leer
+              )
+            }
+          )
+          if (!hasSalidaPermission) return
+
           const recipient = sanitizeRecipient({
             id:
               item?.id ||
@@ -1764,13 +1781,18 @@ function QuickActions({
           const normalizedRecipientId = normalizeId(recipient.id)
           if (!normalizedRecipientId || seenUserIds.has(normalizedRecipientId)) return
 
-          const hasAccess = hasModuleBranchAccess(
+          const moduleScopes = normalizeModuleScopes(item?.sucursales_por_modulo)
+          const hasScopedAccess = hasModuleBranchAccess(
             {
-              moduleScopes: normalizeModuleScopes(item?.sucursales_por_modulo),
+              moduleScopes,
             },
             'movimientos_salidas',
             normalizedProviderBranchId
           )
+          const hasAssignedBranch = (Array.isArray(item?.sucursales) ? item.sucursales : []).some(
+            (branch) => normalizeId(branch?.id) === normalizedProviderBranchId
+          )
+          const hasAccess = hasScopedAccess || hasAssignedBranch
           if (!hasAccess) return
 
           seenUserIds.add(normalizedRecipientId)
@@ -2285,10 +2307,8 @@ function QuickActions({
   }, [])
 
   const handleSubmitShipmentReception = useCallback(
-    async (result) => {
+    async () => {
       if (!token || !activeInTransitShipment) return
-      const normalizedResult = normalizeId(result).toLowerCase()
-      if (normalizedResult !== 'completo' && normalizedResult !== 'incompleto') return
 
       const rows = Object.values(receiveShipmentDraftByProductId || {})
       if (!rows.length) {
@@ -2336,6 +2356,7 @@ function QuickActions({
         })
       }
 
+      const normalizedResult = totalMissing > 0 ? 'incompleto' : 'completo'
       if (normalizedResult === 'completo' && totalMissing > 0) {
         setReceiveShipmentError('No puedes marcar completo si hay faltantes.')
         return
@@ -3114,19 +3135,21 @@ function QuickActions({
               </button>
               <button
                 type="button"
-                className="quick-actions__receive-btn quick-actions__receive-btn--danger"
-                onClick={() => void handleSubmitShipmentReception('incompleto')}
-                disabled={receiveShipmentSubmitting || receiveShipmentTotalMissing <= 0}
+                className={`quick-actions__receive-btn ${
+                  receiveShipmentAutoResult === 'incompleto'
+                    ? 'quick-actions__receive-btn--danger'
+                    : 'quick-actions__receive-btn--success'
+                }`}
+                onClick={() => void handleSubmitShipmentReception()}
+                disabled={receiveShipmentSubmitting}
               >
-                {receiveShipmentSubmitting ? 'Guardando...' : 'Pedido llego incompleto'}
-              </button>
-              <button
-                type="button"
-                className="quick-actions__receive-btn quick-actions__receive-btn--success"
-                onClick={() => void handleSubmitShipmentReception('completo')}
-                disabled={receiveShipmentSubmitting || receiveShipmentTotalMissing > 0}
-              >
-                {receiveShipmentSubmitting ? 'Guardando...' : 'Pedido llego completo'}
+                {receiveShipmentSubmitting
+                  ? 'Guardando...'
+                  : (
+                    receiveShipmentAutoResult === 'incompleto'
+                      ? 'Pedido llego incompleto'
+                      : 'Pedido llego sin problemas'
+                  )}
               </button>
             </footer>
           </div>
