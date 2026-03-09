@@ -67,6 +67,12 @@ const isResolvedTransferResponseReminder = (reminder) => {
   return decisionStatus === 'aceptada' || decisionStatus === 'rechazada' || decisionStatus === 'enviado'
 }
 
+const shouldHideSelfResolvedTransferResponseReminder = (reminder) => {
+  if (!isResolvedTransferResponseReminder(reminder)) return false
+  const decisionStatus = getReminderDecisionStatus(reminder)
+  return decisionStatus === 'aceptada' || decisionStatus === 'rechazada'
+}
+
 const resolveUrgentDecisionProgress = (reminder, nowValue) => {
   const deadline = getReminderDeadlineTimestamp(reminder)
   const createdAt = parseEntityTimestamp(reminder?.createdAt)
@@ -959,7 +965,7 @@ function QuickActions({
       if (!isReminderForCurrentUser(reminder, currentUserIds)) return false
 
       if (
-        isResolvedTransferResponseReminder(reminder) &&
+        shouldHideSelfResolvedTransferResponseReminder(reminder) &&
         isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)
       ) {
         return false

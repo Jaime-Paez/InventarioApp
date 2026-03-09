@@ -9,6 +9,7 @@ import {
   extractUserId,
   formatCurrentUserName,
   getReminderDecisionStatus,
+  isReminderCreatedByCurrentUser,
   isReminderForContext,
   isSpecialTransferDecisionReminder,
   normalizeId,
@@ -1570,6 +1571,18 @@ function RecordatoriosPopup({
                           normalizeId(openingTransferReminderId) &&
                           normalizeId(openingTransferReminderId) === normalizeId(reminder?.id)
                         )
+                        const isCreatedByCurrentUser = isReminderCreatedByCurrentUser(
+                          reminder,
+                          currentUserIdSet,
+                          creatorRecipientName
+                        )
+                        const canOpenSentTransferInSalidasDirect = (
+                          isTransferContextReminder &&
+                          !isSpecialReminder &&
+                          decisionStatus === 'enviado' &&
+                          isCreatedByCurrentUser &&
+                          typeof onOpenTransferRequestInSalidas === 'function'
+                        )
                         const recipients = Array.isArray(reminder?.recipients) ? reminder.recipients : []
                         const recipientNames = recipients
                           .map((recipient) => String(recipient?.name || '').trim())
@@ -1645,6 +1658,15 @@ function RecordatoriosPopup({
                                     ? 'Abriendo...'
                                     : 'Esta solicitud ya fue enviada, ver envio'}
                                 </button>
+                              ) : canOpenSentTransferInSalidasDirect ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => handleOpenTransferInSalidas(reminder)}
+                                  disabled={isOpeningTransfer}
+                                >
+                                  {isOpeningTransfer ? 'Abriendo...' : 'Ver envio'}
+                                </button>
                               ) : canOpenReceivedTransferInEntradas ? (
                                 <button
                                   type="button"
@@ -1664,9 +1686,13 @@ function RecordatoriosPopup({
                                   {isOpeningTransfer
                                     ? 'Abriendo...'
                                     : (
-                                      shouldUseSentCopyOnTransferEntryAction
-                                        ? 'Esta solicitud ya fue enviada, ver envio'
-                                        : 'Ver en entradas'
+                                      decisionStatus === 'enviado'
+                                        ? 'Ver envio pendiente'
+                                        : (
+                                          shouldUseSentCopyOnTransferEntryAction
+                                            ? 'Solicitud ya enviada, ver envio pendiente'
+                                            : 'Ver en entradas'
+                                        )
                                     )}
                                 </button>
                               ) : status.canMarkSeen ? (
