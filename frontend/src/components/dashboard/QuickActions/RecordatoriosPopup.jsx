@@ -1556,12 +1556,15 @@ function RecordatoriosPopup({
                           transferLifecycleStage === 'enviado' &&
                           typeof onOpenTransferRequestInSalidas === 'function'
                         )
-                        const canOpenReceivedTransferInEntradas = (
+                        const canOpenReceivedTransferInSalidas = (
                           isSpecialReminder &&
                           isTransferContextReminder &&
                           decisionStatus === 'aceptada' &&
                           transferLifecycleStage === 'recibido' &&
-                          typeof onOpenTransferRequestInEntradas === 'function'
+                          (
+                            typeof onOpenTransferRequestInSalidas === 'function' ||
+                            typeof onOpenTransferRequestInEntradas === 'function'
+                          )
                         )
                         const canOpenTransferInEntradas = (
                           isTransferContextReminder &&
@@ -1726,14 +1729,14 @@ function RecordatoriosPopup({
                                     ? 'Abriendo...'
                                     : (transferReceiptPrefersSalida ? 'Ver salida' : 'Ver entrada')}
                                 </button>
-                              ) : canOpenReceivedTransferInEntradas ? (
+                              ) : canOpenReceivedTransferInSalidas ? (
                                 <button
                                   type="button"
                                   className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => handleOpenTransferInEntradas(reminder)}
+                                  onClick={() => handleOpenTransferByPreferredTarget(reminder, 'salidas')}
                                   disabled={isOpeningTransfer}
                                 >
-                                  {isOpeningTransfer ? 'Abriendo...' : 'Esta solicitud ya fue recibida, ver entrada'}
+                                  {isOpeningTransfer ? 'Abriendo...' : 'Ver envio pendiente'}
                                 </button>
                               ) : canOpenTransferInEntradas ? (
                                 <button
