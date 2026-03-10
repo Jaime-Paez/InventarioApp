@@ -384,8 +384,9 @@ function SalidaDetails({
   }, [estados])
 
   const ventaEstadoOptions = useMemo(() => {
-    const allowed = new Set(['vendido', 'proformado', 'facturado'])
-    return estados.filter((estado) => allowed.has(normalizeValue(estado?.nombre)))
+    const vendidos = estados.filter((estado) => normalizeValue(estado?.nombre) === 'vendido')
+    if (vendidos.length) return vendidos
+    return estados.filter((estado) => normalizeValue(estado?.nombre).includes('vendid'))
   }, [estados])
 
   const estadoOptions = useMemo(() => {
@@ -408,11 +409,8 @@ function SalidaDetails({
     }
 
     if (isVenta) {
-      const preferredOrder = ['proformado', 'facturado', 'vendido']
-      for (const key of preferredOrder) {
-        const matched = estadoOptions.find((estado) => normalizeValue(estado?.nombre) === key)
-        if (matched?.id) return String(matched.id)
-      }
+      const vendido = estadoOptions.find((estado) => normalizeValue(estado?.nombre) === 'vendido')
+      if (vendido?.id) return String(vendido.id)
       return String(estadoOptions[0].id)
     }
 
@@ -1862,14 +1860,7 @@ function SalidaDetails({
                     {isVenta && (
                       <label className="create-user__field">
                         <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={editorDisabled}>
-                          <option value="">Selecciona un estado</option>
-                          {ventaEstadoOptions.map((estado) => (
-                            <option key={estado.id} value={estado.id}>
-                              {estado.nombre}
-                            </option>
-                          ))}
-                        </select>
+                        <input type="text" value={selectedEstadoName} readOnly disabled />
                       </label>
                     )}
 

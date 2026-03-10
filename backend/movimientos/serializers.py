@@ -521,6 +521,12 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                     {"estado_movimiento_id": "En devolucion el estado debe ser Devuelto."}
                 )
 
+        if subtipo_key == "venta":
+            if estado_name != "vendido":
+                raise serializers.ValidationError(
+                    {"estado_movimiento_id": "En ventas el estado debe ser Vendido."}
+                )
+
         if subtipo_key == "traslado":
             allowed = {"enviado", "recibido", "parcialmente recibido"}
             if estado_name not in allowed:
