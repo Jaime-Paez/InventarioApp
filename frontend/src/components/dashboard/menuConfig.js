@@ -25,7 +25,7 @@ export const MENU_STRUCTURE = [
       { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos_entradas' },
       { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos_salidas' },
       {
-        label: 'Traslados con inconvenientes',
+        label: 'Inconvenientes',
         icon: AlertTriangle,
         moduleKey: 'movimientos_entradas',
       },

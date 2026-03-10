@@ -5,7 +5,9 @@
   padding: 12px;
   display: grid;
   gap: 10px;
-  min-height: 300px;
+  min-height: 0;
+  height: 100%;
+  flex: 1;
 }
 
 .transfer-issues__head {
@@ -78,12 +80,25 @@
   border-radius: 12px;
   background: var(--table-color);
   overflow: auto;
+  min-height: 0;
+  flex: 1;
+  position: relative;
 }
 
 .transfer-issues__table {
   width: 100%;
   min-width: 980px;
   border-collapse: collapse;
+}
+
+.transfer-issues__table-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--table-color) 90%, transparent);
+  z-index: 5;
 }
 
 .transfer-issues__table th,
@@ -161,6 +176,12 @@
   padding: 0;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-primary) 2%, var(--table-color));
+}
+
+.transfer-issues__empty-row td {
+  border-bottom: none;
+  height: clamp(280px, 52vh, 620px);
+  background: var(--table-color);
 }
 
 .transfer-issues__item-actions {

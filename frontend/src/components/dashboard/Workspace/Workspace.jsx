@@ -19,10 +19,13 @@ import { getModuleActions, labelHasAccess } from '../menuConfig'
 import { API_URL, authFetch } from '../../../utils/api'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
+const INCONVENIENTES_TAB = 'Inconvenientes'
+const INCONVENIENTES_TAB_LEGACY = 'Traslados con inconvenientes'
 const MOVIMIENTOS_SCOPE_BY_TAB = {
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
-  'Traslados con inconvenientes': 'movimientos_entradas',
+  [INCONVENIENTES_TAB]: 'movimientos_entradas',
+  [INCONVENIENTES_TAB_LEGACY]: 'movimientos_entradas',
 }
 const MODULE_KEY_BY_TAB = {
   Inventario: 'inventario',
@@ -91,7 +94,8 @@ function Workspace({
     Clientes: ClientesTable,
     Entradas: EntradasTable,
     Salidas: SalidasTable,
-    'Traslados con inconvenientes': TrasladosInconvenientesTable,
+    [INCONVENIENTES_TAB]: TrasladosInconvenientesTable,
+    [INCONVENIENTES_TAB_LEGACY]: TrasladosInconvenientesTable,
     Configuraciones: Configuracion,
   }
 

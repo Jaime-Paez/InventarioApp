@@ -100,7 +100,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
 
       const response = await authFetch(endpoint.toString(), {}, token)
       if (!response.ok) {
-        throw new Error('No se pudieron cargar los traslados con inconvenientes.')
+        throw new Error('No se pudieron cargar los inconvenientes de traslado.')
       }
 
       const payload = await response.json().catch(() => ([]))
@@ -109,7 +109,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
       return parsed
     } catch (error) {
       setRows([])
-      showError(error?.message || 'No se pudieron cargar los traslados con inconvenientes.')
+      showError(error?.message || 'No se pudieron cargar los inconvenientes de traslado.')
       return []
     } finally {
       setLoading(false)
@@ -266,7 +266,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
     return (
       <section className="transfer-issues">
         <p className="transfer-issues__empty">
-          No tienes permisos para ver traslados con inconvenientes.
+          No tienes permisos para ver inconvenientes de traslado.
         </p>
       </section>
     )
@@ -278,7 +278,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
 
       <header className="transfer-issues__head">
         <div>
-          <h3>Traslados con inconvenientes</h3>
+          <h3>Inconvenientes</h3>
           <p>Gestiona faltantes y deja historial de resoluciones.</p>
         </div>
         <div className="transfer-issues__controls">
@@ -297,125 +297,129 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
             className="transfer-issues__refresh"
             onClick={() => void fetchRows()}
             disabled={loading}
-            aria-label="Actualizar traslados con inconvenientes"
+            aria-label="Actualizar inconvenientes de traslado"
           >
             <RefreshCw size={14} />
           </button>
         </div>
       </header>
 
-      {loading ? (
-        <p className="transfer-issues__loading">
-          <Loader2 size={14} />
-          Cargando inconvenientes...
-        </p>
-      ) : !rows.length ? (
-        <p className="transfer-issues__empty">No hay inconvenientes registrados.</p>
-      ) : (
-        <div className="transfer-issues__table-wrap">
-          <table className="transfer-issues__table">
-            <thead>
-              <tr>
-                <th>Documento</th>
-                <th>Producto</th>
-                <th>Faltante</th>
-                <th>Sucursal envía</th>
-                <th>Sucursal recibe</th>
-                <th>Estado</th>
-                <th>Resolución</th>
-                <th>Creado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const rowId = normalizeId(row?.id)
-                const isExpanded = expandedId === rowId
-                const rowState = normalizeId(row?.estado).toLowerCase()
-                const canResolveRow = canUpdate && rowState === 'pendiente'
-                const historyRows = Array.isArray(row?.historial) ? row.historial : []
-                const rowKey = rowId || `${normalizeId(row?.solicitud_id)}-${normalizeId(row?.producto_id)}`
-                const productCode = String(row?.producto_codigo || '').trim()
-                const productName = String(row?.producto_nombre || '').trim() || 'Producto sin nombre'
-                const missingQty = Number.parseInt(String(row?.cantidad_faltante || 0), 10) || 0
-                const stateClass = rowState || 'pendiente'
+      <div className="transfer-issues__table-wrap">
+        {loading && (
+          <div className="transfer-issues__table-loading">
+            <p className="transfer-issues__loading">
+              <Loader2 size={14} />
+              Cargando inconvenientes...
+            </p>
+          </div>
+        )}
 
-                return (
-                  <React.Fragment key={`transfer-issue-${rowKey}`}>
-                    <tr className="transfer-issues__row">
-                      <td>{String(row?.solicitud_no_documento || row?.solicitud_id || '-').trim()}</td>
-                      <td>
-                        <div className="transfer-issues__product-cell">
-                          <strong>{productCode || `Producto ${row?.producto_id || '-'}`}</strong>
-                          <span>{productName}</span>
-                          {row?.motivo ? (
-                            <small title={String(row.motivo || '').trim()}>
-                              Novedad: {String(row.motivo || '').trim()}
-                            </small>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td>{missingQty}</td>
-                      <td>{String(row?.sucursal_proveedora || '-').trim()}</td>
-                      <td>{String(row?.sucursal_solicitante || '-').trim()}</td>
-                      <td>
-                        <span className={`transfer-issues__state transfer-issues__state--${stateClass}`}>
-                          {formatEstado(row?.estado)}
-                        </span>
-                      </td>
-                      <td>{formatResolucion(row?.resolucion)}</td>
-                      <td>{formatDateTime(row?.created_at)}</td>
-                      <td>
-                        <div className="transfer-issues__item-actions">
+        <table className="transfer-issues__table">
+          <thead>
+            <tr>
+              <th>Documento</th>
+              <th>Producto</th>
+              <th>Faltante</th>
+              <th>Sucursal envía</th>
+              <th>Sucursal recibe</th>
+              <th>Estado</th>
+              <th>Resolución</th>
+              <th>Creado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!rows.length ? (
+              <tr className="transfer-issues__empty-row">
+                <td colSpan={9} />
+              </tr>
+            ) : rows.map((row) => {
+              const rowId = normalizeId(row?.id)
+              const isExpanded = expandedId === rowId
+              const rowState = normalizeId(row?.estado).toLowerCase()
+              const canResolveRow = canUpdate && rowState === 'pendiente'
+              const historyRows = Array.isArray(row?.historial) ? row.historial : []
+              const rowKey = rowId || `${normalizeId(row?.solicitud_id)}-${normalizeId(row?.producto_id)}`
+              const productCode = String(row?.producto_codigo || '').trim()
+              const productName = String(row?.producto_nombre || '').trim() || 'Producto sin nombre'
+              const missingQty = Number.parseInt(String(row?.cantidad_faltante || 0), 10) || 0
+              const stateClass = rowState || 'pendiente'
+
+              return (
+                <React.Fragment key={`transfer-issue-${rowKey}`}>
+                  <tr className="transfer-issues__row">
+                    <td>{String(row?.solicitud_no_documento || row?.solicitud_id || '-').trim()}</td>
+                    <td>
+                      <div className="transfer-issues__product-cell">
+                        <strong>{productCode || `Producto ${row?.producto_id || '-'}`}</strong>
+                        <span>{productName}</span>
+                        {row?.motivo ? (
+                          <small title={String(row.motivo || '').trim()}>
+                            Novedad: {String(row.motivo || '').trim()}
+                          </small>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>{missingQty}</td>
+                    <td>{String(row?.sucursal_proveedora || '-').trim()}</td>
+                    <td>{String(row?.sucursal_solicitante || '-').trim()}</td>
+                    <td>
+                      <span className={`transfer-issues__state transfer-issues__state--${stateClass}`}>
+                        {formatEstado(row?.estado)}
+                      </span>
+                    </td>
+                    <td>{formatResolucion(row?.resolucion)}</td>
+                    <td>{formatDateTime(row?.created_at)}</td>
+                    <td>
+                      <div className="transfer-issues__item-actions">
+                        <button
+                          type="button"
+                          className="transfer-issues__action"
+                          onClick={() => setExpandedId(isExpanded ? '' : rowId)}
+                        >
+                          {isExpanded ? 'Ocultar historial' : 'Ver historial'}
+                        </button>
+                        {canResolveRow && (
                           <button
                             type="button"
-                            className="transfer-issues__action"
-                            onClick={() => setExpandedId(isExpanded ? '' : rowId)}
+                            className="transfer-issues__action transfer-issues__action--resolve"
+                            onClick={() => openResolver(row)}
                           >
-                            {isExpanded ? 'Ocultar historial' : 'Ver historial'}
+                            <Wrench size={13} />
+                            Resolver
                           </button>
-                          {canResolveRow && (
-                            <button
-                              type="button"
-                              className="transfer-issues__action transfer-issues__action--resolve"
-                              onClick={() => openResolver(row)}
-                            >
-                              <Wrench size={13} />
-                              Resolver
-                            </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+
+                  {isExpanded && (
+                    <tr className="transfer-issues__history-row-wrap">
+                      <td colSpan={9}>
+                        <div className="transfer-issues__history">
+                          {!historyRows.length ? (
+                            <p>Sin historial.</p>
+                          ) : (
+                            historyRows.map((item) => (
+                              <div key={`transfer-issue-history-${rowId}-${item.id}`} className="transfer-issues__history-row">
+                                <strong>{formatHistorialAccion(item?.accion)}</strong>
+                                <span>{String(item?.detalle || '-').trim()}</span>
+                                <small>
+                                  {String(item?.actor_nombre || 'Sistema').trim()} - {formatDateTime(item?.created_at)}
+                                </small>
+                              </div>
+                            ))
                           )}
                         </div>
                       </td>
                     </tr>
-
-                    {isExpanded && (
-                      <tr className="transfer-issues__history-row-wrap">
-                        <td colSpan={9}>
-                          <div className="transfer-issues__history">
-                            {!historyRows.length ? (
-                              <p>Sin historial.</p>
-                            ) : (
-                              historyRows.map((item) => (
-                                <div key={`transfer-issue-history-${rowId}-${item.id}`} className="transfer-issues__history-row">
-                                  <strong>{formatHistorialAccion(item?.accion)}</strong>
-                                  <span>{String(item?.detalle || '-').trim()}</span>
-                                  <small>
-                                    {String(item?.actor_nombre || 'Sistema').trim()} - {formatDateTime(item?.created_at)}
-                                  </small>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  )}
+                </React.Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {resolverTarget && (
         <div className="transfer-issues__resolver-overlay" onMouseDown={closeResolver}>
