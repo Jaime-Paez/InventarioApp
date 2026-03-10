@@ -237,7 +237,6 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
 
       <header className="inspection-admin__head">
         <div>
-          <h3>Revision de inventario por sucursal</h3>
           <p>Consulta cobertura de inspecciones y corrige cantidades reales reportadas.</p>
         </div>
         <button

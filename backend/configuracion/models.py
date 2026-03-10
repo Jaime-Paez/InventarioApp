@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -11,6 +12,13 @@ class ConfiguracionSistema(models.Model):
         decimal_places=4,
         default=Decimal("0.15"),
         help_text="IVA aplicado en el sistema, expresado como decimal (ej: 0.15).",
+    )
+    random_inspection_items_per_day = models.PositiveSmallIntegerField(
+        default=5,
+        validators=[MinValueValidator(1), MaxValueValidator(200)],
+        help_text=(
+            "Cantidad de productos por usuario para la inspeccion aleatoria diaria."
+        ),
     )
     actualizado_en = models.DateTimeField(auto_now=True)
 

@@ -13,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision
 from usuarios.models import RolPermiso
 from usuarios.sucursal_scope import get_allowed_sucursal_ids
@@ -353,7 +354,9 @@ RANDOM_INSPECTION_CONTEXT_TYPE = "inspeccion_aleatoria"
 RANDOM_INSPECTION_KIND = "inspeccion_aleatoria_diaria"
 RANDOM_INSPECTION_VERIFY_KIND = "inspeccion_aleatoria_verificacion"
 RANDOM_INSPECTION_START_HOUR = 9
-RANDOM_INSPECTION_ITEMS_PER_DAY = 5
+RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY = 5
+RANDOM_INSPECTION_MIN_ITEMS_PER_DAY = 1
+RANDOM_INSPECTION_MAX_ITEMS_PER_DAY = 200
 
 
 def _normalize_int(value, default=0):
@@ -361,6 +364,26 @@ def _normalize_int(value, default=0):
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _resolve_random_inspection_items_per_day():
+    configured_value = RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY
+    config = ConfiguracionSistema.get_solo()
+    if config is not None:
+        configured_value = _normalize_int(
+            getattr(config, "random_inspection_items_per_day", configured_value),
+            configured_value,
+        )
+
+    configured_value = max(
+        RANDOM_INSPECTION_MIN_ITEMS_PER_DAY,
+        configured_value,
+    )
+    configured_value = min(
+        RANDOM_INSPECTION_MAX_ITEMS_PER_DAY,
+        configured_value,
+    )
+    return configured_value
 
 
 def _format_user_display_name(user):
@@ -467,7 +490,13 @@ def _collect_random_inspection_history(user):
     return history
 
 
-def _select_random_inspection_candidates(user, scheduled_date, candidates):
+def _select_random_inspection_candidates(
+    user,
+    scheduled_date,
+    candidates,
+    *,
+    items_per_day=RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY,
+):
     if not candidates:
         return []
 
@@ -487,7 +516,13 @@ def _select_random_inspection_candidates(user, scheduled_date, candidates):
         ordered.append((total_revisiones, last_ts, candidate))
 
     ordered.sort(key=lambda row: (row[0], row[1]))
-    target_count = min(RANDOM_INSPECTION_ITEMS_PER_DAY, len(ordered))
+    resolved_items_per_day = _normalize_int(
+        items_per_day,
+        RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY,
+    )
+    resolved_items_per_day = max(RANDOM_INSPECTION_MIN_ITEMS_PER_DAY, resolved_items_per_day)
+    resolved_items_per_day = min(RANDOM_INSPECTION_MAX_ITEMS_PER_DAY, resolved_items_per_day)
+    target_count = min(resolved_items_per_day, len(ordered))
     if target_count <= 0:
         return []
 
@@ -539,8 +574,12 @@ def _build_random_inspection_reminder(inspection, user):
         "id": str(int(user.id)),
         "name": _format_user_display_name(user),
     }
+    total_items = _normalize_int(getattr(inspection, "total_items", 0), 0)
+    if total_items <= 0:
+        total_items = RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY
+    items_label = "producto" if total_items == 1 else "productos"
     description = (
-        "Inspeccion aleatoria diaria: revisa 5 productos del inventario y confirma "
+        f"Inspeccion aleatoria diaria: revisa {total_items} {items_label} del inventario y confirma "
         "si coinciden con el sistema."
     )
     return {
@@ -657,7 +696,13 @@ def _ensure_daily_random_inspection_for_user(user, store):
         if not candidates:
             return None, False
 
-        selected = _select_random_inspection_candidates(user, scheduled_date, candidates)
+        items_per_day = _resolve_random_inspection_items_per_day()
+        selected = _select_random_inspection_candidates(
+            user,
+            scheduled_date,
+            candidates,
+            items_per_day=items_per_day,
+        )
         if not selected:
             return None, False
 

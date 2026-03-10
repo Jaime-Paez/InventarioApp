@@ -5,5 +5,9 @@ from .models import ConfiguracionSistema
 
 @admin.register(ConfiguracionSistema)
 class ConfiguracionSistemaAdmin(admin.ModelAdmin):
-    list_display = ("iva_rate", "actualizado_en")
+    list_display = (
+        "iva_rate",
+        "random_inspection_items_per_day",
+        "actualizado_en",
+    )
     readonly_fields = ("actualizado_en",)

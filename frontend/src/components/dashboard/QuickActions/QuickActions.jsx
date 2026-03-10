@@ -247,6 +247,17 @@ function QuickActions({
   const currentUserIdValues = useMemo(() => Array.from(currentUserIds), [currentUserIds])
   const currentPrimaryUserId = currentUserIdValues[0] || ''
   const currentUserName = useMemo(() => formatCurrentUserName(user), [user])
+  const isAdministrator = useMemo(
+    () => Boolean(
+      user?.is_superuser ||
+        user?.is_staff ||
+        user?.es_administrador ||
+        normalizeString(user?.rol) === 'administrador'
+    ),
+    [user]
+  )
+  const suppressAdminAlerts = isAdministrator
+  const allowVisualUrgentShield = allowUrgentShield && !suppressAdminAlerts
   const hasPendingShipments = pendingShipments.length > 0
   const hasInTransitShipments = inTransitShipments.length > 0
   const canDecideTransferRequest = useMemo(() => {
@@ -492,6 +503,7 @@ function QuickActions({
   }, [])
 
   const playNotificationTone = useCallback(() => {
+    if (suppressAdminAlerts) return
     const audio = notificationAudioRef.current
     if (audio) {
       try {
@@ -535,9 +547,10 @@ function QuickActions({
       return
     }
     play()
-  }, [ensureAudioContext])
+  }, [ensureAudioContext, suppressAdminAlerts])
 
   const pushSystemTransferNotification = useCallback((notificationDetail) => {
+    if (suppressAdminAlerts) return
     const notificationType = normalizeReminderContextType(notificationDetail?.type)
     if (!notificationType) return
 
@@ -568,10 +581,11 @@ function QuickActions({
       url: '/',
       requireInteraction: true,
     })
-  }, [])
+  }, [suppressAdminAlerts])
 
   const playInitialPendingToneIfNeeded = useCallback(
     (ids, notificationDetail) => {
+      if (suppressAdminAlerts) return
       if (didPlayInitialPendingToneRef.current) return
       const normalizedIds = Array.from(ids || []).map((id) => normalizeId(id)).filter(Boolean)
       if (!normalizedIds.length) return
@@ -589,12 +603,12 @@ function QuickActions({
         pushSystemTransferNotification(nextDetail)
       }
     },
-    [playNotificationTone, pushSystemTransferNotification]
+    [playNotificationTone, pushSystemTransferNotification, suppressAdminAlerts]
   )
 
   const hasPendingReminder = useMemo(
-    () => reminders.some((reminder) => isReminderPendingForCurrentUser(reminder, currentUserIds)),
-    [reminders, currentUserIds]
+    () => !suppressAdminAlerts && reminders.some((reminder) => isReminderPendingForCurrentUser(reminder, currentUserIds)),
+    [reminders, currentUserIds, suppressAdminAlerts]
   )
 
   const pendingSpecialDecisionReminders = useMemo(
@@ -628,6 +642,7 @@ function QuickActions({
   )
 
   useEffect(() => {
+    if (suppressAdminAlerts) return undefined
     if (typeof window === 'undefined') return undefined
 
     const unlockAudioAndNotifications = () => {
@@ -648,7 +663,7 @@ function QuickActions({
       window.removeEventListener('pointerdown', unlockAudioAndNotifications)
       window.removeEventListener('keydown', unlockAudioAndNotifications)
     }
-  }, [ensureAudioContext])
+  }, [ensureAudioContext, suppressAdminAlerts])
 
   useEffect(
     () => () => {
@@ -673,12 +688,13 @@ function QuickActions({
   )
 
   useEffect(() => {
+    if (suppressAdminAlerts) return
     if (typeof window === 'undefined') return
     const audio = new Audio(notificationAudioSrc)
     audio.preload = 'auto'
     audio.volume = 0.9
     notificationAudioRef.current = audio
-  }, [])
+  }, [suppressAdminAlerts])
 
   useEffect(() => {
     urgentVisualReminderIdsRef.current = new Set()
@@ -690,7 +706,7 @@ function QuickActions({
     didInitTransferResponseSnapshotRef.current = false
     didPlayInitialPendingToneRef.current = false
     setUrgentVisualProgressById({})
-  }, [canDecideTransferRequest, token, currentPrimaryUserId])
+  }, [canDecideTransferRequest, token, currentPrimaryUserId, suppressAdminAlerts])
 
   useEffect(() => {
     if (!canDecideTransferRequest || !token) {
@@ -866,15 +882,15 @@ function QuickActions({
   }, [isInTransitShipmentsOpen])
 
   const eligibleUrgentDecisionReminders = useMemo(() => {
-    if (!allowUrgentShield || !canDecideTransferRequest) return []
+    if (!allowVisualUrgentShield || !canDecideTransferRequest) return []
     return pendingSpecialDecisionReminders.filter((reminder) => {
       const contextType = normalizeReminderContextType(reminder?.context?.type)
       return contextType === 'solicitud_traslado'
     })
-  }, [allowUrgentShield, canDecideTransferRequest, pendingSpecialDecisionReminders])
+  }, [allowVisualUrgentShield, canDecideTransferRequest, pendingSpecialDecisionReminders])
 
   const pendingShipmentUrgentTargets = useMemo(() => {
-    if (!allowUrgentShield || !canDecideTransferRequest || !hasPendingShipments || isTransferSendModalOpen) return []
+    if (!allowVisualUrgentShield || !canDecideTransferRequest || !hasPendingShipments || isTransferSendModalOpen) return []
 
     return (Array.isArray(pendingShipments) ? pendingShipments : [])
       .map((solicitud) => {
@@ -906,7 +922,7 @@ function QuickActions({
         if (!Number.isFinite(timeA) && Number.isFinite(timeB)) return 1
         return String(a?.solicitudId || '').localeCompare(String(b?.solicitudId || ''))
       })
-  }, [allowUrgentShield, canDecideTransferRequest, hasPendingShipments, isTransferSendModalOpen, pendingShipments])
+  }, [allowVisualUrgentShield, canDecideTransferRequest, hasPendingShipments, isTransferSendModalOpen, pendingShipments])
 
   const urgentDecisionTargets = useMemo(
     () =>
@@ -2990,9 +3006,11 @@ function QuickActions({
               aria-label="Envios en camino"
             >
               <span>Envios en camino</span>
-              <span className="quick-actions__pending-shipments-count">
-                {inTransitShipmentsLoading ? '...' : inTransitShipments.length}
-              </span>
+              {!suppressAdminAlerts && (
+                <span className="quick-actions__pending-shipments-count">
+                  {inTransitShipmentsLoading ? '...' : inTransitShipments.length}
+                </span>
+              )}
             </button>
 
             {isInTransitShipmentsOpen && (
@@ -3074,9 +3092,11 @@ function QuickActions({
               aria-label="Envios pendientes"
             >
               <span>Envios pendientes</span>
-              <span className="quick-actions__pending-shipments-count">
-                {pendingShipmentsLoading ? '...' : pendingShipments.length}
-              </span>
+              {!suppressAdminAlerts && (
+                <span className="quick-actions__pending-shipments-count">
+                  {pendingShipmentsLoading ? '...' : pendingShipments.length}
+                </span>
+              )}
             </button>
 
             {isPendingShipmentsOpen && (
