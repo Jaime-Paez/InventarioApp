@@ -20,6 +20,7 @@ NEGATIVE_STARS_THRESHOLD = 2
 INACTIVITY_PENALTY_STEP = 0.5
 INACTIVITY_PENALTY_INTERVAL_MONTHS = 2
 RETURN_PENALTY_STEP = 1.0
+SALES_BONUS_STEP = 0.5
 
 
 def _full_months_between(start_date, end_date):
@@ -115,8 +116,9 @@ def build_producto_rating_summary(producto):
         inactivity_penalty = float(steps) * INACTIVITY_PENALTY_STEP
 
     return_penalty = float(returns_count) * RETURN_PENALTY_STEP
+    sales_bonus = float(sales_count) * SALES_BONUS_STEP
 
-    rating = _normalize_rating(base_rating - inactivity_penalty - return_penalty)
+    rating = _normalize_rating(base_rating + sales_bonus - inactivity_penalty - return_penalty)
     if rating is None:
         rating = 0.0
 
@@ -129,6 +131,7 @@ def build_producto_rating_summary(producto):
         "negative_ratio": round(negative_ratio, 3),
         "negative_penalty": 0.0,
         "sales_count": sales_count,
+        "sales_bonus": round(sales_bonus, 2),
         "sold_quantity": sold_quantity,
         "last_sale_date": last_sale_date.isoformat() if isinstance(last_sale_date, date) else None,
         "returns_count": returns_count,
