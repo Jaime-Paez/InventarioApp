@@ -844,12 +844,24 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "id": "system",
             "name": "Sistema",
         }
-        actor_user_id = str(actor_recipient.get("id") or "").strip()
+        recipients = []
+        recipient_ids = set()
 
-        recipients = self._resolve_transfer_provider_recipients(
-            solicitud.sucursal_proveedora_id,
-            exclude_user_ids=[actor_user_id],
-        )
+        def append_unique_recipient(candidate):
+            normalized = self._normalize_reminder_recipient(candidate)
+            if normalized is None:
+                return
+            recipient_id = str(normalized.get("id") or "").strip()
+            if not recipient_id or recipient_id in recipient_ids:
+                return
+            recipient_ids.add(recipient_id)
+            recipients.append(normalized)
+
+        append_unique_recipient(actor_recipient)
+        for candidate in self._resolve_transfer_provider_recipients(
+            solicitud.sucursal_proveedora_id
+        ):
+            append_unique_recipient(candidate)
         transfer_doc = str(getattr(solicitud, "no_documento", "") or "").strip()
         transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{int(solicitud.id)}"
         requester_name = str(
@@ -909,17 +921,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             context_recipients = self._resolve_transfer_context_recipients_from_payload(
                 existing_payload,
                 solicitud_id=int(solicitud.id),
-                exclude_user_ids=[actor_user_id],
             )
 
             if context_recipients:
-                existing_ids = {str(row.get("id") or "").strip() for row in recipients}
                 for row in context_recipients:
-                    row_id = str(row.get("id") or "").strip()
-                    if not row_id or row_id in existing_ids:
-                        continue
-                    existing_ids.add(row_id)
-                    recipients.append(row)
+                    append_unique_recipient(row)
 
             if not recipients:
                 return False

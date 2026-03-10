@@ -1839,7 +1839,24 @@ function QuickActions({
         if (!alreadyExists) list.push(normalized)
       }
 
+      const currentActorRecipient = (
+        sanitizeRecipient({
+          id:
+            user?.usuarioInternoId ||
+            user?.usuario_interno_id ||
+            user?.usuario_id ||
+            user?.user_id ||
+            user?.id ||
+            'system',
+          name: currentUserName,
+        }) || {
+          id: 'system',
+          name: currentUserName || 'Usuario',
+        }
+      )
+
       const reminderRecipients = []
+      appendUniqueRecipient(reminderRecipients, currentActorRecipient)
       relatedReminders.forEach((reminder) => {
         appendUniqueRecipient(reminderRecipients, reminder?.creator)
         ;(Array.isArray(reminder?.recipients) ? reminder.recipients : []).forEach((recipient) => {
@@ -1854,10 +1871,7 @@ function QuickActions({
         appendUniqueRecipient(reminderRecipients, recipient)
       })
 
-      const filteredRecipients = reminderRecipients.filter(
-        (recipient) => normalizeId(recipient?.id) !== normalizeId(currentPrimaryUserId)
-      )
-      if (!filteredRecipients.length) return
+      if (!reminderRecipients.length) return
 
       const now = nowReminderDateTime()
       const requesterName = String(shipment?.sucursal_solicitante || '').trim() || 'Sucursal solicitante'
@@ -1877,29 +1891,13 @@ function QuickActions({
         ? `${shortReference} llego incompleto en ${requesterName}. Faltantes: ${missingLines.join('; ') || totalMissing}.`
         : `${shortReference} llego completo en ${requesterName}. Recepcion confirmada para ${providerName}.`
 
-      const currentActorRecipient = (
-        sanitizeRecipient({
-          id:
-            user?.usuarioInternoId ||
-            user?.usuario_interno_id ||
-            user?.usuario_id ||
-            user?.user_id ||
-            user?.id ||
-            'system',
-          name: currentUserName,
-        }) || {
-          id: 'system',
-          name: currentUserName || 'Usuario',
-        }
-      )
-
       const reminder = {
         id: createReminderId(),
         date: now.date,
         time: now.time,
         description,
         creator: currentActorRecipient,
-        recipients: filteredRecipients,
+        recipients: reminderRecipients,
         context: {
           type: 'solicitud_traslado',
           id: solicitudId,
@@ -1913,7 +1911,7 @@ function QuickActions({
       writeRemindersToStorage([reminder, ...existingReminders])
       emitRemindersSync()
     },
-    [currentPrimaryUserId, currentUserName, resolveProviderReminderRecipients, user]
+    [currentUserName, resolveProviderReminderRecipients, user]
   )
 
   const togglePendingShipmentsPanel = async () => {
