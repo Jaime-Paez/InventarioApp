@@ -5,7 +5,7 @@
   padding: 12px;
   display: grid;
   gap: 10px;
-  min-height: 380px;
+  min-height: 300px;
 }
 
 .transfer-issues__head {
@@ -73,36 +73,62 @@
   animation: transfer-issues-spin 0.8s linear infinite;
 }
 
-.transfer-issues__list {
-  display: grid;
-  gap: 10px;
-}
-
-.transfer-issues__item {
+.transfer-issues__table-wrap {
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: var(--color-surface);
-  padding: 10px;
+  background: var(--table-color);
+  overflow: auto;
+}
+
+.transfer-issues__table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.transfer-issues__table th,
+.transfer-issues__table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.transfer-issues__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--table-color-search);
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
+.transfer-issues__row:hover td {
+  background: var(--table-color-hover);
+}
+
+.transfer-issues__product-cell {
   display: grid;
-  gap: 8px;
+  gap: 2px;
 }
 
-.transfer-issues__item-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+.transfer-issues__product-cell strong {
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
-.transfer-issues__item-top strong {
-  font-size: 0.9rem;
-}
-
-.transfer-issues__item-desc,
-.transfer-issues__item-meta {
-  margin: 0;
-  font-size: 0.8rem;
+.transfer-issues__product-cell span,
+.transfer-issues__product-cell small {
+  font-size: 0.76rem;
   color: var(--color-text-secondary);
+}
+
+.transfer-issues__product-cell small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 360px;
 }
 
 .transfer-issues__state {
@@ -131,10 +157,17 @@
   border-color: rgba(248, 113, 113, 0.4);
 }
 
+.transfer-issues__history-row-wrap td {
+  padding: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-primary) 2%, var(--table-color));
+}
+
 .transfer-issues__item-actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .transfer-issues__action {
@@ -158,8 +191,7 @@
 }
 
 .transfer-issues__history {
-  border-top: 1px dashed var(--color-border);
-  padding-top: 8px;
+  padding: 10px;
   display: grid;
   gap: 8px;
 }
@@ -181,7 +213,6 @@
 
 .transfer-issues__history-row strong {
   font-size: 0.78rem;
-  text-transform: capitalize;
 }
 
 .transfer-issues__history-row span {
@@ -206,7 +237,7 @@
 }
 
 .transfer-issues__resolver-dialog {
-  width: min(560px, calc(100vw - 24px));
+  width: min(620px, calc(100vw - 24px));
   border-radius: 14px;
   border: 1px solid var(--color-border);
   background: var(--modal-color);
@@ -260,7 +291,8 @@
   gap: 4px;
 }
 
-.transfer-issues__resolver-body span {
+.transfer-issues__resolver-body span,
+.transfer-issues__resolver-decision > span {
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -279,6 +311,45 @@
 .transfer-issues__resolver-body textarea {
   min-height: 82px;
   resize: vertical;
+}
+
+.transfer-issues__resolver-decision {
+  display: grid;
+  gap: 6px;
+}
+
+.transfer-issues__resolver-decision-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.transfer-issues__resolver-decision-btn {
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  min-height: 44px;
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.transfer-issues__resolver-decision-btn:hover:not(:disabled) {
+  background: var(--table-color-hover);
+}
+
+.transfer-issues__resolver-decision-btn.is-active {
+  border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+}
+
+.transfer-issues__resolver-decision-btn--danger.is-active {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.14);
+  color: #991b1b;
 }
 
 .transfer-issues__resolver-loading {
@@ -335,7 +406,8 @@
 
 .transfer-issues__resolver-btn:disabled,
 .transfer-issues__resolver-close:disabled,
-.transfer-issues__refresh:disabled {
+.transfer-issues__refresh:disabled,
+.transfer-issues__resolver-decision-btn:disabled {
   cursor: not-allowed;
   opacity: 0.62;
 }
@@ -365,12 +437,11 @@
     min-width: 0;
   }
 
-  .transfer-issues__item-top {
-    flex-direction: column;
-    align-items: flex-start;
+  .transfer-issues__resolver-decision-grid {
+    grid-template-columns: 1fr;
   }
 
-  .transfer-issues__item-actions {
-    flex-wrap: wrap;
+  .transfer-issues__product-cell small {
+    max-width: 220px;
   }
 }

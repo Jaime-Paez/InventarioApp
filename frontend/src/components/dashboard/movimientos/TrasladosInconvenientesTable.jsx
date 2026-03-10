@@ -30,6 +30,22 @@ const formatEstado = (value) => {
   return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
 }
 
+const formatResolucion = (value) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'sumar_solicitante') return 'Sumado a sucursal solicitante'
+  if (normalized === 'sumar_proveedora') return 'Sumado a sucursal proveedora'
+  if (normalized === 'perdido') return 'Perdido / robado'
+  return '-'
+}
+
+const formatHistorialAccion = (value) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'detectado') return 'Detectado'
+  if (normalized === 'sumado_a_sucursal') return 'Sumado a sucursal'
+  if (normalized === 'marcado_como_perdido') return 'Marcado como perdido'
+  return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
+}
+
 function TrasladosInconvenientesTable({ token, moduleActions }) {
   const toast = useRef(null)
   const canRead = moduleActions?.puede_leer ?? true
@@ -296,82 +312,108 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
       ) : !rows.length ? (
         <p className="transfer-issues__empty">No hay inconvenientes registrados.</p>
       ) : (
-        <div className="transfer-issues__list">
-          {rows.map((row) => {
-            const rowId = normalizeId(row?.id)
-            const isExpanded = expandedId === rowId
-            const rowState = normalizeId(row?.estado).toLowerCase()
-            const canResolveRow = canUpdate && rowState === 'pendiente'
-            const historyRows = Array.isArray(row?.historial) ? row.historial : []
+        <div className="transfer-issues__table-wrap">
+          <table className="transfer-issues__table">
+            <thead>
+              <tr>
+                <th>Documento</th>
+                <th>Producto</th>
+                <th>Faltante</th>
+                <th>Sucursal envía</th>
+                <th>Sucursal recibe</th>
+                <th>Estado</th>
+                <th>Resolución</th>
+                <th>Creado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const rowId = normalizeId(row?.id)
+                const isExpanded = expandedId === rowId
+                const rowState = normalizeId(row?.estado).toLowerCase()
+                const canResolveRow = canUpdate && rowState === 'pendiente'
+                const historyRows = Array.isArray(row?.historial) ? row.historial : []
+                const rowKey = rowId || `${normalizeId(row?.solicitud_id)}-${normalizeId(row?.producto_id)}`
+                const productCode = String(row?.producto_codigo || '').trim()
+                const productName = String(row?.producto_nombre || '').trim() || 'Producto sin nombre'
+                const missingQty = Number.parseInt(String(row?.cantidad_faltante || 0), 10) || 0
+                const stateClass = rowState || 'pendiente'
 
-            const rowKey = rowId || `${normalizeId(row?.solicitud_id)}-${normalizeId(row?.producto_id)}`
-            return (
-              <article key={`transfer-issue-${rowKey}`} className="transfer-issues__item">
-                <div className="transfer-issues__item-main">
-                  <div className="transfer-issues__item-top">
-                    <strong>
-                      #{String(row?.solicitud_no_documento || row?.solicitud_id || '-').trim()} -{' '}
-                      {String(row?.producto_codigo || '').trim() || `Producto ${row?.producto_id || '-'}`}
-                    </strong>
-                    <span className={`transfer-issues__state transfer-issues__state--${rowState || 'pendiente'}`}>
-                      {formatEstado(row?.estado)}
-                    </span>
-                  </div>
-                  <p className="transfer-issues__item-desc">
-                    {String(row?.producto_nombre || '').trim() || 'Producto sin nombre'} | Faltante:{' '}
-                    {Number.parseInt(String(row?.cantidad_faltante || 0), 10) || 0}
-                  </p>
-                  <p className="transfer-issues__item-meta">
-                    Solicitante: {String(row?.sucursal_solicitante || '-').trim()} | Proveedora:{' '}
-                    {String(row?.sucursal_proveedora || '-').trim()}
-                  </p>
-                  <p className="transfer-issues__item-meta">
-                    Creado: {formatDateTime(row?.created_at)}
-                    {row?.motivo ? ` | Motivo: ${String(row.motivo).trim()}` : ''}
-                  </p>
-                </div>
-
-                <div className="transfer-issues__item-actions">
-                  <button
-                    type="button"
-                    className="transfer-issues__action"
-                    onClick={() => setExpandedId(isExpanded ? '' : rowId)}
-                  >
-                    {isExpanded ? 'Ocultar historial' : 'Ver historial'}
-                  </button>
-
-                  {canResolveRow && (
-                    <button
-                      type="button"
-                      className="transfer-issues__action transfer-issues__action--resolve"
-                      onClick={() => openResolver(row)}
-                    >
-                      <Wrench size={13} />
-                      Resolver
-                    </button>
-                  )}
-                </div>
-
-                {isExpanded && (
-                  <div className="transfer-issues__history">
-                    {!historyRows.length ? (
-                      <p>Sin historial.</p>
-                    ) : (
-                      historyRows.map((item) => (
-                        <div key={`transfer-issue-history-${rowId}-${item.id}`} className="transfer-issues__history-row">
-                          <strong>{String(item?.accion || '-').trim()}</strong>
-                          <span>{String(item?.detalle || '-').trim()}</span>
-                          <small>
-                            {String(item?.actor_nombre || 'Sistema').trim()} - {formatDateTime(item?.created_at)}
-                          </small>
+                return (
+                  <React.Fragment key={`transfer-issue-${rowKey}`}>
+                    <tr className="transfer-issues__row">
+                      <td>{String(row?.solicitud_no_documento || row?.solicitud_id || '-').trim()}</td>
+                      <td>
+                        <div className="transfer-issues__product-cell">
+                          <strong>{productCode || `Producto ${row?.producto_id || '-'}`}</strong>
+                          <span>{productName}</span>
+                          {row?.motivo ? (
+                            <small title={String(row.motivo || '').trim()}>
+                              Novedad: {String(row.motivo || '').trim()}
+                            </small>
+                          ) : null}
                         </div>
-                      ))
+                      </td>
+                      <td>{missingQty}</td>
+                      <td>{String(row?.sucursal_proveedora || '-').trim()}</td>
+                      <td>{String(row?.sucursal_solicitante || '-').trim()}</td>
+                      <td>
+                        <span className={`transfer-issues__state transfer-issues__state--${stateClass}`}>
+                          {formatEstado(row?.estado)}
+                        </span>
+                      </td>
+                      <td>{formatResolucion(row?.resolucion)}</td>
+                      <td>{formatDateTime(row?.created_at)}</td>
+                      <td>
+                        <div className="transfer-issues__item-actions">
+                          <button
+                            type="button"
+                            className="transfer-issues__action"
+                            onClick={() => setExpandedId(isExpanded ? '' : rowId)}
+                          >
+                            {isExpanded ? 'Ocultar historial' : 'Ver historial'}
+                          </button>
+                          {canResolveRow && (
+                            <button
+                              type="button"
+                              className="transfer-issues__action transfer-issues__action--resolve"
+                              onClick={() => openResolver(row)}
+                            >
+                              <Wrench size={13} />
+                              Resolver
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+
+                    {isExpanded && (
+                      <tr className="transfer-issues__history-row-wrap">
+                        <td colSpan={9}>
+                          <div className="transfer-issues__history">
+                            {!historyRows.length ? (
+                              <p>Sin historial.</p>
+                            ) : (
+                              historyRows.map((item) => (
+                                <div key={`transfer-issue-history-${rowId}-${item.id}`} className="transfer-issues__history-row">
+                                  <strong>{formatHistorialAccion(item?.accion)}</strong>
+                                  <span>{String(item?.detalle || '-').trim()}</span>
+                                  <small>
+                                    {String(item?.actor_nombre || 'Sistema').trim()} - {formatDateTime(item?.created_at)}
+                                  </small>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                  </div>
-                )}
-              </article>
-            )
-          })}
+                  </React.Fragment>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -404,22 +446,50 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
             </header>
 
             <div className="transfer-issues__resolver-body">
-              <label>
+              <div className="transfer-issues__resolver-decision">
                 <span>Decision</span>
-                <select
-                  value={resolverDecision}
-                  onChange={(event) => {
-                    setResolverDecision(String(event.target.value || ''))
-                    setResolverSubdivisionId('')
-                  }}
-                  disabled={resolverSubmitting}
-                >
-                  <option value="">Selecciona una decision</option>
-                  <option value="sumar_solicitante">Sumar a sucursal solicitante</option>
-                  <option value="sumar_proveedora">Sumar a sucursal proveedora</option>
-                  <option value="perdido">Marcar como perdido / robado</option>
-                </select>
-              </label>
+                <div className="transfer-issues__resolver-decision-grid">
+                  <button
+                    type="button"
+                    className={`transfer-issues__resolver-decision-btn${
+                      resolverDecision === 'sumar_solicitante' ? ' is-active' : ''
+                    }`}
+                    onClick={() => {
+                      setResolverDecision('sumar_solicitante')
+                      setResolverSubdivisionId('')
+                    }}
+                    disabled={resolverSubmitting}
+                  >
+                    Sumar a sucursal que recibe
+                  </button>
+                  <button
+                    type="button"
+                    className={`transfer-issues__resolver-decision-btn${
+                      resolverDecision === 'sumar_proveedora' ? ' is-active' : ''
+                    }`}
+                    onClick={() => {
+                      setResolverDecision('sumar_proveedora')
+                      setResolverSubdivisionId('')
+                    }}
+                    disabled={resolverSubmitting}
+                  >
+                    Devolver a sucursal que envía
+                  </button>
+                  <button
+                    type="button"
+                    className={`transfer-issues__resolver-decision-btn transfer-issues__resolver-decision-btn--danger${
+                      resolverDecision === 'perdido' ? ' is-active' : ''
+                    }`}
+                    onClick={() => {
+                      setResolverDecision('perdido')
+                      setResolverSubdivisionId('')
+                    }}
+                    disabled={resolverSubmitting}
+                  >
+                    Marcar perdido / robado
+                  </button>
+                </div>
+              </div>
 
               {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') && (
                 <label>
