@@ -10,6 +10,7 @@ import 'primereact/resources/themes/lara-light-cyan/theme.css';
 // opcional (si usas utilidades)
 import 'primeflex/primeflex.css';
 import { API_URL, authFetch } from './utils/api'
+import { startTableLayoutSync } from './utils/tableLayoutSync'
 const LOGIN_EXIT_ANIMATION_MS = 900
 const DASHBOARD_EXIT_ANIMATION_MS = 3500
 const LOGIN_ENTER_ANIMATION_MS = LOGIN_EXIT_ANIMATION_MS
@@ -87,6 +88,10 @@ function App() {
   const [loginTransitioning, setLoginTransitioning] = useState(false)
   const [logoutTransitioning, setLogoutTransitioning] = useState(false)
   const [loginReturning, setLoginReturning] = useState(false)
+  const layoutSyncUserKey = useMemo(
+    () => String(user?.usuarioInternoId || user?.id || user?.email || '').trim(),
+    [user?.email, user?.id, user?.usuarioInternoId]
+  )
 
   const logoutTimeoutRef = useRef(null)
   const loginReturnTimeoutRef = useRef(null)
@@ -150,6 +155,14 @@ function App() {
   useEffect(() => {
     fetchProfile()
   }, [fetchProfile])
+
+  useEffect(() => {
+    if (!token || !layoutSyncUserKey) return undefined
+    const stopSync = startTableLayoutSync({ token })
+    return () => {
+      if (typeof stopSync === 'function') stopSync()
+    }
+  }, [layoutSyncUserKey, token])
 
   const handleLoginSuccess = async (
     incomingUser,

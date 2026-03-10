@@ -3,6 +3,11 @@ from . import views
 
 urlpatterns = [
     path("ping/", views.ping),
+    path(
+        "usuarios/preferencias/table-layouts/",
+        views.UserTableLayoutsAPIView.as_view(),
+        name="usuarios-preferencias-table-layouts",
+    ),
     path("recordatorios/estado/", views.ReminderStateAPIView.as_view(), name="recordatorios-estado"),
     path(
         "recordatorios/inspeccion-aleatoria/admin/resumen/",

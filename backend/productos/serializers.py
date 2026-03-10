@@ -1,3 +1,6 @@
+import math
+import re
+import unicodedata
 from datetime import date
 
 from django.db import OperationalError, ProgrammingError, connection
@@ -17,11 +20,47 @@ from usuarios.sucursal_scope import apply_sucursal_scope
 from .models import OEM, OEMProducto, Producto, ProductoAlterno, ProductoCalificacion
 
 NEGATIVE_STARS_THRESHOLD = 2
-INACTIVITY_PENALTY_STEP = 0.5
-INACTIVITY_PENALTY_INTERVAL_MONTHS = 2
-RETURN_PENALTY_STEP = 1.0
-SALES_BONUS_STEP = 0.5
 DEFAULT_INITIAL_RATING = 3.0
+COMMENTS_WEIGHT = 0.75
+MOVEMENTS_WEIGHT = 0.25
+COMMENT_CONFIDENCE_BIAS = 4.0
+SALES_SIGNAL_DECAY = 6.0
+NON_FUNCTIONAL_RETURN_RATIO_WEIGHT = 0.9
+INACTIVITY_REFERENCE_MONTHS = 6.0
+MAX_INACTIVITY_PENALTY = 0.08
+DEFAULT_AUTO_COMMENT_STARS = 3
+RATING_FORMULA_VERSION = "v2_weighted"
+
+AUTO_COMMENT_POSITIVE_TOKENS = {
+    "excelente",
+    "bueno",
+    "buena",
+    "perfecto",
+    "perfecta",
+    "recomendado",
+    "recomendada",
+    "funciona",
+    "funcional",
+    "calidad",
+    "rapido",
+    "duradero",
+    "confiable",
+}
+
+AUTO_COMMENT_NEGATIVE_TOKENS = {
+    "malo",
+    "mala",
+    "defectuoso",
+    "defectuosa",
+    "danado",
+    "daniado",
+    "falla",
+    "fallo",
+    "inservible",
+    "devolucion",
+    "devolvio",
+    "garantia",
+}
 
 
 def _full_months_between(start_date, end_date):
@@ -45,6 +84,38 @@ def _normalize_rating(value):
     except (TypeError, ValueError):
         return None
     return round(max(0.0, min(5.0, numeric)), 1)
+
+
+def _clamp(value, lower, upper):
+    return max(lower, min(upper, value))
+
+
+def _normalize_comment_text(value):
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return ""
+    decomposed = unicodedata.normalize("NFD", raw)
+    return "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
+
+
+def _derive_comment_stars(comment):
+    normalized = _normalize_comment_text(comment)
+    if not normalized:
+        return DEFAULT_AUTO_COMMENT_STARS
+
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    positive_hits = sum(1 for token in AUTO_COMMENT_POSITIVE_TOKENS if token in tokens)
+    negative_hits = sum(1 for token in AUTO_COMMENT_NEGATIVE_TOKENS if token in tokens)
+
+    if "no funciona" in normalized or "no funcional" in normalized:
+        negative_hits += 2
+    if "excelente" in normalized or "muy bueno" in normalized:
+        positive_hits += 1
+
+    score = float(DEFAULT_AUTO_COMMENT_STARS)
+    score += min(positive_hits, 4) * 0.6
+    score -= min(negative_hits, 4) * 0.8
+    return int(_clamp(round(score), 1, 5))
 
 
 def _table_exists(table_name):
@@ -86,61 +157,106 @@ def build_producto_rating_summary(producto):
 
     returns_stats = DetalleMovimiento.objects.filter(
         producto_id=producto.id,
-        movimiento_inventario__tipo_movimiento__nombre__istartswith="ent",
         movimiento_inventario__sub_tipo_movimiento__nombre__icontains="devol",
-        movimiento_inventario__estado_movimiento__nombre__iexact="recibido",
     ).aggregate(
         returns_count=Count("movimiento_inventario_id", distinct=True),
         returned_quantity=Sum("cantidad"),
+        non_functional_returns_count=Count(
+            "movimiento_inventario_id",
+            distinct=True,
+            filter=Q(movimiento_inventario__funcional=False),
+        ),
+        non_functional_returned_quantity=Sum(
+            "cantidad",
+            filter=Q(movimiento_inventario__funcional=False),
+        ),
         last_return_date=Max("movimiento_inventario__fecha"),
     )
     returns_count = int(returns_stats.get("returns_count") or 0)
     returned_quantity = int(returns_stats.get("returned_quantity") or 0)
+    non_functional_returns_count = int(returns_stats.get("non_functional_returns_count") or 0)
+    non_functional_returned_quantity = int(
+        returns_stats.get("non_functional_returned_quantity") or 0
+    )
     last_return_date = returns_stats.get("last_return_date")
 
     today = timezone.localdate()
     reference_date = last_sale_date or (producto.creado_en.date() if producto.creado_en else today)
     months_without_sales = _full_months_between(reference_date, today)
 
-    if comment_count > 0 and comment_average is not None:
-        base_rating = float(comment_average)
-    else:
-        base_rating = DEFAULT_INITIAL_RATING
+    neutral_comment_score = DEFAULT_INITIAL_RATING / 5.0
+    comment_quality = (
+        float(comment_average) / 5.0
+        if comment_count > 0 and comment_average is not None
+        else neutral_comment_score
+    )
+    comment_confidence = (
+        float(comment_count) / (float(comment_count) + COMMENT_CONFIDENCE_BIAS)
+        if comment_count > 0
+        else 0.0
+    )
+    comment_score = (comment_confidence * comment_quality) + (
+        (1.0 - comment_confidence) * neutral_comment_score
+    )
+
+    sales_signal = 1.0 - math.exp(-float(sales_count) / SALES_SIGNAL_DECAY)
+    movement_denominator = max(float(sales_count + returns_count), 1.0)
+    non_functional_ratio = float(non_functional_returns_count) / movement_denominator
+    operational_score = _clamp(
+        0.5 + (sales_signal * 0.5) - (non_functional_ratio * NON_FUNCTIONAL_RETURN_RATIO_WEIGHT),
+        0.0,
+        1.0,
+    )
+
+    inactivity_penalty = _clamp(
+        float(months_without_sales) / INACTIVITY_REFERENCE_MONTHS,
+        0.0,
+        1.0,
+    ) * MAX_INACTIVITY_PENALTY
+
+    normalized_rating = (
+        (comment_score * COMMENTS_WEIGHT)
+        + (operational_score * MOVEMENTS_WEIGHT)
+        - inactivity_penalty
+    )
+    rating = _normalize_rating(normalized_rating * 5.0)
+    if rating is None:
+        rating = 0.0
 
     negative_ratio = 0.0
     if comment_count > 0 and negative_count > 0:
         negative_ratio = negative_count / comment_count
 
-    inactivity_penalty = 0.0
-    if months_without_sales >= INACTIVITY_PENALTY_INTERVAL_MONTHS:
-        steps = months_without_sales // INACTIVITY_PENALTY_INTERVAL_MONTHS
-        inactivity_penalty = float(steps) * INACTIVITY_PENALTY_STEP
-
-    return_penalty = float(returns_count) * RETURN_PENALTY_STEP
-    sales_bonus = float(sales_count) * SALES_BONUS_STEP
-
-    rating = _normalize_rating(base_rating + sales_bonus - inactivity_penalty - return_penalty)
-    if rating is None:
-        rating = 0.0
+    base_rating = _normalize_rating(comment_score * 5.0) or 0.0
 
     return {
+        "formula_version": RATING_FORMULA_VERSION,
         "rating": rating,
-        "base_rating": _normalize_rating(base_rating) or 0.0,
+        "base_rating": base_rating,
         "comment_average": comment_average,
         "comment_count": comment_count,
         "negative_comments": negative_count,
         "negative_ratio": round(negative_ratio, 3),
-        "negative_penalty": 0.0,
+        "negative_penalty": round(non_functional_ratio * NON_FUNCTIONAL_RETURN_RATIO_WEIGHT, 3),
+        "comments_weight": COMMENTS_WEIGHT,
+        "movements_weight": MOVEMENTS_WEIGHT,
+        "comment_confidence": round(comment_confidence, 3),
+        "comment_score": round(comment_score, 3),
+        "operational_score": round(operational_score, 3),
+        "sales_signal": round(sales_signal, 3),
         "sales_count": sales_count,
-        "sales_bonus": round(sales_bonus, 2),
+        "sales_bonus": 0.0,
         "sold_quantity": sold_quantity,
         "last_sale_date": last_sale_date.isoformat() if isinstance(last_sale_date, date) else None,
         "returns_count": returns_count,
         "returned_quantity": returned_quantity,
+        "non_functional_returns_count": non_functional_returns_count,
+        "non_functional_returned_quantity": non_functional_returned_quantity,
+        "non_functional_ratio": round(non_functional_ratio, 3),
         "last_return_date": last_return_date.isoformat() if isinstance(last_return_date, date) else None,
-        "return_penalty": round(return_penalty, 2),
+        "return_penalty": 0.0,
         "months_without_sales": months_without_sales,
-        "inactivity_penalty": round(inactivity_penalty, 2),
+        "inactivity_penalty": round(inactivity_penalty, 3),
         "computed_at": timezone.now().isoformat(),
     }
 
@@ -322,6 +438,12 @@ class ProductoCalificacionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        extra_kwargs = {
+            "estrellas": {
+                "required": False,
+                "allow_null": True,
+            }
+        }
 
     def get_usuario_nombre(self, obj):
         user = getattr(obj, "usuario", None)
@@ -340,6 +462,8 @@ class ProductoCalificacionSerializer(serializers.ModelSerializer):
         return "Usuario"
 
     def validate_estrellas(self, value):
+        if value in (None, ""):
+            return None
         try:
             estrellas = int(value)
         except (TypeError, ValueError):
@@ -360,6 +484,10 @@ class ProductoCalificacionSerializer(serializers.ModelSerializer):
         if producto is None:
             raise serializers.ValidationError({"producto": "No se encontro el producto objetivo."})
         user = request.user if request and request.user and request.user.is_authenticated else None
+        if validated_data.get("estrellas") in (None, ""):
+            validated_data["estrellas"] = _derive_comment_stars(
+                validated_data.get("comentario", "")
+            )
         return ProductoCalificacion.objects.create(
             producto=producto,
             usuario=user,

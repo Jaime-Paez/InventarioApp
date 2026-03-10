@@ -45,6 +45,11 @@ class UsuarioPreferencia(models.Model):
         related_name="preferencia_operativa",
     )
     inspeccion_aleatoria = models.BooleanField(default=False)
+    table_layouts = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Layouts de tablas guardados por usuario para restaurar en cualquier equipo.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

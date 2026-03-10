@@ -32,7 +32,6 @@ function ProductoRatingTab({ productoId, token, onError }) {
   const [comments, setComments] = useState([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [draftStars, setDraftStars] = useState(5)
   const [draftComment, setDraftComment] = useState('')
 
   const notifyError = useCallback(
@@ -93,7 +92,8 @@ function ProductoRatingTab({ productoId, token, onError }) {
 
   const handleSubmitComment = async () => {
     if (!productoId || !token || submitting) return
-    const stars = Math.max(1, Math.min(TOTAL_STARS, Math.round(toNumber(draftStars, 5))))
+    const trimmedComment = String(draftComment || '').trim()
+    if (!trimmedComment) return
 
     setSubmitting(true)
     try {
@@ -102,8 +102,7 @@ function ProductoRatingTab({ productoId, token, onError }) {
         {
           method: 'POST',
           body: JSON.stringify({
-            estrellas: stars,
-            comentario: String(draftComment || '').trim(),
+            comentario: trimmedComment,
           }),
         },
         token
@@ -116,7 +115,6 @@ function ProductoRatingTab({ productoId, token, onError }) {
       }
 
       setDraftComment('')
-      setDraftStars(5)
 
       if (payload?.rating_summary) {
         setRatingSummary(payload.rating_summary)
@@ -164,20 +162,20 @@ function ProductoRatingTab({ productoId, token, onError }) {
               <strong>{toNumber(ratingSummary?.comment_count, 0)}</strong>
             </div>
             <div className="producto-rating-tab__metric-item">
-              <span>Negativos</span>
-              <strong>{toNumber(ratingSummary?.negative_comments, 0)}</strong>
+              <span>Peso comentarios</span>
+              <strong>{(toNumber(ratingSummary?.comments_weight, 0) * 100).toFixed(0)}%</strong>
             </div>
             <div className="producto-rating-tab__metric-item">
               <span>Ventas registradas</span>
               <strong>{toNumber(ratingSummary?.sales_count, 0)}</strong>
             </div>
             <div className="producto-rating-tab__metric-item">
-              <span>Bono ventas</span>
-              <strong>+{toNumber(ratingSummary?.sales_bonus, 0).toFixed(1)}</strong>
+              <span>Devoluciones no funcionales</span>
+              <strong>{toNumber(ratingSummary?.non_functional_returns_count, 0)}</strong>
             </div>
             <div className="producto-rating-tab__metric-item">
-              <span>Devoluciones</span>
-              <strong>{toNumber(ratingSummary?.returns_count, 0)}</strong>
+              <span>Señal operativa</span>
+              <strong>{(toNumber(ratingSummary?.operational_score, 0) * 100).toFixed(0)}%</strong>
             </div>
             <div className="producto-rating-tab__metric-item">
               <span>Meses sin ventas</span>
@@ -185,39 +183,19 @@ function ProductoRatingTab({ productoId, token, onError }) {
             </div>
             <div className="producto-rating-tab__metric-item">
               <span>Ultima venta</span>
-              <strong>{ratingSummary?.last_sale_date || '-'}</strong>
+              <strong>{toDateLabel(ratingSummary?.last_sale_date)}</strong>
             </div>
           </div>
         </div>
 
         <p className="producto-rating-tab__rule-note">
-          Regla activa: todos los productos empiezan con 3 estrellas y la base se actualiza con el promedio de comentarios. Cada venta suma 0.5 estrellas, cada devolucion resta 1 estrella y cada 2 meses sin ventas se descuenta 0.5 estrellas.
+          Regla activa: la calificacion final usa formula ponderada (75% comentarios y 25% señales automaticas). Las devoluciones no funcionales penalizan el bloque operativo y las ventas lo fortalecen.
         </p>
       </section>
 
       <section className="create-user__section producto-rating-tab__form">
         <div className="create-user__section-header">
-          <h4>Agregar comentario y calificacion</h4>
-        </div>
-
-        <div className="producto-rating-tab__stars-picker" role="group" aria-label="Calificar producto">
-          {Array.from({ length: TOTAL_STARS }, (_, index) => {
-            const value = index + 1
-            const active = value <= draftStars
-            return (
-              <button
-                key={value}
-                type="button"
-                className={`producto-rating-tab__star-btn${active ? ' is-active' : ''}`}
-                onClick={() => setDraftStars(value)}
-                disabled={submitting || loading}
-                aria-label={`${value} estrella${value === 1 ? '' : 's'}`}
-              >
-                {active ? '\u2605' : '\u2606'}
-              </button>
-            )
-          })}
-          <span className="producto-rating-tab__selected-score">{draftStars}/5</span>
+          <h4>Agregar comentario</h4>
         </div>
 
         <label className="create-user__field">
@@ -226,7 +204,7 @@ function ProductoRatingTab({ productoId, token, onError }) {
             rows={3}
             value={draftComment}
             onChange={(event) => setDraftComment(event.target.value)}
-            placeholder="Escribe una observacion sobre este producto (opcional)."
+            placeholder="Escribe una observacion sobre este producto."
             maxLength={1200}
             disabled={submitting || loading}
           />
@@ -237,7 +215,7 @@ function ProductoRatingTab({ productoId, token, onError }) {
             type="button"
             className="create-user__action create-user__action--primary"
             onClick={handleSubmitComment}
-            disabled={submitting || loading}
+            disabled={submitting || loading || !String(draftComment || '').trim()}
           >
             {submitting ? 'Guardando...' : 'Publicar comentario'}
           </button>

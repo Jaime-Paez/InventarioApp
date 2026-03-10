@@ -1,4 +1,6 @@
 import random
+import re
+import json
 from datetime import datetime, time as dt_time, timezone as dt_timezone
 from uuid import uuid4
 
@@ -1008,6 +1010,165 @@ def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, d
 
 def ping(request):
     return JsonResponse({"message": "pong", "framework": "Django"})
+
+
+TABLE_LAYOUT_SCOPE_SET = {"local", "session"}
+TABLE_LAYOUT_KEY_PATTERN = re.compile(
+    r"^(?P<scope>local|session):(?P<key>[a-z0-9][a-z0-9_-]{0,119}-table-(?:columns|state)(?:-[a-z0-9_-]{1,40})?)$",
+    re.IGNORECASE,
+)
+MAX_TABLE_LAYOUT_ENTRIES_PER_USER = 300
+MAX_TABLE_LAYOUT_VALUE_LENGTH = 120_000
+
+
+def _normalize_table_layout_composite_key(raw_value):
+    text = _normalize_text(raw_value)
+    if not text:
+        return ""
+
+    match = TABLE_LAYOUT_KEY_PATTERN.match(text)
+    if not match:
+        return ""
+
+    scope = _normalize_text(match.group("scope")).lower()
+    key = _normalize_text(match.group("key"))
+    if scope not in TABLE_LAYOUT_SCOPE_SET or not key:
+        return ""
+    return f"{scope}:{key}"
+
+
+def _normalize_table_layout_value(raw_value, *, allow_null=False):
+    if raw_value is None:
+        return None if allow_null else ""
+
+    if isinstance(raw_value, str):
+        value = raw_value
+    else:
+        try:
+            value = json.dumps(raw_value, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError):
+            return None
+
+    if len(value) > MAX_TABLE_LAYOUT_VALUE_LENGTH:
+        return None
+    return value
+
+
+def _sanitize_table_layout_map(raw_map):
+    if not isinstance(raw_map, dict):
+        return {}
+
+    cleaned = {}
+    for raw_key, raw_value in raw_map.items():
+        key = _normalize_table_layout_composite_key(raw_key)
+        if not key:
+            continue
+        value = _normalize_table_layout_value(raw_value)
+        if value is None:
+            continue
+        cleaned[key] = value
+        if len(cleaned) >= MAX_TABLE_LAYOUT_ENTRIES_PER_USER:
+            break
+    return cleaned
+
+
+class UserTableLayoutsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        with transaction.atomic():
+            preference, _ = UsuarioPreferencia.objects.select_for_update().get_or_create(
+                usuario=request.user
+            )
+            normalized_layouts = _sanitize_table_layout_map(
+                getattr(preference, "table_layouts", {})
+            )
+            if normalized_layouts != getattr(preference, "table_layouts", {}):
+                preference.table_layouts = normalized_layouts
+                preference.save(update_fields=["table_layouts", "updated_at"])
+
+        return Response(
+            {
+                "layouts": normalized_layouts,
+                "updated_at": preference.updated_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def put(self, request):
+        incoming_layouts = request.data.get("layouts")
+        if not isinstance(incoming_layouts, dict):
+            return Response(
+                {
+                    "detail": (
+                        "Debes enviar un objeto en `layouts` con claves `local:<key>` o "
+                        "`session:<key>`."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        errors = {}
+        normalized_updates = {}
+        for raw_key, raw_value in incoming_layouts.items():
+            key = _normalize_table_layout_composite_key(raw_key)
+            if not key:
+                errors[str(raw_key)] = (
+                    "Clave invalida. Usa `local:<tabla-table-columns>` o "
+                    "`session:<tabla-table-state>`."
+                )
+                continue
+
+            value = _normalize_table_layout_value(raw_value, allow_null=True)
+            if raw_value is not None and value is None:
+                errors[key] = (
+                    "El valor del layout es invalido o supera el tamaño permitido."
+                )
+                continue
+
+            normalized_updates[key] = value
+
+        if errors:
+            return Response(
+                {"detail": "No se pudo guardar uno o más layouts.", "errors": errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            preference, _ = UsuarioPreferencia.objects.select_for_update().get_or_create(
+                usuario=request.user
+            )
+            current_layouts = _sanitize_table_layout_map(
+                getattr(preference, "table_layouts", {})
+            )
+
+            for key, value in normalized_updates.items():
+                if value is None:
+                    current_layouts.pop(key, None)
+                    continue
+                current_layouts[key] = value
+
+            if len(current_layouts) > MAX_TABLE_LAYOUT_ENTRIES_PER_USER:
+                return Response(
+                    {
+                        "detail": (
+                            "Se supero el limite de layouts por usuario. "
+                            "Elimina algunos y vuelve a intentar."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            preference.table_layouts = current_layouts
+            preference.save(update_fields=["table_layouts", "updated_at"])
+
+        return Response(
+            {
+                "layouts": current_layouts,
+                "updated_at": preference.updated_at,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class ReminderStateAPIView(APIView):
