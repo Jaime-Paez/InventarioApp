@@ -961,6 +961,17 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
         factor = -1 if reverse else 1
 
+        if subtipo_key == "venta" and tipo_name.startswith("sal"):
+            if estado_name != "vendido":
+                return
+            for producto_id, cantidad in quantities.items():
+                self._adjust_stock(
+                    sucursal=getattr(movimiento, "sucursal", None),
+                    producto_id=producto_id,
+                    delta=(-cantidad * factor),
+                )
+            return
+
         if subtipo_key == "devolucion" and tipo_name.startswith("sal"):
             if estado_name != "devuelto":
                 return

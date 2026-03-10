@@ -366,6 +366,7 @@ function SalidaDetails({
   const isDevolucion = selectedSubTipoName.includes('devol')
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
+  const requiresStockValidation = isTraslado || isVenta || isDevolucion
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'No. de Traslado' : 'No. de Factura'
 
@@ -472,23 +473,36 @@ function SalidaDetails({
     [detailDraft.productoId, productos]
   )
 
+  const originalQuantityByProduct = useMemo(() => {
+    const map = {}
+    const sourceDetails = Array.isArray(originalData?.detalles) ? originalData.detalles : []
+    sourceDetails.forEach((detail) => {
+      const productId = String(detail?.productoId || '').trim()
+      if (!productId) return
+      const qty = parseIntValue(detail?.cantidad)
+      if (!Number.isFinite(qty) || qty <= 0) return
+      map[productId] = (map[productId] || 0) + qty
+    })
+    return map
+  }, [originalData])
+
   const formatProductoOptionLabel = useCallback(
     (producto) => {
       if (!producto) return ''
       const codigo = String(producto?.codigo || '').trim()
       const nombre = String(producto?.nombre || '').trim()
       const baseLabel = [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
-      if (!isTraslado) return baseLabel
+      if (!requiresStockValidation) return baseLabel
       const available = Number(stockByProduct[String(producto?.id)] ?? 0)
       return `${baseLabel} (Disp: ${Number.isFinite(available) ? available : 0})`
     },
-    [isTraslado, stockByProduct]
+    [requiresStockValidation, stockByProduct]
   )
 
   const searchProducts = useCallback(
     async (query) => {
       const term = String(query ?? '').trim()
-      if (!term || !token || (isTraslado && !formData.sucursalId)) {
+      if (!term || !token || (requiresStockValidation && !formData.sucursalId)) {
         setProductOptions([])
         return
       }
@@ -504,8 +518,14 @@ function SalidaDetails({
 
         const payload = await response.json()
         let list = parseApiList(payload)
-        if (isTraslado) {
-          list = list.filter((producto) => Number(stockByProduct[String(producto?.id)] ?? 0) > 0)
+        if (requiresStockValidation) {
+          list = list.filter((producto) => {
+            const productId = String(producto?.id || '').trim()
+            if (!productId) return false
+            const available = Number(stockByProduct[productId] ?? 0)
+            const originalQty = Number(originalQuantityByProduct[productId] ?? 0)
+            return available + originalQty > 0
+          })
         }
 
         setProductOptions(list)
@@ -515,7 +535,7 @@ function SalidaDetails({
         setProductLoading(false)
       }
     },
-    [formData.sucursalId, isTraslado, stockByProduct, token]
+    [formData.sucursalId, originalQuantityByProduct, requiresStockValidation, stockByProduct, token]
   )
 
   const searchClientes = useCallback(
@@ -1091,12 +1111,12 @@ function SalidaDetails({
   }, [open, showProductDropdown, updateProductDropdownPlacement])
 
   useEffect(() => {
-    if (!open || !isTraslado || !formData.sucursalId) {
+    if (!open || !requiresStockValidation || !formData.sucursalId) {
       setStockByProduct({})
       return
     }
     fetchStockByBranch(formData.sucursalId)
-  }, [fetchStockByBranch, formData.sucursalId, isTraslado, open])
+  }, [fetchStockByBranch, formData.sucursalId, open, requiresStockValidation])
 
   useLayoutEffect(() => {
     if (!open || isMaximized) return
@@ -1379,7 +1399,7 @@ function SalidaDetails({
     const producto = productos.find((item) => String(item.id) === productoId)
     const valor = parseNumber(resolveProductPrice(producto))
 
-    if (isTraslado && !formData.sucursalId) {
+    if (requiresStockValidation && !formData.sucursalId) {
       setDetailError('Selecciona primero la sucursal para cargar disponibilidad.')
       return
     }
@@ -1395,14 +1415,16 @@ function SalidaDetails({
       setDetailError('El producto seleccionado no tiene un precio valido.')
       return
     }
-    if (isTraslado) {
-      const available = Number(stockByProduct[productoId] ?? 0)
+    if (requiresStockValidation) {
+      const availableNow = Number(stockByProduct[productoId] ?? 0)
+      const originalQty = Number(originalQuantityByProduct[productoId] ?? 0)
+      const maxAllowed = Math.max(availableNow + originalQty, 0)
       const alreadyUsed = details.reduce((acc, detail) => {
         if (String(detail.productoId) !== productoId) return acc
         const qty = parseIntValue(detail.cantidad)
         return acc + (Number.isFinite(qty) ? qty : 0)
       }, 0)
-      const remaining = Math.max(available - alreadyUsed, 0)
+      const remaining = Math.max(maxAllowed - alreadyUsed, 0)
       if (cantidad > remaining) {
         setDetailError(`Cantidad excede disponible en sucursal seleccionada. Disponible: ${remaining}.`)
         return
@@ -1950,7 +1972,10 @@ function SalidaDetails({
                             type="button"
                             className="create-user__dropdown-trigger"
                             ref={productDropdownTriggerRef}
-                            disabled={editorDisabled || (isTraslado && (!formData.sucursalId || stockLoading))}
+                            disabled={
+                              editorDisabled ||
+                              (requiresStockValidation && (!formData.sucursalId || stockLoading))
+                            }
                             onClick={() => {
                               const isOpening = !showProductDropdown
                               if (isOpening) {
@@ -1984,10 +2009,15 @@ function SalidaDetails({
                                 <i className="pi pi-search" />
                                 <input
                                   type="text"
-                                  placeholder={isTraslado ? 'Buscar en sucursal' : 'Buscar productos'}
+                                  placeholder={
+                                    requiresStockValidation
+                                      ? 'Buscar en sucursal'
+                                      : 'Buscar productos'
+                                  }
                                   value={productQuery}
                                   onChange={(event) => setProductQuery(event.target.value)}
                                   autoFocus
+                                  disabled={requiresStockValidation && stockLoading}
                                 />
                               </div>
 
@@ -2000,6 +2030,9 @@ function SalidaDetails({
                                 }
                               >
                                 {productLoading && <small className="muted">Buscando productos...</small>}
+                                {!productLoading && requiresStockValidation && stockLoading && (
+                                  <small className="muted">Cargando inventario de la sucursal...</small>
+                                )}
                                 {!productLoading && !productQuery.trim() && <small className="muted">Escribe para buscar.</small>}
                                 {!productLoading && productQuery.trim() && !productOptions.length && (
                                   <small className="muted">Sin resultados.</small>
@@ -2021,7 +2054,11 @@ function SalidaDetails({
                                     >
                                       <div className="create-user__result-info">
                                         <strong>{formatProductoOptionLabel(producto)}</strong>
-                                        <small>{isTraslado ? `Disponible: ${available}` : `ID: ${producto.id}`}</small>
+                                        <small>
+                                          {requiresStockValidation
+                                            ? `Disponible: ${available}`
+                                            : `ID: ${producto.id}`}
+                                        </small>
                                       </div>
                                       {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
                                     </button>
@@ -2040,7 +2077,7 @@ function SalidaDetails({
                           step="1"
                           value={detailDraft.cantidad}
                           onChange={handleDetailChange}
-                          disabled={editorDisabled}
+                          disabled={editorDisabled || (requiresStockValidation && stockLoading)}
                         />
                       </span>
                       <span>
@@ -2051,14 +2088,19 @@ function SalidaDetails({
                           min="0"
                           value={detailDraft.valor}
                           readOnly
-                          disabled={editorDisabled}
+                          disabled={editorDisabled || (requiresStockValidation && stockLoading)}
                         />
                       </span>
                       <span>
                         <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
                       </span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button type="button" className="create-user__ghost" onClick={handleAddDetail} disabled={editorDisabled}>
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleAddDetail}
+                          disabled={editorDisabled || (requiresStockValidation && stockLoading)}
+                        >
                           Agregar
                         </button>
                       </span>
