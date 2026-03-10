@@ -551,14 +551,10 @@
 
 .entrada-details__pending-ribbon-label {
   display: block;
-  max-width: 100px;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  text-wrap: balance;
-}
-
-.entrada-details__pending-ribbon--sent .entrada-details__pending-ribbon-label {
+  max-width: 84px;
   white-space: pre-line;
+  overflow-wrap: normal;
+  text-wrap: balance;
   font-size: 0.58rem;
   line-height: 1.05;
   letter-spacing: 0.005em;

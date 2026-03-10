@@ -370,8 +370,11 @@ function SalidaDetails({
   const documentLabel = isTraslado ? 'No. de Traslado' : 'No. de Factura'
 
   const devolucionEstadoOptions = useMemo(
-    () =>
-      estados.filter((estado) => normalizeValue(estado?.nombre) === 'recibido'),
+    () => {
+      const devuelto = estados.filter((estado) => normalizeValue(estado?.nombre) === 'devuelto')
+      if (devuelto.length) return devuelto
+      return estados.filter((estado) => normalizeValue(estado?.nombre) === 'recibido')
+    },
     [estados]
   )
 

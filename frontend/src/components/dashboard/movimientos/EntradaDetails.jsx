@@ -1825,9 +1825,13 @@ function EntradaDetails({
         ? 'Solicitud aceptada por la sucursal proveedora'
         : (isSentSolicitudRibbon ? 'Solicitud en estado de envio (traslado).' : 'Solicitud esperando a ser aceptada')
     )
-  const solicitudRibbonDisplayLabel = isSentSolicitudRibbon
-    ? 'Solicitud\nenviada'
-    : solicitudRibbonLabel
+  const solicitudRibbonDisplayLabel = isRejectedSolicitudRibbon
+    ? 'Solicitud\nrechazada'
+    : (
+      isAcceptedSolicitudRibbon
+        ? 'Solicitud\naceptada'
+        : (isSentSolicitudRibbon ? 'Solicitud\nenviada' : 'Solicitud\npendiente')
+    )
   const solicitudRejectionReason = String(previewData?.motivo_rechazo || '').trim()
   const resolvedSolicitudRejectionReason = (
     solicitudRejectionReason || 'Sin motivo de rechazo registrado.'
@@ -1873,7 +1877,11 @@ function EntradaDetails({
                 : (
                   isAcceptedSolicitudRibbon
                     ? ' entrada-details__pending-ribbon--accepted'
-                    : (isSentSolicitudRibbon ? ' entrada-details__pending-ribbon--sent' : '')
+                    : (
+                      isSentSolicitudRibbon
+                        ? ' entrada-details__pending-ribbon--sent'
+                        : ' entrada-details__pending-ribbon--pending'
+                    )
                 )
             }`}
             aria-label={solicitudRibbonLabel}

@@ -516,9 +516,9 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             return attrs
 
         if subtipo_key == "devolucion":
-            if estado_name != "recibido":
+            if estado_name != "devuelto":
                 raise serializers.ValidationError(
-                    {"estado_movimiento_id": "En devolucion el estado debe ser Recibido."}
+                    {"estado_movimiento_id": "En devolucion el estado debe ser Devuelto."}
                 )
 
         if subtipo_key == "traslado":
@@ -900,7 +900,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {
                         "detalles": (
-                            "Stock insuficiente en sucursal A para completar el traslado."
+                            "Stock insuficiente en la sucursal para completar el movimiento."
                         )
                     }
                 )
@@ -946,9 +946,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         inventory_row.save(update_fields=["cantidad"])
 
     def _apply_inventory_effect(self, movimiento, details_source, reverse=False):
-        if self._resolve_subtipo_key(getattr(movimiento, "sub_tipo_movimiento", None)) != "traslado":
-            return
-
+        subtipo_key = self._resolve_subtipo_key(getattr(movimiento, "sub_tipo_movimiento", None))
         tipo_name = self._resolve_tipo_name(getattr(movimiento, "tipo_movimiento", None))
         estado_name = self._resolve_estado_name(getattr(movimiento, "estado_movimiento", None))
         quantities = self._collect_product_quantities(details_source)
@@ -956,6 +954,21 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             return
 
         factor = -1 if reverse else 1
+
+        if subtipo_key == "devolucion" and tipo_name.startswith("sal"):
+            if estado_name != "devuelto":
+                return
+            for producto_id, cantidad in quantities.items():
+                self._adjust_stock(
+                    sucursal=getattr(movimiento, "sucursal", None),
+                    producto_id=producto_id,
+                    delta=(-cantidad * factor),
+                )
+            return
+
+        if subtipo_key != "traslado":
+            return
+
         should_mark_received = estado_name in {"recibido", "parcialmente recibido"}
 
         if tipo_name.startswith("sal"):
