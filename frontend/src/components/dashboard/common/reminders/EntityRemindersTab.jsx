@@ -12,16 +12,93 @@ import {
   fetchRemindersFromBackend,
   formatCurrentUserName,
   formatReminderDateTime,
+  getReminderDecisionStatus,
+  getReminderTimestamp,
+  getTransferReceiptOutcome,
   isReminderCreatedByCurrentUser,
   isReminderForContext,
   isReminderForCurrentUser,
+  isSpecialTransferDecisionReminder,
   normalizeId,
   readRemindersFromStorage,
   reminderCompletedByIds,
-  sortRemindersForCurrentUser,
   writeRemindersToStorage,
 } from './remindersStorage'
 import './EntityRemindersTab.css'
+
+const normalizeReminderContextType = (value) =>
+  normalizeId(value)
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+
+const resolveReminderSortTimestamp = (reminder) => {
+  const timestamp = getReminderTimestamp(reminder)
+  if (Number.isFinite(timestamp)) return timestamp
+
+  const createdAt = Date.parse(String(reminder?.createdAt || '').trim())
+  if (Number.isFinite(createdAt)) return createdAt
+  return 0
+}
+
+const sortRemindersNewestFirst = (rows) =>
+  [...(Array.isArray(rows) ? rows : [])].sort((a, b) => {
+    const timeA = resolveReminderSortTimestamp(a)
+    const timeB = resolveReminderSortTimestamp(b)
+    if (timeA !== timeB) return timeB - timeA
+    return String(b?.id || '').localeCompare(String(a?.id || ''))
+  })
+
+const resolveTransferStageFromReminder = (reminder) => {
+  const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
+  if (transferReceiptOutcome === 'completo') {
+    return {
+      key: 'recepcion_completa',
+      label: 'Llego completo',
+      className: 'recepcion-completa',
+    }
+  }
+
+  if (transferReceiptOutcome === 'incompleto') {
+    return {
+      key: 'recepcion_incompleta',
+      label: 'Llego incompleto',
+      className: 'recepcion-incompleta',
+    }
+  }
+
+  const decisionStatus = getReminderDecisionStatus(reminder)
+  if (decisionStatus === 'enviado') {
+    return {
+      key: 'envio',
+      label: 'Enviado',
+      className: 'envio',
+    }
+  }
+  if (decisionStatus === 'aceptada') {
+    return {
+      key: 'aceptacion',
+      label: 'Aceptada',
+      className: 'aceptacion',
+    }
+  }
+  if (decisionStatus === 'rechazada') {
+    return {
+      key: 'rechazo',
+      label: 'Rechazada',
+      className: 'rechazo',
+    }
+  }
+
+  if (isSpecialTransferDecisionReminder(reminder) || decisionStatus === 'pendiente') {
+    return {
+      key: 'solicitud',
+      label: 'Solicitud',
+      className: 'solicitud',
+    }
+  }
+
+  return null
+}
 
 const getNowDateParts = () => {
   const now = new Date()
@@ -31,7 +108,15 @@ const getNowDateParts = () => {
   }
 }
 
-function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLabel, onError }) {
+function EntityRemindersTab({
+  token,
+  currentUser,
+  entityType,
+  entityId,
+  entityLabel,
+  transferSolicitudId = '',
+  onError,
+}) {
   const [allReminders, setAllReminders] = useState(() => readRemindersFromStorage())
   const [users, setUsers] = useState([])
   const [loadingUsers, setLoadingUsers] = useState(false)
@@ -75,6 +160,11 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
     }
   }, [entityType, entityId, entityLabel])
 
+  const normalizedTransferSolicitudId = useMemo(
+    () => normalizeId(transferSolicitudId),
+    [transferSolicitudId]
+  )
+
   useEffect(() => {
     if (!usersError) return
     notifyError(usersError)
@@ -110,8 +200,49 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
           isReminderCreatedByCurrentUser(reminder, currentUserIdSet, currentUserName))
     )
 
-    return sortRemindersForCurrentUser(filtered, currentUserIdSet)
+    return sortRemindersNewestFirst(filtered)
   }, [allReminders, currentUserIdSet, currentUserName, reminderContext])
+
+  const transferTimelineRows = useMemo(() => {
+    if (!normalizedTransferSolicitudId) return []
+
+    const rows = allReminders
+      .filter((reminder) => {
+        const contextType = normalizeReminderContextType(reminder?.context?.type)
+        if (contextType !== 'solicitud_traslado') return false
+        if (normalizeId(reminder?.context?.id) !== normalizedTransferSolicitudId) return false
+
+        return (
+          isReminderForCurrentUser(reminder, currentUserIdSet) ||
+          isReminderCreatedByCurrentUser(reminder, currentUserIdSet, currentUserName)
+        )
+      })
+      .map((reminder, index) => {
+        const stage = resolveTransferStageFromReminder(reminder)
+        if (!stage) return null
+
+        return {
+          id:
+            normalizeId(reminder?.id) ||
+            `${stage.key}-${String(reminder?.date || '').trim()}-${String(reminder?.time || '').trim()}-${index}`,
+          stageKey: stage.key,
+          stageLabel: stage.label,
+          stageClassName: stage.className,
+          dateTime: formatReminderDateTime(reminder),
+          description: String(reminder?.description || '').trim() || '-',
+          sortTimestamp: resolveReminderSortTimestamp(reminder),
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const timeA = Number(a?.sortTimestamp || 0)
+        const timeB = Number(b?.sortTimestamp || 0)
+        if (timeA !== timeB) return timeB - timeA
+        return String(b?.id || '').localeCompare(String(a?.id || ''))
+      })
+
+    return rows
+  }, [allReminders, currentUserIdSet, currentUserName, normalizedTransferSolicitudId])
 
   useEffect(() => {
     const defaults = getNowDateParts()
@@ -464,6 +595,37 @@ function EntityRemindersTab({ token, currentUser, entityType, entityId, entityLa
         </div>
       ) : (
         <div className="entity-reminders__pane entity-reminders__pane--list entity-reminders__table-wrap">
+          {normalizedTransferSolicitudId && (
+            <div className="entity-reminders__transfer-history">
+              <div className="entity-reminders__transfer-head">
+                <h5>Historial del traslado</h5>
+                <span>{transferTimelineRows.length} evento(s)</span>
+              </div>
+
+              {!transferTimelineRows.length ? (
+                <p className="entity-reminders__empty">
+                  Este traslado todavia no tiene hitos registrados.
+                </p>
+              ) : (
+                <ol className="entity-reminders__transfer-list">
+                  {transferTimelineRows.map((row) => (
+                    <li key={row.id} className="entity-reminders__transfer-item">
+                      <div className="entity-reminders__transfer-meta">
+                        <span
+                          className={`entity-reminders__transfer-stage entity-reminders__transfer-stage--${row.stageClassName}`}
+                        >
+                          {row.stageLabel}
+                        </span>
+                        <span>{row.dateTime}</span>
+                      </div>
+                      <p className="entity-reminders__transfer-description">{row.description}</p>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
+
           {!relatedReminders.length ? (
             <p className="entity-reminders__empty">No hay recordatorios para este registro.</p>
           ) : (

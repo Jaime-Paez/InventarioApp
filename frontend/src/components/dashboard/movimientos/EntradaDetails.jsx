@@ -298,6 +298,7 @@ function EntradaDetails({
   const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
+  const [transferSolicitudId, setTransferSolicitudId] = useState('')
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -784,6 +785,7 @@ function EntradaDetails({
     setProductos([])
     setEstadosProducto([])
     setStockByProduct({})
+    setTransferSolicitudId(requestId)
 
     const nextForm = {
       sucursalId: solicitanteId,
@@ -871,6 +873,7 @@ function EntradaDetails({
 
       const branchesList = parseApiList(branchesData)
       const linkedSolicitud = salidaData?.solicitud_traslado || null
+      setTransferSolicitudId(String(linkedSolicitud?.id || '').trim())
       const resolvedBranches = [...branchesList]
       const existingBranchIds = new Set(
         resolvedBranches.map((branch) => String(branch?.id || '').trim()).filter(Boolean)
@@ -992,6 +995,7 @@ function EntradaDetails({
     setClienteOptions([])
     setClienteLoading(false)
     setStockByProduct({})
+    setTransferSolicitudId('')
     setOriginalData(null)
     setIsEditing(false)
     setIsMaximized(false)
@@ -2450,6 +2454,7 @@ function EntradaDetails({
                     entityType="entrada"
                     entityId={entradaId}
                     entityLabel={modalTitle}
+                    transferSolicitudId={transferSolicitudId}
                     onError={notifyError}
                   />
                 )}

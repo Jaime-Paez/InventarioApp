@@ -294,6 +294,7 @@ function SalidaDetails({
   const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
+  const [transferSolicitudId, setTransferSolicitudId] = useState('')
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -620,9 +621,20 @@ function SalidaDetails({
       estadosProductoList,
     } = catalogs
 
-    const sucursalId = salida?.sucursal_id ?? findByName(branchesList, salida?.sucursal)?.id ?? ''
+    const linkedSolicitud = salida?.solicitud_traslado || null
+    const sucursalId =
+      salida?.sucursal_id ??
+      linkedSolicitud?.sucursal_proveedora_id ??
+      findByName(branchesList, salida?.sucursal || salida?.sucursal_proveedora)?.id ??
+      ''
     const sucursalObjetivoId =
-      salida?.sucursal_objetivo_id ?? findByName(branchesList, salida?.sucursal_objetivo)?.id ?? ''
+      salida?.sucursal_objetivo_id ??
+      linkedSolicitud?.sucursal_solicitante_id ??
+      findByName(
+        branchesList,
+        salida?.sucursal_objetivo || salida?.sucursal_solicitante || salida?.destino
+      )?.id ??
+      ''
     const subTipoLabel = String(salida?.sub_tipo_movimiento || '')
     const matchedSubTipo =
       (salida?.sub_tipo_movimiento_id &&
@@ -746,7 +758,7 @@ function SalidaDetails({
         productosRes.json(),
         estadosProductoRes.json(),
         salidaRes.json(),
-      ])
+      ]) 
 
       const branchesList = parseApiList(branchesData)
       const tiposList = parseApiList(tiposData)
@@ -754,16 +766,39 @@ function SalidaDetails({
       const estadosList = parseApiList(estadosData)
       const productosList = parseApiList(productosData)
       const estadosProductoList = parseApiList(estadosProductoData)
+      const linkedSolicitud = salidaData?.solicitud_traslado || null
+      const resolvedBranches = [...branchesList]
+      const existingBranchIds = new Set(
+        resolvedBranches.map((branch) => String(branch?.id || '').trim()).filter(Boolean)
+      )
+      const appendBranchIfMissing = (branchIdRaw, branchNameRaw) => {
+        const branchId = String(branchIdRaw || '').trim()
+        if (!branchId || existingBranchIds.has(branchId)) return
+        resolvedBranches.push({
+          id: branchId,
+          nombre: String(branchNameRaw || '').trim() || `Sucursal ${branchId}`,
+        })
+        existingBranchIds.add(branchId)
+      }
+      appendBranchIfMissing(
+        linkedSolicitud?.sucursal_proveedora_id,
+        salidaData?.sucursal || salidaData?.sucursal_proveedora
+      )
+      appendBranchIfMissing(
+        linkedSolicitud?.sucursal_solicitante_id,
+        salidaData?.sucursal_objetivo || salidaData?.sucursal_solicitante || salidaData?.destino
+      )
 
-      setBranches(branchesList)
+      setBranches(resolvedBranches)
       setTipoMovimientos(tiposList)
       setSubTipos(subTiposList)
       setEstados(estadosList)
       setProductos(productosList)
       setEstadosProducto(estadosProductoList)
+      setTransferSolicitudId(String(linkedSolicitud?.id || '').trim())
 
       const normalized = buildFormData(salidaData, {
-        branchesList,
+        branchesList: resolvedBranches,
         subTiposList,
         estadosList,
         productosList,
@@ -849,6 +884,7 @@ function SalidaDetails({
     setClienteOptions([])
     setClienteLoading(false)
     setStockByProduct({})
+    setTransferSolicitudId('')
     setOriginalData(null)
     setIsEditing(false)
     setIsMaximized(false)
@@ -2222,6 +2258,7 @@ function SalidaDetails({
                     entityType="salida"
                     entityId={salidaId}
                     entityLabel={modalTitle}
+                    transferSolicitudId={transferSolicitudId}
                     onError={notifyError}
                   />
                 )}
