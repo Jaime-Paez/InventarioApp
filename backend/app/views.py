@@ -749,6 +749,36 @@ def _serialize_random_inspection(inspection):
     }
 
 
+def _serialize_random_inspection_admin_item(item):
+    serialized = _serialize_random_inspection_item(item)
+    inspection = getattr(item, "inspeccion", None)
+    inspection_user = getattr(inspection, "usuario", None)
+    serialized.update(
+        {
+            "inspeccion_id": int(item.inspeccion_id),
+            "fecha_programada": (
+                inspection.fecha_programada.isoformat()
+                if inspection is not None and getattr(inspection, "fecha_programada", None)
+                else ""
+            ),
+            "inspeccion_estado": (
+                str(getattr(inspection, "estado", "") or "").strip()
+                if inspection is not None
+                else ""
+            ),
+            "inspeccion_usuario_id": (
+                int(inspection.usuario_id)
+                if inspection is not None and getattr(inspection, "usuario_id", None) is not None
+                else None
+            ),
+            "inspeccion_usuario_nombre": _format_user_display_name(inspection_user)
+            if inspection_user is not None
+            else "",
+        }
+    )
+    return serialized
+
+
 def _normalize_random_inspection_review_state(value):
     normalized = _normalize_text(value).lower()
     if normalized in {"coincide", "ok", "completo", "si", "true", "1"}:
@@ -1448,6 +1478,243 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 "inspection": _serialize_random_inspection(inspection),
                 "item_id": int(item_id),
                 "accion": action,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RandomInspectionAdminSummaryAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para consultar inspecciones aleatorias."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(request.user)
+
+        inventory_qs = Inventario.objects.filter(cantidad__gt=0)
+        inspected_qs = InspeccionAleatoriaItem.objects.all()
+        if allowed_branch_ids is not None:
+            allowed_list = sorted(allowed_branch_ids)
+            inventory_qs = inventory_qs.filter(
+                subdivision__division__bodega__sucursal_id__in=allowed_list
+            )
+            inspected_qs = inspected_qs.filter(sucursal_id__in=allowed_list)
+
+        inventory_rows = (
+            inventory_qs.values(
+                "subdivision__division__bodega__sucursal_id",
+                "subdivision__division__bodega__sucursal__nombre",
+            )
+            .annotate(
+                total_productos=Count("producto_id", distinct=True),
+                total_unidades=Sum("cantidad"),
+            )
+            .order_by("subdivision__division__bodega__sucursal__nombre", "subdivision__division__bodega__sucursal_id")
+        )
+
+        inspected_rows = (
+            inspected_qs.values("sucursal_id", "sucursal__nombre")
+            .annotate(
+                productos_revisados=Count("producto_id", distinct=True),
+                inspecciones_totales=Count("inspeccion_id", distinct=True),
+                items_revisados=Count("id"),
+                diferencias_reportadas=Count(
+                    "id",
+                    filter=Q(
+                        estado_revision=InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE
+                    ),
+                ),
+                pendientes_verificacion=Count(
+                    "id",
+                    filter=Q(
+                        estado_revision=InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE,
+                        verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE,
+                    ),
+                ),
+                ultima_revision=Max("revisado_en"),
+                ultima_verificacion=Max("verificado_en"),
+            )
+            .order_by("sucursal__nombre", "sucursal_id")
+        )
+
+        summary_by_branch = {}
+        for row in inventory_rows:
+            branch_id = _normalize_int(
+                row.get("subdivision__division__bodega__sucursal_id"), 0
+            )
+            if branch_id <= 0:
+                continue
+            summary_by_branch[branch_id] = {
+                "sucursal_id": branch_id,
+                "sucursal_nombre": _normalize_text(
+                    row.get("subdivision__division__bodega__sucursal__nombre")
+                )
+                or f"Sucursal {branch_id}",
+                "total_productos_inventario": _normalize_int(
+                    row.get("total_productos"), 0
+                ),
+                "total_unidades_inventario": _normalize_int(
+                    row.get("total_unidades"), 0
+                ),
+                "productos_revisados": 0,
+                "inspecciones_totales": 0,
+                "items_revisados": 0,
+                "diferencias_reportadas": 0,
+                "pendientes_verificacion": 0,
+                "cobertura_porcentaje": 0.0,
+                "ultima_revision": "",
+                "ultima_verificacion": "",
+            }
+
+        for row in inspected_rows:
+            branch_id = _normalize_int(row.get("sucursal_id"), 0)
+            if branch_id <= 0:
+                continue
+
+            current = summary_by_branch.get(branch_id) or {
+                "sucursal_id": branch_id,
+                "sucursal_nombre": _normalize_text(row.get("sucursal__nombre"))
+                or f"Sucursal {branch_id}",
+                "total_productos_inventario": 0,
+                "total_unidades_inventario": 0,
+                "productos_revisados": 0,
+                "inspecciones_totales": 0,
+                "items_revisados": 0,
+                "diferencias_reportadas": 0,
+                "pendientes_verificacion": 0,
+                "cobertura_porcentaje": 0.0,
+                "ultima_revision": "",
+                "ultima_verificacion": "",
+            }
+
+            current["productos_revisados"] = _normalize_int(
+                row.get("productos_revisados"), 0
+            )
+            current["inspecciones_totales"] = _normalize_int(
+                row.get("inspecciones_totales"), 0
+            )
+            current["items_revisados"] = _normalize_int(row.get("items_revisados"), 0)
+            current["diferencias_reportadas"] = _normalize_int(
+                row.get("diferencias_reportadas"), 0
+            )
+            current["pendientes_verificacion"] = _normalize_int(
+                row.get("pendientes_verificacion"), 0
+            )
+            current["ultima_revision"] = _parse_iso_timestamp(row.get("ultima_revision"))
+            current["ultima_verificacion"] = _parse_iso_timestamp(
+                row.get("ultima_verificacion")
+            )
+
+            total_products = _normalize_int(
+                current.get("total_productos_inventario"), 0
+            )
+            reviewed_products = _normalize_int(current.get("productos_revisados"), 0)
+            if total_products > 0:
+                current["cobertura_porcentaje"] = round(
+                    min(100.0, (reviewed_products / total_products) * 100.0),
+                    2,
+                )
+            else:
+                current["cobertura_porcentaje"] = 0.0
+
+            summary_by_branch[branch_id] = current
+
+        rows = sorted(
+            summary_by_branch.values(),
+            key=lambda row: (
+                str(row.get("sucursal_nombre") or "").lower(),
+                int(row.get("sucursal_id") or 0),
+            ),
+        )
+        return Response(
+            {
+                "results": rows,
+                "generated_at": _iso_now(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RandomInspectionAdminItemsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para consultar inspecciones aleatorias."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        sucursal_id = _normalize_int(request.query_params.get("sucursal_id"), 0)
+        if sucursal_id <= 0:
+            return Response(
+                {"detail": "Debes enviar un `sucursal_id` valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        estado = _normalize_text(request.query_params.get("estado")).lower() or "pendiente"
+        limit = _normalize_int(request.query_params.get("limit"), 200)
+        if limit <= 0:
+            limit = 200
+        limit = min(limit, 500)
+
+        allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(request.user)
+        if allowed_branch_ids is not None and sucursal_id not in allowed_branch_ids:
+            return Response(
+                {"detail": "No tienes acceso a esta sucursal."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            InspeccionAleatoriaItem.objects.select_related(
+                "inspeccion",
+                "inspeccion__usuario",
+                "sucursal",
+                "producto",
+                "verificado_por",
+            )
+            .filter(sucursal_id=sucursal_id)
+            .order_by("-revisado_en", "-id")
+        )
+
+        if estado == "pendiente":
+            queryset = queryset.filter(
+                estado_revision=InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE,
+                verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE,
+            )
+        elif estado == "verificado":
+            queryset = queryset.filter(
+                estado_revision=InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE,
+            ).exclude(
+                verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
+            )
+        elif estado == "diferencias":
+            queryset = queryset.filter(
+                estado_revision=InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE
+            )
+        elif estado != "todos":
+            return Response(
+                {
+                    "detail": (
+                        "El parametro `estado` debe ser uno de: pendiente, verificado, diferencias, todos."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        rows = list(queryset[:limit])
+        serialized = [_serialize_random_inspection_admin_item(item) for item in rows]
+
+        return Response(
+            {
+                "results": serialized,
+                "count": len(serialized),
+                "sucursal_id": int(sucursal_id),
+                "estado": estado,
             },
             status=status.HTTP_200_OK,
         )

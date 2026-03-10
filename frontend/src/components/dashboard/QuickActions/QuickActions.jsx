@@ -6,6 +6,10 @@ import RecordatoriosPopup from './RecordatoriosPopup'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
 import { API_URL, authFetch } from '../../../utils/api'
 import {
+  requestSystemNotificationPermission,
+  showSystemNotification,
+} from '../../../utils/systemNotifications'
+import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
   RANDOM_INSPECTION_VERIFY_KIND,
@@ -196,6 +200,7 @@ function QuickActions({
   const didInitTransferResponseSnapshotRef = useRef(false)
   const seenTransferResponseReminderIdsRef = useRef(new Set())
   const didPlayInitialPendingToneRef = useRef(false)
+  const didRequestSystemNotificationPermissionRef = useRef(false)
   const toast = useRef(null)
 
   const [blob, setBlob] = useState({ x: 0, y: 0, w: 0, h: 0, visible: false })
@@ -531,6 +536,39 @@ function QuickActions({
     play()
   }, [ensureAudioContext])
 
+  const pushSystemTransferNotification = useCallback((notificationDetail) => {
+    const notificationType = normalizeReminderContextType(notificationDetail?.type)
+    if (!notificationType) return
+
+    const reminderIds = Array.isArray(notificationDetail?.reminderIds)
+      ? notificationDetail.reminderIds.filter(Boolean)
+      : []
+    const count = Math.max(1, reminderIds.length || Number(notificationDetail?.count) || 0)
+
+    let title = ''
+    let body = ''
+    if (notificationType === 'solicitud_traslado_pendiente') {
+      title = count > 1 ? `Tienes ${count} solicitudes de traslado pendientes.` : 'Tienes una solicitud de traslado pendiente.'
+      body = 'Revisa Recordatorios para aceptar o rechazar.'
+    } else if (notificationType === 'solicitud_traslado_envio_pendiente') {
+      title = count > 1 ? `Tienes ${count} envios pendientes por despachar.` : 'Tienes un envio pendiente por despachar.'
+      body = 'Abre Envios pendientes para continuar.'
+    } else if (notificationType === 'solicitud_traslado_resuelta') {
+      title = count > 1 ? `Tienes ${count} novedades de traslados.` : 'Tienes una novedad de traslado.'
+      body = 'Revisa Recordatorios para ver el ultimo avance.'
+    } else {
+      return
+    }
+
+    void showSystemNotification({
+      title,
+      body,
+      tag: `inventario-${notificationType}`,
+      url: '/',
+      requireInteraction: true,
+    })
+  }, [])
+
   const playInitialPendingToneIfNeeded = useCallback(
     (ids, notificationDetail) => {
       if (didPlayInitialPendingToneRef.current) return
@@ -540,13 +578,17 @@ function QuickActions({
       didPlayInitialPendingToneRef.current = true
       playNotificationTone()
       if (notificationDetail?.type) {
-        emitTransferReminderNotification({
+        const nextDetail = {
           ...notificationDetail,
           reminderIds: normalizedIds,
+        }
+        emitTransferReminderNotification({
+          ...nextDetail,
         })
+        pushSystemTransferNotification(nextDetail)
       }
     },
-    [playNotificationTone]
+    [playNotificationTone, pushSystemTransferNotification]
   )
 
   const hasPendingReminder = useMemo(
@@ -587,18 +629,23 @@ function QuickActions({
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
 
-    const unlockAudio = () => {
+    const unlockAudioAndNotifications = () => {
       const context = ensureAudioContext()
-      if (!context || context.state !== 'suspended') return
-      void context.resume().catch(() => {})
+      if (context && context.state === 'suspended') {
+        void context.resume().catch(() => {})
+      }
+
+      if (didRequestSystemNotificationPermissionRef.current) return
+      didRequestSystemNotificationPermissionRef.current = true
+      void requestSystemNotificationPermission({ prompt: true })
     }
 
-    window.addEventListener('pointerdown', unlockAudio, { once: true })
-    window.addEventListener('keydown', unlockAudio, { once: true })
+    window.addEventListener('pointerdown', unlockAudioAndNotifications, { once: true })
+    window.addEventListener('keydown', unlockAudioAndNotifications, { once: true })
 
     return () => {
-      window.removeEventListener('pointerdown', unlockAudio)
-      window.removeEventListener('keydown', unlockAudio)
+      window.removeEventListener('pointerdown', unlockAudioAndNotifications)
+      window.removeEventListener('keydown', unlockAudioAndNotifications)
     }
   }, [ensureAudioContext])
 
@@ -924,12 +971,19 @@ function QuickActions({
 
     if (newReminderIds.length) {
       playNotificationTone()
-      emitTransferReminderNotification({
+      const notificationDetail = {
         type: 'solicitud_traslado_pendiente',
         reminderIds: newReminderIds,
-      })
+      }
+      emitTransferReminderNotification(notificationDetail)
+      pushSystemTransferNotification(notificationDetail)
     }
-  }, [eligibleUrgentDecisionReminders, playInitialPendingToneIfNeeded, playNotificationTone])
+  }, [
+    eligibleUrgentDecisionReminders,
+    playInitialPendingToneIfNeeded,
+    playNotificationTone,
+    pushSystemTransferNotification,
+  ])
 
   useEffect(() => {
     const nextIds = new Set(
@@ -956,12 +1010,19 @@ function QuickActions({
 
     if (newPendingShipmentIds.length) {
       playNotificationTone()
-      emitTransferReminderNotification({
+      const notificationDetail = {
         type: 'solicitud_traslado_envio_pendiente',
         reminderIds: newPendingShipmentIds,
-      })
+      }
+      emitTransferReminderNotification(notificationDetail)
+      pushSystemTransferNotification(notificationDetail)
     }
-  }, [pendingShipmentUrgentTargets, playInitialPendingToneIfNeeded, playNotificationTone])
+  }, [
+    pendingShipmentUrgentTargets,
+    playInitialPendingToneIfNeeded,
+    playNotificationTone,
+    pushSystemTransferNotification,
+  ])
 
   const pendingTransferResponseReminders = useMemo(
     () =>
@@ -998,12 +1059,19 @@ function QuickActions({
 
     if (newReminderIds.length) {
       playNotificationTone()
-      emitTransferReminderNotification({
+      const notificationDetail = {
         type: 'solicitud_traslado_resuelta',
         reminderIds: newReminderIds,
-      })
+      }
+      emitTransferReminderNotification(notificationDetail)
+      pushSystemTransferNotification(notificationDetail)
     }
-  }, [pendingTransferResponseReminders, playInitialPendingToneIfNeeded, playNotificationTone])
+  }, [
+    pendingTransferResponseReminders,
+    playInitialPendingToneIfNeeded,
+    playNotificationTone,
+    pushSystemTransferNotification,
+  ])
 
   const urgentProgressById = useMemo(() => {
     const map = {}
@@ -1845,12 +1913,12 @@ function QuickActions({
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         throw new Error(
-          String(payload?.detail || '').trim() || 'No se pudo cargar la inspecciÃ³n aleatoria.'
+          String(payload?.detail || '').trim() || 'No se pudo cargar la inspecci\u00f3n aleatoria.'
         )
       }
       const inspection = payload?.inspection
       if (!inspection || typeof inspection !== 'object') {
-        throw new Error('La inspecciÃ³n aleatoria no tiene datos vÃ¡lidos.')
+        throw new Error('La inspecci\u00f3n aleatoria no tiene datos v\u00e1lidos.')
       }
       return inspection
     },
@@ -1862,7 +1930,7 @@ function QuickActions({
       if (!token) return false
       const inspectionId = normalizeId(reminder?.context?.id)
       if (!inspectionId) {
-        showErrorToast('No se encontrÃ³ la inspecciÃ³n asociada a este recordatorio.')
+        showErrorToast('No se encontr\u00f3 la inspecci\u00f3n asociada a este recordatorio.')
         return false
       }
 
@@ -1884,7 +1952,7 @@ function QuickActions({
         return true
       } catch (error) {
         closeRandomInspectionModal()
-        showErrorToast(error?.message || 'No se pudo abrir la inspecciÃ³n aleatoria.')
+        showErrorToast(error?.message || 'No se pudo abrir la inspecci\u00f3n aleatoria.')
         return false
       } finally {
         setRandomInspectionLoading(false)
@@ -2536,7 +2604,7 @@ function QuickActions({
       if (!token || !inspectionId) return
 
       if (!randomInspectionRows.length) {
-        setRandomInspectionError('No hay productos para revisar en esta inspecciÃ³n.')
+        setRandomInspectionError('No hay productos para revisar en esta inspecci\u00f3n.')
         return
       }
 
@@ -2544,7 +2612,7 @@ function QuickActions({
       for (const row of randomInspectionRows) {
         const rowId = normalizeId(row?.row_id || row?.id)
         if (!rowId) {
-          setRandomInspectionError('Se encontrÃ³ un item invÃ¡lido en la inspecciÃ³n.')
+          setRandomInspectionError('Se encontr\u00f3 un item inv\u00e1lido en la inspecci\u00f3n.')
           return
         }
 
@@ -2587,7 +2655,7 @@ function QuickActions({
         const payload = await response.json().catch(() => ({}))
         if (!response.ok) {
           throw new Error(
-            String(payload?.detail || '').trim() || 'No se pudo guardar la inspecciÃ³n.'
+            String(payload?.detail || '').trim() || 'No se pudo guardar la inspecci\u00f3n.'
           )
         }
 
@@ -2595,15 +2663,15 @@ function QuickActions({
         if (mismatchCount > 0) {
           toast.current?.show({
             severity: 'warn',
-            summary: 'InspecciÃ³n registrada',
-            detail: `Se reportaron ${mismatchCount} diferencia(s). Se notificÃ³ a administraciÃ³n para verificar.`,
+            summary: 'Inspecci\u00f3n registrada',
+            detail: `Se reportaron ${mismatchCount} diferencia(s). Se notific\u00f3 a administraci\u00f3n para verificar.`,
             life: 4200,
           })
         } else {
           toast.current?.show({
             severity: 'success',
-            summary: 'InspecciÃ³n registrada',
-            detail: 'La inspecciÃ³n se guardÃ³ correctamente.',
+            summary: 'Inspecci\u00f3n registrada',
+            detail: 'La inspecci\u00f3n se guard\u00f3 correctamente.',
             life: 3200,
           })
         }
@@ -2613,7 +2681,7 @@ function QuickActions({
         setReminders(remoteReminders)
       } catch (error) {
         setRandomInspectionError(
-          error?.message || 'No se pudo guardar la inspecciÃ³n.'
+          error?.message || 'No se pudo guardar la inspecci\u00f3n.'
         )
       } finally {
         setRandomInspectionSubmitting(false)
@@ -3148,7 +3216,7 @@ function QuickActions({
             onMouseDown={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label="InspecciÃ³n aleatoria diaria"
+            aria-label="Inspecci\u00f3n aleatoria diaria"
           >
             <header className="quick-actions__inspection-head">
               <div>
@@ -3164,7 +3232,7 @@ function QuickActions({
                 className="quick-actions__inspection-close"
                 onClick={closeRandomInspectionModal}
                 disabled={randomInspectionSubmitting}
-                aria-label="Cerrar inspecciÃ³n"
+                aria-label="Cerrar inspecci\u00f3n"
               >
                 <X size={16} />
               </button>
@@ -3402,8 +3470,8 @@ function QuickActions({
                     )
                     : (
                       randomInspectionMismatchCount > 0
-                        ? `Guardar inspecciÃ³n (${randomInspectionMismatchCount} con diferencia)`
-                        : 'Guardar inspecciÃ³n'
+                        ? `Guardar inspecci\u00f3n (${randomInspectionMismatchCount} con diferencia)`
+                        : 'Guardar inspecci\u00f3n'
                     )}
               </button>
             </footer>

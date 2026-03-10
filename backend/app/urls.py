@@ -5,6 +5,16 @@ urlpatterns = [
     path("ping/", views.ping),
     path("recordatorios/estado/", views.ReminderStateAPIView.as_view(), name="recordatorios-estado"),
     path(
+        "recordatorios/inspeccion-aleatoria/admin/resumen/",
+        views.RandomInspectionAdminSummaryAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-admin-resumen",
+    ),
+    path(
+        "recordatorios/inspeccion-aleatoria/admin/items/",
+        views.RandomInspectionAdminItemsAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-admin-items",
+    ),
+    path(
         "recordatorios/inspeccion-aleatoria/actual/",
         views.RandomInspectionCurrentAPIView.as_view(),
         name="recordatorios-inspeccion-aleatoria-actual",

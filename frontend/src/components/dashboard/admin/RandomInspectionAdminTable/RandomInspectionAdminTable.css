@@ -1,0 +1,323 @@
+.inspection-admin {
+  width: 100%;
+  display: grid;
+  gap: 16px;
+}
+
+.inspection-admin__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.inspection-admin__head h3 {
+  margin: 0;
+  font-size: 31px;
+  font-weight: 700;
+  color: #1e1e1e;
+}
+
+.inspection-admin__head p {
+  margin: 6px 0 0;
+  color: #5a6777;
+  font-size: 15px;
+}
+
+.inspection-admin__refresh {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #0b4f7f;
+  background: #fff;
+  color: #0b4f7f;
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inspection-admin__refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.inspection-admin__block {
+  border: 1px solid #b8bec6;
+  border-radius: 18px;
+  background: #f4f6f8;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.inspection-admin__block h4 {
+  margin: 0;
+  font-size: 21px;
+  color: #1e1e1e;
+}
+
+.inspection-admin__subhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.inspection-admin__subhead select {
+  border: 1px solid #aeb5be;
+  border-radius: 10px;
+  padding: 8px 12px;
+  min-width: 170px;
+  background: #fff;
+  color: #1f2937;
+}
+
+.inspection-admin__table-wrap {
+  position: relative;
+  border: 1px solid #bac1c9;
+  border-radius: 14px;
+  overflow: auto;
+  background: #fff;
+}
+
+.inspection-admin__table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 960px;
+}
+
+.inspection-admin__table th,
+.inspection-admin__table td {
+  border-bottom: 1px solid #d5dbe2;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+.inspection-admin__table th {
+  background: #e7ecf2;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2b2f36;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.inspection-admin__summary-row {
+  cursor: pointer;
+}
+
+.inspection-admin__summary-row:hover {
+  background: #f6fbff;
+}
+
+.inspection-admin__summary-row.is-selected {
+  background: #dceefa;
+}
+
+.inspection-admin__empty-row td {
+  height: 54px;
+  background: #f9fbfc;
+}
+
+.inspection-admin__loading {
+  margin: 0;
+  padding: 10px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #3f4b59;
+}
+
+.inspection-admin__empty {
+  margin: 0;
+  color: #667085;
+  font-size: 15px;
+}
+
+.inspection-admin__product-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.inspection-admin__product-cell strong {
+  font-size: 13px;
+  color: #111827;
+}
+
+.inspection-admin__product-cell span {
+  color: #374151;
+  font-size: 13px;
+}
+
+.inspection-admin__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #0b5c95;
+  border-radius: 9px;
+  background: #edf7ff;
+  color: #0b5c95;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.inspection-admin__action-placeholder {
+  color: #8b95a7;
+  font-size: 12px;
+}
+
+.inspection-admin__dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1105;
+  background: rgba(17, 24, 39, 0.35);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.inspection-admin__dialog {
+  width: min(680px, 100%);
+  border-radius: 16px;
+  border: 1px solid #bcc4ce;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 18px 36px rgba(12, 25, 44, 0.22);
+}
+
+.inspection-admin__dialog-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid #d6dbe1;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.inspection-admin__dialog-head h4 {
+  margin: 0;
+  font-size: 21px;
+}
+
+.inspection-admin__dialog-head p {
+  margin: 4px 0 0;
+  color: #5d6878;
+  font-size: 13px;
+}
+
+.inspection-admin__dialog-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid #aeb6c2;
+  background: #f4f7fb;
+  color: #1f2937;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.inspection-admin__dialog-body {
+  padding: 14px 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.inspection-admin__dialog-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inspection-admin__dialog-body label {
+  display: grid;
+  gap: 6px;
+}
+
+.inspection-admin__dialog-body label span {
+  font-size: 13px;
+  color: #334155;
+  font-weight: 600;
+}
+
+.inspection-admin__dialog-body input,
+.inspection-admin__dialog-body textarea {
+  border: 1px solid #aeb5be;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: #111827;
+  background: #fff;
+  width: 100%;
+}
+
+.inspection-admin__dialog-body input:disabled,
+.inspection-admin__dialog-body textarea:disabled {
+  background: #f5f6f7;
+  color: #6b7280;
+}
+
+.inspection-admin__dialog-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.inspection-admin__dialog-actions {
+  border-top: 1px solid #d6dbe1;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.inspection-admin__btn {
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.inspection-admin__btn--ghost {
+  border: 1px solid #aeb5be;
+  background: #fff;
+  color: #384152;
+}
+
+.inspection-admin__btn--primary {
+  border: 1px solid #0b5c95;
+  background: #0b5c95;
+  color: #fff;
+}
+
+.inspection-admin__btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .inspection-admin__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inspection-admin__subhead {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inspection-admin__subhead select {
+    width: 100%;
+  }
+
+  .inspection-admin__dialog-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

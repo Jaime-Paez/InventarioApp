@@ -14,6 +14,7 @@ import {
   Hand,
   UsersRound,
   IdCard,
+  ClipboardCheck,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -49,8 +50,9 @@ export const MENU_STRUCTURE = [
     ],
   },
   { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
-  { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
+  { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios' },
+  { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
 ]
 
 const collectPermissionEntries = (permissionSource) => {

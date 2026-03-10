@@ -21,6 +21,7 @@ INACTIVITY_PENALTY_STEP = 0.5
 INACTIVITY_PENALTY_INTERVAL_MONTHS = 2
 RETURN_PENALTY_STEP = 1.0
 SALES_BONUS_STEP = 0.5
+DEFAULT_INITIAL_RATING = 3.0
 
 
 def _full_months_between(start_date, end_date):
@@ -104,7 +105,7 @@ def build_producto_rating_summary(producto):
     if comment_count > 0 and comment_average is not None:
         base_rating = float(comment_average)
     else:
-        base_rating = 5.0
+        base_rating = DEFAULT_INITIAL_RATING
 
     negative_ratio = 0.0
     if comment_count > 0 and negative_count > 0:

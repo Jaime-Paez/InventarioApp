@@ -191,7 +191,7 @@ function ProductoRatingTab({ productoId, token, onError }) {
         </div>
 
         <p className="producto-rating-tab__rule-note">
-          Regla activa: cada venta suma 0.5 estrellas, cada devolucion resta 1 estrella y cada 2 meses sin ventas se descuenta 0.5 estrellas.
+          Regla activa: todos los productos empiezan con 3 estrellas y la base se actualiza con el promedio de comentarios. Cada venta suma 0.5 estrellas, cada devolucion resta 1 estrella y cada 2 meses sin ventas se descuenta 0.5 estrellas.
         </p>
       </section>
 
