@@ -1945,7 +1945,7 @@ function RecordatoriosPopup({
                                     ? 'Abriendo...'
                                     : (
                                       isRandomInspectionVerifyReminder(reminder)
-                                        ? 'Verificar inspeccion'
+                                        ? 'Ir a revision por sucursal'
                                         : 'Realizar inspeccion'
                                     )}
                                 </button>

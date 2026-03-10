@@ -176,6 +176,7 @@ function QuickActions({
   onTransferDecisionAccepted,
   onOpenTransferRequestInEntradas,
   onOpenTransferRequestInSalidas,
+  onOpenInventoryReviewSection,
   allowUrgentShield = true,
 }) {
   const wrapRef = useRef(null)
@@ -1936,6 +1937,10 @@ function QuickActions({
 
       const reminderKind = normalizeId(reminder?.kind)
       const isVerifyReminder = reminderKind === RANDOM_INSPECTION_VERIFY_KIND
+      if (isVerifyReminder && typeof onOpenInventoryReviewSection === 'function') {
+        const opened = onOpenInventoryReviewSection()
+        return opened !== false
+      }
 
       setRandomInspectionError('')
       setRandomInspectionLoading(true)
@@ -1963,6 +1968,7 @@ function QuickActions({
       buildRandomInspectionVerificationDraft,
       closeRandomInspectionModal,
       fetchRandomInspectionDetail,
+      onOpenInventoryReviewSection,
       showErrorToast,
       token,
     ]

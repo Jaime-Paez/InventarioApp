@@ -22,6 +22,8 @@ import { API_URL, authFetch } from '../../../utils/api'
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const INCONVENIENTES_TAB = 'Inconvenientes'
 const INCONVENIENTES_TAB_LEGACY = 'Traslados con inconvenientes'
+const INVENTORY_REVIEW_TAB = 'Revision de inventario por sucursal'
+const INVENTORY_REVIEW_TAB_LEGACY = 'Revision inventario'
 const MOVIMIENTOS_SCOPE_BY_TAB = {
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
@@ -31,7 +33,8 @@ const MOVIMIENTOS_SCOPE_BY_TAB = {
 const MODULE_KEY_BY_TAB = {
   Inventario: 'inventario',
   Administrar: 'usuarios',
-  'Revision inventario': 'usuarios',
+  [INVENTORY_REVIEW_TAB]: 'usuarios',
+  [INVENTORY_REVIEW_TAB_LEGACY]: 'usuarios',
   Sucursales: 'sucursales_sucursales',
   Bodegas: 'sucursales_bodegas',
   Marcas: 'proveedores_marcas',
@@ -87,7 +90,8 @@ function Workspace({
   const tabComponentMap = {
     Inventario: InventarioTable,
     Administrar: UsersTable,
-    'Revision inventario': RandomInspectionAdminTable,
+    [INVENTORY_REVIEW_TAB]: RandomInspectionAdminTable,
+    [INVENTORY_REVIEW_TAB_LEGACY]: RandomInspectionAdminTable,
     Sucursales: SucursalesTable,
     Bodegas: BodegasTable,
     Marcas: MarcasTable,
@@ -262,6 +266,16 @@ function Workspace({
     })
   }, [onSelectTab, permissionIndex])
 
+  const handleOpenInventoryReviewSection = useCallback(() => {
+    if (!labelHasAccess(INVENTORY_REVIEW_TAB, permissionIndex)) {
+      if (!labelHasAccess(INVENTORY_REVIEW_TAB_LEGACY, permissionIndex)) return false
+      onSelectTab?.(INVENTORY_REVIEW_TAB_LEGACY)
+      return true
+    }
+    onSelectTab?.(INVENTORY_REVIEW_TAB)
+    return true
+  }, [onSelectTab, permissionIndex])
+
   const handleTransferEntradaRequestHandled = useCallback(() => {
     setPendingTransferEntradaRequest(null)
   }, [])
@@ -407,9 +421,10 @@ function Workspace({
           user={user}
           allowUrgentShield={allowUrgentShield}
           onTransferDecisionAccepted={handleTransferDecisionAccepted}
-          onOpenTransferRequestInEntradas={handleOpenTransferRequestInEntradas}
-          onOpenTransferRequestInSalidas={handleOpenTransferRequestInSalidas}
-        />
+        onOpenTransferRequestInEntradas={handleOpenTransferRequestInEntradas}
+        onOpenTransferRequestInSalidas={handleOpenTransferRequestInSalidas}
+        onOpenInventoryReviewSection={handleOpenInventoryReviewSection}
+      />
       </div>
 
       {showWelcome && (
