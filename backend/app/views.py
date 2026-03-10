@@ -1164,6 +1164,19 @@ class RandomInspectionRespondAPIView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
+            if (
+                str(inspection.estado).strip().lower()
+                == InspeccionAleatoriaDiaria.Estados.COMPLETADA
+            ):
+                return Response(
+                    {
+                        "detail": (
+                            "Esta inspeccion ya fue enviada y no puede volver a realizarse."
+                        )
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
             inspection_items = list(inspection.items.all().order_by("id"))
             if not inspection_items:
                 return Response(

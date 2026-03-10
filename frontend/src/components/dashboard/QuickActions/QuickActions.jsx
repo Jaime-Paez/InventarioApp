@@ -1467,6 +1467,10 @@ function QuickActions({
   )
 
   const isRandomInspectionVerifyMode = randomInspectionMode === 'verify'
+  const isRandomInspectionAlreadyCompleted = (
+    !isRandomInspectionVerifyMode &&
+    String(activeRandomInspection?.estado || '').trim().toLowerCase() === 'completada'
+  )
 
   const randomInspectionRowsToVerify = useMemo(
     () =>
@@ -1948,6 +1952,12 @@ function QuickActions({
       setIsRandomInspectionModalOpen(true)
       try {
         const inspection = await fetchRandomInspectionDetail(inspectionId)
+        const inspectionStatus = String(inspection?.estado || '').trim().toLowerCase()
+        if (!isVerifyReminder && inspectionStatus === 'completada') {
+          closeRandomInspectionModal()
+          showErrorToast('Esta inspeccion ya fue enviada y no puede volver a realizarse.')
+          return false
+        }
         setActiveRandomInspection(inspection)
         setRandomInspectionDraftByItemId(
           isVerifyReminder
@@ -2608,6 +2618,13 @@ function QuickActions({
     async () => {
       const inspectionId = normalizeId(activeRandomInspection?.id)
       if (!token || !inspectionId) return
+      const inspectionStatus = String(activeRandomInspection?.estado || '').trim().toLowerCase()
+      if (inspectionStatus === 'completada') {
+        setRandomInspectionError(
+          'Esta inspeccion ya fue enviada y no puede volver a realizarse.'
+        )
+        return
+      }
 
       if (!randomInspectionRows.length) {
         setRandomInspectionError('No hay productos para revisar en esta inspecci\u00f3n.')
@@ -3459,6 +3476,7 @@ function QuickActions({
                 disabled={
                   randomInspectionSubmitting ||
                   randomInspectionLoading ||
+                  (!isRandomInspectionVerifyMode && isRandomInspectionAlreadyCompleted) ||
                   (
                     isRandomInspectionVerifyMode
                       ? randomInspectionPendingVerificationCount <= 0
@@ -3474,6 +3492,8 @@ function QuickActions({
                         ? `Aplicar verificacion (${randomInspectionPendingVerificationCount} pendiente(s))`
                         : 'Sin pendientes por verificar'
                     )
+                    : isRandomInspectionAlreadyCompleted
+                      ? 'Inspeccion ya enviada'
                     : (
                       randomInspectionMismatchCount > 0
                         ? `Guardar inspecci\u00f3n (${randomInspectionMismatchCount} con diferencia)`

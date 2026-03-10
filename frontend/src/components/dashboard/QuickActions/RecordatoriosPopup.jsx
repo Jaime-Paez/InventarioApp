@@ -1806,6 +1806,7 @@ function RecordatoriosPopup({
                           normalizeId(openingInspectionReminderId) === currentReminderId
                         )
                         const canOpenRandomInspectionAction = (
+                          status.className === 'pending' &&
                           (
                             isRandomInspectionDailyReminder(reminder) ||
                             isRandomInspectionVerifyReminder(reminder)

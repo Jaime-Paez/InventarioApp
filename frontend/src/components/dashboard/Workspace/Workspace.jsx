@@ -22,8 +22,8 @@ import { API_URL, authFetch } from '../../../utils/api'
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const INCONVENIENTES_TAB = 'Inconvenientes'
 const INCONVENIENTES_TAB_LEGACY = 'Traslados con inconvenientes'
-const INVENTORY_REVIEW_TAB = 'Revision de inventario por sucursal'
-const INVENTORY_REVIEW_TAB_LEGACY = 'Revision inventario'
+const INVENTORY_REVIEW_TAB = 'Revision inventario'
+const INVENTORY_REVIEW_TAB_LEGACY = 'Revision de inventario por sucursal'
 const MOVIMIENTOS_SCOPE_BY_TAB = {
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',

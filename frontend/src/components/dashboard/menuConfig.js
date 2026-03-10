@@ -51,7 +51,7 @@ export const MENU_STRUCTURE = [
   },
   { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
-  { label: 'Revision de inventario por sucursal', icon: ClipboardCheck, moduleKey: 'usuarios' },
+  { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios' },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
 ]
 
