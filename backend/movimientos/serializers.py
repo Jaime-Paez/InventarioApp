@@ -408,6 +408,32 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
     def _resolve_estado_name(self, estado):
         return normalize_name(getattr(estado, "nombre", ""))
 
+    def _resolve_estado_recibido(self):
+        recibido = (
+            EstadoMovimiento.objects.filter(nombre__iexact="recibido")
+            .order_by("id")
+            .first()
+        )
+        if recibido is not None:
+            return recibido
+
+        fallback = (
+            EstadoMovimiento.objects.filter(nombre__icontains="recib")
+            .exclude(nombre__icontains="parcial")
+            .order_by("id")
+            .first()
+        )
+        if fallback is not None:
+            return fallback
+
+        raise serializers.ValidationError(
+            {
+                "estado_movimiento_id": (
+                    "No existe el estado Recibido configurado en el sistema."
+                )
+            }
+        )
+
     def _get_linked_solicitud_traslado(self, movimiento):
         if movimiento is None:
             return None
@@ -500,16 +526,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                     }
                 )
 
-            if subtipo_key in {"compra_local", "importacion"}:
-                allowed = {"en camino", "recibido", "parcialmente recibido"}
-                if estado_name not in allowed:
-                    raise serializers.ValidationError(
-                        {
-                            "estado_movimiento_id": (
-                                "En importacion o compra local solo se permite En camino, Recibido o Parcialmente recibido."
-                            )
-                        }
-                    )
+            if subtipo_key in {"compra_local", "importacion", "devolucion"}:
+                attrs["estado_movimiento"] = self._resolve_estado_recibido()
             return attrs
 
         if not tipo_name.startswith("sal"):
@@ -960,6 +978,20 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             return
 
         factor = -1 if reverse else 1
+
+        if tipo_name.startswith("ent"):
+            should_add_on_entry = (
+                subtipo_key in {"compra_local", "importacion", "devolucion"}
+                and estado_name in {"recibido", "parcialmente recibido"}
+            )
+            if should_add_on_entry:
+                for producto_id, cantidad in quantities.items():
+                    self._adjust_stock(
+                        sucursal=getattr(movimiento, "sucursal", None),
+                        producto_id=producto_id,
+                        delta=(cantidad * factor),
+                    )
+                return
 
         if subtipo_key == "venta" and tipo_name.startswith("sal"):
             if estado_name != "vendido":

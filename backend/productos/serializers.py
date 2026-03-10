@@ -1,3 +1,8 @@
+from datetime import date
+
+from django.db import OperationalError, ProgrammingError, connection
+from django.db.models import Avg, Count, Max, Q, Sum
+from django.utils import timezone
 from rest_framework import serializers
 
 from casa_comercial.models import CasaComercial
@@ -5,10 +10,125 @@ from casa_comercial.serializers import CasaComercialSerializer
 from inventario.models import Bodega, SubDivision, Sucursal
 from marcas.models import Marca
 from marcas.serializers import MarcaSerializer
+from movimientos.models import DetalleMovimiento
 from usuarios.models import RolPermiso
 from usuarios.sucursal_scope import apply_sucursal_scope
 
-from .models import OEM, OEMProducto, Producto, ProductoAlterno
+from .models import OEM, OEMProducto, Producto, ProductoAlterno, ProductoCalificacion
+
+NEGATIVE_STARS_THRESHOLD = 2
+INACTIVITY_PENALTY_STEP = 0.5
+INACTIVITY_PENALTY_INTERVAL_MONTHS = 2
+
+
+def _full_months_between(start_date, end_date):
+    if start_date is None or end_date is None:
+        return 0
+
+    if start_date > end_date:
+        return 0
+
+    months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+    if end_date.day < start_date.day:
+        months -= 1
+    return max(months, 0)
+
+
+def _normalize_rating(value):
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(max(0.0, min(5.0, numeric)), 1)
+
+
+def _table_exists(table_name):
+    try:
+        return table_name in connection.introspection.table_names()
+    except Exception:
+        return False
+
+
+def build_producto_rating_summary(producto):
+    comment_stats = {"average": None, "total": 0, "negatives": 0}
+    if _table_exists(ProductoCalificacion._meta.db_table):
+        try:
+            comment_stats = producto.calificaciones.aggregate(
+                average=Avg("estrellas"),
+                total=Count("id"),
+                negatives=Count("id", filter=Q(estrellas__lte=NEGATIVE_STARS_THRESHOLD)),
+            )
+        except (ProgrammingError, OperationalError):
+            # Keep product detail available even if rating schema is not ready.
+            comment_stats = {"average": None, "total": 0, "negatives": 0}
+    comment_count = int(comment_stats.get("total") or 0)
+    negative_count = int(comment_stats.get("negatives") or 0)
+    comment_average = _normalize_rating(comment_stats.get("average"))
+
+    sales_stats = DetalleMovimiento.objects.filter(
+        producto_id=producto.id,
+        movimiento_inventario__tipo_movimiento__nombre__istartswith="sal",
+        movimiento_inventario__sub_tipo_movimiento__nombre__icontains="vent",
+        movimiento_inventario__estado_movimiento__nombre__iexact="vendido",
+    ).aggregate(
+        sales_count=Count("movimiento_inventario_id", distinct=True),
+        sold_quantity=Sum("cantidad"),
+        last_sale_date=Max("movimiento_inventario__fecha"),
+    )
+    sales_count = int(sales_stats.get("sales_count") or 0)
+    sold_quantity = int(sales_stats.get("sold_quantity") or 0)
+    last_sale_date = sales_stats.get("last_sale_date")
+
+    today = timezone.localdate()
+    reference_date = last_sale_date or (producto.creado_en.date() if producto.creado_en else today)
+    months_without_sales = _full_months_between(reference_date, today)
+
+    if sales_count > 0 and negative_count == 0:
+        base_rating = 5.0
+    elif comment_count > 0 and comment_average is not None:
+        base_rating = float(comment_average)
+    else:
+        base_rating = 5.0
+
+    negative_penalty = 0.0
+    negative_ratio = 0.0
+    if comment_count > 0 and negative_count > 0:
+        negative_ratio = negative_count / comment_count
+        if negative_ratio >= 0.7:
+            negative_penalty = 1.2
+        elif negative_ratio >= 0.5:
+            negative_penalty = 0.9
+        elif negative_ratio >= 0.3:
+            negative_penalty = 0.6
+        else:
+            negative_penalty = 0.3
+
+    inactivity_penalty = 0.0
+    if months_without_sales >= 1:
+        steps = ((months_without_sales - 1) // INACTIVITY_PENALTY_INTERVAL_MONTHS) + 1
+        inactivity_penalty = float(steps) * INACTIVITY_PENALTY_STEP
+
+    rating = _normalize_rating(base_rating - negative_penalty - inactivity_penalty)
+    if rating is None:
+        rating = 0.0
+
+    return {
+        "rating": rating,
+        "base_rating": _normalize_rating(base_rating) or 0.0,
+        "comment_average": comment_average,
+        "comment_count": comment_count,
+        "negative_comments": negative_count,
+        "negative_ratio": round(negative_ratio, 3),
+        "negative_penalty": round(negative_penalty, 2),
+        "sales_count": sales_count,
+        "sold_quantity": sold_quantity,
+        "last_sale_date": last_sale_date.isoformat() if isinstance(last_sale_date, date) else None,
+        "months_without_sales": months_without_sales,
+        "inactivity_penalty": round(inactivity_penalty, 2),
+        "computed_at": timezone.now().isoformat(),
+    }
 
 
 class OEMSerializer(serializers.ModelSerializer):
@@ -163,11 +283,82 @@ class ProductoSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class ProductoCalificacionSerializer(serializers.ModelSerializer):
+    usuario_id = serializers.IntegerField(source="usuario.id", read_only=True)
+    usuario_nombre = serializers.SerializerMethodField(read_only=True)
+    producto_id = serializers.IntegerField(source="producto.id", read_only=True)
+
+    class Meta:
+        model = ProductoCalificacion
+        fields = [
+            "id",
+            "producto_id",
+            "usuario_id",
+            "usuario_nombre",
+            "estrellas",
+            "comentario",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "producto_id",
+            "usuario_id",
+            "usuario_nombre",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_usuario_nombre(self, obj):
+        user = getattr(obj, "usuario", None)
+        if user is None:
+            return "Usuario"
+
+        full_name = str(getattr(user, "get_full_name", lambda: "")() or "").strip()
+        if full_name:
+            return full_name
+        first_name = str(getattr(user, "first_name", "") or "").strip()
+        if first_name:
+            return first_name
+        email = str(getattr(user, "email", "") or "").strip()
+        if email:
+            return email
+        return "Usuario"
+
+    def validate_estrellas(self, value):
+        try:
+            estrellas = int(value)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError("La calificacion debe ser un numero entre 1 y 5.")
+        if estrellas < 1 or estrellas > 5:
+            raise serializers.ValidationError("La calificacion debe estar entre 1 y 5 estrellas.")
+        return estrellas
+
+    def validate_comentario(self, value):
+        text = str(value or "").strip()
+        if len(text) > 1200:
+            raise serializers.ValidationError("El comentario no puede superar 1200 caracteres.")
+        return text
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        producto = self.context.get("producto")
+        if producto is None:
+            raise serializers.ValidationError({"producto": "No se encontro el producto objetivo."})
+        user = request.user if request and request.user and request.user.is_authenticated else None
+        return ProductoCalificacion.objects.create(
+            producto=producto,
+            usuario=user,
+            **validated_data,
+        )
+
+
 class ProductoDetailSerializer(ProductoSerializer):
     inventario_context = serializers.SerializerMethodField()
+    calificacion_resumen = serializers.SerializerMethodField()
 
     class Meta(ProductoSerializer.Meta):
-        fields = ProductoSerializer.Meta.fields + ["inventario_context"]
+        fields = ProductoSerializer.Meta.fields + ["inventario_context", "calificacion_resumen"]
 
     def _serialize_sucursal(self, sucursal):
         if sucursal is None:
@@ -394,3 +585,6 @@ class ProductoDetailSerializer(ProductoSerializer):
             "subdivisions": subdivisions,
             "inventario_entries": inventory_entries,
         }
+
+    def get_calificacion_resumen(self, obj):
+        return build_producto_rating_summary(obj)

@@ -374,6 +374,7 @@ function EntradaDetails({
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
   const isCompraEntrada = selectedSubTipoName.includes('compra') || selectedSubTipoName.includes('import')
+  const isAlwaysReceivedEntrada = isDevolucion || isCompraEntrada
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'No. de Traslado' : (isCompraEntrada ? 'No. de Compra' : 'No. de Factura')
 
@@ -394,9 +395,9 @@ function EntradaDetails({
   }, [estados])
 
   const compraEstadoOptions = useMemo(() => {
-    const allowed = new Set(['en camino', 'recibido', 'parcialmente recibido'])
-    const filtered = estados.filter((estado) => allowed.has(normalizeValue(estado?.nombre)))
-    return filtered.length ? filtered : estados
+    const recibidos = estados.filter((estado) => normalizeValue(estado?.nombre) === 'recibido')
+    if (recibidos.length) return recibidos
+    return estados.filter((estado) => normalizeValue(estado?.nombre).includes('recib'))
   }, [estados])
 
   const estadoOptions = useMemo(() => {
@@ -438,11 +439,6 @@ function EntradaDetails({
     }
 
     if (isCompraEntrada) {
-      const preferredOrder = ['en camino', 'parcialmente recibido', 'recibido']
-      for (const key of preferredOrder) {
-        const matched = estadoOptions.find((estado) => normalizeValue(estado?.nombre) === key)
-        if (matched?.id) return String(matched.id)
-      }
       return String(estadoOptions[0].id)
     }
 
@@ -2026,7 +2022,7 @@ function EntradaDetails({
                       />
                     </label>
 
-                    {isDevolucion && (
+                    {isAlwaysReceivedEntrada && (
                       <label className="create-user__field">
                         <span>Estado del movimiento</span>
                         <input type="text" value={selectedEstadoName} readOnly disabled />
@@ -2068,7 +2064,7 @@ function EntradaDetails({
                       </label>
                     )}
 
-                    {!isDevolucion && !isTraslado && !isVenta && (
+                    {!isAlwaysReceivedEntrada && !isTraslado && !isVenta && (
                       <label className="create-user__field">
                         <span>Estado del movimiento</span>
                         <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={editorDisabled}>

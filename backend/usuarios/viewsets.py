@@ -48,7 +48,9 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     """Gestión de usuarios usando el modelo de Django."""
 
     queryset = (
-        get_user_model().objects.prefetch_related(
+        get_user_model()
+        .objects.select_related("preferencia_operativa")
+        .prefetch_related(
             "roles__permisos",
             "asignaciones__sucursal",
             "alcances_sucursal__sucursal",

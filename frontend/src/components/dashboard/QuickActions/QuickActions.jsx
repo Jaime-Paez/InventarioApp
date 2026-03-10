@@ -8,6 +8,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
+  RANDOM_INSPECTION_VERIFY_KIND,
   TRANSFER_RECEIPT_NOTIFICATION_KIND,
   buildUserIdSet,
   createReminderId,
@@ -40,6 +41,8 @@ const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
 const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-state'
+const RANDOM_INSPECTION_DETAIL_ENDPOINT = `${API_URL}/recordatorios/inspeccion-aleatoria`
+const RANDOM_INSPECTION_VERIFY_ITEM_ENDPOINT = `${API_URL}/recordatorios/inspeccion-aleatoria/items`
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
@@ -202,6 +205,7 @@ function QuickActions({
   const [isInTransitShipmentsOpen, setIsInTransitShipmentsOpen] = useState(false)
   const [isTransferSendModalOpen, setIsTransferSendModalOpen] = useState(false)
   const [isReceiveShipmentModalOpen, setIsReceiveShipmentModalOpen] = useState(false)
+  const [isRandomInspectionModalOpen, setIsRandomInspectionModalOpen] = useState(false)
   const [reminders, setReminders] = useState(() => readRemindersFromStorage())
   const [pendingShipments, setPendingShipments] = useState([])
   const [inTransitShipments, setInTransitShipments] = useState([])
@@ -217,6 +221,12 @@ function QuickActions({
   const [receiveShipmentDraftByProductId, setReceiveShipmentDraftByProductId] = useState({})
   const [receiveShipmentSubmitting, setReceiveShipmentSubmitting] = useState(false)
   const [receiveShipmentError, setReceiveShipmentError] = useState('')
+  const [activeRandomInspection, setActiveRandomInspection] = useState(null)
+  const [randomInspectionDraftByItemId, setRandomInspectionDraftByItemId] = useState({})
+  const [randomInspectionMode, setRandomInspectionMode] = useState('review')
+  const [randomInspectionLoading, setRandomInspectionLoading] = useState(false)
+  const [randomInspectionSubmitting, setRandomInspectionSubmitting] = useState(false)
+  const [randomInspectionError, setRandomInspectionError] = useState('')
   const [activeReceiveLocationDropdown, setActiveReceiveLocationDropdown] = useState({
     productId: '',
     field: '',
@@ -1055,6 +1065,7 @@ function QuickActions({
       isReminderModalOpen ||
       isTransferSendModalOpen ||
       isReceiveShipmentModalOpen ||
+      isRandomInspectionModalOpen ||
       typeof window === 'undefined'
     ) {
       return []
@@ -1126,6 +1137,7 @@ function QuickActions({
   }, [
     clockTick,
     isReminderModalOpen,
+    isRandomInspectionModalOpen,
     isReceiveShipmentModalOpen,
     isTransferSendModalOpen,
     urgentProgressById,
@@ -1356,6 +1368,60 @@ function QuickActions({
         }
       }),
     [receiveShipmentDraftByProductId]
+  )
+
+  const randomInspectionRows = useMemo(
+    () =>
+      (Array.isArray(activeRandomInspection?.items) ? activeRandomInspection.items : []).map((item) => {
+        const itemId = normalizeId(item?.id)
+        const draft = randomInspectionDraftByItemId?.[itemId] || {}
+        const estadoRevision = String(draft?.estado_revision || '').trim().toLowerCase() === 'no_coincide'
+          ? 'no_coincide'
+          : 'coincide'
+        const expectedQty = toPositiveInt(item?.cantidad_esperada, 0)
+        const reportedQty = toPositiveInt(
+          draft?.cantidad_reportada,
+          item?.cantidad_reportada == null
+            ? expectedQty
+            : toPositiveInt(item?.cantidad_reportada, expectedQty)
+        )
+        return {
+          ...item,
+          row_id: itemId,
+          estado_revision: estadoRevision,
+          cantidad_esperada: expectedQty,
+          cantidad_reportada: reportedQty,
+          observacion: String(draft?.observacion || item?.observacion || '').trim(),
+        }
+      }),
+    [activeRandomInspection, randomInspectionDraftByItemId]
+  )
+
+  const isRandomInspectionVerifyMode = randomInspectionMode === 'verify'
+
+  const randomInspectionRowsToVerify = useMemo(
+    () =>
+      randomInspectionRows.filter(
+        (row) => String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide'
+      ),
+    [randomInspectionRows]
+  )
+
+  const randomInspectionPendingVerificationCount = useMemo(
+    () =>
+      randomInspectionRowsToVerify.filter((row) => {
+        const verificationState = String(row?.verificacion_estado || '').trim().toLowerCase()
+        return verificationState === 'pendiente'
+      }).length,
+    [randomInspectionRowsToVerify]
+  )
+
+  const randomInspectionMismatchCount = useMemo(
+    () =>
+      randomInspectionRows.filter(
+        (row) => String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide'
+      ).length,
+    [randomInspectionRows]
   )
 
   const receiveShipmentTotalMissing = useMemo(
@@ -1710,6 +1776,129 @@ function QuickActions({
     setReceiveShipmentError('')
     setReceiveShipmentSubmitting(false)
   }, [])
+
+  const closeRandomInspectionModal = useCallback(() => {
+    setIsRandomInspectionModalOpen(false)
+    setActiveRandomInspection(null)
+    setRandomInspectionDraftByItemId({})
+    setRandomInspectionMode('review')
+    setRandomInspectionError('')
+    setRandomInspectionSubmitting(false)
+    setRandomInspectionLoading(false)
+  }, [])
+
+  const buildRandomInspectionDraft = useCallback((inspection) => {
+    const rows = Array.isArray(inspection?.items) ? inspection.items : []
+    return rows.reduce((acc, item) => {
+      const itemId = normalizeId(item?.id)
+      if (!itemId) return acc
+      const expectedQty = toPositiveInt(item?.cantidad_esperada, 0)
+      const reportedQty = item?.cantidad_reportada == null
+        ? expectedQty
+        : toPositiveInt(item?.cantidad_reportada, expectedQty)
+      const normalizedState = String(item?.estado_revision || '').trim().toLowerCase()
+      const estadoRevision = normalizedState === 'no_coincide'
+        ? 'no_coincide'
+        : 'coincide'
+      acc[itemId] = {
+        id: itemId,
+        estado_revision: estadoRevision,
+        cantidad_reportada: reportedQty,
+        observacion: String(item?.observacion || '').trim(),
+      }
+      return acc
+    }, {})
+  }, [])
+
+  const buildRandomInspectionVerificationDraft = useCallback((inspection) => {
+    const rows = Array.isArray(inspection?.items) ? inspection.items : []
+    return rows.reduce((acc, item) => {
+      const itemId = normalizeId(item?.id)
+      if (!itemId) return acc
+      const reviewState = String(item?.estado_revision || '').trim().toLowerCase()
+      if (reviewState !== 'no_coincide') return acc
+      const verificationState = String(item?.verificacion_estado || '').trim().toLowerCase()
+      acc[itemId] = {
+        id: itemId,
+        accion: verificationState === 'rechazada' ? 'rechazar' : 'aprobar',
+        cantidad_confirmada: toPositiveInt(
+          item?.cantidad_confirmada,
+          item?.cantidad_reportada == null
+            ? toPositiveInt(item?.cantidad_esperada, 0)
+            : toPositiveInt(item?.cantidad_reportada, 0)
+        ),
+        nota_verificacion: String(item?.nota_verificacion || '').trim(),
+      }
+      return acc
+    }, {})
+  }, [])
+
+  const fetchRandomInspectionDetail = useCallback(
+    async (inspectionId) => {
+      const normalizedInspectionId = normalizeId(inspectionId)
+      if (!token || !normalizedInspectionId) return null
+      const response = await authFetch(
+        `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(normalizedInspectionId)}/`,
+        {},
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(
+          String(payload?.detail || '').trim() || 'No se pudo cargar la inspecciÃ³n aleatoria.'
+        )
+      }
+      const inspection = payload?.inspection
+      if (!inspection || typeof inspection !== 'object') {
+        throw new Error('La inspecciÃ³n aleatoria no tiene datos vÃ¡lidos.')
+      }
+      return inspection
+    },
+    [token]
+  )
+
+  const handleOpenRandomInspectionFromReminder = useCallback(
+    async (reminder) => {
+      if (!token) return false
+      const inspectionId = normalizeId(reminder?.context?.id)
+      if (!inspectionId) {
+        showErrorToast('No se encontrÃ³ la inspecciÃ³n asociada a este recordatorio.')
+        return false
+      }
+
+      const reminderKind = normalizeId(reminder?.kind)
+      const isVerifyReminder = reminderKind === RANDOM_INSPECTION_VERIFY_KIND
+
+      setRandomInspectionError('')
+      setRandomInspectionLoading(true)
+      setRandomInspectionMode(isVerifyReminder ? 'verify' : 'review')
+      setIsRandomInspectionModalOpen(true)
+      try {
+        const inspection = await fetchRandomInspectionDetail(inspectionId)
+        setActiveRandomInspection(inspection)
+        setRandomInspectionDraftByItemId(
+          isVerifyReminder
+            ? buildRandomInspectionVerificationDraft(inspection)
+            : buildRandomInspectionDraft(inspection)
+        )
+        return true
+      } catch (error) {
+        closeRandomInspectionModal()
+        showErrorToast(error?.message || 'No se pudo abrir la inspecciÃ³n aleatoria.')
+        return false
+      } finally {
+        setRandomInspectionLoading(false)
+      }
+    },
+    [
+      buildRandomInspectionDraft,
+      buildRandomInspectionVerificationDraft,
+      closeRandomInspectionModal,
+      fetchRandomInspectionDetail,
+      showErrorToast,
+      token,
+    ]
+  )
 
   useEffect(
     () => () => {
@@ -2305,6 +2494,235 @@ function QuickActions({
     })
   }, [])
 
+  const handleRandomInspectionDraftFieldChange = useCallback((itemId, field, value) => {
+    const normalizedItemId = normalizeId(itemId)
+    if (!normalizedItemId) return
+
+    setRandomInspectionDraftByItemId((prev) => {
+      const current = prev?.[normalizedItemId] || {}
+      const next = {
+        ...current,
+        id: normalizedItemId,
+      }
+
+      if (field === 'estado_revision') {
+        next.estado_revision = String(value || '').trim().toLowerCase() === 'no_coincide'
+          ? 'no_coincide'
+          : 'coincide'
+      } else if (field === 'cantidad_reportada') {
+        next.cantidad_reportada = toPositiveInt(value, 0)
+      } else if (field === 'observacion') {
+        next.observacion = String(value || '')
+      } else if (field === 'accion') {
+        next.accion = String(value || '').trim().toLowerCase() === 'rechazar'
+          ? 'rechazar'
+          : 'aprobar'
+      } else if (field === 'cantidad_confirmada') {
+        next.cantidad_confirmada = toPositiveInt(value, 0)
+      } else if (field === 'nota_verificacion') {
+        next.nota_verificacion = String(value || '')
+      }
+
+      return {
+        ...prev,
+        [normalizedItemId]: next,
+      }
+    })
+  }, [])
+
+  const handleSubmitRandomInspection = useCallback(
+    async () => {
+      const inspectionId = normalizeId(activeRandomInspection?.id)
+      if (!token || !inspectionId) return
+
+      if (!randomInspectionRows.length) {
+        setRandomInspectionError('No hay productos para revisar en esta inspecciÃ³n.')
+        return
+      }
+
+      const itemsPayload = []
+      for (const row of randomInspectionRows) {
+        const rowId = normalizeId(row?.row_id || row?.id)
+        if (!rowId) {
+          setRandomInspectionError('Se encontrÃ³ un item invÃ¡lido en la inspecciÃ³n.')
+          return
+        }
+
+        const estadoRevision = String(row?.estado_revision || '').trim().toLowerCase()
+        if (estadoRevision !== 'coincide' && estadoRevision !== 'no_coincide') {
+          setRandomInspectionError('Debes indicar si cada producto coincide o no coincide.')
+          return
+        }
+
+        const payloadRow = {
+          id: Number(rowId),
+          estado_revision: estadoRevision,
+          observacion: String(row?.observacion || '').trim(),
+        }
+        if (estadoRevision === 'no_coincide') {
+          payloadRow.cantidad_reportada = toPositiveInt(row?.cantidad_reportada, -1)
+          if (payloadRow.cantidad_reportada < 0) {
+            setRandomInspectionError(
+              `Debes indicar la cantidad real para ${row?.producto_nombre || row?.producto_codigo || `item ${rowId}`}.`
+            )
+            return
+          }
+        } else {
+          payloadRow.cantidad_reportada = toPositiveInt(row?.cantidad_esperada, 0)
+        }
+        itemsPayload.push(payloadRow)
+      }
+
+      setRandomInspectionError('')
+      setRandomInspectionSubmitting(true)
+      try {
+        const response = await authFetch(
+          `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/responder/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ items: itemsPayload }),
+          },
+          token
+        )
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(
+            String(payload?.detail || '').trim() || 'No se pudo guardar la inspecciÃ³n.'
+          )
+        }
+
+        const mismatchCount = toPositiveInt(payload?.mismatch_count, 0)
+        if (mismatchCount > 0) {
+          toast.current?.show({
+            severity: 'warn',
+            summary: 'InspecciÃ³n registrada',
+            detail: `Se reportaron ${mismatchCount} diferencia(s). Se notificÃ³ a administraciÃ³n para verificar.`,
+            life: 4200,
+          })
+        } else {
+          toast.current?.show({
+            severity: 'success',
+            summary: 'InspecciÃ³n registrada',
+            detail: 'La inspecciÃ³n se guardÃ³ correctamente.',
+            life: 3200,
+          })
+        }
+
+        closeRandomInspectionModal()
+        const remoteReminders = await fetchRemindersFromBackend(token)
+        setReminders(remoteReminders)
+      } catch (error) {
+        setRandomInspectionError(
+          error?.message || 'No se pudo guardar la inspecciÃ³n.'
+        )
+      } finally {
+        setRandomInspectionSubmitting(false)
+      }
+    },
+    [
+      activeRandomInspection,
+      closeRandomInspectionModal,
+      randomInspectionRows,
+      token,
+    ]
+  )
+
+  const handleVerifyRandomInspection = useCallback(
+    async () => {
+      const inspectionId = normalizeId(activeRandomInspection?.id)
+      if (!token || !inspectionId) return
+
+      if (!randomInspectionRowsToVerify.length) {
+        setRandomInspectionError('Esta inspeccion no tiene diferencias por verificar.')
+        return
+      }
+
+      const pendingRows = randomInspectionRowsToVerify.filter((row) => {
+        const verificationState = String(row?.verificacion_estado || '').trim().toLowerCase()
+        return verificationState === 'pendiente'
+      })
+      if (!pendingRows.length) {
+        setRandomInspectionError('No hay diferencias pendientes de verificacion.')
+        return
+      }
+
+      setRandomInspectionError('')
+      setRandomInspectionSubmitting(true)
+      try {
+        let latestInspection = activeRandomInspection
+        for (const row of pendingRows) {
+          const rowId = normalizeId(row?.row_id || row?.id)
+          if (!rowId) continue
+
+          const draft = randomInspectionDraftByItemId?.[rowId] || {}
+          const action = String(draft?.accion || '').trim().toLowerCase() === 'rechazar'
+            ? 'rechazar'
+            : 'aprobar'
+          const payloadBody = {
+            accion: action,
+            nota: String(draft?.nota_verificacion || '').trim(),
+          }
+
+          if (action === 'aprobar') {
+            payloadBody.cantidad_confirmada = toPositiveInt(
+              draft?.cantidad_confirmada,
+              row?.cantidad_reportada == null
+                ? toPositiveInt(row?.cantidad_esperada, 0)
+                : toPositiveInt(row?.cantidad_reportada, 0)
+            )
+          }
+
+          const response = await authFetch(
+            `${RANDOM_INSPECTION_VERIFY_ITEM_ENDPOINT}/${encodeURIComponent(rowId)}/verificar/`,
+            {
+              method: 'POST',
+              body: JSON.stringify(payloadBody),
+            },
+            token
+          )
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) {
+            throw new Error(
+              String(payload?.detail || '').trim() || 'No se pudo verificar un item de la inspeccion.'
+            )
+          }
+
+          if (payload?.inspection && typeof payload.inspection === 'object') {
+            latestInspection = payload.inspection
+          }
+        }
+
+        if (latestInspection && typeof latestInspection === 'object') {
+          setActiveRandomInspection(latestInspection)
+        }
+
+        const remoteReminders = await fetchRemindersFromBackend(token)
+        setReminders(remoteReminders)
+
+        toast.current?.show({
+          severity: 'success',
+          summary: 'Verificacion completada',
+          detail: 'Se aplicaron las verificaciones de inventario reportadas.',
+          life: 3200,
+        })
+        closeRandomInspectionModal()
+      } catch (error) {
+        setRandomInspectionError(
+          error?.message || 'No se pudo completar la verificacion de la inspeccion.'
+        )
+      } finally {
+        setRandomInspectionSubmitting(false)
+      }
+    },
+    [
+      activeRandomInspection,
+      closeRandomInspectionModal,
+      randomInspectionDraftByItemId,
+      randomInspectionRowsToVerify,
+      token,
+    ]
+  )
+
   const handleSubmitShipmentReception = useCallback(
     async () => {
       if (!token || !activeInTransitShipment) return
@@ -2714,7 +3132,284 @@ function QuickActions({
         onTransferDecisionAccepted={onTransferDecisionAccepted}
         onOpenTransferRequestInEntradas={onOpenTransferRequestInEntradas}
         onOpenTransferRequestInSalidas={onOpenTransferRequestInSalidas}
+        onOpenRandomInspection={handleOpenRandomInspectionFromReminder}
       />
+
+      {isRandomInspectionModalOpen && (
+        <div
+          className="quick-actions__inspection-overlay"
+          onMouseDown={() => {
+            if (randomInspectionSubmitting) return
+            closeRandomInspectionModal()
+          }}
+        >
+          <div
+            className="quick-actions__inspection-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="InspecciÃ³n aleatoria diaria"
+          >
+            <header className="quick-actions__inspection-head">
+              <div>
+                <h4>{isRandomInspectionVerifyMode ? 'Verificacion de inspeccion aleatoria' : 'Inspeccion aleatoria diaria'}</h4>
+                <p>
+                  {activeRandomInspection?.fecha_programada
+                    ? `Fecha: ${String(activeRandomInspection.fecha_programada).trim()}`
+                    : (isRandomInspectionVerifyMode ? 'Revision administrativa de diferencias' : 'Revision diaria de inventario')}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="quick-actions__inspection-close"
+                onClick={closeRandomInspectionModal}
+                disabled={randomInspectionSubmitting}
+                aria-label="Cerrar inspecciÃ³n"
+              >
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="quick-actions__inspection-body">
+              {randomInspectionLoading ? (
+                <p className="quick-actions__inspection-loading">
+                  <Loader2 size={14} />
+                  Cargando inspeccion...
+                </p>
+              ) : isRandomInspectionVerifyMode ? (
+                <div className="quick-actions__inspection-list">
+                  {!randomInspectionRowsToVerify.length && (
+                    <p className="quick-actions__inspection-empty">
+                      No hay diferencias reportadas para verificar.
+                    </p>
+                  )}
+
+                  {randomInspectionRowsToVerify.map((row) => {
+                    const rowId = normalizeId(row?.row_id || row?.id)
+                    const verificationState = String(row?.verificacion_estado || '').trim().toLowerCase()
+                    const isResolved = verificationState === 'aprobada' || verificationState === 'rechazada'
+                    const draft = randomInspectionDraftByItemId?.[rowId] || {}
+                    const selectedAction = String(draft?.accion || '').trim().toLowerCase() === 'rechazar'
+                      ? 'rechazar'
+                      : 'aprobar'
+                    const confirmedQty = toPositiveInt(
+                      draft?.cantidad_confirmada,
+                      row?.cantidad_reportada == null
+                        ? toPositiveInt(row?.cantidad_esperada, 0)
+                        : toPositiveInt(row?.cantidad_reportada, 0)
+                    )
+
+                    return (
+                      <article key={`inspection-row-${rowId}`} className="quick-actions__inspection-item">
+                        <div className="quick-actions__inspection-item-head">
+                          <strong>
+                            {row?.producto_codigo ? `${row.producto_codigo} - ` : ''}
+                            {row?.producto_nombre || `Producto ${rowId}`}
+                          </strong>
+                          <span>{String(row?.sucursal_nombre || 'Sucursal').trim()}</span>
+                        </div>
+
+                        <div className="quick-actions__inspection-item-expected">
+                          Inventario esperado: <strong>{toPositiveInt(row?.cantidad_esperada, 0)}</strong>
+                          {' | '}
+                          Reportado: <strong>{toPositiveInt(row?.cantidad_reportada, 0)}</strong>
+                        </div>
+
+                        <div className="quick-actions__inspection-grid">
+                          <label>
+                            <span>Decision</span>
+                            <select
+                              value={selectedAction}
+                              onChange={(event) =>
+                                handleRandomInspectionDraftFieldChange(
+                                  rowId,
+                                  'accion',
+                                  event.target.value
+                                )}
+                              disabled={randomInspectionSubmitting || isResolved}
+                            >
+                              <option value="aprobar">Aprobar ajuste</option>
+                              <option value="rechazar">Rechazar ajuste</option>
+                            </select>
+                          </label>
+
+                          <label>
+                            <span>Cantidad confirmada</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={confirmedQty}
+                              onChange={(event) =>
+                                handleRandomInspectionDraftFieldChange(
+                                  rowId,
+                                  'cantidad_confirmada',
+                                  event.target.value
+                                )}
+                              disabled={
+                                randomInspectionSubmitting ||
+                                isResolved ||
+                                selectedAction !== 'aprobar'
+                              }
+                            />
+                          </label>
+                        </div>
+
+                        <label className="quick-actions__inspection-note">
+                          <span>Nota de verificacion (opcional)</span>
+                          <textarea
+                            rows={2}
+                            value={String(draft?.nota_verificacion || '')}
+                            onChange={(event) =>
+                              handleRandomInspectionDraftFieldChange(
+                                rowId,
+                                'nota_verificacion',
+                                event.target.value
+                              )}
+                            disabled={randomInspectionSubmitting || isResolved}
+                          />
+                        </label>
+
+                        {isResolved && (
+                          <p className="quick-actions__inspection-verify-state">
+                            Verificado: {verificationState === 'aprobada' ? 'aprobado' : 'rechazado'}
+                          </p>
+                        )}
+                      </article>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="quick-actions__inspection-list">
+                  {!randomInspectionRows.length && (
+                    <p className="quick-actions__inspection-empty">No hay productos por revisar.</p>
+                  )}
+
+                  {randomInspectionRows.map((row) => {
+                    const rowId = normalizeId(row?.row_id || row?.id)
+                    const isMismatch = String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide'
+                    return (
+                      <article key={`inspection-row-${rowId}`} className="quick-actions__inspection-item">
+                        <div className="quick-actions__inspection-item-head">
+                          <strong>
+                            {row?.producto_codigo ? `${row.producto_codigo} - ` : ''}
+                            {row?.producto_nombre || `Producto ${rowId}`}
+                          </strong>
+                          <span>{String(row?.sucursal_nombre || 'Sucursal').trim()}</span>
+                        </div>
+
+                        <div className="quick-actions__inspection-item-expected">
+                          Inventario esperado: <strong>{toPositiveInt(row?.cantidad_esperada, 0)}</strong>
+                        </div>
+
+                        <div className="quick-actions__inspection-grid">
+                          <label>
+                            <span>Resultado</span>
+                            <select
+                              value={String(row?.estado_revision || 'coincide')}
+                              onChange={(event) =>
+                                handleRandomInspectionDraftFieldChange(
+                                  rowId,
+                                  'estado_revision',
+                                  event.target.value
+                                )}
+                              disabled={randomInspectionSubmitting}
+                            >
+                              <option value="coincide">Si coincide con inventario</option>
+                              <option value="no_coincide">No coincide</option>
+                            </select>
+                          </label>
+
+                          <label>
+                            <span>Cantidad real</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={toPositiveInt(
+                                row?.cantidad_reportada,
+                                toPositiveInt(row?.cantidad_esperada, 0)
+                              )}
+                              onChange={(event) =>
+                                handleRandomInspectionDraftFieldChange(
+                                  rowId,
+                                  'cantidad_reportada',
+                                  event.target.value
+                                )}
+                              disabled={randomInspectionSubmitting || !isMismatch}
+                            />
+                          </label>
+                        </div>
+
+                        <label className="quick-actions__inspection-note">
+                          <span>Observacion (opcional)</span>
+                          <textarea
+                            rows={2}
+                            value={String(row?.observacion || '')}
+                            onChange={(event) =>
+                              handleRandomInspectionDraftFieldChange(
+                                rowId,
+                                'observacion',
+                                event.target.value
+                              )}
+                            disabled={randomInspectionSubmitting}
+                          />
+                        </label>
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+              {randomInspectionError && (
+                <p className="quick-actions__inspection-error">{randomInspectionError}</p>
+              )}
+            </div>
+
+            <footer className="quick-actions__inspection-actions">
+              <button
+                type="button"
+                className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                onClick={closeRandomInspectionModal}
+                disabled={randomInspectionSubmitting}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
+                onClick={() => {
+                  if (isRandomInspectionVerifyMode) {
+                    void handleVerifyRandomInspection()
+                    return
+                  }
+                  void handleSubmitRandomInspection()
+                }}
+                disabled={
+                  randomInspectionSubmitting ||
+                  randomInspectionLoading ||
+                  (
+                    isRandomInspectionVerifyMode
+                      ? randomInspectionPendingVerificationCount <= 0
+                      : !randomInspectionRows.length
+                  )
+                }
+              >
+                {randomInspectionSubmitting
+                  ? 'Guardando...'
+                  : isRandomInspectionVerifyMode
+                    ? (
+                      randomInspectionPendingVerificationCount > 0
+                        ? `Aplicar verificacion (${randomInspectionPendingVerificationCount} pendiente(s))`
+                        : 'Sin pendientes por verificar'
+                    )
+                    : (
+                      randomInspectionMismatchCount > 0
+                        ? `Guardar inspecciÃ³n (${randomInspectionMismatchCount} con diferencia)`
+                        : 'Guardar inspecciÃ³n'
+                    )}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
 
       {isReceiveShipmentModalOpen && (
         <div
@@ -3151,3 +3846,4 @@ function QuickActions({
 }
 
 export default QuickActions
+

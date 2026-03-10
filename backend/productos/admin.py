@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import OEM, OEMProducto, Producto, ProductoAlterno
+from .models import OEM, OEMProducto, Producto, ProductoAlterno, ProductoCalificacion
 
 
 class OEMProductoInline(admin.TabularInline):
@@ -61,4 +61,16 @@ class ProductoAlternoAdmin(admin.ModelAdmin):
         "producto__nombre",
         "alterno__codigo",
         "alterno__nombre",
+    )
+
+
+@admin.register(ProductoCalificacion)
+class ProductoCalificacionAdmin(admin.ModelAdmin):
+    list_display = ("producto", "usuario", "estrellas", "created_at")
+    list_filter = ("estrellas", "created_at")
+    search_fields = (
+        "producto__codigo",
+        "producto__nombre",
+        "usuario__email",
+        "comentario",
     )

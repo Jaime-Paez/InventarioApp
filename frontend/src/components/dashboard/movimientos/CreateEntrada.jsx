@@ -347,7 +347,7 @@ function CreateEntrada({
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
   const isCompraEntrada = selectedSubTipoName.includes('compra') || selectedSubTipoName.includes('import')
-  const isEstadoEditable = isVenta || isCompraEntrada
+  const isEstadoEditable = isVenta
   const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
   const isSelectorStep = !formData.subTipoId
@@ -382,9 +382,9 @@ function CreateEntrada({
   }, [estados])
 
   const compraEstadoOptions = useMemo(() => {
-    const allowed = new Set(['en camino', 'recibido', 'parcialmente recibido'])
-    const filtered = estados.filter((estado) => allowed.has(normalizeValue(estado?.nombre)))
-    return filtered.length ? filtered : estados
+    const recibidos = estados.filter((estado) => normalizeValue(estado?.nombre) === 'recibido')
+    if (recibidos.length) return recibidos
+    return estados.filter((estado) => normalizeValue(estado?.nombre).includes('recib'))
   }, [estados])
 
   const estadoOptions = useMemo(() => {
@@ -426,11 +426,6 @@ function CreateEntrada({
     }
 
     if (isCompraEntrada) {
-      const preferredOrder = ['en camino', 'parcialmente recibido', 'recibido']
-      for (const key of preferredOrder) {
-        const matched = estadoOptions.find((estado) => normalizeValue(estado?.nombre) === key)
-        if (matched?.id) return String(matched.id)
-      }
       return String(estadoOptions[0].id)
     }
 

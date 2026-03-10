@@ -53,6 +53,7 @@ const initialForm = {
   telefono: '',
   cargo: '',
   activo: true,
+  inspeccion_aleatoria: false,
 }
 
 function CreateUsuario({ open, onClose, onCreated, token, onError }) {
@@ -777,6 +778,18 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                         <div>
                           <span>Cuenta activa</span>
                           <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                        </div>
+                      </label>
+                      <label className="create-user__checkbox">
+                        <input
+                          type="checkbox"
+                          name="inspeccion_aleatoria"
+                          checked={Boolean(formData.inspeccion_aleatoria)}
+                          onChange={handleChange}
+                        />
+                        <div>
+                          <span>Inspección aleatoria</span>
+                          <p>Recibirá un recordatorio diario a las 09:00 para auditar 5 productos.</p>
                         </div>
                       </label>
                     </div>

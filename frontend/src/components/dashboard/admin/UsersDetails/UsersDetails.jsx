@@ -79,6 +79,7 @@ const emptyForm = {
   telefono: '',
   cargo: '',
   activo: false,
+  inspeccion_aleatoria: false,
   permisos_personalizados: [],
   sucursales: [],
   sucursales_por_modulo: [],
@@ -160,6 +161,7 @@ function UsersDetails({
     telefono: data?.telefono ?? '',
     cargo: data?.cargo ?? '',
     activo: Boolean(data?.activo),
+    inspeccion_aleatoria: Boolean(data?.inspeccion_aleatoria),
     permisos_personalizados: Array.isArray(data?.permisos_personalizados)
       ? data.permisos_personalizados
       : [],
@@ -1021,6 +1023,19 @@ function UsersDetails({
                     <div>
                       <span>Cuenta activa</span>
                       <p>El usuario podrá iniciar sesión y operar el sistema.</p>
+                    </div>
+                  </label>
+                  <label className="create-user__checkbox">
+                    <input
+                      type="checkbox"
+                      name="inspeccion_aleatoria"
+                      checked={Boolean(formData.inspeccion_aleatoria)}
+                      onChange={handleChange}
+                      disabled={!isEditing || loadingData || saving}
+                    />
+                    <div>
+                      <span>Inspección aleatoria</span>
+                      <p>Recibirá un recordatorio diario a las 09:00 para auditar 5 productos.</p>
                     </div>
                   </label>
                 </div>

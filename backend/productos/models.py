@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from casa_comercial.models import CasaComercial
@@ -108,3 +110,34 @@ class ProductoAlterno(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
         return f"Alterno de {self.producto.codigo}: {self.alterno.codigo}"
+
+
+class ProductoCalificacion(models.Model):
+    """Comentario y calificacion de un producto por usuario."""
+
+    producto = models.ForeignKey(
+        Producto,
+        on_delete=models.CASCADE,
+        related_name="calificaciones",
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="calificaciones_producto",
+        null=True,
+        blank=True,
+    )
+    estrellas = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    comentario = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Calificacion de producto"
+        verbose_name_plural = "Calificaciones de producto"
+
+    def __str__(self) -> str:
+        return f"{self.producto.codigo} - {self.estrellas} estrella(s)"

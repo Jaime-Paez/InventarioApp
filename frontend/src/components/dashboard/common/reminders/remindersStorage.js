@@ -5,6 +5,9 @@ export const REMINDERS_SYNC_EVENT = 'inventario-reminders-sync'
 export const REMINDERS_TRANSFER_NOTIFICATION_EVENT = 'inventario-reminders-transfer-notification'
 export const SPECIAL_TRANSFER_DECISION_KIND = 'solicitud_traslado_decision'
 export const TRANSFER_RECEIPT_NOTIFICATION_KIND = 'solicitud_traslado_recepcion'
+export const RANDOM_INSPECTION_KIND = 'inspeccion_aleatoria_diaria'
+export const RANDOM_INSPECTION_VERIFY_KIND = 'inspeccion_aleatoria_verificacion'
+export const RANDOM_INSPECTION_CONTEXT_TYPE = 'inspeccion_aleatoria'
 export const REMINDERS_BACKEND_ENDPOINT = `${API_URL}/recordatorios/estado/`
 
 export const normalizeId = (value) => (value == null ? '' : String(value).trim())
@@ -377,6 +380,19 @@ export const isReminderSeenByCurrentUser = (reminder, userIdSet) => {
 export const isSpecialTransferDecisionReminder = (reminder) =>
   normalizeId(reminder?.kind) === SPECIAL_TRANSFER_DECISION_KIND
 
+export const isRandomInspectionDailyReminder = (reminder) => {
+  const kind = normalizeId(reminder?.kind)
+  if (kind === RANDOM_INSPECTION_KIND) return true
+  const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
+  return contextType === RANDOM_INSPECTION_CONTEXT_TYPE && kind !== RANDOM_INSPECTION_VERIFY_KIND
+}
+
+export const isRandomInspectionVerifyReminder = (reminder) =>
+  normalizeId(reminder?.kind) === RANDOM_INSPECTION_VERIFY_KIND
+
+export const isRandomInspectionReminder = (reminder) =>
+  isRandomInspectionDailyReminder(reminder) || isRandomInspectionVerifyReminder(reminder)
+
 const normalizeComparableText = (value) =>
   String(value || '')
     .normalize('NFD')
@@ -455,6 +471,7 @@ export const isSpecialReminderResolved = (reminder) => {
 export const isReminderPendingForCurrentUser = (reminder, userIdSet) => {
   if (!isReminderForCurrentUser(reminder, userIdSet)) return false
   if (isReminderSeenByCurrentUser(reminder, userIdSet)) return false
+  if (isRandomInspectionReminder(reminder)) return true
 
   const decisionStatus = getReminderDecisionStatus(reminder)
   const isTransferContext =
@@ -509,6 +526,8 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
   const isForCurrentUser = recipientIds.some((id) => userIdSet.has(id))
   const seenByCurrentUser = reminderCompletedByIds(reminder).some((id) => userIdSet.has(id))
   const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
+  const isRandomInspectionDaily = isRandomInspectionDailyReminder(reminder)
+  const isRandomInspectionVerify = isRandomInspectionVerifyReminder(reminder)
   const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
   const decisionStatus = getReminderDecisionStatus(reminder)
   const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
@@ -559,6 +578,36 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
       label: 'Enviado',
       className: 'sent',
       canMarkSeen: false,
+    }
+  }
+
+  if (isRandomInspectionDaily) {
+    if (seenByCurrentUser) {
+      return {
+        label: 'Completada',
+        className: 'seen',
+        canMarkSeen: false,
+      }
+    }
+    return {
+      label: 'Inspeccion',
+      className: 'pending',
+      canMarkSeen: false,
+    }
+  }
+
+  if (isRandomInspectionVerify) {
+    if (seenByCurrentUser) {
+      return {
+        label: 'Visto',
+        className: 'seen',
+        canMarkSeen: false,
+      }
+    }
+    return {
+      label: 'Por verificar',
+      className: 'pending',
+      canMarkSeen: true,
     }
   }
 

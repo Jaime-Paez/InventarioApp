@@ -10,6 +10,8 @@ import {
   formatCurrentUserName,
   getReminderDecisionStatus,
   getTransferReceiptOutcome,
+  isRandomInspectionDailyReminder,
+  isRandomInspectionVerifyReminder,
   isReminderForContext,
   isSpecialTransferDecisionReminder,
   normalizeId,
@@ -350,6 +352,7 @@ function RecordatoriosPopup({
   onTransferDecisionAccepted,
   onOpenTransferRequestInEntradas,
   onOpenTransferRequestInSalidas,
+  onOpenRandomInspection,
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const [users, setUsers] = useState([])
@@ -372,6 +375,7 @@ function RecordatoriosPopup({
   const [rejectReasonError, setRejectReasonError] = useState('')
   const [selectedTimelineDate, setSelectedTimelineDate] = useState(() => getTodayDateKey())
   const [openingTransferReminderId, setOpeningTransferReminderId] = useState('')
+  const [openingInspectionReminderId, setOpeningInspectionReminderId] = useState('')
   const [highlightedReminderId, setHighlightedReminderId] = useState('')
   const [pendingScrollReminderId, setPendingScrollReminderId] = useState('')
   const [transferLifecycleBySolicitudId, setTransferLifecycleBySolicitudId] = useState({})
@@ -1434,6 +1438,38 @@ function RecordatoriosPopup({
     ]
   )
 
+  const handleOpenRandomInspection = useCallback(
+    async (reminder) => {
+      if (typeof onOpenRandomInspection !== 'function') return false
+      const reminderId = normalizeId(reminder?.id)
+      const inspectionId = normalizeId(reminder?.context?.id)
+      if (!inspectionId) {
+        notifyError('No se encontró la inspección asociada a este recordatorio.')
+        return false
+      }
+
+      if (reminderId) {
+        setOpeningInspectionReminderId(reminderId)
+      }
+
+      try {
+        const opened = await onOpenRandomInspection(reminder)
+        if (!opened) {
+          notifyError('No se pudo abrir la inspección aleatoria.')
+          return false
+        }
+        onClose?.()
+        return true
+      } catch (error) {
+        notifyError(error?.message || 'No se pudo abrir la inspección aleatoria.')
+        return false
+      } finally {
+        setOpeningInspectionReminderId('')
+      }
+    },
+    [notifyError, onClose, onOpenRandomInspection]
+  )
+
   if (!shouldRender || typeof document === 'undefined') return null
 
   return createPortal(
@@ -1765,6 +1801,17 @@ function RecordatoriosPopup({
                           normalizeId(openingTransferReminderId) &&
                           normalizeId(openingTransferReminderId) === currentReminderId
                         )
+                        const isOpeningInspection = (
+                          normalizeId(openingInspectionReminderId) &&
+                          normalizeId(openingInspectionReminderId) === currentReminderId
+                        )
+                        const canOpenRandomInspectionAction = (
+                          (
+                            isRandomInspectionDailyReminder(reminder) ||
+                            isRandomInspectionVerifyReminder(reminder)
+                          ) &&
+                          typeof onOpenRandomInspection === 'function'
+                        )
                         const isHighlightedReminder = (
                           Boolean(currentReminderId) &&
                           normalizeId(highlightedReminderId) === currentReminderId
@@ -1883,6 +1930,23 @@ function RecordatoriosPopup({
                                       shouldUseSentCopyOnTransferEntryAction
                                         ? 'Solicitud ya enviada, ver envio pendiente'
                                         : 'Ver en entradas'
+                                    )}
+                                </button>
+                              ) : canOpenRandomInspectionAction ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => {
+                                    void handleOpenRandomInspection(reminder)
+                                  }}
+                                  disabled={isOpeningInspection}
+                                >
+                                  {isOpeningInspection
+                                    ? 'Abriendo...'
+                                    : (
+                                      isRandomInspectionVerifyReminder(reminder)
+                                        ? 'Verificar inspeccion'
+                                        : 'Realizar inspeccion'
                                     )}
                                 </button>
                               ) : status.canMarkSeen ? (

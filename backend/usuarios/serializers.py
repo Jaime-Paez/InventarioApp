@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
+from app.models import UsuarioPreferencia
 from inventario.models import Sucursal
 
 from .models import (
@@ -149,6 +150,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
     activo = serializers.BooleanField(source="is_active", required=False)
     telefono = serializers.CharField(required=False, allow_blank=True, write_only=True)
     cargo = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    inspeccion_aleatoria = serializers.BooleanField(
+        required=False,
+        write_only=True,
+    )
 
     sucursales_por_modulo = ModuloSucursalScopeSerializer(
         many=True,
@@ -166,6 +171,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "correo",
             "telefono",
             "cargo",
+            "inspeccion_aleatoria",
             "activo",
             "roles",
             "sucursales",
@@ -181,6 +187,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         roles = validated_data.pop("roles", [])
         password = validated_data.pop("password", None)
         sucursales_por_modulo = validated_data.pop("sucursales_por_modulo", None)
+        inspeccion_aleatoria = bool(validated_data.pop("inspeccion_aleatoria", False))
         validated_data.pop("telefono", None)
         validated_data.pop("cargo", None)
 
@@ -198,6 +205,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
             if roles is not None:
                 user.roles.set(roles)
 
+            UsuarioPreferencia.objects.update_or_create(
+                usuario=user,
+                defaults={"inspeccion_aleatoria": inspeccion_aleatoria},
+            )
             self._sync_personalized_permissions(user, permisos_personalizados)
             self._sync_sucursales_por_modulo(user, sucursales_por_modulo)
         return user
@@ -207,6 +218,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         roles = validated_data.pop("roles", None)
         password = validated_data.pop("password", None)
         sucursales_por_modulo = validated_data.pop("sucursales_por_modulo", None)
+        inspeccion_aleatoria = validated_data.pop("inspeccion_aleatoria", None)
         validated_data.pop("telefono", None)
         validated_data.pop("cargo", None)
 
@@ -218,6 +230,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
         if roles is not None:
             instance.roles.set(roles)
+
+        if inspeccion_aleatoria is not None:
+            UsuarioPreferencia.objects.update_or_create(
+                usuario=instance,
+                defaults={"inspeccion_aleatoria": bool(inspeccion_aleatoria)},
+            )
 
         self._sync_personalized_permissions(instance, permisos_personalizados)
         self._sync_sucursales_por_modulo(instance, sucursales_por_modulo)
@@ -334,6 +352,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
         data["sucursales"] = self.get_sucursales(instance)
         data["sucursales_por_modulo"] = self.get_sucursales_por_modulo(instance)
+        data["inspeccion_aleatoria"] = self.get_inspeccion_aleatoria(instance)
         data.setdefault("telefono", "")
         data.setdefault("cargo", "")
         return data
@@ -355,6 +374,18 @@ class UsuarioSerializer(serializers.ModelSerializer):
             {"modulo": modulo, "sucursales_ids": sorted(sucursal_ids)}
             for modulo, sucursal_ids in grouped.items()
         ]
+
+    def get_inspeccion_aleatoria(self, obj):
+        preference = getattr(obj, "preferencia_operativa", None)
+        if preference is not None:
+            return bool(getattr(preference, "inspeccion_aleatoria", False))
+
+        preference = (
+            UsuarioPreferencia.objects.filter(usuario=obj)
+            .only("inspeccion_aleatoria")
+            .first()
+        )
+        return bool(getattr(preference, "inspeccion_aleatoria", False))
 
 
 class UsuarioSucursalSerializer(serializers.ModelSerializer):

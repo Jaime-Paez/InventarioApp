@@ -6,6 +6,7 @@ import './InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
+import ProductoRatingTab from '../../productos/ProductoRatingTab/ProductoRatingTab'
 
 const parseNumber = (value) => {
   const parsed = Number(value)
@@ -345,6 +346,13 @@ function InventarioDetails({
             >
               Recordatorios
             </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'calificaciones' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('calificaciones')}
+            >
+              Calificaciones
+            </button>
           </div>
 
           <div className="create-user__body inventario-details__body">
@@ -431,6 +439,14 @@ function InventarioDetails({
                     ? `${product.codigo} - ${product.nombre || 'Producto'}`
                     : product?.nombre || 'Inventario'
                 }
+                onError={onError}
+              />
+            )}
+
+            {activeTab === 'calificaciones' && (
+              <ProductoRatingTab
+                productoId={product?.id}
+                token={token}
                 onError={onError}
               />
             )}

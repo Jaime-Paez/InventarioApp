@@ -2,8 +2,10 @@ from decimal import Decimal, InvalidOperation
 
 from django.db.models import Case, CharField, DecimalField, ExpressionWrapper, F, Value, When
 from django.utils.dateparse import parse_date
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from configuracion.models import ConfiguracionSistema
 from core.table_filters import apply_column_filters, parse_column_filters
@@ -13,9 +15,11 @@ from .models import OEM, OEMProducto, Producto, ProductoAlterno
 from .serializers import (
     OEMProductoSerializer,
     OEMSerializer,
+    ProductoCalificacionSerializer,
     ProductoDetailSerializer,
     ProductoAlternoSerializer,
     ProductoSerializer,
+    build_producto_rating_summary,
 )
 
 
@@ -141,6 +145,41 @@ class ProductoViewSet(viewsets.ModelViewSet):
         )
 
         return queryset.distinct()
+
+    @action(detail=True, methods=["get"], url_path="calificacion")
+    def calificacion(self, request, pk=None):
+        producto = self.get_object()
+        return Response(build_producto_rating_summary(producto), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get", "post"], url_path="comentarios")
+    def comentarios(self, request, pk=None):
+        producto = self.get_object()
+
+        if request.method.lower() == "get":
+            comentarios_qs = producto.calificaciones.select_related("usuario").all()
+            serializer = ProductoCalificacionSerializer(comentarios_qs, many=True)
+            return Response(
+                {
+                    "results": serializer.data,
+                    "rating_summary": build_producto_rating_summary(producto),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        serializer = ProductoCalificacionSerializer(
+            data=request.data,
+            context={"request": request, "producto": producto},
+        )
+        serializer.is_valid(raise_exception=True)
+        comentario = serializer.save()
+
+        return Response(
+            {
+                "comment": ProductoCalificacionSerializer(comentario).data,
+                "rating_summary": build_producto_rating_summary(producto),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class OEMViewSet(viewsets.ModelViewSet):

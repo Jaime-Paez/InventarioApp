@@ -7,6 +7,7 @@ import { onIvaUpdated } from '../../../../utils/configEvents'
 import InventarioEditor from '../../inventario/InventarioEditor/InventarioEditor'
 import useModalAnimation from '../../common/useModalAnimation'
 import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
+import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -1312,6 +1313,14 @@ function ProductoDetails({
             >
               Recordatorios
             </button>
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'calificaciones' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('calificaciones')}
+              aria-selected={activeTab === 'calificaciones'}
+            >
+              Calificaciones
+            </button>
           </div>
 
           <div className="create-user__body">
@@ -1838,6 +1847,14 @@ function ProductoDetails({
                 entityType="producto"
                 entityId={productoId}
                 entityLabel={formData.nombre || (productoId ? `Producto #${productoId}` : 'Producto')}
+                onError={notifyError}
+              />
+            )}
+
+            {activeTab === 'calificaciones' && (
+              <ProductoRatingTab
+                productoId={productoId}
+                token={token}
                 onError={notifyError}
               />
             )}
