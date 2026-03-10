@@ -172,6 +172,10 @@ function ProductoRatingTab({ productoId, token, onError }) {
               <strong>{toNumber(ratingSummary?.sales_count, 0)}</strong>
             </div>
             <div className="producto-rating-tab__metric-item">
+              <span>Devoluciones</span>
+              <strong>{toNumber(ratingSummary?.returns_count, 0)}</strong>
+            </div>
+            <div className="producto-rating-tab__metric-item">
               <span>Meses sin ventas</span>
               <strong>{toNumber(ratingSummary?.months_without_sales, 0)}</strong>
             </div>
@@ -183,7 +187,7 @@ function ProductoRatingTab({ productoId, token, onError }) {
         </div>
 
         <p className="producto-rating-tab__rule-note">
-          Regla activa: cada 2 meses sin ventas se descuenta 0.5 estrellas (desde el primer mes sin ventas).
+          Regla activa: cada devolucion resta 1 estrella y cada 2 meses sin ventas se descuenta 0.5 estrellas.
         </p>
       </section>
 

@@ -19,6 +19,7 @@ from .models import OEM, OEMProducto, Producto, ProductoAlterno, ProductoCalific
 NEGATIVE_STARS_THRESHOLD = 2
 INACTIVITY_PENALTY_STEP = 0.5
 INACTIVITY_PENALTY_INTERVAL_MONTHS = 2
+RETURN_PENALTY_STEP = 1.0
 
 
 def _full_months_between(start_date, end_date):
@@ -81,36 +82,41 @@ def build_producto_rating_summary(producto):
     sold_quantity = int(sales_stats.get("sold_quantity") or 0)
     last_sale_date = sales_stats.get("last_sale_date")
 
+    returns_stats = DetalleMovimiento.objects.filter(
+        producto_id=producto.id,
+        movimiento_inventario__tipo_movimiento__nombre__istartswith="ent",
+        movimiento_inventario__sub_tipo_movimiento__nombre__icontains="devol",
+        movimiento_inventario__estado_movimiento__nombre__iexact="recibido",
+    ).aggregate(
+        returns_count=Count("movimiento_inventario_id", distinct=True),
+        returned_quantity=Sum("cantidad"),
+        last_return_date=Max("movimiento_inventario__fecha"),
+    )
+    returns_count = int(returns_stats.get("returns_count") or 0)
+    returned_quantity = int(returns_stats.get("returned_quantity") or 0)
+    last_return_date = returns_stats.get("last_return_date")
+
     today = timezone.localdate()
     reference_date = last_sale_date or (producto.creado_en.date() if producto.creado_en else today)
     months_without_sales = _full_months_between(reference_date, today)
 
-    if sales_count > 0 and negative_count == 0:
-        base_rating = 5.0
-    elif comment_count > 0 and comment_average is not None:
+    if comment_count > 0 and comment_average is not None:
         base_rating = float(comment_average)
     else:
         base_rating = 5.0
 
-    negative_penalty = 0.0
     negative_ratio = 0.0
     if comment_count > 0 and negative_count > 0:
         negative_ratio = negative_count / comment_count
-        if negative_ratio >= 0.7:
-            negative_penalty = 1.2
-        elif negative_ratio >= 0.5:
-            negative_penalty = 0.9
-        elif negative_ratio >= 0.3:
-            negative_penalty = 0.6
-        else:
-            negative_penalty = 0.3
 
     inactivity_penalty = 0.0
-    if months_without_sales >= 1:
-        steps = ((months_without_sales - 1) // INACTIVITY_PENALTY_INTERVAL_MONTHS) + 1
+    if months_without_sales >= INACTIVITY_PENALTY_INTERVAL_MONTHS:
+        steps = months_without_sales // INACTIVITY_PENALTY_INTERVAL_MONTHS
         inactivity_penalty = float(steps) * INACTIVITY_PENALTY_STEP
 
-    rating = _normalize_rating(base_rating - negative_penalty - inactivity_penalty)
+    return_penalty = float(returns_count) * RETURN_PENALTY_STEP
+
+    rating = _normalize_rating(base_rating - inactivity_penalty - return_penalty)
     if rating is None:
         rating = 0.0
 
@@ -121,10 +127,14 @@ def build_producto_rating_summary(producto):
         "comment_count": comment_count,
         "negative_comments": negative_count,
         "negative_ratio": round(negative_ratio, 3),
-        "negative_penalty": round(negative_penalty, 2),
+        "negative_penalty": 0.0,
         "sales_count": sales_count,
         "sold_quantity": sold_quantity,
         "last_sale_date": last_sale_date.isoformat() if isinstance(last_sale_date, date) else None,
+        "returns_count": returns_count,
+        "returned_quantity": returned_quantity,
+        "last_return_date": last_return_date.isoformat() if isinstance(last_return_date, date) else None,
+        "return_penalty": round(return_penalty, 2),
         "months_without_sales": months_without_sales,
         "inactivity_penalty": round(inactivity_penalty, 2),
         "computed_at": timezone.now().isoformat(),
