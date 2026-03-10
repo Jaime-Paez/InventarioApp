@@ -619,9 +619,32 @@
   gap: 8px;
 }
 
+.recordatorios-popup__timeline-item--highlighted {
+  border-color: color-mix(in srgb, var(--color-primary) 58%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 22%, transparent);
+  animation: recordatorios-popup-highlight-pulse 1.2s ease-in-out 2;
+}
+
+@keyframes recordatorios-popup-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 28%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 0%, transparent);
+  }
+}
+
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item {
   border-color: #36414c;
   background: #242a31;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item--highlighted {
+  border-color: color-mix(in srgb, #5fb4f2 68%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #5fb4f2 24%, transparent);
 }
 
 .recordatorios-popup__timeline-item-head {

@@ -372,8 +372,11 @@ function RecordatoriosPopup({
   const [rejectReasonError, setRejectReasonError] = useState('')
   const [selectedTimelineDate, setSelectedTimelineDate] = useState(() => getTodayDateKey())
   const [openingTransferReminderId, setOpeningTransferReminderId] = useState('')
+  const [highlightedReminderId, setHighlightedReminderId] = useState('')
+  const [pendingScrollReminderId, setPendingScrollReminderId] = useState('')
   const [transferLifecycleBySolicitudId, setTransferLifecycleBySolicitudId] = useState({})
   const transferLifecycleInFlightRef = useRef(new Set())
+  const reminderItemRefs = useRef(new Map())
 
   const notifyError = useCallback(
     (message) => {
@@ -477,6 +480,8 @@ function RecordatoriosPopup({
       const rank = stageRank[stage] ?? 0
       const timestamp = getReminderDateTimeTimestamp(reminder)
       const safeTimestamp = Number.isFinite(timestamp) ? timestamp : 0
+      const reminderId = normalizeId(reminder?.id)
+      const reminderDateKey = formatDateKey(reminder?.date) || ''
 
       const current = map[solicitudId]
       if (!current || rank > current.rank || (rank === current.rank && safeTimestamp >= current.timestamp)) {
@@ -485,11 +490,55 @@ function RecordatoriosPopup({
           rank,
           receiptOutcome: receiptOutcome || '',
           timestamp: safeTimestamp,
+          reminderId,
+          dateKey: reminderDateKey,
         }
       }
     })
     return map
   }, [reminders])
+
+  const handleJumpToLatestTransferReminder = useCallback((reminder) => {
+    const solicitudId = normalizeId(reminder?.context?.id)
+    if (!solicitudId) return false
+
+    const latestProgress = transferLatestProgressBySolicitudId?.[solicitudId] || null
+    const targetReminderId = normalizeId(latestProgress?.reminderId)
+    const fallbackReminderId = normalizeId(reminder?.id)
+    const reminderIdToFocus = targetReminderId || fallbackReminderId
+    if (!reminderIdToFocus) return false
+
+    const targetDateKey = formatDateKey(latestProgress?.dateKey || reminder?.date)
+    if (targetDateKey && targetDateKey !== normalizedSelectedTimelineDate) {
+      setSelectedTimelineDate(targetDateKey)
+    }
+    setPendingScrollReminderId(reminderIdToFocus)
+    setHighlightedReminderId(reminderIdToFocus)
+    return reminderIdToFocus === fallbackReminderId
+  }, [normalizedSelectedTimelineDate, transferLatestProgressBySolicitudId])
+
+  useEffect(() => {
+    const targetReminderId = normalizeId(pendingScrollReminderId)
+    if (!targetReminderId) return undefined
+
+    const targetElement = reminderItemRefs.current.get(targetReminderId)
+    if (!targetElement) return undefined
+
+    targetElement.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    })
+    setPendingScrollReminderId('')
+
+    const clearTimer = setTimeout(() => {
+      setHighlightedReminderId((previous) => (previous === targetReminderId ? '' : previous))
+    }, 2600)
+
+    return () => {
+      clearTimeout(clearTimer)
+    }
+  }, [pendingScrollReminderId, selectedDayReminders])
 
   const timelineWeekDays = useMemo(() => {
     const start = getWeekStartDate(normalizedSelectedTimelineDate)
@@ -600,8 +649,11 @@ function RecordatoriosPopup({
     if (!open) {
       closeDecisionPanel()
       setOpeningTransferReminderId('')
+      setHighlightedReminderId('')
+      setPendingScrollReminderId('')
       setTransferLifecycleBySolicitudId({})
       transferLifecycleInFlightRef.current = new Set()
+      reminderItemRefs.current = new Map()
       return
     }
     const defaults = getNowDateParts()
@@ -614,6 +666,8 @@ function RecordatoriosPopup({
     setActiveView('list')
     previousViewRef.current = 'list'
     setOpeningTransferReminderId('')
+    setHighlightedReminderId('')
+    setPendingScrollReminderId('')
     closeDecisionPanel()
   }, [open, currentPrimaryUserId, closeDecisionPanel])
 
@@ -1623,6 +1677,7 @@ function RecordatoriosPopup({
                         const latestTransferProgress = solicitudId
                           ? (transferLatestProgressBySolicitudId?.[solicitudId] || null)
                           : null
+                        const latestTransferReminderId = normalizeId(latestTransferProgress?.reminderId)
                         const latestTransferStageFromReminders = normalizeTransferProgressStage(
                           latestTransferProgress?.stage
                         )
@@ -1648,6 +1703,13 @@ function RecordatoriosPopup({
                         const latestProgressPreferredTarget = latestTransferStage === 'recibido'
                           ? (reminderIndicatesOwnShipment || isSpecialReminder ? 'salidas' : 'entradas')
                           : 'salidas'
+                        const currentReminderId = normalizeId(reminder?.id)
+                        const isLatestTransferProgressReminder = Boolean(
+                          latestTransferReminderId && latestTransferReminderId === currentReminderId
+                        )
+                        const latestProgressActionLabel = latestTransferStage === 'recibido'
+                          ? (latestProgressPreferredTarget === 'salidas' ? 'Ver salida' : 'Ver entrada')
+                          : 'Ver envio pendiente'
                         const canOpenLatestTransferProgress = (
                           isTransferContextReminder &&
                           !canResolveDecision &&
@@ -1701,7 +1763,11 @@ function RecordatoriosPopup({
                         )
                         const isOpeningTransfer = (
                           normalizeId(openingTransferReminderId) &&
-                          normalizeId(openingTransferReminderId) === normalizeId(reminder?.id)
+                          normalizeId(openingTransferReminderId) === currentReminderId
+                        )
+                        const isHighlightedReminder = (
+                          Boolean(currentReminderId) &&
+                          normalizeId(highlightedReminderId) === currentReminderId
                         )
                         const recipients = Array.isArray(reminder?.recipients) ? reminder.recipients : []
                         const recipientNames = recipients
@@ -1715,7 +1781,20 @@ function RecordatoriosPopup({
                         )
 
                         return (
-                          <article key={reminder.id} className="recordatorios-popup__timeline-item">
+                          <article
+                            key={reminder.id}
+                            ref={(node) => {
+                              if (!currentReminderId) return
+                              if (node) {
+                                reminderItemRefs.current.set(currentReminderId, node)
+                              } else {
+                                reminderItemRefs.current.delete(currentReminderId)
+                              }
+                            }}
+                            className={`recordatorios-popup__timeline-item${
+                              isHighlightedReminder ? ' recordatorios-popup__timeline-item--highlighted' : ''
+                            }`}
+                          >
                             <div className="recordatorios-popup__timeline-item-head">
                               <p className="recordatorios-popup__timeline-item-time">{formatReminderTimeLabel(reminder)}</p>
                               <span className={`recordatorios-popup__status recordatorios-popup__status--${status.className}`}>
@@ -1771,15 +1850,25 @@ function RecordatoriosPopup({
                                 <button
                                   type="button"
                                   className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => handleOpenTransferByPreferredTarget(
-                                    reminder,
-                                    latestProgressPreferredTarget
-                                  )}
-                                  disabled={isOpeningTransfer}
+                                  onClick={() => {
+                                    if (isLatestTransferProgressReminder) {
+                                      void handleOpenTransferByPreferredTarget(
+                                        reminder,
+                                        latestProgressPreferredTarget
+                                      )
+                                      return
+                                    }
+                                    handleJumpToLatestTransferReminder(reminder)
+                                  }}
+                                  disabled={isOpeningTransfer && isLatestTransferProgressReminder}
                                 >
                                   {isOpeningTransfer
                                     ? 'Abriendo...'
-                                    : `Ver ultimo avance (${latestTransferStageLabel})`}
+                                    : (
+                                      isLatestTransferProgressReminder
+                                        ? latestProgressActionLabel
+                                        : `Ver ultimo avance (${latestTransferStageLabel})`
+                                    )}
                                 </button>
                               ) : canOpenTransferInEntradas ? (
                                 <button
