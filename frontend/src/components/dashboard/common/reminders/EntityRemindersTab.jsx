@@ -66,6 +66,14 @@ const resolveTransferStageFromReminder = (reminder) => {
     }
   }
 
+  if (isSpecialTransferDecisionReminder(reminder)) {
+    return {
+      key: 'solicitud',
+      label: 'Solicitud',
+      className: 'solicitud',
+    }
+  }
+
   const decisionStatus = getReminderDecisionStatus(reminder)
   if (decisionStatus === 'enviado') {
     return {
@@ -89,7 +97,7 @@ const resolveTransferStageFromReminder = (reminder) => {
     }
   }
 
-  if (isSpecialTransferDecisionReminder(reminder) || decisionStatus === 'pendiente') {
+  if (decisionStatus === 'pendiente') {
     return {
       key: 'solicitud',
       label: 'Solicitud',
@@ -102,9 +110,10 @@ const resolveTransferStageFromReminder = (reminder) => {
 
 const getNowDateParts = () => {
   const now = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
   return {
-    date: now.toISOString().slice(0, 10),
-    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
   }
 }
 
@@ -241,7 +250,16 @@ function EntityRemindersTab({
         return String(b?.id || '').localeCompare(String(a?.id || ''))
       })
 
-    return rows
+    const uniqueByStage = new Set()
+    const dedupedRows = []
+    rows.forEach((row) => {
+      const stageKey = String(row?.stageKey || '').trim()
+      if (!stageKey || uniqueByStage.has(stageKey)) return
+      uniqueByStage.add(stageKey)
+      dedupedRows.push(row)
+    })
+
+    return dedupedRows
   }, [allReminders, currentUserIdSet, currentUserName, normalizedTransferSolicitudId])
 
   useEffect(() => {

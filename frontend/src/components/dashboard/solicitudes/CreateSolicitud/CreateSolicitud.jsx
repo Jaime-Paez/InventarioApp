@@ -38,12 +38,17 @@ const initialProductoDraft = {
 }
 const requiredClienteManualFields = ['cedula_ruc', 'nombres', 'apellidos', 'correo', 'telefono', 'direccion']
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
+const todayISO = () => {
+  const now = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
 const getNowDateParts = () => {
   const now = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
   return {
-    date: now.toISOString().slice(0, 10),
-    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
   }
 }
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])

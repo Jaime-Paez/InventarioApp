@@ -62,9 +62,10 @@ const normalizeValue = (value) =>
 const normalizeString = (value) => String(value ?? '').trim().toLowerCase()
 const getNowDateParts = () => {
   const now = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
   return {
-    date: now.toISOString().slice(0, 10),
-    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
   }
 }
 const hasUsersModuleAccess = (permissions) =>
