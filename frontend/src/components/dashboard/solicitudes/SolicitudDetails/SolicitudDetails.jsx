@@ -16,7 +16,16 @@ const formatDate = (value) => {
   return date.toLocaleDateString('es-EC')
 }
 
-function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onError, currentUser }) {
+function SolicitudDetails({
+  open,
+  solicitudId,
+  token,
+  onClose,
+  onUpdated,
+  onError,
+  currentUser,
+  allowEdit = true,
+}) {
   const [solicitud, setSolicitud] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -516,7 +525,9 @@ function SolicitudDetails({ open, solicitudId, token, onClose, onUpdated, onErro
                 currentUser={currentUser}
                 entityType="solicitud"
                 entityId={solicitudId}
+                isOpen={open}
                 entityLabel={solicitudId ? `Solicitud #${solicitudId}` : 'Solicitud'}
+                canCreateReminder={allowEdit}
                 onError={notifyError}
               />
             )}

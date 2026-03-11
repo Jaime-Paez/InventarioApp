@@ -141,6 +141,32 @@ function ProductoRatingTab({
     return toNumber(ratingSummary?.rating, 0)
   }, [ratingSummary])
 
+  const summaryMetrics = useMemo(
+    () => [
+      {
+        key: 'comments',
+        label: 'Comentarios',
+        value: toNumber(ratingSummary?.comment_count, comments.length),
+      },
+      {
+        key: 'returns',
+        label: 'Devoluciones',
+        value: toNumber(ratingSummary?.returns_count, 0),
+      },
+      {
+        key: 'nonFunctionalReturns',
+        label: 'Dev. no funcionales',
+        value: toNumber(ratingSummary?.non_functional_returns_count, 0),
+      },
+      {
+        key: 'sales',
+        label: 'Ventas',
+        value: toNumber(ratingSummary?.sales_count, 0),
+      },
+    ],
+    [comments.length, ratingSummary]
+  )
+
   return (
     <div className="producto-rating-tab">
       <section className="create-user__section producto-rating-tab__summary">
@@ -157,6 +183,15 @@ function ProductoRatingTab({
             </p>
             <small>{toNumber(ratingSummary?.comment_count, 0)} comentario(s)</small>
           </div>
+        </div>
+
+        <div className="producto-rating-tab__metrics" role="list" aria-label="Resumen de comentarios y movimientos">
+          {summaryMetrics.map((metric) => (
+            <article key={metric.key} className="producto-rating-tab__metric" role="listitem">
+              <span>{metric.label}</span>
+              <strong>{metric.value}</strong>
+            </article>
+          ))}
         </div>
 
         <p className="producto-rating-tab__rule-note">

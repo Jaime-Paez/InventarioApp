@@ -819,6 +819,15 @@
   min-height: 180px;
 }
 
+.user-details__permissions-panel-global {
+  min-height: 0;
+  margin-bottom: 10px;
+}
+
+.user-details__permissions-panel-global .permissions-matrix__table {
+  margin-top: 0;
+}
+
 .create-user__permissions-panel-head {
   display: flex;
   align-items: center;

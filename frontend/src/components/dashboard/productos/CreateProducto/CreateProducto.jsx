@@ -26,6 +26,7 @@ const parseQuantity = (value) => {
   if (!Number.isFinite(parsed)) return null
   return Math.max(0, Math.floor(parsed))
 }
+const toUpperProductCode = (value) => String(value ?? '').toLocaleUpperCase('es-EC')
 
 const mergeByIdList = (current, incoming) => {
   const map = new Map(
@@ -44,8 +45,22 @@ const getDivisionBodegaId = (division) => String(division?.bodega?.id ?? divisio
 const getSubdivisionDivisionId = (subdivision) => String(subdivision?.division?.id ?? subdivision?.division_id ?? '')
 const getSubdivisionBodegaId = (subdivision) =>
   String(subdivision?.division?.bodega?.id ?? subdivision?.division?.bodega_id ?? '')
+const normalizeScopeModuleKey = (value) => String(value ?? '').trim().toLowerCase()
+const normalizeScopeBranchId = (value) => String(value ?? '').trim()
+const getModuleScopeBranchIdSet = (rawScopes, moduleKey) => {
+  const normalizedModuleKey = normalizeScopeModuleKey(moduleKey)
+  if (!normalizedModuleKey) return null
+  const moduleScope = (Array.isArray(rawScopes) ? rawScopes : []).find(
+    (scope) => normalizeScopeModuleKey(scope?.modulo) === normalizedModuleKey
+  )
+  if (!moduleScope) return null
+  const ids = (Array.isArray(moduleScope?.sucursales_ids) ? moduleScope.sucursales_ids : [])
+    .map((branchId) => normalizeScopeBranchId(branchId))
+    .filter(Boolean)
+  return new Set(ids)
+}
 
-function CreateProducto({ open, onClose, onCreated, token, onError, showCostField = true }) {
+function CreateProducto({ open, onClose, onCreated, token, onError, currentUser = null, showCostField = true }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
@@ -247,6 +262,23 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
     () =>
       locationDraft.subdivisionId ? subdivisionById.get(String(locationDraft.subdivisionId)) || null : null,
     [locationDraft.subdivisionId, subdivisionById]
+  )
+  const scopedProductBranchIds = useMemo(
+    () => getModuleScopeBranchIdSet(currentUser?.sucursales_por_modulo, 'productos'),
+    [currentUser]
+  )
+  const canManageLocationBranch = useCallback(
+    (branchId) => {
+      if (!(scopedProductBranchIds instanceof Set)) return true
+      const normalizedBranchId = normalizeScopeBranchId(branchId)
+      if (!normalizedBranchId) return false
+      return scopedProductBranchIds.has(normalizedBranchId)
+    },
+    [scopedProductBranchIds]
+  )
+  const canManageLocationDraft = useMemo(
+    () => (!locationDraft.sucursalId ? true : canManageLocationBranch(locationDraft.sucursalId)),
+    [locationDraft.sucursalId, canManageLocationBranch]
   )
 
   const createLocationUid = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -776,11 +808,12 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
       return
     }
     if (name === 'codigo') {
+      const normalizedCode = toUpperProductCode(value)
       setFormData((prev) => ({
         ...prev,
-        codigo: value,
+        codigo: normalizedCode,
       }))
-      scheduleCodigoCheck(value)
+      scheduleCodigoCheck(normalizedCode)
       return
     }
     if (name === 'precio' || name === 'costo_minimo') {
@@ -843,12 +876,12 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
   )
 
   const applyCodigoPrefix = useCallback((prefix) => {
-    const cleanPrefix = String(prefix ?? '').trim()
+    const cleanPrefix = toUpperProductCode(prefix).trim()
     if (!cleanPrefix) return
     const prevPrefix = codigoPrefixRef.current
     codigoPrefixRef.current = cleanPrefix
     setFormData((prev) => {
-      const current = String(prev.codigo ?? '')
+      const current = toUpperProductCode(prev.codigo)
       const currentTrim = current.trim()
       if (!currentTrim || currentTrim === prevPrefix) {
         scheduleCodigoCheck(cleanPrefix)
@@ -1067,6 +1100,10 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
 
   const handleLocationBranchPick = (branch) => {
     if (!branch?.id) return
+    if (!canManageLocationBranch(branch.id)) {
+      setLocationError('No tienes permisos para crear ubicaciones en esta sucursal.')
+      return
+    }
     handleLocationSelect('sucursalId', String(branch.id))
     setShowLocationBranchDropdown(false)
     setLocationBranchQuery('')
@@ -1102,6 +1139,10 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
 
     if (!sucursalId) {
       setLocationError('Selecciona una sucursal.')
+      return
+    }
+    if (!canManageLocationBranch(sucursalId)) {
+      setLocationError('No tienes permisos para crear ubicaciones en esta sucursal.')
       return
     }
     if (!bodegaId) {
@@ -1172,6 +1213,11 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
   const handleRemoveLocation = (uid) => {
     const key = String(uid)
     if (!key) return
+    const targetLocation = locations.find((item) => String(item.uid) === key)
+    if (targetLocation && !canManageLocationBranch(targetLocation.sucursalId)) {
+      setEditError('No tienes permisos para editar ubicaciones en esta sucursal.')
+      return
+    }
     setLocations((prev) => prev.filter((item) => item.uid !== key))
     if (editingLocationKey === key) {
       setEditingLocationKey(null)
@@ -1182,6 +1228,10 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
   }
 
   const beginLocationEdit = (location, field) => {
+    if (!canManageLocationBranch(location?.sucursalId)) {
+      setEditError('No tienes permisos para editar ubicaciones en esta sucursal.')
+      return
+    }
     setEditError('')
     if (field === 'subdivision') {
       ensureSubdivisionsForBodega(location?.bodegaId, location?.bodegaNombre)
@@ -1400,7 +1450,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
     setLoading(true)
 
     const payload = {
-      codigo: formData.codigo.trim(),
+      codigo: toUpperProductCode(formData.codigo).trim(),
       nombre: formData.nombre.trim(),
       descripcion: formData.descripcion.trim(),
       pieza_original: Boolean(formData.pieza_original),
@@ -1839,6 +1889,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                         placeholder="Código del producto (ej: FRD-123)"
                         value={formData.codigo}
                         onChange={handleChange}
+                        autoCapitalize="characters"
+                        spellCheck={false}
                         required
                         disabled={loading}
                       />
@@ -2300,24 +2352,28 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                                 {!locationSearchLoading.sucursal && !locationBranchOptions.length && (
                                   <small className="muted">Sin resultados.</small>
                                 )}
-                                {locationBranchOptions.map((branch) => (
-                                  <button
-                                    key={branch.id}
-                                    type="button"
-                                    className="create-user__result-option"
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={(event) => {
-                                      event.preventDefault()
-                                      event.stopPropagation()
-                                      handleLocationBranchPick(branch)
-                                    }}
-                                    disabled={loading}
-                                  >
-                                    <div className="create-user__result-info">
-                                      <strong>{branch.nombre || `Sucursal ${branch.id}`}</strong>
-                                    </div>
-                                  </button>
-                                ))}
+                                {locationBranchOptions.map((branch) => {
+                                  const branchEditable = canManageLocationBranch(branch?.id)
+                                  return (
+                                    <button
+                                      key={branch.id}
+                                      type="button"
+                                      className="create-user__result-option"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={(event) => {
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        handleLocationBranchPick(branch)
+                                      }}
+                                      disabled={loading || !branchEditable}
+                                      title={branchEditable ? undefined : 'Sin permiso para editar ubicaciones en esta sucursal'}
+                                    >
+                                      <div className="create-user__result-info">
+                                        <strong>{branch.nombre || `Sucursal ${branch.id}`}</strong>
+                                      </div>
+                                    </button>
+                                  )
+                                })}
                               </div>
                             </div>
                           )}
@@ -2335,7 +2391,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                               setShowLocationDivisionDropdown(false)
                               setShowLocationSubdivisionDropdown(false)
                             }}
-                            disabled={loading || locationsLoading || !locationDraft.sucursalId}
+                            disabled={loading || locationsLoading || !locationDraft.sucursalId || !canManageLocationDraft}
                           >
                             <span>{selectedLocationBodega?.nombre || 'Selecciona una bodega'}</span>
                             <i className={`pi pi-chevron-${showLocationBodegaDropdown ? 'up' : 'down'}`} />
@@ -2368,7 +2424,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                                       event.stopPropagation()
                                       handleLocationBodegaPick(bodega)
                                     }}
-                                    disabled={loading}
+                                    disabled={loading || !canManageLocationDraft}
                                   >
                                     <div className="create-user__result-info">
                                       <strong>{bodega.nombre || `Bodega ${bodega.id}`}</strong>
@@ -2392,7 +2448,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                               setShowLocationBodegaDropdown(false)
                               setShowLocationSubdivisionDropdown(false)
                             }}
-                            disabled={loading || locationsLoading || !locationDraft.bodegaId}
+                            disabled={loading || locationsLoading || !locationDraft.bodegaId || !canManageLocationDraft}
                           >
                             <span>{selectedLocationDivision?.nombre || 'Selecciona una division'}</span>
                             <i className={`pi pi-chevron-${showLocationDivisionDropdown ? 'up' : 'down'}`} />
@@ -2425,7 +2481,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                                       event.stopPropagation()
                                       handleLocationDivisionPick(division)
                                     }}
-                                    disabled={loading}
+                                    disabled={loading || !canManageLocationDraft}
                                   >
                                     <div className="create-user__result-info">
                                       <strong>{division.nombre || `Division ${division.id}`}</strong>
@@ -2449,7 +2505,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                               setShowLocationBodegaDropdown(false)
                               setShowLocationDivisionDropdown(false)
                             }}
-                            disabled={loading || locationsLoading || !locationDraft.divisionId}
+                            disabled={loading || locationsLoading || !locationDraft.divisionId || !canManageLocationDraft}
                           >
                             <span>{selectedLocationSubdivision?.nombre || 'Selecciona una subdivision'}</span>
                             <i className={`pi pi-chevron-${showLocationSubdivisionDropdown ? 'up' : 'down'}`} />
@@ -2482,7 +2538,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                                       event.stopPropagation()
                                       handleLocationSubdivisionPick(subdivision)
                                     }}
-                                    disabled={loading}
+                                    disabled={loading || !canManageLocationDraft}
                                   >
                                     <div className="create-user__result-info">
                                       <strong>{subdivision.nombre || `Subdivision ${subdivision.id}`}</strong>
@@ -2502,7 +2558,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                           placeholder="Cantidad"
                           value={locationDraft.cantidad}
                           onChange={(event) => handleLocationSelect('cantidad', event.target.value)}
-                          disabled={loading || locationsLoading}
+                          disabled={loading || locationsLoading || !canManageLocationDraft}
                         />
                       </span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
@@ -2510,7 +2566,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                           type="button"
                           className="create-user__ghost"
                           onClick={handleAddLocation}
-                          disabled={loading || locationsLoading}
+                          disabled={loading || locationsLoading || !canManageLocationDraft}
                         >
                           Agregar
                         </button>
@@ -2529,6 +2585,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                   )}
                   {locations.map((location) => {
                     const rowSubdivisions = subdivisionsByBodega.get(location.bodegaId) || []
+                    const canManageRow = canManageLocationBranch(location.sucursalId)
                     const isEditingRow = editingLocationKey === location.uid
                     const editingSubdivision = isEditingRow && editingField === 'subdivision'
                     const editingCantidad = isEditingRow && editingField === 'cantidad'
@@ -2539,8 +2596,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                         <span>{location.bodegaNombre}</span>
                         <span>{location.divisionNombre}</span>
                         <span
-                          className="create-user__locations-cell create-user__locations-cell--editable"
-                          onDoubleClick={() => beginLocationEdit(location, 'subdivision')}
+                          className={`create-user__locations-cell${canManageRow ? ' create-user__locations-cell--editable' : ''}`}
+                          onDoubleClick={canManageRow ? () => beginLocationEdit(location, 'subdivision') : undefined}
                         >
                           {editingSubdivision ? (
                             <select
@@ -2567,8 +2624,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                           )}
                         </span>
                         <span
-                          className="create-user__locations-cell create-user__locations-cell--editable"
-                          onDoubleClick={() => beginLocationEdit(location, 'cantidad')}
+                          className={`create-user__locations-cell${canManageRow ? ' create-user__locations-cell--editable' : ''}`}
+                          onDoubleClick={canManageRow ? () => beginLocationEdit(location, 'cantidad') : undefined}
                         >
                           {editingCantidad ? (
                             <input
@@ -2596,7 +2653,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                             type="button"
                             className="create-user__locations-remove"
                             onClick={() => handleRemoveLocation(location.uid)}
-                            disabled={loading}
+                            disabled={loading || !canManageRow}
                             aria-label="Eliminar ubicacion"
                           >
                             ×

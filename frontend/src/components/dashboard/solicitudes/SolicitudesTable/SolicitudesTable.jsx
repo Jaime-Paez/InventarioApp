@@ -76,6 +76,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const canCreate = moduleActions?.puede_crear ?? true
+  const canEdit = moduleActions?.puede_actualizar ?? true
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -1556,6 +1557,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
         onUpdated={handleUpdated}
         onError={showErrorToast}
         currentUser={user}
+        allowEdit={canEdit}
       />
 
       {shouldRenderSearchModal && (

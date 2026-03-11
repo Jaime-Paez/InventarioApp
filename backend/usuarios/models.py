@@ -99,13 +99,10 @@ class RolPermiso(models.Model):
 
 
 MODULOS_CON_ALCANCE_SUCURSAL = (
-    RolPermiso.Modulos.INVENTARIO,
     RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
     RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
     RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
-    RolPermiso.Modulos.SUCURSALES_SUCURSALES,
-    RolPermiso.Modulos.SUCURSALES_BODEGAS,
-    RolPermiso.Modulos.SOLICITUDES,
+    RolPermiso.Modulos.PRODUCTOS,
 )
 MODULOS_CON_ALCANCE_SUCURSAL_CHOICES = tuple(
     (key, label)

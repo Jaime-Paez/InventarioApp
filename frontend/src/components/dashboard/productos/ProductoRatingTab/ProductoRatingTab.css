@@ -11,6 +11,33 @@
   align-items: stretch;
 }
 
+.producto-rating-tab__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.producto-rating-tab__metric {
+  border: 1px solid #b3bac3;
+  border-radius: 12px;
+  background: #f8fafb;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.producto-rating-tab__metric span {
+  font-size: 0.76rem;
+  color: #5d6876;
+}
+
+.producto-rating-tab__metric strong {
+  font-size: 1.05rem;
+  color: #213047;
+}
+
 .producto-rating-tab__score {
   border: 1px solid #b3bac3;
   border-radius: 14px;
@@ -164,5 +191,15 @@
 
   .producto-rating-tab__score {
     min-height: 120px;
+  }
+
+  .producto-rating-tab__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .producto-rating-tab__metrics {
+    grid-template-columns: 1fr;
   }
 }

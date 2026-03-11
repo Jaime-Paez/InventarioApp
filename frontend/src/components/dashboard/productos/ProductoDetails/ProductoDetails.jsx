@@ -27,10 +27,60 @@ const emptyForm = {
 
 const parseNumber = (value) => parseMoneyInput(value)
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
+const parseApiErrorDetail = (payload, fallbackMessage) => {
+  if (!payload || typeof payload !== 'object') return fallbackMessage
+
+  const detail = payload?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail.trim()
+  if (Array.isArray(detail)) {
+    const joined = detail.map((item) => String(item || '').trim()).filter(Boolean).join(' ')
+    if (joined) return joined
+  }
+
+  const nonField = payload?.non_field_errors
+  if (Array.isArray(nonField)) {
+    const joined = nonField.map((item) => String(item || '').trim()).filter(Boolean).join(' ')
+    if (joined) return joined
+  }
+
+  const firstEntry = Object.entries(payload).find(([key, value]) => key !== 'detail' && value != null)
+  if (firstEntry) {
+    const [, value] = firstEntry
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (Array.isArray(value)) {
+      const joined = value.map((item) => String(item || '').trim()).filter(Boolean).join(' ')
+      if (joined) return joined
+    }
+    if (typeof value === 'object') {
+      const nested = Object.values(value)
+        .flatMap((item) => (Array.isArray(item) ? item : [item]))
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .join(' ')
+      if (nested) return nested
+    }
+  }
+
+  return fallbackMessage
+}
 const parseProductCode = (label) => {
   if (!label) return null
   const match = /\(([^)]+)\)\s*$/.exec(String(label))
   return match ? match[1].trim() : null
+}
+const normalizeScopeModuleKey = (value) => String(value ?? '').trim().toLowerCase()
+const normalizeScopeBranchId = (value) => String(value ?? '').trim()
+const getModuleScopeBranchIdSet = (rawScopes, moduleKey) => {
+  const normalizedModuleKey = normalizeScopeModuleKey(moduleKey)
+  if (!normalizedModuleKey) return null
+  const moduleScope = (Array.isArray(rawScopes) ? rawScopes : []).find(
+    (scope) => normalizeScopeModuleKey(scope?.modulo) === normalizedModuleKey
+  )
+  if (!moduleScope) return null
+  const ids = (Array.isArray(moduleScope?.sucursales_ids) ? moduleScope.sucursales_ids : [])
+    .map((branchId) => normalizeScopeBranchId(branchId))
+    .filter(Boolean)
+  return new Set(ids)
 }
 
 const DEFAULT_IVA_RATE = 0.15
@@ -156,6 +206,10 @@ function ProductoDetails({
     if (!needle) return []
     return suppliers
   }, [suppliers, casaSearch])
+  const editableProductBranchIds = useMemo(
+    () => getModuleScopeBranchIdSet(currentUser?.sucursales_por_modulo, 'productos'),
+    [currentUser]
+  )
 
   const normalizeProducto = (data) => ({
     codigo: data?.codigo ?? '',
@@ -1043,8 +1097,14 @@ function ProductoDetails({
       )
 
       if (!response.ok && response.status !== 204) {
-        const data = await response.json().catch(() => ({}))
-        const detail = data?.detail || 'No se pudo eliminar el producto.'
+        const responseClone = response.clone()
+        const data = await response.json().catch(() => null)
+        const rawText = data == null ? await responseClone.text().catch(() => '') : ''
+        const safeRawText = rawText && !/<[a-z][\s\S]*>/i.test(rawText) ? rawText.trim() : ''
+        const detail = parseApiErrorDetail(
+          data || { detail: safeRawText },
+          'No se pudo eliminar el producto.'
+        )
         throw new Error(detail)
       }
 
@@ -1857,6 +1917,7 @@ function ProductoDetails({
                     bodegas={resolvedInventoryContext?.bodegas || []}
                     subdivisions={resolvedInventoryContext?.subdivisions || []}
                     inventarioEntries={resolvedInventoryContext?.inventarioEntries || []}
+                    editableBranchIds={editableProductBranchIds ? Array.from(editableProductBranchIds) : null}
                     disabled={editorDisabled}
                     onSaved={resolvedInventoryContext?.onSaved}
                     onError={notifyError}
@@ -1877,6 +1938,7 @@ function ProductoDetails({
                 currentUser={currentUser}
                 entityType="producto"
                 entityId={productoId}
+                isOpen={open}
                 entityLabel={
                   formData.codigo
                     ? `${formData.codigo} - ${formData.nombre || 'Producto'}`

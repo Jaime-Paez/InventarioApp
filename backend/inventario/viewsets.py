@@ -43,25 +43,13 @@ from .serializers import (
 )
 
 
-LOCATION_CATALOG_READ_MODULE_KEYS = (
-    RolPermiso.Modulos.SUCURSALES_BODEGAS,
-    RolPermiso.Modulos.INVENTARIO,
-    RolPermiso.Modulos.PRODUCTOS,
+LOCATION_CATALOG_SCOPED_READ_MODULE_KEYS = (
     RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
     RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
-    RolPermiso.Modulos.SOLICITUDES,
-)
-
-LOCATION_CATALOG_SCOPE_FALLBACK_MODULE_KEYS = (
-    RolPermiso.Modulos.SUCURSALES_BODEGAS,
-    RolPermiso.Modulos.INVENTARIO,
-    RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
-    RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
-    RolPermiso.Modulos.SOLICITUDES,
+    RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
 )
 
 INVENTARIO_WRITE_SCOPE_MODULE_KEYS = (
-    RolPermiso.Modulos.INVENTARIO,
     RolPermiso.Modulos.PRODUCTOS,
 )
 
@@ -69,14 +57,16 @@ INVENTARIO_WRITE_SCOPE_MODULE_KEYS = (
 def _resolve_location_catalog_scope_modules(request):
     if request.method in ("GET", "HEAD", "OPTIONS"):
         query_module = (request.query_params.get("modulo") or "").strip()
-        if query_module in LOCATION_CATALOG_READ_MODULE_KEYS:
+        if query_module in LOCATION_CATALOG_SCOPED_READ_MODULE_KEYS:
             return [query_module]
-        return list(LOCATION_CATALOG_SCOPE_FALLBACK_MODULE_KEYS)
+        return []
     return [RolPermiso.Modulos.SUCURSALES_BODEGAS]
 
 
 def _apply_location_catalog_scope(queryset, request, field_lookup):
     module_keys = _resolve_location_catalog_scope_modules(request)
+    if not module_keys:
+        return queryset
     allowed = get_allowed_sucursal_ids_for_modules(request.user, module_keys)
     if allowed is None:
         return queryset

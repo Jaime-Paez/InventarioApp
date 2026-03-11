@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import './CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -14,6 +14,12 @@ const ACTIONS = [
   { key: 'puede_eliminar', label: 'Eliminar' },
 ]
 const INVENTORY_MODULE_KEY = 'inventario'
+const BRANCH_SCOPED_MODULE_KEYS = new Set([
+  'movimientos_entradas',
+  'movimientos_salidas',
+  'movimientos_inconvenientes',
+  'productos',
+])
 
 const isActionAllowedForModule = (moduleKey, actionKey) =>
   moduleKey === INVENTORY_MODULE_KEY ? actionKey === 'puede_leer' : true
@@ -219,7 +225,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       setBranchScopedModules(
         scopedModules
           .map((module) => module?.key)
-          .filter((key) => typeof key === 'string' && key.length > 0)
+          .filter((key) => typeof key === 'string' && key.length > 0 && BRANCH_SCOPED_MODULE_KEYS.has(key))
       )
     } catch (err) {
       notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
@@ -311,10 +317,18 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     },
     [branchScopedModules, moduleBranchMatrix]
   )
+  const isActionBranchScoped = useCallback(
+    (moduleKey, actionKey) => {
+      if (!branchScopedModules.includes(moduleKey)) return false
+      if (moduleKey === 'productos' && actionKey === 'puede_leer') return false
+      return true
+    },
+    [branchScopedModules]
+  )
 
   const togglePermissionForBranch = (moduleKey, actionKey) => {
     if (!isActionAllowedForModule(moduleKey, actionKey)) return
-    const moduleUsesBranchScope = branchScopedModules.includes(moduleKey)
+    const moduleUsesBranchScope = isActionBranchScoped(moduleKey, actionKey)
     if (moduleUsesBranchScope && !selectedBranchId) return
     const allowedActions = getAllowedActionsForModule(moduleKey)
 
@@ -397,16 +411,16 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     })
   }
 
-  const setColumnPermission = (actionKey, checked) => {
+  const setColumnPermission = (actionKey, checked, modules = permissionOptions) => {
     let nextPermissions = { ...permissionsMatrix }
     let nextModuleBranchMatrix = { ...moduleBranchMatrix }
     let changed = false
 
-    permissionOptions.forEach((module) => {
+    modules.forEach((module) => {
       const moduleKey = module.key
       if (!isActionAllowedForModule(moduleKey, actionKey)) return
 
-      const moduleUsesBranchScope = branchScopedModules.includes(moduleKey)
+      const moduleUsesBranchScope = isActionBranchScoped(moduleKey, actionKey)
       if (moduleUsesBranchScope && !selectedBranchId) return
 
       const current = nextPermissions[moduleKey] || EMPTY_PERMISSION_ENTRY
@@ -461,15 +475,15 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     setModuleBranchMatrix(nextModuleBranchMatrix)
   }
 
-  const getColumnSelectionState = (actionKey) => {
+  const getColumnSelectionState = (actionKey, modules = permissionOptions) => {
     let total = 0
     let selected = 0
 
-    permissionOptions.forEach((module) => {
+    modules.forEach((module) => {
       const moduleKey = module.key
       if (!isActionAllowedForModule(moduleKey, actionKey)) return
 
-      const moduleUsesBranchScope = branchScopedModules.includes(moduleKey)
+      const moduleUsesBranchScope = isActionBranchScoped(moduleKey, actionKey)
       if (moduleUsesBranchScope && !selectedBranchId) return
 
       total += 1
@@ -490,9 +504,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const renderPermissionRow = (module) => {
     const entryKey = module.key
     const current = permissionsMatrix[entryKey] || {}
-    const moduleUsesBranchScope = branchScopedModules.includes(entryKey)
-    const branchScoped = isBranchScopedForModule(entryKey, selectedBranchId)
-    const isDisabled = loading || permissionsLoading || branchesLoading || (moduleUsesBranchScope && !selectedBranchId)
+    const baseDisabled = loading || permissionsLoading || branchesLoading
 
     return (
       <div key={entryKey} className="permissions-matrix__row">
@@ -509,6 +521,12 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
               />
             )
           }
+
+          const actionUsesBranchScope = isActionBranchScoped(module.key, action.key)
+          const branchScoped = actionUsesBranchScope
+            ? isBranchScopedForModule(entryKey, selectedBranchId)
+            : true
+          const isDisabled = baseDisabled || (actionUsesBranchScope && !selectedBranchId)
 
           return (
             <label key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
@@ -769,6 +787,14 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     }
   }
   const selectedBranch = branches.find((branch) => branch.id === selectedBranchId) || null
+  const globalPermissionOptions = useMemo(
+    () => permissionOptions.filter((module) => !branchScopedModules.includes(module?.key)),
+    [permissionOptions, branchScopedModules]
+  )
+  const branchPermissionOptions = useMemo(
+    () => permissionOptions.filter((module) => branchScopedModules.includes(module?.key)),
+    [permissionOptions, branchScopedModules]
+  )
   const { shouldRender, isClosing } = useModalAnimation(open)
 
   if (!shouldRender) return null
@@ -1001,6 +1027,44 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
             {activeTab === 'accesos' && (
               <section className="create-user__section">
+                {Boolean(globalPermissionOptions.length) && (
+                  <div className="create-user__permissions-panel user-details__permissions-panel-global">
+                    <div className="create-user__permissions-panel-head">
+                      <div>
+                        <p className="create-user__eyebrow">Permisos globales</p>
+                        <h4>Acceso general (sin sucursal)</h4>
+                      </div>
+                    </div>
+
+                    <div className="permissions-matrix__table" role="grid">
+                      <div className="permissions-matrix__row permissions-matrix__row--head">
+                        <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
+                        {ACTIONS.map((action) => {
+                          const columnState = getColumnSelectionState(action.key, globalPermissionOptions)
+                          const headerDisabled = loading || permissionsLoading || branchesLoading || columnState.disabled
+                          return (
+                            <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action permissions-matrix__head-action">
+                              <span>{action.label}</span>
+                              <input
+                                type="checkbox"
+                                checked={columnState.checked}
+                                ref={(node) => {
+                                  if (node) node.indeterminate = columnState.indeterminate
+                                }}
+                                onChange={(event) => setColumnPermission(action.key, event.target.checked, globalPermissionOptions)}
+                                disabled={headerDisabled}
+                                aria-label={`Seleccionar toda la columna ${action.label}`}
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {globalPermissionOptions.map((module) => renderPermissionRow(module))}
+                    </div>
+                  </div>
+                )}
+
                 {(branchesLoading || !branches.length) && (
                   <div className="create-user__section-header">
                     <small className="muted">{branchesLoading ? 'Cargando sucursales...' : 'No hay sucursales registradas.'}</small>
@@ -1023,7 +1087,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                             setSelectedBranchId(branch.id)
                             setShowPermissionsPopup(true)
                           }}
-                          disabled={loading || branchesLoading}
+                          disabled={loading || branchesLoading || !branchPermissionOptions.length}
                         >
                           Ver permisos
                         </button>
@@ -1069,9 +1133,9 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                 </button>
               </div>
 
-              {(permissionsLoading || !permissionOptions.length) && (
+              {(permissionsLoading || !branchPermissionOptions.length) && (
                 <small className="muted">
-                  {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos configurados.'}
+                  {permissionsLoading ? 'Cargando permisos...' : 'No hay módulos por sucursal configurados.'}
                 </small>
               )}
 
@@ -1080,7 +1144,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                   <div className="permissions-matrix__row permissions-matrix__row--head">
                     <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
                     {ACTIONS.map((action) => {
-                      const columnState = getColumnSelectionState(action.key)
+                      const columnState = getColumnSelectionState(action.key, branchPermissionOptions)
                       const headerDisabled = loading || permissionsLoading || branchesLoading || columnState.disabled
                       return (
                         <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action permissions-matrix__head-action">
@@ -1091,7 +1155,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                             ref={(node) => {
                               if (node) node.indeterminate = columnState.indeterminate
                             }}
-                            onChange={(event) => setColumnPermission(action.key, event.target.checked)}
+                            onChange={(event) => setColumnPermission(action.key, event.target.checked, branchPermissionOptions)}
                             disabled={headerDisabled}
                             aria-label={`Seleccionar toda la columna ${action.label}`}
                           />
@@ -1100,7 +1164,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                     })}
                   </div>
 
-                  {permissionOptions.map((module) => renderPermissionRow(module))}
+                  {branchPermissionOptions.map((module) => renderPermissionRow(module))}
                 </div>
               </div>
             </div>

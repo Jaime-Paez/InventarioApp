@@ -2293,7 +2293,9 @@ function SalidaDetails({
                     currentUser={currentUser}
                     entityType="salida"
                     entityId={salidaId}
+                    isOpen={open}
                     entityLabel={modalTitle}
+                    canCreateReminder={allowEdit && isEditing}
                     transferSolicitudId={transferSolicitudId}
                     onError={notifyError}
                   />

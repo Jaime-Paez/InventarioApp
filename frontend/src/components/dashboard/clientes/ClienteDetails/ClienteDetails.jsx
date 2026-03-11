@@ -903,10 +903,12 @@ function ClienteDetails({
                 currentUser={currentUser}
                 entityType="cliente"
                 entityId={clienteId}
+                isOpen={open}
                 entityLabel={
                   `${formData.nombres || ''} ${formData.apellidos || ''}`.trim() ||
                   (clienteId ? `Cliente #${clienteId}` : 'Cliente')
                 }
+                canCreateReminder={allowEdit && isEditing}
                 onError={notifyError}
               />
             )}

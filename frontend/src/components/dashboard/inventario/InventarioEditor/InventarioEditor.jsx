@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../InventarioDetails/InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -14,6 +14,7 @@ const parseQuantity = (value) => {
   if (!Number.isFinite(parsed)) return null
   return Math.max(0, Math.floor(parsed))
 }
+const normalizeScopeBranchId = (value) => String(value ?? '').trim()
 const normalizeForSearch = (value) =>
   String(value ?? '')
     .normalize('NFD')
@@ -29,6 +30,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     bodegas = [],
     subdivisions = [],
     inventarioEntries = [],
+    editableBranchIds = null,
     disabled = false,
     onSaved,
     onError,
@@ -306,6 +308,26 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     () => subdivisionById.get(String(locationDraft.subdivisionId || '')) || null,
     [subdivisionById, locationDraft.subdivisionId]
   )
+  const editableBranchIdSet = useMemo(() => {
+    if (editableBranchIds == null) return null
+    const branchIds = editableBranchIds instanceof Set
+      ? Array.from(editableBranchIds)
+      : (Array.isArray(editableBranchIds) ? editableBranchIds : [])
+    return new Set(branchIds.map((branchId) => normalizeScopeBranchId(branchId)).filter(Boolean))
+  }, [editableBranchIds])
+  const canManageBranchLocation = useCallback(
+    (branchId) => {
+      if (!(editableBranchIdSet instanceof Set)) return true
+      const normalizedBranchId = normalizeScopeBranchId(branchId)
+      if (!normalizedBranchId) return false
+      return editableBranchIdSet.has(normalizedBranchId)
+    },
+    [editableBranchIdSet]
+  )
+  const canManageLocationDraft = useMemo(
+    () => (!locationDraft.sucursalId ? true : canManageBranchLocation(locationDraft.sucursalId)),
+    [locationDraft.sucursalId, canManageBranchLocation]
+  )
 
   const editorDisabled = disabled || saving
   const createLocationUid = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -405,6 +427,10 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   }
 
   const handleLocationBranchPick = (branch) => {
+    if (!canManageBranchLocation(branch?.id)) {
+      setLocationError('No tienes permisos para editar ubicaciones en esta sucursal.')
+      return
+    }
     handleLocationSelect('sucursalId', String(branch?.id || ''))
     closeAllLocationDropdowns()
     setLocationBodegaQuery('')
@@ -439,6 +465,10 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
     if (!sucursalId) {
       setLocationError('Selecciona una sucursal.')
+      return
+    }
+    if (!canManageBranchLocation(sucursalId)) {
+      setLocationError('No tienes permisos para editar ubicaciones en esta sucursal.')
       return
     }
     if (!bodegaId) {
@@ -500,6 +530,10 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
   const beginLocationEdit = (location, field) => {
     if (editorDisabled) return
+    if (!canManageBranchLocation(location?.sucursalId)) {
+      setEditError('No tienes permisos para editar ubicaciones en esta sucursal.')
+      return
+    }
     setEditError('')
     setEditingLocationKey(location.uid)
     setEditingField(field)
@@ -576,6 +610,10 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
   const handleRemoveLocation = (location) => {
     if (editorDisabled) return
+    if (!canManageBranchLocation(location?.sucursalId)) {
+      setEditError('No tienes permisos para editar ubicaciones en esta sucursal.')
+      return
+    }
     setLocations((prev) => prev.filter((item) => item.uid !== location.uid))
     if (editingLocationKey === location.uid) {
       cancelLocationEdit()
@@ -769,24 +807,28 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         {!filteredLocationBranches.length && (
                           <small className="muted">Sin resultados.</small>
                         )}
-                        {filteredLocationBranches.map((branch) => (
-                          <button
-                            key={branch.id}
-                            type="button"
-                            className="create-user__result-option"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              handleLocationBranchPick(branch)
-                            }}
-                            disabled={editorDisabled}
-                          >
-                            <div className="create-user__result-info">
-                              <strong>{branch.nombre || `Sucursal ${branch.id}`}</strong>
-                            </div>
-                          </button>
-                        ))}
+                        {filteredLocationBranches.map((branch) => {
+                          const branchEditable = canManageBranchLocation(branch?.id)
+                          return (
+                            <button
+                              key={branch.id}
+                              type="button"
+                              className="create-user__result-option"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                handleLocationBranchPick(branch)
+                              }}
+                              disabled={editorDisabled || !branchEditable}
+                              title={branchEditable ? undefined : 'Sin permiso para editar ubicaciones en esta sucursal'}
+                            >
+                              <div className="create-user__result-info">
+                                <strong>{branch.nombre || `Sucursal ${branch.id}`}</strong>
+                              </div>
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
@@ -804,7 +846,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                       setShowLocationDivisionDropdown(false)
                       setShowLocationSubdivisionDropdown(false)
                     }}
-                    disabled={editorDisabled || !locationDraft.sucursalId}
+                    disabled={editorDisabled || !locationDraft.sucursalId || !canManageLocationDraft}
                   >
                     <span>{selectedLocationBodega?.nombre || 'Selecciona una bodega'}</span>
                     <i className={`pi pi-chevron-${showLocationBodegaDropdown ? 'up' : 'down'}`} />
@@ -836,7 +878,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                               event.stopPropagation()
                               handleLocationBodegaPick(bodega)
                             }}
-                            disabled={editorDisabled}
+                            disabled={editorDisabled || !canManageLocationDraft}
                           >
                             <div className="create-user__result-info">
                               <strong>{bodega.nombre || `Bodega ${bodega.id}`}</strong>
@@ -860,7 +902,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                       setShowLocationBodegaDropdown(false)
                       setShowLocationSubdivisionDropdown(false)
                     }}
-                    disabled={editorDisabled || !locationDraft.bodegaId}
+                    disabled={editorDisabled || !locationDraft.bodegaId || !canManageLocationDraft}
                   >
                     <span>{selectedLocationDivision?.nombre || 'Selecciona una division'}</span>
                     <i className={`pi pi-chevron-${showLocationDivisionDropdown ? 'up' : 'down'}`} />
@@ -892,7 +934,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                               event.stopPropagation()
                               handleLocationDivisionPick(division)
                             }}
-                            disabled={editorDisabled}
+                            disabled={editorDisabled || !canManageLocationDraft}
                           >
                             <div className="create-user__result-info">
                               <strong>{division.nombre || `Division ${division.id}`}</strong>
@@ -916,7 +958,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                       setShowLocationBodegaDropdown(false)
                       setShowLocationDivisionDropdown(false)
                     }}
-                    disabled={editorDisabled || !locationDraft.divisionId}
+                    disabled={editorDisabled || !locationDraft.divisionId || !canManageLocationDraft}
                   >
                     <span>{selectedLocationSubdivision?.nombre || 'Selecciona una subdivision'}</span>
                     <i className={`pi pi-chevron-${showLocationSubdivisionDropdown ? 'up' : 'down'}`} />
@@ -948,7 +990,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                               event.stopPropagation()
                               handleLocationSubdivisionPick(subdivision)
                             }}
-                            disabled={editorDisabled}
+                            disabled={editorDisabled || !canManageLocationDraft}
                           >
                             <div className="create-user__result-info">
                               <strong>{subdivision.nombre || `Subdivision ${subdivision.id}`}</strong>
@@ -968,7 +1010,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   placeholder="Cantidad"
                   value={locationDraft.cantidad}
                   onChange={(event) => handleLocationSelect('cantidad', event.target.value)}
-                  disabled={editorDisabled}
+                  disabled={editorDisabled || !canManageLocationDraft}
                 />
               </span>
               <span className="create-user__locations-cell create-user__locations-cell--action">
@@ -976,7 +1018,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   type="button"
                   className="create-user__ghost"
                   onClick={handleAddLocation}
-                  disabled={editorDisabled}
+                  disabled={editorDisabled || !canManageLocationDraft}
                 >
                   Agregar
                 </button>
@@ -992,6 +1034,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
           {locations.map((location) => {
             const rowSubdivisions = subdivisionsByDivision.get(location.divisionId) || []
+            const canManageRow = canManageBranchLocation(location.sucursalId)
             const isEditingRow = editingLocationKey === location.uid
             const editingSubdivision = isEditingRow && editingField === 'subdivision'
             const editingCantidad = isEditingRow && editingField === 'cantidad'
@@ -1003,8 +1046,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                 <span>{location.bodegaNombre}</span>
                 <span>{location.divisionNombre}</span>
                 <span
-                  className="create-user__locations-cell create-user__locations-cell--editable"
-                  onDoubleClick={() => beginLocationEdit(location, 'subdivision')}
+                  className={`create-user__locations-cell${canManageRow ? ' create-user__locations-cell--editable' : ''}`}
+                  onDoubleClick={canManageRow ? () => beginLocationEdit(location, 'subdivision') : undefined}
                 >
                   {editingSubdivision ? (
                     <select
@@ -1031,8 +1074,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   )}
                 </span>
                 <span
-                  className="create-user__locations-cell create-user__locations-cell--editable"
-                  onDoubleClick={() => beginLocationEdit(location, 'cantidad')}
+                  className={`create-user__locations-cell${canManageRow ? ' create-user__locations-cell--editable' : ''}`}
+                  onDoubleClick={canManageRow ? () => beginLocationEdit(location, 'cantidad') : undefined}
                 >
                   {editingCantidad ? (
                     <input
@@ -1065,7 +1108,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                     type="button"
                     className="create-user__locations-remove"
                     onClick={() => handleRemoveLocation(location)}
-                    disabled={editorDisabled}
+                    disabled={editorDisabled || !canManageRow}
                     aria-label="Eliminar ubicacion"
                   >
                     ×

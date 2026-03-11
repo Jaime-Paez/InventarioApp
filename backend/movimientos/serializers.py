@@ -101,9 +101,9 @@ def _build_branch_token(branch, fallback="sucursal"):
 
 
 def _next_incremental_document_number(model, base, filters=None):
-    base_token = str(base or "").strip().lower().strip("-")
+    base_token = str(base or "").strip().upper().strip("-")
     if not base_token:
-        base_token = "doc"
+        base_token = "DOC"
 
     query_filters = dict(filters or {})
     query_filters["no_documento__istartswith"] = f"{base_token}-"

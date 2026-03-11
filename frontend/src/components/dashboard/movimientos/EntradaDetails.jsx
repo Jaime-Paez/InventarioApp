@@ -18,6 +18,7 @@ const emptyForm = {
   estadoNombre: '',
   fecha: '',
   no_documento: '',
+  factura_referencia: '',
   descripcion: '',
   funcional: true,
   sucursalObjetivoId: '',
@@ -376,7 +377,7 @@ function EntradaDetails({
   const isCompraEntrada = selectedSubTipoName.includes('compra') || selectedSubTipoName.includes('import')
   const isAlwaysReceivedEntrada = isDevolucion || isCompraEntrada
   const requiresSucursalObjetivo = isTraslado
-  const documentLabel = isTraslado ? 'No. de Traslado' : (isCompraEntrada ? 'No. de Compra' : 'No. de Factura')
+  const documentLabel = isTraslado ? 'Codigo de solicitud' : 'Codigo de entrada'
 
   const devolucionEstadoOptions = useMemo(
     () =>
@@ -725,6 +726,7 @@ function EntradaDetails({
         estadoNombre: estadoNombre || '',
         fecha: salida?.fecha || todayISO(),
         no_documento: salida?.no_documento ?? '',
+        factura_referencia: salida?.factura_referencia ?? '',
         descripcion,
         funcional: Boolean(salida?.funcional),
         sucursalObjetivoId: sucursalObjetivoId ? String(sucursalObjetivoId) : '',
@@ -791,6 +793,7 @@ function EntradaDetails({
       estadoNombre,
       fecha,
       no_documento: noDocumento,
+      factura_referencia: '',
       descripcion,
       funcional: true,
       sucursalObjetivoId: proveedoraId,
@@ -1629,7 +1632,12 @@ function EntradaDetails({
     }
 
     if (!String(formData.no_documento || '').trim()) {
-      notifyError('Ingresa el numero de documento.')
+      notifyError('No se pudo resolver el codigo de la entrada.')
+      return
+    }
+
+    if (isDevolucion && !String(formData.factura_referencia || '').trim()) {
+      notifyError('Ingresa la factura de venta para la devolucion.')
       return
     }
 
@@ -1691,6 +1699,7 @@ function EntradaDetails({
       descuento,
       fecha: formData.fecha,
       no_documento: formData.no_documento.trim(),
+      factura_referencia: String(formData.factura_referencia || '').trim(),
       detalles: details.map((detail) => {
         const cantidad = parseIntValue(detail.cantidad) || 0
         const valor = parseNumber(detail.valor) || 0
@@ -2097,6 +2106,21 @@ function EntradaDetails({
 
                     {isDevolucion && (
                       <label className="create-user__field">
+                        <span>No. factura venta origen</span>
+                        <input
+                          name="factura_referencia"
+                          type="text"
+                          value={formData.factura_referencia}
+                          onChange={handleChange}
+                          disabled={editorDisabled}
+                          required={isDevolucion}
+                          placeholder="Factura emitida en la venta"
+                        />
+                      </label>
+                    )}
+
+                    {isDevolucion && (
+                      <label className="create-user__field">
                         <span>Funcional</span>
                         <select
                           name="funcional"
@@ -2458,7 +2482,9 @@ function EntradaDetails({
                     currentUser={currentUser}
                     entityType="entrada"
                     entityId={entradaId}
+                    isOpen={open}
                     entityLabel={modalTitle}
+                    canCreateReminder={allowEdit && isEditing}
                     transferSolicitudId={transferSolicitudId}
                     onError={notifyError}
                   />

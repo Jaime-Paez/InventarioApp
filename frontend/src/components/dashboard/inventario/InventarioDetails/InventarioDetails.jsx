@@ -26,6 +26,7 @@ function InventarioDetails({
   onSaved,
   onError,
   currentUser,
+  allowEdit = true,
 }) {
   const [draftQuantities, setDraftQuantities] = useState({})
   const [saving, setSaving] = useState(false)
@@ -434,11 +435,13 @@ function InventarioDetails({
                 currentUser={currentUser}
                 entityType="inventario"
                 entityId={product?.id}
+                isOpen={open}
                 entityLabel={
                   product?.codigo
                     ? `${product.codigo} - ${product.nombre || 'Producto'}`
                     : product?.nombre || 'Inventario'
                 }
+                canCreateReminder={allowEdit}
                 onError={onError}
               />
             )}

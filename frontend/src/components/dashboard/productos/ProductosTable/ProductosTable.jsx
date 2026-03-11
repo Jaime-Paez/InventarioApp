@@ -1777,6 +1777,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         onCreated={handleCreated}
         token={token}
         onError={showErrorToast}
+        currentUser={user}
         showCostField={canSeeCost}
       />
 

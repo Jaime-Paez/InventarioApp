@@ -14,8 +14,6 @@ from inventario.models import Bodega, SubDivision, Sucursal
 from marcas.models import Marca
 from marcas.serializers import MarcaSerializer
 from movimientos.models import DetalleMovimiento
-from usuarios.models import RolPermiso
-from usuarios.sucursal_scope import apply_sucursal_scope
 
 from .models import OEM, OEMProducto, Producto, ProductoAlterno, ProductoCalificacion
 
@@ -570,13 +568,8 @@ class ProductoDetailSerializer(ProductoSerializer):
                 "inventario_entries": [],
             }
 
-        branches_qs = apply_sucursal_scope(
-            Sucursal.objects.only("id", "nombre").order_by("id"),
-            request.user,
-            RolPermiso.Modulos.PRODUCTOS,
-            "id",
-        )
-        bodegas_qs = apply_sucursal_scope(
+        branches_qs = Sucursal.objects.only("id", "nombre").order_by("id")
+        bodegas_qs = (
             Bodega.objects.select_related("sucursal")
             .only(
                 "id",
@@ -588,12 +581,9 @@ class ProductoDetailSerializer(ProductoSerializer):
                 "sucursal__id",
                 "sucursal__nombre",
             )
-            .order_by("id"),
-            request.user,
-            RolPermiso.Modulos.PRODUCTOS,
-            "sucursal_id",
+            .order_by("id")
         )
-        subdivisions_qs = apply_sucursal_scope(
+        subdivisions_qs = (
             SubDivision.objects.select_related(
                 "division",
                 "division__bodega",
@@ -612,12 +602,9 @@ class ProductoDetailSerializer(ProductoSerializer):
                 "division__bodega__sucursal__id",
                 "division__bodega__sucursal__nombre",
             )
-            .order_by("id"),
-            request.user,
-            RolPermiso.Modulos.PRODUCTOS,
-            "division__bodega__sucursal_id",
+            .order_by("id")
         )
-        inventory_entries_qs = apply_sucursal_scope(
+        inventory_entries_qs = (
             obj.inventarios.select_related(
                 "subdivision",
                 "subdivision__division",
@@ -642,10 +629,7 @@ class ProductoDetailSerializer(ProductoSerializer):
                 "subdivision__division__bodega__sucursal__id",
                 "subdivision__division__bodega__sucursal__nombre",
             )
-            .order_by("id"),
-            request.user,
-            RolPermiso.Modulos.PRODUCTOS,
-            "subdivision__division__bodega__sucursal_id",
+            .order_by("id")
         )
 
         branch_payload_by_id = {}

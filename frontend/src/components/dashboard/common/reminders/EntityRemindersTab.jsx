@@ -138,6 +138,26 @@ const formatDecisionStatusLabel = (value) => {
   return 'Pendiente'
 }
 
+const formatReminderContextTypeLabel = (value) => {
+  const normalized = normalizeReminderContextType(value)
+  const knownLabels = {
+    producto: 'Producto',
+    inventario: 'Inventario',
+    entrada: 'Entrada',
+    salida: 'Salida',
+    solicitud: 'Solicitud',
+    cliente: 'Cliente',
+    solicitud_traslado: 'Solicitud de traslado',
+  }
+  if (knownLabels[normalized]) return knownLabels[normalized]
+  if (!normalized) return 'Registro'
+  return normalized
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 const buildReminderContextLabel = (reminder, fallbackEntityLabel = '') => {
   const normalizedFallback = String(fallbackEntityLabel || '').trim()
   const normalizedContextType = normalizeReminderContextType(reminder?.context?.type)
@@ -164,6 +184,7 @@ function EntityRemindersTab({
   entityId,
   entityLabel,
   canCreateReminder = true,
+  isOpen = true,
   transferSolicitudId = '',
   onError,
 }) {
@@ -210,6 +231,7 @@ function EntityRemindersTab({
       label: String(entityLabel || '').trim(),
     }
   }, [entityType, entityId, entityLabel])
+  const contextName = String(entityLabel || '').trim()
 
   const normalizedTransferSolicitudId = useMemo(
     () => normalizeId(transferSolicitudId),
@@ -227,6 +249,7 @@ function EntityRemindersTab({
   }, [notifyError, submitError])
 
   useEffect(() => {
+    if (!isOpen) return
     if (reminderContext) {
       missingContextToastRef.current = false
       return
@@ -234,7 +257,7 @@ function EntityRemindersTab({
     if (missingContextToastRef.current) return
     missingContextToastRef.current = true
     notifyError('No se pudo resolver el registro para recordatorios.')
-  }, [notifyError, reminderContext])
+  }, [isOpen, notifyError, reminderContext])
 
   const selectableUsers = useMemo(
     () => users.filter((userItem) => userItem.id !== creatorRecipientId),
@@ -320,6 +343,24 @@ function EntityRemindersTab({
   const activeReminderDecisionStatus = useMemo(() => {
     if (!activeReminderDetail) return ''
     return getReminderDecisionStatus(activeReminderDetail)
+  }, [activeReminderDetail])
+
+  const activeReminderRecipientsLabel = useMemo(() => {
+    if (!activeReminderDetail) return ''
+    return (Array.isArray(activeReminderDetail?.recipients) ? activeReminderDetail.recipients : [])
+      .map((recipient) => String(recipient?.name || '').trim())
+      .filter(Boolean)
+      .join(', ')
+  }, [activeReminderDetail])
+
+  const activeReminderContextLabel = useMemo(() => {
+    if (!activeReminderDetail) return '-'
+    return buildReminderContextLabel(activeReminderDetail, contextName)
+  }, [activeReminderDetail, contextName])
+
+  const activeReminderContextTypeLabel = useMemo(() => {
+    if (!activeReminderDetail) return 'Registro'
+    return formatReminderContextTypeLabel(activeReminderDetail?.context?.type)
   }, [activeReminderDetail])
 
   const showDetailDecision = useMemo(() => {
@@ -615,8 +656,6 @@ function EntityRemindersTab({
     setActiveReminderDetailId('')
   }
 
-  const contextName = String(entityLabel || '').trim()
-
   return (
     <section className="create-user__section entity-reminders">
       <div className="entity-reminders__head">
@@ -624,24 +663,20 @@ function EntityRemindersTab({
           <p className="create-user__eyebrow">Recordatorios</p>
           <h4>{contextName ? `Recordatorios de ${contextName}` : 'Recordatorios'}</h4>
         </div>
-        {canCreateReminder ? (
-          <button
-            type="button"
-            className="create-user__action create-user__action--primary entity-reminders__toggle"
-            onClick={() => {
-              setSubmitError('')
-              setActiveView((prev) => (prev === 'create' ? 'list' : 'create'))
-            }}
-            disabled={!reminderContext}
-          >
-            {activeView === 'create' ? <Minus size={14} /> : <Plus size={14} />}
-            {activeView === 'create' ? 'Ocultar formulario' : 'Anadir recordatorio'}
-          </button>
-        ) : (
-          <span className="entity-reminders__na">
-            Solo lectura
-          </span>
-        )}
+        <button
+          type="button"
+          className="create-user__action create-user__action--primary entity-reminders__toggle"
+          onClick={() => {
+            if (!canCreateReminder) return
+            setSubmitError('')
+            setActiveView((prev) => (prev === 'create' ? 'list' : 'create'))
+          }}
+          disabled={!reminderContext || !canCreateReminder}
+          title={!canCreateReminder ? 'No tienes permiso para crear recordatorios.' : undefined}
+        >
+          {activeView === 'create' && canCreateReminder ? <Minus size={14} /> : <Plus size={14} />}
+          {activeView === 'create' && canCreateReminder ? 'Ocultar formulario' : 'Anadir recordatorio'}
+        </button>
       </div>
 
       {activeView === 'create' ? (
@@ -857,7 +892,10 @@ function EntityRemindersTab({
             onMouseDown={(event) => event.stopPropagation()}
           >
             <header className="entity-reminders__detail-head">
-              <h5>Detalle del recordatorio</h5>
+              <div className="entity-reminders__detail-head-main">
+                <h5>{`Recordatorio para ${activeReminderContextTypeLabel}`}</h5>
+                <p className="entity-reminders__detail-context-ref">{activeReminderContextLabel}</p>
+              </div>
               <button
                 type="button"
                 className="entity-reminders__detail-close"
@@ -868,7 +906,7 @@ function EntityRemindersTab({
             </header>
 
             <div className="entity-reminders__detail-body">
-              <div className="entity-reminders__detail-grid">
+              <div className="entity-reminders__detail-top">
                 <div className="entity-reminders__detail-item">
                   <span className="entity-reminders__detail-label">Fecha y hora</span>
                   <strong>{formatReminderDateTime(activeReminderDetail)}</strong>
@@ -882,49 +920,40 @@ function EntityRemindersTab({
                     {activeReminderDetailStatus.label}
                   </span>
                 </div>
-
-                <div className="entity-reminders__detail-item">
-                  <span className="entity-reminders__detail-label">Creador</span>
-                  <strong>{activeReminderDetail?.creator?.name || 'Usuario'}</strong>
-                </div>
-
-                <div className="entity-reminders__detail-item">
-                  <span className="entity-reminders__detail-label">Contexto</span>
-                  <strong>{buildReminderContextLabel(activeReminderDetail, contextName)}</strong>
-                </div>
-
-                <div className="entity-reminders__detail-item">
-                  <span className="entity-reminders__detail-label">Creado</span>
-                  <strong>{formatIsoDateTime(activeReminderDetail?.createdAt)}</strong>
-                </div>
-
-                {showDetailDecision && (
-                  <div className="entity-reminders__detail-item">
-                    <span className="entity-reminders__detail-label">Resolucion</span>
-                    <strong>{formatDecisionStatusLabel(activeReminderDecisionStatus)}</strong>
-                  </div>
-                )}
               </div>
 
-              <section className="entity-reminders__detail-section">
+              <section className="entity-reminders__detail-section entity-reminders__detail-section--description">
                 <h6>Descripcion</h6>
                 <p className="entity-reminders__detail-description">
                   {String(activeReminderDetail?.description || '').trim() || '-'}
                 </p>
               </section>
 
-              <section className="entity-reminders__detail-section">
-                <h6>Dirigido a</h6>
-                <ul className="entity-reminders__detail-recipients">
-                  {(Array.isArray(activeReminderDetail?.recipients) ? activeReminderDetail.recipients : []).map(
-                    (recipient) => (
-                      <li key={`${normalizeId(activeReminderDetail?.id)}-${normalizeId(recipient?.id)}-${String(recipient?.name || '')}`}>
-                        {String(recipient?.name || '').trim() || 'Usuario'}
-                      </li>
-                    )
-                  )}
-                </ul>
-              </section>
+              <div className="entity-reminders__detail-bottom">
+                <div className="entity-reminders__detail-item">
+                  <span className="entity-reminders__detail-label">Creador</span>
+                  <strong>{activeReminderDetail?.creator?.name || 'Usuario'}</strong>
+                  <small className="entity-reminders__detail-meta">
+                    Creado: {formatIsoDateTime(activeReminderDetail?.createdAt)}
+                  </small>
+                </div>
+
+                <div className="entity-reminders__detail-item">
+                  <span className="entity-reminders__detail-label">Dirigido a</span>
+                  <strong title={activeReminderRecipientsLabel || '-'}>
+                    {activeReminderRecipientsLabel || '-'}
+                  </strong>
+                </div>
+              </div>
+
+              {showDetailDecision && (
+                <div className="entity-reminders__detail-bottom">
+                  <div className="entity-reminders__detail-item">
+                    <span className="entity-reminders__detail-label">Resolucion</span>
+                    <strong>{formatDecisionStatusLabel(activeReminderDecisionStatus)}</strong>
+                  </div>
+                </div>
+              )}
 
               {showDetailDecision && String(activeReminderDetail?.decision?.reason || '').trim() && (
                 <section className="entity-reminders__detail-section">
@@ -934,10 +963,11 @@ function EntityRemindersTab({
                   </p>
                 </section>
               )}
+
             </div>
 
-            <footer className="entity-reminders__detail-actions">
-              {activeReminderDetailStatus.canMarkSeen && (
+            {activeReminderDetailStatus.canMarkSeen && (
+              <footer className="entity-reminders__detail-actions">
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"
@@ -945,15 +975,8 @@ function EntityRemindersTab({
                 >
                   Marcar como visto
                 </button>
-              )}
-              <button
-                type="button"
-                className="create-user__action create-user__action--cancel"
-                onClick={closeReminderDetail}
-              >
-                Cerrar
-              </button>
-            </footer>
+              </footer>
+            )}
           </article>
         </div>
       )}

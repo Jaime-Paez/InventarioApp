@@ -1,10 +1,12 @@
 from decimal import Decimal, InvalidOperation
 
+from django.db import transaction
 from django.db.models import Case, CharField, DecimalField, ExpressionWrapper, F, Value, When
+from django.db.models.deletion import ProtectedError
 from django.utils.dateparse import parse_date
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -15,6 +17,7 @@ from usuarios.permissions import (
     ProductosDependentReadPermission,
     ProductosModulePermission,
 )
+from usuarios.sucursal_scope import get_allowed_sucursal_ids
 
 from .models import OEM, OEMProducto, Producto, ProductoAlterno
 from .serializers import (
@@ -161,6 +164,67 @@ class ProductoViewSet(viewsets.ModelViewSet):
         )
 
         return queryset.distinct()
+
+    def perform_destroy(self, instance):
+        if instance.detalles_movimiento.exists():
+            raise ValidationError(
+                {
+                    "detail": (
+                        "No se puede eliminar el producto porque está ligado a una "
+                        "entrada o salida registrada."
+                    )
+                }
+            )
+
+        inventory_rows = list(
+            instance.inventarios.values_list(
+                "subdivision__division__bodega__sucursal_id",
+                "subdivision__division__bodega__sucursal__nombre",
+            ).distinct()
+        )
+        inventory_branch_ids = {
+            int(sucursal_id)
+            for sucursal_id, _nombre in inventory_rows
+            if sucursal_id is not None
+        }
+
+        if inventory_branch_ids:
+            allowed_branch_ids = get_allowed_sucursal_ids(
+                self.request.user,
+                RolPermiso.Modulos.PRODUCTOS,
+            )
+            if allowed_branch_ids is not None:
+                missing_branch_ids = sorted(inventory_branch_ids.difference(allowed_branch_ids))
+                if missing_branch_ids:
+                    branch_names = []
+                    for sucursal_id, sucursal_nombre in inventory_rows:
+                        if sucursal_id in missing_branch_ids and sucursal_nombre:
+                            branch_names.append(str(sucursal_nombre).strip())
+                    branch_names = sorted(set([name for name in branch_names if name]))
+                    branch_hint = (
+                        f" Sucursales faltantes: {', '.join(branch_names)}."
+                        if branch_names
+                        else ""
+                    )
+                    raise PermissionDenied(
+                        "No tienes permiso para eliminar este producto en todas las sucursales donde tiene inventario."
+                        + branch_hint
+                    )
+
+        try:
+            with transaction.atomic():
+                if inventory_branch_ids:
+                    instance.inventarios.all().delete()
+                instance.delete()
+        except ProtectedError:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "No se puede eliminar el producto porque está relacionado con movimientos "
+                        "u otros registros históricos protegidos."
+                    )
+                }
+            )
 
     @action(detail=True, methods=["get"], url_path="calificacion")
     def calificacion(self, request, pk=None):
