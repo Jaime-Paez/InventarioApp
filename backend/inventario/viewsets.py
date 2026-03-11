@@ -28,6 +28,7 @@ from usuarios.permissions import (
 from usuarios.sucursal_scope import (
     apply_sucursal_scope,
     ensure_sucursal_allowed,
+    ensure_sucursal_allowed_for_modules,
     get_allowed_sucursal_ids_for_modules,
     get_allowed_sucursal_ids,
 )
@@ -57,6 +58,11 @@ LOCATION_CATALOG_SCOPE_FALLBACK_MODULE_KEYS = (
     RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
     RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
     RolPermiso.Modulos.SOLICITUDES,
+)
+
+INVENTARIO_WRITE_SCOPE_MODULE_KEYS = (
+    RolPermiso.Modulos.INVENTARIO,
+    RolPermiso.Modulos.PRODUCTOS,
 )
 
 
@@ -688,12 +694,16 @@ class InventarioViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         if self.request.method not in ("GET", "HEAD", "OPTIONS"):
-            queryset = apply_sucursal_scope(
-                queryset,
+            allowed = get_allowed_sucursal_ids_for_modules(
                 self.request.user,
-                RolPermiso.Modulos.INVENTARIO,
-                "subdivision__division__bodega__sucursal_id",
+                INVENTARIO_WRITE_SCOPE_MODULE_KEYS,
             )
+            if allowed is not None:
+                if not allowed:
+                    return queryset.none()
+                queryset = queryset.filter(
+                    subdivision__division__bodega__sucursal_id__in=sorted(allowed)
+                )
         queryset = queryset.annotate(
             pieza_original_label_text=Case(
                 When(producto__pieza_original=True, then=Value("Si")),
@@ -812,9 +822,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
             "sucursal_id",
             None,
         )
-        ensure_sucursal_allowed(
+        ensure_sucursal_allowed_for_modules(
             self.request.user,
-            RolPermiso.Modulos.INVENTARIO,
+            INVENTARIO_WRITE_SCOPE_MODULE_KEYS,
             sucursal_id,
         )
         serializer.save()
@@ -828,9 +838,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
             "sucursal_id",
             None,
         )
-        ensure_sucursal_allowed(
+        ensure_sucursal_allowed_for_modules(
             self.request.user,
-            RolPermiso.Modulos.INVENTARIO,
+            INVENTARIO_WRITE_SCOPE_MODULE_KEYS,
             sucursal_id,
         )
         serializer.save()

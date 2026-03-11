@@ -717,6 +717,20 @@ function ProductoDetails({
         descripcion: String(item?.descripcion ?? '').trim(),
       }
 
+      const searchResponse = await authFetch(
+        `${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}&page_size=20`,
+        {},
+        token
+      )
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json().catch(() => ({}))
+        const list = parseApiList(searchData)
+        const match = list.find(
+          (oem) => String(oem?.codigo ?? '').trim().toLowerCase() === codigo.toLowerCase()
+        )
+        if (match?.id) return match.id
+      }
+
       const createResponse = await authFetch(
         `${API_URL}/productos/oem/`,
         {
@@ -731,18 +745,19 @@ function ProductoDetails({
         return created?.id ?? null
       }
 
-      const searchResponse = await authFetch(
+      // Fallback por carrera: si otro proceso lo creó entre el search y este POST.
+      const retrySearchResponse = await authFetch(
         `${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}&page_size=20`,
         {},
         token
       )
-      if (!searchResponse.ok) return null
-      const searchData = await searchResponse.json().catch(() => ({}))
-      const list = parseApiList(searchData)
-      const match = list.find(
+      if (!retrySearchResponse.ok) return null
+      const retryData = await retrySearchResponse.json().catch(() => ({}))
+      const retryList = parseApiList(retryData)
+      const retryMatch = retryList.find(
         (oem) => String(oem?.codigo ?? '').trim().toLowerCase() === codigo.toLowerCase()
       )
-      return match?.id ?? null
+      return retryMatch?.id ?? null
     },
     [token]
   )

@@ -91,7 +91,8 @@ class InventarioReadProductosWritePermission(ModulePermission):
     """
     Permite inventario con este criterio:
 
-    - GET/HEAD/OPTIONS: valida permiso de lectura en `inventario`.
+    - GET/HEAD/OPTIONS: valida permiso de lectura en `inventario`
+      o en `productos`.
     - POST/PUT/PATCH/DELETE: valida la acción equivalente en `productos`
       o en `inventario`.
     """
@@ -101,10 +102,14 @@ class InventarioReadProductosWritePermission(ModulePermission):
         RolPermiso.Modulos.PRODUCTOS,
         RolPermiso.Modulos.INVENTARIO,
     )
+    read_module_keys = (
+        RolPermiso.Modulos.INVENTARIO,
+        RolPermiso.Modulos.PRODUCTOS,
+    )
 
     def get_target_module_keys(self, request, view):
         if request.method in ("GET", "HEAD", "OPTIONS"):
-            return [self.module_key]
+            return list(self.read_module_keys)
         return list(self.write_module_keys)
 
 
