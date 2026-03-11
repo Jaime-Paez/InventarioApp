@@ -92,16 +92,20 @@ class InventarioReadProductosWritePermission(ModulePermission):
     Permite inventario con este criterio:
 
     - GET/HEAD/OPTIONS: valida permiso de lectura en `inventario`.
-    - POST/PUT/PATCH/DELETE: valida la acción equivalente en `productos`.
+    - POST/PUT/PATCH/DELETE: valida la acción equivalente en `productos`
+      o en `inventario`.
     """
 
     module_key = RolPermiso.Modulos.INVENTARIO
-    write_module_key = RolPermiso.Modulos.PRODUCTOS
+    write_module_keys = (
+        RolPermiso.Modulos.PRODUCTOS,
+        RolPermiso.Modulos.INVENTARIO,
+    )
 
     def get_target_module_keys(self, request, view):
         if request.method in ("GET", "HEAD", "OPTIONS"):
             return [self.module_key]
-        return [self.write_module_key]
+        return list(self.write_module_keys)
 
 
 class ProductosModulePermission(ModulePermission):
@@ -226,6 +230,34 @@ class MarcasDependentReadPermission(ModulePermission):
 
 class ProveedoresCasasModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.PROVEEDORES_CASAS
+
+
+class ProveedoresCasasDependentReadPermission(ModulePermission):
+    """
+    Permite leer casas comerciales desde modulos que dependen de ese catalogo.
+
+    - GET/HEAD/OPTIONS:
+      - Si llega `?modulo=<key>` usa ese modulo.
+      - Si no llega, permite por cualquiera de los modulos consumidores.
+    - Escritura mantiene el modulo propio de casas comerciales.
+    """
+
+    module_key = RolPermiso.Modulos.PROVEEDORES_CASAS
+    read_module_keys = (
+        RolPermiso.Modulos.PROVEEDORES_CASAS,
+        RolPermiso.Modulos.INVENTARIO,
+        RolPermiso.Modulos.PRODUCTOS,
+        RolPermiso.Modulos.CLIENTES,
+        RolPermiso.Modulos.SOLICITUDES,
+    )
+
+    def get_target_module_keys(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            query_module = (request.query_params.get("modulo") or "").strip()
+            if query_module and query_module in set(self.read_module_keys):
+                return [query_module]
+            return list(self.read_module_keys)
+        return [self.module_key]
 
 
 class SolicitudesModulePermission(ModulePermission):

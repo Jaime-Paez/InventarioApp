@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
+import { formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -18,12 +19,7 @@ const initialForm = {
   casasIds: [],
 }
 
-const parseNumber = (value) => {
-  const cleaned = String(value ?? '').trim()
-  if (!cleaned) return null
-  const parsed = Number(cleaned)
-  return Number.isFinite(parsed) ? parsed : null
-}
+const parseNumber = (value) => parseMoneyInput(value)
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const parseQuantity = (value) => {
   const parsed = Number(value)
@@ -785,6 +781,13 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
         codigo: value,
       }))
       scheduleCodigoCheck(value)
+      return
+    }
+    if (name === 'precio' || name === 'costo_minimo') {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: formatMoneyInput(value),
+      }))
       return
     }
     setFormData((prev) => ({
@@ -1932,8 +1935,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                           <span>$</span>
                           <input
                             name="costo_minimo"
-                            type="number"
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="Costo al comprar"
                             value={formData.costo_minimo}
                             onChange={handleChange}
@@ -1949,8 +1952,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                         <span>$</span>
                         <input
                           name="precio"
-                          type="number"
-                          step="0.01"
+                          type="text"
+                          inputMode="decimal"
                           placeholder="Precio al que se pretende vender"
                           value={formData.precio}
                           onChange={handleChange}
@@ -2237,13 +2240,14 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                   </button>
                 </div>
 
-                <div className="create-user__locations-table create-user__locations-table--locations-selectors">
+                <div className="create-user__locations-table create-user__locations-table--locations-selectors create-user__locations-table--with-actions">
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>Sucursal</span>
                     <span>Bodega</span>
                     <span>Division</span>
                     <span>Subdivision</span>
                     <span>Cantidad</span>
+                    <span>Acciones</span>
                   </div>
                   {showLocationForm && (
                     <div className="create-user__locations-row create-user__locations-row--form">
@@ -2475,7 +2479,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                           )}
                         </div>
                       </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span>
                         <input
                           type="number"
                           min="1"
@@ -2485,6 +2489,8 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                           onChange={(event) => handleLocationSelect('cantidad', event.target.value)}
                           disabled={loading || locationsLoading}
                         />
+                      </span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
                           type="button"
                           className="create-user__ghost"
@@ -2548,7 +2554,6 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                         <span
                           className="create-user__locations-cell create-user__locations-cell--editable"
                           onDoubleClick={() => beginLocationEdit(location, 'cantidad')}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                         >
                           {editingCantidad ? (
                             <input
@@ -2570,14 +2575,16 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
                           ) : (
                             <strong>{location.cantidad}</strong>
                           )}
+                        </span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
                           <button
                             type="button"
-                            className="create-user__ghost"
+                            className="create-user__locations-remove"
                             onClick={() => handleRemoveLocation(location.uid)}
-                            onDoubleClick={(event) => event.stopPropagation()}
                             disabled={loading}
+                            aria-label="Eliminar ubicacion"
                           >
-                            Quitar
+                            ×
                           </button>
                         </span>
                       </div>

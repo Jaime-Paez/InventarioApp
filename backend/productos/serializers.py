@@ -590,7 +590,7 @@ class ProductoDetailSerializer(ProductoSerializer):
             )
             .order_by("id"),
             request.user,
-            RolPermiso.Modulos.SUCURSALES_BODEGAS,
+            RolPermiso.Modulos.PRODUCTOS,
             "sucursal_id",
         )
         subdivisions_qs = apply_sucursal_scope(
@@ -614,7 +614,7 @@ class ProductoDetailSerializer(ProductoSerializer):
             )
             .order_by("id"),
             request.user,
-            RolPermiso.Modulos.SUCURSALES_BODEGAS,
+            RolPermiso.Modulos.PRODUCTOS,
             "division__bodega__sucursal_id",
         )
         inventory_entries_qs = apply_sucursal_scope(
@@ -644,7 +644,7 @@ class ProductoDetailSerializer(ProductoSerializer):
             )
             .order_by("id"),
             request.user,
-            RolPermiso.Modulos.INVENTARIO,
+            RolPermiso.Modulos.PRODUCTOS,
             "subdivision__division__bodega__sucursal_id",
         )
 

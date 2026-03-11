@@ -8,6 +8,7 @@ import InventarioEditor from '../../inventario/InventarioEditor/InventarioEditor
 import useModalAnimation from '../../common/useModalAnimation'
 import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
+import { formatMoneyFromValue, formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -24,12 +25,7 @@ const emptyForm = {
   casasIds: [],
 }
 
-const parseNumber = (value) => {
-  const cleaned = String(value ?? '').trim()
-  if (!cleaned) return null
-  const parsed = Number(cleaned)
-  return Number.isFinite(parsed) ? parsed : null
-}
+const parseNumber = (value) => parseMoneyInput(value)
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const parseProductCode = (label) => {
   if (!label) return null
@@ -57,6 +53,7 @@ function ProductoDetails({
   currentUser,
   allowEdit = true,
   allowDelete = true,
+  allowComment = false,
   showCostField = true,
 }) {
   const [formData, setFormData] = useState(emptyForm)
@@ -164,8 +161,8 @@ function ProductoDetails({
     nombre: data?.nombre ?? '',
     descripcion: data?.descripcion ?? '',
     pieza_original: Boolean(data?.pieza_original),
-    costo_minimo: data?.costo_minimo != null ? String(data.costo_minimo) : '',
-    precio: data?.precio != null ? String(data.precio) : '',
+    costo_minimo: formatMoneyFromValue(data?.costo_minimo),
+    precio: formatMoneyFromValue(data?.precio),
     marcaId: data?.marca?.id ?? '',
     casasIds: Array.isArray(data?.casas_comerciales) ? data.casas_comerciales.map((casa) => String(casa.id)) : [],
   })
@@ -554,6 +551,13 @@ function ProductoDetails({
       setFormData((prev) => ({
         ...prev,
         pieza_original: type === 'checkbox' ? checked : value === 'true',
+      }))
+      return
+    }
+    if (name === 'precio' || name === 'costo_minimo') {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: formatMoneyInput(value),
       }))
       return
     }
@@ -1522,8 +1526,8 @@ function ProductoDetails({
                           <span>$</span>
                           <input
                             name="costo_minimo"
-                            type="number"
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
                             value={formData.costo_minimo}
                             onChange={handleChange}
                             disabled={editorDisabled}
@@ -1538,8 +1542,8 @@ function ProductoDetails({
                         <span>$</span>
                         <input
                           name="precio"
-                          type="number"
-                          step="0.01"
+                          type="text"
+                          inputMode="decimal"
                           value={formData.precio}
                           onChange={handleChange}
                           required
@@ -1847,6 +1851,7 @@ function ProductoDetails({
                 entityType="producto"
                 entityId={productoId}
                 entityLabel={formData.nombre || (productoId ? `Producto #${productoId}` : 'Producto')}
+                canCreateReminder={allowComment}
                 onError={notifyError}
               />
             )}
@@ -1856,6 +1861,7 @@ function ProductoDetails({
                 productoId={productoId}
                 token={token}
                 onError={notifyError}
+                canComment={allowComment}
               />
             )}
 

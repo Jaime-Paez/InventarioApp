@@ -1243,15 +1243,75 @@
 }
 
 .create-user__locations-table--alternos .create-user__locations-row {
-  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1fr) minmax(0, 1.6fr) 100px;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1.15fr) minmax(0, 1.45fr) 88px;
 }
 
 .create-user__locations-table--alternos {
   overflow: visible;
 }
 
+.create-user__locations-table--alternos .create-user__locations-row--form {
+  gap: 8px;
+}
+
+.create-user__locations-table--alternos .create-user__locations-row--form > span {
+  min-width: 0;
+}
+
+.create-user__locations-table--alternos .create-user__dropdown-trigger {
+  gap: 8px;
+  padding: 0.35rem 0.65rem;
+}
+
+.create-user__locations-table--alternos .create-user__dropdown-trigger > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.create-user__locations-table--alternos .create-user__dropdown-trigger > i {
+  flex-shrink: 0;
+}
+
 .create-user__locations-table--locations-selectors {
   overflow: visible;
+}
+
+.create-user__locations-table--locations-selectors .create-user__locations-row {
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1.12fr) minmax(0, 0.88fr) minmax(0, 0.88fr) minmax(130px, 0.92fr);
+}
+
+.create-user__locations-table--locations-selectors.create-user__locations-table--with-actions .create-user__locations-row {
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1.12fr) minmax(0, 0.88fr) minmax(0, 0.88fr) minmax(84px, 0.58fr) 84px;
+}
+
+.create-user__locations-table--locations-selectors .create-user__locations-row--form {
+  gap: 8px;
+}
+
+.create-user__locations-table--locations-selectors .create-user__locations-row--form > span {
+  min-width: 0;
+}
+
+.create-user__locations-table--locations-selectors .create-user__dropdown-trigger {
+  gap: 8px;
+  padding: 0.35rem 0.65rem;
+}
+
+.create-user__locations-table--locations-selectors .create-user__dropdown-trigger > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.create-user__locations-table--locations-selectors .create-user__dropdown-trigger > i {
+  flex-shrink: 0;
 }
 
 .create-user__locations-table--oem .create-user__locations-row {

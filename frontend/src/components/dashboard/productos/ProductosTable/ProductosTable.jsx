@@ -75,7 +75,12 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   )
   const isAdminByUsersPermissions = moduleHasAnyAction('usuarios', permissionIndex)
   const hasFullProductPermissions = moduleHasAllActions('productos', permissionIndex)
-  const canSeeCost = isAdminByRole || isAdminByUsersPermissions || hasFullProductPermissions
+  const canSeeCost =
+    isAdminByRole ||
+    isAdminByUsersPermissions ||
+    hasFullProductPermissions ||
+    Boolean(canCreate) ||
+    Boolean(canEdit)
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -1788,6 +1793,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         currentUser={user}
         allowEdit={canEdit}
         allowDelete={canDelete}
+        allowComment={Boolean(canCreate && canEdit)}
         showCostField={canSeeCost}
       />
 

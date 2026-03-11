@@ -2,7 +2,7 @@ from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 
 from core.table_filters import apply_column_filters, parse_column_filters
-from usuarios.permissions import ProveedoresCasasModulePermission
+from usuarios.permissions import ProveedoresCasasDependentReadPermission
 
 from .models import CasaComercial
 from .serializers import CasaComercialSerializer
@@ -11,7 +11,7 @@ from .serializers import CasaComercialSerializer
 class CasaComercialViewSet(viewsets.ModelViewSet):
     queryset = CasaComercial.objects.select_related("pais").all().order_by("-id")
     serializer_class = CasaComercialSerializer
-    permission_classes = [IsAuthenticated, ProveedoresCasasModulePermission]
+    permission_classes = [IsAuthenticated, ProveedoresCasasDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion"]
     ordering_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion"]

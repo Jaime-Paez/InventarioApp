@@ -123,6 +123,7 @@ function EntityRemindersTab({
   entityType,
   entityId,
   entityLabel,
+  canCreateReminder = true,
   transferSolicitudId = '',
   onError,
 }) {
@@ -273,6 +274,12 @@ function EntityRemindersTab({
   }, [entityType, entityId])
 
   useEffect(() => {
+    if (canCreateReminder || activeView !== 'create') return
+    setSubmitError('')
+    setActiveView('list')
+  }, [canCreateReminder, activeView])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return undefined
 
     const syncFromStorage = (event) => {
@@ -420,6 +427,11 @@ function EntityRemindersTab({
     event.preventDefault()
     setSubmitError('')
 
+    if (!canCreateReminder) {
+      setSubmitError('No tienes permisos para crear recordatorios en este registro.')
+      return
+    }
+
     if (!reminderContext) {
       setSubmitError('No se pudo resolver el registro actual.')
       return
@@ -516,18 +528,24 @@ function EntityRemindersTab({
           <p className="create-user__eyebrow">Recordatorios</p>
           <h4>{contextName ? `Recordatorios de ${contextName}` : 'Recordatorios'}</h4>
         </div>
-        <button
-          type="button"
-          className="create-user__action create-user__action--primary entity-reminders__toggle"
-          onClick={() => {
-            setSubmitError('')
-            setActiveView((prev) => (prev === 'create' ? 'list' : 'create'))
-          }}
-          disabled={!reminderContext}
-        >
-          <Plus size={14} />
-          {activeView === 'create' ? 'Ocultar formulario' : 'Anadir recordatorio'}
-        </button>
+        {canCreateReminder ? (
+          <button
+            type="button"
+            className="create-user__action create-user__action--primary entity-reminders__toggle"
+            onClick={() => {
+              setSubmitError('')
+              setActiveView((prev) => (prev === 'create' ? 'list' : 'create'))
+            }}
+            disabled={!reminderContext}
+          >
+            <Plus size={14} />
+            {activeView === 'create' ? 'Ocultar formulario' : 'Anadir recordatorio'}
+          </button>
+        ) : (
+          <span className="entity-reminders__na">
+            Solo lectura
+          </span>
+        )}
       </div>
 
       {activeView === 'create' ? (

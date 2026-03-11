@@ -4,11 +4,13 @@ from django.db.models import Case, CharField, DecimalField, ExpressionWrapper, F
 from django.utils.dateparse import parse_date
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from configuracion.models import ConfiguracionSistema
 from core.table_filters import apply_column_filters, parse_column_filters
+from usuarios.models import RolPermiso
 from usuarios.permissions import (
     ProductosDependentReadPermission,
     ProductosModulePermission,
@@ -167,6 +169,20 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     "rating_summary": build_producto_rating_summary(producto),
                 },
                 status=status.HTTP_200_OK,
+            )
+
+        # Comentar requiere ambos permisos del módulo Productos:
+        # crear y actualizar.
+        permission_checker = ProductosModulePermission()
+        permission_index = permission_checker._get_permission_index(request)
+        module_permissions = permission_index.get(RolPermiso.Modulos.PRODUCTOS, {})
+        can_comment = bool(
+            module_permissions.get("puede_crear")
+            and module_permissions.get("puede_actualizar")
+        )
+        if not can_comment:
+            raise PermissionDenied(
+                "No tienes permisos para comentar este producto."
             )
 
         serializer = ProductoCalificacionSerializer(

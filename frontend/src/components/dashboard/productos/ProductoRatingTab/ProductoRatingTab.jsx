@@ -27,7 +27,7 @@ const renderStarsText = (value) => {
   return Array.from({ length: TOTAL_STARS }, (_, index) => (index < score ? '\u2605' : '\u2606')).join(' ')
 }
 
-function ProductoRatingTab({ productoId, token, onError }) {
+function ProductoRatingTab({ productoId, token, onError, canComment = false }) {
   const [ratingSummary, setRatingSummary] = useState(null)
   const [comments, setComments] = useState([])
   const [loading, setLoading] = useState(false)
@@ -91,7 +91,7 @@ function ProductoRatingTab({ productoId, token, onError }) {
   }, [fetchTabData])
 
   const handleSubmitComment = async () => {
-    if (!productoId || !token || submitting) return
+    if (!canComment || !productoId || !token || submitting) return
     const trimmedComment = String(draftComment || '').trim()
     if (!trimmedComment) return
 
@@ -198,28 +198,36 @@ function ProductoRatingTab({ productoId, token, onError }) {
           <h4>Agregar comentario</h4>
         </div>
 
-        <label className="create-user__field">
-          <span>Comentario</span>
-          <textarea
-            rows={3}
-            value={draftComment}
-            onChange={(event) => setDraftComment(event.target.value)}
-            placeholder="Escribe una observacion sobre este producto."
-            maxLength={1200}
-            disabled={submitting || loading}
-          />
-        </label>
+        {canComment ? (
+          <>
+            <label className="create-user__field">
+              <span>Comentario</span>
+              <textarea
+                rows={3}
+                value={draftComment}
+                onChange={(event) => setDraftComment(event.target.value)}
+                placeholder="Escribe una observacion sobre este producto."
+                maxLength={1200}
+                disabled={submitting || loading}
+              />
+            </label>
 
-        <div className="producto-rating-tab__actions">
-          <button
-            type="button"
-            className="create-user__action create-user__action--primary"
-            onClick={handleSubmitComment}
-            disabled={submitting || loading || !String(draftComment || '').trim()}
-          >
-            {submitting ? 'Guardando...' : 'Publicar comentario'}
-          </button>
-        </div>
+            <div className="producto-rating-tab__actions">
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={handleSubmitComment}
+                disabled={submitting || loading || !String(draftComment || '').trim()}
+              >
+                {submitting ? 'Guardando...' : 'Publicar comentario'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="producto-rating-tab__empty">
+            Solo usuarios con permisos de crear y editar en productos pueden comentar.
+          </p>
+        )}
       </section>
 
       <section className="create-user__section producto-rating-tab__comments">

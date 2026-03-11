@@ -19,6 +19,11 @@ from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision
 from usuarios.models import RolPermiso
 from usuarios.sucursal_scope import get_allowed_sucursal_ids
+from usuarios.utils import (
+    build_full_permissions,
+    get_permisos_efectivos,
+    get_usuario_interno_por_correo,
+)
 
 from .models import (
     InspeccionAleatoriaDiaria,
@@ -38,6 +43,60 @@ def _normalize_text(value):
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _normalize_context_type(value):
+    normalized = _normalize_id(value).lower()
+    if not normalized:
+        return ""
+    return re.sub(r"[\s-]+", "_", normalized)
+
+
+def _get_permission_index_for_user(user):
+    if user is None or not getattr(user, "is_authenticated", False):
+        return {}
+
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        permisos = build_full_permissions()
+    else:
+        email = str(getattr(user, "email", "") or "").strip().lower()
+        usuario_interno = get_usuario_interno_por_correo(email)
+        permisos = get_permisos_efectivos(usuario_interno, email)
+
+    index = {}
+    for permiso in permisos:
+        module_key = permiso.get("modulo")
+        if not module_key:
+            continue
+
+        current = index.get(
+            module_key,
+            {
+                "puede_crear": False,
+                "puede_leer": False,
+                "puede_actualizar": False,
+                "puede_eliminar": False,
+            },
+        )
+        index[module_key] = {
+            "puede_crear": current["puede_crear"] or bool(permiso.get("puede_crear")),
+            "puede_leer": current["puede_leer"] or bool(permiso.get("puede_leer")),
+            "puede_actualizar": current["puede_actualizar"]
+            or bool(permiso.get("puede_actualizar")),
+            "puede_eliminar": current["puede_eliminar"]
+            or bool(permiso.get("puede_eliminar")),
+        }
+
+    return index
+
+
+def _can_create_product_inventory_reminders(user):
+    permission_index = _get_permission_index_for_user(user)
+    products_permissions = permission_index.get(RolPermiso.Modulos.PRODUCTOS, {})
+    return bool(
+        products_permissions.get("puede_crear")
+        and products_permissions.get("puede_actualizar")
+    )
 
 
 def _parse_iso_timestamp(value):
@@ -1218,6 +1277,37 @@ class ReminderStateAPIView(APIView):
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
             existing = _normalize_reminder_list(store.payload)
+            existing_by_id = {
+                _normalize_id(item.get("id")): item
+                for item in existing
+                if _normalize_id(item.get("id"))
+            }
+
+            can_create_product_inventory = _can_create_product_inventory_reminders(
+                request.user
+            )
+            if not can_create_product_inventory:
+                for reminder in incoming:
+                    reminder_id = _normalize_id(reminder.get("id"))
+                    if reminder_id in existing_by_id:
+                        continue
+
+                    context = (
+                        reminder.get("context")
+                        if isinstance(reminder.get("context"), dict)
+                        else {}
+                    )
+                    context_type = _normalize_context_type(context.get("type"))
+                    if context_type in {"producto", "inventario"}:
+                        return Response(
+                            {
+                                "detail": (
+                                    "No tienes permisos para crear recordatorios en "
+                                    "productos o inventario."
+                                )
+                            },
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
 
             merged_by_id = {item["id"]: item for item in existing}
             for reminder in incoming:
