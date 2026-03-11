@@ -1877,7 +1877,11 @@ function ProductoDetails({
                 currentUser={currentUser}
                 entityType="producto"
                 entityId={productoId}
-                entityLabel={formData.nombre || (productoId ? `Producto #${productoId}` : 'Producto')}
+                entityLabel={
+                  formData.codigo
+                    ? `${formData.codigo} - ${formData.nombre || 'Producto'}`
+                    : formData.nombre || (productoId ? `Producto #${productoId}` : 'Producto')
+                }
                 canCreateReminder={allowComment && isEditing}
                 onError={notifyError}
               />

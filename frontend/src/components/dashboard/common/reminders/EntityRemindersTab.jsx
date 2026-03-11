@@ -138,7 +138,16 @@ const formatDecisionStatusLabel = (value) => {
   return 'Pendiente'
 }
 
-const buildReminderContextLabel = (reminder) => {
+const buildReminderContextLabel = (reminder, fallbackEntityLabel = '') => {
+  const normalizedFallback = String(fallbackEntityLabel || '').trim()
+  const normalizedContextType = normalizeReminderContextType(reminder?.context?.type)
+  if (
+    normalizedFallback &&
+    (normalizedContextType === 'producto' || normalizedContextType === 'inventario')
+  ) {
+    return normalizedFallback
+  }
+
   const explicitLabel = String(reminder?.context?.label || '').trim()
   if (explicitLabel) return explicitLabel
 
@@ -881,7 +890,7 @@ function EntityRemindersTab({
 
                 <div className="entity-reminders__detail-item">
                   <span className="entity-reminders__detail-label">Contexto</span>
-                  <strong>{buildReminderContextLabel(activeReminderDetail)}</strong>
+                  <strong>{buildReminderContextLabel(activeReminderDetail, contextName)}</strong>
                 </div>
 
                 <div className="entity-reminders__detail-item">
