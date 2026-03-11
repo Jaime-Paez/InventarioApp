@@ -1015,7 +1015,10 @@
 /* MOBILE */
 @media (max-width: 900px) {
   .quick-actions__dock {
-    width: 100%;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 8px;
   }

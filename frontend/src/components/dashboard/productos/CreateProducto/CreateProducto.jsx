@@ -355,7 +355,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
         const response = await authFetch(
           `${API_URL}/inventario/bodegas/?page_size=200&sucursal_id=${encodeURIComponent(
             String(sucursalId)
-          )}${
+          )}&modulo=productos${
             term ? `&search=${encodeURIComponent(term)}` : ''
           }`,
           {},
@@ -392,7 +392,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
         const response = await authFetch(
           `${API_URL}/inventario/divisiones/?page_size=200&bodega_id=${encodeURIComponent(
             String(bodegaId)
-          )}${
+          )}&modulo=productos${
             term ? `&search=${encodeURIComponent(term)}` : ''
           }`,
           {},
@@ -429,7 +429,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
         const response = await authFetch(
           `${API_URL}/inventario/subdivisiones/?page_size=200&division_id=${encodeURIComponent(
             String(divisionId)
-          )}${
+          )}&modulo=productos${
             term ? `&search=${encodeURIComponent(term)}` : ''
           }`,
           {},
@@ -460,7 +460,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, showCostFiel
 
       try {
         const response = await authFetch(
-          `${API_URL}/inventario/subdivisiones/?page_size=200&bodega_id=${encodeURIComponent(key)}`,
+          `${API_URL}/inventario/subdivisiones/?page_size=200&bodega_id=${encodeURIComponent(key)}&modulo=productos`,
           {},
           token
         )

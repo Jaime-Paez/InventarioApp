@@ -2293,21 +2293,21 @@ function QuickActions({
           authFetch(
             `${API_URL}/inventario/bodegas/?page_size=500&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
-            )}`,
+            )}&modulo=movimientos_entradas`,
             {},
             token
           ),
           authFetch(
             `${API_URL}/inventario/divisiones/?page_size=500&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
-            )}`,
+            )}&modulo=movimientos_entradas`,
             {},
             token
           ),
           authFetch(
             `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
-            )}`,
+            )}&modulo=movimientos_entradas`,
             {},
             token
           ),

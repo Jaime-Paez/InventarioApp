@@ -118,6 +118,35 @@ class BodegasModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.SUCURSALES_BODEGAS
 
 
+class BodegasDependentReadPermission(ModulePermission):
+    """
+    Permite lectura de catálogos de ubicación cuando otro módulo depende de ellos.
+
+    - GET/HEAD/OPTIONS:
+      - Si llega `?modulo=<key>` usa ese módulo.
+      - Si no llega, permite por cualquiera de los módulos dependientes.
+    - Escritura mantiene el módulo propio de bodegas.
+    """
+
+    module_key = RolPermiso.Modulos.SUCURSALES_BODEGAS
+    read_module_keys = (
+        RolPermiso.Modulos.SUCURSALES_BODEGAS,
+        RolPermiso.Modulos.INVENTARIO,
+        RolPermiso.Modulos.PRODUCTOS,
+        RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+        RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+        RolPermiso.Modulos.SOLICITUDES,
+    )
+
+    def get_target_module_keys(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            query_module = (request.query_params.get("modulo") or "").strip()
+            if query_module and query_module in set(self.read_module_keys):
+                return [query_module]
+            return list(self.read_module_keys)
+        return [self.module_key]
+
+
 class ProveedoresMarcasModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.PROVEEDORES_MARCAS
 

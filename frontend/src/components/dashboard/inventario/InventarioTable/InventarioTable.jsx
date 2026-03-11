@@ -227,8 +227,8 @@ function InventarioTable({ token, user }) {
     try {
       const [branchesRes, bodegasRes, subdivisionsRes] = await Promise.all([
         authFetch(`${API_URL}/inventario/inventario/sucursales-tabla/`, {}, token),
-        authFetch(`${API_URL}/inventario/bodegas/?page_size=500`, {}, token),
-        authFetch(`${API_URL}/inventario/subdivisiones/?page_size=500`, {}, token),
+        authFetch(`${API_URL}/inventario/bodegas/?page_size=500&modulo=inventario`, {}, token),
+        authFetch(`${API_URL}/inventario/subdivisiones/?page_size=500&modulo=inventario`, {}, token),
       ])
       if (!branchesRes.ok) throw new Error('No se pudieron cargar las sucursales.')
       if (!bodegasRes.ok) throw new Error('No se pudieron cargar las bodegas.')

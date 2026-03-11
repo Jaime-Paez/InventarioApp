@@ -146,14 +146,20 @@
 @media (max-width: 900px) {
   .workspace__tabs {
     gap: 6px;
+    min-height: 28px;
   }
 
   .workspace__tablist {
-    padding: 0 8px;
+    padding: 0 6px;
   }
 
   .workspace__tab {
-    width: 120px;
-    flex: 0 0 120px;
+    width: 108px;
+    flex: 0 0 108px;
+  }
+
+  .workspace__tab-control {
+    width: 28px;
+    height: 28px;
   }
 }

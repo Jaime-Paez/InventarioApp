@@ -21,13 +21,14 @@ from core.table_filters import apply_column_filters, parse_column_filters
 from productos.models import Producto
 from usuarios.models import RolPermiso
 from usuarios.permissions import (
-    BodegasModulePermission,
+    BodegasDependentReadPermission,
     InventarioModulePermission,
     SucursalScopedModulePermission,
 )
 from usuarios.sucursal_scope import (
     apply_sucursal_scope,
     ensure_sucursal_allowed,
+    get_allowed_sucursal_ids_for_modules,
     get_allowed_sucursal_ids,
 )
 
@@ -39,6 +40,43 @@ from .serializers import (
     SubDivisionSerializer,
     SucursalSerializer,
 )
+
+
+LOCATION_CATALOG_READ_MODULE_KEYS = (
+    RolPermiso.Modulos.SUCURSALES_BODEGAS,
+    RolPermiso.Modulos.INVENTARIO,
+    RolPermiso.Modulos.PRODUCTOS,
+    RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+    RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+    RolPermiso.Modulos.SOLICITUDES,
+)
+
+LOCATION_CATALOG_SCOPE_FALLBACK_MODULE_KEYS = (
+    RolPermiso.Modulos.SUCURSALES_BODEGAS,
+    RolPermiso.Modulos.INVENTARIO,
+    RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+    RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+    RolPermiso.Modulos.SOLICITUDES,
+)
+
+
+def _resolve_location_catalog_scope_modules(request):
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        query_module = (request.query_params.get("modulo") or "").strip()
+        if query_module in LOCATION_CATALOG_READ_MODULE_KEYS:
+            return [query_module]
+        return list(LOCATION_CATALOG_SCOPE_FALLBACK_MODULE_KEYS)
+    return [RolPermiso.Modulos.SUCURSALES_BODEGAS]
+
+
+def _apply_location_catalog_scope(queryset, request, field_lookup):
+    module_keys = _resolve_location_catalog_scope_modules(request)
+    allowed = get_allowed_sucursal_ids_for_modules(request.user, module_keys)
+    if allowed is None:
+        return queryset
+    if not allowed:
+        return queryset.none()
+    return queryset.filter(**{f"{field_lookup}__in": sorted(allowed)})
 
 
 class SucursalViewSet(viewsets.ModelViewSet):
@@ -79,19 +117,14 @@ class BodegaViewSet(viewsets.ModelViewSet):
         "-id"
     )
     serializer_class = BodegaSerializer
-    permission_classes = [IsAuthenticated, BodegasModulePermission]
+    permission_classes = [IsAuthenticated, BodegasDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "sucursal__nombre"]
     ordering_fields = ["nombre", "sucursal__nombre"]
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = apply_sucursal_scope(
-            queryset,
-            self.request.user,
-            RolPermiso.Modulos.SUCURSALES_BODEGAS,
-            "sucursal_id",
-        )
+        queryset = _apply_location_catalog_scope(queryset, self.request, "sucursal_id")
         sucursal_id = self.request.query_params.get("sucursal_id")
         if sucursal_id:
             queryset = queryset.filter(sucursal_id=sucursal_id)
@@ -123,7 +156,7 @@ class DivisionViewSet(viewsets.ModelViewSet):
         .order_by("-id")
     )
     serializer_class = DivisionSerializer
-    permission_classes = [IsAuthenticated, BodegasModulePermission]
+    permission_classes = [IsAuthenticated, BodegasDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "nombre",
@@ -135,12 +168,7 @@ class DivisionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = apply_sucursal_scope(
-            queryset,
-            self.request.user,
-            RolPermiso.Modulos.SUCURSALES_BODEGAS,
-            "bodega__sucursal_id",
-        )
+        queryset = _apply_location_catalog_scope(queryset, self.request, "bodega__sucursal_id")
         sucursal_id = self.request.query_params.get("sucursal_id")
         if sucursal_id:
             queryset = queryset.filter(bodega__sucursal_id=sucursal_id)
@@ -180,17 +208,16 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
         .order_by("-id")
     )
     serializer_class = SubDivisionSerializer
-    permission_classes = [IsAuthenticated, BodegasModulePermission]
+    permission_classes = [IsAuthenticated, BodegasDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "division__nombre", "division__bodega__nombre"]
     ordering_fields = ["nombre", "division__nombre"]
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = apply_sucursal_scope(
+        queryset = _apply_location_catalog_scope(
             queryset,
-            self.request.user,
-            RolPermiso.Modulos.SUCURSALES_BODEGAS,
+            self.request,
             "division__bodega__sucursal_id",
         )
         sucursal_id = self.request.query_params.get("sucursal_id")
