@@ -9,7 +9,10 @@ from rest_framework.response import Response
 
 from configuracion.models import ConfiguracionSistema
 from core.table_filters import apply_column_filters, parse_column_filters
-from usuarios.permissions import ProductosModulePermission
+from usuarios.permissions import (
+    ProductosDependentReadPermission,
+    ProductosModulePermission,
+)
 
 from .models import OEM, OEMProducto, Producto, ProductoAlterno
 from .serializers import (
@@ -31,7 +34,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         .order_by("-creado_en", "-id")
     )
     serializer_class = ProductoSerializer
-    permission_classes = [IsAuthenticated, ProductosModulePermission]
+    permission_classes = [IsAuthenticated, ProductosDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "codigo",

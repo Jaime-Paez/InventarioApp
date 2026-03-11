@@ -22,7 +22,7 @@ from productos.models import Producto
 from usuarios.models import RolPermiso
 from usuarios.permissions import (
     BodegasDependentReadPermission,
-    InventarioModulePermission,
+    InventarioReadProductosWritePermission,
     SucursalScopedModulePermission,
 )
 from usuarios.sucursal_scope import (
@@ -277,7 +277,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
         .order_by("-id")
     )
     serializer_class = InventarioSerializer
-    permission_classes = [IsAuthenticated, InventarioModulePermission]
+    permission_classes = [IsAuthenticated, InventarioReadProductosWritePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "producto__codigo",

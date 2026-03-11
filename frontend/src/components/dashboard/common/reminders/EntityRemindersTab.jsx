@@ -340,7 +340,7 @@ function EntityRemindersTab({
 
       try {
         const list = []
-        let url = `${API_URL}/usuarios/listado/?page_size=200`
+        let url = `${API_URL}/usuarios/listado/destinatarios/?page_size=200`
 
         while (url) {
           const response = await authFetch(url, {}, token)

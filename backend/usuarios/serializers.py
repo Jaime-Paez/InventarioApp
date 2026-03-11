@@ -388,6 +388,55 @@ class UsuarioSerializer(serializers.ModelSerializer):
         return bool(getattr(preference, "inspeccion_aleatoria", False))
 
 
+class UsuarioDestinatarioSerializer(serializers.ModelSerializer):
+    """Serializa datos mínimos de usuarios para selección de destinatarios."""
+
+    nombres = serializers.CharField(source="first_name", read_only=True)
+    apellidos = serializers.CharField(source="last_name", read_only=True)
+    correo = serializers.EmailField(source="email", read_only=True)
+    activo = serializers.BooleanField(source="is_active", read_only=True)
+    permisos_resumen = serializers.SerializerMethodField()
+    sucursales = serializers.SerializerMethodField()
+    sucursales_por_modulo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "nombres",
+            "apellidos",
+            "correo",
+            "activo",
+            "permisos_resumen",
+            "sucursales",
+            "sucursales_por_modulo",
+        ]
+
+    def get_permisos_resumen(self, obj):
+        return build_permissions_summary(
+            obj.roles.all(),
+            extra_roles=[get_personalized_role_for_email(obj.email)],
+        )
+
+    def get_sucursales(self, obj):
+        asignaciones = obj.asignaciones.select_related("sucursal").all()
+        return [
+            {"id": asignacion.sucursal.id, "nombre": asignacion.sucursal.nombre}
+            for asignacion in asignaciones
+        ]
+
+    def get_sucursales_por_modulo(self, obj):
+        grouped = {}
+        scopes = obj.alcances_sucursal.all()
+        for scope in scopes:
+            grouped.setdefault(scope.modulo, set()).add(int(scope.sucursal_id))
+
+        return [
+            {"modulo": modulo, "sucursales_ids": sorted(sucursal_ids)}
+            for modulo, sucursal_ids in grouped.items()
+        ]
+
+
 class UsuarioSucursalSerializer(serializers.ModelSerializer):
     """Serializa la asignación de usuarios a sucursales."""
 

@@ -13,19 +13,27 @@ const ACTIONS = [
   { key: 'puede_actualizar', label: 'Editar' },
   { key: 'puede_eliminar', label: 'Eliminar' },
 ]
+const INVENTORY_MODULE_KEY = 'inventario'
+
+const isActionAllowedForModule = (moduleKey, actionKey) =>
+  moduleKey === INVENTORY_MODULE_KEY ? actionKey === 'puede_leer' : true
+
+const getAllowedActionsForModule = (moduleKey) =>
+  ACTIONS.filter((action) => isActionAllowedForModule(moduleKey, action.key))
 
 const serializeMatrix = (matrix) =>
   Object.entries(matrix)
     .map(([modulo, value]) => {
+      const allowedActions = getAllowedActionsForModule(modulo)
       const payload = {
         modulo,
         submodulo: '',
-        puede_crear: Boolean(value?.puede_crear),
-        puede_leer: Boolean(value?.puede_leer),
-        puede_actualizar: Boolean(value?.puede_actualizar),
-        puede_eliminar: Boolean(value?.puede_eliminar),
+        puede_crear: isActionAllowedForModule(modulo, 'puede_crear') ? Boolean(value?.puede_crear) : false,
+        puede_leer: isActionAllowedForModule(modulo, 'puede_leer') ? Boolean(value?.puede_leer) : false,
+        puede_actualizar: isActionAllowedForModule(modulo, 'puede_actualizar') ? Boolean(value?.puede_actualizar) : false,
+        puede_eliminar: isActionAllowedForModule(modulo, 'puede_eliminar') ? Boolean(value?.puede_eliminar) : false,
       }
-      const hasAction = ACTIONS.some((action) => payload[action.key])
+      const hasAction = allowedActions.some((action) => payload[action.key])
       return hasAction ? payload : null
     })
     .filter(Boolean)
@@ -221,8 +229,10 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   )
 
   const togglePermissionForBranch = (moduleKey, actionKey) => {
+    if (!isActionAllowedForModule(moduleKey, actionKey)) return
     const moduleUsesBranchScope = branchScopedModules.includes(moduleKey)
     if (moduleUsesBranchScope && !selectedBranchId) return
+    const allowedActions = getAllowedActionsForModule(moduleKey)
 
     setPermissionsMatrix((prevPermissions) => {
       const current = prevPermissions[moduleKey] || {
@@ -234,7 +244,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
       if (!moduleUsesBranchScope) {
         const updatedEntry = { ...current, [actionKey]: !current[actionKey] }
-        const hasAction = ACTIONS.some((action) => updatedEntry[action.key])
+        const hasAction = allowedActions.some((action) => updatedEntry[action.key])
 
         if (!hasAction) {
           setModuleBranchMatrix((prevScopes) => {
@@ -283,7 +293,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       }
 
       const updatedEntry = { ...current, [actionKey]: false }
-      const hasAction = ACTIONS.some((action) => Boolean(updatedEntry[action.key]))
+      const hasAction = allowedActions.some((action) => Boolean(updatedEntry[action.key]))
 
       if (!hasAction) {
         setModuleBranchMatrix((prevScopes) => {
@@ -310,16 +320,28 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
         <div className="permissions-matrix__cell permissions-matrix__cell--label">
           {module.label}
         </div>
-        {ACTIONS.map((action) => (
-          <label key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
-            <input
-              type="checkbox"
-              checked={branchScoped && Boolean(current?.[action.key])}
-              onChange={() => togglePermissionForBranch(module.key, action.key)}
-              disabled={isDisabled}
-            />
-          </label>
-        ))}
+        {ACTIONS.map((action) => {
+          if (!isActionAllowedForModule(module.key, action.key)) {
+            return (
+              <div
+                key={action.key}
+                className="permissions-matrix__cell permissions-matrix__cell--action"
+                aria-hidden="true"
+              />
+            )
+          }
+
+          return (
+            <label key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
+              <input
+                type="checkbox"
+                checked={branchScoped && Boolean(current?.[action.key])}
+                onChange={() => togglePermissionForBranch(module.key, action.key)}
+                disabled={isDisabled}
+              />
+            </label>
+          )
+        })}
       </div>
     )
   }

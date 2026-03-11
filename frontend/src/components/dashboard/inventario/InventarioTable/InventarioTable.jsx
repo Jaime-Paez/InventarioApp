@@ -14,6 +14,7 @@ import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
+import { getModuleActions } from '../../menuConfig'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -95,7 +96,7 @@ const INVENTARIO_ORDERING_MAP = {
   total_general: 'total_general',
 }
 
-function InventarioTable({ token, user }) {
+function InventarioTable({ token, user, permissionIndex }) {
   const toast = useRef(null)
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -142,6 +143,12 @@ function InventarioTable({ token, user }) {
   const [ivaLoading, setIvaLoading] = useState(false)
   const opColumns = useRef(null)
   const didInitialSearchRef = useRef(false)
+  const productModuleActions = useMemo(
+    () => getModuleActions('productos', permissionIndex),
+    [permissionIndex]
+  )
+  const canEditProductDetails = Boolean(productModuleActions?.puede_actualizar)
+  const canDeleteProductDetails = Boolean(productModuleActions?.puede_eliminar)
 
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
@@ -1421,6 +1428,8 @@ function InventarioTable({ token, user }) {
         }}
         onError={(message) => showToast(message, 'Error', 'error')}
         currentUser={user}
+        allowEdit={canEditProductDetails}
+        allowDelete={canDeleteProductDetails}
         inventoryContext={{
           branches,
           bodegas,

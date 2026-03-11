@@ -2,7 +2,7 @@ from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 
 from core.table_filters import apply_column_filters, parse_column_filters
-from usuarios.permissions import ProveedoresMarcasModulePermission
+from usuarios.permissions import MarcasDependentReadPermission
 
 from .models import Marca
 from .serializers import MarcaSerializer
@@ -11,7 +11,7 @@ from .serializers import MarcaSerializer
 class MarcaViewSet(viewsets.ModelViewSet):
     queryset = Marca.objects.select_related("pais").all().order_by("-id")
     serializer_class = MarcaSerializer
-    permission_classes = [IsAuthenticated, ProveedoresMarcasModulePermission]
+    permission_classes = [IsAuthenticated, MarcasDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion"]
     ordering_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion"]

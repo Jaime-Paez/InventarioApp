@@ -87,8 +87,53 @@ class InventarioModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.INVENTARIO
 
 
+class InventarioReadProductosWritePermission(ModulePermission):
+    """
+    Permite inventario con este criterio:
+
+    - GET/HEAD/OPTIONS: valida permiso de lectura en `inventario`.
+    - POST/PUT/PATCH/DELETE: valida la acción equivalente en `productos`.
+    """
+
+    module_key = RolPermiso.Modulos.INVENTARIO
+    write_module_key = RolPermiso.Modulos.PRODUCTOS
+
+    def get_target_module_keys(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return [self.module_key]
+        return [self.write_module_key]
+
+
 class ProductosModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.PRODUCTOS
+
+
+class ProductosDependentReadPermission(ModulePermission):
+    """
+    Permite leer productos desde módulos que dependen de ese catálogo.
+
+    - GET/HEAD/OPTIONS:
+      - Si llega `?modulo=<key>` usa ese módulo.
+      - Si no llega, permite por cualquiera de los módulos consumidores.
+    - Escritura mantiene el módulo propio de productos.
+    """
+
+    module_key = RolPermiso.Modulos.PRODUCTOS
+    read_module_keys = (
+        RolPermiso.Modulos.PRODUCTOS,
+        RolPermiso.Modulos.INVENTARIO,
+        RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+        RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+        RolPermiso.Modulos.SOLICITUDES,
+    )
+
+    def get_target_module_keys(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            query_module = (request.query_params.get("modulo") or "").strip()
+            if query_module and query_module in set(self.read_module_keys):
+                return [query_module]
+            return list(self.read_module_keys)
+        return [self.module_key]
 
 
 class SucursalesModulePermission(ModulePermission):
@@ -149,6 +194,34 @@ class BodegasDependentReadPermission(ModulePermission):
 
 class ProveedoresMarcasModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.PROVEEDORES_MARCAS
+
+
+class MarcasDependentReadPermission(ModulePermission):
+    """
+    Permite leer marcas desde módulos que dependen de ese catálogo.
+
+    - GET/HEAD/OPTIONS:
+      - Si llega `?modulo=<key>` usa ese módulo.
+      - Si no llega, permite por cualquiera de los módulos consumidores.
+    - Escritura mantiene el módulo propio de marcas.
+    """
+
+    module_key = RolPermiso.Modulos.PROVEEDORES_MARCAS
+    read_module_keys = (
+        RolPermiso.Modulos.PROVEEDORES_MARCAS,
+        RolPermiso.Modulos.INVENTARIO,
+        RolPermiso.Modulos.PRODUCTOS,
+        RolPermiso.Modulos.CLIENTES,
+        RolPermiso.Modulos.SOLICITUDES,
+    )
+
+    def get_target_module_keys(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            query_module = (request.query_params.get("modulo") or "").strip()
+            if query_module and query_module in set(self.read_module_keys):
+                return [query_module]
+            return list(self.read_module_keys)
+        return [self.module_key]
 
 
 class ProveedoresCasasModulePermission(ModulePermission):

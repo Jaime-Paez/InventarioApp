@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.db import transaction
+from django.db.models import Q
 from rest_framework import filters, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
@@ -15,6 +16,7 @@ from .serializers import (
     LoginSerializer,
     RegistroSerializer,
     RolSerializer,
+    UsuarioDestinatarioSerializer,
     UsuarioSerializer,
     UsuarioSucursalSerializer,
     build_permissions_summary,
@@ -94,6 +96,25 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             extra_roles=[get_personalized_role_for_email(usuario.email)],
         )
         return Response({"permisos": permisos})
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="destinatarios",
+        permission_classes=[IsAuthenticated],
+    )
+    def destinatarios(self, request):
+        queryset = self.get_queryset().filter(is_active=True)
+        search_term = (request.query_params.get("search") or "").strip()
+        if search_term:
+            queryset = queryset.filter(
+                Q(first_name__icontains=search_term)
+                | Q(last_name__icontains=search_term)
+                | Q(email__icontains=search_term)
+            )
+
+        serializer = UsuarioDestinatarioSerializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class UsuarioSucursalViewSet(viewsets.ModelViewSet):

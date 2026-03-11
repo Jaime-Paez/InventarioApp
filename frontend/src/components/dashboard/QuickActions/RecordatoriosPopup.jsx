@@ -718,7 +718,7 @@ function RecordatoriosPopup({
 
       try {
         const list = []
-        let url = `${API_URL}/usuarios/listado/?page_size=200`
+        let url = `${API_URL}/usuarios/listado/destinatarios/?page_size=200`
 
         while (url) {
           const response = await authFetch(url, {}, token)
@@ -1096,7 +1096,7 @@ function RecordatoriosPopup({
         const descripcion = String(row?.descripcion || '').trim().toLowerCase()
         return noDocumento.includes(normalizedDocument) || descripcion.includes(`#${normalizedDocument}`)
       }
-      const findRealEntrada = (row) => !Boolean(row?.es_solicitud_traslado)
+      const findRealEntrada = (row) => !row?.es_solicitud_traslado
 
       const targetRow = (
         rows.find((row) => findBySolicitudId(row) && findRealEntrada(row)) ||
