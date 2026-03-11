@@ -1878,7 +1878,7 @@ function ProductoDetails({
                 entityType="producto"
                 entityId={productoId}
                 entityLabel={formData.nombre || (productoId ? `Producto #${productoId}` : 'Producto')}
-                canCreateReminder={allowComment}
+                canCreateReminder={allowComment && isEditing}
                 onError={notifyError}
               />
             )}

@@ -551,66 +551,65 @@ function EntityRemindersTab({
       {activeView === 'create' ? (
         <div className="entity-reminders__pane entity-reminders__pane--form">
           <form className="entity-reminders__form" noValidate onSubmit={handleCreateReminder}>
-            <div className="entity-reminders__grid">
-              <label className="create-user__field">
-                <span>Fecha</span>
-                <input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
-              </label>
+            <div className="entity-reminders__form-top">
+              <div className="entity-reminders__datetime-stack">
+                <label className="create-user__field">
+                  <span>Fecha</span>
+                  <input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
+                </label>
 
-              <label className="create-user__field">
-                <span>Hora</span>
-                <input type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
-              </label>
+                <label className="create-user__field">
+                  <span>Hora</span>
+                  <input type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
+                </label>
+              </div>
 
-              <label className="create-user__field entity-reminders__creator">
-                <span>Usuario creador</span>
-                <input type="text" value={creatorRecipientName} readOnly />
+              <label className="create-user__field entity-reminders__description-field">
+                <span>Descripcion</span>
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="Escribe de que trata este recordatorio"
+                  required
+                />
               </label>
             </div>
 
-            <label className="create-user__field create-user__field--full">
-              <span>Descripcion</span>
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Escribe de que trata este recordatorio"
-                required
-              />
-            </label>
+            <section className="entity-reminders__recipients">
+              <div className="entity-reminders__recipients-head">
+                <h5>Dirigido a</h5>
+                {loadingUsers && (
+                  <span className="entity-reminders__loading">
+                    <Loader2 size={13} />
+                    Cargando usuarios...
+                  </span>
+                )}
+              </div>
 
-            <div className="entity-reminders__recipients-head">
-              <h5>Dirigido a</h5>
-              {loadingUsers && (
-                <span className="entity-reminders__loading">
-                  <Loader2 size={13} />
-                  Cargando usuarios...
-                </span>
-              )}
-            </div>
+              <p className="entity-reminders__helper">El creador siempre esta incluido.</p>
+              <div className="entity-reminders__recipient-list">
+                {!selectableUsers.length && !loadingUsers && (
+                  <p className="entity-reminders__empty">No hay mas usuarios disponibles.</p>
+                )}
 
-            <p className="entity-reminders__helper">El creador siempre esta incluido.</p>
-            <div className="entity-reminders__recipient-list">
-              {!selectableUsers.length && !loadingUsers && (
-                <p className="entity-reminders__empty">No hay mas usuarios disponibles.</p>
-              )}
-
-              {selectableUsers.map((userItem) => {
-                const checked = selectedRecipientIds.includes(userItem.id)
-                return (
-                  <label key={userItem.id} className="entity-reminders__recipient-item">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleRecipient(userItem.id)}
-                    />
-                    <div>
-                      <strong>{userItem.name}</strong>
-                      {userItem.email && <small>{userItem.email}</small>}
-                    </div>
-                  </label>
-                )
-              })}
-            </div>
+                {selectableUsers.map((userItem) => {
+                  const checked = selectedRecipientIds.includes(userItem.id)
+                  return (
+                    <label key={userItem.id} className="entity-reminders__recipient-item">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRecipient(userItem.id)}
+                      />
+                      <div>
+                        <strong>{userItem.name}</strong>
+                        {userItem.email && <small>{userItem.email}</small>}
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            </section>
 
             <div className="entity-reminders__actions">
               <button

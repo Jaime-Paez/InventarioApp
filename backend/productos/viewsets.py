@@ -176,10 +176,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         permission_checker = ProductosModulePermission()
         permission_index = permission_checker._get_permission_index(request)
         module_permissions = permission_index.get(RolPermiso.Modulos.PRODUCTOS, {})
-        can_comment = bool(
-            module_permissions.get("puede_crear")
-            and module_permissions.get("puede_actualizar")
-        )
+        can_comment = bool(module_permissions.get("puede_actualizar"))
         if not can_comment:
             raise PermissionDenied(
                 "No tienes permisos para comentar este producto."

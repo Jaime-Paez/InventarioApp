@@ -1793,7 +1793,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         currentUser={user}
         allowEdit={canEdit}
         allowDelete={canDelete}
-        allowComment={Boolean(canCreate && canEdit)}
+        allowComment={Boolean(canEdit)}
         showCostField={canSeeCost}
       />
 

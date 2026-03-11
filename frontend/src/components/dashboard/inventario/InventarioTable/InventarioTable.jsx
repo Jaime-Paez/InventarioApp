@@ -147,7 +147,6 @@ function InventarioTable({ token, user, permissionIndex }) {
     () => getModuleActions('productos', permissionIndex),
     [permissionIndex]
   )
-  const canCreateProductDetails = Boolean(productModuleActions?.puede_crear)
   const canEditProductDetails = Boolean(productModuleActions?.puede_actualizar)
   const canDeleteProductDetails = Boolean(productModuleActions?.puede_eliminar)
 
@@ -1431,7 +1430,7 @@ function InventarioTable({ token, user, permissionIndex }) {
         currentUser={user}
         allowEdit={canEditProductDetails}
         allowDelete={canDeleteProductDetails}
-        allowComment={Boolean(canCreateProductDetails && canEditProductDetails)}
+        allowComment={Boolean(canEditProductDetails)}
         inventoryContext={{
           branches,
           bodegas,

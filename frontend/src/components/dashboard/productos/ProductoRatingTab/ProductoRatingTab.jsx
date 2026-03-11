@@ -225,7 +225,7 @@ function ProductoRatingTab({ productoId, token, onError, canComment = false }) {
           </>
         ) : (
           <p className="producto-rating-tab__empty">
-            Solo usuarios con permisos de crear y editar en productos pueden comentar.
+            Solo usuarios con permisos de editar en productos pueden comentar.
           </p>
         )}
       </section>

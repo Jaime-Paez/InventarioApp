@@ -1519,11 +1519,6 @@ function RecordatoriosPopup({
                 </label>
 
                 <label className="recordatorios-popup__field recordatorios-popup__field--full">
-                  <span>Usuario creador</span>
-                  <input type="text" value={creatorRecipientName} readOnly />
-                </label>
-
-                <label className="recordatorios-popup__field recordatorios-popup__field--full">
                   <span>Descripcion</span>
                   <textarea
                     value={description}

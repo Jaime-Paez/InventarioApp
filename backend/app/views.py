@@ -93,10 +93,7 @@ def _get_permission_index_for_user(user):
 def _can_create_product_inventory_reminders(user):
     permission_index = _get_permission_index_for_user(user)
     products_permissions = permission_index.get(RolPermiso.Modulos.PRODUCTOS, {})
-    return bool(
-        products_permissions.get("puede_crear")
-        and products_permissions.get("puede_actualizar")
-    )
+    return bool(products_permissions.get("puede_actualizar"))
 
 
 def _parse_iso_timestamp(value):
