@@ -5,6 +5,7 @@
   flex-direction: column;
   gap: 12px;
   flex: 1;
+  position: relative;
 }
 
 .entity-reminders__head {
@@ -324,32 +325,32 @@
 
 .entity-reminders__table th:nth-child(1),
 .entity-reminders__table td:nth-child(1) {
-  width: 16%;
+  width: 15%;
 }
 
 .entity-reminders__table th:nth-child(2),
 .entity-reminders__table td:nth-child(2) {
-  width: 17%;
+  width: 14%;
 }
 
 .entity-reminders__table th:nth-child(3),
 .entity-reminders__table td:nth-child(3) {
-  width: 16%;
+  width: 15%;
 }
 
 .entity-reminders__table th:nth-child(4),
 .entity-reminders__table td:nth-child(4) {
-  width: 25%;
+  width: 24%;
 }
 
 .entity-reminders__table th:nth-child(5),
 .entity-reminders__table td:nth-child(5) {
-  width: 11%;
+  width: 10%;
 }
 
 .entity-reminders__table th:nth-child(6),
 .entity-reminders__table td:nth-child(6) {
-  width: 15%;
+  width: 22%;
 }
 
 .entity-reminders__cell-text {
@@ -373,14 +374,30 @@
   border-bottom: none;
 }
 
+.entity-reminders__row {
+  cursor: pointer;
+}
+
+.entity-reminders__row:hover td,
+.entity-reminders__row:focus-visible td {
+  background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+}
+
+.entity-reminders__row:focus-visible {
+  outline: none;
+}
+
 .entity-reminders__status {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   border-radius: 999px;
-  padding: 2px 10px;
+  padding: 1px 8px;
+  min-height: 22px;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
   text-transform: uppercase;
   white-space: nowrap;
   max-width: 100%;
@@ -422,15 +439,20 @@
 }
 
 .entity-reminders__mark-seen {
+  display: inline-block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--color-primary) 46%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
   color: var(--color-primary);
-  padding: 3px 8px;
-  font-size: 12px;
+  padding: 3px 6px;
+  font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
-  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-align: center;
 }
 
@@ -446,6 +468,147 @@
 .entity-reminders__empty {
   margin: 0;
   padding: 12px;
+}
+
+.entity-reminders__detail-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: color-mix(in srgb, #0f172a 24%, transparent);
+  backdrop-filter: blur(1px);
+}
+
+.entity-reminders__detail-modal {
+  width: min(760px, calc(100% - 8px));
+  max-height: calc(100% - 8px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-surface) 98%, transparent);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.24);
+  overflow: hidden;
+}
+
+.entity-reminders__detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
+}
+
+.entity-reminders__detail-head h5 {
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+
+.entity-reminders__detail-close {
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
+  color: inherit;
+  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.entity-reminders__detail-close:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.entity-reminders__detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.entity-reminders__detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.entity-reminders__detail-item {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.entity-reminders__detail-label {
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, currentColor 62%, transparent);
+}
+
+.entity-reminders__detail-item strong {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.entity-reminders__detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.entity-reminders__detail-section h6 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, currentColor 62%, transparent);
+}
+
+.entity-reminders__detail-description {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.entity-reminders__detail-recipients {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.entity-reminders__detail-recipients li {
+  font-size: var(--font-size-sm);
+  line-height: 1.3;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 58%, transparent);
+  padding-bottom: 4px;
+}
+
+.entity-reminders__detail-recipients li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.entity-reminders__detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
 }
 
 @keyframes entity-reminders-spin {
@@ -476,5 +639,18 @@
 
   .entity-reminders__table-wrap {
     max-height: min(46vh, 360px);
+  }
+
+  .entity-reminders__detail-overlay {
+    padding: 8px;
+  }
+
+  .entity-reminders__detail-modal {
+    width: 100%;
+    max-height: 100%;
+  }
+
+  .entity-reminders__detail-grid {
+    grid-template-columns: 1fr;
   }
 }

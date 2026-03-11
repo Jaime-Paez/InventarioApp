@@ -117,6 +117,37 @@ const getNowDateParts = () => {
   }
 }
 
+const formatIsoDateTime = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return '-'
+
+  const timestamp = Date.parse(raw)
+  if (!Number.isFinite(timestamp)) return raw
+
+  return new Intl.DateTimeFormat('es-EC', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(timestamp))
+}
+
+const formatDecisionStatusLabel = (value) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'aceptada') return 'Aceptada'
+  if (normalized === 'rechazada') return 'Rechazada'
+  if (normalized === 'enviado') return 'Enviado'
+  return 'Pendiente'
+}
+
+const buildReminderContextLabel = (reminder) => {
+  const explicitLabel = String(reminder?.context?.label || '').trim()
+  if (explicitLabel) return explicitLabel
+
+  const contextType = normalizeId(reminder?.context?.type)
+  const contextId = normalizeId(reminder?.context?.id)
+  if (!contextType || !contextId) return '-'
+  return `${contextType} #${contextId}`
+}
+
 function EntityRemindersTab({
   token,
   currentUser,
@@ -137,6 +168,7 @@ function EntityRemindersTab({
   const [description, setDescription] = useState('')
   const [selectedRecipientIds, setSelectedRecipientIds] = useState([])
   const [submitError, setSubmitError] = useState('')
+  const [activeReminderDetailId, setActiveReminderDetailId] = useState('')
   const missingContextToastRef = useRef(false)
 
   const notifyError = useCallback(
@@ -263,6 +295,30 @@ function EntityRemindersTab({
     return dedupedRows
   }, [allReminders, currentUserIdSet, currentUserName, normalizedTransferSolicitudId])
 
+  const activeReminderDetail = useMemo(() => {
+    const targetId = normalizeId(activeReminderDetailId)
+    if (!targetId) return null
+    return (
+      relatedReminders.find((reminder) => normalizeId(reminder?.id) === targetId) || null
+    )
+  }, [activeReminderDetailId, relatedReminders])
+
+  const activeReminderDetailStatus = useMemo(() => {
+    if (!activeReminderDetail) return null
+    return buildReminderStatusForUser(activeReminderDetail, currentUserIdSet)
+  }, [activeReminderDetail, currentUserIdSet])
+
+  const activeReminderDecisionStatus = useMemo(() => {
+    if (!activeReminderDetail) return ''
+    return getReminderDecisionStatus(activeReminderDetail)
+  }, [activeReminderDetail])
+
+  const showDetailDecision = useMemo(() => {
+    if (!activeReminderDetail) return false
+    const contextType = normalizeReminderContextType(activeReminderDetail?.context?.type)
+    return isSpecialTransferDecisionReminder(activeReminderDetail) || contextType === 'solicitud_traslado'
+  }, [activeReminderDetail])
+
   useEffect(() => {
     const defaults = getNowDateParts()
     setDate(defaults.date)
@@ -270,6 +326,7 @@ function EntityRemindersTab({
     setDescription('')
     setSelectedRecipientIds([])
     setSubmitError('')
+    setActiveReminderDetailId('')
     setActiveView('list')
   }, [entityType, entityId])
 
@@ -278,6 +335,26 @@ function EntityRemindersTab({
     setSubmitError('')
     setActiveView('list')
   }, [canCreateReminder, activeView])
+
+  useEffect(() => {
+    const targetId = normalizeId(activeReminderDetailId)
+    if (!targetId) return
+    const exists = relatedReminders.some((reminder) => normalizeId(reminder?.id) === targetId)
+    if (!exists) {
+      setActiveReminderDetailId('')
+    }
+  }, [activeReminderDetailId, relatedReminders])
+
+  useEffect(() => {
+    if (!activeReminderDetailId || typeof window === 'undefined') return undefined
+    const handleEscape = (event) => {
+      if (event.key !== 'Escape') return
+      setActiveReminderDetailId('')
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [activeReminderDetailId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -519,6 +596,16 @@ function EntityRemindersTab({
     )
   }
 
+  const openReminderDetail = (reminderId) => {
+    const normalized = normalizeId(reminderId)
+    if (!normalized) return
+    setActiveReminderDetailId(normalized)
+  }
+
+  const closeReminderDetail = () => {
+    setActiveReminderDetailId('')
+  }
+
   const contextName = String(entityLabel || '').trim()
 
   return (
@@ -685,7 +772,18 @@ function EntityRemindersTab({
                     .join(', ')
 
                   return (
-                    <tr key={reminder.id}>
+                    <tr
+                      key={reminder.id}
+                      className="entity-reminders__row"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openReminderDetail(reminder.id)}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return
+                        event.preventDefault()
+                        openReminderDetail(reminder.id)
+                      }}
+                    >
                       <td title={formatReminderDateTime(reminder)}>
                         <span className="entity-reminders__cell-text">
                           {formatReminderDateTime(reminder)}
@@ -716,7 +814,10 @@ function EntityRemindersTab({
                           <button
                             type="button"
                             className="entity-reminders__mark-seen"
-                            onClick={() => handleMarkReminderSeen(reminder.id)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleMarkReminderSeen(reminder.id)
+                            }}
                           >
                             Marcar como visto
                           </button>
@@ -730,6 +831,121 @@ function EntityRemindersTab({
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {activeReminderDetail && activeReminderDetailStatus && (
+        <div
+          className="entity-reminders__detail-overlay"
+          role="presentation"
+          onMouseDown={closeReminderDetail}
+        >
+          <article
+            className="entity-reminders__detail-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detalle del recordatorio"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="entity-reminders__detail-head">
+              <h5>Detalle del recordatorio</h5>
+              <button
+                type="button"
+                className="entity-reminders__detail-close"
+                onClick={closeReminderDetail}
+              >
+                Cerrar
+              </button>
+            </header>
+
+            <div className="entity-reminders__detail-body">
+              <div className="entity-reminders__detail-grid">
+                <div className="entity-reminders__detail-item">
+                  <span className="entity-reminders__detail-label">Fecha y hora</span>
+                  <strong>{formatReminderDateTime(activeReminderDetail)}</strong>
+                </div>
+
+                <div className="entity-reminders__detail-item">
+                  <span className="entity-reminders__detail-label">Estado</span>
+                  <span
+                    className={`entity-reminders__status entity-reminders__status--${activeReminderDetailStatus.className}`}
+                  >
+                    {activeReminderDetailStatus.label}
+                  </span>
+                </div>
+
+                <div className="entity-reminders__detail-item">
+                  <span className="entity-reminders__detail-label">Creador</span>
+                  <strong>{activeReminderDetail?.creator?.name || 'Usuario'}</strong>
+                </div>
+
+                <div className="entity-reminders__detail-item">
+                  <span className="entity-reminders__detail-label">Contexto</span>
+                  <strong>{buildReminderContextLabel(activeReminderDetail)}</strong>
+                </div>
+
+                <div className="entity-reminders__detail-item">
+                  <span className="entity-reminders__detail-label">Creado</span>
+                  <strong>{formatIsoDateTime(activeReminderDetail?.createdAt)}</strong>
+                </div>
+
+                {showDetailDecision && (
+                  <div className="entity-reminders__detail-item">
+                    <span className="entity-reminders__detail-label">Resolucion</span>
+                    <strong>{formatDecisionStatusLabel(activeReminderDecisionStatus)}</strong>
+                  </div>
+                )}
+              </div>
+
+              <section className="entity-reminders__detail-section">
+                <h6>Descripcion</h6>
+                <p className="entity-reminders__detail-description">
+                  {String(activeReminderDetail?.description || '').trim() || '-'}
+                </p>
+              </section>
+
+              <section className="entity-reminders__detail-section">
+                <h6>Dirigido a</h6>
+                <ul className="entity-reminders__detail-recipients">
+                  {(Array.isArray(activeReminderDetail?.recipients) ? activeReminderDetail.recipients : []).map(
+                    (recipient) => (
+                      <li key={`${normalizeId(activeReminderDetail?.id)}-${normalizeId(recipient?.id)}-${String(recipient?.name || '')}`}>
+                        {String(recipient?.name || '').trim() || 'Usuario'}
+                      </li>
+                    )
+                  )}
+                </ul>
+              </section>
+
+              {showDetailDecision && String(activeReminderDetail?.decision?.reason || '').trim() && (
+                <section className="entity-reminders__detail-section">
+                  <h6>Motivo</h6>
+                  <p className="entity-reminders__detail-description">
+                    {String(activeReminderDetail?.decision?.reason || '').trim()}
+                  </p>
+                </section>
+              )}
+            </div>
+
+            <footer className="entity-reminders__detail-actions">
+              {activeReminderDetailStatus.canMarkSeen && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={() => handleMarkReminderSeen(activeReminderDetail.id)}
+                >
+                  Marcar como visto
+                </button>
+              )}
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={closeReminderDetail}
+              >
+                Cerrar
+              </button>
+            </footer>
+          </article>
         </div>
       )}
     </section>
