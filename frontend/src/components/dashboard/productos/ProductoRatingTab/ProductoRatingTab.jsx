@@ -27,7 +27,13 @@ const renderStarsText = (value) => {
   return Array.from({ length: TOTAL_STARS }, (_, index) => (index < score ? '\u2605' : '\u2606')).join(' ')
 }
 
-function ProductoRatingTab({ productoId, token, onError, canComment = false }) {
+function ProductoRatingTab({
+  productoId,
+  token,
+  onError,
+  canComment = false,
+  commentLockedByEdit = false,
+}) {
   const [ratingSummary, setRatingSummary] = useState(null)
   const [comments, setComments] = useState([])
   const [loading, setLoading] = useState(false)
@@ -218,7 +224,9 @@ function ProductoRatingTab({ productoId, token, onError, canComment = false }) {
           </>
         ) : (
           <p className="producto-rating-tab__empty">
-            Solo usuarios con permisos de editar en productos pueden comentar.
+            {commentLockedByEdit
+              ? 'Presiona Editar para agregar un comentario.'
+              : 'Solo usuarios con permisos de editar en productos pueden comentar.'}
           </p>
         )}
       </section>

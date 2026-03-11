@@ -64,6 +64,17 @@ class ProductoViewSet(viewsets.ModelViewSet):
             return ProductoDetailSerializer
         return ProductoSerializer
 
+    def get_permissions(self):
+        # Para publicar comentarios, la validacion especifica se maneja
+        # dentro de la accion `comentarios` (permiso de editar productos).
+        if (
+            self.action == "comentarios"
+            and self.request
+            and self.request.method.lower() == "post"
+        ):
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
     def get_queryset(self):
         queryset = super().get_queryset()
         if self.action == "retrieve":
@@ -171,8 +182,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
 
-        # Comentar requiere ambos permisos del módulo Productos:
-        # crear y actualizar.
+        # Comentar requiere permiso de edicion en el modulo Productos.
         permission_checker = ProductosModulePermission()
         permission_index = permission_checker._get_permission_index(request)
         module_permissions = permission_index.get(RolPermiso.Modulos.PRODUCTOS, {})

@@ -1892,7 +1892,8 @@ function ProductoDetails({
                 productoId={productoId}
                 token={token}
                 onError={notifyError}
-                canComment={allowComment}
+                canComment={allowComment && isEditing}
+                commentLockedByEdit={allowComment && !isEditing}
               />
             )}
 
