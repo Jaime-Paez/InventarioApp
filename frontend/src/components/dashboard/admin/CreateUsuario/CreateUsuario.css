@@ -1852,6 +1852,15 @@
   justify-content: center;
 }
 
+.permissions-matrix__head-action {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.permissions-matrix__head-action span {
+  line-height: 1.1;
+}
+
 .permissions-matrix__cell--action input {
   margin: 0;
   width: 16px;

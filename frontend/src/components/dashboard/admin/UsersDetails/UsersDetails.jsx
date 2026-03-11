@@ -22,6 +22,90 @@ const isActionAllowedForModule = (moduleKey, actionKey) =>
 const getAllowedActionsForModule = (moduleKey) =>
   ACTIONS.filter((action) => isActionAllowedForModule(moduleKey, action.key))
 
+const EMPTY_PERMISSION_ENTRY = Object.freeze({
+  puede_crear: false,
+  puede_leer: false,
+  puede_actualizar: false,
+  puede_eliminar: false,
+})
+
+const normalizePermissionEntry = (moduleKey, currentEntry, actionKey, nextChecked) => {
+  const allowedActions = getAllowedActionsForModule(moduleKey)
+  const allowedActionKeys = new Set(allowedActions.map((action) => action.key))
+  const nextEntry = {
+    puede_crear: false,
+    puede_leer: false,
+    puede_actualizar: false,
+    puede_eliminar: false,
+  }
+
+  ACTIONS.forEach((action) => {
+    if (allowedActionKeys.has(action.key)) {
+      nextEntry[action.key] = Boolean(currentEntry?.[action.key])
+    }
+  })
+
+  if (!allowedActionKeys.has(actionKey)) return nextEntry
+
+  nextEntry[actionKey] = nextChecked
+
+  if (actionKey === 'puede_crear' && nextChecked && allowedActionKeys.has('puede_leer')) {
+    nextEntry.puede_leer = true
+    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
+    if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
+  }
+
+  if (actionKey === 'puede_actualizar' && nextChecked && allowedActionKeys.has('puede_leer')) {
+    nextEntry.puede_leer = true
+  }
+
+  if (actionKey === 'puede_eliminar' && nextChecked) {
+    if (allowedActionKeys.has('puede_leer')) nextEntry.puede_leer = true
+    if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = true
+    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = true
+  }
+
+  if (actionKey === 'puede_leer' && nextChecked) {
+    if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = false
+    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
+    if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
+  }
+
+  if (actionKey === 'puede_leer' && !nextChecked) {
+    if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = false
+    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
+    if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
+  }
+
+  if (actionKey === 'puede_crear' && !nextChecked && allowedActionKeys.has('puede_eliminar')) {
+    nextEntry.puede_eliminar = false
+  }
+
+  if (actionKey === 'puede_actualizar' && !nextChecked && allowedActionKeys.has('puede_eliminar')) {
+    nextEntry.puede_eliminar = false
+  }
+
+  if (allowedActionKeys.has('puede_leer') && !nextEntry.puede_leer) {
+    if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = false
+    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
+    if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
+  } else {
+    if (allowedActionKeys.has('puede_crear') && nextEntry.puede_crear && allowedActionKeys.has('puede_leer')) {
+      nextEntry.puede_leer = true
+    }
+    if (allowedActionKeys.has('puede_actualizar') && nextEntry.puede_actualizar && allowedActionKeys.has('puede_leer')) {
+      nextEntry.puede_leer = true
+    }
+    if (allowedActionKeys.has('puede_eliminar') && nextEntry.puede_eliminar) {
+      if (allowedActionKeys.has('puede_leer')) nextEntry.puede_leer = true
+      if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = true
+      if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = true
+    }
+  }
+
+  return nextEntry
+}
+
 const normalizeIdentityValue = (value) => String(value || '').trim().toLowerCase()
 
 const buildMatrixFromList = (permisos = []) => {
@@ -215,7 +299,12 @@ function UsersDetails({
       }
 
       if (!moduleUsesBranchScope) {
-        const updatedEntry = { ...current, [actionKey]: !current[actionKey] }
+        const updatedEntry = normalizePermissionEntry(
+          moduleKey,
+          current,
+          actionKey,
+          !current[actionKey]
+        )
         const hasAction = allowedActions.some((action) => updatedEntry[action.key])
 
         if (!hasAction) {
@@ -246,7 +335,7 @@ function UsersDetails({
         })
         return {
           ...prevPermissions,
-          [moduleKey]: { ...current, [actionKey]: true },
+          [moduleKey]: normalizePermissionEntry(moduleKey, current, actionKey, true),
         }
       }
 
@@ -264,7 +353,7 @@ function UsersDetails({
         return prevPermissions
       }
 
-      const updatedEntry = { ...current, [actionKey]: false }
+      const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, false)
       const hasAction = allowedActions.some((action) => Boolean(updatedEntry[action.key]))
 
       if (!hasAction) {
@@ -278,6 +367,98 @@ function UsersDetails({
 
       return { ...prevPermissions, [moduleKey]: updatedEntry }
     })
+  }
+
+  const setColumnPermission = (actionKey, checked) => {
+    if (!isEditing) return
+
+    let nextPermissions = { ...permissionsMatrix }
+    let nextModuleBranchMatrix = { ...moduleBranchMatrix }
+    let changed = false
+
+    permissionOptions.forEach((module) => {
+      const moduleKey = module.key
+      if (!isActionAllowedForModule(moduleKey, actionKey)) return
+
+      const moduleUsesBranchScope = branchScopedModules.includes(moduleKey)
+      if (moduleUsesBranchScope && !selectedBranchId) return
+
+      const current = nextPermissions[moduleKey] || EMPTY_PERMISSION_ENTRY
+      const allowedActions = getAllowedActionsForModule(moduleKey)
+
+      if (!moduleUsesBranchScope) {
+        const currentlyChecked = Boolean(current[actionKey])
+        if (currentlyChecked === checked) return
+
+        const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, checked)
+        const hasAction = allowedActions.some((action) => Boolean(updatedEntry[action.key]))
+        if (hasAction) nextPermissions[moduleKey] = updatedEntry
+        else delete nextPermissions[moduleKey]
+        changed = true
+        return
+      }
+
+      const moduleBranches = Array.isArray(nextModuleBranchMatrix[moduleKey]) ? nextModuleBranchMatrix[moduleKey] : []
+      const branchScoped = moduleBranches.includes(selectedBranchId)
+      const currentlyChecked = branchScoped && Boolean(current[actionKey])
+      if (currentlyChecked === checked) return
+
+      if (checked) {
+        if (!branchScoped) {
+          nextModuleBranchMatrix[moduleKey] = [...moduleBranches, selectedBranchId]
+        }
+        const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, true)
+        const hasAction = allowedActions.some((action) => Boolean(updatedEntry[action.key]))
+        if (hasAction) nextPermissions[moduleKey] = updatedEntry
+        else delete nextPermissions[moduleKey]
+        changed = true
+        return
+      }
+
+      const otherScopedBranches = moduleBranches.filter((id) => id !== selectedBranchId)
+      if (otherScopedBranches.length > 0) {
+        nextModuleBranchMatrix[moduleKey] = otherScopedBranches
+        changed = true
+        return
+      }
+
+      delete nextModuleBranchMatrix[moduleKey]
+      const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, false)
+      const hasAction = allowedActions.some((action) => Boolean(updatedEntry[action.key]))
+      if (hasAction) nextPermissions[moduleKey] = updatedEntry
+      else delete nextPermissions[moduleKey]
+      changed = true
+    })
+
+    if (!changed) return
+    setPermissionsMatrix(nextPermissions)
+    setModuleBranchMatrix(nextModuleBranchMatrix)
+  }
+
+  const getColumnSelectionState = (actionKey) => {
+    let total = 0
+    let selected = 0
+
+    permissionOptions.forEach((module) => {
+      const moduleKey = module.key
+      if (!isActionAllowedForModule(moduleKey, actionKey)) return
+
+      const moduleUsesBranchScope = branchScopedModules.includes(moduleKey)
+      if (moduleUsesBranchScope && !selectedBranchId) return
+
+      total += 1
+      const current = permissionsMatrix[moduleKey] || EMPTY_PERMISSION_ENTRY
+      const isInSelectedBranch = moduleUsesBranchScope
+        ? isBranchScopedForModule(moduleKey, selectedBranchId)
+        : true
+      if (isInSelectedBranch && Boolean(current[actionKey])) selected += 1
+    })
+
+    return {
+      disabled: total === 0,
+      checked: total > 0 && selected === total,
+      indeterminate: selected > 0 && selected < total,
+    }
   }
 
   const renderPermissionRow = (module) => {
@@ -1197,11 +1378,25 @@ function UsersDetails({
               <div className="permissions-matrix__table" role="grid">
                 <div className="permissions-matrix__row permissions-matrix__row--head">
                   <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
-                  {ACTIONS.map((action) => (
-                    <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
-                      {action.label}
-                    </div>
-                  ))}
+                  {ACTIONS.map((action) => {
+                    const columnState = getColumnSelectionState(action.key)
+                    const headerDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading || branchesLoading || columnState.disabled
+                    return (
+                      <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action permissions-matrix__head-action">
+                        <span>{action.label}</span>
+                        <input
+                          type="checkbox"
+                          checked={columnState.checked}
+                          ref={(node) => {
+                            if (node) node.indeterminate = columnState.indeterminate
+                          }}
+                          onChange={(event) => setColumnPermission(action.key, event.target.checked)}
+                          disabled={headerDisabled}
+                          aria-label={`Seleccionar toda la columna ${action.label}`}
+                        />
+                      </div>
+                    )
+                  })}
                 </div>
 
                 {permissionOptions.map((module) => (
