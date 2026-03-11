@@ -686,10 +686,26 @@ function EntityRemindersTab({
 
                   return (
                     <tr key={reminder.id}>
-                      <td>{formatReminderDateTime(reminder)}</td>
-                      <td>{reminder?.description || '-'}</td>
-                      <td>{reminder?.creator?.name || 'Usuario'}</td>
-                      <td>{recipientNames || 'Sin destinatarios'}</td>
+                      <td title={formatReminderDateTime(reminder)}>
+                        <span className="entity-reminders__cell-text">
+                          {formatReminderDateTime(reminder)}
+                        </span>
+                      </td>
+                      <td title={reminder?.description || '-'}>
+                        <span className="entity-reminders__cell-text">
+                          {reminder?.description || '-'}
+                        </span>
+                      </td>
+                      <td title={reminder?.creator?.name || 'Usuario'}>
+                        <span className="entity-reminders__cell-text">
+                          {reminder?.creator?.name || 'Usuario'}
+                        </span>
+                      </td>
+                      <td title={recipientNames || 'Sin destinatarios'}>
+                        <span className="entity-reminders__cell-text">
+                          {recipientNames || 'Sin destinatarios'}
+                        </span>
+                      </td>
                       <td>
                         <span className={`entity-reminders__status entity-reminders__status--${status.className}`}>
                           {status.label}

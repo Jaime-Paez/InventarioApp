@@ -199,7 +199,8 @@
 .entity-reminders__table-wrap {
   min-height: 280px;
   max-height: min(50vh, 420px);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .entity-reminders__pane--list {
@@ -304,16 +305,58 @@
 .entity-reminders__table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 900px;
+  min-width: 0;
+  table-layout: fixed;
 }
 
 .entity-reminders__table th,
 .entity-reminders__table td {
-  padding: 9px 10px;
+  padding: 8px 8px;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
-  overflow-wrap: anywhere;
+  font-size: var(--font-size-sm);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entity-reminders__table th:nth-child(1),
+.entity-reminders__table td:nth-child(1) {
+  width: 16%;
+}
+
+.entity-reminders__table th:nth-child(2),
+.entity-reminders__table td:nth-child(2) {
+  width: 17%;
+}
+
+.entity-reminders__table th:nth-child(3),
+.entity-reminders__table td:nth-child(3) {
+  width: 16%;
+}
+
+.entity-reminders__table th:nth-child(4),
+.entity-reminders__table td:nth-child(4) {
+  width: 25%;
+}
+
+.entity-reminders__table th:nth-child(5),
+.entity-reminders__table td:nth-child(5) {
+  width: 11%;
+}
+
+.entity-reminders__table th:nth-child(6),
+.entity-reminders__table td:nth-child(6) {
+  width: 15%;
+}
+
+.entity-reminders__cell-text {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .entity-reminders__table th {
@@ -334,11 +377,13 @@
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 2px 8px;
+  padding: 2px 10px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .entity-reminders__status--pending {
@@ -381,10 +426,12 @@
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
   color: var(--color-primary);
-  padding: 4px 8px;
-  font-size: 11px;
+  padding: 3px 8px;
+  font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
+  max-width: 100%;
+  text-align: center;
 }
 
 .entity-reminders__mark-seen:hover {
