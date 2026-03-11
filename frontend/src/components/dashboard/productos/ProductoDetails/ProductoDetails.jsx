@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Info, Pencil } from 'lucide-react'
+import { Eye, Info, Pencil } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -97,6 +97,7 @@ function ProductoDetails({
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
   const resolvedInventoryContext = inventoryContext ?? localInventoryContext
+  const hasExternalInventoryContext = Boolean(inventoryContext)
 
   const modalRef = useRef(null)
   const marcaDropdownRef = useRef(null)
@@ -235,13 +236,13 @@ function ProductoDetails({
 
   const fetchProducto = useCallback(async () => {
     if (!productoId) return
-    if (!inventoryContext) {
+    if (!hasExternalInventoryContext) {
       setInventoryLoading(true)
       setLocalInventoryContext(null)
     }
     setLoadingData(true)
     try {
-      const includeInventoryContext = inventoryContext ? '0' : '1'
+      const includeInventoryContext = hasExternalInventoryContext ? '0' : '1'
       const response = await authFetch(
         `${API_URL}/productos/listado/${productoId}/?include_inventory_context=${includeInventoryContext}`,
         {},
@@ -291,21 +292,21 @@ function ProductoDetails({
       setAlternoDraft(null)
       setAlternoError('')
       setIsEditing(false)
-      if (!inventoryContext) {
+      if (!hasExternalInventoryContext) {
         setLocalInventoryContext(buildInventoryContextFromProducto(data))
       }
     } catch (err) {
-      if (!inventoryContext) {
+      if (!hasExternalInventoryContext) {
         setLocalInventoryContext(null)
       }
       notifyError(err.message || 'Ocurrió un error al obtener la información del producto.')
     } finally {
-      if (!inventoryContext) {
+      if (!hasExternalInventoryContext) {
         setInventoryLoading(false)
       }
       setLoadingData(false)
     }
-  }, [buildInventoryContextFromProducto, enrichAlternativas, inventoryContext, notifyError, token, productoId])
+  }, [buildInventoryContextFromProducto, enrichAlternativas, hasExternalInventoryContext, notifyError, token, productoId])
 
   const searchBrands = useCallback(
     async (query) => {
@@ -1075,6 +1076,17 @@ function ProductoDetails({
     setShowCasaDropdown(false)
     setSubmitAttempted(false)
     setIsEditing(false)
+  }
+
+  const handleToggleEdit = () => {
+    if (!allowEdit) return
+    if (loadingData || saving || deleteLoading) return
+    if (isEditing) {
+      handleCancelEdit()
+      return
+    }
+    setSubmitAttempted(false)
+    setIsEditing(true)
   }
 
   const handleMouseDown = (event) => {
@@ -1893,23 +1905,22 @@ function ProductoDetails({
             >
               Cancelar
             </button>
+            {allowEdit && (
+              <button
+                type="button"
+                className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
+                onClick={handleToggleEdit}
+                disabled={loadingData || saving || deleteLoading}
+              >
+                <span className="user-details__toggle-icon" aria-hidden="true">
+                  {isEditing ? <Eye size={14} /> : <Pencil size={14} />}
+                </span>
+                <span>{isEditing ? 'Solo lectura' : 'Editar'}</span>
+              </button>
+            )}
           </div>
 
           <div className="user-details__footer-right">
-            {!isEditing && allowEdit && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--edit user-details__edit-toggle"
-                onClick={() => {
-                  setSubmitAttempted(false)
-                  setIsEditing(true)
-                }}
-                disabled={loadingData || saving}
-              >
-                <span className="user-details__toggle-icon"><Pencil size={14} /></span>
-                Editar
-              </button>
-            )}
             {isEditing && (
               <>
                 {allowDelete && (

@@ -262,7 +262,7 @@ function QuickActions({
   const hasInTransitShipments = inTransitShipments.length > 0
   const canDecideTransferRequest = useMemo(() => {
     if (user?.is_staff || user?.is_superuser) return true
-    if (!Array.isArray(user?.permisos)) return true
+    if (!Array.isArray(user?.permisos)) return false
     const permissions = user.permisos
     const salidasPermission = permissions.find(
       (permission) => String(permission?.modulo || '').trim().toLowerCase() === 'movimientos_salidas'
@@ -271,16 +271,12 @@ function QuickActions({
   }, [user])
   const canReceiveTransferRequest = useMemo(() => {
     if (user?.is_staff || user?.is_superuser) return true
-    if (!Array.isArray(user?.permisos)) return true
+    if (!Array.isArray(user?.permisos)) return false
     const permissions = user.permisos
     const entradasPermission = permissions.find(
       (permission) => String(permission?.modulo || '').trim().toLowerCase() === 'movimientos_entradas'
     )
-    return Boolean(
-      entradasPermission?.puede_crear ||
-      entradasPermission?.puede_actualizar ||
-      entradasPermission?.puede_leer
-    )
+    return Boolean(entradasPermission?.puede_crear || entradasPermission?.puede_actualizar)
   }, [user])
 
   const showErrorToast = useCallback((message) => {
