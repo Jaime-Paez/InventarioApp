@@ -32,6 +32,7 @@ function ProductoRatingTab({ productoId, token, onError, canComment = false }) {
   const [comments, setComments] = useState([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [draftStars, setDraftStars] = useState(0)
   const [draftComment, setDraftComment] = useState('')
 
   const notifyError = useCallback(
@@ -102,6 +103,7 @@ function ProductoRatingTab({ productoId, token, onError, canComment = false }) {
         {
           method: 'POST',
           body: JSON.stringify({
+            estrellas: draftStars > 0 ? draftStars : null,
             comentario: trimmedComment,
           }),
         },
@@ -114,6 +116,7 @@ function ProductoRatingTab({ productoId, token, onError, canComment = false }) {
         throw new Error(errorText || 'No se pudo guardar el comentario.')
       }
 
+      setDraftStars(0)
       setDraftComment('')
 
       if (payload?.rating_summary) {
@@ -146,45 +149,7 @@ function ProductoRatingTab({ productoId, token, onError, canComment = false }) {
             <p className="producto-rating-tab__stars" aria-label={`Calificacion ${headerRating.toFixed(1)} de 5`}>
               {renderStarsText(headerRating)}
             </p>
-          </div>
-
-          <div className="producto-rating-tab__metrics">
-            <div className="producto-rating-tab__metric-item">
-              <span>Promedio comentarios</span>
-              <strong>
-                {ratingSummary?.comment_average != null
-                  ? Number(ratingSummary.comment_average).toFixed(1)
-                  : '-'}
-              </strong>
-            </div>
-            <div className="producto-rating-tab__metric-item">
-              <span>Comentarios</span>
-              <strong>{toNumber(ratingSummary?.comment_count, 0)}</strong>
-            </div>
-            <div className="producto-rating-tab__metric-item">
-              <span>Peso comentarios</span>
-              <strong>{(toNumber(ratingSummary?.comments_weight, 0) * 100).toFixed(0)}%</strong>
-            </div>
-            <div className="producto-rating-tab__metric-item">
-              <span>Ventas registradas</span>
-              <strong>{toNumber(ratingSummary?.sales_count, 0)}</strong>
-            </div>
-            <div className="producto-rating-tab__metric-item">
-              <span>Devoluciones no funcionales</span>
-              <strong>{toNumber(ratingSummary?.non_functional_returns_count, 0)}</strong>
-            </div>
-            <div className="producto-rating-tab__metric-item">
-              <span>Señal operativa</span>
-              <strong>{(toNumber(ratingSummary?.operational_score, 0) * 100).toFixed(0)}%</strong>
-            </div>
-            <div className="producto-rating-tab__metric-item">
-              <span>Meses sin ventas</span>
-              <strong>{toNumber(ratingSummary?.months_without_sales, 0)}</strong>
-            </div>
-            <div className="producto-rating-tab__metric-item">
-              <span>Ultima venta</span>
-              <strong>{toDateLabel(ratingSummary?.last_sale_date)}</strong>
-            </div>
+            <small>{toNumber(ratingSummary?.comment_count, 0)} comentario(s)</small>
           </div>
         </div>
 
@@ -200,6 +165,34 @@ function ProductoRatingTab({ productoId, token, onError, canComment = false }) {
 
         {canComment ? (
           <>
+            <div className="producto-rating-tab__stars-picker">
+              <span className="producto-rating-tab__stars-label">Calificacion</span>
+              <div className="producto-rating-tab__stars-picker-buttons" role="radiogroup" aria-label="Calificar producto">
+                {Array.from({ length: TOTAL_STARS }, (_, index) => {
+                  const score = index + 1
+                  const isActive = score <= draftStars
+                  return (
+                    <button
+                      key={score}
+                      type="button"
+                      className={`producto-rating-tab__star-btn${isActive ? ' is-active' : ''}`}
+                      onClick={() => setDraftStars(score)}
+                      disabled={submitting || loading}
+                      role="radio"
+                      aria-checked={draftStars === score}
+                      aria-label={`${score} estrella${score === 1 ? '' : 's'}`}
+                      title={`${score} estrella${score === 1 ? '' : 's'}`}
+                    >
+                      {isActive ? '\u2605' : '\u2606'}
+                    </button>
+                  )
+                })}
+              </div>
+              <span className="producto-rating-tab__selected-score">
+                {draftStars > 0 ? `${draftStars}/5` : 'Sin seleccionar'}
+              </span>
+            </div>
+
             <label className="create-user__field">
               <span>Comentario</span>
               <textarea

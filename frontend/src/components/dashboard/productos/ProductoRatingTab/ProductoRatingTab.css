@@ -6,22 +6,22 @@
 
 .producto-rating-tab__summary-grid {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
   align-items: stretch;
 }
 
 .producto-rating-tab__score {
   border: 1px solid #b3bac3;
   border-radius: 14px;
-  padding: 16px;
+  padding: 14px;
   background: #f6f8fa;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   align-items: center;
   justify-content: center;
-  min-height: 140px;
+  min-height: 116px;
 }
 
 .producto-rating-tab__score strong {
@@ -35,6 +35,11 @@
   color: #5e6875;
 }
 
+.producto-rating-tab__score small {
+  font-size: 0.8rem;
+  color: #5a6470;
+}
+
 .producto-rating-tab__stars,
 .producto-rating-tab__comment-stars {
   margin: 0;
@@ -44,37 +49,8 @@
   font-size: 1rem;
 }
 
-.producto-rating-tab__metrics {
-  border: 1px solid #b3bac3;
-  border-radius: 14px;
-  padding: 12px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px;
-}
-
-.producto-rating-tab__metric-item {
-  border: 1px solid #ced5dd;
-  border-radius: 10px;
-  padding: 8px 10px;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.producto-rating-tab__metric-item span {
-  font-size: 0.76rem;
-  color: #5a6470;
-}
-
-.producto-rating-tab__metric-item strong {
-  font-size: 0.95rem;
-  color: #182432;
-}
-
 .producto-rating-tab__rule-note {
-  margin: 10px 0 0;
+  margin: 6px 0 0;
   font-size: 0.8rem;
   color: #526070;
 }
@@ -82,19 +58,31 @@
 .producto-rating-tab__stars-picker {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+}
+
+.producto-rating-tab__stars-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.producto-rating-tab__stars-picker-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .producto-rating-tab__star-btn {
   border: none;
   background: transparent;
   color: #97a1ad;
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   line-height: 1;
   cursor: pointer;
-  padding: 2px;
+  padding: 1px 2px;
 }
 
 .producto-rating-tab__star-btn.is-active {
@@ -107,8 +95,7 @@
 }
 
 .producto-rating-tab__selected-score {
-  margin-left: 4px;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   color: #445163;
 }
 
