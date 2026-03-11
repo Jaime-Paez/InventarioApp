@@ -27,8 +27,8 @@ const INVENTORY_REVIEW_TAB_LEGACY = 'Revision de inventario por sucursal'
 const MOVIMIENTOS_SCOPE_BY_TAB = {
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
-  [INCONVENIENTES_TAB]: 'movimientos_entradas',
-  [INCONVENIENTES_TAB_LEGACY]: 'movimientos_entradas',
+  [INCONVENIENTES_TAB]: 'movimientos_inconvenientes',
+  [INCONVENIENTES_TAB_LEGACY]: 'movimientos_inconvenientes',
 }
 const MODULE_KEY_BY_TAB = {
   Inventario: 'inventario',
@@ -44,6 +44,8 @@ const MODULE_KEY_BY_TAB = {
   Clientes: 'clientes',
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
+  [INCONVENIENTES_TAB]: 'movimientos_inconvenientes',
+  [INCONVENIENTES_TAB_LEGACY]: 'movimientos_inconvenientes',
 }
 const ALL_BRANCH_OPTION_ID = 'all'
 const ALL_BRANCH_OPTION = { id: ALL_BRANCH_OPTION_ID, nombre: 'Todas' }

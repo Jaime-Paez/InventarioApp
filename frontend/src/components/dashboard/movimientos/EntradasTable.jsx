@@ -804,6 +804,15 @@ function EntradasTable({
 
   const handleOpenCreateModal = async () => {
     if (!canCreate) return
+    if (!hasSpecificCreateBranch) {
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Selecciona sucursal',
+        detail: 'Selecciona una sucursal especifica para crear una entrada.',
+        life: 3000,
+      })
+      return
+    }
     try {
       await preloadEntradaCatalogs()
     } catch {

@@ -1945,7 +1945,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         allowed = get_allowed_sucursal_ids_for_modules(
             request.user,
-            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS, RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            [
+                RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
+                RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+                RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+            ],
         )
         if allowed is not None:
             if not allowed:
@@ -1988,7 +1992,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         allowed = get_allowed_sucursal_ids_for_modules(
             request.user,
-            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS, RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            [
+                RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
+                RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+                RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+            ],
         )
         if (
             allowed is not None

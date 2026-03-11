@@ -28,7 +28,7 @@ export const MENU_STRUCTURE = [
       {
         label: 'Inconvenientes',
         icon: AlertTriangle,
-        moduleKey: 'movimientos_entradas',
+        moduleKey: 'movimientos_inconvenientes',
       },
     ],
   },

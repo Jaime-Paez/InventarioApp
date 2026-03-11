@@ -151,7 +151,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
       setResolverSubdivisionsLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(resolverTargetBranchId)}&modulo=movimientos_entradas`,
+          `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(resolverTargetBranchId)}&modulo=movimientos_inconvenientes`,
           {},
           token
         )

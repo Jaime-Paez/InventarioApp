@@ -32,6 +32,10 @@ class RolPermiso(models.Model):
         INVENTARIO = "inventario", "Inventario"
         MOVIMIENTOS_ENTRADAS = "movimientos_entradas", "Movimientos - Entradas"
         MOVIMIENTOS_SALIDAS = "movimientos_salidas", "Movimientos - Salidas"
+        MOVIMIENTOS_INCONVENIENTES = (
+            "movimientos_inconvenientes",
+            "Movimientos - Inconvenientes",
+        )
         PRODUCTOS = "productos", "Productos"
         SUCURSALES_SUCURSALES = "sucursales_sucursales", "Sucursales - Sucursales"
         SUCURSALES_BODEGAS = "sucursales_bodegas", "Sucursales - Bodegas"
@@ -98,6 +102,7 @@ MODULOS_CON_ALCANCE_SUCURSAL = (
     RolPermiso.Modulos.INVENTARIO,
     RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
     RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+    RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
     RolPermiso.Modulos.SUCURSALES_SUCURSALES,
     RolPermiso.Modulos.SUCURSALES_BODEGAS,
     RolPermiso.Modulos.SOLICITUDES,

@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from usuarios.permissions import (
     BodegasModulePermission,
-    InventarioModulePermission,
+    EstadoProductoDependentReadPermission,
     MovimientosCatalogosPermission,
     ProveedoresCasasModulePermission,
 )
@@ -71,7 +71,7 @@ class EstadoMovimientoViewSet(viewsets.ModelViewSet):
 class EstadoProductoViewSet(viewsets.ModelViewSet):
     queryset = EstadoProducto.objects.all().order_by("-id")
     serializer_class = EstadoProductoSerializer
-    permission_classes = [IsAuthenticated, InventarioModulePermission]
+    permission_classes = [IsAuthenticated, EstadoProductoDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre"]
     ordering_fields = ["nombre"]

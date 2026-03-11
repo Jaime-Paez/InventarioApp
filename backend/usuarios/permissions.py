@@ -87,6 +87,56 @@ class InventarioModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.INVENTARIO
 
 
+class EstadoProductoDependentReadPermission(ModulePermission):
+    """
+    Permite leer estados de producto desde módulos que dependen de ese catálogo.
+
+    Para GET/HEAD/OPTIONS se considera suficiente tener cualquier acción activa
+    en alguno de estos módulos:
+    - inventario
+    - movimientos_entradas
+    - movimientos_salidas
+    - movimientos_inconvenientes
+    """
+
+    module_key = RolPermiso.Modulos.INVENTARIO
+    read_module_keys = (
+        RolPermiso.Modulos.INVENTARIO,
+        RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+        RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+        RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
+    )
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            permission_index = self._get_permission_index(request)
+            for module in self.get_target_module_keys(request, view):
+                module_permissions = permission_index.get(module, {})
+                if any(
+                    (
+                        module_permissions.get("puede_leer"),
+                        module_permissions.get("puede_crear"),
+                        module_permissions.get("puede_actualizar"),
+                        module_permissions.get("puede_eliminar"),
+                    )
+                ):
+                    return True
+            return False
+
+        return super().has_permission(request, view)
+
+    def get_target_module_keys(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            query_module = (request.query_params.get("modulo") or "").strip()
+            if query_module and query_module in set(self.read_module_keys):
+                return [query_module]
+            return list(self.read_module_keys)
+        return [self.module_key]
+
+
 class InventarioReadProductosWritePermission(ModulePermission):
     """
     Permite inventario con este criterio:
@@ -133,6 +183,7 @@ class ProductosDependentReadPermission(ModulePermission):
         RolPermiso.Modulos.INVENTARIO,
         RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
         RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+        RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
         RolPermiso.Modulos.SOLICITUDES,
     )
 
@@ -189,6 +240,7 @@ class BodegasDependentReadPermission(ModulePermission):
         RolPermiso.Modulos.PRODUCTOS,
         RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
         RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+        RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
         RolPermiso.Modulos.SOLICITUDES,
     )
 
@@ -221,6 +273,7 @@ class MarcasDependentReadPermission(ModulePermission):
         RolPermiso.Modulos.INVENTARIO,
         RolPermiso.Modulos.PRODUCTOS,
         RolPermiso.Modulos.CLIENTES,
+        RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
         RolPermiso.Modulos.SOLICITUDES,
     )
 
@@ -253,6 +306,7 @@ class ProveedoresCasasDependentReadPermission(ModulePermission):
         RolPermiso.Modulos.INVENTARIO,
         RolPermiso.Modulos.PRODUCTOS,
         RolPermiso.Modulos.CLIENTES,
+        RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
         RolPermiso.Modulos.SOLICITUDES,
     )
 
@@ -301,6 +355,8 @@ class MovimientoInventarioModulePermission(ModulePermission):
         from tipos.models import TipoMovimiento  # Import tardío para evitar ciclos
 
         action = getattr(view, "action", "")
+        if action in {"traslados_inconvenientes", "resolver_traslado_inconveniente"}:
+            return [RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES]
         if action == "solicitudes_traslado":
             if request.method in ("POST", "PUT", "PATCH", "DELETE"):
                 return [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS]
@@ -339,4 +395,5 @@ class MovimientosCatalogosPermission(ModulePermission):
     module_key = [
         RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
         RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+        RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
     ]
