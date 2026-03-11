@@ -2018,7 +2018,8 @@ function EntradaDetails({
                         type="text"
                         value={formData.no_documento}
                         onChange={handleChange}
-                        disabled={editorDisabled}
+                        disabled
+                        readOnly
                       />
                     </label>
 

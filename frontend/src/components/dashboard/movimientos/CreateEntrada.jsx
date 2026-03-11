@@ -29,6 +29,7 @@ const initialForm = {
   estadoId: '',
   fecha: '',
   no_documento: '',
+  factura_referencia: '',
   descripcion: '',
   funcional: true,
   sucursalObjetivoId: '',
@@ -352,9 +353,9 @@ function CreateEntrada({
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
   const isSelectorStep = !formData.subTipoId
   const requiresSucursalObjetivo = isTraslado
-  const documentLabel = isTraslado ? 'No. de Solicitud' : (isCompraEntrada ? 'No. de Compra' : 'No. de Factura')
+  const documentLabel = isTraslado ? 'Codigo de solicitud' : 'Codigo de entrada'
   const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
-  const isSucursalPrincipalLocked = isTraslado && Boolean(normalizedPrefilledSucursalId)
+  const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
   const selectedSucursalId = String(formData.sucursalId || '').trim()
   const hasSelectedSucursal = Boolean(selectedSucursalId)
   const selectedProveedorSucursalId = String(formData.sucursalObjetivoId || '').trim()
@@ -686,14 +687,9 @@ function CreateEntrada({
     [token]
   )
 
-  const validateDocumentNumber = useCallback(
-    async (inputValue) => {
-      const normalized = String(inputValue || '').trim()
-      if (!normalized) {
-        setDocumentStatus(DOCUMENT_STATUS.invalid)
-        return false
-      }
-      if (!entradaTipoId || !token) {
+  const fetchSuggestedDocumentNumber = useCallback(
+    async ({ subTipoId, sucursalId, sucursalObjetivoId }) => {
+      if (!token) {
         setDocumentStatus(DOCUMENT_STATUS.error)
         return false
       }
@@ -702,11 +698,16 @@ function CreateEntrada({
       documentCheckSequenceRef.current = requestSequence
       setDocumentStatus(DOCUMENT_STATUS.checking)
 
+      const params = new URLSearchParams({
+        sub_tipo_movimiento_id: String(subTipoId || '').trim(),
+        sucursal_id: String(sucursalId || '').trim(),
+      })
+      const objectiveId = String(sucursalObjetivoId || '').trim()
+      if (objectiveId) params.set('sucursal_objetivo_id', objectiveId)
+
       try {
         const response = await authFetch(
-          `${API_URL}/movimientos/movimiento_inventario/validar-documento/?tipo_movimiento_id=${encodeURIComponent(
-            entradaTipoId
-          )}&no_documento=${encodeURIComponent(normalized)}`,
+          `${API_URL}/movimientos/movimiento_inventario/siguiente-documento-entrada/?${params.toString()}`,
           {},
           token
         )
@@ -717,9 +718,19 @@ function CreateEntrada({
           return false
         }
 
-        const available = Boolean(payload?.is_available)
-        setDocumentStatus(available ? DOCUMENT_STATUS.available : DOCUMENT_STATUS.duplicate)
-        return available
+        const generated = String(payload?.no_documento || '').trim()
+        if (!generated) {
+          setDocumentStatus(DOCUMENT_STATUS.error)
+          return false
+        }
+
+        setFormData((prev) => (
+          prev.no_documento === generated
+            ? prev
+            : { ...prev, no_documento: generated }
+        ))
+        setDocumentStatus(DOCUMENT_STATUS.available)
+        return true
       } catch {
         if (requestSequence === documentCheckSequenceRef.current) {
           setDocumentStatus(DOCUMENT_STATUS.error)
@@ -727,7 +738,7 @@ function CreateEntrada({
         return false
       }
     },
-    [entradaTipoId, token]
+    [token]
   )
 
   useEffect(() => {
@@ -757,6 +768,10 @@ function CreateEntrada({
       }
       if (!isDevolucion && !next.funcional) {
         next.funcional = true
+        changed = true
+      }
+      if (!isDevolucion && next.factura_referencia) {
+        next.factura_referencia = ''
         changed = true
       }
 
@@ -1107,6 +1122,7 @@ function CreateEntrada({
       sucursalObjetivoId: proveedoraId,
       cliente: '',
       descuento: '',
+      factura_referencia: '',
     }))
     setDetails(prefilledDetalles)
     setDetailDraft(initialDetail)
@@ -1224,27 +1240,23 @@ function CreateEntrada({
   }, [clienteQuery, isVenta, open, searchClientes, showClienteDropdown])
 
   useEffect(() => {
-    if (!open || !formData.subTipoId) {
-      setDocumentStatus(DOCUMENT_STATUS.invalid)
-      return
-    }
+    if (!open) return
 
-    const value = String(formData.no_documento || '').trim()
-    if (!value) {
-      setDocumentStatus(DOCUMENT_STATUS.invalid)
-      if (documentCheckTimerRef.current) {
-        clearTimeout(documentCheckTimerRef.current)
-        documentCheckTimerRef.current = null
-      }
-      return
-    }
+    const subTipoId = String(formData.subTipoId || '').trim()
+    const sucursalId = String(formData.sucursalId || '').trim()
+    const sucursalObjetivoId = String(formData.sucursalObjetivoId || '').trim()
+    const requiresObjective = isTraslado
+    const hasRequiredInput = Boolean(
+      subTipoId && sucursalId && (!requiresObjective || sucursalObjetivoId)
+    )
 
-    if (isTraslado) {
-      setDocumentStatus(DOCUMENT_STATUS.available)
-      if (documentCheckTimerRef.current) {
-        clearTimeout(documentCheckTimerRef.current)
-        documentCheckTimerRef.current = null
-      }
+    if (!hasRequiredInput) {
+      setDocumentStatus(DOCUMENT_STATUS.invalid)
+      setFormData((prev) => (
+        prev.no_documento
+          ? { ...prev, no_documento: '' }
+          : prev
+      ))
       return
     }
 
@@ -1252,11 +1264,19 @@ function CreateEntrada({
       clearTimeout(documentCheckTimerRef.current)
       documentCheckTimerRef.current = null
     }
+    setFormData((prev) => (
+      prev.no_documento
+        ? { ...prev, no_documento: '' }
+        : prev
+    ))
 
-    setDocumentStatus(DOCUMENT_STATUS.checking)
     documentCheckTimerRef.current = setTimeout(() => {
-      validateDocumentNumber(value)
-    }, 320)
+      fetchSuggestedDocumentNumber({
+        subTipoId,
+        sucursalId,
+        sucursalObjetivoId,
+      })
+    }, 220)
 
     return () => {
       if (documentCheckTimerRef.current) {
@@ -1264,7 +1284,14 @@ function CreateEntrada({
         documentCheckTimerRef.current = null
       }
     }
-  }, [formData.no_documento, formData.subTipoId, isTraslado, open, validateDocumentNumber])
+  }, [
+    fetchSuggestedDocumentNumber,
+    formData.subTipoId,
+    formData.sucursalId,
+    formData.sucursalObjetivoId,
+    isTraslado,
+    open,
+  ])
 
   useEffect(() => {
     if (!open || (!showProductDropdown && !showClienteDropdown)) return undefined
@@ -1496,6 +1523,9 @@ function CreateEntrada({
     const { name, value, type, checked } = event.target
     const nextValue = type === 'checkbox' ? checked : value
     setFormData((prev) => {
+      if (name === 'no_documento') {
+        return prev
+      }
       if (name === 'sucursalId' && isSucursalPrincipalLocked) {
         return prev
       }
@@ -1755,16 +1785,22 @@ function CreateEntrada({
     }
 
     if (!String(formData.no_documento || '').trim()) {
-      notifyError('Ingresa el numero de documento.')
+      notifyError('Espera a que se genere el codigo del documento.')
       return
     }
 
-    if (!isTraslado) {
-      const documentoDisponible = await validateDocumentNumber(formData.no_documento)
-      if (!documentoDisponible) {
-        notifyError('No se puede usar dos iguales.')
-        return
-      }
+    if (documentStatus === DOCUMENT_STATUS.checking) {
+      notifyError('Espera a que se genere el codigo del documento.')
+      return
+    }
+    if (documentStatus === DOCUMENT_STATUS.error) {
+      notifyError('No se pudo generar el codigo del documento. Intenta de nuevo.')
+      return
+    }
+
+    if (isDevolucion && !String(formData.factura_referencia || '').trim()) {
+      notifyError('Ingresa la factura de venta para la devolucion.')
+      return
     }
 
     if (!details.length) {
@@ -1822,7 +1858,6 @@ function CreateEntrada({
       setLoading(true)
       try {
         const payload = {
-          no_documento: formData.no_documento.trim(),
           fecha: formData.fecha,
           descripcion: String(formData.descripcion || '').trim(),
           sucursal_solicitante_id: Number(formData.sucursalId),
@@ -2028,6 +2063,7 @@ function CreateEntrada({
         descuento,
         fecha: formData.fecha,
         no_documento: formData.no_documento.trim(),
+        factura_referencia: String(formData.factura_referencia || '').trim(),
         detalles: details.map((detail) => ({
           producto_id: Number(detail.productoId),
           cantidad: detail.cantidad,
@@ -2276,11 +2312,18 @@ function CreateEntrada({
                         type="text"
                         value={formData.no_documento}
                         onChange={handleChange}
-                        disabled={loading}
+                        disabled
+                        readOnly
                         required
                       />
-                      {!isTraslado && documentStatus === DOCUMENT_STATUS.duplicate && (
-                        <small className="create-user__field-error">No se puede usar dos iguales.</small>
+                      {documentStatus === DOCUMENT_STATUS.checking && (
+                        <small className="muted">Generando codigo...</small>
+                      )}
+                      {documentStatus === DOCUMENT_STATUS.error && (
+                        <small className="create-user__field-error">No se pudo generar el codigo automaticamente.</small>
+                      )}
+                      {documentStatus === DOCUMENT_STATUS.available && (
+                        <small className="muted">Codigo generado automaticamente.</small>
                       )}
                     </label>
 
@@ -2329,6 +2372,21 @@ function CreateEntrada({
                           value={formData.descuento}
                           onChange={handleChange}
                           disabled={loading}
+                        />
+                      </label>
+                    )}
+
+                    {isDevolucion && (
+                      <label className="create-user__field">
+                        <span>No. factura venta origen</span>
+                        <input
+                          name="factura_referencia"
+                          type="text"
+                          value={formData.factura_referencia}
+                          onChange={handleChange}
+                          disabled={loading}
+                          required={isDevolucion}
+                          placeholder="Factura emitida en la venta"
                         />
                       </label>
                     )}

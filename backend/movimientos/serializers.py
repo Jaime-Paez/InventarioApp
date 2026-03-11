@@ -1,5 +1,6 @@
 from collections import defaultdict
 from decimal import Decimal
+import re
 import unicodedata
 
 from django.db import transaction
@@ -31,6 +32,145 @@ def normalize_name(value):
     normalized = unicodedata.normalize("NFD", text)
     without_marks = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
     return without_marks.strip().lower()
+
+
+ENTRY_SUBTYPE_PREFIXES = {
+    "importacion": "imp",
+    "compra_local": "cl",
+    "devolucion": "dev",
+    "traslado": "tr",
+}
+BRANCH_WORD_STOPWORDS = {
+    "de",
+    "del",
+    "la",
+    "las",
+    "los",
+    "el",
+    "y",
+    "sucursal",
+}
+
+
+def resolve_subtipo_key(subtipo):
+    name = normalize_name(getattr(subtipo, "nombre", ""))
+    if "devol" in name:
+        return "devolucion"
+    if "trasl" in name:
+        return "traslado"
+    if "vent" in name:
+        return "venta"
+    if "compra" in name:
+        return "compra_local"
+    if "import" in name:
+        return "importacion"
+    return None
+
+
+def _build_branch_token(branch, fallback="sucursal"):
+    if branch is None:
+        fallback_normalized = normalize_name(fallback)
+        fallback_tokens = re.findall(r"[a-z]+", fallback_normalized)
+        fallback_text = "".join(fallback_tokens).strip()
+        return (fallback_text[:3] if fallback_text else "suc")
+
+    branch_name = str(getattr(branch, "nombre", "") or "").strip()
+    normalized_name = normalize_name(branch_name)
+    number_match = re.search(r"\d+", normalized_name)
+    number_part = str(number_match.group(0) if number_match else "").strip()
+    if number_part.isdigit():
+        number_part = str(int(number_part))
+
+    alpha_tokens = re.findall(r"[a-z]+", normalized_name)
+    meaningful_tokens = [token for token in alpha_tokens if token not in BRANCH_WORD_STOPWORDS]
+    source_tokens = meaningful_tokens or alpha_tokens
+    source_text = "".join(source_tokens).strip()
+    letters_part = source_text[:3] if source_text else "suc"
+
+    if number_part:
+        return f"{number_part}{letters_part}"
+
+    if letters_part:
+        return letters_part
+
+    branch_id = getattr(branch, "id", None)
+    branch_id_token = str(branch_id).strip() if branch_id is not None else ""
+    if branch_id_token:
+        return f"{branch_id_token}suc"
+    return "suc"
+
+
+def _next_incremental_document_number(model, base, filters=None):
+    base_token = str(base or "").strip().lower().strip("-")
+    if not base_token:
+        base_token = "doc"
+
+    query_filters = dict(filters or {})
+    query_filters["no_documento__istartswith"] = f"{base_token}-"
+    existing_docs = model.objects.filter(**query_filters).values_list("no_documento", flat=True)
+    matcher = re.compile(rf"^{re.escape(base_token)}-(\d+)$", flags=re.IGNORECASE)
+    max_number = 0
+
+    for raw_doc in existing_docs:
+        matched = matcher.match(str(raw_doc or "").strip())
+        if not matched:
+            continue
+        try:
+            max_number = max(max_number, int(matched.group(1)))
+        except (TypeError, ValueError):
+            continue
+
+    return f"{base_token}-{max_number + 1}"
+
+
+def build_entry_document_base(subtipo_key, sucursal, sucursal_objetivo=None):
+    prefix = ENTRY_SUBTYPE_PREFIXES.get(str(subtipo_key or "").strip())
+    if not prefix:
+        raise serializers.ValidationError(
+            {"sub_tipo_movimiento_id": "No se pudo resolver el prefijo del documento."}
+        )
+
+    sucursal_token = _build_branch_token(sucursal)
+    if prefix != "tr":
+        return f"{prefix}-{sucursal_token}"
+
+    objetivo_token = _build_branch_token(sucursal_objetivo, fallback="destino")
+    return f"{prefix}-{sucursal_token}-{objetivo_token}"
+
+
+def generate_entry_document_number(
+    tipo_movimiento,
+    subtipo_key,
+    sucursal,
+    sucursal_objetivo=None,
+):
+    if tipo_movimiento is None:
+        raise serializers.ValidationError(
+            {"tipo_movimiento_id": "No se pudo resolver el tipo de movimiento."}
+        )
+
+    base = build_entry_document_base(
+        subtipo_key=subtipo_key,
+        sucursal=sucursal,
+        sucursal_objetivo=sucursal_objetivo,
+    )
+    return _next_incremental_document_number(
+        model=MovimientoInventario,
+        base=base,
+        filters={"tipo_movimiento": tipo_movimiento},
+    )
+
+
+def generate_transfer_request_document_number(sucursal_solicitante, sucursal_proveedora):
+    base = build_entry_document_base(
+        subtipo_key="traslado",
+        sucursal=sucursal_solicitante,
+        sucursal_objetivo=sucursal_proveedora,
+    )
+    return _next_incremental_document_number(
+        model=SolicitudTraslado,
+        base=base,
+    )
 
 
 class DetalleMovimientoSerializer(serializers.ModelSerializer):
@@ -147,6 +287,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "no_documento",
             "estado",
             "estado_label",
             "motivo_rechazo",
@@ -184,15 +325,6 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
         if display:
             return display
         return str(getattr(obj, "estado", "") or "").strip() or "-"
-
-    def validate_no_documento(self, value):
-        normalized = str(value or "").strip()
-        queryset = SolicitudTraslado.objects.filter(no_documento__iexact=normalized)
-        if self.instance is not None:
-            queryset = queryset.exclude(pk=self.instance.pk)
-        if queryset.exists():
-            raise serializers.ValidationError("No se puede usar dos iguales.")
-        return normalized
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -289,6 +421,10 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         detalles_data = validated_data.pop("detalles", [])
+        validated_data["no_documento"] = generate_transfer_request_document_number(
+            sucursal_solicitante=validated_data.get("sucursal_solicitante"),
+            sucursal_proveedora=validated_data.get("sucursal_proveedora"),
+        )
         with transaction.atomic():
             solicitud = SolicitudTraslado.objects.create(**validated_data)
             for detalle in detalles_data:
@@ -382,25 +518,25 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "iva_rate",
             "fecha",
             "no_documento",
+            "factura_referencia",
             "solicitud_traslado",
             "solicitud_traslado_id",
             "detalles",
             "pagos",
         ]
+        extra_kwargs = {
+            "no_documento": {
+                "required": False,
+                "allow_blank": True,
+            },
+            "factura_referencia": {
+                "required": False,
+                "allow_blank": True,
+            },
+        }
 
     def _resolve_subtipo_key(self, subtipo):
-        name = normalize_name(getattr(subtipo, "nombre", ""))
-        if "devol" in name:
-            return "devolucion"
-        if "trasl" in name:
-            return "traslado"
-        if "vent" in name:
-            return "venta"
-        if "compra" in name:
-            return "compra_local"
-        if "import" in name:
-            return "importacion"
-        return None
+        return resolve_subtipo_key(subtipo)
 
     def _resolve_tipo_name(self, tipo):
         return normalize_name(getattr(tipo, "nombre", ""))
@@ -482,28 +618,58 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 {"solicitud_traslado_id": "No puedes reasignar la solicitud de traslado."}
             )
 
-        no_documento = str(
-            attrs.get("no_documento", getattr(self.instance, "no_documento", ""))
-            or ""
-        ).strip()
-        tipo_id = getattr(tipo, "id", None)
-        if tipo_id and no_documento:
-            duplicated = MovimientoInventario.objects.filter(
-                tipo_movimiento_id=tipo_id,
-                no_documento__iexact=no_documento,
-            )
-            if self.instance is not None:
-                duplicated = duplicated.exclude(pk=self.instance.pk)
-            if duplicated.exists():
-                raise serializers.ValidationError(
-                    {"no_documento": "No se puede usar dos iguales."}
-                )
-
         tipo_name = self._resolve_tipo_name(tipo)
         subtipo_key = self._resolve_subtipo_key(subtipo)
         estado_name = self._resolve_estado_name(estado)
         detalles_data = attrs.get("detalles")
         is_create = self.instance is None
+
+        no_documento = str(
+            attrs.get("no_documento", getattr(self.instance, "no_documento", ""))
+            or ""
+        ).strip()
+        factura_referencia = str(
+            attrs.get(
+                "factura_referencia",
+                getattr(self.instance, "factura_referencia", ""),
+            )
+            or ""
+        ).strip()
+        is_entry = tipo_name.startswith("ent")
+        tipo_id = getattr(tipo, "id", None)
+
+        if is_entry:
+            if self.instance is not None and "no_documento" in attrs:
+                original_document = str(getattr(self.instance, "no_documento", "") or "").strip()
+                if no_documento != original_document:
+                    raise serializers.ValidationError(
+                        {"no_documento": "El codigo de entradas se genera automaticamente y no se puede editar."}
+                    )
+                attrs["no_documento"] = original_document
+
+            if is_create and subtipo_key == "devolucion" and not factura_referencia:
+                raise serializers.ValidationError(
+                    {"factura_referencia": "Debes ingresar la factura de venta para la devolucion."}
+                )
+            attrs["factura_referencia"] = factura_referencia if subtipo_key == "devolucion" else ""
+        else:
+            if is_create and not no_documento:
+                raise serializers.ValidationError(
+                    {"no_documento": "Debes ingresar el numero de documento."}
+                )
+
+            if tipo_id and no_documento:
+                duplicated = MovimientoInventario.objects.filter(
+                    tipo_movimiento_id=tipo_id,
+                    no_documento__iexact=no_documento,
+                )
+                if self.instance is not None:
+                    duplicated = duplicated.exclude(pk=self.instance.pk)
+                if duplicated.exists():
+                    raise serializers.ValidationError(
+                        {"no_documento": "No se puede usar dos iguales."}
+                    )
+            attrs["factura_referencia"] = factura_referencia
 
         if is_create and not detalles_data:
             requires_request_details = (
@@ -744,25 +910,13 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             )
         return tipo_entrada, subtipo_traslado
 
-    def _build_unique_document_number(self, tipo_movimiento, base_number):
-        raw_base = str(base_number or "").strip() or "TR-ENTRADA"
-        candidate = raw_base[:80]
-        index = 1
-        while MovimientoInventario.objects.filter(
-            tipo_movimiento=tipo_movimiento,
-            no_documento__iexact=candidate,
-        ).exists():
-            suffix = f"-{index}"
-            base_max_length = max(1, 80 - len(suffix))
-            candidate = f"{raw_base[:base_max_length]}{suffix}"
-            index += 1
-        return candidate
-
     def _create_transfer_entry_from_salida(self, salida, detalles_data, solicitud_traslado):
         tipo_entrada, subtipo_traslado = self._resolve_transfer_entry_subtipo()
-        document_number = self._build_unique_document_number(
-            tipo_entrada,
-            f"TR-ENT-{salida.no_documento}",
+        document_number = generate_entry_document_number(
+            tipo_movimiento=tipo_entrada,
+            subtipo_key="traslado",
+            sucursal=solicitud_traslado.sucursal_solicitante,
+            sucursal_objetivo=solicitud_traslado.sucursal_proveedora,
         )
         descripcion_salida = str(salida.descripcion or "").strip()
         descripcion_base = f"Entrada automatica por traslado solicitado #{solicitud_traslado.no_documento}"
@@ -784,6 +938,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             iva_rate=salida.iva_rate,
             fecha=salida.fecha,
             no_documento=document_number,
+            factura_referencia="",
         )
 
         normalized_details = []
@@ -823,6 +978,14 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             and subtipo_key == "traslado"
             and solicitud_traslado is not None
         )
+
+        if tipo_name.startswith("ent"):
+            validated_data["no_documento"] = generate_entry_document_number(
+                tipo_movimiento=validated_data.get("tipo_movimiento"),
+                subtipo_key=subtipo_key,
+                sucursal=validated_data.get("sucursal"),
+                sucursal_objetivo=validated_data.get("sucursal_objetivo"),
+            )
 
         if is_transfer_approval:
             detalles_data = self._build_detalles_from_solicitud(solicitud_traslado)

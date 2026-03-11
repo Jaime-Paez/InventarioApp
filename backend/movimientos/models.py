@@ -48,6 +48,12 @@ class MovimientoInventario(models.Model):
     )
     fecha = models.DateField()
     no_documento = models.CharField(max_length=80)
+    factura_referencia = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+        help_text="Factura origen para devoluciones de entrada.",
+    )
     tipos_pago = models.ManyToManyField(
         "tipos.TipoPago",
         through="PagoMovimiento",

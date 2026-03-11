@@ -30,7 +30,14 @@ from .models import (
     TrasladoInconveniente,
     TrasladoInconvenienteHistorial,
 )
-from .serializers import MovimientoInventarioSerializer, SolicitudTrasladoSerializer
+from .serializers import (
+    MovimientoInventarioSerializer,
+    SolicitudTrasladoSerializer,
+    generate_entry_document_number,
+    generate_transfer_request_document_number,
+    normalize_name,
+    resolve_subtipo_key,
+)
 from .stock_availability import get_available_transfer_quantities_by_product
 
 
@@ -2239,6 +2246,88 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             queryset = queryset.exclude(pk=int(exclude_id_raw))
 
         return Response({"is_available": not queryset.exists()}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="siguiente-documento-entrada")
+    def siguiente_documento_entrada(self, request):
+        sub_tipo_raw = str(request.query_params.get("sub_tipo_movimiento_id") or "").strip()
+        sucursal_raw = str(request.query_params.get("sucursal_id") or "").strip()
+        sucursal_objetivo_raw = str(request.query_params.get("sucursal_objetivo_id") or "").strip()
+
+        if not sub_tipo_raw.isdigit():
+            return Response(
+                {"detail": "Debes enviar un sub_tipo_movimiento_id valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not sucursal_raw.isdigit():
+            return Response(
+                {"detail": "Debes enviar un sucursal_id valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = self.get_serializer()
+        subtipo = (
+            serializer.fields["sub_tipo_movimiento_id"]
+            .queryset.select_related("tipo_movimiento")
+            .filter(id=int(sub_tipo_raw))
+            .first()
+        )
+        if subtipo is None:
+            return Response(
+                {"detail": "No se encontro el subtipo de movimiento."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        tipo_movimiento = getattr(subtipo, "tipo_movimiento", None)
+        tipo_name = normalize_name(getattr(tipo_movimiento, "nombre", ""))
+        subtipo_key = resolve_subtipo_key(subtipo)
+        allowed_entry_subtypes = {"importacion", "compra_local", "devolucion", "traslado"}
+        if not tipo_name.startswith("ent") or subtipo_key not in allowed_entry_subtypes:
+            return Response(
+                {"detail": "El subtipo enviado no corresponde a una entrada valida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            sucursal = Sucursal.objects.get(id=int(sucursal_raw))
+        except Sucursal.DoesNotExist:
+            return Response(
+                {"detail": "No se encontro la sucursal solicitante."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+            sucursal.id,
+            field_label="sucursal solicitante",
+        )
+
+        if subtipo_key == "traslado":
+            if not sucursal_objetivo_raw.isdigit():
+                return Response(
+                    {"detail": "Debes enviar un sucursal_objetivo_id valido para traslados."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                sucursal_objetivo = Sucursal.objects.get(id=int(sucursal_objetivo_raw))
+            except Sucursal.DoesNotExist:
+                return Response(
+                    {"detail": "No se encontro la sucursal proveedora."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            document_number = generate_transfer_request_document_number(
+                sucursal_solicitante=sucursal,
+                sucursal_proveedora=sucursal_objetivo,
+            )
+        else:
+            document_number = generate_entry_document_number(
+                tipo_movimiento=tipo_movimiento,
+                subtipo_key=subtipo_key,
+                sucursal=sucursal,
+                sucursal_objetivo=None,
+            )
+
+        return Response({"no_documento": document_number}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="stock-sucursal")
     def stock_sucursal(self, request):
