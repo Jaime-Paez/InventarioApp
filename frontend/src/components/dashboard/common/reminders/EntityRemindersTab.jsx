@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Plus } from 'lucide-react'
+import { Loader2, Minus, Plus } from 'lucide-react'
 import { API_URL, authFetch } from '../../../../utils/api'
 import {
   REMINDERS_STORAGE_KEY,
@@ -538,7 +538,7 @@ function EntityRemindersTab({
             }}
             disabled={!reminderContext}
           >
-            <Plus size={14} />
+            {activeView === 'create' ? <Minus size={14} /> : <Plus size={14} />}
             {activeView === 'create' ? 'Ocultar formulario' : 'Anadir recordatorio'}
           </button>
         ) : (
