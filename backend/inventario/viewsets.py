@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 
+from django.db.models.deletion import ProtectedError
 from django.db.models import (
     Case,
     CharField,
@@ -156,6 +157,57 @@ class SucursalViewSet(viewsets.ModelViewSet):
             response["X-Sucursal-Scope-Unrestricted"] = "1" if allowed is None else "0"
         return response
 
+    def _get_delete_block_reasons(self, instance):
+        reasons = []
+
+        if instance.bodegas.exists():
+            reasons.append("bodegas o estructura de inventario")
+
+        if instance.movimientos_origen.exists() or instance.movimientos_destino.exists():
+            reasons.append("movimientos de inventario (entradas, salidas o traslados)")
+
+        if instance.solicitudes.exists():
+            reasons.append("solicitudes de clientes")
+
+        if (
+            instance.solicitudes_traslado_realizadas.exists()
+            or instance.solicitudes_traslado_recibidas.exists()
+        ):
+            reasons.append("solicitudes de traslado")
+
+        inspecciones_rel = getattr(instance, "inspecciones_aleatorias_items", None)
+        if inspecciones_rel is not None and inspecciones_rel.exists():
+            reasons.append("inspecciones aleatorias")
+
+        return reasons
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        reasons = self._get_delete_block_reasons(instance)
+        if reasons:
+            return Response(
+                {
+                    "detail": (
+                        "No se puede eliminar la sucursal porque tiene registros relacionados: "
+                        + ", ".join(reasons)
+                        + "."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": (
+                        "No se puede eliminar la sucursal porque esta ligada a registros historicos protegidos."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
 
 class BodegaViewSet(viewsets.ModelViewSet):
     queryset = Bodega.objects.select_related("sucursal").all().order_by(
@@ -194,6 +246,51 @@ class BodegaViewSet(viewsets.ModelViewSet):
             action_key="puede_actualizar",
         )
         serializer.save()
+
+    def _get_delete_block_reasons(self, instance):
+        reasons = []
+
+        has_inventario = Inventario.objects.filter(
+            subdivision__division__bodega=instance
+        ).exists()
+        has_subdivisiones = SubDivision.objects.filter(division__bodega=instance).exists()
+        has_divisiones = instance.divisiones.exists()
+
+        if has_inventario:
+            reasons.append("inventario asociado")
+        if has_subdivisiones:
+            reasons.append("subdivisiones asociadas")
+        if has_divisiones:
+            reasons.append("divisiones asociadas")
+
+        return reasons
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        reasons = self._get_delete_block_reasons(instance)
+        if reasons:
+            return Response(
+                {
+                    "detail": (
+                        "No se puede eliminar la bodega porque tiene registros relacionados: "
+                        + ", ".join(reasons)
+                        + "."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": (
+                        "No se puede eliminar la bodega porque esta ligada a registros historicos protegidos."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class DivisionViewSet(viewsets.ModelViewSet):

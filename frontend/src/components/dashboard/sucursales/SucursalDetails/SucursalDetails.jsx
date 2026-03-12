@@ -603,6 +603,7 @@ function SucursalDetails({
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
+  const modalTitle = String(formData?.nombre || '').trim()
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
@@ -613,7 +614,7 @@ function SucursalDetails({
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
-            <h3>{sucursalId ? `Sucursal #${sucursalId}` : 'Sucursal'}</h3>
+            <h3>{modalTitle || (sucursalId ? `Sucursal #${sucursalId}` : 'Sucursal')}</h3>
           </div>
           <div className="create-user__header-actions">
             <button
@@ -748,24 +749,26 @@ function SucursalDetails({
             </div>
 
             <div className="user-details__footer-right">
-              {isEditing && allowDelete && (
+              {isEditing && (
                 <>
-                  <button
-                    type="button"
-                    className="create-user__action user-details__delete"
-                    onClick={() => setShowDeleteDialog(true)}
-                    disabled={deleteLoading || saving || loadingData}
-                  >
-                    {deleteLoading ? 'Eliminando...' : 'Eliminar'}
-                  </button>
-
+                  {allowDelete && (
                     <button
-                      type="submit"
-                      className="create-user__action create-user__action--primary"
-                      disabled={saving || loadingData}
+                      type="button"
+                      className="create-user__action user-details__delete"
+                      onClick={() => setShowDeleteDialog(true)}
+                      disabled={deleteLoading || saving || loadingData}
                     >
-                      {saving ? 'Guardando...' : 'Guardar'}
+                      {deleteLoading ? 'Eliminando...' : 'Eliminar'}
                     </button>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="create-user__action create-user__action--primary"
+                    disabled={saving || loadingData}
+                  >
+                    {saving ? 'Guardando...' : 'Guardar'}
+                  </button>
                 </>
               )}
             </div>
