@@ -268,6 +268,8 @@ function SalidaDetails({
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteInventoryAction, setDeleteInventoryAction] = useState('reverse')
   const [isEditing, setIsEditing] = useState(false)
   const [, setError] = useState('')
 
@@ -368,6 +370,9 @@ function SalidaDetails({
   const isDevolucion = selectedSubTipoName.includes('devol')
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
+  const restrictedEditMode = true
+  const lineItemsReadOnly = restrictedEditMode
+  const clientDataReadOnly = restrictedEditMode
   const requiresStockValidation = isTraslado || isVenta || isDevolucion
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'No. de Traslado' : 'No. de Factura'
@@ -840,6 +845,8 @@ function SalidaDetails({
       setDetailDraft(initialDetail)
       setDetailError('')
       setIsEditing(false)
+      setShowDeleteConfirm(false)
+      setDeleteInventoryAction('reverse')
     } catch (err) {
       notifyError(err?.message || 'Ocurrio un error al cargar la salida.')
     } finally {
@@ -910,6 +917,8 @@ function SalidaDetails({
     setTransferSolicitudId('')
     setOriginalData(null)
     setIsEditing(false)
+    setShowDeleteConfirm(false)
+    setDeleteInventoryAction('reverse')
     setIsMaximized(false)
     setIsResizingModal(false)
     modalRestoreRef.current = null
@@ -935,7 +944,13 @@ function SalidaDetails({
   useEffect(() => {
     if (allowEdit || !isEditing) return
     setIsEditing(false)
+    setShowDeleteConfirm(false)
   }, [allowEdit, isEditing])
+
+  useEffect(() => {
+    if (isEditing) return
+    setShowDeleteConfirm(false)
+  }, [isEditing])
 
   const updateProductDropdownPlacement = useCallback(() => {
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
@@ -1303,6 +1318,7 @@ function SalidaDetails({
   const handleChange = (event) => {
     if (!isEditing) return
     const { name, value, type, checked } = event.target
+    if (name !== 'descripcion') return
     setFormData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -1310,7 +1326,7 @@ function SalidaDetails({
   }
 
   const handleClienteQueryChange = (event) => {
-    if (!isEditing) return
+    if (!isEditing || clientDataReadOnly) return
     const value = event.target.value
     setClienteQuery(value)
     setShowClienteDropdown(Boolean(value))
@@ -1331,7 +1347,7 @@ function SalidaDetails({
   }
 
   const handleClienteFieldChange = (event) => {
-    if (!isEditing) return
+    if (!isEditing || clientDataReadOnly) return
     const { name, value } = event.target
     setClienteForm((prev) => ({ ...prev, [name]: value }))
     if (selectedCliente) {
@@ -1351,7 +1367,7 @@ function SalidaDetails({
   }
 
   const handleClienteSelect = (cliente) => {
-    if (!isEditing) return
+    if (!isEditing || clientDataReadOnly) return
     const label = formatClienteFieldValue(cliente)
     if (!label) return
     setSelectedCliente(cliente || null)
@@ -1364,7 +1380,7 @@ function SalidaDetails({
   }
 
   const handleDetailChange = (event) => {
-    if (!isEditing) return
+    if (!isEditing || lineItemsReadOnly) return
     const { name, value } = event.target
     if (name !== 'cantidad') return
     setDetailError('')
@@ -1375,7 +1391,7 @@ function SalidaDetails({
   }
 
   const handleProductSelect = (producto) => {
-    if (!isEditing || !producto?.id) return
+    if (!isEditing || lineItemsReadOnly || !producto?.id) return
     const productPrice = resolveProductPrice(producto)
     setDetailError('')
     setDetailDraft((prev) => ({
@@ -1393,7 +1409,7 @@ function SalidaDetails({
   }
 
   const handleAddDetail = () => {
-    if (!isEditing) return
+    if (!isEditing || lineItemsReadOnly) return
     setDetailError('')
     const productoId = String(detailDraft.productoId || '').trim()
     const cantidad = parseIntValue(detailDraft.cantidad)
@@ -1462,13 +1478,14 @@ function SalidaDetails({
   }
 
   const handleRemoveDetail = (uid) => {
-    if (!isEditing) return
+    if (!isEditing || lineItemsReadOnly) return
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
   }
 
   const handleCancelEdit = () => {
     if (!originalData) {
       setIsEditing(false)
+      setShowDeleteConfirm(false)
       return
     }
 
@@ -1488,6 +1505,8 @@ function SalidaDetails({
     setClienteLoading(false)
     setSelectedCliente(null)
     setError('')
+    setShowDeleteConfirm(false)
+    setDeleteInventoryAction('reverse')
     setIsEditing(false)
   }
 
@@ -1505,63 +1524,60 @@ function SalidaDetails({
     if (!isEditing || saving) return
     setError('')
 
+    const sourceForm = originalData?.form ? { ...originalData.form } : { ...formData }
+    const sourceDetails = Array.isArray(originalData?.detalles)
+      ? originalData.detalles.map((detail) => ({ ...detail }))
+      : details.map((detail) => ({ ...detail }))
+
     if (!salidaTipoId) {
       notifyError('No se encontro el tipo de movimiento de salida.')
       return
     }
 
-    if (!formData.subTipoId) {
+    if (!sourceForm.subTipoId) {
       notifyError('Selecciona el tipo de salida.')
       return
     }
 
-    if (!formData.sucursalId) {
+    if (!sourceForm.sucursalId) {
       notifyError('Selecciona la sucursal.')
       return
     }
 
-    if (requiresSucursalObjetivo && !formData.sucursalObjetivoId) {
+    if (requiresSucursalObjetivo && !sourceForm.sucursalObjetivoId) {
       notifyError('Selecciona la sucursal destino.')
       return
     }
 
-    if (!formData.estadoId) {
+    if (!sourceForm.estadoId) {
       notifyError('Selecciona el estado del movimiento.')
       return
     }
 
-    if (!formData.fecha) {
+    if (!sourceForm.fecha) {
       notifyError('No se pudo resolver la fecha del movimiento.')
       return
     }
 
-    if (!String(formData.no_documento || '').trim()) {
+    if (!String(sourceForm.no_documento || '').trim()) {
       notifyError('Ingresa el numero de documento.')
       return
     }
 
-    let ventaClienteLabel = String(formData.cliente || '').trim()
+    let ventaClienteLabel = String(sourceForm.cliente || '').trim()
     if (isVenta) {
-      if (selectedCliente?.id) {
-        ventaClienteLabel = formatClienteFieldValue(selectedCliente)
-      } else {
-        const clientePayload = normalizeClientePayload(clienteForm)
-        ventaClienteLabel = `${clientePayload.nombres} ${clientePayload.apellidos}`.trim()
-      }
-
       if (!ventaClienteLabel) {
         notifyError('Ingresa los datos del cliente para la venta.')
-        setActiveTab('cliente')
         return
       }
     }
 
-    if (!details.length) {
+    if (!sourceDetails.length) {
       notifyError('Agrega al menos un producto.')
       return
     }
 
-    const detailsHaveRequiredData = details.every((detail) => {
+    const detailsHaveRequiredData = sourceDetails.every((detail) => {
       const hasProduct = Boolean(String(detail?.productoId || '').trim())
       const hasState = Boolean(String(detail?.estadoProductoId || defaultEstadoProductoId || '').trim())
       const qty = parseIntValue(detail?.cantidad)
@@ -1574,7 +1590,7 @@ function SalidaDetails({
       return
     }
 
-    const descuentoIngresado = isVenta ? parseNumber(formData.descuento) : 0
+    const descuentoIngresado = isVenta ? parseNumber(sourceForm.descuento) : 0
     if (
       isVenta &&
       descuentoIngresado !== null &&
@@ -1585,20 +1601,20 @@ function SalidaDetails({
     }
 
     const descuento = isVenta ? Math.max(descuentoIngresado ?? 0, 0) : 0
-    const ivaRate = parseNumber(formData.iva_rate)
+    const ivaRate = parseNumber(sourceForm.iva_rate)
 
     const payload = {
-      sucursal_id: Number(formData.sucursalId),
+      sucursal_id: Number(sourceForm.sucursalId),
       tipo_movimiento_id: Number(salidaTipoId),
-      sub_tipo_movimiento_id: Number(formData.subTipoId),
+      sub_tipo_movimiento_id: Number(sourceForm.subTipoId),
       descripcion: buildDescripcion(ventaClienteLabel),
       funcional: isDevolucion ? Boolean(formData.funcional) : true,
-      sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
-      estado_movimiento_id: Number(formData.estadoId),
+      sucursal_objetivo_id: requiresSucursalObjetivo ? Number(sourceForm.sucursalObjetivoId) : null,
+      estado_movimiento_id: Number(sourceForm.estadoId),
       descuento,
-      fecha: formData.fecha,
-      no_documento: formData.no_documento.trim(),
-      detalles: details.map((detail) => {
+      fecha: sourceForm.fecha,
+      no_documento: String(sourceForm.no_documento || '').trim(),
+      detalles: sourceDetails.map((detail) => {
         const cantidad = parseIntValue(detail.cantidad) || 0
         const valor = parseNumber(detail.valor) || 0
         const valorTotal = parseNumber(detail.valor_total)
@@ -1633,12 +1649,17 @@ function SalidaDetails({
         throw new Error(detail)
       }
 
-      const updatedForm = { ...formData, cliente: ventaClienteLabel }
+      const updatedForm = {
+        ...sourceForm,
+        descripcion: String(formData.descripcion || ''),
+        funcional: isDevolucion ? Boolean(formData.funcional) : Boolean(sourceForm.funcional),
+        cliente: ventaClienteLabel,
+      }
       setFormData(updatedForm)
       const nextOriginal = {
         form: { ...updatedForm },
-        clienteForm: { ...clienteForm },
-        detalles: details.map((detail) => ({ ...detail })),
+        clienteForm: { ...(originalData?.clienteForm || clienteForm) },
+        detalles: sourceDetails.map((detail) => ({ ...detail })),
       }
       setOriginalData(nextOriginal)
       setClienteQuery(String(updatedForm.cliente || ''))
@@ -1654,14 +1675,29 @@ function SalidaDetails({
     }
   }
 
+  const handleRequestDelete = () => {
+    if (!allowDelete) return
+    if (!isEditing || deleteLoading) return
+    setShowDeleteConfirm(true)
+  }
+
+  const closeDeleteConfirm = () => {
+    if (deleteLoading) return
+    setShowDeleteConfirm(false)
+  }
+
   const handleDelete = async () => {
+    if (!showDeleteConfirm) return
     if (!allowDelete) return
     if (!isEditing || deleteLoading) return
     setDeleteLoading(true)
 
     try {
+      const actionParam = deleteInventoryAction === 'keep' ? 'keep' : 'reverse'
       const response = await authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/${salidaId}/`,
+        `${API_URL}/movimientos/movimiento_inventario/${salidaId}/?inventory_action=${encodeURIComponent(
+          actionParam
+        )}`,
         { method: 'DELETE' },
         token
       )
@@ -1672,6 +1708,7 @@ function SalidaDetails({
         throw new Error(detail)
       }
 
+      setShowDeleteConfirm(false)
       onDeleted?.(salidaId)
     } catch (err) {
       notifyError(err?.message || 'Ocurrio un error al eliminar la salida.')
@@ -1685,6 +1722,7 @@ function SalidaDetails({
   if (!shouldRender) return null
 
   const editorDisabled = !isEditing || saving || loadingData
+  const immutableFieldDisabled = editorDisabled || restrictedEditMode
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {
@@ -1820,7 +1858,7 @@ function SalidaDetails({
 
                     <label className="create-user__field">
                       <span>Sucursal</span>
-                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={editorDisabled}>
+                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={immutableFieldDisabled}>
                         <option value="">Selecciona una sucursal</option>
                         {branches.map((branch) => (
                           <option key={branch.id} value={branch.id}>
@@ -1837,7 +1875,7 @@ function SalidaDetails({
                           name="sucursalObjetivoId"
                           value={formData.sucursalObjetivoId}
                           onChange={handleChange}
-                          disabled={editorDisabled}
+                          disabled={immutableFieldDisabled}
                         >
                           <option value="">Selecciona una sucursal</option>
                           {branches.map((branch) => (
@@ -1856,7 +1894,7 @@ function SalidaDetails({
                         type="text"
                         value={formData.no_documento}
                         onChange={handleChange}
-                        disabled={editorDisabled}
+                        disabled={immutableFieldDisabled}
                       />
                     </label>
 
@@ -1870,7 +1908,7 @@ function SalidaDetails({
                     {isTraslado && (
                       <label className="create-user__field">
                         <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={editorDisabled}>
+                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={immutableFieldDisabled}>
                           <option value="">Selecciona un estado</option>
                           {trasladoEstadoOptions.map((estado) => (
                             <option key={estado.id} value={estado.id}>
@@ -1891,7 +1929,7 @@ function SalidaDetails({
                     {!isDevolucion && !isTraslado && !isVenta && (
                       <label className="create-user__field">
                         <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={editorDisabled}>
+                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={immutableFieldDisabled}>
                           <option value="">Selecciona un estado</option>
                           {(estadoOptions.length ? estadoOptions : estados).map((estado) => (
                             <option key={estado.id} value={estado.id}>
@@ -1913,7 +1951,7 @@ function SalidaDetails({
                           max="100"
                           value={formData.descuento}
                           onChange={handleChange}
-                          disabled={editorDisabled}
+                          disabled={immutableFieldDisabled}
                         />
                       </label>
                     )}
@@ -1926,6 +1964,7 @@ function SalidaDetails({
                           value={formData.funcional ? 'true' : 'false'}
                           onChange={(event) =>
                             isEditing &&
+                            !editorDisabled &&
                             setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
                           }
                           disabled={editorDisabled}
@@ -1967,6 +2006,7 @@ function SalidaDetails({
                       <span>Acciones</span>
                     </div>
 
+                    {!lineItemsReadOnly && (
                     <div className="create-user__locations-row create-user__locations-row--form">
                       <span className="create-salida__product-picker">
                         <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
@@ -2107,6 +2147,7 @@ function SalidaDetails({
                         </button>
                       </span>
                     </div>
+                    )}
 
                     {!details.length && (
                       <div className="create-user__locations-row create-user__locations-row--empty">
@@ -2122,9 +2163,13 @@ function SalidaDetails({
                         <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
-                          <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={editorDisabled}>
-                            x
-                          </button>
+                          {!lineItemsReadOnly ? (
+                            <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={editorDisabled}>
+                              x
+                            </button>
+                          ) : (
+                            <span>-</span>
+                          )}
                         </span>
                       </div>
                     ))}
@@ -2174,11 +2219,11 @@ function SalidaDetails({
                             placeholder="Buscar por cedula o nombre"
                             value={clienteQuery}
                             onChange={handleClienteQueryChange}
-                            onFocus={() => isEditing && setShowClienteDropdown(Boolean(clienteQuery))}
-                            disabled={editorDisabled}
+                            onFocus={() => isEditing && !clientDataReadOnly && setShowClienteDropdown(Boolean(clienteQuery))}
+                            disabled={editorDisabled || clientDataReadOnly}
                             autoComplete="off"
                           />
-                          {showClienteDropdown && isEditing && (
+                          {showClienteDropdown && isEditing && !clientDataReadOnly && (
                             <div className="create-user__dropdown-panel create-salida__cliente-panel">
                               <div className="create-user__dropdown-results">
                                 {clienteLoading && <small className="muted">Buscando cliente...</small>}
@@ -2223,7 +2268,7 @@ function SalidaDetails({
                           type="text"
                           value={clienteForm.cedula_ruc}
                           onChange={handleClienteFieldChange}
-                          disabled={editorDisabled}
+                          disabled={editorDisabled || clientDataReadOnly}
                         />
                       </label>
 
@@ -2234,7 +2279,7 @@ function SalidaDetails({
                           type="text"
                           value={clienteForm.nombres}
                           onChange={handleClienteFieldChange}
-                          disabled={editorDisabled}
+                          disabled={editorDisabled || clientDataReadOnly}
                         />
                       </label>
 
@@ -2245,7 +2290,7 @@ function SalidaDetails({
                           type="text"
                           value={clienteForm.apellidos}
                           onChange={handleClienteFieldChange}
-                          disabled={editorDisabled}
+                          disabled={editorDisabled || clientDataReadOnly}
                         />
                       </label>
 
@@ -2256,7 +2301,7 @@ function SalidaDetails({
                           type="email"
                           value={clienteForm.correo}
                           onChange={handleClienteFieldChange}
-                          disabled={editorDisabled}
+                          disabled={editorDisabled || clientDataReadOnly}
                         />
                       </label>
 
@@ -2267,7 +2312,7 @@ function SalidaDetails({
                           type="text"
                           value={clienteForm.telefono}
                           onChange={handleClienteFieldChange}
-                          disabled={editorDisabled}
+                          disabled={editorDisabled || clientDataReadOnly}
                         />
                       </label>
 
@@ -2278,7 +2323,7 @@ function SalidaDetails({
                           type="text"
                           value={clienteForm.direccion}
                           onChange={handleClienteFieldChange}
-                          disabled={editorDisabled}
+                          disabled={editorDisabled || clientDataReadOnly}
                         />
                       </label>
                     </div>
@@ -2336,7 +2381,7 @@ function SalidaDetails({
                     <button
                       type="button"
                       className="create-user__action user-details__delete"
-                      onClick={handleDelete}
+                      onClick={handleRequestDelete}
                       disabled={deleteLoading || saving}
                     >
                       {deleteLoading ? 'Eliminando...' : 'Eliminar'}
@@ -2357,6 +2402,71 @@ function SalidaDetails({
             </div>
           </div>
         </form>
+
+        {showDeleteConfirm && (
+          <div className="create-salida__confirm-overlay" onMouseDown={closeDeleteConfirm}>
+            <div
+              className="create-salida__confirm-card create-salida__confirm-card--cancel entrada-details__delete-confirm-card"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <h4>Eliminar salida</h4>
+              <p>
+                Se eliminara la salida <strong>{String(formData.no_documento || '').trim() || `#${salidaId}`}</strong>.
+              </p>
+              <p className="create-salida__confirm-warning">
+                Elige como quieres manejar el inventario asociado a esta salida.
+              </p>
+              <fieldset className="entrada-details__delete-confirm-options">
+                <label className="entrada-details__delete-confirm-option">
+                  <input
+                    type="radio"
+                    name="salida-delete-inventory-action"
+                    value="keep"
+                    checked={deleteInventoryAction === 'keep'}
+                    onChange={() => setDeleteInventoryAction('keep')}
+                    disabled={deleteLoading}
+                  />
+                  <span>
+                    <strong>Mantener inventario actual</strong>
+                    <small>Elimina el documento sin sumar cantidades al inventario.</small>
+                  </span>
+                </label>
+                <label className="entrada-details__delete-confirm-option">
+                  <input
+                    type="radio"
+                    name="salida-delete-inventory-action"
+                    value="reverse"
+                    checked={deleteInventoryAction === 'reverse'}
+                    onChange={() => setDeleteInventoryAction('reverse')}
+                    disabled={deleteLoading}
+                  />
+                  <span>
+                    <strong>Sumar cantidades de vuelta</strong>
+                    <small>Revierte el impacto de esta salida y devuelve cantidades al inventario.</small>
+                  </span>
+                </label>
+              </fieldset>
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={closeDeleteConfirm}
+                  disabled={deleteLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action user-details__confirm-danger"
+                  onClick={handleDelete}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? 'Eliminando...' : 'Eliminar salida'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <button
           type="button"

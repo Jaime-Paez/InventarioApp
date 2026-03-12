@@ -106,6 +106,40 @@ const formatSubTipoLabel = (subTipo) => {
   if (!nombre) return ''
   return normalizeValue(nombre).includes('trasl') ? 'Solicitud de traslado' : nombre
 }
+const formatSubdivisionLocationLabel = (subdivision) => {
+  const bodega = String(subdivision?.division?.bodega?.nombre || '').trim()
+  const division = String(subdivision?.division?.nombre || '').trim()
+  const sub = String(subdivision?.nombre || '').trim()
+  return [bodega, division, sub].filter(Boolean).join(' / ')
+}
+const formatDivisionLocationLabel = (division) => {
+  const bodega = String(division?.bodega?.nombre || '').trim()
+  const divisionName = String(division?.nombre || '').trim()
+  return [bodega, divisionName].filter(Boolean).join(' / ')
+}
+const formatBodegaLocationLabel = (bodega) => String(bodega?.nombre || '').trim()
+const createEmptyLocationAssignment = () => ({
+  bodegaId: '',
+  divisionId: '',
+  subdivisionId: '',
+})
+const normalizeLocationAssignment = (value) => {
+  if (typeof value === 'string') {
+    return {
+      bodegaId: '',
+      divisionId: '',
+      subdivisionId: String(value || '').trim(),
+    }
+  }
+  if (!value || typeof value !== 'object') {
+    return createEmptyLocationAssignment()
+  }
+  return {
+    bodegaId: String(value?.bodegaId || '').trim(),
+    divisionId: String(value?.divisionId || '').trim(),
+    subdivisionId: String(value?.subdivisionId || '').trim(),
+  }
+}
 
 const parseNumber = (value) => {
   const cleaned = String(value ?? '').replace(',', '.').trim()
@@ -263,6 +297,20 @@ function CreateEntrada({
   const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
+  const [showLocationResolver, setShowLocationResolver] = useState(false)
+  const [locationResolverLoading, setLocationResolverLoading] = useState(false)
+  const [locationResolverSubmitting, setLocationResolverSubmitting] = useState(false)
+  const [locationResolverError, setLocationResolverError] = useState('')
+  const [checkingLocationCoverage, setCheckingLocationCoverage] = useState(false)
+  const [missingLocationProducts, setMissingLocationProducts] = useState([])
+  const [locationResolverSubdivisions, setLocationResolverSubdivisions] = useState([])
+  const [locationAssignmentsByProduct, setLocationAssignmentsByProduct] = useState({})
+  const [locationDropdownProductId, setLocationDropdownProductId] = useState('')
+  const [locationDropdownField, setLocationDropdownField] = useState('')
+  const [locationDropdownDirection, setLocationDropdownDirection] = useState('down')
+  const [locationDropdownMaxHeight, setLocationDropdownMaxHeight] = useState(null)
+  const [locationQuery, setLocationQuery] = useState('')
+  const [locationDebouncedQuery, setLocationDebouncedQuery] = useState('')
   const [reminderUsers, setReminderUsers] = useState([])
   const [reminderUsersLoading, setReminderUsersLoading] = useState(false)
   const [reminderUsersError, setReminderUsersError] = useState('')
@@ -276,6 +324,7 @@ function CreateEntrada({
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
   const clienteDropdownRef = useRef(null)
+  const locationDropdownRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
   const documentCheckTimerRef = useRef(null)
   const documentCheckSequenceRef = useRef(0)
@@ -358,6 +407,12 @@ function CreateEntrada({
   const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
   const selectedSucursalId = String(formData.sucursalId || '').trim()
   const hasSelectedSucursal = Boolean(selectedSucursalId)
+  const selectedSucursalName = useMemo(() => {
+    const branch = branches.find(
+      (item) => String(item?.id || '').trim() === selectedSucursalId
+    )
+    return String(branch?.nombre || '').trim()
+  }, [branches, selectedSucursalId])
   const selectedProveedorSucursalId = String(formData.sucursalObjetivoId || '').trim()
   const hasSelectedProveedorSucursal = Boolean(selectedProveedorSucursalId)
   const hasProductSourceBranch = isTraslado ? hasSelectedProveedorSucursal : hasSelectedSucursal
@@ -488,6 +543,15 @@ function CreateEntrada({
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
   )
+  const detailProductIdSet = useMemo(
+    () =>
+      new Set(
+        details
+          .map((detail) => String(detail?.productoId || '').trim())
+          .filter(Boolean)
+      ),
+    [details]
+  )
   const proveedorBranchName = useMemo(() => {
     if (!isTraslado) return ''
     const selectedBranch = providerBranchPool.find(
@@ -610,6 +674,75 @@ function CreateEntrada({
 
   const hasAdminReminderRecipients = adminReminderRecipients.length > 0
   const hasAdditionalReminderRecipients = selectedReminderRecipients.length > 0
+  const locationResolverBodegas = useMemo(() => {
+    const map = new Map()
+    locationResolverSubdivisions.forEach((subdivision) => {
+      const bodega = subdivision?.division?.bodega
+      const bodegaId = String(bodega?.id || '').trim()
+      if (!bodegaId || map.has(bodegaId)) return
+      map.set(bodegaId, { ...bodega, id: bodegaId })
+    })
+    return Array.from(map.values()).sort((a, b) =>
+      String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' })
+    )
+  }, [locationResolverSubdivisions])
+
+  const locationResolverDivisionsByBodega = useMemo(() => {
+    const map = new Map()
+    locationResolverSubdivisions.forEach((subdivision) => {
+      const division = subdivision?.division
+      const divisionId = String(division?.id || '').trim()
+      const bodega = division?.bodega
+      const bodegaId = String(bodega?.id || '').trim()
+      if (!divisionId || !bodegaId) return
+      if (!map.has(bodegaId)) map.set(bodegaId, new Map())
+      const divisionsMap = map.get(bodegaId)
+      if (divisionsMap.has(divisionId)) return
+      divisionsMap.set(divisionId, {
+        ...division,
+        id: divisionId,
+        bodega: { ...bodega, id: bodegaId },
+      })
+    })
+
+    const grouped = new Map()
+    map.forEach((divisionsMap, bodegaId) => {
+      grouped.set(
+        bodegaId,
+        Array.from(divisionsMap.values()).sort((a, b) =>
+          String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' })
+        )
+      )
+    })
+    return grouped
+  }, [locationResolverSubdivisions])
+
+  const locationResolverSubdivisionsByDivision = useMemo(() => {
+    const map = new Map()
+    locationResolverSubdivisions.forEach((subdivision) => {
+      const divisionId = String(subdivision?.division?.id || '').trim()
+      const subdivisionId = String(subdivision?.id || '').trim()
+      if (!divisionId || !subdivisionId) return
+      if (!map.has(divisionId)) map.set(divisionId, new Map())
+      const subdivisionsMap = map.get(divisionId)
+      if (subdivisionsMap.has(subdivisionId)) return
+      subdivisionsMap.set(subdivisionId, {
+        ...subdivision,
+        id: subdivisionId,
+      })
+    })
+
+    const grouped = new Map()
+    map.forEach((subdivisionsMap, divisionId) => {
+      grouped.set(
+        divisionId,
+        Array.from(subdivisionsMap.values()).sort((a, b) =>
+          String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' })
+        )
+      )
+    })
+    return grouped
+  }, [locationResolverSubdivisions])
 
   useEffect(() => {
     if (!preloadedTipoMovimientos.length) return
@@ -1011,6 +1144,199 @@ function CreateEntrada({
     [token]
   )
 
+  const fetchSubdivisionsForLocationResolver = useCallback(
+    async (sucursalId) => {
+      if (!token || !sucursalId) return []
+      const response = await authFetch(
+        `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(
+          sucursalId
+        )}&modulo=movimientos_entradas`,
+        {},
+        token
+      )
+      if (!response.ok) {
+        throw new Error('No se pudieron cargar las ubicaciones de la sucursal.')
+      }
+      const data = await response.json().catch(() => ({}))
+      return parseApiList(data)
+    },
+    [token]
+  )
+
+  const checkMissingLocationsByProduct = useCallback(
+    async (sucursalId, detailRows) => {
+      const uniqueProductRows = []
+      const seenProductIds = new Set()
+
+      ;(Array.isArray(detailRows) ? detailRows : []).forEach((detail) => {
+        const productId = String(detail?.productoId || '').trim()
+        if (!productId || seenProductIds.has(productId)) return
+        seenProductIds.add(productId)
+        uniqueProductRows.push({
+          productoId: productId,
+          productoCodigo: String(detail?.productoCodigo || '').trim(),
+          productoNombre: String(detail?.productoNombre || '').trim(),
+        })
+      })
+
+      if (!uniqueProductRows.length) return []
+
+      const productIdsParam = uniqueProductRows.map((item) => item.productoId).join(',')
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/ubicaciones-productos-sucursal/?sucursal_id=${encodeURIComponent(
+          sucursalId
+        )}&producto_ids=${encodeURIComponent(productIdsParam)}`,
+        {},
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(
+          resolveApiErrorMessage(
+            payload,
+            'No se pudo validar si los productos tienen ubicaciones en la sucursal.'
+          )
+        )
+      }
+
+      const productsWithLocation = new Set(
+        (Array.isArray(payload?.producto_ids_con_ubicacion) ? payload.producto_ids_con_ubicacion : [])
+          .map((productId) => String(productId || '').trim())
+          .filter(Boolean)
+      )
+
+      return uniqueProductRows.filter(
+        (item) => !productsWithLocation.has(String(item.productoId || '').trim())
+      )
+    },
+    [token]
+  )
+
+  const openLocationResolverForProducts = useCallback(
+    async (missingProducts, sucursalId) => {
+      const normalizedBranchId = String(sucursalId || '').trim()
+      if (!normalizedBranchId || !missingProducts.length) return
+
+      setLocationResolverLoading(true)
+      setLocationResolverError('')
+      setLocationDropdownProductId('')
+      setLocationDropdownField('')
+      setLocationQuery('')
+      setLocationDebouncedQuery('')
+
+      try {
+        const subdivisions = await fetchSubdivisionsForLocationResolver(normalizedBranchId)
+        if (!subdivisions.length) {
+          throw new Error(
+            'La sucursal seleccionada no tiene subdivisiones configuradas para registrar la entrada.'
+          )
+        }
+
+        const missingIds = new Set(
+          missingProducts.map((item) => String(item?.productoId || '').trim()).filter(Boolean)
+        )
+        const subdivisionPathById = new Map()
+        const divisionIdsByBodega = new Map()
+        const subdivisionIdsByDivision = new Map()
+        subdivisions.forEach((subdivision) => {
+          const subdivisionId = String(subdivision?.id || '').trim()
+          const division = subdivision?.division
+          const divisionId = String(division?.id || '').trim()
+          const bodega = division?.bodega
+          const bodegaId = String(bodega?.id || '').trim()
+          if (!subdivisionId || !divisionId || !bodegaId) return
+
+          subdivisionPathById.set(subdivisionId, {
+            subdivisionId,
+            divisionId,
+            bodegaId,
+          })
+
+          if (!divisionIdsByBodega.has(bodegaId)) divisionIdsByBodega.set(bodegaId, new Set())
+          divisionIdsByBodega.get(bodegaId).add(divisionId)
+
+          if (!subdivisionIdsByDivision.has(divisionId)) subdivisionIdsByDivision.set(divisionId, new Set())
+          subdivisionIdsByDivision.get(divisionId).add(subdivisionId)
+        })
+
+        setLocationResolverSubdivisions(subdivisions)
+        setMissingLocationProducts(missingProducts)
+        setLocationAssignmentsByProduct((prev) => {
+          const next = {}
+          missingIds.forEach((productId) => {
+            const normalizedCurrent = normalizeLocationAssignment(prev?.[productId])
+            const subdivisionPath = normalizedCurrent.subdivisionId
+              ? subdivisionPathById.get(normalizedCurrent.subdivisionId) || null
+              : null
+
+            let bodegaId = normalizedCurrent.bodegaId
+            let divisionId = normalizedCurrent.divisionId
+            let subdivisionId = normalizedCurrent.subdivisionId
+
+            if (subdivisionPath) {
+              bodegaId = subdivisionPath.bodegaId
+              divisionId = subdivisionPath.divisionId
+              subdivisionId = subdivisionPath.subdivisionId
+            }
+
+            const validDivisionIds = bodegaId ? divisionIdsByBodega.get(bodegaId) : null
+            if (!bodegaId || !validDivisionIds) {
+              next[productId] = createEmptyLocationAssignment()
+              return
+            }
+
+            if (!divisionId || !validDivisionIds.has(divisionId)) {
+              next[productId] = {
+                bodegaId,
+                divisionId: '',
+                subdivisionId: '',
+              }
+              return
+            }
+
+            const validSubdivisionIds = subdivisionIdsByDivision.get(divisionId)
+            if (!subdivisionId || !validSubdivisionIds?.has(subdivisionId)) {
+              next[productId] = {
+                bodegaId,
+                divisionId,
+                subdivisionId: '',
+              }
+              return
+            }
+
+            next[productId] = {
+              bodegaId,
+              divisionId,
+              subdivisionId,
+            }
+          })
+          return next
+        })
+        setShowLocationResolver(true)
+      } catch (err) {
+        notifyError(
+          err?.message ||
+            'No se pudieron cargar las ubicaciones de la sucursal para completar la entrada.'
+        )
+      } finally {
+        setLocationResolverLoading(false)
+      }
+    },
+    [fetchSubdivisionsForLocationResolver, notifyError]
+  )
+
+  const closeLocationResolver = useCallback(() => {
+    if (locationResolverSubmitting) return
+    setShowLocationResolver(false)
+    setLocationResolverError('')
+    setLocationDropdownProductId('')
+    setLocationDropdownField('')
+    setLocationDropdownDirection('down')
+    setLocationDropdownMaxHeight(null)
+    setLocationQuery('')
+    setLocationDebouncedQuery('')
+  }, [locationResolverSubmitting])
+
   useEffect(() => {
     if (!open) return
     if (clienteSearchTimerRef.current) {
@@ -1045,6 +1371,20 @@ function CreateEntrada({
     setClienteOptions([])
     setClienteLoading(false)
     setStockByProduct({})
+    setShowLocationResolver(false)
+    setLocationResolverLoading(false)
+    setLocationResolverSubmitting(false)
+    setLocationResolverError('')
+    setCheckingLocationCoverage(false)
+    setMissingLocationProducts([])
+    setLocationResolverSubdivisions([])
+    setLocationAssignmentsByProduct({})
+    setLocationDropdownProductId('')
+    setLocationDropdownField('')
+    setLocationDropdownDirection('down')
+    setLocationDropdownMaxHeight(null)
+    setLocationQuery('')
+    setLocationDebouncedQuery('')
     setReminderUsers([])
     setReminderUsersLoading(false)
     setReminderUsersError('')
@@ -1188,6 +1528,34 @@ function CreateEntrada({
     setProductDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
   }, [showProductDropdown])
 
+  const updateLocationDropdownPlacement = useCallback(() => {
+    if (
+      !showLocationResolver ||
+      !locationDropdownProductId ||
+      !locationDropdownField ||
+      !locationDropdownRef.current
+    ) {
+      return
+    }
+    const trigger = locationDropdownRef.current.querySelector('.create-user__dropdown-trigger')
+    if (!trigger) return
+    const triggerRect = trigger.getBoundingClientRect()
+    const spacing = 10
+    const availableBelow = Math.max(
+      Math.floor(window.innerHeight - triggerRect.bottom - VIEWPORT_PADDING - spacing),
+      0
+    )
+    const availableAbove = Math.max(
+      Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing),
+      0
+    )
+    const nextDirection = availableBelow < 220 && availableAbove > availableBelow ? 'up' : 'down'
+    const availableSpace = nextDirection === 'up' ? availableAbove : availableBelow
+    const nextMaxHeight = Math.max(140, Math.min(320, availableSpace))
+    setLocationDropdownDirection((prev) => (prev === nextDirection ? prev : nextDirection))
+    setLocationDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
+  }, [locationDropdownField, locationDropdownProductId, showLocationResolver])
+
   useEffect(() => {
     modalSizeRef.current = modalSize
   }, [modalSize])
@@ -1208,6 +1576,17 @@ function CreateEntrada({
     }, 300)
     return () => clearTimeout(handle)
   }, [open, productQuery, searchProducts, showProductDropdown])
+
+  useEffect(() => {
+    if (!open || !showLocationResolver || !locationDropdownProductId || !locationDropdownField) {
+      setLocationDebouncedQuery('')
+      return
+    }
+    const handle = setTimeout(() => {
+      setLocationDebouncedQuery(normalizeValue(locationQuery))
+    }, 260)
+    return () => clearTimeout(handle)
+  }, [locationDropdownField, locationDropdownProductId, locationQuery, open, showLocationResolver])
 
   useEffect(() => {
     if (!open || !isVenta || !showClienteDropdown) return
@@ -1294,7 +1673,12 @@ function CreateEntrada({
   ])
 
   useEffect(() => {
-    if (!open || (!showProductDropdown && !showClienteDropdown)) return undefined
+    if (
+      !open ||
+      (!showProductDropdown && !showClienteDropdown && !locationDropdownProductId && !locationDropdownField)
+    ) {
+      return undefined
+    }
     const handleClick = (event) => {
       if (productDropdownRef.current && !productDropdownRef.current.contains(event.target)) {
         setShowProductDropdown(false)
@@ -1302,10 +1686,18 @@ function CreateEntrada({
       if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
         setShowClienteDropdown(false)
       }
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target)) {
+        setLocationDropdownProductId('')
+        setLocationDropdownField('')
+        setLocationDropdownDirection('down')
+        setLocationDropdownMaxHeight(null)
+        setLocationQuery('')
+        setLocationDebouncedQuery('')
+      }
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [open, showClienteDropdown, showProductDropdown])
+  }, [locationDropdownField, locationDropdownProductId, open, showClienteDropdown, showProductDropdown])
 
   useEffect(() => {
     if (activeTab !== 'cliente' && showClienteDropdown) {
@@ -1329,6 +1721,28 @@ function CreateEntrada({
       window.removeEventListener('scroll', handleReposition, true)
     }
   }, [open, showProductDropdown, updateProductDropdownPlacement])
+
+  useEffect(() => {
+    if (!open || !showLocationResolver || !locationDropdownProductId || !locationDropdownField) {
+      return undefined
+    }
+    updateLocationDropdownPlacement()
+    const handleReposition = () => {
+      updateLocationDropdownPlacement()
+    }
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [
+    locationDropdownField,
+    locationDropdownProductId,
+    open,
+    showLocationResolver,
+    updateLocationDropdownPlacement,
+  ])
 
   useEffect(() => {
     if (!open || !isTraslado || !formData.sucursalObjetivoId) {
@@ -1620,6 +2034,11 @@ function CreateEntrada({
 
   const handleProductSelect = (producto) => {
     if (!producto?.id) return
+    const normalizedProductId = String(producto.id || '').trim()
+    if (detailProductIdSet.has(normalizedProductId)) {
+      setDetailError('Este producto ya fue agregado al detalle.')
+      return
+    }
     const productPrice = resolveProductPrice(producto)
     setDetailError('')
     setDetailDraft((prev) => ({
@@ -1646,6 +2065,10 @@ function CreateEntrada({
 
     if (!productoId) {
       setDetailError('Selecciona un producto.')
+      return
+    }
+    if (detailProductIdSet.has(productoId)) {
+      setDetailError('Este producto ya fue agregado al detalle.')
       return
     }
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
@@ -1748,6 +2171,323 @@ function CreateEntrada({
     if (!cliente) return descripcionBase
     if (!descripcionBase) return `Cliente: ${cliente}`
     return `Cliente: ${cliente}\n${descripcionBase}`
+  }
+
+  const createEntradaMovimiento = useCallback(
+    async (ubicacionesIniciales = []) => {
+      const descuentoIngresado = isVenta ? parseNumber(formData.descuento) : 0
+      if (
+        isVenta &&
+        descuentoIngresado !== null &&
+        (!Number.isFinite(descuentoIngresado) || descuentoIngresado < 0 || descuentoIngresado > 100)
+      ) {
+        notifyError('El descuento debe ser un porcentaje entre 0 y 100.')
+        return false
+      }
+
+      setLoading(true)
+      try {
+        let ventaCliente = selectedCliente
+        let ventaClienteLabel = String(formData.cliente || '').trim()
+
+        if (isVenta) {
+          if (useExistingCliente) {
+            if (!ventaCliente?.id) {
+              setActiveTab('cliente')
+              throw new Error('Selecciona un cliente existente o usa "Crear nuevo cliente".')
+            }
+            ventaClienteLabel = formatClienteFieldValue(ventaCliente)
+          }
+
+          if (useNewCliente) {
+            const clientePayload = normalizeClientePayload(clienteForm)
+            const missingRequiredField = clienteRequiredFields.find((field) => !clientePayload[field])
+            if (missingRequiredField) {
+              setActiveTab('cliente')
+              throw new Error('Completa todos los datos del nuevo cliente para continuar.')
+            }
+
+            const createClienteResponse = await authFetch(
+              `${API_URL}/solicitudes/clientes/`,
+              {
+                method: 'POST',
+                body: JSON.stringify(clientePayload),
+              },
+              token
+            )
+            const createClienteData = await createClienteResponse.json().catch(() => ({}))
+            if (!createClienteResponse.ok) {
+              const detail = resolveApiErrorMessage(createClienteData, 'No se pudo crear el cliente.')
+              setActiveTab('cliente')
+              throw new Error(detail)
+            }
+
+            ventaCliente = createClienteData
+            ventaClienteLabel =
+              formatClienteFieldValue(createClienteData) ||
+              formatClienteDropdownLabel(createClienteData) ||
+              formatClienteFieldValue(clientePayload)
+
+            setSelectedCliente(createClienteData)
+            setClienteForm(normalizeClientePayload(createClienteData))
+            setClienteQuery(ventaClienteLabel)
+            setClienteMode(CLIENT_MODE_EXISTING)
+          }
+
+          if (!useExistingCliente && !useNewCliente) {
+            setActiveTab('cliente')
+            throw new Error('Selecciona como deseas asociar el cliente.')
+          }
+
+          if (!ventaClienteLabel) {
+            setActiveTab('cliente')
+            throw new Error('No se pudo resolver la informacion del cliente para la venta.')
+          }
+        }
+
+        const descuento = isVenta ? Math.max(descuentoIngresado ?? 0, 0) : 0
+        const ivaRate = parseNumber(formData.iva_rate)
+        const payload = {
+          sucursal_id: Number(formData.sucursalId),
+          tipo_movimiento_id: Number(entradaTipoId),
+          sub_tipo_movimiento_id: Number(formData.subTipoId),
+          descripcion: buildDescripcion(ventaClienteLabel),
+          funcional: isDevolucion ? Boolean(formData.funcional) : true,
+          sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
+          estado_movimiento_id: Number(formData.estadoId),
+          descuento,
+          fecha: formData.fecha,
+          no_documento: formData.no_documento.trim(),
+          factura_referencia: String(formData.factura_referencia || '').trim(),
+          detalles: details.map((detail) => ({
+            producto_id: Number(detail.productoId),
+            cantidad: detail.cantidad,
+            estado_producto_id: Number(detail.estadoProductoId),
+            valor: detail.valor,
+            valor_total: detail.valor_total,
+          })),
+          ubicaciones_iniciales: (Array.isArray(ubicacionesIniciales) ? ubicacionesIniciales : [])
+            .map((item) => ({
+              producto_id: Number(item?.producto_id),
+              subdivision_id: Number(item?.subdivision_id),
+            }))
+            .filter((item) => Number.isFinite(item.producto_id) && Number.isFinite(item.subdivision_id)),
+        }
+
+        if (ivaRate !== null) {
+          payload.iva_rate = ivaRate
+        }
+
+        if (isVenta) {
+          setFormData((prev) => ({ ...prev, cliente: ventaClienteLabel }))
+        }
+
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/`,
+          {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          },
+          token
+        )
+
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          const detail = resolveApiErrorMessage(data, 'No se pudo crear la entrada.')
+          throw new Error(detail)
+        }
+
+        onCreated?.(data)
+        return true
+      } catch (err) {
+        notifyError(err.message || 'Ocurrio un error al crear la entrada.')
+        return false
+      } finally {
+        setLoading(false)
+      }
+    },
+    [
+      buildDescripcion,
+      clienteForm,
+      details,
+      entradaTipoId,
+      formData.cliente,
+      formData.descuento,
+      formData.estadoId,
+      formData.factura_referencia,
+      formData.fecha,
+      formData.funcional,
+      formData.iva_rate,
+      formData.no_documento,
+      formData.sucursalId,
+      formData.sucursalObjetivoId,
+      formData.subTipoId,
+      isDevolucion,
+      isVenta,
+      notifyError,
+      onCreated,
+      requiresSucursalObjetivo,
+      selectedCliente,
+      token,
+      useExistingCliente,
+      useNewCliente,
+    ]
+  )
+
+  const closeLocationDropdown = useCallback(() => {
+    setLocationDropdownProductId('')
+    setLocationDropdownField('')
+    setLocationDropdownDirection('down')
+    setLocationDropdownMaxHeight(null)
+    setLocationQuery('')
+    setLocationDebouncedQuery('')
+  }, [])
+
+  const toggleLocationDropdown = useCallback(
+    (productId, field) => {
+      const normalizedProductId = String(productId || '').trim()
+      const normalizedField = String(field || '').trim()
+      if (!normalizedProductId || !normalizedField) return
+      const opening =
+        locationDropdownProductId !== normalizedProductId || locationDropdownField !== normalizedField
+      setLocationDropdownProductId(opening ? normalizedProductId : '')
+      setLocationDropdownField(opening ? normalizedField : '')
+      setLocationDropdownDirection('down')
+      setLocationDropdownMaxHeight(null)
+      setLocationQuery('')
+      setLocationDebouncedQuery('')
+      if (opening) {
+        requestAnimationFrame(() => {
+          updateLocationDropdownPlacement()
+        })
+      }
+    },
+    [locationDropdownField, locationDropdownProductId, updateLocationDropdownPlacement]
+  )
+
+  const filterLocationResolverOptions = useCallback(
+    (options, getSearchLabel) => {
+      const term = String(locationDebouncedQuery || '').trim()
+      if (!term) return options
+      return (Array.isArray(options) ? options : []).filter((option) =>
+        normalizeValue(String(getSearchLabel?.(option) || '')).includes(term)
+      )
+    },
+    [locationDebouncedQuery]
+  )
+
+  const handleLocationAssignmentPick = useCallback(
+    (productId, field, optionId) => {
+      const normalizedProductId = String(productId || '').trim()
+      const normalizedField = String(field || '').trim().toLowerCase()
+      const normalizedOptionId = String(optionId || '').trim()
+      if (!normalizedProductId || !normalizedField || !normalizedOptionId) return
+
+      setLocationAssignmentsByProduct((prev) => {
+        const current = normalizeLocationAssignment(prev?.[normalizedProductId])
+        if (normalizedField === 'bodega') {
+          return {
+            ...prev,
+            [normalizedProductId]: {
+              bodegaId: normalizedOptionId,
+              divisionId: '',
+              subdivisionId: '',
+            },
+          }
+        }
+
+        if (normalizedField === 'division') {
+          if (!current.bodegaId) return prev
+          const availableDivisions = locationResolverDivisionsByBodega.get(current.bodegaId) || []
+          const isValidDivision = availableDivisions.some(
+            (division) => String(division?.id || '') === normalizedOptionId
+          )
+          if (!isValidDivision) return prev
+          return {
+            ...prev,
+            [normalizedProductId]: {
+              bodegaId: current.bodegaId,
+              divisionId: normalizedOptionId,
+              subdivisionId: '',
+            },
+          }
+        }
+
+        if (normalizedField === 'subdivision') {
+          if (!current.divisionId) return prev
+          const availableSubdivisions =
+            locationResolverSubdivisionsByDivision.get(current.divisionId) || []
+          const isValidSubdivision = availableSubdivisions.some(
+            (subdivision) => String(subdivision?.id || '') === normalizedOptionId
+          )
+          if (!isValidSubdivision) return prev
+          return {
+            ...prev,
+            [normalizedProductId]: {
+              bodegaId: current.bodegaId,
+              divisionId: current.divisionId,
+              subdivisionId: normalizedOptionId,
+            },
+          }
+        }
+
+        return prev
+      })
+
+      setLocationResolverError('')
+      closeLocationDropdown()
+    },
+    [
+      closeLocationDropdown,
+      locationResolverDivisionsByBodega,
+      locationResolverSubdivisionsByDivision,
+    ]
+  )
+
+  const handleConfirmLocationResolver = async () => {
+    if (locationResolverSubmitting) return
+    const missingAssignments = missingLocationProducts.filter((item) => {
+      const productId = String(item?.productoId || '').trim()
+      const assignment = normalizeLocationAssignment(locationAssignmentsByProduct?.[productId])
+      return (
+        !productId ||
+        !assignment.bodegaId ||
+        !assignment.divisionId ||
+        !assignment.subdivisionId
+      )
+    })
+
+    if (missingAssignments.length > 0) {
+      setLocationResolverError(
+        'Debes seleccionar bodega, division y subdivision para cada producto sin ubicacion en la sucursal.'
+      )
+      return
+    }
+
+    const ubicacionesIniciales = missingLocationProducts
+      .map((item) => {
+        const productId = Number(item?.productoId)
+        const assignment = normalizeLocationAssignment(
+          locationAssignmentsByProduct?.[String(item?.productoId || '').trim()]
+        )
+        const subdivisionId = Number(assignment.subdivisionId)
+        if (!Number.isFinite(productId) || !Number.isFinite(subdivisionId)) return null
+        return {
+          producto_id: productId,
+          subdivision_id: subdivisionId,
+        }
+      })
+      .filter(Boolean)
+
+    setLocationResolverSubmitting(true)
+    const created = await createEntradaMovimiento(ubicacionesIniciales)
+    setLocationResolverSubmitting(false)
+
+    if (created) {
+      setShowLocationResolver(false)
+      setLocationResolverError('')
+      closeLocationDropdown()
+    }
   }
 
   const handleSubmit = async (event) => {
@@ -1980,128 +2720,26 @@ function CreateEntrada({
       return
     }
 
-    const descuentoIngresado = isVenta ? parseNumber(formData.descuento) : 0
-    if (
-      isVenta &&
-      descuentoIngresado !== null &&
-      (!Number.isFinite(descuentoIngresado) || descuentoIngresado < 0 || descuentoIngresado > 100)
-    ) {
-      notifyError('El descuento debe ser un porcentaje entre 0 y 100.')
-      return
-    }
+    if (showLocationResolver || locationResolverLoading || locationResolverSubmitting) return
 
-    setLoading(true)
     try {
-      let ventaCliente = selectedCliente
-      let ventaClienteLabel = String(formData.cliente || '').trim()
-
-      if (isVenta) {
-        if (useExistingCliente) {
-          if (!ventaCliente?.id) {
-            setActiveTab('cliente')
-            throw new Error('Selecciona un cliente existente o usa "Crear nuevo cliente".')
-          }
-          ventaClienteLabel = formatClienteFieldValue(ventaCliente)
-        }
-
-        if (useNewCliente) {
-          const clientePayload = normalizeClientePayload(clienteForm)
-          const missingRequiredField = clienteRequiredFields.find((field) => !clientePayload[field])
-          if (missingRequiredField) {
-            setActiveTab('cliente')
-            throw new Error('Completa todos los datos del nuevo cliente para continuar.')
-          }
-
-          const createClienteResponse = await authFetch(
-            `${API_URL}/solicitudes/clientes/`,
-            {
-              method: 'POST',
-              body: JSON.stringify(clientePayload),
-            },
-            token
-          )
-          const createClienteData = await createClienteResponse.json().catch(() => ({}))
-          if (!createClienteResponse.ok) {
-            const detail = resolveApiErrorMessage(createClienteData, 'No se pudo crear el cliente.')
-            setActiveTab('cliente')
-            throw new Error(detail)
-          }
-
-          ventaCliente = createClienteData
-          ventaClienteLabel =
-            formatClienteFieldValue(createClienteData) ||
-            formatClienteDropdownLabel(createClienteData) ||
-            formatClienteFieldValue(clientePayload)
-
-          setSelectedCliente(createClienteData)
-          setClienteForm(normalizeClientePayload(createClienteData))
-          setClienteQuery(ventaClienteLabel)
-          setClienteMode(CLIENT_MODE_EXISTING)
-        }
-
-        if (!useExistingCliente && !useNewCliente) {
-          setActiveTab('cliente')
-          throw new Error('Selecciona como deseas asociar el cliente.')
-        }
-
-        if (!ventaClienteLabel) {
-          setActiveTab('cliente')
-          throw new Error('No se pudo resolver la informacion del cliente para la venta.')
-        }
+      setCheckingLocationCoverage(true)
+      const missingProducts = await checkMissingLocationsByProduct(formData.sucursalId, details)
+      if (missingProducts.length > 0) {
+        await openLocationResolverForProducts(missingProducts, formData.sucursalId)
+        return
       }
-
-      const descuento = isVenta ? Math.max(descuentoIngresado ?? 0, 0) : 0
-      const ivaRate = parseNumber(formData.iva_rate)
-      const payload = {
-        sucursal_id: Number(formData.sucursalId),
-        tipo_movimiento_id: Number(entradaTipoId),
-        sub_tipo_movimiento_id: Number(formData.subTipoId),
-        descripcion: buildDescripcion(ventaClienteLabel),
-        funcional: isDevolucion ? Boolean(formData.funcional) : true,
-        sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
-        estado_movimiento_id: Number(formData.estadoId),
-        descuento,
-        fecha: formData.fecha,
-        no_documento: formData.no_documento.trim(),
-        factura_referencia: String(formData.factura_referencia || '').trim(),
-        detalles: details.map((detail) => ({
-          producto_id: Number(detail.productoId),
-          cantidad: detail.cantidad,
-          estado_producto_id: Number(detail.estadoProductoId),
-          valor: detail.valor,
-          valor_total: detail.valor_total,
-        })),
-      }
-
-      if (ivaRate !== null) {
-        payload.iva_rate = ivaRate
-      }
-
-      if (isVenta) {
-        setFormData((prev) => ({ ...prev, cliente: ventaClienteLabel }))
-      }
-
-      const response = await authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/`,
-        {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        },
-        token
-      )
-
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        const detail = resolveApiErrorMessage(data, 'No se pudo crear la entrada.')
-        throw new Error(detail)
-      }
-
-      onCreated?.(data)
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al crear la entrada.')
+      notifyError(
+        err?.message ||
+          'No se pudo validar si los productos tienen ubicacion en la sucursal seleccionada.'
+      )
+      return
     } finally {
-      setLoading(false)
+      setCheckingLocationCoverage(false)
     }
+
+    await createEntradaMovimiento([])
   }
 
   const { shouldRender, isClosing } = useModalAnimation(open)
@@ -2122,6 +2760,7 @@ function CreateEntrada({
     'create-salida__modal',
     isClosing ? 'create-user__modal--closing' : '',
     isResizingModal ? 'create-salida__modal--resizing' : '',
+    showLocationResolver ? 'create-salida__modal--resolver-open' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -2528,7 +3167,10 @@ function CreateEntrada({
                                   <small className="muted">Sin resultados.</small>
                                 )}
                                 {productOptions.map((producto) => {
-                                  const isSelected = String(producto.id) === String(detailDraft.productoId)
+                                  const normalizedProductId = String(producto.id || '').trim()
+                                  const isSelected =
+                                    normalizedProductId === String(detailDraft.productoId || '').trim()
+                                  const isAlreadyAdded = detailProductIdSet.has(normalizedProductId)
                                   const stockEnSucursalProveedora = Number(
                                     stockByProduct[String(producto.id)] ?? 0
                                   )
@@ -2541,8 +3183,10 @@ function CreateEntrada({
                                       onClick={(event) => {
                                         event.preventDefault()
                                         event.stopPropagation()
+                                        if (isAlreadyAdded) return
                                         handleProductSelect(producto)
                                       }}
+                                      disabled={isAlreadyAdded}
                                     >
                                       <div className="create-user__result-info">
                                         <strong>{formatProductoOptionLabel(producto)}</strong>
@@ -2556,7 +3200,11 @@ function CreateEntrada({
                                           )}
                                         </small>
                                       </div>
-                                      {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
+                                      {isAlreadyAdded ? (
+                                        <span className="create-user__result-tag">Ya agregado</span>
+                                      ) : (
+                                        isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>
+                                      )}
                                     </button>
                                   )
                                 })}
@@ -2954,16 +3602,395 @@ function CreateEntrada({
           )}
 
           <div className="create-user__footer">
-            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={loading}>
+            <button
+              type="button"
+              className="create-user__action create-user__action--cancel"
+              onClick={onClose}
+              disabled={loading || checkingLocationCoverage}
+            >
               Cancelar
             </button>
             {formData.subTipoId && (
-              <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>
-                {loading ? 'Guardando...' : (isTraslado ? 'Crear solicitud de traslado' : 'Crear entrada')}
+              <button
+                type="submit"
+                className="create-user__action create-user__action--primary"
+                disabled={loading || checkingLocationCoverage}
+              >
+                {loading
+                  ? 'Guardando...'
+                  : checkingLocationCoverage
+                    ? 'Verificando ubicaciones...'
+                    : (isTraslado ? 'Crear solicitud de traslado' : 'Crear entrada')}
               </button>
             )}
           </div>
         </form>
+
+        {showLocationResolver && (
+          <div
+            className="create-salida__confirm-overlay"
+            onMouseDown={() => {
+              if (locationResolverSubmitting || locationResolverLoading) return
+              closeLocationResolver()
+            }}
+          >
+            <div
+              className="create-salida__confirm-card create-salida__confirm-card--cancel"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <h4>Asignar ubicaciones faltantes</h4>
+              <p>
+                Algunos productos no tienen ubicacion en{' '}
+                <strong>{selectedSucursalName || 'la sucursal seleccionada'}</strong>. Selecciona
+                bodega, division y subdivision para cada producto y luego confirma la creacion.
+              </p>
+
+              {locationResolverLoading ? (
+                <p className="muted">Cargando ubicaciones disponibles...</p>
+              ) : (
+                <div className="permissions-matrix__table" role="grid">
+                  <div className="permissions-matrix__row permissions-matrix__row--head">
+                    <div className="permissions-matrix__cell permissions-matrix__cell--label">Producto</div>
+                    <div className="permissions-matrix__cell permissions-matrix__cell--label">Ubicacion inicial</div>
+                  </div>
+
+                  {missingLocationProducts.map((item) => {
+                    const productId = String(item?.productoId || '').trim()
+                    const isOpen = locationDropdownProductId === productId
+                    const assignment = normalizeLocationAssignment(
+                      locationAssignmentsByProduct?.[productId]
+                    )
+                    const selectedBodegaId = assignment.bodegaId
+                    const selectedDivisionId = assignment.divisionId
+                    const selectedSubdivisionId = assignment.subdivisionId
+                    const bodegaOptions = locationResolverBodegas
+                    const divisionOptions =
+                      locationResolverDivisionsByBodega.get(selectedBodegaId) || []
+                    const subdivisionOptions =
+                      locationResolverSubdivisionsByDivision.get(selectedDivisionId) || []
+                    const selectedBodega =
+                      bodegaOptions.find((bodega) => String(bodega?.id || '') === selectedBodegaId) ||
+                      null
+                    const selectedDivision =
+                      divisionOptions.find((division) => String(division?.id || '') === selectedDivisionId) ||
+                      null
+                    const selectedSubdivision =
+                      subdivisionOptions.find(
+                        (subdivision) => String(subdivision?.id || '') === selectedSubdivisionId
+                      ) || null
+                    const isBodegaOpen = isOpen && locationDropdownField === 'bodega'
+                    const isDivisionOpen = isOpen && locationDropdownField === 'division'
+                    const isSubdivisionOpen = isOpen && locationDropdownField === 'subdivision'
+                    const filteredBodegas = isBodegaOpen
+                      ? filterLocationResolverOptions(
+                          bodegaOptions,
+                          (bodega) =>
+                            `${formatBodegaLocationLabel(bodega)} ${String(bodega?.sucursal?.nombre || '').trim()}`
+                        )
+                      : bodegaOptions
+                    const filteredDivisions = isDivisionOpen
+                      ? filterLocationResolverOptions(
+                          divisionOptions,
+                          (division) =>
+                            `${formatDivisionLocationLabel(division)} ${String(
+                              division?.bodega?.sucursal?.nombre || ''
+                            ).trim()}`
+                        )
+                      : divisionOptions
+                    const filteredSubdivisions = isSubdivisionOpen
+                      ? filterLocationResolverOptions(
+                          subdivisionOptions,
+                          (subdivision) =>
+                            `${formatSubdivisionLocationLabel(subdivision)} ${String(
+                              subdivision?.division?.bodega?.sucursal?.nombre || ''
+                            ).trim()}`
+                        )
+                      : subdivisionOptions
+
+                    return (
+                      <div key={`entry-location-product-${productId}`} className="permissions-matrix__row">
+                        <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                          {[
+                            String(item?.productoCodigo || '').trim(),
+                            String(item?.productoNombre || '').trim(),
+                          ]
+                            .filter(Boolean)
+                            .join(' - ') || `Producto #${productId}`}
+                        </div>
+                        <div className="permissions-matrix__cell permissions-matrix__cell--action">
+                          <div className="create-entrada__location-picker-grid">
+                            <div className="create-entrada__location-picker-item">
+                              <small>Bodega</small>
+                              <div
+                                className="create-user__dropdown create-salida__product-dropdown"
+                                ref={isBodegaOpen ? locationDropdownRef : null}
+                              >
+                                <button
+                                  type="button"
+                                  className="create-user__dropdown-trigger"
+                                  onClick={() => toggleLocationDropdown(productId, 'bodega')}
+                                  disabled={locationResolverSubmitting}
+                                >
+                                  <span>
+                                    {selectedBodega
+                                      ? formatBodegaLocationLabel(selectedBodega)
+                                      : 'Selecciona una bodega'}
+                                  </span>
+                                  <i className={`pi pi-chevron-${isBodegaOpen ? 'up' : 'down'}`} />
+                                </button>
+
+                                {isBodegaOpen && (
+                                  <div
+                                    className={`create-user__dropdown-panel ${
+                                      locationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                    }`}
+                                    style={
+                                      locationDropdownMaxHeight
+                                        ? { maxHeight: `${locationDropdownMaxHeight}px` }
+                                        : undefined
+                                    }
+                                  >
+                                    <div className="create-user__dropdown-search">
+                                      <i className="pi pi-search" />
+                                      <input
+                                        type="text"
+                                        placeholder="Buscar bodega"
+                                        value={locationQuery}
+                                        onChange={(event) => setLocationQuery(event.target.value)}
+                                        disabled={locationResolverSubmitting}
+                                      />
+                                    </div>
+                                    <div
+                                      className="create-user__dropdown-results"
+                                      style={
+                                        locationDropdownMaxHeight
+                                          ? {
+                                              maxHeight: `${Math.max(locationDropdownMaxHeight - 72, 84)}px`,
+                                            }
+                                          : undefined
+                                      }
+                                    >
+                                      {!filteredBodegas.length && <small className="muted">Sin resultados.</small>}
+                                      {filteredBodegas.map((bodega) => (
+                                        <button
+                                          key={`entry-location-bodega-option-${productId}-${bodega.id}`}
+                                          type="button"
+                                          className="create-user__result-option"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => {
+                                            event.preventDefault()
+                                            event.stopPropagation()
+                                            handleLocationAssignmentPick(productId, 'bodega', bodega.id)
+                                          }}
+                                          disabled={locationResolverSubmitting}
+                                        >
+                                          <div className="create-user__result-info">
+                                            <strong>
+                                              {String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}
+                                            </strong>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="create-entrada__location-picker-item">
+                              <small>Division</small>
+                              <div
+                                className="create-user__dropdown create-salida__product-dropdown"
+                                ref={isDivisionOpen ? locationDropdownRef : null}
+                              >
+                                <button
+                                  type="button"
+                                  className="create-user__dropdown-trigger"
+                                  onClick={() => toggleLocationDropdown(productId, 'division')}
+                                  disabled={locationResolverSubmitting || !selectedBodegaId}
+                                >
+                                  <span>
+                                    {selectedDivision
+                                      ? String(selectedDivision?.nombre || '').trim()
+                                      : 'Selecciona una division'}
+                                  </span>
+                                  <i className={`pi pi-chevron-${isDivisionOpen ? 'up' : 'down'}`} />
+                                </button>
+
+                                {isDivisionOpen && (
+                                  <div
+                                    className={`create-user__dropdown-panel ${
+                                      locationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                    }`}
+                                    style={
+                                      locationDropdownMaxHeight
+                                        ? { maxHeight: `${locationDropdownMaxHeight}px` }
+                                        : undefined
+                                    }
+                                  >
+                                    <div className="create-user__dropdown-search">
+                                      <i className="pi pi-search" />
+                                      <input
+                                        type="text"
+                                        placeholder="Buscar division"
+                                        value={locationQuery}
+                                        onChange={(event) => setLocationQuery(event.target.value)}
+                                        disabled={locationResolverSubmitting}
+                                      />
+                                    </div>
+                                    <div
+                                      className="create-user__dropdown-results"
+                                      style={
+                                        locationDropdownMaxHeight
+                                          ? {
+                                              maxHeight: `${Math.max(locationDropdownMaxHeight - 72, 84)}px`,
+                                            }
+                                          : undefined
+                                      }
+                                    >
+                                      {!filteredDivisions.length && <small className="muted">Sin resultados.</small>}
+                                      {filteredDivisions.map((division) => (
+                                        <button
+                                          key={`entry-location-division-option-${productId}-${division.id}`}
+                                          type="button"
+                                          className="create-user__result-option"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => {
+                                            event.preventDefault()
+                                            event.stopPropagation()
+                                            handleLocationAssignmentPick(productId, 'division', division.id)
+                                          }}
+                                          disabled={locationResolverSubmitting}
+                                        >
+                                          <div className="create-user__result-info">
+                                            <strong>
+                                              {String(division?.nombre || `Division ${division.id}`).trim()}
+                                            </strong>
+                                            <small>{formatDivisionLocationLabel(division)}</small>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="create-entrada__location-picker-item">
+                              <small>Subdivision</small>
+                              <div
+                                className="create-user__dropdown create-salida__product-dropdown"
+                                ref={isSubdivisionOpen ? locationDropdownRef : null}
+                              >
+                                <button
+                                  type="button"
+                                  className="create-user__dropdown-trigger"
+                                  onClick={() => toggleLocationDropdown(productId, 'subdivision')}
+                                  disabled={locationResolverSubmitting || !selectedDivisionId}
+                                >
+                                  <span>
+                                    {selectedSubdivision
+                                      ? String(selectedSubdivision?.nombre || '').trim()
+                                      : 'Selecciona una subdivision'}
+                                  </span>
+                                  <i className={`pi pi-chevron-${isSubdivisionOpen ? 'up' : 'down'}`} />
+                                </button>
+
+                                {isSubdivisionOpen && (
+                                  <div
+                                    className={`create-user__dropdown-panel ${
+                                      locationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                    }`}
+                                    style={
+                                      locationDropdownMaxHeight
+                                        ? { maxHeight: `${locationDropdownMaxHeight}px` }
+                                        : undefined
+                                    }
+                                  >
+                                    <div className="create-user__dropdown-search">
+                                      <i className="pi pi-search" />
+                                      <input
+                                        type="text"
+                                        placeholder="Buscar subdivision"
+                                        value={locationQuery}
+                                        onChange={(event) => setLocationQuery(event.target.value)}
+                                        disabled={locationResolverSubmitting}
+                                      />
+                                    </div>
+                                    <div
+                                      className="create-user__dropdown-results"
+                                      style={
+                                        locationDropdownMaxHeight
+                                          ? {
+                                              maxHeight: `${Math.max(locationDropdownMaxHeight - 72, 84)}px`,
+                                            }
+                                          : undefined
+                                      }
+                                    >
+                                      {!filteredSubdivisions.length && (
+                                        <small className="muted">Sin resultados.</small>
+                                      )}
+                                      {filteredSubdivisions.map((subdivision) => (
+                                        <button
+                                          key={`entry-location-subdivision-option-${productId}-${subdivision.id}`}
+                                          type="button"
+                                          className="create-user__result-option"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => {
+                                            event.preventDefault()
+                                            event.stopPropagation()
+                                            handleLocationAssignmentPick(productId, 'subdivision', subdivision.id)
+                                          }}
+                                          disabled={locationResolverSubmitting}
+                                        >
+                                          <div className="create-user__result-info">
+                                            <strong>
+                                              {String(
+                                                subdivision?.nombre || `Subdivision ${subdivision.id}`
+                                              ).trim()}
+                                            </strong>
+                                            <small>{formatSubdivisionLocationLabel(subdivision)}</small>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {locationResolverError && (
+                <p className="create-salida__confirm-error">{locationResolverError}</p>
+              )}
+
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={closeLocationResolver}
+                  disabled={locationResolverSubmitting || locationResolverLoading}
+                >
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleConfirmLocationResolver}
+                  disabled={locationResolverSubmitting || locationResolverLoading}
+                >
+                  {locationResolverSubmitting ? 'Creando entrada...' : 'Confirmar y crear entrada'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <button
           type="button"

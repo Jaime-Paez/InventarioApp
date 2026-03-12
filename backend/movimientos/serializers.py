@@ -219,6 +219,22 @@ class PagoMovimientoSerializer(serializers.ModelSerializer):
         fields = ["id", "tipo_pago", "tipo_pago_id"]
 
 
+class UbicacionInicialEntradaSerializer(serializers.Serializer):
+    """
+    Ubicacion sugerida para productos que aun no tienen inventario
+    registrado en la sucursal de la entrada.
+    """
+
+    producto_id = serializers.PrimaryKeyRelatedField(
+        source="producto",
+        queryset=Producto.objects.all(),
+    )
+    subdivision_id = serializers.PrimaryKeyRelatedField(
+        source="subdivision",
+        queryset=SubDivision.objects.all(),
+    )
+
+
 class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
     """Detalle de productos de una solicitud de traslado."""
 
@@ -497,6 +513,11 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
     )
     detalles = DetalleMovimientoSerializer(many=True, required=False)
     pagos = PagoMovimientoSerializer(many=True, required=False)
+    ubicaciones_iniciales = UbicacionInicialEntradaSerializer(
+        many=True,
+        required=False,
+        write_only=True,
+    )
 
     class Meta:
         model = MovimientoInventario
@@ -523,6 +544,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "solicitud_traslado_id",
             "detalles",
             "pagos",
+            "ubicaciones_iniciales",
         ]
         extra_kwargs = {
             "no_documento": {
@@ -966,10 +988,110 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         self._apply_inventory_effect(entrada, normalized_details, reverse=False)
         return entrada
 
+    def _build_entry_initial_locations_map(self, ubicaciones_iniciales):
+        mapping = {}
+        for item in ubicaciones_iniciales or []:
+            product = item.get("producto")
+            subdivision = item.get("subdivision")
+            product_id = int(getattr(product, "id", 0) or 0)
+            subdivision_id = int(getattr(subdivision, "id", 0) or 0)
+            if product_id <= 0 or subdivision_id <= 0:
+                continue
+            if product_id in mapping and mapping[product_id] != subdivision_id:
+                raise serializers.ValidationError(
+                    {
+                        "ubicaciones_iniciales": (
+                            "No puedes asignar mas de una subdivision inicial al mismo producto."
+                        )
+                    }
+                )
+            mapping[product_id] = subdivision_id
+        return mapping
+
+    def _ensure_entry_location_rows(self, movimiento, details_source, ubicaciones_iniciales):
+        tipo_name = self._resolve_tipo_name(getattr(movimiento, "tipo_movimiento", None))
+        subtipo_key = self._resolve_subtipo_key(
+            getattr(movimiento, "sub_tipo_movimiento", None)
+        )
+        estado_name = self._resolve_estado_name(
+            getattr(movimiento, "estado_movimiento", None)
+        )
+
+        should_add_on_entry = (
+            tipo_name.startswith("ent")
+            and subtipo_key in {"compra_local", "importacion", "devolucion"}
+            and estado_name in {"recibido", "parcialmente recibido"}
+        )
+        if not should_add_on_entry:
+            return
+
+        quantities = self._collect_product_quantities(details_source)
+        if not quantities:
+            return
+
+        sucursal_id = int(getattr(movimiento, "sucursal_id", 0) or 0)
+        if sucursal_id <= 0:
+            raise serializers.ValidationError(
+                {"sucursal_id": "No se pudo resolver la sucursal de la entrada."}
+            )
+
+        detail_product_ids = set(int(product_id) for product_id in quantities.keys())
+        existing_product_ids = set(
+            Inventario.objects.select_for_update()
+            .filter(
+                subdivision__division__bodega__sucursal_id=sucursal_id,
+                producto_id__in=sorted(detail_product_ids),
+            )
+            .values_list("producto_id", flat=True)
+        )
+        missing_product_ids = sorted(detail_product_ids - existing_product_ids)
+        if not missing_product_ids:
+            return
+
+        location_map = self._build_entry_initial_locations_map(ubicaciones_iniciales)
+        unassigned_ids = [pid for pid in missing_product_ids if pid not in location_map]
+        if unassigned_ids:
+            raise serializers.ValidationError(
+                {
+                    "ubicaciones_iniciales": (
+                        "Debes asignar una ubicacion inicial para todos los productos "
+                        "sin ubicacion en la sucursal seleccionada."
+                    )
+                }
+            )
+
+        target_subdivision_ids = sorted(
+            {int(location_map[pid]) for pid in missing_product_ids}
+        )
+        valid_subdivision_ids = set(
+            SubDivision.objects.filter(
+                id__in=target_subdivision_ids,
+                division__bodega__sucursal_id=sucursal_id,
+            ).values_list("id", flat=True)
+        )
+        if valid_subdivision_ids != set(target_subdivision_ids):
+            raise serializers.ValidationError(
+                {
+                    "ubicaciones_iniciales": (
+                        "Una o mas subdivisiones no pertenecen a la sucursal de la entrada."
+                    )
+                }
+            )
+
+        for product_id in missing_product_ids:
+            subdivision_id = int(location_map[product_id])
+            Inventario.objects.select_for_update().get_or_create(
+                subdivision_id=subdivision_id,
+                producto_id=int(product_id),
+                referencia="",
+                defaults={"cantidad": 0},
+            )
+
     def create(self, validated_data):
         detalles_data = validated_data.pop("detalles", [])
         pagos_data = validated_data.pop("pagos", [])
         solicitud_traslado = validated_data.pop("solicitud_traslado", None)
+        ubicaciones_iniciales = validated_data.pop("ubicaciones_iniciales", [])
 
         tipo_name = self._resolve_tipo_name(validated_data.get("tipo_movimiento"))
         subtipo_key = self._resolve_subtipo_key(validated_data.get("sub_tipo_movimiento"))
@@ -997,6 +1119,11 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             movimiento = super().create(validated_data)
             self._replace_detalles(movimiento, detalles_data)
             self._replace_pagos(movimiento, pagos_data)
+            self._ensure_entry_location_rows(
+                movimiento,
+                detalles_data,
+                ubicaciones_iniciales,
+            )
             self._apply_inventory_effect(movimiento, detalles_data, reverse=False)
 
             if is_transfer_approval:
@@ -1021,6 +1148,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         detalles_data = validated_data.pop("detalles", None)
         pagos_data = validated_data.pop("pagos", None)
+        validated_data.pop("ubicaciones_iniciales", None)
         validated_data.pop("solicitud_traslado", None)
         previous_details = list(instance.detalles.select_related("producto").all())
 

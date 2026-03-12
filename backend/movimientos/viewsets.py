@@ -708,11 +708,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         tipo_nombre = self._normalize_state_name(
             getattr(getattr(instance, "tipo_movimiento", None), "nombre", "")
         )
-        if inventory_action == "reverse" and not tipo_nombre.startswith("ent"):
+        is_entrada = tipo_nombre.startswith("ent")
+        is_salida = tipo_nombre.startswith("sal")
+        if inventory_action == "reverse" and not (is_entrada or is_salida):
             return Response(
                 {
                     "detail": (
-                        "Solo se puede revertir inventario al eliminar movimientos de entrada."
+                        "Solo se puede revertir inventario al eliminar movimientos de entrada o salida."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -2539,3 +2541,58 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 }
             )
         return Response(payload)
+
+    @action(detail=False, methods=["get"], url_path="ubicaciones-productos-sucursal")
+    def ubicaciones_productos_sucursal(self, request):
+        sucursal_id_raw = (request.query_params.get("sucursal_id") or "").strip()
+        if not sucursal_id_raw.isdigit():
+            return Response(
+                {"detail": "Debes enviar un sucursal_id valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        producto_ids_raw = (request.query_params.get("producto_ids") or "").strip()
+        product_ids = []
+        for token in producto_ids_raw.split(","):
+            parsed = str(token or "").strip()
+            if not parsed.isdigit():
+                continue
+            product_id = int(parsed)
+            if product_id <= 0:
+                continue
+            product_ids.append(product_id)
+
+        product_ids = sorted(set(product_ids))
+        if not product_ids:
+            return Response(
+                {"detail": "Debes enviar al menos un producto_id valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sucursal_id = int(sucursal_id_raw)
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+            sucursal_id,
+            field_label="sucursal",
+            action_key="puede_leer",
+        )
+
+        product_ids_with_location = sorted(
+            set(
+                Inventario.objects.filter(
+                    subdivision__division__bodega__sucursal_id=sucursal_id,
+                    producto_id__in=product_ids,
+                )
+                .values_list("producto_id", flat=True)
+                .distinct()
+            )
+        )
+
+        return Response(
+            {
+                "sucursal_id": sucursal_id,
+                "producto_ids": product_ids,
+                "producto_ids_con_ubicacion": product_ids_with_location,
+            }
+        )

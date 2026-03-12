@@ -21,6 +21,11 @@ const normalizeForSearch = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+const SCOPE_EDIT_LOCATION_ERROR =
+  'No puedes modificar esta ubicacion porque pertenece a una sucursal sin permiso. Solo puedes editar o eliminar ubicaciones en las sucursales que tienes autorizadas en Productos.'
+const SCOPE_DELETE_LOCATION_ERROR =
+  'No puedes eliminar esta ubicacion porque pertenece a una sucursal sin permiso. Solo puedes eliminar ubicaciones en las sucursales que tienes autorizadas en Productos.'
+const normalizeErrorText = (value) => String(value ?? '').trim().toLowerCase()
 
 const InventarioEditor = forwardRef(function InventarioEditor(
   {
@@ -70,21 +75,35 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const locationBodegaDropdownRef = useRef(null)
   const locationDivisionDropdownRef = useRef(null)
   const locationSubdivisionDropdownRef = useRef(null)
+  const lastNotifiedErrorRef = useRef({ message: '', at: 0 })
+
+  const notifyErrorOnce = useCallback(
+    (message) => {
+      const normalizedMessage = String(message || '').trim()
+      if (!normalizedMessage) return
+      const now = Date.now()
+      const last = lastNotifiedErrorRef.current
+      if (last.message === normalizedMessage && now - last.at < 700) return
+      lastNotifiedErrorRef.current = { message: normalizedMessage, at: now }
+      onError?.(normalizedMessage)
+    },
+    [onError]
+  )
 
   useEffect(() => {
     if (!locationError) return
-    onError?.(locationError)
-  }, [locationError, onError])
+    notifyErrorOnce(locationError)
+  }, [locationError, notifyErrorOnce])
 
   useEffect(() => {
     if (!editError) return
-    onError?.(editError)
-  }, [editError, onError])
+    notifyErrorOnce(editError)
+  }, [editError, notifyErrorOnce])
 
   useEffect(() => {
     if (!error) return
-    onError?.(error)
-  }, [error, onError])
+    notifyErrorOnce(error)
+  }, [error, notifyErrorOnce])
 
   const entryBySubdivision = useMemo(() => {
     const map = new Map()
@@ -428,7 +447,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
   const handleLocationBranchPick = (branch) => {
     if (!canManageBranchLocation(branch?.id)) {
-      setLocationError('No tienes permisos para editar ubicaciones en esta sucursal.')
+      setLocationError(SCOPE_EDIT_LOCATION_ERROR)
       return
     }
     handleLocationSelect('sucursalId', String(branch?.id || ''))
@@ -468,7 +487,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       return
     }
     if (!canManageBranchLocation(sucursalId)) {
-      setLocationError('No tienes permisos para editar ubicaciones en esta sucursal.')
+      setLocationError(SCOPE_EDIT_LOCATION_ERROR)
       return
     }
     if (!bodegaId) {
@@ -531,7 +550,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const beginLocationEdit = (location, field) => {
     if (editorDisabled) return
     if (!canManageBranchLocation(location?.sucursalId)) {
-      setEditError('No tienes permisos para editar ubicaciones en esta sucursal.')
+      setEditError(SCOPE_EDIT_LOCATION_ERROR)
       return
     }
     setEditError('')
@@ -611,7 +630,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const handleRemoveLocation = (location) => {
     if (editorDisabled) return
     if (!canManageBranchLocation(location?.sucursalId)) {
-      setEditError('No tienes permisos para editar ubicaciones en esta sucursal.')
+      setEditError(SCOPE_DELETE_LOCATION_ERROR)
       return
     }
     setLocations((prev) => prev.filter((item) => item.uid !== location.uid))
@@ -705,10 +724,33 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         })
       )
 
-      const failed = responses.find((response) => !response.ok)
-      if (failed) {
-        const detail = await failed.json().catch(() => ({}))
-        throw new Error(detail?.detail || 'No se pudieron guardar los cambios.')
+      const failedIndex = responses.findIndex((response) => !response.ok)
+      if (failedIndex !== -1) {
+        const failed = responses[failedIndex]
+        const failedUpdate = updates[failedIndex]
+        const detailPayload = await failed.json().catch(() => ({}))
+        const detailText = String(detailPayload?.detail || '').trim()
+        const normalizedDetail = normalizeErrorText(detailText)
+        const failedMethod = String(failedUpdate?.method || '').trim().toUpperCase()
+        const looksLikeBranchScopeRestriction =
+          failed.status === 403 ||
+          normalizedDetail.includes('no tienes acceso a la sucursal seleccionada') ||
+          (failed.status === 404 &&
+            (
+              normalizedDetail.includes('no inventario matches the given query') ||
+              normalizedDetail.includes('no se encontro') ||
+              normalizedDetail.includes('not found')
+            ) &&
+            (failedMethod === 'DELETE' || failedMethod === 'PUT'))
+
+        if (looksLikeBranchScopeRestriction) {
+          if (failedMethod === 'DELETE') {
+            throw new Error(SCOPE_DELETE_LOCATION_ERROR)
+          }
+          throw new Error(SCOPE_EDIT_LOCATION_ERROR)
+        }
+
+        throw new Error(detailText || 'No se pudieron guardar los cambios.')
       }
 
       onSaved?.()

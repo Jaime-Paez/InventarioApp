@@ -267,7 +267,7 @@ function CreateSalida({
   const [clienteOptions, setClienteOptions] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
-  const [, setStockLoading] = useState(false)
+  const [stockLoading, setStockLoading] = useState(false)
   const [solicitudesTraslado, setSolicitudesTraslado] = useState([])
   const [solicitudesTrasladoLoading, setSolicitudesTrasladoLoading] = useState(false)
   const [documentStatus, setDocumentStatus] = useState(DOCUMENT_STATUS.invalid)
@@ -502,6 +502,15 @@ function CreateSalida({
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
+  )
+  const detailProductIdSet = useMemo(
+    () =>
+      new Set(
+        details
+          .map((detail) => String(detail?.productoId || '').trim())
+          .filter(Boolean)
+      ),
+    [details]
   )
 
   const selectedSolicitudTraslado = useMemo(
@@ -1734,6 +1743,11 @@ function CreateSalida({
 
   const handleProductSelect = (producto) => {
     if (!producto?.id) return
+    const normalizedProductId = String(producto.id || '').trim()
+    if (detailProductIdSet.has(normalizedProductId)) {
+      setDetailError('Este producto ya fue agregado al detalle.')
+      return
+    }
     const productPrice = resolveProductPrice(producto)
     setDetailError('')
     setDetailDraft((prev) => ({
@@ -1768,6 +1782,10 @@ function CreateSalida({
     }
     if (!productoId) {
       setDetailError('Selecciona un producto.')
+      return
+    }
+    if (detailProductIdSet.has(productoId)) {
+      setDetailError('Este producto ya fue agregado al detalle.')
       return
     }
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
@@ -2540,7 +2558,9 @@ function CreateSalida({
                                   <small className="muted">Sin resultados.</small>
                                 )}
                                 {productOptions.map((producto) => {
-                                  const isSelected = String(producto.id) === String(detailDraft.productoId)
+                                  const normalizedProductId = String(producto.id || '').trim()
+                                  const isSelected = normalizedProductId === String(detailDraft.productoId || '').trim()
+                                  const isAlreadyAdded = detailProductIdSet.has(normalizedProductId)
                                   const available = Number(stockByProduct[String(producto.id)] ?? 0)
                                   return (
                                     <button
@@ -2551,8 +2571,10 @@ function CreateSalida({
                                       onClick={(event) => {
                                         event.preventDefault()
                                         event.stopPropagation()
+                                        if (isAlreadyAdded) return
                                         handleProductSelect(producto)
                                       }}
+                                      disabled={isAlreadyAdded}
                                     >
                                       <div className="create-user__result-info">
                                         <strong>{formatProductoOptionLabel(producto)}</strong>
@@ -2562,7 +2584,11 @@ function CreateSalida({
                                             : `ID: ${producto.id}`}
                                         </small>
                                       </div>
-                                      {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
+                                      {isAlreadyAdded ? (
+                                        <span className="create-user__result-tag">Ya agregado</span>
+                                      ) : (
+                                        isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>
+                                      )}
                                     </button>
                                   )
                                 })}

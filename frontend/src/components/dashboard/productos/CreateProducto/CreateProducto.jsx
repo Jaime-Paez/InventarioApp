@@ -122,6 +122,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
   const [casaSearch, setCasaSearch] = useState('')
   const [codigoChecking, setCodigoChecking] = useState(false)
   const [codigoError, setCodigoError] = useState('')
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -605,6 +606,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
     }
     setCodigoChecking(false)
     setCodigoError('')
+    setSubmitAttempted(false)
     setBrands([])
     setSuppliers([])
     setLocationsLoading(true)
@@ -1434,20 +1436,17 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    setSubmitAttempted(true)
     if (codigoChecking) {
+      setActiveTab('general')
       notifyError('Estamos validando el codigo, espera un momento.')
       return
     }
     if (codigoError) {
+      setActiveTab('general')
       notifyError(codigoError)
       return
     }
-    if (!formData.codigo.trim()) {
-      notifyError('Define un codigo para el producto.')
-      return
-    }
-
-    setLoading(true)
 
     const payload = {
       codigo: toUpperProductCode(formData.codigo).trim(),
@@ -1460,35 +1459,22 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
       casas_comerciales_ids: (formData.casasIds || []).map((id) => Number(id)),
     }
 
-    if (!payload.nombre) {
-      setLoading(false)
-      notifyError('Define un nombre para el producto.')
+    const hasMissingRequiredFields = Boolean(
+      !payload.codigo ||
+      !payload.nombre ||
+      !payload.descripcion ||
+      !payload.marca_id ||
+      !payload.casas_comerciales_ids.length ||
+      payload.precio === null
+    )
+
+    if (hasMissingRequiredFields) {
+      setActiveTab('general')
+      notifyError('Completa los campos requeridos resaltados.')
       return
     }
 
-    if (!payload.descripcion) {
-      setLoading(false)
-      notifyError('Define una descripcion para el producto.')
-      return
-    }
-
-    if (!payload.marca_id) {
-      setLoading(false)
-      notifyError('Selecciona una marca para el producto.')
-      return
-    }
-
-    if (!payload.casas_comerciales_ids.length) {
-      setLoading(false)
-      notifyError('Selecciona una casa comercial para el producto.')
-      return
-    }
-
-    if (payload.precio === null) {
-      setLoading(false)
-      notifyError('Define un precio para el producto.')
-      return
-    }
+    setLoading(true)
 
     try {
       const response = await authFetch(
@@ -1574,6 +1560,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
         subdivisionId: '',
         cantidad: '1',
       })
+      setSubmitAttempted(false)
       onCreated?.(data)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al crear el producto.')
@@ -1743,10 +1730,14 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
+  const precioInvalid = submitAttempted && parseNumber(formData.precio) === null
+  const marcaInvalid = submitAttempted && !Number(formData.marcaId)
+  const casaInvalid =
+    submitAttempted && !(Array.isArray(formData.casasIds) && formData.casasIds.length)
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
-      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
+      <div className={`create-user__modal${submitAttempted ? ' create-user__modal--submitted' : ''}${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>Crear nuevo producto</h3>
@@ -1773,7 +1764,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
           </div>
         </header>
 
-        <form className="create-user__form create-user__form--create" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
+        <form className={`create-user__form create-user__form--create${submitAttempted ? ' create-user__form--submitted' : ''}`} noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones del producto">
             <button
               type="button"
@@ -1827,7 +1818,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
 
                     <label className="create-user__field create-user__field--required">
                       <span>Marca</span>
-                      <div className="create-user__dropdown" ref={marcaDropdownRef}>
+                      <div className={`create-user__dropdown${marcaInvalid ? ' create-user__dropdown--invalid' : ''}`} ref={marcaDropdownRef}>
                         <button
                           type="button"
                           className="create-user__dropdown-trigger"
@@ -1879,6 +1870,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
                           </div>
                         )}
                       </div>
+                      {marcaInvalid && <small className="create-user__field-error">Selecciona una marca.</small>}
                     </label>
 
                     <label className="create-user__field">
@@ -1903,7 +1895,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
 
                     <label className="create-user__field create-user__field--required">
                       <span>Casa comercial</span>
-                      <div className="create-user__dropdown" ref={casaDropdownRef}>
+                      <div className={`create-user__dropdown${casaInvalid ? ' create-user__dropdown--invalid' : ''}`} ref={casaDropdownRef}>
                         <button
                           type="button"
                           className="create-user__dropdown-trigger"
@@ -1959,6 +1951,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
                           </div>
                         )}
                       </div>
+                      {casaInvalid && <small className="create-user__field-error">Selecciona una casa comercial.</small>}
                     </label>
 
                     <label className="create-user__checkbox">
@@ -2015,7 +2008,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
 
                     <label className="create-user__field">
                       <span>Precio</span>
-                      <div className="create-user__money">
+                      <div className={`create-user__money${precioInvalid ? ' create-user__money--invalid' : ''}`}>
                         <span>$</span>
                         <input
                           name="precio"
@@ -2028,6 +2021,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
                           disabled={loading}
                         />
                       </div>
+                      {precioInvalid && <small className="create-user__field-error">Define un precio valido.</small>}
                     </label>
                   </div>
                 </section>
@@ -2675,7 +2669,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
             <button
               type="submit"
               className="create-user__action create-user__action--primary"
-              disabled={loading || codigoChecking || Boolean(codigoError)}
+              disabled={loading}
             >
               {loading ? 'Guardando...' : 'Crear producto'}
             </button>

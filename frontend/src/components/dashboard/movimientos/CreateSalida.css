@@ -321,6 +321,36 @@
   max-height: 210px;
 }
 
+.create-entrada__location-picker-grid {
+  display: grid;
+  gap: 8px;
+  width: min(420px, 100%);
+}
+
+.create-entrada__location-picker-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.create-entrada__location-picker-item > small {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+  text-transform: uppercase;
+}
+
+.create-entrada__location-picker-item .create-user__dropdown-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.create-entrada__location-picker-item .create-user__dropdown-panel {
+  min-width: 0;
+}
+
 .create-salida__numeric {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -400,7 +430,7 @@
 }
 
 .create-salida__confirm-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 90;
   display: flex;
@@ -409,6 +439,13 @@
   padding: 20px;
   background: color-mix(in srgb, #020617 20%, transparent);
   backdrop-filter: blur(1px);
+  pointer-events: auto;
+}
+
+.create-salida__modal.create-salida__modal--resolver-open {
+  overflow: visible;
+  animation: none;
+  transform: none;
 }
 
 .create-salida__confirm-card {

@@ -80,7 +80,15 @@ const normalizePermissionEntry = (moduleKey, currentEntry, actionKey, nextChecke
   const allowedActionKeys = new Set(getAllowedActionsForModule(moduleKey).map((action) => action.key))
   const nextEntry = applyPermissionDependencies(moduleKey, currentEntry)
   if (!allowedActionKeys.has(actionKey)) return nextEntry
-  nextEntry[actionKey] = Boolean(nextChecked)
+  const normalizedChecked = Boolean(nextChecked)
+  nextEntry[actionKey] = normalizedChecked
+
+  if (actionKey === 'puede_leer' && !normalizedChecked) {
+    if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = false
+    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
+    if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
+  }
+
   return applyPermissionDependencies(moduleKey, nextEntry)
 }
 

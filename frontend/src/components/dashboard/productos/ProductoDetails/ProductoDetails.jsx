@@ -159,6 +159,7 @@ function ProductoDetails({
   const sizeRef = useRef(size)
   const positionRef = useRef(position)
   const restoreRef = useRef(null)
+  const lastNotifiedErrorRef = useRef({ message: '', at: 0 })
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const getViewportMetrics = () => {
@@ -174,12 +175,17 @@ function ProductoDetails({
 
   const notifyError = useCallback(
     (message) => {
-      if (!message) return
+      const normalizedMessage = String(message || '').trim()
+      if (!normalizedMessage) return
+      const now = Date.now()
+      const lastNotified = lastNotifiedErrorRef.current
+      if (lastNotified.message === normalizedMessage && now - lastNotified.at < 900) return
+      lastNotifiedErrorRef.current = { message: normalizedMessage, at: now }
       if (onError) {
-        onError(message)
+        onError(normalizedMessage)
         return
       }
-      console.error(message)
+      console.error(normalizedMessage)
     },
     [onError]
   )
