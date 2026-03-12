@@ -15,6 +15,7 @@ import '../../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
+import { getModuleActions } from '../../menuConfig'
 import {
   buildPrimeColumnFiltersPayload,
   buildPrimeOrdering,
@@ -47,12 +48,13 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
-function CasasComercialesTable({ token, onSelect, moduleActions }) {
+function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
+  const canCreateMarca = getModuleActions('proveedores_marcas', permissionIndex)?.puede_crear ?? true
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -1089,6 +1091,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions }) {
         onDeleted={handleDeleted}
         onDuplicated={handleDuplicated}
         onError={showErrorToast}
+        allowCreate={canCreateMarca}
         allowEdit={canEdit}
         allowDelete={canDelete}
       />

@@ -41,6 +41,7 @@ function CasaComercialDetails({
   onDeleted,
   onDuplicated,
   onError,
+  allowCreate = true,
   allowEdit = true,
   allowDelete = true,
 }) {
@@ -107,9 +108,10 @@ function CasaComercialDetails({
   const handleChange = (event) => {
     if (!isEditing) return
     const { name, value } = event.target
+    if (name === 'codigo') return
     setFormData((prev) => ({
       ...prev,
-      [name]: name === 'codigo' ? value.toUpperCase() : value,
+      [name]: value,
     }))
   }
 
@@ -363,7 +365,7 @@ function CasaComercialDetails({
   }
 
   const handleDuplicateToMarca = async () => {
-    if (!isEditing || duplicateLoading) return
+    if (!allowCreate || duplicateLoading) return
     setSubmitAttempted(true)
     setDuplicateLoading(true)
 
@@ -595,6 +597,7 @@ function CasaComercialDetails({
   }
 
   const editorDisabled = saving || loadingData || !isEditing
+  const canShowDuplicateAction = allowCreate && (isEditing || !allowEdit)
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
@@ -666,9 +669,10 @@ function CasaComercialDetails({
                     name="codigo"
                     type="text"
                     value={formData.codigo}
-                    onChange={handleChange}
+                    readOnly
+                    autoComplete="off"
                     required
-                    disabled={editorDisabled}
+                    disabled
                   />
                 </label>
 
@@ -805,35 +809,35 @@ function CasaComercialDetails({
           </div>
 
           <div className="user-details__footer-right">
+            {canShowDuplicateAction && (
+              <button
+                type="button"
+                className="create-user__action create-user__action--secondary"
+                onClick={handleDuplicateToMarca}
+                disabled={loadingData || saving || duplicateLoading}
+              >
+                {duplicateLoading ? 'Duplicando...' : 'Duplicar a marca'}
+              </button>
+            )}
+            {isEditing && allowDelete && (
+              <button
+                type="button"
+                className="create-user__action user-details__delete"
+                onClick={() => setShowDeleteDialog(true)}
+                disabled={saving || duplicateLoading}
+              >
+                Eliminar
+              </button>
+            )}
             {isEditing && (
-              <>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--secondary"
-                  onClick={handleDuplicateToMarca}
-                  disabled={saving || duplicateLoading}
-                >
-                  {duplicateLoading ? 'Duplicando...' : 'Duplicar a marca'}
-                </button>
-                {allowDelete && (
-                  <button
-                    type="button"
-                    className="create-user__action user-details__delete"
-                    onClick={() => setShowDeleteDialog(true)}
-                    disabled={saving || duplicateLoading}
-                  >
-                    Eliminar
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--primary"
-                  onClick={handleSave}
-                  disabled={saving || duplicateLoading}
-                >
-                  {saving ? 'Guardando...' : 'Guardar cambios'}
-                </button>
-              </>
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={handleSave}
+                disabled={saving || duplicateLoading}
+              >
+                {saving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
             )}
           </div>
         </div>

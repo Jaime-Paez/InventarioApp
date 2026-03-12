@@ -41,6 +41,7 @@ const INVENTORY_REVIEW_TAB_LEGACY = 'Revision de inventario por sucursal'
 const MOVIMIENTOS_SCOPE_BY_TAB = {
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
+  Solicitudes: 'solicitudes',
   [INCONVENIENTES_TAB]: 'movimientos_inconvenientes',
   [INCONVENIENTES_TAB_LEGACY]: 'movimientos_inconvenientes',
 }
@@ -81,18 +82,22 @@ function Workspace({
   const [movementBranchOptions, setMovementBranchOptions] = useState({
     Entradas: [],
     Salidas: [],
+    Solicitudes: [],
   })
   const [movementBranchCanViewAll, setMovementBranchCanViewAll] = useState({
     Entradas: false,
     Salidas: false,
+    Solicitudes: false,
   })
   const [movementBranchWritableIds, setMovementBranchWritableIds] = useState({
     Entradas: null,
     Salidas: null,
+    Solicitudes: null,
   })
   const [movementBranchSelection, setMovementBranchSelection] = useState({
     Entradas: ALL_BRANCH_OPTION_ID,
     Salidas: ALL_BRANCH_OPTION_ID,
+    Solicitudes: ALL_BRANCH_OPTION_ID,
   })
   const [isMovementBranchMenuOpen, setIsMovementBranchMenuOpen] = useState(false)
   const movementBranchMenuRef = useRef(null)
@@ -178,16 +183,17 @@ function Workspace({
 
   useEffect(() => {
     if (!token) {
-      setMovementBranchOptions({ Entradas: [], Salidas: [] })
-      setMovementBranchCanViewAll({ Entradas: false, Salidas: false })
-      setMovementBranchWritableIds({ Entradas: null, Salidas: null })
+      setMovementBranchOptions({ Entradas: [], Salidas: [], Solicitudes: [] })
+      setMovementBranchCanViewAll({ Entradas: false, Salidas: false, Solicitudes: false })
+      setMovementBranchWritableIds({ Entradas: null, Salidas: null, Solicitudes: null })
       setMovementBranchSelection({
         Entradas: ALL_BRANCH_OPTION_ID,
         Salidas: ALL_BRANCH_OPTION_ID,
+        Solicitudes: ALL_BRANCH_OPTION_ID,
       })
       return
     }
-    if (activeItem !== 'Entradas' && activeItem !== 'Salidas') return
+    if (activeItem !== 'Entradas' && activeItem !== 'Salidas' && activeItem !== 'Solicitudes') return
     fetchMovementBranches(activeItem)
   }, [activeItem, fetchMovementBranches, token])
 
@@ -326,7 +332,7 @@ function Workspace({
     activeMovementBranchLabel || activeMovementBranches?.[0]?.nombre || 'Sucursal'
   ).trim()
   const showMovementBranchSwitcher = (
-    (activeItem === 'Entradas' || activeItem === 'Salidas') &&
+    (activeItem === 'Entradas' || activeItem === 'Salidas' || activeItem === 'Solicitudes') &&
     activeMovementBranchMenuOptions.length > 0
   )
 
@@ -393,9 +399,11 @@ function Workspace({
       ? movementBranchSelection.Entradas
       : tab === 'Salidas'
         ? movementBranchSelection.Salidas
+        : tab === 'Solicitudes'
+          ? movementBranchSelection.Solicitudes
         : ''
     const scopedModuleActions = (() => {
-      if (tab !== 'Entradas' && tab !== 'Salidas') return moduleActions
+      if (tab !== 'Entradas' && tab !== 'Salidas' && tab !== 'Solicitudes') return moduleActions
 
       const selectedBranchId = String(createBranchId || '').trim()
       const writableIds = movementBranchWritableIds?.[tab]
@@ -420,7 +428,7 @@ function Workspace({
       <TabComponent
         token={token}
         user={user}
-        isTabActive={tab === 'Entradas' || tab === 'Salidas' ? isActive : undefined}
+        isTabActive={tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ? isActive : undefined}
         createBranchId={createBranchId}
         moduleKey={moduleKey}
         moduleActions={scopedModuleActions}

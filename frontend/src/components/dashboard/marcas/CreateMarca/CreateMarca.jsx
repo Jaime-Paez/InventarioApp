@@ -30,10 +30,75 @@ const normalizeCountrySearch = (value) =>
     .trim()
     .toLowerCase()
 
+const VOWELS = new Set(['A', 'E', 'I', 'O', 'U'])
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+const normalizeCodeLetters = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z]/g, '')
+const uniqueInOrder = (items) => {
+  const seen = new Set()
+  const uniqueItems = []
+  for (const item of items) {
+    if (seen.has(item)) continue
+    seen.add(item)
+    uniqueItems.push(item)
+  }
+  return uniqueItems
+}
+const generateMarcaCode = (name, existingCodes = []) => {
+  const letters = normalizeCodeLetters(name).split('')
+  const consonants = letters.filter((char) => !VOWELS.has(char))
+  const vowels = letters.filter((char) => VOWELS.has(char))
+  const blocked = new Set(
+    (Array.isArray(existingCodes) ? existingCodes : [])
+      .map((code) => String(code || '').trim().toUpperCase())
+      .filter(Boolean)
+  )
+
+  const baseChars = consonants.slice(0, 3)
+  let vowelIndex = 0
+  while (baseChars.length < 3 && vowelIndex < vowels.length) {
+    baseChars.push(vowels[vowelIndex])
+    vowelIndex += 1
+  }
+  while (baseChars.length < 3) {
+    baseChars.push(ALPHABET[Math.floor(Math.random() * ALPHABET.length)])
+  }
+
+  const base = baseChars.join('')
+  if (!base) return ''
+  if (!blocked.has(base)) return base
+
+  const pool = uniqueInOrder([...vowels, ...consonants, ...ALPHABET])
+  for (const third of pool) {
+    const candidate = `${base.slice(0, 2)}${third}`
+    if (!blocked.has(candidate)) return candidate
+  }
+  for (const second of pool) {
+    for (const third of pool) {
+      const candidate = `${base.slice(0, 1)}${second}${third}`
+      if (!blocked.has(candidate)) return candidate
+    }
+  }
+  for (let i = 0; i < 200; i += 1) {
+    const candidate = Array.from(
+      { length: 3 },
+      () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]
+    ).join('')
+    if (!blocked.has(candidate)) return candidate
+  }
+
+  return base
+}
+
 function CreateMarca({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [countries, setCountries] = useState([])
+  const [existingCodes, setExistingCodes] = useState([])
   const [countryQuery, setCountryQuery] = useState('')
   const [countryOptions, setCountryOptions] = useState([])
   const [showCountryDropdown, setShowCountryDropdown] = useState(false)
@@ -100,10 +165,36 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
     }
   }, [notifyError, token])
 
+  const fetchExistingCodes = useCallback(async () => {
+    try {
+      let url = `${API_URL}/marcas/listado/?page_size=200`
+      const codes = []
+
+      while (url) {
+        const response = await authFetch(url, {}, token)
+        if (!response.ok) throw new Error('No se pudieron cargar los codigos de marca.')
+        const data = await response.json()
+        const list = Array.isArray(data)
+          ? data
+          : (Array.isArray(data?.results) ? data.results : [])
+        list.forEach((item) => {
+          const code = String(item?.codigo || '').trim().toUpperCase()
+          if (code) codes.push(code)
+        })
+        url = Array.isArray(data) ? null : (data?.next || null)
+      }
+
+      setExistingCodes(uniqueInOrder(codes))
+    } catch (err) {
+      notifyError(err.message || 'Ocurrio un error al cargar codigos de marca.')
+    }
+  }, [notifyError, token])
+
   useEffect(() => {
     if (!open) return
     setFormData(initialForm)
     setLoading(false)
+    setExistingCodes([])
     setCountryQuery('')
     setCountryOptions([])
     setShowCountryDropdown(false)
@@ -111,7 +202,8 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
     setIsMaximized(false)
     restoreRef.current = null
     fetchCountries()
-  }, [open, fetchCountries])
+    fetchExistingCodes()
+  }, [open, fetchCountries, fetchExistingCodes])
 
   useEffect(() => {
     if (!open || !showCountryDropdown) return
@@ -150,6 +242,20 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
     return () => window.removeEventListener('mousedown', handleClickOutside)
   }, [showCountryDropdown])
 
+  useEffect(() => {
+    if (!open) return
+    setFormData((prev) => {
+      const nombre = String(prev.nombre || '').trim()
+      if (!nombre) {
+        if (!prev.codigo) return prev
+        return { ...prev, codigo: '' }
+      }
+      const autoCode = generateMarcaCode(nombre, existingCodes)
+      if (autoCode === prev.codigo) return prev
+      return { ...prev, codigo: autoCode }
+    })
+  }, [open, existingCodes])
+
   useEffect(
     () => () => {
       if (countrySearchTimerRef.current) {
@@ -182,9 +288,18 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
 
   const handleChange = (event) => {
     const { name, value } = event.target
+    if (name === 'codigo') return
+    if (name === 'nombre') {
+      setFormData((prev) => ({
+        ...prev,
+        nombre: value,
+        codigo: generateMarcaCode(value, existingCodes),
+      }))
+      return
+    }
     setFormData((prev) => ({
       ...prev,
-      [name]: name === 'codigo' ? value.toUpperCase() : value,
+      [name]: value,
     }))
   }
 
@@ -207,10 +322,11 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
   const handleSubmit = async (event) => {
     event.preventDefault()
     setLoading(true)
+    const generatedCodigo = generateMarcaCode(formData.nombre, existingCodes)
 
     const payload = {
       nombre: formData.nombre.trim(),
-      codigo: formData.codigo.trim(),
+      codigo: generatedCodigo,
       descripcion: formData.descripcion.trim(),
       telefono: formData.telefono.trim(),
       correo: formData.correo.trim(),
@@ -225,7 +341,7 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
 
     if (!payload.codigo) {
       setLoading(false)
-      notifyError('Define un codigo para la marca.')
+      notifyError('No se pudo generar un codigo para la marca.')
       return
     }
 
@@ -250,6 +366,11 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
       setCountryOptions([])
       setShowCountryDropdown(false)
       setCountryLoading(false)
+      setExistingCodes((prev) => {
+        const createdCode = String(data?.codigo || '').trim().toUpperCase()
+        if (!createdCode || prev.includes(createdCode)) return prev
+        return [...prev, createdCode]
+      })
       onCreated?.(data)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al crear la marca.')
@@ -478,11 +599,12 @@ function CreateMarca({ open, onClose, onCreated, token, onError }) {
                   <input
                     name="codigo"
                     type="text"
-                    placeholder="Código"
+                    placeholder="Generado automaticamente"
                     value={formData.codigo}
-                    onChange={handleChange}
+                    readOnly
+                    autoComplete="off"
                     required
-                    disabled={loading}
+                    disabled
                   />
                 </label>
 

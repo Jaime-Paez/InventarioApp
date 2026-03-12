@@ -146,7 +146,15 @@ const formatClienteLabel = (cliente) => {
   return ''
 }
 
-function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser }) {
+function CreateSolicitud({
+  open,
+  onClose,
+  onCreated,
+  token,
+  onError,
+  currentUser,
+  prefilledSucursalId = '',
+}) {
   const [cliente, setCliente] = useState(initialCliente)
   const [selectedCliente, setSelectedCliente] = useState(null)
   const [clienteResultados, setClienteResultados] = useState([])
@@ -204,6 +212,8 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser
     () => hasUsersModuleAccess(currentUser?.permisos),
     [currentUser]
   )
+  const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
+  const isSucursalLocked = Boolean(normalizedPrefilledSucursalId)
 
   const notifyError = useCallback(
     (message) => {
@@ -235,7 +245,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser
     setShowClienteDropdown(false)
     setClienteSearchTerm('')
 
-    setSucursalId('')
+    setSucursalId(normalizedPrefilledSucursalId)
     setFecha(todayISO())
     setDescripcionGeneral('')
     setActiveTab('productos')
@@ -272,7 +282,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser
       clearTimeout(oemSearchTimerRef.current)
       oemSearchTimerRef.current = null
     }
-  }, [])
+  }, [normalizedPrefilledSucursalId])
 
   const fetchSucursales = useCallback(async () => {
     if (!token) return
@@ -372,6 +382,12 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser
     fetchSucursales()
     fetchReminderUsers()
   }, [open, clearAll, fetchReminderUsers, fetchSucursales])
+
+  useEffect(() => {
+    if (!open) return
+    if (!normalizedPrefilledSucursalId) return
+    setSucursalId((prev) => (String(prev || '').trim() ? prev : normalizedPrefilledSucursalId))
+  }, [normalizedPrefilledSucursalId, open])
 
   useEffect(() => {
     if (!reminderUsersError) return
@@ -1346,7 +1362,7 @@ function CreateSolicitud({ open, onClose, onCreated, token, onError, currentUser
                         className={sucursalInvalid ? 'create-solicitud__input--invalid' : ''}
                         value={sucursalId}
                         onChange={(event) => setSucursalId(event.target.value)}
-                        disabled={loading || sucursalesLoading}
+                        disabled={loading || sucursalesLoading || isSucursalLocked}
                         required
                       >
                         <option value="">Selecciona una sucursal</option>

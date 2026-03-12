@@ -72,11 +72,18 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
-function SolicitudesTable({ token, onSelect, user, moduleActions }) {
+function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '' }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
+  const normalizedCreateBranchIdRaw = String(createBranchId || '').trim()
+  const normalizedCreateBranchId = (
+    normalizedCreateBranchIdRaw.toLowerCase() === 'all' ? 'all' : normalizedCreateBranchIdRaw
+  )
+  const hasSpecificCreateBranch = Boolean(
+    normalizedCreateBranchId && normalizedCreateBranchId !== 'all'
+  )
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -204,6 +211,10 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
     const tableFilters = options?.tableFilters
     const tableSortField = options?.tableSortField
     const tableSortOrder = options?.tableSortOrder
+    const branchContextIdRaw = String(
+      options?.branchContextId ?? normalizedCreateBranchId
+    ).trim()
+    const branchContextId = branchContextIdRaw.toLowerCase() === 'all' ? 'all' : branchContextIdRaw
 
     params.set('page', String(page))
     params.set('page_size', String(rows))
@@ -218,6 +229,10 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
     addIfPresent('fecha_desde', criteria?.fecha_desde)
     addIfPresent('fecha_hasta', criteria?.fecha_hasta)
     addIfPresent('conseguido', criteria?.conseguido)
+
+    if (branchContextId && branchContextId !== 'all') {
+      params.set('sucursal_id', branchContextId)
+    }
 
     const criteriaSearch = [criteria?.cliente_nombre, criteria?.producto]
       .map((value) => String(value ?? '').trim())
@@ -237,7 +252,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
     if (ordering) params.set('ordering', ordering)
 
     return `${API_URL}/solicitudes/solicitudes/?${params.toString()}`
-  }, [])
+  }, [normalizedCreateBranchId])
 
   const fetchClients = useCallback(
     async (criteria, page = 1, rows = pageSize, options = {}) => {
@@ -247,12 +262,17 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
         const tableFilters = options?.tableFilters ?? filters
         const tableSortField = options?.tableSortField ?? sortField
         const tableSortOrder = options?.tableSortOrder ?? sortOrder
+        const branchContextIdRaw = String(
+          options?.branchContextId ?? normalizedCreateBranchId
+        ).trim()
+        const branchContextId = branchContextIdRaw.toLowerCase() === 'all' ? 'all' : branchContextIdRaw
         const url = buildClientsListUrl(criteria, {
           page,
           rows,
           tableFilters,
           tableSortField,
           tableSortOrder,
+          branchContextId,
         })
         const res = await authFetch(url, {}, token)
         if (!res.ok) throw new Error('No se pudo obtener la lista de solicitudes.')
@@ -277,7 +297,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
         setIsRefreshing(false)
       }
     },
-    [token, normalizeList, pageSize, buildClientsListUrl, filters, sortField, sortOrder]
+    [token, normalizeList, pageSize, buildClientsListUrl, filters, sortField, sortOrder, normalizedCreateBranchId]
   )
 
   const fetchAllClients = useCallback(
@@ -288,6 +308,10 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
       const tableFilters = options?.tableFilters ?? filters
       const tableSortField = options?.tableSortField ?? sortField
       const tableSortOrder = options?.tableSortOrder ?? sortOrder
+      const branchContextIdRaw = String(
+        options?.branchContextId ?? normalizedCreateBranchId
+      ).trim()
+      const branchContextId = branchContextIdRaw.toLowerCase() === 'all' ? 'all' : branchContextIdRaw
       const ensureNotCancelled = () => {
         if (signal?.aborted || isCancelled()) throw createBulkCancelError()
       }
@@ -298,6 +322,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
         tableFilters,
         tableSortField,
         tableSortOrder,
+        branchContextId,
       })
       let total = 0
 
@@ -344,7 +369,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
 
       return normalizeList(all)
     },
-    [token, normalizeList, buildClientsListUrl, filters, sortField, sortOrder]
+    [token, normalizeList, buildClientsListUrl, filters, sortField, sortOrder, normalizedCreateBranchId]
   )
 
   useEffect(() => {
@@ -500,13 +525,18 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
 
   const handleSearchSubmit = async (event) => {
     event.preventDefault()
-    lastSearchRef.current = { ...searchCriteria }
+    const nextCriteria = {
+      ...searchCriteria,
+      sucursal_id: hasSpecificCreateBranch ? normalizedCreateBranchId : searchCriteria.sucursal_id,
+    }
+    lastSearchRef.current = nextCriteria
     setShowSearchModal(false)
     setIsRefreshing(true)
-    await fetchClients(lastSearchRef.current, 1, pageSize, {
+    await fetchClients(nextCriteria, 1, pageSize, {
       tableFilters: filters,
       tableSortField: sortField,
       tableSortOrder: sortOrder,
+      branchContextId: normalizedCreateBranchId,
     })
   }
 
@@ -519,8 +549,41 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
       tableFilters: filters,
       tableSortField: sortField,
       tableSortOrder: sortOrder,
+      branchContextId: normalizedCreateBranchId,
     })
-  }, [fetchClients, filters, pageSize, sortField, sortOrder])
+  }, [fetchClients, filters, pageSize, sortField, sortOrder, normalizedCreateBranchId])
+
+  useEffect(() => {
+    if (!didInitialSearchRef.current) return
+    if (!filters) return
+    const forcedBranchId = hasSpecificCreateBranch ? normalizedCreateBranchId : ''
+    const nextCriteria = {
+      ...(lastSearchRef.current || {
+        cliente_nombre: '',
+        producto: '',
+        cedula_ruc: '',
+        sucursal_id: '',
+        fecha_desde: '',
+        fecha_hasta: '',
+        conseguido: '',
+      }),
+      sucursal_id: forcedBranchId,
+    }
+    lastSearchRef.current = nextCriteria
+    setSearchCriteria((prev) => {
+      if (String(prev?.sucursal_id || '') === forcedBranchId) return prev
+      return { ...prev, sucursal_id: forcedBranchId }
+    })
+    setSelectedRows([])
+    setPageFirst(0)
+    setIsRefreshing(true)
+    fetchClients(nextCriteria, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+      branchContextId: normalizedCreateBranchId,
+    })
+  }, [hasSpecificCreateBranch, normalizedCreateBranchId])
 
   const filterClearTemplate = (options) => (
     <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
@@ -827,6 +890,20 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
     setShowCreateModal(false)
     refreshData()
     toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Solicitud creada correctamente', life: 2500 })
+  }
+
+  const handleOpenCreateModal = () => {
+    if (!canCreate) return
+    if (!hasSpecificCreateBranch) {
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Selecciona sucursal',
+        detail: 'Selecciona una sucursal especifica para crear una solicitud.',
+        life: 3000,
+      })
+      return
+    }
+    setShowCreateModal(true)
   }
 
   const focusSearch = () => setShowSearchModal(true)
@@ -1204,7 +1281,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
       <div className="users-page__top">
         <div className="users-page__actions">
           {canCreate && (
-            <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
+            <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={handleOpenCreateModal} type="button" />
           )}
           <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
         </div>
@@ -1547,6 +1624,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
         token={token}
         onError={showErrorToast}
         currentUser={user}
+        prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}
       />
 
       <SolicitudDetails
@@ -1558,6 +1636,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
         onError={showErrorToast}
         currentUser={user}
         allowEdit={canEdit}
+        allowCreate={canCreate}
       />
 
       {shouldRenderSearchModal && (
@@ -1639,8 +1718,9 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
                       <span>Sucursal</span>
                       <select
                         name="sucursal_id"
-                        value={searchCriteria.sucursal_id}
+                        value={hasSpecificCreateBranch ? normalizedCreateBranchId : searchCriteria.sucursal_id}
                         onChange={handleSearchInputChange}
+                        disabled={hasSpecificCreateBranch}
                       >
                         <option value="">Todas las sucursales</option>
                         {sucursales.map((sucursal) => (
@@ -1692,7 +1772,12 @@ function SolicitudesTable({ token, onSelect, user, moduleActions }) {
                   <button
                     type="button"
                     className="create-user__action"
-                    onClick={() => setSearchCriteria(initialSearchCriteria)}
+                    onClick={() =>
+                      setSearchCriteria({
+                        ...initialSearchCriteria,
+                        sucursal_id: hasSpecificCreateBranch ? normalizedCreateBranchId : '',
+                      })
+                    }
                   >
                     Limpiar filtros
                   </button>

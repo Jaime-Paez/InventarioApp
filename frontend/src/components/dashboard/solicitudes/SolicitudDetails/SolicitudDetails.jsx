@@ -25,6 +25,7 @@ function SolicitudDetails({
   onError,
   currentUser,
   allowEdit = true,
+  allowCreate = true,
 }) {
   const [solicitud, setSolicitud] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -322,7 +323,7 @@ function SolicitudDetails({
   const productoSolicitado = solicitud?.producto_solicitado_data || null
   const productoResuelto = solicitud?.producto_resuelto_data || null
   const puedeCrearProducto =
-    solicitud?.tabla === 'producto_solicitado' && productoSolicitado && !productoSolicitado.conseguido
+    allowCreate && solicitud?.tabla === 'producto_solicitado' && productoSolicitado && !productoSolicitado.conseguido
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
   const modalStyle = {

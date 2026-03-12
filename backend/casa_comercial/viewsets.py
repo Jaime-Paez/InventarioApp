@@ -1,5 +1,7 @@
-from rest_framework import filters, viewsets
+from django.db.models.deletion import ProtectedError
+from rest_framework import filters, status, viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
 from usuarios.permissions import ProveedoresCasasDependentReadPermission
@@ -58,3 +60,25 @@ class CasaComercialViewSet(viewsets.ModelViewSet):
         )
 
         return queryset.distinct()
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.productos.exists():
+            return Response(
+                {
+                    "detail": "No se puede eliminar la casa comercial porque tiene productos asociados."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": (
+                        "No se puede eliminar la casa comercial porque esta ligada a registros historicos protegidos."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
