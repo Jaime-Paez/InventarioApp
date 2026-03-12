@@ -131,6 +131,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
     search_fields = [
             "descripcion_general",
             "comentario",
+            "placa",
             "cliente__nombres",
             "cliente__apellidos",
             "cliente__cedula_ruc",
@@ -156,6 +157,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         "producto_conseguido_text",
         "conseguido_label_text",
         "cliente_nombre_text",
+        "placa",
     ]
 
     def get_queryset(self):
@@ -245,6 +247,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 "producto_solicitado_nombre": "producto_referencia_text",
                 "producto_solicitado_descripcion": "producto_solicitado_descripcion_text",
                 "descripcion_general": "descripcion_general",
+                "placa": "placa",
                 "producto_conseguido": "producto_conseguido_text",
                 "cantidad": {"lookup": "cantidad", "type": "number"},
                 "conseguido_label": "conseguido_label_text",
@@ -365,6 +368,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
         fecha = timezone.localdate()
         descripcion_general = str(payload.get("descripcion_general") or "").strip()
+        placa = str(payload.get("placa") or "").strip()
 
         cliente, cliente_error = self._resolve_cliente(payload)
         if cliente_error:
@@ -527,6 +531,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         fecha=fecha,
                         descripcion_general=descripcion_general,
                         comentario=item.get("comentario", ""),
+                        placa=placa,
                         sucursal=sucursal,
                         cliente=cliente,
                         producto=item["producto"],
@@ -554,6 +559,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         fecha=fecha,
                         descripcion_general=descripcion_general,
                         comentario=item.get("comentario", ""),
+                        placa=placa,
                         sucursal=sucursal,
                         cliente=cliente,
                         producto_solicitado=producto_solicitado,
@@ -652,11 +658,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             return cliente, None
 
         cliente_data = payload.get("cliente")
+        if cliente_data in (None, "", {}):
+            return None, None
         if not isinstance(cliente_data, dict):
-            return None, {"cliente": "Debe seleccionar o crear un cliente."}
-
-        if not cliente_data:
-            return None, {"cliente": "Debe seleccionar o crear un cliente."}
+            return None, {"cliente": "Formato invalido para cliente."}
 
         cedula_ruc = str(cliente_data.get("cedula_ruc") or "").strip()
         nombres = str(cliente_data.get("nombres") or "").strip()

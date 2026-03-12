@@ -55,6 +55,16 @@ export const MENU_STRUCTURE = [
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
 ]
 
+const BRANCH_SCOPED_MODULE_KEYS = new Set([
+  'movimientos_entradas',
+  'movimientos_salidas',
+  'movimientos_inconvenientes',
+  'productos',
+  'solicitudes',
+])
+
+const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
+
 const collectPermissionEntries = (permissionSource) => {
   const collected = []
 
@@ -113,6 +123,36 @@ export const buildPermissionIndex = (permissions) => {
   return index
 }
 
+export const buildModuleScopeAccessIndex = (moduleScopes, isAdmin = false) => {
+  if (isAdmin) return null
+  if (!Array.isArray(moduleScopes)) return null
+
+  const index = new Map()
+  moduleScopes.forEach((scope) => {
+    const moduleKey = normalizeModuleKey(scope?.modulo)
+    if (!moduleKey) return
+
+    const actionsByBranch = Array.isArray(scope?.acciones_por_sucursal) ? scope.acciones_por_sucursal : []
+    if (actionsByBranch.length) {
+      const hasReadableBranch = actionsByBranch.some((entry) =>
+        Boolean(
+          entry?.puede_leer ||
+            entry?.puede_crear ||
+            entry?.puede_actualizar ||
+            entry?.puede_eliminar
+        )
+      )
+      index.set(moduleKey, hasReadableBranch)
+      return
+    }
+
+    const branchIds = Array.isArray(scope?.sucursales_ids) ? scope.sucursales_ids : []
+    index.set(moduleKey, branchIds.length > 0)
+  })
+
+  return index
+}
+
 const MODULE_ACTION_KEYS = ['puede_crear', 'puede_leer', 'puede_actualizar', 'puede_eliminar']
 
 export const getModuleActions = (moduleKey, permissionIndex) => {
@@ -150,25 +190,36 @@ const hasPermissionForTarget = (moduleKey, permissionIndex) => {
   return Boolean(permiso?.puede_leer)
 }
 
-export const itemHasAccess = (item, permissionIndex) => {
-  if (!permissionIndex) return true
-  if (item.children?.length) {
-    return item.children.some((child) => itemHasAccess(child, permissionIndex))
-  }
-  return hasPermissionForTarget(item.moduleKey, permissionIndex)
+const hasBranchScopeAccessForTarget = (moduleKey, moduleScopeAccessIndex) => {
+  if (!moduleKey || !BRANCH_SCOPED_MODULE_KEYS.has(moduleKey)) return true
+  if (moduleScopeAccessIndex === null) return true
+  return Boolean(moduleScopeAccessIndex?.get(moduleKey))
 }
 
-export const filterMenuByPermissions = (menu, permissionIndex) => {
+export const itemHasAccess = (item, permissionIndex, moduleScopeAccessIndex = null) => {
+  if (!permissionIndex) return true
+  if (item.children?.length) {
+    return item.children.some((child) => itemHasAccess(child, permissionIndex, moduleScopeAccessIndex))
+  }
+  return (
+    hasPermissionForTarget(item.moduleKey, permissionIndex) &&
+    hasBranchScopeAccessForTarget(item.moduleKey, moduleScopeAccessIndex)
+  )
+}
+
+export const filterMenuByPermissions = (menu, permissionIndex, moduleScopeAccessIndex = null) => {
   if (!permissionIndex) return menu
 
   return menu
     .map((item) => {
       if (item.children?.length) {
-        const filteredChildren = item.children.filter((child) => itemHasAccess(child, permissionIndex))
+        const filteredChildren = item.children.filter((child) =>
+          itemHasAccess(child, permissionIndex, moduleScopeAccessIndex)
+        )
         if (!filteredChildren.length) return null
         return { ...item, children: filteredChildren }
       }
-      return itemHasAccess(item, permissionIndex) ? item : null
+      return itemHasAccess(item, permissionIndex, moduleScopeAccessIndex) ? item : null
     })
     .filter(Boolean)
 }
@@ -180,9 +231,14 @@ const flattenMenu = (menu) =>
     return acc
   }, [])
 
-export const labelHasAccess = (label, permissionIndex, menu = MENU_STRUCTURE) => {
+export const labelHasAccess = (
+  label,
+  permissionIndex,
+  menu = MENU_STRUCTURE,
+  moduleScopeAccessIndex = null
+) => {
   const flattened = flattenMenu(menu)
   const item = flattened.find((entry) => entry.label === label)
   if (!item) return true
-  return itemHasAccess(item, permissionIndex)
+  return itemHasAccess(item, permissionIndex, moduleScopeAccessIndex)
 }

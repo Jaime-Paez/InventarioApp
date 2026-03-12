@@ -103,6 +103,7 @@ MODULOS_CON_ALCANCE_SUCURSAL = (
     RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
     RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
     RolPermiso.Modulos.PRODUCTOS,
+    RolPermiso.Modulos.SOLICITUDES,
 )
 MODULOS_CON_ALCANCE_SUCURSAL_CHOICES = tuple(
     (key, label)

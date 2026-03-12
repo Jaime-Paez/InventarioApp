@@ -164,6 +164,7 @@ function CreateSolicitud({
 
   const [sucursalId, setSucursalId] = useState('')
   const [fecha, setFecha] = useState(todayISO())
+  const [placa, setPlaca] = useState('')
   const [descripcionGeneral, setDescripcionGeneral] = useState('')
   const [sucursales, setSucursales] = useState([])
   const [sucursalesLoading, setSucursalesLoading] = useState(false)
@@ -181,11 +182,11 @@ function CreateSolicitud({
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [productoAttempted, setProductoAttempted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [addingProducto, setAddingProducto] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const [reminderUsers, setReminderUsers] = useState([])
   const [reminderUsersLoading, setReminderUsersLoading] = useState(false)
   const [reminderUsersError, setReminderUsersError] = useState('')
-  const [selectedReminderUserIds, setSelectedReminderUserIds] = useState([])
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -199,6 +200,7 @@ function CreateSolicitud({
   const codigoSearchSeqRef = useRef(0)
   const oemSearchTimerRef = useRef(null)
   const oemSearchSeqRef = useRef(0)
+  const addingProductoRef = useRef(false)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
@@ -247,6 +249,7 @@ function CreateSolicitud({
 
     setSucursalId(normalizedPrefilledSucursalId)
     setFecha(todayISO())
+    setPlaca('')
     setDescripcionGeneral('')
     setActiveTab('productos')
 
@@ -263,10 +266,11 @@ function CreateSolicitud({
     setSubmitAttempted(false)
     setProductoAttempted(false)
     setLoading(false)
+    setAddingProducto(false)
+    addingProductoRef.current = false
     setReminderUsers([])
     setReminderUsersLoading(false)
     setReminderUsersError('')
-    setSelectedReminderUserIds([])
     setIsMaximized(false)
     restoreRef.current = null
 
@@ -772,36 +776,37 @@ function CreateSolicitud({
 
   const handleProductoDraftChange = (event) => {
     const { name, value } = event.target
-
-    if (selectedDraftProducto && ['codigo', 'nombre', 'oems', 'marca'].includes(name)) {
-      setSelectedDraftProducto(null)
-      setProductoDraft((prev) => ({
-        ...prev,
-        productoId: '',
-        [name]: value,
-      }))
-      return
-    }
+    const normalizedValue = name === 'codigo' ? String(value || '').toUpperCase() : value
+    const shouldDetachSelectedProduct =
+      selectedDraftProducto && ['codigo', 'nombre', 'oems', 'marca'].includes(name)
 
     if (name === 'codigo') {
-      const shouldShow = String(value || '').trim().length >= 1
+      const shouldShow = String(normalizedValue || '').trim().length >= 1
       setShowCodigoDropdown(shouldShow)
       if (!shouldShow) setCodigoOptions([])
     }
 
     if (name === 'oems') {
-      const shouldShow = String(value || '').trim().length >= 1
+      const shouldShow = String(normalizedValue || '').trim().length >= 1
       setShowOemDropdown(shouldShow)
       if (!shouldShow) setOemOptions([])
     }
 
-    setProductoDraft((prev) => ({ ...prev, [name]: value }))
+    if (shouldDetachSelectedProduct) {
+      setSelectedDraftProducto(null)
+    }
+
+    setProductoDraft((prev) => ({
+      ...prev,
+      productoId: shouldDetachSelectedProduct ? '' : prev.productoId,
+      [name]: normalizedValue,
+    }))
   }
 
-  const handleProductoSelect = (producto) => {
+  const handleProductoSelect = useCallback((producto) => {
     if (!producto) return
 
-    const codigo = String(producto?.codigo || '').trim()
+    const codigo = String(producto?.codigo || '').trim().toUpperCase()
     const nombre = String(producto?.nombre || '').trim()
     const marca = String(producto?.marca?.nombre || producto?.marca || '').trim()
     const oems = extractProductoOems(producto)
@@ -820,7 +825,7 @@ function CreateSolicitud({
     setShowOemDropdown(false)
     setCodigoOptions([])
     setOemOptions([])
-  }
+  }, [])
 
   const draftOemList = useMemo(() => parseOemInput(productoDraft.oems), [productoDraft.oems])
 
@@ -849,10 +854,10 @@ function CreateSolicitud({
     return { productoIds, codes, oems }
   }, [productos])
 
-  const resolveSingleExistingProduct = useCallback(async () => {
+  const resolveSingleExistingProduct = useCallback(async ({ codigoInput = '', oemInput = '' } = {}) => {
     if (!token) return null
 
-    const codigo = String(productoDraft.codigo || '').trim()
+    const codigo = String(codigoInput || '').trim()
     if (codigo) {
       const response = await authFetch(
         `${API_URL}/productos/listado/?codigo=${encodeURIComponent(codigo)}&page_size=3`,
@@ -868,7 +873,7 @@ function CreateSolicitud({
       }
     }
 
-    const parsedOems = parseOemInput(productoDraft.oems)
+    const parsedOems = parseOemInput(oemInput)
     if (parsedOems.length === 1) {
       const oemCode = parsedOems[0]
       const response = await authFetch(
@@ -886,7 +891,46 @@ function CreateSolicitud({
     }
 
     return null
-  }, [productoDraft.codigo, productoDraft.oems, token])
+  }, [token])
+
+  useEffect(() => {
+    if (!open || !token) return
+    if (selectedDraftProducto?.id) return
+
+    const codigo = String(productoDraft.codigo || '').trim()
+    const oemsRaw = String(productoDraft.oems || '').trim()
+    const oemsList = parseOemInput(oemsRaw)
+    const hasSearchableCode = codigo.length >= 2
+    const hasSearchableOem = oemsList.length === 1 && String(oemsList[0] || '').trim().length >= 2
+    if (!hasSearchableCode && !hasSearchableOem) return
+
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        const matchedProducto = await resolveSingleExistingProduct({
+          codigoInput: codigo,
+          oemInput: oemsRaw,
+        })
+        if (!matchedProducto || cancelled) return
+        handleProductoSelect(matchedProducto)
+      } catch {
+        // Ignora errores silenciosamente para no interrumpir la escritura.
+      }
+    }, 320)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [
+    handleProductoSelect,
+    open,
+    productoDraft.codigo,
+    productoDraft.oems,
+    resolveSingleExistingProduct,
+    selectedDraftProducto?.id,
+    token,
+  ])
 
   const fetchProductoStockInfo = useCallback(
     async (productoId) => {
@@ -917,13 +961,18 @@ function CreateSolicitud({
   )
 
   const handleAgregarProducto = async () => {
+    if (addingProductoRef.current || loading) return
+    addingProductoRef.current = true
+    setAddingProducto(true)
+
+    try {
     setProductoAttempted(true)
     const cantidadRaw = Number(productoDraft.cantidad)
     const cantidad = Number.isFinite(cantidadRaw) ? Math.max(1, Math.floor(cantidadRaw)) : 0
     let productoIdRaw = Number(productoDraft.productoId)
     let hasProductoId = Number.isFinite(productoIdRaw) && productoIdRaw > 0
 
-    let codigo = String(productoDraft.codigo || '').trim()
+    let codigo = String(productoDraft.codigo || '').trim().toUpperCase()
     let nombre = String(productoDraft.nombre || '').trim()
     let marca = String(productoDraft.marca || '').trim()
     let oemList = draftOemList
@@ -936,11 +985,14 @@ function CreateSolicitud({
 
     if (!hasProductoId && (codigo || oemList.length)) {
       try {
-        const matchedProducto = await resolveSingleExistingProduct()
+        const matchedProducto = await resolveSingleExistingProduct({
+          codigoInput: codigo,
+          oemInput: productoDraft.oems,
+        })
         if (matchedProducto) {
           productoIdRaw = Number(matchedProducto.id)
           hasProductoId = Number.isFinite(productoIdRaw) && productoIdRaw > 0
-          codigo = String(matchedProducto?.codigo || '').trim()
+          codigo = String(matchedProducto?.codigo || '').trim().toUpperCase()
           nombre = String(matchedProducto?.nombre || '').trim()
           marca = String(matchedProducto?.marca?.nombre || matchedProducto?.marca || '').trim()
           oemList = extractProductoOems(matchedProducto)
@@ -981,9 +1033,14 @@ function CreateSolicitud({
       return
     }
 
+    if (!hasProductoId && !oemList.length) {
+      notifyError('El OEM es obligatorio para productos nuevos.')
+      return
+    }
+
     const codeKey = normalizeString(codigo)
     if (codeKey && codes.has(codeKey)) {
-      notifyError('ya existe este producto')
+      notifyError('No se puede agregar: ya existe un producto con ese codigo en la tabla.')
       return
     }
 
@@ -1016,6 +1073,10 @@ function CreateSolicitud({
     setShowOemDropdown(false)
     setCodigoOptions([])
     setOemOptions([])
+    } finally {
+      addingProductoRef.current = false
+      setAddingProducto(false)
+    }
   }
 
   const handleQuitarProducto = (uid) => {
@@ -1042,50 +1103,6 @@ function CreateSolicitud({
     )
   }, [currentCreatorId, currentCreatorName, reminderUsers])
 
-  const adminReminderRecipientIds = useMemo(
-    () => new Set(adminReminderRecipients.map((recipient) => normalizeId(recipient?.id)).filter(Boolean)),
-    [adminReminderRecipients]
-  )
-
-  const selectableReminderUsers = useMemo(
-    () => reminderUsers.filter((userItem) => !adminReminderRecipientIds.has(normalizeId(userItem.id))),
-    [adminReminderRecipientIds, reminderUsers]
-  )
-
-  const selectedReminderRecipients = useMemo(() => {
-    if (!selectedReminderUserIds.length) return []
-    const usersMap = new Map(reminderUsers.map((userItem) => [normalizeId(userItem.id), userItem]))
-    return selectedReminderUserIds
-      .map((recipientId) => usersMap.get(normalizeId(recipientId)))
-      .filter(Boolean)
-      .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
-      .filter(Boolean)
-      .filter(
-        (recipient, index, list) =>
-          list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
-      )
-  }, [reminderUsers, selectedReminderUserIds])
-
-  const toggleReminderUser = (userId) => {
-    const normalized = normalizeId(userId)
-    if (!normalized || adminReminderRecipientIds.has(normalized)) return
-
-    setSelectedReminderUserIds((prev) =>
-      prev.includes(normalized)
-        ? prev.filter((id) => id !== normalized)
-        : [...prev, normalized]
-    )
-  }
-
-  useEffect(() => {
-    setSelectedReminderUserIds((prev) => {
-      if (!prev.length) return prev
-      const validIds = new Set(selectableReminderUsers.map((userItem) => normalizeId(userItem.id)).filter(Boolean))
-      const filtered = prev.filter((id) => validIds.has(normalizeId(id)))
-      return filtered.length === prev.length ? prev : filtered
-    })
-  }, [selectableReminderUsers])
-
   const hasAnyManualClienteData = useMemo(
     () => Object.values(cliente).some((value) => String(value || '').trim()),
     [cliente]
@@ -1097,13 +1114,11 @@ function CreateSolicitud({
   )
   const isClientReady = !mustCompleteManualClient || hasManualClienteData
   const hasAdminRecipients = adminReminderRecipients.length > 0
-  const hasAdditionalReminderRecipients = selectedReminderRecipients.length > 0
   const canSubmit =
     Boolean(sucursalId) &&
     productos.length > 0 &&
     isClientReady &&
     hasAdminRecipients &&
-    hasAdditionalReminderRecipients &&
     !reminderUsersLoading
 
   const getSubmitValidationMessage = useCallback(() => {
@@ -1111,18 +1126,15 @@ function CreateSolicitud({
     if (!productos.length) return 'Debe agregar al menos un producto solicitado.'
     if (reminderUsersLoading) return 'Espera a que se carguen los usuarios para recordatorios.'
     if (!hasAdminRecipients) return 'No se pudo resolver un administrador para el recordatorio obligatorio.'
-    if (!hasAdditionalReminderRecipients) return 'Debes seleccionar al menos un usuario adicional para el recordatorio.'
     if (!isClientReady) return 'Si ingresa datos del cliente, la cedula es obligatoria y debe completar todos los campos.'
     return ''
-  }, [hasAdditionalReminderRecipients, hasAdminRecipients, isClientReady, productos.length, reminderUsersLoading, sucursalId])
+  }, [hasAdminRecipients, isClientReady, productos.length, reminderUsersLoading, sucursalId])
 
   const registerInvalidSubmitAttempt = useCallback(() => {
     setSubmitAttempted(true)
 
     if (!sucursalId || !productos.length) {
       setActiveTab('productos')
-    } else if (reminderUsersLoading || !hasAdminRecipients || !hasAdditionalReminderRecipients) {
-      setActiveTab('recordatorio')
     } else if (!isClientReady) {
       setActiveTab('cliente')
     }
@@ -1131,13 +1143,10 @@ function CreateSolicitud({
     if (validationMessage) notifyError(validationMessage)
   }, [
     getSubmitValidationMessage,
-    hasAdditionalReminderRecipients,
-    hasAdminRecipients,
     isClientReady,
     notifyError,
-    productos.length,
-    reminderUsersLoading,
     sucursalId,
+    productos.length,
   ])
 
   const handleCreateButtonClick = (event) => {
@@ -1156,6 +1165,7 @@ function CreateSolicitud({
     const payload = {
       sucursal_id: Number(sucursalId),
       descripcion_general: String(descripcionGeneral || '').trim(),
+      placa: String(placa || '').trim(),
       productos: productos.map((item) => {
         const base = {
           cantidad: Number(item.cantidad),
@@ -1209,7 +1219,7 @@ function CreateSolicitud({
         throw new Error(resolveApiErrorMessage(data, 'No se pudo crear la solicitud.'))
       }
 
-      const reminderRecipients = [...adminReminderRecipients, ...selectedReminderRecipients]
+      const reminderRecipients = [...adminReminderRecipients]
         .map((recipient) => sanitizeRecipient(recipient))
         .filter(Boolean)
         .filter(
@@ -1283,6 +1293,10 @@ function CreateSolicitud({
   const draftCantidadRaw = Number(productoDraft.cantidad)
   const productoCodigoInvalid = productoAttempted && !String(productoDraft.codigo || '').trim()
   const productoNombreInvalid = productoAttempted && !String(productoDraft.nombre || '').trim()
+  const productoOemsInvalid =
+    productoAttempted &&
+    !String(productoDraft.productoId || '').trim() &&
+    !draftOemList.length
   const productoMarcaInvalid = productoAttempted && !String(productoDraft.marca || '').trim()
   const productoCantidadInvalid = productoAttempted && (!Number.isFinite(draftCantidadRaw) || draftCantidadRaw <= 0)
   const sucursalInvalid = submitAttempted && !sucursalId
@@ -1330,13 +1344,6 @@ function CreateSolicitud({
             </button>
             <button
               type="button"
-              className={`create-user__tab ${activeTab === 'recordatorio' ? 'create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('recordatorio')}
-            >
-              Usuarios a recordar
-            </button>
-            <button
-              type="button"
               className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
               onClick={() => setActiveTab('cliente')}
             >
@@ -1377,6 +1384,17 @@ function CreateSolicitud({
                     <label className="create-user__field">
                       <span>Fecha</span>
                       <input type="date" value={fecha} disabled />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Placa</span>
+                      <input
+                        type="text"
+                        placeholder="Placa (opcional)"
+                        value={placa}
+                        onChange={(event) => setPlaca(event.target.value)}
+                        disabled={loading}
+                      />
                     </label>
                   </div>
                 </section>
@@ -1486,6 +1504,7 @@ function CreateSolicitud({
                       <span>
                         <div className="create-solicitud__inline-dropdown" ref={oemDropdownRef}>
                           <input
+                            className={productoOemsInvalid ? 'create-solicitud__input--invalid' : ''}
                             name="oems"
                             type="text"
                             placeholder="OEM1, OEM2"
@@ -1587,7 +1606,12 @@ function CreateSolicitud({
                       </span>
 
                       <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button type="button" className="create-user__ghost" onClick={handleAgregarProducto} disabled={loading}>
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleAgregarProducto}
+                          disabled={loading || addingProducto}
+                        >
                           Agregar
                         </button>
                       </span>
@@ -1794,69 +1818,6 @@ function CreateSolicitud({
               </section>
             )}
 
-            {activeTab === 'recordatorio' && (
-              <section className="create-user__section">
-                <div className="create-user__section-header">
-                  <div>
-                    <p className="create-user__eyebrow">Recordatorio</p>
-                    <h4>Usuarios a quienes recordar</h4>
-                  </div>
-                </div>
-
-                <p className="create-solicitud__reminder-helper">
-                  Al crear la solicitud se genera automaticamente un recordatorio para administradores y usuarios seleccionados.
-                </p>
-
-                <div className={`create-solicitud__reminder-admins${submitAttempted && !hasAdminRecipients ? ' create-solicitud__reminder-admins--invalid' : ''}`}>
-                  <h5>Administradores incluidos</h5>
-                  {reminderUsersLoading ? (
-                    <p className="muted">Cargando administradores...</p>
-                  ) : (
-                    <div className="create-solicitud__reminder-chip-list">
-                      {adminReminderRecipients.map((recipient) => (
-                        <span key={`admin-recipient-${recipient.id}`} className="create-solicitud__chip">
-                          {recipient.name}
-                        </span>
-                      ))}
-                      {!adminReminderRecipients.length && (
-                        <small className="muted">No se detectaron administradores con permisos del modulo usuarios.</small>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className={`create-solicitud__reminder-users${!reminderUsersLoading && !hasAdditionalReminderRecipients ? ' create-solicitud__reminder-users--invalid' : ''}`}>
-                  <h5>Usuarios adicionales</h5>
-                  {!reminderUsersLoading && !hasAdditionalReminderRecipients && (
-                    <small className="create-user__field-error">Debes seleccionar al menos un usuario adicional.</small>
-                  )}
-                  <div className="create-solicitud__reminder-user-list">
-                    {!reminderUsersLoading && !selectableReminderUsers.length && (
-                      <small className="muted">No hay usuarios adicionales disponibles.</small>
-                    )}
-
-                    {selectableReminderUsers.map((userItem) => {
-                      const userId = normalizeId(userItem?.id)
-                      const checked = selectedReminderUserIds.includes(userId)
-                      return (
-                        <label key={`reminder-user-${userId}`} className="create-solicitud__reminder-user-item">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleReminderUser(userId)}
-                            disabled={loading || reminderUsersLoading}
-                          />
-                          <div>
-                            <strong>{userItem.name || 'Usuario'}</strong>
-                            {userItem.email && <small>{userItem.email}</small>}
-                          </div>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              </section>
-            )}
           </div>
 
           <div className="create-user__footer">

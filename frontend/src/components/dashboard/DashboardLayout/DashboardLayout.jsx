@@ -7,7 +7,7 @@ import jpaezLight from '../../../assets/login/jpaez(light).png'
 import './DashboardLayout.css'
 import Sidebar from '../Sidebar/Sidebar'
 import Workspace from '../Workspace/Workspace'
-import { buildPermissionIndex, labelHasAccess } from '../menuConfig'
+import { buildModuleScopeAccessIndex, buildPermissionIndex, labelHasAccess } from '../menuConfig'
 
 function DashboardLayout({
   user,
@@ -35,6 +35,10 @@ function DashboardLayout({
   const brandLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const partnerLogo = useMemo(() => (darkMode ? jpaezDark : jpaezLight), [darkMode])
   const permissionIndex = useMemo(() => buildPermissionIndex(permissions), [permissions])
+  const moduleScopeAccessIndex = useMemo(
+    () => buildModuleScopeAccessIndex(user?.sucursales_por_modulo, Boolean(user?.es_administrador)),
+    [user?.es_administrador, user?.sucursales_por_modulo]
+  )
 
   useEffect(() => {
     setHasEntered(true)
@@ -52,11 +56,13 @@ function DashboardLayout({
   }, [])
 
   useEffect(() => {
-    setOpenTabs((prev) => prev.filter((tab) => labelHasAccess(tab, permissionIndex)))
-    if (activeItem && !labelHasAccess(activeItem, permissionIndex)) {
+    setOpenTabs((prev) =>
+      prev.filter((tab) => labelHasAccess(tab, permissionIndex, undefined, moduleScopeAccessIndex))
+    )
+    if (activeItem && !labelHasAccess(activeItem, permissionIndex, undefined, moduleScopeAccessIndex)) {
       setActiveItem('')
     }
-  }, [permissionIndex, activeItem])
+  }, [permissionIndex, activeItem, moduleScopeAccessIndex])
 
   useEffect(() => {
     if (isLeaving) {
@@ -66,7 +72,7 @@ function DashboardLayout({
   }, [isLeaving])
 
   const handleSelect = (label) => {
-    if (!labelHasAccess(label, permissionIndex)) return
+    if (!labelHasAccess(label, permissionIndex, undefined, moduleScopeAccessIndex)) return
     setActiveItem(label)
     setOpenTabs((prev) => (prev.includes(label) ? prev : [...prev, label]))
     if (isMobileViewport) {
@@ -101,6 +107,7 @@ function DashboardLayout({
         isOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((value) => !value)}
         permissionIndex={permissionIndex}
+        moduleScopeAccessIndex={moduleScopeAccessIndex}
       />
 
       {isSidebarOpen && isMobileViewport && (
@@ -123,6 +130,7 @@ function DashboardLayout({
         darkMode={darkMode}
         onToggleTheme={onToggleTheme}
         permissionIndex={permissionIndex}
+        moduleScopeAccessIndex={moduleScopeAccessIndex}
         isLeaving={isLeaving}
         allowUrgentShield={entryAnimationDone}
       />

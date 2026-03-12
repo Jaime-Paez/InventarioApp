@@ -205,6 +205,8 @@ class SolicitudSerializer(serializers.ModelSerializer):
     cliente_id = serializers.PrimaryKeyRelatedField(
         source="cliente",
         queryset=Cliente.objects.all(),
+        required=False,
+        allow_null=True,
         write_only=True,
     )
     sucursal = serializers.StringRelatedField(read_only=True)
@@ -246,6 +248,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "fecha",
             "descripcion_general",
             "comentario",
+            "placa",
             "sucursal",
             "sucursal_id",
             "cliente",

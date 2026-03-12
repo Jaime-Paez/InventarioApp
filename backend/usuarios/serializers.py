@@ -15,6 +15,7 @@ from .models import (
 from .utils import (
     ADMIN_ONLY_MODULES,
     build_permissions_summary,
+    build_sucursal_scope_summary,
     get_personalized_role_for_email,
 )
 
@@ -668,6 +669,7 @@ class AuthUserSerializer(serializers.ModelSerializer):
     nombre = serializers.CharField(source="first_name", read_only=True)
     apellido = serializers.CharField(source="last_name", read_only=True)
     es_administrador = serializers.BooleanField(source="is_staff", read_only=True)
+    sucursales_por_modulo = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -680,7 +682,13 @@ class AuthUserSerializer(serializers.ModelSerializer):
             "nombre",
             "apellido",
             "es_administrador",
+            "sucursales_por_modulo",
         ]
+
+    def get_sucursales_por_modulo(self, obj):
+        if obj.is_staff or obj.is_superuser:
+            return None
+        return build_sucursal_scope_summary(obj)
 
 
 class RegistroSerializer(serializers.Serializer):

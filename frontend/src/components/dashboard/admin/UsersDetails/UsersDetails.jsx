@@ -19,6 +19,7 @@ const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'movimientos_entradas',
   'movimientos_salidas',
   'productos',
+  'solicitudes',
 ])
 const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
 

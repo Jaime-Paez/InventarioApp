@@ -99,6 +99,7 @@ class Solicitud(models.Model):
     fecha = models.DateField()
     descripcion_general = models.TextField(blank=True)
     comentario = models.TextField(blank=True)
+    placa = models.CharField(max_length=20, blank=True, default="")
     sucursal = models.ForeignKey(
         "inventario.Sucursal",
         on_delete=models.PROTECT,
@@ -108,6 +109,8 @@ class Solicitud(models.Model):
         Cliente,
         on_delete=models.PROTECT,
         related_name="solicitudes",
+        null=True,
+        blank=True,
     )
 
     class Meta:

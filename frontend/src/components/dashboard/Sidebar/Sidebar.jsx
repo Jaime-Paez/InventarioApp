@@ -14,13 +14,14 @@ function Sidebar({
   isOpen,
   onToggleSidebar,
   permissionIndex,
+  moduleScopeAccessIndex = null,
 }) {
   const [openGroups, setOpenGroups] = useState({})
   const [profileOpen, setProfileOpen] = useState(false)
 
   const menuItems = useMemo(
-    () => filterMenuByPermissions(MENU_STRUCTURE, permissionIndex),
-    [permissionIndex]
+    () => filterMenuByPermissions(MENU_STRUCTURE, permissionIndex, moduleScopeAccessIndex),
+    [moduleScopeAccessIndex, permissionIndex]
   )
   const openTabSet = useMemo(() => new Set(openTabs), [openTabs])
 
