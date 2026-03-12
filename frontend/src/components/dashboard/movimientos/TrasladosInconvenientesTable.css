@@ -133,43 +133,6 @@
   background: color-mix(in srgb, #ef4444 18%, var(--table-color-hover)) !important;
 }
 
-.transfer-issues-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.transfer-issues-action-button {
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  min-height: 30px;
-  padding: 0 10px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.transfer-issues-action-button:hover:not(:disabled) {
-  background: var(--table-color-hover);
-}
-
-.transfer-issues-action-button--resolve {
-  border-color: color-mix(in srgb, var(--color-primary) 46%, var(--color-border));
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
-}
-
-.transfer-issues-action-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .transfer-issues-details__meta {
   margin: 0 0 8px;
 }
@@ -286,8 +249,7 @@
   color: var(--color-text-secondary);
 }
 
-.transfer-issues-details__decision-btn:disabled,
-.transfer-issues-action-button:disabled {
+.transfer-issues-details__decision-btn:disabled {
   opacity: 0.62;
   cursor: not-allowed;
 }

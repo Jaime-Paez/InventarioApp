@@ -7,7 +7,7 @@ import { Tooltip } from 'primereact/tooltip'
 import { OverlayPanel } from 'primereact/overlaypanel'
 import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
-import { Loader2, Wrench } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import useModalAnimation from '../common/useModalAnimation'
@@ -510,8 +510,15 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
   useEffect(() => {
     if (!showDetailsModal || !token || !resolverTargetBranchId) {
       setResolverSubdivisions([])
+      setResolverBodegaId('')
+      setResolverDivisionId('')
       setResolverSubdivisionId('')
       setResolverNeedsManualLocation(false)
+      setResolverLocationDropdownField('')
+      setResolverLocationDropdownDirection('down')
+      setResolverLocationDropdownMaxHeight(null)
+      setResolverLocationQuery('')
+      setResolverLocationDebouncedQuery('')
       return
     }
 
@@ -532,6 +539,14 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
         const payload = await response.json().catch(() => ({}))
         if (cancelled) return
         const parsed = parseApiList(payload)
+        const subdivisionPathById = new Map()
+        parsed.forEach((subdivision) => {
+          const subdivisionId = normalizeId(subdivision?.id)
+          const divisionId = normalizeId(subdivision?.division?.id)
+          const bodegaId = normalizeId(subdivision?.division?.bodega?.id)
+          if (!subdivisionId || !divisionId || !bodegaId) return
+          subdivisionPathById.set(subdivisionId, { bodegaId, divisionId, subdivisionId })
+        })
         const availableSubdivisionIds = new Set(parsed.map((item) => normalizeId(item?.id)).filter(Boolean))
 
         let preferredSubdivisionId = ''
@@ -574,17 +589,19 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
         }
 
         const preferredValid = preferredSubdivisionId && availableSubdivisionIds.has(preferredSubdivisionId)
+        const nextSubdivisionId = preferredValid ? preferredSubdivisionId : ''
+        const nextPath = subdivisionPathById.get(nextSubdivisionId) || null
         setResolverSubdivisions(parsed)
+        setResolverBodegaId(nextPath?.bodegaId || '')
+        setResolverDivisionId(nextPath?.divisionId || '')
         setResolverNeedsManualLocation(!preferredValid)
-        setResolverSubdivisionId((current) => {
-          const currentId = normalizeId(current)
-          if (currentId && availableSubdivisionIds.has(currentId)) return currentId
-          return preferredValid ? preferredSubdivisionId : ''
-        })
+        setResolverSubdivisionId(nextSubdivisionId)
       } catch (requestError) {
         if (cancelled) return
         const message = requestError?.message || 'No se pudieron cargar las subdivisiones.'
         setResolverSubdivisions([])
+        setResolverBodegaId('')
+        setResolverDivisionId('')
         setResolverSubdivisionId('')
         setResolverNeedsManualLocation(false)
         showErrorToast(message)
@@ -602,10 +619,17 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
   const resetResolverState = useCallback(() => {
     setResolverDecision('')
     setResolverMotivo('')
+    setResolverBodegaId('')
+    setResolverDivisionId('')
     setResolverSubdivisionId('')
     setResolverSubdivisions([])
     setResolverSubdivisionsLoading(false)
     setResolverNeedsManualLocation(false)
+    setResolverLocationDropdownField('')
+    setResolverLocationDropdownDirection('down')
+    setResolverLocationDropdownMaxHeight(null)
+    setResolverLocationQuery('')
+    setResolverLocationDebouncedQuery('')
     setResolverSubmitting(false)
     setResolverError('')
   }, [])
@@ -629,8 +653,149 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
     modalDrag.current.active = false
     modalResize.current.active = false
     setIsResizingModal(false)
+    setResolverLocationDropdownField('')
+    setResolverLocationDropdownDirection('down')
+    setResolverLocationDropdownMaxHeight(null)
+    setResolverLocationQuery('')
+    setResolverLocationDebouncedQuery('')
     setShowDetailsModal(false)
   }, [resolverSubmitting])
+
+  const closeResolverLocationDropdown = useCallback(() => {
+    setResolverLocationDropdownField('')
+    setResolverLocationDropdownDirection('down')
+    setResolverLocationDropdownMaxHeight(null)
+    setResolverLocationQuery('')
+    setResolverLocationDebouncedQuery('')
+  }, [])
+
+  const updateResolverLocationDropdownPlacement = useCallback(() => {
+    if (!showDetailsModal || !resolverLocationDropdownField || !resolverLocationDropdownRef.current) return
+    const trigger = resolverLocationDropdownRef.current.querySelector('.create-user__dropdown-trigger')
+    if (!trigger) return
+    const triggerRect = trigger.getBoundingClientRect()
+    const spacing = 10
+    const availableBelow = Math.max(
+      Math.floor(window.innerHeight - triggerRect.bottom - VIEWPORT_PADDING - spacing),
+      0
+    )
+    const availableAbove = Math.max(
+      Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing),
+      0
+    )
+    const nextDirection = availableBelow < 220 && availableAbove > availableBelow ? 'up' : 'down'
+    const availableSpace = nextDirection === 'up' ? availableAbove : availableBelow
+    const nextMaxHeight = Math.max(140, Math.min(320, availableSpace))
+    setResolverLocationDropdownDirection((prev) => (prev === nextDirection ? prev : nextDirection))
+    setResolverLocationDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
+  }, [resolverLocationDropdownField, showDetailsModal])
+
+  const toggleResolverLocationDropdown = useCallback(
+    (field) => {
+      const nextField = String(field || '').trim().toLowerCase()
+      if (!nextField) return
+      setResolverLocationDropdownField((current) => (current === nextField ? '' : nextField))
+      setResolverLocationDropdownDirection('down')
+      setResolverLocationDropdownMaxHeight(null)
+      setResolverLocationQuery('')
+      setResolverLocationDebouncedQuery('')
+      setTimeout(() => {
+        updateResolverLocationDropdownPlacement()
+      }, 0)
+    },
+    [updateResolverLocationDropdownPlacement]
+  )
+
+  useEffect(() => {
+    if (!showDetailsModal || !resolverLocationDropdownField) {
+      setResolverLocationDebouncedQuery('')
+      return
+    }
+    const handle = setTimeout(() => {
+      setResolverLocationDebouncedQuery(normalizeValue(resolverLocationQuery))
+    }, 260)
+    return () => clearTimeout(handle)
+  }, [resolverLocationDropdownField, resolverLocationQuery, showDetailsModal])
+
+  useEffect(() => {
+    if (!showDetailsModal || !resolverLocationDropdownField) return undefined
+    const handleClick = (event) => {
+      if (resolverLocationDropdownRef.current && !resolverLocationDropdownRef.current.contains(event.target)) {
+        closeResolverLocationDropdown()
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [closeResolverLocationDropdown, resolverLocationDropdownField, showDetailsModal])
+
+  useEffect(() => {
+    if (!showDetailsModal || !resolverLocationDropdownField) return undefined
+    updateResolverLocationDropdownPlacement()
+    const handleReposition = () => {
+      updateResolverLocationDropdownPlacement()
+    }
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [resolverLocationDropdownField, showDetailsModal, updateResolverLocationDropdownPlacement])
+
+  const handleResolverLocationPick = useCallback(
+    (field, optionId) => {
+      const normalizedField = String(field || '').trim().toLowerCase()
+      const normalizedOptionId = normalizeId(optionId)
+      if (!normalizedField || !normalizedOptionId) return
+
+      if (normalizedField === 'bodega') {
+        setResolverBodegaId(normalizedOptionId)
+        setResolverDivisionId('')
+        setResolverSubdivisionId('')
+        setResolverNeedsManualLocation(true)
+        setResolverError('')
+        closeResolverLocationDropdown()
+        return
+      }
+
+      if (normalizedField === 'division') {
+        if (!resolverBodegaId) return
+        const isValidDivision = (resolverDivisionsByBodega.get(resolverBodegaId) || []).some(
+          (division) => normalizeId(division?.id) === normalizedOptionId
+        )
+        if (!isValidDivision) return
+        setResolverDivisionId(normalizedOptionId)
+        setResolverSubdivisionId('')
+        setResolverNeedsManualLocation(true)
+        setResolverError('')
+        closeResolverLocationDropdown()
+        return
+      }
+
+      if (normalizedField === 'subdivision') {
+        if (!resolverDivisionId) return
+        const isValidSubdivision = (resolverSubdivisionsByDivision.get(resolverDivisionId) || []).some(
+          (subdivision) => normalizeId(subdivision?.id) === normalizedOptionId
+        )
+        if (!isValidSubdivision) return
+        const selectedPath = resolverSubdivisionPathById.get(normalizedOptionId) || null
+        setResolverBodegaId(selectedPath?.bodegaId || resolverBodegaId)
+        setResolverDivisionId(selectedPath?.divisionId || resolverDivisionId)
+        setResolverSubdivisionId(normalizedOptionId)
+        setResolverNeedsManualLocation(false)
+        setResolverError('')
+        closeResolverLocationDropdown()
+      }
+    },
+    [
+      closeResolverLocationDropdown,
+      resolverBodegaId,
+      resolverDivisionId,
+      resolverDivisionsByBodega,
+      resolverSubdivisionPathById,
+      resolverSubdivisionsByDivision,
+    ]
+  )
 
   const clearFilter = useCallback(() => {
     setFilters(createInitialFilters())
@@ -685,8 +850,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
       const target = event?.originalEvent?.target
       if (
         target?.closest?.('.p-checkbox') ||
-        target?.closest?.('.row-selection-column') ||
-        target?.closest?.('.transfer-issues-action-button')
+        target?.closest?.('.row-selection-column')
       ) {
         return
       }
@@ -760,7 +924,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
       (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') &&
       !normalizeId(resolverSubdivisionId)
     ) {
-      setResolverError('Debes seleccionar una subdivision para sumar inventario.')
+      setResolverError('Debes seleccionar bodega, division y subdivision para sumar inventario.')
       return
     }
 
@@ -1079,38 +1243,6 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
     []
   )
 
-  const actionBodyTemplate = useCallback(
-    (row) => {
-      const rowState = String(row?.estado || '').trim().toLowerCase()
-      const canResolveRow = Boolean(canUpdate && rowState === 'pendiente')
-      return (
-        <div className="transfer-issues-actions">
-          <button
-            type="button"
-            className="transfer-issues-action-button"
-            onClick={() => openDetails(row)}
-          >
-            Detalles
-          </button>
-          {canResolveRow ? (
-            <button
-              type="button"
-              className="transfer-issues-action-button transfer-issues-action-button--resolve"
-              onClick={() => {
-                openDetails(row)
-                setResolverDecision('')
-              }}
-            >
-              <Wrench size={13} />
-              Resolver
-            </button>
-          ) : null}
-        </div>
-      )
-    },
-    [canUpdate, openDetails]
-  )
-
   if (!canRead) {
     return (
       <div className="users-page transfer-issues-page">
@@ -1285,15 +1417,6 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
             )
           })}
 
-          <Column
-            field="acciones"
-            header="Acciones"
-            body={actionBodyTemplate}
-            className="column-max-min-width"
-            headerClassName="column-max-min-width"
-            exportable={false}
-            reorderable={false}
-          />
         </DataTable>
 
         <OverlayPanel ref={opColumns} className="table-options-list">
@@ -1448,8 +1571,11 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
                           }`}
                           onClick={() => {
                             setResolverDecision('sumar_proveedora')
+                            setResolverBodegaId('')
+                            setResolverDivisionId('')
                             setResolverSubdivisionId('')
                             setResolverNeedsManualLocation(false)
+                            closeResolverLocationDropdown()
                           }}
                           disabled={resolverSubmitting}
                         >
@@ -1462,8 +1588,11 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
                           }`}
                           onClick={() => {
                             setResolverDecision('sumar_solicitante')
+                            setResolverBodegaId('')
+                            setResolverDivisionId('')
                             setResolverSubdivisionId('')
                             setResolverNeedsManualLocation(false)
+                            closeResolverLocationDropdown()
                           }}
                           disabled={resolverSubmitting}
                         >
@@ -1476,8 +1605,11 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
                           }`}
                           onClick={() => {
                             setResolverDecision('perdido')
+                            setResolverBodegaId('')
+                            setResolverDivisionId('')
                             setResolverSubdivisionId('')
                             setResolverNeedsManualLocation(false)
+                            closeResolverLocationDropdown()
                           }}
                           disabled={resolverSubmitting}
                         >
@@ -1487,28 +1619,285 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
 
                       {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') && (
                         <label className="create-user__field create-user__field--full transfer-issues-details__field">
-                          <span>Subdivision destino ({resolverTargetBranchLabel})</span>
-                          <select
-                            value={resolverSubdivisionId}
-                            onChange={(event) => setResolverSubdivisionId(String(event.target.value || ''))}
-                            disabled={resolverSubmitting || resolverSubdivisionsLoading}
-                          >
-                            <option value="">Selecciona subdivision</option>
-                            {resolverSubdivisions.map((subdivision) => (
-                              <option key={`resolver-subdivision-${subdivision.id}`} value={subdivision.id}>
-                                {String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}
-                              </option>
-                            ))}
-                          </select>
+                          <span>Ubicacion ({resolverTargetBranchLabel})</span>
+                          <div className="create-entrada__location-picker-grid">
+                            <div className="create-entrada__location-picker-item">
+                              <small>Bodega</small>
+                              <div
+                                className="create-user__dropdown create-salida__product-dropdown"
+                                ref={resolverLocationDropdownField === 'bodega' ? resolverLocationDropdownRef : null}
+                              >
+                                <button
+                                  type="button"
+                                  className="create-user__dropdown-trigger"
+                                  onClick={() => toggleResolverLocationDropdown('bodega')}
+                                  disabled={resolverSubmitting || resolverSubdivisionsLoading}
+                                >
+                                  <span>
+                                    {selectedResolverBodega
+                                      ? formatBodegaLocationLabel(selectedResolverBodega)
+                                      : 'Selecciona una bodega'}
+                                  </span>
+                                  <i className={`pi pi-chevron-${resolverLocationDropdownField === 'bodega' ? 'up' : 'down'}`} />
+                                </button>
+
+                                {resolverLocationDropdownField === 'bodega' && (
+                                  <div
+                                    className={`create-user__dropdown-panel ${
+                                      resolverLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                    }`}
+                                    style={
+                                      resolverLocationDropdownMaxHeight
+                                        ? { maxHeight: `${resolverLocationDropdownMaxHeight}px` }
+                                        : undefined
+                                    }
+                                  >
+                                    <div className="create-user__dropdown-search">
+                                      <i className="pi pi-search" />
+                                      <input
+                                        type="text"
+                                        placeholder="Buscar bodega"
+                                        value={resolverLocationQuery}
+                                        onChange={(event) => setResolverLocationQuery(event.target.value)}
+                                        disabled={resolverSubmitting}
+                                      />
+                                    </div>
+                                    <div
+                                      className="create-user__dropdown-results"
+                                      style={
+                                        resolverLocationDropdownMaxHeight
+                                          ? {
+                                              maxHeight: `${Math.max(resolverLocationDropdownMaxHeight - 72, 84)}px`,
+                                            }
+                                          : undefined
+                                      }
+                                    >
+                                      {!filterResolverLocationOptions(
+                                        resolverBodegas,
+                                        (bodega) =>
+                                          `${formatBodegaLocationLabel(bodega)} ${String(
+                                            bodega?.sucursal?.nombre || ''
+                                          ).trim()}`
+                                      ).length && <small className="muted">Sin resultados.</small>}
+                                      {filterResolverLocationOptions(
+                                        resolverBodegas,
+                                        (bodega) =>
+                                          `${formatBodegaLocationLabel(bodega)} ${String(
+                                            bodega?.sucursal?.nombre || ''
+                                          ).trim()}`
+                                      ).map((bodega) => (
+                                        <button
+                                          key={`resolver-bodega-option-${bodega.id}`}
+                                          type="button"
+                                          className="create-user__result-option"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => {
+                                            event.preventDefault()
+                                            event.stopPropagation()
+                                            handleResolverLocationPick('bodega', bodega.id)
+                                          }}
+                                          disabled={resolverSubmitting}
+                                        >
+                                          <div className="create-user__result-info">
+                                            <strong>{String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}</strong>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="create-entrada__location-picker-item">
+                              <small>Division</small>
+                              <div
+                                className="create-user__dropdown create-salida__product-dropdown"
+                                ref={resolverLocationDropdownField === 'division' ? resolverLocationDropdownRef : null}
+                              >
+                                <button
+                                  type="button"
+                                  className="create-user__dropdown-trigger"
+                                  onClick={() => toggleResolverLocationDropdown('division')}
+                                  disabled={resolverSubmitting || resolverSubdivisionsLoading || !resolverBodegaId}
+                                >
+                                  <span>
+                                    {selectedResolverDivision
+                                      ? String(selectedResolverDivision?.nombre || '').trim()
+                                      : 'Selecciona una division'}
+                                  </span>
+                                  <i className={`pi pi-chevron-${resolverLocationDropdownField === 'division' ? 'up' : 'down'}`} />
+                                </button>
+
+                                {resolverLocationDropdownField === 'division' && (
+                                  <div
+                                    className={`create-user__dropdown-panel ${
+                                      resolverLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                    }`}
+                                    style={
+                                      resolverLocationDropdownMaxHeight
+                                        ? { maxHeight: `${resolverLocationDropdownMaxHeight}px` }
+                                        : undefined
+                                    }
+                                  >
+                                    <div className="create-user__dropdown-search">
+                                      <i className="pi pi-search" />
+                                      <input
+                                        type="text"
+                                        placeholder="Buscar division"
+                                        value={resolverLocationQuery}
+                                        onChange={(event) => setResolverLocationQuery(event.target.value)}
+                                        disabled={resolverSubmitting}
+                                      />
+                                    </div>
+                                    <div
+                                      className="create-user__dropdown-results"
+                                      style={
+                                        resolverLocationDropdownMaxHeight
+                                          ? {
+                                              maxHeight: `${Math.max(resolverLocationDropdownMaxHeight - 72, 84)}px`,
+                                            }
+                                          : undefined
+                                      }
+                                    >
+                                      {!filterResolverLocationOptions(
+                                        resolverDivisionOptions,
+                                        (division) =>
+                                          `${formatDivisionLocationLabel(division)} ${String(
+                                            division?.bodega?.sucursal?.nombre || ''
+                                          ).trim()}`
+                                      ).length && <small className="muted">Sin resultados.</small>}
+                                      {filterResolverLocationOptions(
+                                        resolverDivisionOptions,
+                                        (division) =>
+                                          `${formatDivisionLocationLabel(division)} ${String(
+                                            division?.bodega?.sucursal?.nombre || ''
+                                          ).trim()}`
+                                      ).map((division) => (
+                                        <button
+                                          key={`resolver-division-option-${division.id}`}
+                                          type="button"
+                                          className="create-user__result-option"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => {
+                                            event.preventDefault()
+                                            event.stopPropagation()
+                                            handleResolverLocationPick('division', division.id)
+                                          }}
+                                          disabled={resolverSubmitting}
+                                        >
+                                          <div className="create-user__result-info">
+                                            <strong>{String(division?.nombre || `Division ${division.id}`).trim()}</strong>
+                                            <small>{formatDivisionLocationLabel(division)}</small>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="create-entrada__location-picker-item">
+                              <small>Subdivision</small>
+                              <div
+                                className="create-user__dropdown create-salida__product-dropdown"
+                                ref={resolverLocationDropdownField === 'subdivision' ? resolverLocationDropdownRef : null}
+                              >
+                                <button
+                                  type="button"
+                                  className="create-user__dropdown-trigger"
+                                  onClick={() => toggleResolverLocationDropdown('subdivision')}
+                                  disabled={resolverSubmitting || resolverSubdivisionsLoading || !resolverDivisionId}
+                                >
+                                  <span>
+                                    {selectedResolverSubdivision
+                                      ? String(selectedResolverSubdivision?.nombre || '').trim()
+                                      : 'Selecciona una subdivision'}
+                                  </span>
+                                  <i className={`pi pi-chevron-${resolverLocationDropdownField === 'subdivision' ? 'up' : 'down'}`} />
+                                </button>
+
+                                {resolverLocationDropdownField === 'subdivision' && (
+                                  <div
+                                    className={`create-user__dropdown-panel ${
+                                      resolverLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                    }`}
+                                    style={
+                                      resolverLocationDropdownMaxHeight
+                                        ? { maxHeight: `${resolverLocationDropdownMaxHeight}px` }
+                                        : undefined
+                                    }
+                                  >
+                                    <div className="create-user__dropdown-search">
+                                      <i className="pi pi-search" />
+                                      <input
+                                        type="text"
+                                        placeholder="Buscar subdivision"
+                                        value={resolverLocationQuery}
+                                        onChange={(event) => setResolverLocationQuery(event.target.value)}
+                                        disabled={resolverSubmitting}
+                                      />
+                                    </div>
+                                    <div
+                                      className="create-user__dropdown-results"
+                                      style={
+                                        resolverLocationDropdownMaxHeight
+                                          ? {
+                                              maxHeight: `${Math.max(resolverLocationDropdownMaxHeight - 72, 84)}px`,
+                                            }
+                                          : undefined
+                                      }
+                                    >
+                                      {!filterResolverLocationOptions(
+                                        resolverSubdivisionOptions,
+                                        (subdivision) =>
+                                          `${formatSubdivisionLocationLabel(subdivision)} ${String(
+                                            subdivision?.division?.bodega?.sucursal?.nombre || ''
+                                          ).trim()}`
+                                      ).length && <small className="muted">Sin resultados.</small>}
+                                      {filterResolverLocationOptions(
+                                        resolverSubdivisionOptions,
+                                        (subdivision) =>
+                                          `${formatSubdivisionLocationLabel(subdivision)} ${String(
+                                            subdivision?.division?.bodega?.sucursal?.nombre || ''
+                                          ).trim()}`
+                                      ).map((subdivision) => (
+                                        <button
+                                          key={`resolver-subdivision-option-${subdivision.id}`}
+                                          type="button"
+                                          className="create-user__result-option"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => {
+                                            event.preventDefault()
+                                            event.stopPropagation()
+                                            handleResolverLocationPick('subdivision', subdivision.id)
+                                          }}
+                                          disabled={resolverSubmitting}
+                                        >
+                                          <div className="create-user__result-info">
+                                            <strong>
+                                              {String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}
+                                            </strong>
+                                            <small>{formatSubdivisionLocationLabel(subdivision)}</small>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                           {resolverSubdivisionsLoading ? (
                             <small className="transfer-issues-details__loading">
                               <Loader2 size={12} />
                               Cargando subdivisiones...
                             </small>
                           ) : null}
-                          {!resolverSubdivisionsLoading && resolverNeedsManualLocation ? (
+                          {!resolverSubdivisionsLoading && resolverNeedsManualLocation && !resolverSubdivisionId ? (
                             <small className="transfer-issues-details__manual-location-hint">
-                              Este producto no tiene ubicacion previa en esta sucursal. Selecciona una subdivision.
+                              Este producto no tiene ubicacion previa en esta sucursal. Selecciona bodega, division y subdivision.
                             </small>
                           ) : null}
                         </label>
