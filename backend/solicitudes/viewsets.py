@@ -190,6 +190,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             self.request.user,
             RolPermiso.Modulos.SOLICITUDES,
             "sucursal_id",
+            action_key="puede_leer",
         )
 
         params = self.request.query_params
@@ -258,6 +259,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             self.request.user,
             RolPermiso.Modulos.SOLICITUDES,
             getattr(sucursal, "id", None),
+            action_key="puede_crear",
         )
         serializer.save(fecha=timezone.localdate())
 
@@ -267,6 +269,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             self.request.user,
             RolPermiso.Modulos.SOLICITUDES,
             getattr(sucursal, "id", None),
+            action_key="puede_actualizar",
         )
         serializer.save()
 
@@ -357,6 +360,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             request.user,
             RolPermiso.Modulos.SOLICITUDES,
             getattr(sucursal, "id", None),
+            action_key="puede_crear",
         )
 
         fecha = timezone.localdate()

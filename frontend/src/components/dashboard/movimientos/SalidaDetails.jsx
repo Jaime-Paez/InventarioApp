@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Eye, Pencil } from 'lucide-react'
 import '../admin/CreateUsuario/CreateUsuario.css'
+import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
@@ -2316,11 +2318,14 @@ function SalidaDetails({
               {allowEdit && (
                 <button
                   type="button"
-                  className="create-user__action create-user__action--secondary"
+                  className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
                   onClick={() => setIsEditing((prev) => !prev)}
                   disabled={loadingData || saving || deleteLoading}
                 >
-                  {isEditing ? 'Solo lectura' : 'Editar'}
+                  <span className="user-details__toggle-icon" aria-hidden="true">
+                    {isEditing ? <Eye size={14} /> : <Pencil size={14} />}
+                  </span>
+                  <span>{isEditing ? 'Solo lectura' : 'Editar'}</span>
                 </button>
               )}
             </div>
@@ -2330,7 +2335,7 @@ function SalidaDetails({
                   {allowDelete && (
                     <button
                       type="button"
-                      className="create-user__action create-user__action--secondary"
+                      className="create-user__action user-details__delete"
                       onClick={handleDelete}
                       disabled={deleteLoading || saving}
                     >

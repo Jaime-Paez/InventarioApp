@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Eye, Pencil } from 'lucide-react'
 import '../admin/CreateUsuario/CreateUsuario.css'
+import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
@@ -271,6 +273,8 @@ function EntradaDetails({
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteInventoryAction, setDeleteInventoryAction] = useState('reverse')
   const [isEditing, setIsEditing] = useState(false)
   const [, setError] = useState('')
 
@@ -344,8 +348,15 @@ function EntradaDetails({
     notifyError(detailError)
   }, [detailError, notifyError])
 
+  useEffect(() => {
+    if (open) return
+    setShowDeleteConfirm(false)
+    setDeleteInventoryAction('reverse')
+  }, [open])
+
   const hasPreviewData = Boolean(previewData?.es_solicitud_traslado)
   const isReadOnlyMode = Boolean(readOnly || hasPreviewData)
+  const lineItemsReadOnly = true
 
   const entradaTipoId = useMemo(() => {
     const entrada = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('ent'))
@@ -1400,6 +1411,7 @@ function EntradaDetails({
   const handleChange = (event) => {
     if (!isEditing) return
     const { name, value, type, checked } = event.target
+    if (name === 'factura_referencia') return
     setFormData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -1461,7 +1473,7 @@ function EntradaDetails({
   }
 
   const handleDetailChange = (event) => {
-    if (!isEditing) return
+    if (!isEditing || lineItemsReadOnly) return
     const { name, value } = event.target
     if (name !== 'cantidad') return
     setDetailError('')
@@ -1472,7 +1484,7 @@ function EntradaDetails({
   }
 
   const handleProductSelect = (producto) => {
-    if (!isEditing || !producto?.id) return
+    if (!isEditing || !producto?.id || lineItemsReadOnly) return
     const productPrice = resolveProductPrice(producto)
     setDetailError('')
     setDetailDraft((prev) => ({
@@ -1490,7 +1502,7 @@ function EntradaDetails({
   }
 
   const handleAddDetail = () => {
-    if (!isEditing) return
+    if (!isEditing || lineItemsReadOnly) return
     setDetailError('')
     const productoId = String(detailDraft.productoId || '').trim()
     const cantidad = parseIntValue(detailDraft.cantidad)
@@ -1557,7 +1569,7 @@ function EntradaDetails({
   }
 
   const handleRemoveDetail = (uid) => {
-    if (!isEditing) return
+    if (!isEditing || lineItemsReadOnly) return
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
   }
 
@@ -1583,6 +1595,8 @@ function EntradaDetails({
     setClienteLoading(false)
     setSelectedCliente(null)
     setError('')
+    setShowDeleteConfirm(false)
+    setDeleteInventoryAction('reverse')
     setIsEditing(false)
   }
 
@@ -1687,6 +1701,9 @@ function EntradaDetails({
 
     const descuento = isVenta ? Math.max(descuentoIngresado ?? 0, 0) : 0
     const ivaRate = parseNumber(formData.iva_rate)
+    const lockedFacturaReferencia = String(
+      originalData?.form?.factura_referencia ?? formData.factura_referencia ?? ''
+    ).trim()
 
     const payload = {
       sucursal_id: Number(formData.sucursalId),
@@ -1699,7 +1716,7 @@ function EntradaDetails({
       descuento,
       fecha: formData.fecha,
       no_documento: formData.no_documento.trim(),
-      factura_referencia: String(formData.factura_referencia || '').trim(),
+      factura_referencia: lockedFacturaReferencia,
       detalles: details.map((detail) => {
         const cantidad = parseIntValue(detail.cantidad) || 0
         const valor = parseNumber(detail.valor) || 0
@@ -1756,15 +1773,32 @@ function EntradaDetails({
     }
   }
 
+  const openDeleteConfirm = () => {
+    if (!allowDelete) return
+    if (isReadOnlyMode) return
+    if (!isEditing || deleteLoading) return
+    setDeleteInventoryAction('reverse')
+    setShowDeleteConfirm(true)
+  }
+
+  const closeDeleteConfirm = () => {
+    if (deleteLoading) return
+    setShowDeleteConfirm(false)
+  }
+
   const handleDelete = async () => {
+    if (!showDeleteConfirm) return
     if (!allowDelete) return
     if (isReadOnlyMode) return
     if (!isEditing || deleteLoading) return
     setDeleteLoading(true)
 
     try {
+      const actionParam = deleteInventoryAction === 'keep' ? 'keep' : 'reverse'
       const response = await authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/${entradaId}/`,
+        `${API_URL}/movimientos/movimiento_inventario/${entradaId}/?inventory_action=${encodeURIComponent(
+          actionParam
+        )}`,
         { method: 'DELETE' },
         token
       )
@@ -1775,6 +1809,7 @@ function EntradaDetails({
         throw new Error(detail)
       }
 
+      setShowDeleteConfirm(false)
       onDeleted?.(entradaId)
     } catch (err) {
       notifyError(err?.message || 'Ocurrio un error al eliminar la entrada.')
@@ -1991,7 +2026,7 @@ function EntradaDetails({
 
                     <label className="create-user__field">
                       <span>Sucursal</span>
-                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={editorDisabled}>
+                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled>
                         <option value="">Selecciona una sucursal</option>
                         {branches.map((branch) => (
                           <option key={branch.id} value={branch.id}>
@@ -2008,7 +2043,7 @@ function EntradaDetails({
                           name="sucursalObjetivoId"
                           value={formData.sucursalObjetivoId}
                           onChange={handleChange}
-                          disabled={editorDisabled}
+                          disabled
                         >
                           <option value="">Selecciona una sucursal</option>
                           {branches.map((branch) => (
@@ -2112,7 +2147,8 @@ function EntradaDetails({
                           type="text"
                           value={formData.factura_referencia}
                           onChange={handleChange}
-                          disabled={editorDisabled}
+                          disabled
+                          readOnly
                           required={isDevolucion}
                           placeholder="Factura emitida en la venta"
                         />
@@ -2168,7 +2204,7 @@ function EntradaDetails({
                       <span>Acciones</span>
                     </div>
 
-                    {!isReadOnlyMode && (
+                    {!isReadOnlyMode && !lineItemsReadOnly && (
                       <div className="create-user__locations-row create-user__locations-row--form">
                         <span className="create-salida__product-picker">
                           <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
@@ -2305,7 +2341,7 @@ function EntradaDetails({
                         <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
-                          {!isReadOnlyMode ? (
+                          {!isReadOnlyMode && !lineItemsReadOnly ? (
                             <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={editorDisabled}>
                               x
                             </button>
@@ -2505,11 +2541,14 @@ function EntradaDetails({
               {!isReadOnlyMode && allowEdit && (
                 <button
                   type="button"
-                  className="create-user__action create-user__action--secondary"
+                  className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
                   onClick={() => setIsEditing((prev) => !prev)}
                   disabled={loadingData || saving || deleteLoading}
                 >
-                  {isEditing ? 'Solo lectura' : 'Editar'}
+                  <span className="user-details__toggle-icon" aria-hidden="true">
+                    {isEditing ? <Eye size={14} /> : <Pencil size={14} />}
+                  </span>
+                  <span>{isEditing ? 'Solo lectura' : 'Editar'}</span>
                 </button>
               )}
               {canCreateNewTransferFromRejected && (
@@ -2529,8 +2568,8 @@ function EntradaDetails({
                   {allowDelete && (
                     <button
                       type="button"
-                      className="create-user__action create-user__action--secondary"
-                      onClick={handleDelete}
+                      className="create-user__action user-details__delete"
+                      onClick={openDeleteConfirm}
                       disabled={deleteLoading || saving}
                     >
                       {deleteLoading ? 'Eliminando...' : 'Eliminar'}
@@ -2551,6 +2590,71 @@ function EntradaDetails({
             </div>
           </div>
         </form>
+
+        {showDeleteConfirm && (
+          <div className="create-salida__confirm-overlay" onMouseDown={closeDeleteConfirm}>
+            <div
+              className="create-salida__confirm-card create-salida__confirm-card--cancel entrada-details__delete-confirm-card"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <h4>Eliminar entrada</h4>
+              <p>
+                Se eliminara la entrada <strong>{String(formData.no_documento || '').trim() || `#${entradaId}`}</strong>.
+              </p>
+              <p className="create-salida__confirm-warning">
+                Elige como quieres manejar el inventario asociado a esta entrada.
+              </p>
+              <fieldset className="entrada-details__delete-confirm-options">
+                <label className="entrada-details__delete-confirm-option">
+                  <input
+                    type="radio"
+                    name="entry-delete-inventory-action"
+                    value="keep"
+                    checked={deleteInventoryAction === 'keep'}
+                    onChange={() => setDeleteInventoryAction('keep')}
+                    disabled={deleteLoading}
+                  />
+                  <span>
+                    <strong>Mantener inventario actual</strong>
+                    <small>Elimina el documento sin restar cantidades del inventario.</small>
+                  </span>
+                </label>
+                <label className="entrada-details__delete-confirm-option">
+                  <input
+                    type="radio"
+                    name="entry-delete-inventory-action"
+                    value="reverse"
+                    checked={deleteInventoryAction === 'reverse'}
+                    onChange={() => setDeleteInventoryAction('reverse')}
+                    disabled={deleteLoading}
+                  />
+                  <span>
+                    <strong>Restar inventario ingresado</strong>
+                    <small>Revierte las cantidades que esta entrada sumo al inventario.</small>
+                  </span>
+                </label>
+              </fieldset>
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={closeDeleteConfirm}
+                  disabled={deleteLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action user-details__confirm-danger"
+                  onClick={handleDelete}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? 'Eliminando...' : 'Eliminar entrada'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <button
           type="button"

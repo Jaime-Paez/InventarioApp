@@ -22,6 +22,32 @@ def _normalize_submodule(value):
     return value or ""
 
 
+SCOPE_ACTION_KEYS = (
+    "puede_crear",
+    "puede_leer",
+    "puede_actualizar",
+    "puede_eliminar",
+)
+
+
+def normalize_scope_action_flags(source):
+    flags = {key: bool(source.get(key)) for key in SCOPE_ACTION_KEYS}
+
+    if flags["puede_eliminar"]:
+        flags["puede_crear"] = True
+        flags["puede_actualizar"] = True
+
+    if flags["puede_crear"] or flags["puede_actualizar"] or flags["puede_eliminar"]:
+        flags["puede_leer"] = True
+
+    if not flags["puede_leer"]:
+        flags["puede_crear"] = False
+        flags["puede_actualizar"] = False
+        flags["puede_eliminar"] = False
+
+    return flags
+
+
 def validate_permissions_uniqueness(permisos):
     combos = set()
     for permiso in permisos:
@@ -46,6 +72,49 @@ def validate_scope_modules_uniqueness(scopes):
             )
         seen.add(modulo)
     return scopes
+
+
+def build_sucursal_scope_payload(scopes):
+    grouped = {}
+    for scope in scopes:
+        modulo = str(getattr(scope, "modulo", "") or "").strip()
+        if not modulo:
+            continue
+
+        branch_id = getattr(scope, "sucursal_id", None)
+        if branch_id is None:
+            continue
+
+        branch_id = int(branch_id)
+        normalized_flags = normalize_scope_action_flags(
+            {
+                "puede_crear": getattr(scope, "puede_crear", False),
+                "puede_leer": getattr(scope, "puede_leer", False),
+                "puede_actualizar": getattr(scope, "puede_actualizar", False),
+                "puede_eliminar": getattr(scope, "puede_eliminar", False),
+            }
+        )
+        if not any(normalized_flags.values()):
+            continue
+
+        grouped.setdefault(modulo, {})
+        grouped[modulo][branch_id] = normalized_flags
+
+    payload = []
+    for modulo, action_by_branch in grouped.items():
+        branch_ids = sorted(action_by_branch.keys())
+        payload.append(
+            {
+                "modulo": modulo,
+                "sucursales_ids": branch_ids,
+                "acciones_por_sucursal": [
+                    {"sucursal_id": branch_id, **action_by_branch[branch_id]}
+                    for branch_id in branch_ids
+                ],
+            }
+        )
+
+    return payload
 
 
 class RolPermisoSerializer(serializers.ModelSerializer):
@@ -124,6 +193,20 @@ class RolSerializer(serializers.ModelSerializer):
         return validate_permissions_uniqueness(value)
 
 
+class ModuloSucursalActionSerializer(serializers.Serializer):
+    sucursal_id = serializers.PrimaryKeyRelatedField(queryset=Sucursal.objects.all())
+    puede_crear = serializers.BooleanField(required=False, default=False)
+    puede_leer = serializers.BooleanField(required=False, default=False)
+    puede_actualizar = serializers.BooleanField(required=False, default=False)
+    puede_eliminar = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        return {
+            "sucursal_id": attrs["sucursal_id"],
+            **normalize_scope_action_flags(attrs),
+        }
+
+
 class ModuloSucursalScopeSerializer(serializers.Serializer):
     modulo = serializers.ChoiceField(choices=MODULOS_CON_ALCANCE_SUCURSAL)
     sucursales_ids = serializers.PrimaryKeyRelatedField(
@@ -131,6 +214,37 @@ class ModuloSucursalScopeSerializer(serializers.Serializer):
         queryset=Sucursal.objects.all(),
         required=False,
     )
+    acciones_por_sucursal = ModuloSucursalActionSerializer(many=True, required=False)
+
+    def validate(self, attrs):
+        acciones_por_sucursal = attrs.get("acciones_por_sucursal") or []
+        sucursales_ids = attrs.get("sucursales_ids") or []
+
+        if acciones_por_sucursal:
+            by_branch = {}
+            for scope_item in acciones_por_sucursal:
+                branch_id = int(scope_item["sucursal_id"].id)
+                if branch_id in by_branch:
+                    raise serializers.ValidationError(
+                        {
+                            "acciones_por_sucursal": (
+                                "No se puede repetir la misma sucursal dentro del "
+                                "mismo modulo."
+                            )
+                        }
+                    )
+                by_branch[branch_id] = scope_item
+
+            attrs["acciones_por_sucursal"] = list(by_branch.values())
+            attrs["sucursales_ids"] = [entry["sucursal_id"] for entry in attrs["acciones_por_sucursal"]]
+            return attrs
+
+        if sucursales_ids:
+            attrs["sucursales_ids"] = list(
+                {int(sucursal.id): sucursal for sucursal in sucursales_ids}.values()
+            )
+
+        return attrs
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
@@ -320,6 +434,34 @@ class UsuarioSerializer(serializers.ModelSerializer):
         instances = []
         for scope in scopes_data:
             modulo = scope.get("modulo")
+            if not modulo:
+                continue
+
+            acciones_por_sucursal = scope.get("acciones_por_sucursal") or []
+            action_map = {}
+            for action_scope in acciones_por_sucursal:
+                sucursal_obj = action_scope.get("sucursal_id")
+                if sucursal_obj is None:
+                    continue
+
+                branch_id = int(sucursal_obj.id if isinstance(sucursal_obj, Sucursal) else sucursal_obj)
+                flags = normalize_scope_action_flags(action_scope)
+                if not any(flags.values()):
+                    continue
+                action_map[branch_id] = flags
+
+            if action_map:
+                for sucursal_id, flags in action_map.items():
+                    instances.append(
+                        UsuarioModuloSucursal(
+                            usuario=usuario,
+                            modulo=modulo,
+                            sucursal_id=sucursal_id,
+                            **flags,
+                        )
+                    )
+                continue
+
             sucursales = scope.get("sucursales_ids") or []
             unique_ids = {int(sucursal.id) for sucursal in sucursales}
             for sucursal_id in unique_ids:
@@ -328,6 +470,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
                         usuario=usuario,
                         modulo=modulo,
                         sucursal_id=sucursal_id,
+                        puede_crear=True,
+                        puede_leer=True,
+                        puede_actualizar=True,
+                        puede_eliminar=True,
                     )
                 )
 
@@ -365,15 +511,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         ]
 
     def get_sucursales_por_modulo(self, obj):
-        grouped = {}
-        scopes = obj.alcances_sucursal.all()
-        for scope in scopes:
-            grouped.setdefault(scope.modulo, set()).add(int(scope.sucursal_id))
-
-        return [
-            {"modulo": modulo, "sucursales_ids": sorted(sucursal_ids)}
-            for modulo, sucursal_ids in grouped.items()
-        ]
+        return build_sucursal_scope_payload(obj.alcances_sucursal.all())
 
     def get_inspeccion_aleatoria(self, obj):
         preference = getattr(obj, "preferencia_operativa", None)
@@ -426,15 +564,7 @@ class UsuarioDestinatarioSerializer(serializers.ModelSerializer):
         ]
 
     def get_sucursales_por_modulo(self, obj):
-        grouped = {}
-        scopes = obj.alcances_sucursal.all()
-        for scope in scopes:
-            grouped.setdefault(scope.modulo, set()).add(int(scope.sucursal_id))
-
-        return [
-            {"modulo": modulo, "sucursales_ids": sorted(sucursal_ids)}
-            for modulo, sucursal_ids in grouped.items()
-        ]
+        return build_sucursal_scope_payload(obj.alcances_sucursal.all())
 
 
 class UsuarioSucursalSerializer(serializers.ModelSerializer):

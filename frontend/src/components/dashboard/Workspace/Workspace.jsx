@@ -20,6 +20,20 @@ import { getModuleActions, labelHasAccess } from '../menuConfig'
 import { API_URL, authFetch } from '../../../utils/api'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
+const parseScopedBranchIdsHeader = (rawValue) => {
+  const normalized = String(rawValue || '').trim()
+  if (!normalized) return null
+  if (normalized.toLowerCase() === 'all') return null
+  if (normalized.toLowerCase() === 'none') return []
+  return Array.from(
+    new Set(
+      normalized
+        .split(',')
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    )
+  )
+}
 const INCONVENIENTES_TAB = 'Inconvenientes'
 const INCONVENIENTES_TAB_LEGACY = 'Traslados con inconvenientes'
 const INVENTORY_REVIEW_TAB = 'Revision inventario'
@@ -71,6 +85,10 @@ function Workspace({
   const [movementBranchCanViewAll, setMovementBranchCanViewAll] = useState({
     Entradas: false,
     Salidas: false,
+  })
+  const [movementBranchWritableIds, setMovementBranchWritableIds] = useState({
+    Entradas: null,
+    Salidas: null,
   })
   const [movementBranchSelection, setMovementBranchSelection] = useState({
     Entradas: ALL_BRANCH_OPTION_ID,
@@ -128,9 +146,15 @@ function Workspace({
           response.headers.get('x-sucursal-scope-unrestricted') ||
           ''
         ).trim() === '1'
+        const writableBranchIds = parseScopedBranchIdsHeader(
+          response.headers.get('X-Sucursal-Scope-Writable-Ids') ||
+          response.headers.get('x-sucursal-scope-writable-ids') ||
+          ''
+        )
 
         setMovementBranchOptions((prev) => ({ ...prev, [tab]: branches }))
         setMovementBranchCanViewAll((prev) => ({ ...prev, [tab]: canViewAll }))
+        setMovementBranchWritableIds((prev) => ({ ...prev, [tab]: writableBranchIds }))
         setMovementBranchSelection((prev) => {
           const current = String(prev?.[tab] || '').trim()
           const firstBranchId = String(branches?.[0]?.id || '').trim()
@@ -145,6 +169,7 @@ function Workspace({
       } catch {
         setMovementBranchOptions((prev) => ({ ...prev, [tab]: [] }))
         setMovementBranchCanViewAll((prev) => ({ ...prev, [tab]: false }))
+        setMovementBranchWritableIds((prev) => ({ ...prev, [tab]: [] }))
         setMovementBranchSelection((prev) => ({ ...prev, [tab]: '' }))
       }
     },
@@ -155,6 +180,7 @@ function Workspace({
     if (!token) {
       setMovementBranchOptions({ Entradas: [], Salidas: [] })
       setMovementBranchCanViewAll({ Entradas: false, Salidas: false })
+      setMovementBranchWritableIds({ Entradas: null, Salidas: null })
       setMovementBranchSelection({
         Entradas: ALL_BRANCH_OPTION_ID,
         Salidas: ALL_BRANCH_OPTION_ID,
@@ -368,6 +394,27 @@ function Workspace({
       : tab === 'Salidas'
         ? movementBranchSelection.Salidas
         : ''
+    const scopedModuleActions = (() => {
+      if (tab !== 'Entradas' && tab !== 'Salidas') return moduleActions
+
+      const selectedBranchId = String(createBranchId || '').trim()
+      const writableIds = movementBranchWritableIds?.[tab]
+      const canWriteInSelectedBranch = Boolean(
+        selectedBranchId &&
+        selectedBranchId !== ALL_BRANCH_OPTION_ID &&
+        (
+          writableIds === null ||
+          (Array.isArray(writableIds) && writableIds.includes(selectedBranchId))
+        )
+      )
+
+      return {
+        ...moduleActions,
+        puede_crear: Boolean(moduleActions?.puede_crear) && canWriteInSelectedBranch,
+        puede_actualizar: Boolean(moduleActions?.puede_actualizar) && canWriteInSelectedBranch,
+        puede_eliminar: Boolean(moduleActions?.puede_eliminar) && canWriteInSelectedBranch,
+      }
+    })()
 
     return (
       <TabComponent
@@ -376,7 +423,7 @@ function Workspace({
         isTabActive={tab === 'Entradas' || tab === 'Salidas' ? isActive : undefined}
         createBranchId={createBranchId}
         moduleKey={moduleKey}
-        moduleActions={moduleActions}
+        moduleActions={scopedModuleActions}
         permissionIndex={permissionIndex}
         pendingTransferSalidaRequest={tab === 'Salidas' ? pendingTransferSalidaRequest : null}
         pendingTransferEntradaRequest={tab === 'Entradas' ? pendingTransferEntradaRequest : null}

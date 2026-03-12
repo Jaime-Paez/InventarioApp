@@ -3,6 +3,32 @@ from django.contrib.auth import get_user_model
 from .models import MODULOS_CON_ALCANCE_SUCURSAL, Rol, RolPermiso, UsuarioModuloSucursal
 
 
+SCOPE_ACTION_KEYS = (
+    "puede_crear",
+    "puede_leer",
+    "puede_actualizar",
+    "puede_eliminar",
+)
+
+
+def normalize_scope_action_flags(source):
+    flags = {key: bool(source.get(key)) for key in SCOPE_ACTION_KEYS}
+
+    if flags["puede_eliminar"]:
+        flags["puede_crear"] = True
+        flags["puede_actualizar"] = True
+
+    if flags["puede_crear"] or flags["puede_actualizar"] or flags["puede_eliminar"]:
+        flags["puede_leer"] = True
+
+    if not flags["puede_leer"]:
+        flags["puede_crear"] = False
+        flags["puede_actualizar"] = False
+        flags["puede_eliminar"] = False
+
+    return flags
+
+
 def build_full_permissions():
     """Devuelve permisos completos (crear/leer/actualizar/eliminar) por modulo."""
 
@@ -134,13 +160,36 @@ def build_sucursal_scope_summary(usuario):
         return []
 
     grouped = {}
-    rows = UsuarioModuloSucursal.objects.filter(usuario=usuario).values_list(
-        "modulo", "sucursal_id"
+    rows = UsuarioModuloSucursal.objects.filter(usuario=usuario).values(
+        "modulo",
+        "sucursal_id",
+        "puede_crear",
+        "puede_leer",
+        "puede_actualizar",
+        "puede_eliminar",
     )
-    for modulo, sucursal_id in rows:
-        grouped.setdefault(modulo, set()).add(int(sucursal_id))
+    for row in rows:
+        modulo = row.get("modulo")
+        sucursal_id = row.get("sucursal_id")
+        if not modulo or sucursal_id is None:
+            continue
+        normalized_flags = normalize_scope_action_flags(row)
+        if not any(normalized_flags.values()):
+            continue
+        modulo_data = grouped.setdefault(modulo, {})
+        modulo_data[int(sucursal_id)] = normalized_flags
 
-    return [
-        {"modulo": modulo, "sucursales_ids": sorted(sucursal_ids)}
-        for modulo, sucursal_ids in grouped.items()
-    ]
+    payload = []
+    for modulo, scope_map in grouped.items():
+        branch_ids = sorted(scope_map.keys())
+        payload.append(
+            {
+                "modulo": modulo,
+                "sucursales_ids": branch_ids,
+                "acciones_por_sucursal": [
+                    {"sucursal_id": branch_id, **scope_map[branch_id]}
+                    for branch_id in branch_ids
+                ],
+            }
+        )
+    return payload

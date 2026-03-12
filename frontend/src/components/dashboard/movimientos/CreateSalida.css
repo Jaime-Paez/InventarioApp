@@ -489,6 +489,46 @@
   flex-wrap: wrap;
 }
 
+.entrada-details__delete-confirm-card {
+  gap: 12px;
+}
+
+.entrada-details__delete-confirm-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.entrada-details__delete-confirm-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface, #ffffff);
+}
+
+.entrada-details__delete-confirm-option input[type='radio'] {
+  margin-top: 3px;
+}
+
+.entrada-details__delete-confirm-option span {
+  display: grid;
+  gap: 3px;
+}
+
+.entrada-details__delete-confirm-option strong {
+  font-size: 0.95rem;
+}
+
+.entrada-details__delete-confirm-option small {
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--color-text-secondary, #334155) 86%, white);
+}
+
 .dashboard-shell.dark .create-salida__totals-row {
   background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
 }
@@ -506,6 +546,14 @@
 .dashboard-shell.dark .create-salida__confirm-card {
   background: var(--table-color-dark);
   border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .entrada-details__delete-confirm-option {
+  background: color-mix(in srgb, var(--table-color-dark) 88%, #111827);
+}
+
+.dashboard-shell.dark .entrada-details__delete-confirm-option small {
+  color: color-mix(in srgb, var(--color-text-secondary, #cbd5e1) 90%, white);
 }
 
 .dashboard-shell.dark .create-salida__confirm-warning {

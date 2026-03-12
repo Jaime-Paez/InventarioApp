@@ -276,6 +276,10 @@ CORS_ALLOWED_ORIGINS = env_list(
 )
 
 CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", default=True)
+CORS_EXPOSE_HEADERS = [
+    "X-Sucursal-Scope-Unrestricted",
+    "X-Sucursal-Scope-Writable-Ids",
+]
 
 CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",

@@ -4,10 +4,11 @@ from uuid import uuid4
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum, Value
+from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
 from django.utils import timezone
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -23,6 +24,7 @@ from usuarios.sucursal_scope import (
     ensure_sucursal_allowed_for_modules,
     get_allowed_sucursal_ids,
     get_allowed_sucursal_ids_for_modules,
+    get_readable_sucursal_ids,
 )
 from .models import (
     MovimientoInventario,
@@ -304,7 +306,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         )
 
         if not (self.request.user.is_staff or self.request.user.is_superuser):
-            allowed = get_allowed_sucursal_ids(
+            allowed = get_readable_sucursal_ids(
                 self.request.user,
                 RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
             )
@@ -548,7 +550,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             if not has_action_permission:
                 continue
 
-            allowed = get_allowed_sucursal_ids(self.request.user, module_key)
+            if action_key == "puede_leer":
+                allowed = get_readable_sucursal_ids(self.request.user, module_key)
+            else:
+                allowed = get_allowed_sucursal_ids(
+                    self.request.user,
+                    module_key,
+                    action_key=action_key,
+                )
             branch_filter = Q()
             if allowed is not None:
                 if not allowed:
@@ -632,6 +641,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             module_keys,
             getattr(sucursal, "id", None),
             field_label="sucursal",
+            action_key="puede_crear",
         )
         if not skip_target_scope_validation:
             ensure_sucursal_allowed_for_modules(
@@ -639,6 +649,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 module_keys,
                 getattr(sucursal_objetivo, "id", None),
                 field_label="sucursal objetivo",
+                action_key="puede_crear",
             )
         serializer.save()
 
@@ -655,14 +666,95 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             module_keys,
             getattr(sucursal, "id", None),
             field_label="sucursal",
+            action_key="puede_actualizar",
         )
         ensure_sucursal_allowed_for_modules(
             self.request.user,
             module_keys,
             getattr(sucursal_objetivo, "id", None),
             field_label="sucursal objetivo",
+            action_key="puede_actualizar",
             )
         serializer.save()
+
+    @staticmethod
+    def _extract_validation_message(detail):
+        if isinstance(detail, dict):
+            for value in detail.values():
+                message = MovimientoInventarioViewSet._extract_validation_message(value)
+                if message:
+                    return message
+            return ""
+        if isinstance(detail, (list, tuple)):
+            for item in detail:
+                message = MovimientoInventarioViewSet._extract_validation_message(item)
+                if message:
+                    return message
+            return ""
+        return str(detail or "").strip()
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        inventory_action = str(
+            request.query_params.get("inventory_action") or "keep"
+        ).strip().lower()
+
+        if inventory_action not in {"keep", "reverse"}:
+            return Response(
+                {"detail": "El parametro inventory_action debe ser keep o reverse."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tipo_nombre = self._normalize_state_name(
+            getattr(getattr(instance, "tipo_movimiento", None), "nombre", "")
+        )
+        if inventory_action == "reverse" and not tipo_nombre.startswith("ent"):
+            return Response(
+                {
+                    "detail": (
+                        "Solo se puede revertir inventario al eliminar movimientos de entrada."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with transaction.atomic():
+                if inventory_action == "reverse":
+                    serializer = self.get_serializer(instance)
+                    details_source = list(
+                        instance.detalles.select_related("producto").all()
+                    )
+                    serializer._apply_inventory_effect(
+                        instance,
+                        details_source,
+                        reverse=True,
+                    )
+
+                self.perform_destroy(instance)
+        except drf_serializers.ValidationError as exc:
+            message = self._extract_validation_message(getattr(exc, "detail", exc))
+            return Response(
+                {
+                    "detail": (
+                        message
+                        or "No se pudo ajustar el inventario al eliminar el movimiento."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": (
+                        "No se puede eliminar el movimiento porque tiene registros "
+                        "relacionados protegidos."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _get_solicitud_traslado(self, solicitud_id):
         return (
@@ -1038,6 +1130,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
                 getattr(sucursal_solicitante, "id", None),
                 field_label="sucursal solicitante",
+                action_key="puede_crear",
             )
 
             solicitud = serializer.save()
@@ -1079,10 +1172,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
                 sucursal_proveedora_id,
                 field_label="sucursal proveedora",
+                action_key="puede_leer",
             )
             queryset = queryset.filter(sucursal_proveedora_id=sucursal_proveedora_id)
         else:
-            allowed = get_allowed_sucursal_ids(
+            allowed = get_readable_sucursal_ids(
                 request.user,
                 RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
             )
@@ -1165,6 +1259,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
             solicitud.sucursal_proveedora_id,
             field_label="sucursal proveedora",
+            action_key="puede_leer",
         )
 
         serializer = SolicitudTrasladoSerializer(instance=solicitud)
@@ -1188,6 +1283,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
             solicitud.sucursal_proveedora_id,
             field_label="sucursal proveedora",
+            action_key=("puede_crear", "puede_actualizar"),
         )
 
         if solicitud.estado != SolicitudTraslado.Estados.PENDIENTE:
@@ -1361,6 +1457,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
             solicitud.sucursal_proveedora_id,
             field_label="sucursal proveedora",
+            action_key="puede_actualizar",
         )
 
         if solicitud.estado != SolicitudTraslado.Estados.APROBADA:
@@ -1442,7 +1539,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 )
             queryset = queryset.filter(sucursal_solicitante_id=int(sucursal_solicitante_raw))
 
-        allowed = get_allowed_sucursal_ids(
+        allowed = get_readable_sucursal_ids(
             request.user,
             RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
         )
@@ -1524,6 +1621,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
             solicitud.sucursal_solicitante_id,
             field_label="sucursal solicitante",
+            action_key="puede_actualizar",
         )
 
         if solicitud.estado != SolicitudTraslado.Estados.APROBADA:
@@ -1957,6 +2055,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
                 RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
             ],
+            action_key="puede_leer",
         )
         if allowed is not None:
             if not allowed:
@@ -2004,6 +2103,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
                 RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
             ],
+            action_key="puede_actualizar",
         )
         if (
             allowed is not None
@@ -2300,6 +2400,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
             sucursal.id,
             field_label="sucursal solicitante",
+            action_key="puede_crear",
         )
 
         if subtipo_key == "traslado":
@@ -2354,6 +2455,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             [target_module],
             sucursal_id,
             field_label="sucursal",
+            action_key="puede_leer",
         )
 
         rows = (

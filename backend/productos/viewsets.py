@@ -192,6 +192,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             allowed_branch_ids = get_allowed_sucursal_ids(
                 self.request.user,
                 RolPermiso.Modulos.PRODUCTOS,
+                action_key="puede_eliminar",
             )
             if allowed_branch_ids is not None:
                 missing_branch_ids = sorted(inventory_branch_ids.difference(allowed_branch_ids))

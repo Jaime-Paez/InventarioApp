@@ -31,6 +31,7 @@ from usuarios.sucursal_scope import (
     ensure_sucursal_allowed_for_modules,
     get_allowed_sucursal_ids_for_modules,
     get_allowed_sucursal_ids,
+    get_readable_sucursal_ids,
 )
 
 from .models import Bodega, Division, Inventario, SubDivision, Sucursal
@@ -53,6 +54,16 @@ INVENTARIO_WRITE_SCOPE_MODULE_KEYS = (
     RolPermiso.Modulos.PRODUCTOS,
 )
 
+METHOD_SCOPE_ACTION = {
+    "GET": "puede_leer",
+    "HEAD": "puede_leer",
+    "OPTIONS": "puede_leer",
+    "POST": "puede_crear",
+    "PUT": "puede_actualizar",
+    "PATCH": "puede_actualizar",
+    "DELETE": "puede_eliminar",
+}
+
 
 def _resolve_location_catalog_scope_modules(request):
     if request.method in ("GET", "HEAD", "OPTIONS"):
@@ -67,7 +78,11 @@ def _apply_location_catalog_scope(queryset, request, field_lookup):
     module_keys = _resolve_location_catalog_scope_modules(request)
     if not module_keys:
         return queryset
-    allowed = get_allowed_sucursal_ids_for_modules(request.user, module_keys)
+    allowed = get_allowed_sucursal_ids_for_modules(
+        request.user,
+        module_keys,
+        action_key="puede_leer",
+    )
     if allowed is None:
         return queryset
     if not allowed:
@@ -93,18 +108,52 @@ class SucursalViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        module_key = self._resolve_scope_module_key()
+        if (
+            self.request.method in ("GET", "HEAD", "OPTIONS")
+            and module_key in LOCATION_CATALOG_SCOPED_READ_MODULE_KEYS
+        ):
+            readable = get_readable_sucursal_ids(self.request.user, module_key)
+            if readable is None:
+                return queryset
+            if not readable:
+                return queryset.none()
+            return queryset.filter(id__in=sorted(readable))
+
         return apply_sucursal_scope(
             queryset,
             self.request.user,
-            self._resolve_scope_module_key(),
+            module_key,
             "id",
+            action_key=METHOD_SCOPE_ACTION.get(self.request.method),
         )
 
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
         module_key = self._resolve_scope_module_key()
-        allowed = get_allowed_sucursal_ids(request.user, module_key)
-        response["X-Sucursal-Scope-Unrestricted"] = "1" if allowed is None else "0"
+        if module_key in LOCATION_CATALOG_SCOPED_READ_MODULE_KEYS:
+            readable = get_readable_sucursal_ids(request.user, module_key)
+            writable = get_allowed_sucursal_ids(
+                request.user,
+                module_key,
+                action_key="puede_crear",
+            )
+            response["X-Sucursal-Scope-Unrestricted"] = "1" if readable is None else "0"
+            if writable is None:
+                response["X-Sucursal-Scope-Writable-Ids"] = "all"
+            elif writable:
+                response["X-Sucursal-Scope-Writable-Ids"] = ",".join(
+                    str(branch_id) for branch_id in sorted(writable)
+                )
+            else:
+                response["X-Sucursal-Scope-Writable-Ids"] = "none"
+        else:
+            allowed = get_allowed_sucursal_ids(
+                request.user,
+                module_key,
+                action_key=METHOD_SCOPE_ACTION.get(request.method),
+            )
+            response["X-Sucursal-Scope-Unrestricted"] = "1" if allowed is None else "0"
         return response
 
 
@@ -132,6 +181,7 @@ class BodegaViewSet(viewsets.ModelViewSet):
             self.request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             getattr(sucursal, "id", None),
+            action_key="puede_crear",
         )
         serializer.save()
 
@@ -141,6 +191,7 @@ class BodegaViewSet(viewsets.ModelViewSet):
             self.request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             getattr(sucursal, "id", None),
+            action_key="puede_actualizar",
         )
         serializer.save()
 
@@ -179,6 +230,7 @@ class DivisionViewSet(viewsets.ModelViewSet):
             self.request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             getattr(bodega, "sucursal_id", None),
+            action_key="puede_crear",
         )
         serializer.save()
 
@@ -188,6 +240,7 @@ class DivisionViewSet(viewsets.ModelViewSet):
             self.request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             getattr(bodega, "sucursal_id", None),
+            action_key="puede_actualizar",
         )
         serializer.save()
 
@@ -234,6 +287,7 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
             self.request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             sucursal_id,
+            action_key="puede_crear",
         )
         serializer.save()
 
@@ -244,6 +298,7 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
             self.request.user,
             RolPermiso.Modulos.SUCURSALES_BODEGAS,
             sucursal_id,
+            action_key="puede_actualizar",
         )
         serializer.save()
 
@@ -687,6 +742,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             allowed = get_allowed_sucursal_ids_for_modules(
                 self.request.user,
                 INVENTARIO_WRITE_SCOPE_MODULE_KEYS,
+                action_key=METHOD_SCOPE_ACTION.get(self.request.method),
             )
             if allowed is not None:
                 if not allowed:
@@ -816,6 +872,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             self.request.user,
             INVENTARIO_WRITE_SCOPE_MODULE_KEYS,
             sucursal_id,
+            action_key="puede_crear",
         )
         serializer.save()
 
@@ -832,6 +889,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             self.request.user,
             INVENTARIO_WRITE_SCOPE_MODULE_KEYS,
             sucursal_id,
+            action_key="puede_actualizar",
         )
         serializer.save()
 

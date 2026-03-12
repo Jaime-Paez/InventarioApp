@@ -21,6 +21,7 @@ const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'movimientos_inconvenientes',
   'productos',
 ])
+const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
 
 const isActionAllowedForModule = (moduleKey, actionKey) =>
   moduleKey === INVENTORY_MODULE_KEY ? actionKey === 'puede_leer' : true
@@ -28,88 +29,99 @@ const isActionAllowedForModule = (moduleKey, actionKey) =>
 const getAllowedActionsForModule = (moduleKey) =>
   ACTIONS.filter((action) => isActionAllowedForModule(moduleKey, action.key))
 
-const EMPTY_PERMISSION_ENTRY = Object.freeze({
+const createPermissionEntry = () => ({
   puede_crear: false,
   puede_leer: false,
   puede_actualizar: false,
   puede_eliminar: false,
 })
 
-const normalizePermissionEntry = (moduleKey, currentEntry, actionKey, nextChecked) => {
-  const allowedActions = getAllowedActionsForModule(moduleKey)
-  const allowedActionKeys = new Set(allowedActions.map((action) => action.key))
-  const nextEntry = {
-    puede_crear: false,
-    puede_leer: false,
-    puede_actualizar: false,
-    puede_eliminar: false,
-  }
+const EMPTY_PERMISSION_ENTRY = Object.freeze(createPermissionEntry())
 
+const normalizeBranchId = (value) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const buildAllowedPermissionEntry = (moduleKey, sourceEntry = null) => {
+  const normalizedEntry = createPermissionEntry()
+  const allowedActionKeys = new Set(getAllowedActionsForModule(moduleKey).map((action) => action.key))
   ACTIONS.forEach((action) => {
-    if (allowedActionKeys.has(action.key)) {
-      nextEntry[action.key] = Boolean(currentEntry?.[action.key])
-    }
+    if (!allowedActionKeys.has(action.key)) return
+    normalizedEntry[action.key] = Boolean(sourceEntry?.[action.key])
   })
+  return normalizedEntry
+}
 
-  if (!allowedActionKeys.has(actionKey)) return nextEntry
+const applyPermissionDependencies = (moduleKey, sourceEntry = null) => {
+  const allowedActionKeys = new Set(getAllowedActionsForModule(moduleKey).map((action) => action.key))
+  const nextEntry = buildAllowedPermissionEntry(moduleKey, sourceEntry)
 
-  nextEntry[actionKey] = nextChecked
-
-  if (actionKey === 'puede_crear' && nextChecked && allowedActionKeys.has('puede_leer')) {
-    nextEntry.puede_leer = true
-    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
-    if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
-  }
-
-  if (actionKey === 'puede_actualizar' && nextChecked && allowedActionKeys.has('puede_leer')) {
-    nextEntry.puede_leer = true
-  }
-
-  if (actionKey === 'puede_eliminar' && nextChecked) {
-    if (allowedActionKeys.has('puede_leer')) nextEntry.puede_leer = true
+  if (allowedActionKeys.has('puede_eliminar') && nextEntry.puede_eliminar) {
     if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = true
     if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = true
   }
 
-  if (actionKey === 'puede_leer' && nextChecked) {
-    if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = false
-    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
-    if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
-  }
-
-  if (actionKey === 'puede_leer' && !nextChecked) {
-    if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = false
-    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
-    if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
-  }
-
-  if (actionKey === 'puede_crear' && !nextChecked && allowedActionKeys.has('puede_eliminar')) {
-    nextEntry.puede_eliminar = false
-  }
-
-  if (actionKey === 'puede_actualizar' && !nextChecked && allowedActionKeys.has('puede_eliminar')) {
-    nextEntry.puede_eliminar = false
-  }
-
-  if (allowedActionKeys.has('puede_leer') && !nextEntry.puede_leer) {
-    if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = false
-    if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
-    if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
-  } else {
-    if (allowedActionKeys.has('puede_crear') && nextEntry.puede_crear && allowedActionKeys.has('puede_leer')) {
+  if (allowedActionKeys.has('puede_leer')) {
+    if (nextEntry.puede_crear || nextEntry.puede_actualizar || nextEntry.puede_eliminar) {
       nextEntry.puede_leer = true
     }
-    if (allowedActionKeys.has('puede_actualizar') && nextEntry.puede_actualizar && allowedActionKeys.has('puede_leer')) {
-      nextEntry.puede_leer = true
-    }
-    if (allowedActionKeys.has('puede_eliminar') && nextEntry.puede_eliminar) {
-      if (allowedActionKeys.has('puede_leer')) nextEntry.puede_leer = true
-      if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = true
-      if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = true
+    if (!nextEntry.puede_leer) {
+      if (allowedActionKeys.has('puede_crear')) nextEntry.puede_crear = false
+      if (allowedActionKeys.has('puede_actualizar')) nextEntry.puede_actualizar = false
+      if (allowedActionKeys.has('puede_eliminar')) nextEntry.puede_eliminar = false
     }
   }
 
   return nextEntry
+}
+
+const normalizePermissionEntry = (moduleKey, currentEntry, actionKey, nextChecked) => {
+  const allowedActionKeys = new Set(getAllowedActionsForModule(moduleKey).map((action) => action.key))
+  const nextEntry = applyPermissionDependencies(moduleKey, currentEntry)
+  if (!allowedActionKeys.has(actionKey)) return nextEntry
+  nextEntry[actionKey] = Boolean(nextChecked)
+  return applyPermissionDependencies(moduleKey, nextEntry)
+}
+
+const hasAnyAllowedActionEnabled = (moduleKey, entry) =>
+  getAllowedActionsForModule(moduleKey).some((action) => Boolean(entry?.[action.key]))
+
+const getBranchPermissionEntry = (matrix, moduleKey, branchId) => {
+  const normalizedModuleKey = normalizeModuleKey(moduleKey)
+  const normalizedBranchId = normalizeBranchId(branchId)
+  if (!normalizedModuleKey || !normalizedBranchId) return EMPTY_PERMISSION_ENTRY
+
+  const moduleBranches = matrix?.[normalizedModuleKey]
+  if (!moduleBranches || typeof moduleBranches !== 'object') return EMPTY_PERMISSION_ENTRY
+  return moduleBranches[String(normalizedBranchId)] || EMPTY_PERMISSION_ENTRY
+}
+
+const buildEffectivePermissionsMatrix = (globalMatrix, branchMatrix, scopedModules = []) => {
+  const nextMatrix = { ...globalMatrix }
+
+  ;(Array.isArray(scopedModules) ? scopedModules : []).forEach((moduleKey) => {
+    const normalizedModuleKey = normalizeModuleKey(moduleKey)
+    if (!normalizedModuleKey) return
+
+    const mergedEntry = createPermissionEntry()
+    const moduleBranches = branchMatrix?.[normalizedModuleKey]
+    Object.values(moduleBranches || {}).forEach((branchEntry) => {
+      const normalizedBranchEntry = applyPermissionDependencies(normalizedModuleKey, branchEntry)
+      getAllowedActionsForModule(normalizedModuleKey).forEach((action) => {
+        if (normalizedBranchEntry[action.key]) mergedEntry[action.key] = true
+      })
+    })
+
+    const normalizedMergedEntry = applyPermissionDependencies(normalizedModuleKey, mergedEntry)
+    if (hasAnyAllowedActionEnabled(normalizedModuleKey, normalizedMergedEntry)) {
+      nextMatrix[normalizedModuleKey] = normalizedMergedEntry
+    } else {
+      delete nextMatrix[normalizedModuleKey]
+    }
+  })
+
+  return nextMatrix
 }
 
 const normalizeIdentityValue = (value) => String(value || '').trim().toLowerCase()
@@ -118,13 +130,14 @@ const buildMatrixFromList = (permisos = []) => {
   const matrix = {}
   permisos.forEach((permiso) => {
     if (!permiso?.modulo) return
-    const modulo = permiso.modulo
-    matrix[permiso.modulo] = {
+    const modulo = normalizeModuleKey(permiso.modulo)
+    if (!modulo) return
+    matrix[modulo] = applyPermissionDependencies(modulo, {
       puede_crear: isActionAllowedForModule(modulo, 'puede_crear') ? Boolean(permiso.puede_crear) : false,
       puede_leer: isActionAllowedForModule(modulo, 'puede_leer') ? Boolean(permiso.puede_leer) : false,
       puede_actualizar: isActionAllowedForModule(modulo, 'puede_actualizar') ? Boolean(permiso.puede_actualizar) : false,
       puede_eliminar: isActionAllowedForModule(modulo, 'puede_eliminar') ? Boolean(permiso.puede_eliminar) : false,
-    }
+    })
   })
   return matrix
 }
@@ -146,30 +159,72 @@ const serializeMatrix = (matrix) =>
     })
     .filter(Boolean)
 
-const buildModuleBranchMatrixFromList = (scopes = []) => {
+const buildModuleBranchMatrixFromList = (scopes = [], basePermissions = {}) => {
   const matrix = {}
   scopes.forEach((scope) => {
     if (!scope?.modulo) return
-    const ids = Array.isArray(scope?.sucursales_ids) ? scope.sucursales_ids : []
-    matrix[scope.modulo] = Array.from(new Set(ids.map((id) => Number(id)).filter(Number.isFinite)))
+    const modulo = normalizeModuleKey(scope.modulo)
+    if (!modulo) return
+
+    const nextModuleScopes = {}
+    const actionByBranch = Array.isArray(scope?.acciones_por_sucursal) ? scope.acciones_por_sucursal : []
+
+    actionByBranch.forEach((branchScope) => {
+      const branchId = normalizeBranchId(branchScope?.sucursal_id ?? branchScope?.id)
+      if (!branchId) return
+      const normalizedEntry = applyPermissionDependencies(modulo, branchScope)
+      if (!hasAnyAllowedActionEnabled(modulo, normalizedEntry)) return
+      nextModuleScopes[String(branchId)] = normalizedEntry
+    })
+
+    if (!Object.keys(nextModuleScopes).length) {
+      const fallbackEntry = applyPermissionDependencies(
+        modulo,
+        basePermissions?.[modulo] || EMPTY_PERMISSION_ENTRY
+      )
+      if (hasAnyAllowedActionEnabled(modulo, fallbackEntry)) {
+        const ids = Array.isArray(scope?.sucursales_ids) ? scope.sucursales_ids : []
+        Array.from(new Set(ids.map((id) => Number(id)).filter(Number.isFinite))).forEach((branchId) => {
+          nextModuleScopes[String(branchId)] = { ...fallbackEntry }
+        })
+      }
+    }
+
+    if (Object.keys(nextModuleScopes).length) matrix[modulo] = nextModuleScopes
   })
   return matrix
 }
 
 const serializeModuleBranchMatrix = (matrix, allowedModules = []) => {
   const allowedSet = Array.isArray(allowedModules) && allowedModules.length > 0
-    ? new Set(allowedModules)
+    ? new Set(allowedModules.map((moduleKey) => normalizeModuleKey(moduleKey)).filter(Boolean))
     : null
 
   return Object.entries(matrix)
-    .filter(([modulo]) => !allowedSet || allowedSet.has(modulo))
-    .map(([modulo, sucursales]) => ({
-      modulo,
-      sucursales_ids: Array.from(
-        new Set((Array.isArray(sucursales) ? sucursales : []).map((id) => Number(id)).filter(Number.isFinite))
-      ),
-    }))
-    .filter((entry) => entry.sucursales_ids.length > 0)
+    .filter(([modulo]) => !allowedSet || allowedSet.has(normalizeModuleKey(modulo)))
+    .map(([modulo, branchScopes]) => {
+      const acciones_por_sucursal = Object.entries(branchScopes || {})
+        .map(([branchId, rawEntry]) => {
+          const normalizedBranchId = normalizeBranchId(branchId)
+          if (!normalizedBranchId) return null
+          const normalizedEntry = applyPermissionDependencies(modulo, rawEntry)
+          if (!hasAnyAllowedActionEnabled(modulo, normalizedEntry)) return null
+          return {
+            sucursal_id: normalizedBranchId,
+            ...normalizedEntry,
+          }
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.sucursal_id - b.sucursal_id)
+
+      if (!acciones_por_sucursal.length) return null
+      return {
+        modulo,
+        sucursales_ids: acciones_por_sucursal.map((entry) => entry.sucursal_id),
+        acciones_por_sucursal,
+      }
+    })
+    .filter(Boolean)
 }
 
 const emptyForm = {
@@ -280,106 +335,62 @@ function UsersDetails({
     }))
   }
 
-  const isBranchScopedForModule = useCallback(
-    (moduleKey, branchId) => {
-      if (!branchScopedModules.includes(moduleKey)) return true
-      if (!branchId) return false
-      const scopedBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
-      return scopedBranches.includes(branchId)
-    },
-    [branchScopedModules, moduleBranchMatrix]
-  )
   const isActionBranchScoped = useCallback(
-    (moduleKey, actionKey) => {
-      if (!branchScopedModules.includes(moduleKey)) return false
-      if (moduleKey === 'productos' && actionKey === 'puede_leer') return false
-      return true
+    (moduleKey) => {
+      const normalizedModuleKey = normalizeModuleKey(moduleKey)
+      return branchScopedModules.includes(normalizedModuleKey)
     },
     [branchScopedModules]
   )
 
   const togglePermissionForBranch = (moduleKey, actionKey) => {
+    const normalizedModuleKey = normalizeModuleKey(moduleKey)
     if (!isActionAllowedForModule(moduleKey, actionKey)) return
-    const moduleUsesBranchScope = isActionBranchScoped(moduleKey, actionKey)
-    if (!isEditing || (moduleUsesBranchScope && !selectedBranchId)) return
-    const allowedActions = getAllowedActionsForModule(moduleKey)
+    const moduleUsesBranchScope = isActionBranchScoped(moduleKey)
+    if (!isEditing) return
 
-    setPermissionsMatrix((prevPermissions) => {
-      const current = prevPermissions[moduleKey] || {
-        puede_crear: false,
-        puede_leer: false,
-        puede_actualizar: false,
-        puede_eliminar: false,
-      }
-
-      if (!moduleUsesBranchScope) {
-        const updatedEntry = normalizePermissionEntry(
-          moduleKey,
-          current,
-          actionKey,
-          !current[actionKey]
-        )
-        const hasAction = allowedActions.some((action) => updatedEntry[action.key])
-
-        if (!hasAction) {
-          setModuleBranchMatrix((prevScopes) => {
-            if (!(moduleKey in prevScopes)) return prevScopes
-            const { [moduleKey]: _ignored, ...restScopes } = prevScopes
-            return restScopes
-          })
-          const { [moduleKey]: _ignored, ...restPermissions } = prevPermissions
+    if (!moduleUsesBranchScope) {
+      setPermissionsMatrix((prevPermissions) => {
+        const current = prevPermissions[normalizedModuleKey] || EMPTY_PERMISSION_ENTRY
+        const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, !current[actionKey])
+        if (!hasAnyAllowedActionEnabled(moduleKey, updatedEntry)) {
+          const { [normalizedModuleKey]: _ignored, ...restPermissions } = prevPermissions
           return restPermissions
         }
-
         return {
           ...prevPermissions,
-          [moduleKey]: updatedEntry,
+          [normalizedModuleKey]: updatedEntry,
         }
+      })
+      return
+    }
+
+    const normalizedBranchId = normalizeBranchId(selectedBranchId)
+    if (!normalizedBranchId) return
+
+    setModuleBranchMatrix((prevScopes) => {
+      const moduleScopes = prevScopes[normalizedModuleKey]
+      const nextModuleScopes = moduleScopes && typeof moduleScopes === 'object'
+        ? { ...moduleScopes }
+        : {}
+
+      const branchKey = String(normalizedBranchId)
+      const current = nextModuleScopes[branchKey] || EMPTY_PERMISSION_ENTRY
+      const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, !Boolean(current[actionKey]))
+
+      if (hasAnyAllowedActionEnabled(moduleKey, updatedEntry)) {
+        nextModuleScopes[branchKey] = updatedEntry
+      } else {
+        delete nextModuleScopes[branchKey]
       }
 
-      const moduleBranches = Array.isArray(moduleBranchMatrix[moduleKey]) ? moduleBranchMatrix[moduleKey] : []
-      const branchScoped = moduleBranches.includes(selectedBranchId)
-      const currentlyChecked = branchScoped && Boolean(current[actionKey])
-
-      if (!currentlyChecked) {
-        setModuleBranchMatrix((prevScopes) => {
-          const currentScopes = Array.isArray(prevScopes[moduleKey]) ? prevScopes[moduleKey] : []
-          if (currentScopes.includes(selectedBranchId)) return prevScopes
-          return { ...prevScopes, [moduleKey]: [...currentScopes, selectedBranchId] }
-        })
-        return {
-          ...prevPermissions,
-          [moduleKey]: normalizePermissionEntry(moduleKey, current, actionKey, true),
-        }
+      if (!Object.keys(nextModuleScopes).length) {
+        if (!(normalizedModuleKey in prevScopes)) return prevScopes
+        const { [normalizedModuleKey]: _ignored, ...rest } = prevScopes
+        return rest
       }
 
-      const otherScopedBranches = moduleBranches.filter((id) => id !== selectedBranchId)
-      if (otherScopedBranches.length > 0) {
-        setModuleBranchMatrix((prevScopes) => {
-          const currentScopes = Array.isArray(prevScopes[moduleKey]) ? prevScopes[moduleKey] : []
-          const nextScopes = currentScopes.filter((id) => id !== selectedBranchId)
-          if (!nextScopes.length) {
-            const { [moduleKey]: _ignored, ...rest } = prevScopes
-            return rest
-          }
-          return { ...prevScopes, [moduleKey]: nextScopes }
-        })
-        return prevPermissions
-      }
-
-      const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, false)
-      const hasAction = allowedActions.some((action) => Boolean(updatedEntry[action.key]))
-
-      if (!hasAction) {
-        setModuleBranchMatrix((prevScopes) => {
-          const { [moduleKey]: _ignored, ...restScopes } = prevScopes
-          return restScopes
-        })
-        const { [moduleKey]: _ignored, ...restPermissions } = prevPermissions
-        return restPermissions
-      }
-
-      return { ...prevPermissions, [moduleKey]: updatedEntry }
+      return { ...prevScopes, [normalizedModuleKey]: nextModuleScopes }
     })
   }
 
@@ -389,58 +400,46 @@ function UsersDetails({
     let nextPermissions = { ...permissionsMatrix }
     let nextModuleBranchMatrix = { ...moduleBranchMatrix }
     let changed = false
+    const normalizedBranchId = normalizeBranchId(selectedBranchId)
 
     modules.forEach((module) => {
-      const moduleKey = module.key
+      const moduleKey = normalizeModuleKey(module?.key)
       if (!isActionAllowedForModule(moduleKey, actionKey)) return
 
-      const moduleUsesBranchScope = isActionBranchScoped(moduleKey, actionKey)
-      if (moduleUsesBranchScope && !selectedBranchId) return
-
-      const current = nextPermissions[moduleKey] || EMPTY_PERMISSION_ENTRY
-      const allowedActions = getAllowedActionsForModule(moduleKey)
+      const moduleUsesBranchScope = isActionBranchScoped(moduleKey)
+      if (moduleUsesBranchScope && !normalizedBranchId) return
 
       if (!moduleUsesBranchScope) {
+        const current = nextPermissions[moduleKey] || EMPTY_PERMISSION_ENTRY
         const currentlyChecked = Boolean(current[actionKey])
         if (currentlyChecked === checked) return
 
         const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, checked)
-        const hasAction = allowedActions.some((action) => Boolean(updatedEntry[action.key]))
-        if (hasAction) nextPermissions[moduleKey] = updatedEntry
+        if (hasAnyAllowedActionEnabled(moduleKey, updatedEntry)) nextPermissions[moduleKey] = updatedEntry
         else delete nextPermissions[moduleKey]
         changed = true
         return
       }
 
-      const moduleBranches = Array.isArray(nextModuleBranchMatrix[moduleKey]) ? nextModuleBranchMatrix[moduleKey] : []
-      const branchScoped = moduleBranches.includes(selectedBranchId)
-      const currentlyChecked = branchScoped && Boolean(current[actionKey])
+      const moduleScopes = nextModuleBranchMatrix[moduleKey]
+      const nextModuleScopes = moduleScopes && typeof moduleScopes === 'object'
+        ? { ...moduleScopes }
+        : {}
+
+      const branchKey = String(normalizedBranchId)
+      const current = nextModuleScopes[branchKey] || EMPTY_PERMISSION_ENTRY
+      const currentlyChecked = Boolean(current[actionKey])
       if (currentlyChecked === checked) return
 
-      if (checked) {
-        if (!branchScoped) {
-          nextModuleBranchMatrix[moduleKey] = [...moduleBranches, selectedBranchId]
-        }
-        const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, true)
-        const hasAction = allowedActions.some((action) => Boolean(updatedEntry[action.key]))
-        if (hasAction) nextPermissions[moduleKey] = updatedEntry
-        else delete nextPermissions[moduleKey]
-        changed = true
-        return
+      const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, checked)
+      if (hasAnyAllowedActionEnabled(moduleKey, updatedEntry)) {
+        nextModuleScopes[branchKey] = updatedEntry
+      } else {
+        delete nextModuleScopes[branchKey]
       }
 
-      const otherScopedBranches = moduleBranches.filter((id) => id !== selectedBranchId)
-      if (otherScopedBranches.length > 0) {
-        nextModuleBranchMatrix[moduleKey] = otherScopedBranches
-        changed = true
-        return
-      }
-
-      delete nextModuleBranchMatrix[moduleKey]
-      const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, false)
-      const hasAction = allowedActions.some((action) => Boolean(updatedEntry[action.key]))
-      if (hasAction) nextPermissions[moduleKey] = updatedEntry
-      else delete nextPermissions[moduleKey]
+      if (Object.keys(nextModuleScopes).length) nextModuleBranchMatrix[moduleKey] = nextModuleScopes
+      else delete nextModuleBranchMatrix[moduleKey]
       changed = true
     })
 
@@ -454,18 +453,18 @@ function UsersDetails({
     let selected = 0
 
     modules.forEach((module) => {
-      const moduleKey = module.key
+      const moduleKey = normalizeModuleKey(module?.key)
       if (!isActionAllowedForModule(moduleKey, actionKey)) return
 
-      const moduleUsesBranchScope = isActionBranchScoped(moduleKey, actionKey)
-      if (moduleUsesBranchScope && !selectedBranchId) return
+      const moduleUsesBranchScope = isActionBranchScoped(moduleKey)
+      const normalizedBranchId = normalizeBranchId(selectedBranchId)
+      if (moduleUsesBranchScope && !normalizedBranchId) return
 
       total += 1
-      const current = permissionsMatrix[moduleKey] || EMPTY_PERMISSION_ENTRY
-      const isInSelectedBranch = moduleUsesBranchScope
-        ? isBranchScopedForModule(moduleKey, selectedBranchId)
-        : true
-      if (isInSelectedBranch && Boolean(current[actionKey])) selected += 1
+      const current = moduleUsesBranchScope
+        ? getBranchPermissionEntry(moduleBranchMatrix, moduleKey, normalizedBranchId)
+        : (permissionsMatrix[moduleKey] || EMPTY_PERMISSION_ENTRY)
+      if (Boolean(current[actionKey])) selected += 1
     })
 
     return {
@@ -476,8 +475,7 @@ function UsersDetails({
   }
 
   const renderPermissionRow = (module) => {
-    const entryKey = module.key
-    const current = permissionsMatrix[entryKey] || {}
+    const entryKey = normalizeModuleKey(module?.key)
     const baseDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading || branchesLoading
 
     return (
@@ -487,7 +485,7 @@ function UsersDetails({
       >
         <div className="permissions-matrix__cell permissions-matrix__cell--label">{module.label}</div>
         {ACTIONS.map((action) => {
-          if (!isActionAllowedForModule(module.key, action.key)) {
+          if (!isActionAllowedForModule(entryKey, action.key)) {
             return (
               <div
                 key={action.key}
@@ -497,18 +495,19 @@ function UsersDetails({
             )
           }
 
-          const actionUsesBranchScope = isActionBranchScoped(module.key, action.key)
-          const branchScoped = actionUsesBranchScope
-            ? isBranchScopedForModule(entryKey, selectedBranchId)
-            : true
-          const isDisabled = baseDisabled || (actionUsesBranchScope && !selectedBranchId)
+          const actionUsesBranchScope = isActionBranchScoped(entryKey)
+          const normalizedBranchId = normalizeBranchId(selectedBranchId)
+          const current = actionUsesBranchScope
+            ? getBranchPermissionEntry(moduleBranchMatrix, entryKey, normalizedBranchId)
+            : (permissionsMatrix[entryKey] || EMPTY_PERMISSION_ENTRY)
+          const isDisabled = baseDisabled || (actionUsesBranchScope && !normalizedBranchId)
 
           return (
             <label key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
               <input
                 type="checkbox"
-                checked={branchScoped && Boolean(current?.[action.key])}
-                onChange={() => togglePermissionForBranch(module.key, action.key)}
+                checked={Boolean(current?.[action.key])}
+                onChange={() => togglePermissionForBranch(entryKey, action.key)}
                 disabled={isDisabled}
               />
             </label>
@@ -530,13 +529,18 @@ function UsersDetails({
       if (!response.ok) throw new Error('No se pudieron cargar los permisos disponibles.')
 
       const data = await response.json().catch(() => ({}))
-      const modulos = Array.isArray(data?.modulos) ? data.modulos : []
+      const modulos = (Array.isArray(data?.modulos) ? data.modulos : [])
+        .map((module) => ({
+          ...module,
+          key: normalizeModuleKey(module?.key),
+        }))
+        .filter((module) => module.key)
       const scopedModules = Array.isArray(data?.modulos_con_sucursales) ? data.modulos_con_sucursales : []
       setPermissionOptions(modulos)
       setBranchScopedModules(
         scopedModules
-          .map((module) => module?.key)
-          .filter((key) => typeof key === 'string' && key.length > 0 && BRANCH_SCOPED_MODULE_KEYS.has(key))
+          .map((module) => normalizeModuleKey(module?.key))
+          .filter((key) => key && BRANCH_SCOPED_MODULE_KEYS.has(key))
       )
     } catch (err) {
       notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
@@ -589,8 +593,9 @@ function UsersDetails({
       const normalized = normalizeUser(data)
       setFormData(normalized)
       setOriginalData(normalized)
-      setPermissionsMatrix(buildMatrixFromList(normalized.permisos_personalizados))
-      setModuleBranchMatrix(buildModuleBranchMatrixFromList(normalized.sucursales_por_modulo))
+      const nextPermissions = buildMatrixFromList(normalized.permisos_personalizados)
+      setPermissionsMatrix(nextPermissions)
+      setModuleBranchMatrix(buildModuleBranchMatrixFromList(normalized.sucursales_por_modulo, nextPermissions))
       setIsEditing(false)
       setPassword('')
       setConfirmPassword('')
@@ -821,8 +826,9 @@ function UsersDetails({
       const next = !prev
       if (!next) {
         setFormData(originalData)
-        setPermissionsMatrix(buildMatrixFromList(originalData.permisos_personalizados))
-        setModuleBranchMatrix(buildModuleBranchMatrixFromList(originalData.sucursales_por_modulo))
+        const resetPermissions = buildMatrixFromList(originalData.permisos_personalizados)
+        setPermissionsMatrix(resetPermissions)
+        setModuleBranchMatrix(buildModuleBranchMatrixFromList(originalData.sucursales_por_modulo, resetPermissions))
         setSubmitAttempted(false)
         setPassword('')
         setConfirmPassword('')
@@ -868,6 +874,11 @@ function UsersDetails({
     }
   }
 
+  const effectivePermissionsMatrix = useMemo(
+    () => buildEffectivePermissionsMatrix(permissionsMatrix, moduleBranchMatrix, branchScopedModules),
+    [permissionsMatrix, moduleBranchMatrix, branchScopedModules]
+  )
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!isEditing || loadingData) return
@@ -881,7 +892,7 @@ function UsersDetails({
       correo: formData.correo.trim().toLowerCase(),
       telefono: formData.telefono.trim(),
       cargo: formData.cargo.trim(),
-      permisos_personalizados: serializeMatrix(permissionsMatrix),
+      permisos_personalizados: serializeMatrix(effectivePermissionsMatrix),
       sucursales_por_modulo: serializeModuleBranchMatrix(moduleBranchMatrix, branchScopedModules),
     }
 
@@ -934,8 +945,9 @@ function UsersDetails({
       const normalized = normalizeUser(data)
       setFormData(normalized)
       setOriginalData(normalized)
-      setPermissionsMatrix(buildMatrixFromList(normalized.permisos_personalizados))
-      setModuleBranchMatrix(buildModuleBranchMatrixFromList(normalized.sucursales_por_modulo))
+      const nextPermissions = buildMatrixFromList(normalized.permisos_personalizados)
+      setPermissionsMatrix(nextPermissions)
+      setModuleBranchMatrix(buildModuleBranchMatrixFromList(normalized.sucursales_por_modulo, nextPermissions))
       setSubmitAttempted(false)
       setIsEditing(false)
       setPassword('')
@@ -1003,11 +1015,11 @@ function UsersDetails({
   const isProtectedAdministratorUser = protectedUserName || protectedUserEmail
   const selectedBranch = branches.find((branch) => branch.id === selectedBranchId) || null
   const globalPermissionOptions = useMemo(
-    () => permissionOptions.filter((module) => !branchScopedModules.includes(module?.key)),
+    () => permissionOptions.filter((module) => !branchScopedModules.includes(normalizeModuleKey(module?.key))),
     [permissionOptions, branchScopedModules]
   )
   const branchPermissionOptions = useMemo(
-    () => permissionOptions.filter((module) => branchScopedModules.includes(module?.key)),
+    () => permissionOptions.filter((module) => branchScopedModules.includes(normalizeModuleKey(module?.key))),
     [permissionOptions, branchScopedModules]
   )
   const { shouldRender, isClosing } = useModalAnimation(open)

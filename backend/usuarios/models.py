@@ -154,6 +154,10 @@ class UsuarioModuloSucursal(models.Model):
         on_delete=models.CASCADE,
         related_name="usuarios_por_modulo",
     )
+    puede_crear = models.BooleanField(default=True)
+    puede_leer = models.BooleanField(default=True)
+    puede_actualizar = models.BooleanField(default=True)
+    puede_eliminar = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = "Alcance de sucursal por modulo"
@@ -166,6 +170,30 @@ class UsuarioModuloSucursal(models.Model):
         if self.modulo not in MODULOS_CON_ALCANCE_SUCURSAL:
             raise ValidationError(
                 {"modulo": "El modulo seleccionado no admite alcance por sucursal."}
+            )
+
+        if self.puede_eliminar:
+            self.puede_crear = True
+            self.puede_actualizar = True
+
+        if self.puede_crear or self.puede_actualizar or self.puede_eliminar:
+            self.puede_leer = True
+
+        if not any(
+            (
+                self.puede_crear,
+                self.puede_leer,
+                self.puede_actualizar,
+                self.puede_eliminar,
+            )
+        ):
+            raise ValidationError(
+                {
+                    "puede_leer": (
+                        "Debes habilitar al menos una accion para el alcance "
+                        "por sucursal."
+                    )
+                }
             )
 
     def __str__(self) -> str:
