@@ -461,7 +461,6 @@ function BodegaDetails({
     }
   }
 
-  const isViewMode = !isEditing
   const editorDisabled = saving || loadingData || !isEditing
   const subdivisionsDisabled = editorDisabled || loadingDivisions || loadingSubdivisions
 
@@ -629,9 +628,22 @@ function BodegaDetails({
     }
   }
 
-  const handleCancelEdit = () => {
-    setFormData(originalData)
+  const handleToggleEdit = () => {
+    if (!allowEdit) return
+    if (loadingData || saving || deleteLoading) return
+    setIsEditing((prev) => {
+      const next = !prev
+      if (!next) {
+        setFormData(originalData)
+      }
+      return next
+    })
+  }
+
+  const handleClose = () => {
+    onClose?.()
     setIsEditing(false)
+    setShowDeleteDialog(false)
   }
 
   const handleMouseDown = (event) => {
@@ -818,7 +830,7 @@ function BodegaDetails({
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -945,50 +957,62 @@ function BodegaDetails({
 
         <div className="create-user__footer">
           <div className="user-details__footer-left">
+            <button
+              type="button"
+              className="create-user__action create-user__action--cancel"
+              onClick={handleClose}
+            >
+              Cancelar
+            </button>
+
             {allowEdit && (
               <button
                 type="button"
                 className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-                onClick={() => setIsEditing((prev) => !prev)}
-                disabled={loadingData || saving}
+                onClick={handleToggleEdit}
+                disabled={loadingData || saving || deleteLoading}
               >
-                <span className="user-details__toggle-icon">{isEditing ? <Eye size={14} /> : <Pencil size={14} />}</span>
-                {isEditing ? 'Ver' : 'Editar'}
-              </button>
-            )}
-
-            {isEditing && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--cancel"
-                onClick={handleCancelEdit}
-                disabled={saving}
-              >
-                Cancelar
+                {isEditing ? (
+                  <>
+                    <span className="user-details__toggle-icon" aria-hidden="true">
+                      <Eye size={16} />
+                    </span>
+                    <span>Solo lectura</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="user-details__toggle-icon" aria-hidden="true">
+                      <Pencil size={16} />
+                    </span>
+                    <span>Editar</span>
+                  </>
+                )}
               </button>
             )}
           </div>
 
           <div className="user-details__footer-right">
-            {allowDelete && (
-              <button
-                type="button"
-                className="create-user__action user-details__delete"
-                onClick={() => setShowDeleteDialog(true)}
-                disabled={!isEditing || saving}
-              >
-                Eliminar
-              </button>
-            )}
-            {allowEdit && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--primary"
-                onClick={handleSave}
-                disabled={isViewMode || saving}
-              >
-                {saving ? 'Guardando...' : 'Guardar cambios'}
-              </button>
+            {isEditing && (
+              <>
+                {allowDelete && (
+                  <button
+                    type="button"
+                    className="create-user__action user-details__delete"
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={deleteLoading || saving || loadingData}
+                  >
+                    Eliminar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleSave}
+                  disabled={saving || loadingData}
+                >
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </>
             )}
           </div>
         </div>

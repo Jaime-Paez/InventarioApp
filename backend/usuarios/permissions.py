@@ -319,6 +319,32 @@ class ProveedoresCasasDependentReadPermission(ModulePermission):
         return [self.module_key]
 
 
+class ProveedoresCatalogosDependentReadPermission(ModulePermission):
+    """
+    Permite leer catalogos compartidos de Proveedores (ej: paises)
+    desde cualquiera de los modulos de Proveedores.
+
+    - GET/HEAD/OPTIONS:
+      - Si llega `?modulo=<key>` usa ese modulo.
+      - Si no llega, permite por cualquiera de los modulos de proveedores.
+    - Escritura mantiene el modulo base de casas comerciales.
+    """
+
+    module_key = RolPermiso.Modulos.PROVEEDORES_CASAS
+    read_module_keys = (
+        RolPermiso.Modulos.PROVEEDORES_CASAS,
+        RolPermiso.Modulos.PROVEEDORES_MARCAS,
+    )
+
+    def get_target_module_keys(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            query_module = (request.query_params.get("modulo") or "").strip()
+            if query_module and query_module in set(self.read_module_keys):
+                return [query_module]
+            return list(self.read_module_keys)
+        return [self.module_key]
+
+
 class SolicitudesModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.SOLICITUDES
 

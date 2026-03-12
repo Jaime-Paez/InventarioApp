@@ -5,7 +5,7 @@ from usuarios.permissions import (
     BodegasModulePermission,
     EstadoProductoDependentReadPermission,
     MovimientosCatalogosPermission,
-    ProveedoresCasasModulePermission,
+    ProveedoresCatalogosDependentReadPermission,
 )
 
 from .models import (
@@ -31,7 +31,7 @@ from .serializers import (
 class PaisViewSet(viewsets.ModelViewSet):
     queryset = Pais.objects.all().order_by("-id")
     serializer_class = PaisSerializer
-    permission_classes = [IsAuthenticated, ProveedoresCasasModulePermission]
+    permission_classes = [IsAuthenticated, ProveedoresCatalogosDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "codigo_pais"]
     ordering_fields = ["nombre", "codigo_pais"]
