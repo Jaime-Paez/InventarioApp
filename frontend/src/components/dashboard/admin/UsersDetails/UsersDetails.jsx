@@ -18,7 +18,6 @@ const INVENTORY_MODULE_KEY = 'inventario'
 const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'movimientos_entradas',
   'movimientos_salidas',
-  'movimientos_inconvenientes',
   'productos',
 ])
 const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
@@ -37,6 +36,12 @@ const createPermissionEntry = () => ({
 })
 
 const EMPTY_PERMISSION_ENTRY = Object.freeze(createPermissionEntry())
+const FULL_PERMISSION_ENTRY = Object.freeze({
+  puede_crear: true,
+  puede_leer: true,
+  puede_actualizar: true,
+  puede_eliminar: true,
+})
 
 const normalizeBranchId = (value) => {
   const parsed = Number(value)
@@ -103,6 +108,39 @@ const getBranchPermissionEntry = (matrix, moduleKey, branchId) => {
   const moduleBranches = matrix?.[normalizedModuleKey]
   if (!moduleBranches || typeof moduleBranches !== 'object') return EMPTY_PERMISSION_ENTRY
   return moduleBranches[String(normalizedBranchId)] || EMPTY_PERMISSION_ENTRY
+}
+
+const buildAdministratorPermissionState = (modules = [], scopedModules = [], branchList = []) => {
+  const scopedSet = new Set(
+    (Array.isArray(scopedModules) ? scopedModules : [])
+      .map((moduleKey) => normalizeModuleKey(moduleKey))
+      .filter(Boolean)
+  )
+  const globalMatrix = {}
+  const branchMatrix = {}
+
+  ;(Array.isArray(modules) ? modules : []).forEach((module) => {
+    const moduleKey = normalizeModuleKey(module?.key)
+    if (!moduleKey) return
+
+    const fullEntry = applyPermissionDependencies(moduleKey, FULL_PERMISSION_ENTRY)
+    if (!hasAnyAllowedActionEnabled(moduleKey, fullEntry)) return
+
+    if (scopedSet.has(moduleKey)) {
+      const branchEntries = {}
+      ;(Array.isArray(branchList) ? branchList : []).forEach((branch) => {
+        const branchId = normalizeBranchId(branch?.id)
+        if (!branchId) return
+        branchEntries[String(branchId)] = { ...fullEntry }
+      })
+      if (Object.keys(branchEntries).length) branchMatrix[moduleKey] = branchEntries
+      return
+    }
+
+    globalMatrix[moduleKey] = fullEntry
+  })
+
+  return { globalMatrix, branchMatrix }
 }
 
 const buildEffectivePermissionsMatrix = (globalMatrix, branchMatrix, scopedModules = []) => {
@@ -242,6 +280,7 @@ const emptyForm = {
   telefono: '',
   cargo: '',
   activo: false,
+  es_administrador: false,
   inspeccion_aleatoria: false,
   permisos_personalizados: [],
   sucursales: [],
@@ -316,6 +355,7 @@ function UsersDetails({
     },
     [onError]
   )
+  const isAdministrator = Boolean(formData.es_administrador)
 
   const normalizeUser = (data) => ({
     nombres: data?.nombres ?? '',
@@ -324,6 +364,7 @@ function UsersDetails({
     telefono: data?.telefono ?? '',
     cargo: data?.cargo ?? '',
     activo: Boolean(data?.activo),
+    es_administrador: Boolean(data?.es_administrador),
     inspeccion_aleatoria: Boolean(data?.inspeccion_aleatoria),
     permisos_personalizados: Array.isArray(data?.permisos_personalizados)
       ? data.permisos_personalizados
@@ -351,7 +392,26 @@ function UsersDetails({
     [branchScopedModules]
   )
 
+  useEffect(() => {
+    if (!isAdministrator) return
+    const { globalMatrix, branchMatrix } = buildAdministratorPermissionState(
+      permissionOptions,
+      branchScopedModules,
+      branches
+    )
+    setPermissionsMatrix(globalMatrix)
+    setModuleBranchMatrix(branchMatrix)
+    setSelectedBranchId((prev) => {
+      const normalizedPrev = normalizeBranchId(prev)
+      if (normalizedPrev && branches.some((branch) => normalizeBranchId(branch?.id) === normalizedPrev)) {
+        return normalizedPrev
+      }
+      return normalizeBranchId(branches?.[0]?.id)
+    })
+  }, [isAdministrator, permissionOptions, branchScopedModules, branches])
+
   const togglePermissionForBranch = (moduleKey, actionKey) => {
+    if (isAdministrator) return
     const normalizedModuleKey = normalizeModuleKey(moduleKey)
     if (!isActionAllowedForModule(moduleKey, actionKey)) return
     const moduleUsesBranchScope = isActionBranchScoped(moduleKey)
@@ -403,6 +463,7 @@ function UsersDetails({
   }
 
   const setColumnPermission = (actionKey, checked, modules = permissionOptions) => {
+    if (isAdministrator) return
     if (!isEditing) return
 
     let nextPermissions = { ...permissionsMatrix }
@@ -457,6 +518,22 @@ function UsersDetails({
   }
 
   const getColumnSelectionState = (actionKey, modules = permissionOptions) => {
+    if (isAdministrator) {
+      const total = (Array.isArray(modules) ? modules : []).reduce((acc, module) => {
+        const moduleKey = normalizeModuleKey(module?.key)
+        if (!isActionAllowedForModule(moduleKey, actionKey)) return acc
+        const moduleUsesBranchScope = isActionBranchScoped(moduleKey)
+        const normalizedBranchId = normalizeBranchId(selectedBranchId)
+        if (moduleUsesBranchScope && !normalizedBranchId) return acc
+        return acc + 1
+      }, 0)
+      return {
+        disabled: total === 0,
+        checked: total > 0,
+        indeterminate: false,
+      }
+    }
+
     let total = 0
     let selected = 0
 
@@ -508,13 +585,16 @@ function UsersDetails({
           const current = actionUsesBranchScope
             ? getBranchPermissionEntry(moduleBranchMatrix, entryKey, normalizedBranchId)
             : (permissionsMatrix[entryKey] || EMPTY_PERMISSION_ENTRY)
-          const isDisabled = baseDisabled || (actionUsesBranchScope && !normalizedBranchId)
+          const forcedCurrent = isAdministrator
+            ? applyPermissionDependencies(entryKey, FULL_PERMISSION_ENTRY)
+            : current
+          const isDisabled = baseDisabled || isAdministrator || (actionUsesBranchScope && !normalizedBranchId)
 
           return (
             <label key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action">
               <input
                 type="checkbox"
-                checked={Boolean(current?.[action.key])}
+                checked={Boolean(forcedCurrent?.[action.key])}
                 onChange={() => togglePermissionForBranch(entryKey, action.key)}
                 disabled={isDisabled}
               />
@@ -1279,6 +1359,19 @@ function UsersDetails({
                   <label className="create-user__checkbox">
                     <input
                       type="checkbox"
+                      name="es_administrador"
+                      checked={Boolean(formData.es_administrador)}
+                      onChange={handleChange}
+                      disabled={!isEditing || loadingData || saving}
+                    />
+                    <div>
+                      <span>Administrador</span>
+                      <p>Tendra acceso total y no recibira alertas urgentes de traslado.</p>
+                    </div>
+                  </label>
+                  <label className="create-user__checkbox">
+                    <input
+                      type="checkbox"
                       name="inspeccion_aleatoria"
                       checked={Boolean(formData.inspeccion_aleatoria)}
                       onChange={handleChange}
@@ -1311,7 +1404,7 @@ function UsersDetails({
                       <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
                       {ACTIONS.map((action) => {
                         const columnState = getColumnSelectionState(action.key, globalPermissionOptions)
-                        const headerDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading || branchesLoading || columnState.disabled
+                        const headerDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading || branchesLoading || isAdministrator || columnState.disabled
                         return (
                           <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action permissions-matrix__head-action">
                             <span>{action.label}</span>
@@ -1464,7 +1557,7 @@ function UsersDetails({
                   <div className="permissions-matrix__cell permissions-matrix__cell--label">Módulo</div>
                   {ACTIONS.map((action) => {
                     const columnState = getColumnSelectionState(action.key, branchPermissionOptions)
-                    const headerDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading || branchesLoading || columnState.disabled
+                    const headerDisabled = !isEditing || loadingData || saving || deleteLoading || permissionsLoading || branchesLoading || isAdministrator || columnState.disabled
                     return (
                       <div key={action.key} className="permissions-matrix__cell permissions-matrix__cell--action permissions-matrix__head-action">
                         <span>{action.label}</span>

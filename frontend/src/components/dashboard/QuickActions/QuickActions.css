@@ -35,6 +35,11 @@
   cursor: pointer;
 }
 
+.quick-actions__pending-shipments.has-login-animation .quick-actions__pending-shipments-trigger {
+  transform-origin: center;
+  animation: quick-actions-urgent-shield-enter 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .quick-actions__pending-shipments-trigger:hover {
   filter: brightness(0.98);
 }
@@ -57,6 +62,11 @@
   padding: 0 6px;
   font-size: 0.72rem;
   font-weight: 800;
+}
+
+.quick-actions__pending-shipments.has-login-animation .quick-actions__pending-shipments-count {
+  transform-origin: center;
+  animation: quick-actions-urgent-shield-enter 320ms cubic-bezier(0.16, 1, 0.3, 1) 60ms both;
 }
 
 .quick-actions__pending-shipments-panel {
@@ -505,6 +515,16 @@
   gap: 4px;
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.quick-actions__receive-item-expected {
+  margin: 0;
+  font-size: 0.77rem;
+  color: var(--color-text-secondary);
+}
+
+.quick-actions__receive-item-expected strong {
+  color: var(--color-text-primary);
 }
 
 .quick-actions__receive-grid input,

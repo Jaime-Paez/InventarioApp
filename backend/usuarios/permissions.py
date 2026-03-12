@@ -339,6 +339,9 @@ class MovimientoInventarioModulePermission(ModulePermission):
             return False
 
         action = getattr(view, "action", "")
+        if action in {"traslados_inconvenientes", "resolver_traslado_inconveniente"}:
+            return bool(request.user.is_staff or request.user.is_superuser)
+
         if action == "decision_solicitud_traslado" and request.method == "POST":
             permission_index = self._get_permission_index(request)
             module_permissions = permission_index.get(
@@ -357,6 +360,8 @@ class MovimientoInventarioModulePermission(ModulePermission):
         action = getattr(view, "action", "")
         if action in {"traslados_inconvenientes", "resolver_traslado_inconveniente"}:
             return [RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES]
+        if action in {"envios_en_camino", "confirmar_recepcion_traslado"}:
+            return [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS]
         if action == "solicitudes_traslado":
             if request.method in ("POST", "PUT", "PATCH", "DELETE"):
                 return [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS]

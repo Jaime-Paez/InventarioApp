@@ -2,6 +2,10 @@ from django.contrib.auth import get_user_model
 
 from .models import MODULOS_CON_ALCANCE_SUCURSAL, Rol, RolPermiso, UsuarioModuloSucursal
 
+ADMIN_ONLY_MODULES = {
+    RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
+}
+
 
 SCOPE_ACTION_KEYS = (
     "puede_crear",
@@ -99,7 +103,15 @@ def get_permisos_efectivos(usuario, email):
         if fallback_role:
             extra_roles.append(fallback_role)
 
-    return build_permissions_summary(roles, extra_roles=extra_roles)
+    summary = build_permissions_summary(roles, extra_roles=extra_roles)
+    if usuario and (usuario.is_staff or usuario.is_superuser):
+        return summary
+
+    return [
+        permiso
+        for permiso in summary
+        if str(permiso.get("modulo") or "").strip() not in ADMIN_ONLY_MODULES
+    ]
 
 
 def build_permissions_summary(roles, extra_roles=None):
@@ -151,7 +163,7 @@ def get_modulos_con_alcance_sucursal_options():
     return [
         {"key": modulo_key, "label": modulo_label}
         for modulo_key, modulo_label in RolPermiso.Modulos.choices
-        if modulo_key in MODULOS_CON_ALCANCE_SUCURSAL
+        if modulo_key in MODULOS_CON_ALCANCE_SUCURSAL and modulo_key not in ADMIN_ONLY_MODULES
     ]
 
 

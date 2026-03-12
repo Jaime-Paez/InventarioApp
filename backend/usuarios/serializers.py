@@ -12,7 +12,11 @@ from .models import (
     UsuarioModuloSucursal,
     UsuarioSucursal,
 )
-from .utils import build_permissions_summary, get_personalized_role_for_email
+from .utils import (
+    ADMIN_ONLY_MODULES,
+    build_permissions_summary,
+    get_personalized_role_for_email,
+)
 
 
 User = get_user_model()
@@ -72,6 +76,34 @@ def validate_scope_modules_uniqueness(scopes):
             )
         seen.add(modulo)
     return scopes
+
+
+def _is_admin_only_module(module_key):
+    return str(module_key or "").strip() in ADMIN_ONLY_MODULES
+
+
+def _filter_admin_only_permissions(permisos):
+    return [
+        permiso
+        for permiso in permisos or []
+        if not _is_admin_only_module(permiso.get("modulo"))
+    ]
+
+
+def _filter_admin_only_scopes(scopes):
+    return [
+        scope
+        for scope in scopes or []
+        if not _is_admin_only_module(scope.get("modulo"))
+    ]
+
+
+def _filter_admin_only_summary(permisos):
+    return [
+        permiso
+        for permiso in permisos or []
+        if not _is_admin_only_module(permiso.get("modulo"))
+    ]
 
 
 def build_sucursal_scope_payload(scopes):
@@ -262,6 +294,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     apellidos = serializers.CharField(source="last_name")
     correo = serializers.EmailField(source="email")
     activo = serializers.BooleanField(source="is_active", required=False)
+    es_administrador = serializers.BooleanField(source="is_staff", required=False)
     telefono = serializers.CharField(required=False, allow_blank=True, write_only=True)
     cargo = serializers.CharField(required=False, allow_blank=True, write_only=True)
     inspeccion_aleatoria = serializers.BooleanField(
@@ -287,6 +320,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "cargo",
             "inspeccion_aleatoria",
             "activo",
+            "es_administrador",
             "roles",
             "sucursales",
             "sucursales_por_modulo",
@@ -302,6 +336,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password", None)
         sucursales_por_modulo = validated_data.pop("sucursales_por_modulo", None)
         inspeccion_aleatoria = bool(validated_data.pop("inspeccion_aleatoria", False))
+        es_administrador = bool(validated_data.pop("is_staff", False))
         validated_data.pop("telefono", None)
         validated_data.pop("cargo", None)
 
@@ -309,6 +344,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             email = validated_data.get("email", "").strip().lower()
             validated_data["email"] = email
             validated_data["username"] = email
+            validated_data["is_staff"] = es_administrador
             if password:
                 user = User.objects.create_user(password=password, **validated_data)
             else:
@@ -323,8 +359,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 usuario=user,
                 defaults={"inspeccion_aleatoria": inspeccion_aleatoria},
             )
-            self._sync_personalized_permissions(user, permisos_personalizados)
-            self._sync_sucursales_por_modulo(user, sucursales_por_modulo)
+            if user.is_staff:
+                self._sync_personalized_permissions(user, [])
+                self._sync_sucursales_por_modulo(user, [])
+            else:
+                self._sync_personalized_permissions(user, permisos_personalizados)
+                self._sync_sucursales_por_modulo(user, sucursales_por_modulo)
         return user
 
     def update(self, instance, validated_data):
@@ -333,11 +373,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password", None)
         sucursales_por_modulo = validated_data.pop("sucursales_por_modulo", None)
         inspeccion_aleatoria = validated_data.pop("inspeccion_aleatoria", None)
+        es_administrador = validated_data.pop("is_staff", None)
         validated_data.pop("telefono", None)
         validated_data.pop("cargo", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        if es_administrador is not None:
+            instance.is_staff = bool(es_administrador)
         if "email" in validated_data:
             instance.username = (validated_data.get("email") or "").strip().lower()
         instance.save()
@@ -351,8 +394,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 defaults={"inspeccion_aleatoria": bool(inspeccion_aleatoria)},
             )
 
-        self._sync_personalized_permissions(instance, permisos_personalizados)
-        self._sync_sucursales_por_modulo(instance, sucursales_por_modulo)
+        if instance.is_staff:
+            self._sync_personalized_permissions(instance, [])
+            self._sync_sucursales_por_modulo(instance, [])
+        else:
+            self._sync_personalized_permissions(instance, permisos_personalizados)
+            self._sync_sucursales_por_modulo(instance, sucursales_por_modulo)
         if password:
             instance.set_password(password)
             instance.save(update_fields=["password"])
@@ -377,10 +424,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
         return email
 
     def validate_permisos_personalizados(self, value):
-        return validate_permissions_uniqueness(value)
+        filtered = _filter_admin_only_permissions(value)
+        return validate_permissions_uniqueness(filtered)
 
     def validate_sucursales_por_modulo(self, value):
-        return validate_scope_modules_uniqueness(value)
+        filtered = _filter_admin_only_scopes(value)
+        return validate_scope_modules_uniqueness(filtered)
 
     def _sync_personalized_permissions(self, usuario, permisos_data):
         """Crea o actualiza el rol personalizado asociado al usuario."""
@@ -388,7 +437,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         if permisos_data is None:
             return
 
-        if not permisos_data:
+        filtered_permissions = _filter_admin_only_permissions(permisos_data)
+        if not filtered_permissions:
             self._remove_personalized_role(usuario)
             return
 
@@ -398,14 +448,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
         if role and not role.permisos.exists():
             created_role = True
 
-        self._replace_permissions(role, permisos_data)
+        self._replace_permissions(role, filtered_permissions)
         if created_role:
             usuario.refresh_from_db()
 
     def _replace_permissions(self, rol, permisos_data):
         rol.permisos.all().delete()
         permisos_instances = []
-        for permiso in permisos_data:
+        for permiso in _filter_admin_only_permissions(permisos_data):
             permiso_data = permiso.copy()
             permiso_data.pop("id", None)
             submodulo = _normalize_submodule(permiso_data.get("submodulo"))
@@ -432,7 +482,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         UsuarioModuloSucursal.objects.filter(usuario=usuario).delete()
 
         instances = []
-        for scope in scopes_data:
+        for scope in _filter_admin_only_scopes(scopes_data):
             modulo = scope.get("modulo")
             if not modulo:
                 continue
@@ -481,17 +531,20 @@ class UsuarioSerializer(serializers.ModelSerializer):
             UsuarioModuloSucursal.objects.bulk_create(instances)
 
     def get_permisos_resumen(self, obj):
-        return build_permissions_summary(
+        summary = build_permissions_summary(
             obj.roles.all(),
             extra_roles=[get_personalized_role_for_email(obj.email)],
         )
+        if obj.is_staff or obj.is_superuser:
+            return summary
+        return _filter_admin_only_summary(summary)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         role = get_personalized_role_for_email(instance.email)
         if role:
             data["permisos_personalizados"] = RolPermisoSerializer(
-                role.permisos.all(), many=True
+                role.permisos.exclude(modulo__in=ADMIN_ONLY_MODULES), many=True
             ).data
         else:
             data["permisos_personalizados"] = []
@@ -511,7 +564,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
         ]
 
     def get_sucursales_por_modulo(self, obj):
-        return build_sucursal_scope_payload(obj.alcances_sucursal.all())
+        return build_sucursal_scope_payload(
+            obj.alcances_sucursal.exclude(modulo__in=ADMIN_ONLY_MODULES).all()
+        )
 
     def get_inspeccion_aleatoria(self, obj):
         preference = getattr(obj, "preferencia_operativa", None)
@@ -533,6 +588,7 @@ class UsuarioDestinatarioSerializer(serializers.ModelSerializer):
     apellidos = serializers.CharField(source="last_name", read_only=True)
     correo = serializers.EmailField(source="email", read_only=True)
     activo = serializers.BooleanField(source="is_active", read_only=True)
+    es_administrador = serializers.BooleanField(source="is_staff", read_only=True)
     permisos_resumen = serializers.SerializerMethodField()
     sucursales = serializers.SerializerMethodField()
     sucursales_por_modulo = serializers.SerializerMethodField()
@@ -545,16 +601,20 @@ class UsuarioDestinatarioSerializer(serializers.ModelSerializer):
             "apellidos",
             "correo",
             "activo",
+            "es_administrador",
             "permisos_resumen",
             "sucursales",
             "sucursales_por_modulo",
         ]
 
     def get_permisos_resumen(self, obj):
-        return build_permissions_summary(
+        summary = build_permissions_summary(
             obj.roles.all(),
             extra_roles=[get_personalized_role_for_email(obj.email)],
         )
+        if obj.is_staff or obj.is_superuser:
+            return summary
+        return _filter_admin_only_summary(summary)
 
     def get_sucursales(self, obj):
         asignaciones = obj.asignaciones.select_related("sucursal").all()
@@ -564,7 +624,9 @@ class UsuarioDestinatarioSerializer(serializers.ModelSerializer):
         ]
 
     def get_sucursales_por_modulo(self, obj):
-        return build_sucursal_scope_payload(obj.alcances_sucursal.all())
+        return build_sucursal_scope_payload(
+            obj.alcances_sucursal.exclude(modulo__in=ADMIN_ONLY_MODULES).all()
+        )
 
 
 class UsuarioSucursalSerializer(serializers.ModelSerializer):
@@ -605,6 +667,7 @@ class AuthUserSerializer(serializers.ModelSerializer):
 
     nombre = serializers.CharField(source="first_name", read_only=True)
     apellido = serializers.CharField(source="last_name", read_only=True)
+    es_administrador = serializers.BooleanField(source="is_staff", read_only=True)
 
     class Meta:
         model = User
@@ -616,6 +679,7 @@ class AuthUserSerializer(serializers.ModelSerializer):
             "email",
             "nombre",
             "apellido",
+            "es_administrador",
         ]
 
 

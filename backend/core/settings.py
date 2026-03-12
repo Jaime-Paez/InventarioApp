@@ -68,7 +68,7 @@ DEBUG = env_bool("DEBUG", default=True)
 # - Render: setea ALLOWED_HOSTS="tu-api.onrender.com"
 ALLOWED_HOSTS = env_list(
     "ALLOWED_HOSTS",
-    default=["localhost", "127.0.0.1", "0.0.0.0", "192.168.0.72", "inventarioapp-0mta.onrender.com",".onrender.com"],
+    default=["localhost", "127.0.0.1", "inventarioapp-0mta.onrender.com", ".onrender.com"],
 )
 
 # Evita dejar "*" en producción. Si no setean ALLOWED_HOSTS en Render,
@@ -271,7 +271,6 @@ CORS_ALLOWED_ORIGINS = env_list(
     default=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "http://192.168.0.72:5173",
         "https://kavajaimepaez.onrender.com",
         "https://kava.peugeotjpaez.com",
     ],
@@ -287,7 +286,6 @@ CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
     default=[
         "http://localhost:5173",
-        "http://192.168.0.72:5173",
         "https://kavajaimepaez.onrender.com",
         "https://kava.peugeotjpaez.com",
     ],

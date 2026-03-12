@@ -19,13 +19,12 @@ from .serializers import (
     UsuarioDestinatarioSerializer,
     UsuarioSerializer,
     UsuarioSucursalSerializer,
-    build_permissions_summary,
 )
 from .utils import (
+    ADMIN_ONLY_MODULES,
     build_full_permissions,
     get_modulos_con_alcance_sucursal_options,
     get_permisos_efectivos,
-    get_personalized_role_for_email,
     get_usuario_interno_por_correo,
     remove_personalized_role_for_email,
 )
@@ -91,10 +90,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="permisos-resumen")
     def permisos_resumen(self, request, pk=None):
         usuario = self.get_object()
-        permisos = build_permissions_summary(
-            usuario.roles.all(),
-            extra_roles=[get_personalized_role_for_email(usuario.email)],
-        )
+        permisos = get_permisos_efectivos(usuario, usuario.email)
         return Response({"permisos": permisos})
 
     @action(
@@ -243,6 +239,7 @@ class PermisosDisponiblesAPIView(APIView):
         modulos = [
             {"key": modulo_key, "label": modulo_label}
             for modulo_key, modulo_label in RolPermiso.Modulos.choices
+            if modulo_key not in ADMIN_ONLY_MODULES
         ]
 
         return Response(

@@ -448,7 +448,7 @@ function CreateEntrada({
   }, [branches, selectedSucursalId])
   const selectedProveedorSucursalId = String(formData.sucursalObjetivoId || '').trim()
   const hasSelectedProveedorSucursal = Boolean(selectedProveedorSucursalId)
-  const selectedReminderTargetBranchId = selectedSucursalId
+  const selectedReminderTargetBranchId = selectedProveedorSucursalId
   const hasSelectedReminderTargetBranch = Boolean(selectedReminderTargetBranchId)
   const hasProductSourceBranch = isTraslado ? hasSelectedProveedorSucursal : hasSelectedSucursal
   const providerBranchPool = providerBranches.length ? providerBranches : branches
@@ -2075,23 +2075,12 @@ function CreateEntrada({
       return
     }
     const productPrice = resolveProductPrice(producto)
-    let suggestedCantidad = ''
-    if (isTraslado && normalizedProductId && !stockLoading) {
-      const available = Number(stockByProduct[normalizedProductId] ?? 0)
-      const alreadyUsed = details.reduce((acc, detail) => {
-        if (String(detail?.productoId || '').trim() !== normalizedProductId) return acc
-        const qty = parseIntValue(detail?.cantidad)
-        return acc + (Number.isFinite(qty) ? qty : 0)
-      }, 0)
-      const remaining = Math.max((Number.isFinite(available) ? Math.trunc(available) : 0) - alreadyUsed, 0)
-      suggestedCantidad = remaining > 0 ? String(remaining) : ''
-    }
     setDetailError('')
     setDetailDraft((prev) => ({
       ...prev,
       productoId: String(producto.id),
       valor: productPrice,
-      cantidad: isTraslado ? suggestedCantidad : prev.cantidad,
+      cantidad: '',
     }))
     setProductos((prev) => {
       if (prev.some((item) => String(item.id) === String(producto.id))) return prev
@@ -3538,11 +3527,11 @@ function CreateEntrada({
                     </p>
                     <div className="create-salida__reminder-rule" role="note">
                       Solo se listan usuarios con permisos de <strong>crear y editar</strong> en{' '}
-                      <strong>Movimientos - Salidas</strong> de la <strong>sucursal destino</strong>.
+                      <strong>Movimientos - Salidas</strong> de la <strong>sucursal proveedora</strong>.
                     </div>
 
                     {!hasSelectedReminderTargetBranch && (
-                      <small className="muted">Selecciona primero una sucursal destino para cargar usuarios.</small>
+                      <small className="muted">Selecciona primero una sucursal proveedora para cargar usuarios.</small>
                     )}
 
                     <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdminReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
@@ -3578,7 +3567,7 @@ function CreateEntrada({
                             {!adminReminderRows.length && (
                               <div className="permissions-matrix__row create-salida__reminder-row--empty">
                                 <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                  No se detectaron administradores para la sucursal destino seleccionada.
+                                  No se detectaron administradores para la sucursal proveedora seleccionada.
                                 </div>
                               </div>
                             )}
@@ -3606,7 +3595,7 @@ function CreateEntrada({
                           {!hasSelectedReminderTargetBranch && (
                             <div className="permissions-matrix__row create-salida__reminder-row--empty">
                               <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                Debes seleccionar una sucursal destino.
+                                Debes seleccionar una sucursal proveedora.
                               </div>
                             </div>
                           )}

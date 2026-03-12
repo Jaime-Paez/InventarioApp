@@ -1,152 +1,86 @@
-.transfer-issues {
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  background: var(--table-color);
-  padding: 12px;
-  display: grid;
-  gap: 10px;
+.transfer-issues-page {
   min-height: 0;
-  height: 100%;
-  flex: 1;
 }
 
-.transfer-issues__head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.transfer-issues__head h3 {
-  margin: 0;
-  font-size: 1.08rem;
-}
-
-.transfer-issues__head p {
-  margin: 4px 0 0;
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
-}
-
-.transfer-issues__controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.transfer-issues__controls select {
-  min-width: 148px;
-  min-height: 34px;
-  border-radius: 10px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  padding: 0 10px;
-  font-size: 0.82rem;
-}
-
-.transfer-issues__refresh {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.transfer-issues__loading,
-.transfer-issues__empty {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--color-text-secondary);
-}
-
-.transfer-issues__loading {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.transfer-issues__loading svg {
-  animation: transfer-issues-spin 0.8s linear infinite;
-}
-
-.transfer-issues__table-wrap {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--table-color);
-  overflow: auto;
-  min-height: 0;
-  flex: 1;
-  position: relative;
-}
-
-.transfer-issues__table {
-  width: 100%;
-  min-width: 980px;
-  border-collapse: collapse;
-}
-
-.transfer-issues__table-loading {
-  position: absolute;
-  inset: 0;
+.transfer-issues-no-access {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--table-color) 90%, transparent);
-  z-index: 5;
+  min-height: 220px;
 }
 
-.transfer-issues__table th,
-.transfer-issues__table td {
-  border-bottom: 1px solid var(--color-border);
-  padding: 8px 10px;
-  font-size: 0.82rem;
-  text-align: left;
-  vertical-align: middle;
+.transfer-issues-no-access p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
 }
 
-.transfer-issues__table th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+.transfer-issues-page__type-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.transfer-issues-page__type-btn.p-button {
+  border-radius: 5px;
+  min-width: 104px;
+  padding: 5px 10px;
   background: var(--table-color-search);
-  font-weight: 800;
+  border: 1px solid var(--color-border);
   color: var(--color-text-primary);
 }
 
-.transfer-issues__row:hover td {
+.transfer-issues-page__type-btn.p-button:hover:not(.transfer-issues-page__type-btn--active) {
   background: var(--table-color-hover);
 }
 
-.transfer-issues__product-cell {
-  display: grid;
-  gap: 2px;
+.transfer-issues-page__type-btn--active.p-button {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-button-primary);
 }
 
-.transfer-issues__product-cell strong {
-  font-size: 0.82rem;
+.dashboard-shell.dark .transfer-issues-page__type-btn.p-button {
+  background: var(--table-color-search-dark);
+  border-color: var(--color-border-dark);
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .transfer-issues-page__type-btn.p-button:hover:not(.transfer-issues-page__type-btn--active) {
+  background: var(--table-color-hover-dark);
+}
+
+.dashboard-shell.dark .transfer-issues-page__type-btn--active.p-button {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+  color: var(--color-button-primary);
+}
+
+.transfer-issues-product-cell {
+  display: grid;
+  gap: 2px;
+  min-width: 220px;
+}
+
+.transfer-issues-product-cell strong {
   font-weight: 800;
 }
 
-.transfer-issues__product-cell span,
-.transfer-issues__product-cell small {
-  font-size: 0.76rem;
+.transfer-issues-product-cell span,
+.transfer-issues-product-cell small {
+  font-size: 0.78rem;
   color: var(--color-text-secondary);
 }
 
-.transfer-issues__product-cell small {
+.transfer-issues-product-cell small {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 360px;
 }
 
-.transfer-issues__state {
+.transfer-issues-state {
   border-radius: 999px;
   padding: 3px 10px;
   font-size: 0.72rem;
@@ -154,283 +88,223 @@
   border: 1px solid transparent;
 }
 
-.transfer-issues__state--pendiente {
+.transfer-issues-state--pendiente {
   color: #a16207;
   background: rgba(250, 204, 21, 0.16);
   border-color: rgba(250, 204, 21, 0.3);
 }
 
-.transfer-issues__state--resuelto {
+.transfer-issues-state--resuelto {
   color: #166534;
   background: rgba(34, 197, 94, 0.16);
   border-color: rgba(34, 197, 94, 0.3);
 }
 
-.transfer-issues__state--perdido {
+.transfer-issues-state--perdido {
   color: #991b1b;
   background: rgba(248, 113, 113, 0.18);
   border-color: rgba(248, 113, 113, 0.4);
 }
 
-.transfer-issues__history-row-wrap td {
-  padding: 0;
-  border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-primary) 2%, var(--table-color));
+.users-datatable .p-datatable-tbody > tr.transfer-issues-row--pendiente > td {
+  background: color-mix(in srgb, #facc15 17%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #ca8a04 28%, transparent) !important;
 }
 
-.transfer-issues__empty-row td {
-  border-bottom: none;
-  height: clamp(280px, 52vh, 620px);
-  background: var(--table-color);
+.users-datatable .p-datatable-tbody > tr.transfer-issues-row--pendiente:hover > td {
+  background: color-mix(in srgb, #facc15 24%, var(--table-color-hover)) !important;
 }
 
-.transfer-issues__item-actions {
+.users-datatable .p-datatable-tbody > tr.transfer-issues-row--resuelto > td {
+  background: color-mix(in srgb, #22c55e 13%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #166534 24%, transparent) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.transfer-issues-row--resuelto:hover > td {
+  background: color-mix(in srgb, #22c55e 22%, var(--table-color-hover)) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.transfer-issues-row--perdido > td {
+  background: color-mix(in srgb, #ef4444 12%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #b91c1c 28%, transparent) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.transfer-issues-row--perdido:hover > td {
+  background: color-mix(in srgb, #ef4444 18%, var(--table-color-hover)) !important;
+}
+
+.transfer-issues-actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.transfer-issues__action {
-  border: 1px solid var(--color-border);
+.transfer-issues-action-button {
   border-radius: 8px;
+  border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text-primary);
   min-height: 30px;
   padding: 0 10px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.transfer-issues__action--resolve {
-  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.transfer-issues__history {
-  padding: 10px;
-  display: grid;
-  gap: 8px;
-}
-
-.transfer-issues__history p {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-}
-
-.transfer-issues__history-row {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
-  padding: 8px;
-  display: grid;
-  gap: 3px;
-}
-
-.transfer-issues__history-row strong {
-  font-size: 0.78rem;
-}
-
-.transfer-issues__history-row span {
-  font-size: 0.77rem;
-  color: var(--color-text-secondary);
-}
-
-.transfer-issues__history-row small {
-  font-size: 0.73rem;
-  color: var(--color-text-secondary);
-}
-
-.transfer-issues__resolver-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1350;
-  background: rgba(15, 23, 42, 0.32);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px;
-}
-
-.transfer-issues__resolver-dialog {
-  width: min(620px, calc(100vw - 24px));
-  border-radius: 14px;
-  border: 1px solid var(--color-border);
-  background: var(--modal-color);
-  box-shadow: var(--shadow-panel);
-  overflow: hidden;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-}
-
-.transfer-issues__resolver-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  border-bottom: 1px solid var(--color-border);
-  padding: 12px 14px;
-}
-
-.transfer-issues__resolver-head h4 {
-  margin: 0;
-  font-size: 0.98rem;
-}
-
-.transfer-issues__resolver-head p {
-  margin: 4px 0 0;
-  font-size: 0.79rem;
-  color: var(--color-text-secondary);
-}
-
-.transfer-issues__resolver-close {
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.transfer-issues__resolver-body {
-  padding: 12px 14px;
-  display: grid;
-  gap: 10px;
-}
-
-.transfer-issues__resolver-body label {
-  display: grid;
-  gap: 4px;
-}
-
-.transfer-issues__resolver-body span,
-.transfer-issues__resolver-decision > span {
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.transfer-issues__resolver-body select,
-.transfer-issues__resolver-body textarea {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  min-height: 36px;
-  padding: 6px 8px;
-  font-size: 0.82rem;
-}
-
-.transfer-issues__resolver-body textarea {
-  min-height: 82px;
-  resize: vertical;
-}
-
-.transfer-issues__resolver-decision {
-  display: grid;
-  gap: 6px;
-}
-
-.transfer-issues__resolver-decision-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.transfer-issues__resolver-decision-btn {
-  border: 1px solid var(--color-border);
-  border-radius: 9px;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  min-height: 44px;
-  padding: 6px 10px;
   font-size: 0.76rem;
   font-weight: 700;
-  text-align: left;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
-.transfer-issues__resolver-decision-btn:hover:not(:disabled) {
+.transfer-issues-action-button:hover:not(:disabled) {
   background: var(--table-color-hover);
 }
 
-.transfer-issues__resolver-decision-btn.is-active {
-  border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
+.transfer-issues-action-button--resolve {
+  border-color: color-mix(in srgb, var(--color-primary) 46%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+}
+
+.transfer-issues-action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.transfer-issues-details__meta {
+  margin: 0 0 8px;
+}
+
+.transfer-issues-details__hint {
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+
+.transfer-issues-details__decisions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.transfer-issues-details__decision-btn {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  text-align: left;
+}
+
+.transfer-issues-details__decision-btn:hover:not(:disabled) {
+  background: var(--table-color-hover);
+}
+
+.transfer-issues-details__decision-btn.is-active {
+  border-color: color-mix(in srgb, var(--color-primary) 56%, var(--color-border));
   background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
 }
 
-.transfer-issues__resolver-decision-btn--danger.is-active {
+.transfer-issues-details__decision-btn--danger.is-active {
   border-color: rgba(239, 68, 68, 0.5);
   background: rgba(239, 68, 68, 0.14);
   color: #991b1b;
 }
 
-.transfer-issues__resolver-loading {
+.transfer-issues-details__field {
+  display: grid;
+  gap: 6px;
+}
+
+.transfer-issues-details__field > span {
+  font-size: var(--font-size-base);
+  font-weight: 700;
+}
+
+.transfer-issues-details__field select,
+.transfer-issues-details__field textarea {
+  font-size: var(--font-size-base);
+}
+
+.transfer-issues-details__field textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.transfer-issues-details__loading {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.74rem;
+  font-size: var(--font-size-base);
   color: var(--color-text-secondary);
 }
 
-.transfer-issues__resolver-loading svg {
+.transfer-issues-details__manual-location-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+}
+
+.transfer-issues-details__loading svg {
   animation: transfer-issues-spin 0.8s linear infinite;
 }
 
-.transfer-issues__resolver-error {
+.transfer-issues-details__error {
   margin: 0;
   border: 1px solid rgba(239, 68, 68, 0.45);
   background: rgba(239, 68, 68, 0.08);
   color: #b91c1c;
   border-radius: 8px;
   padding: 8px 10px;
-  font-size: 0.8rem;
+  font-size: var(--font-size-base);
 }
 
-.transfer-issues__resolver-actions {
-  border-top: 1px solid var(--color-border);
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+.transfer-issues-details__history {
+  display: grid;
   gap: 8px;
 }
 
-.transfer-issues__resolver-btn {
+.transfer-issues-details__history-item {
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
+  background: color-mix(in srgb, var(--color-primary) 3%, var(--color-surface));
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
 }
 
-.transfer-issues__resolver-btn--primary {
-  border-color: color-mix(in srgb, var(--color-primary) 46%, var(--color-border));
-  background: color-mix(in srgb, var(--color-primary) 11%, var(--color-surface));
+.transfer-issues-details__history-item strong {
+  font-size: var(--font-size-base);
 }
 
-.transfer-issues__resolver-btn--ghost {
+.transfer-issues-details__history-item p {
+  margin: 0;
+  font-size: var(--font-size-base);
   color: var(--color-text-secondary);
 }
 
-.transfer-issues__resolver-btn:disabled,
-.transfer-issues__resolver-close:disabled,
-.transfer-issues__refresh:disabled,
-.transfer-issues__resolver-decision-btn:disabled {
-  cursor: not-allowed;
+.transfer-issues-details__history-item small {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.transfer-issues-details__decision-btn:disabled,
+.transfer-issues-action-button:disabled {
   opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.transfer-issues-row--pendiente > td {
+  background: color-mix(in srgb, #facc15 25%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #facc15 42%, var(--color-border-dark)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.transfer-issues-row--resuelto > td {
+  background: color-mix(in srgb, #22c55e 20%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #22c55e 42%, var(--color-border-dark)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.transfer-issues-row--perdido > td {
+  background: color-mix(in srgb, #ef4444 22%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #ef4444 42%, var(--color-border-dark)) !important;
 }
 
 @keyframes transfer-issues-spin {
@@ -443,26 +317,17 @@
   }
 }
 
-@media (max-width: 900px) {
-  .transfer-issues__head {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .transfer-issues__controls {
+@media (max-width: 980px) {
+  .transfer-issues-page__type-filter {
     width: 100%;
   }
 
-  .transfer-issues__controls select {
+  .transfer-issues-page__type-btn.p-button {
     flex: 1 1 auto;
-    min-width: 0;
+    min-width: 96px;
   }
 
-  .transfer-issues__resolver-decision-grid {
+  .transfer-issues-details__decisions {
     grid-template-columns: 1fr;
-  }
-
-  .transfer-issues__product-cell small {
-    max-width: 220px;
   }
 }

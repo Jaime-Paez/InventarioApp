@@ -1,11 +1,62 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, RefreshCw, Wrench, X } from 'lucide-react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { DataTable } from 'primereact/datatable'
+import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
+import { Tooltip } from 'primereact/tooltip'
+import { OverlayPanel } from 'primereact/overlaypanel'
+import { Checkbox } from 'primereact/checkbox'
+import { Button } from 'primereact/button'
+import { Loader2, Wrench } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
+import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
+import useModalAnimation from '../common/useModalAnimation'
+import '../admin/CreateUsuario/CreateUsuario.css'
+import '../admin/UsersTable/UsersTable.css'
+import './CreateSalida.css'
 import './TrasladosInconvenientesTable.css'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
+const normalizeValue = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+const formatSubdivisionLocationLabel = (subdivision) => {
+  const bodega = String(subdivision?.division?.bodega?.nombre || '').trim()
+  const division = String(subdivision?.division?.nombre || '').trim()
+  const sub = String(subdivision?.nombre || '').trim()
+  return [bodega, division, sub].filter(Boolean).join(' / ')
+}
+const formatDivisionLocationLabel = (division) => {
+  const bodega = String(division?.bodega?.nombre || '').trim()
+  const divisionName = String(division?.nombre || '').trim()
+  return [bodega, divisionName].filter(Boolean).join(' / ')
+}
+const formatBodegaLocationLabel = (bodega) => String(bodega?.nombre || '').trim()
+const MIN_WIDTH = 720
+const MIN_HEIGHT = 520
+const VIEWPORT_PADDING = 12
+
+const STATUS_FILTERS = [
+  { key: 'all', label: 'Todos' },
+  { key: 'pendiente', label: 'Pendientes' },
+  { key: 'resuelto', label: 'Resueltos' },
+  { key: 'perdido', label: 'Perdidos' },
+]
+
+const isCheckboxSelection = (event) => {
+  const type = event?.type
+  if (type === 'checkbox' || type === 'all') return true
+  const target = event?.originalEvent?.target
+  if (!target) return true
+  if (target.type === 'checkbox') return true
+  return Boolean(
+    target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input, .row-selection-column')
+  )
+}
 
 const formatDateTime = (value) => {
   const raw = String(value || '').trim()
@@ -32,9 +83,9 @@ const formatEstado = (value) => {
 
 const formatResolucion = (value) => {
   const normalized = String(value || '').trim().toLowerCase()
-  if (normalized === 'sumar_solicitante') return 'Sumado a sucursal solicitante'
+  if (normalized === 'sumar_solicitante') return 'Sumado a sucursal destino'
   if (normalized === 'sumar_proveedora') return 'Sumado a sucursal proveedora'
-  if (normalized === 'perdido') return 'Perdido / robado'
+  if (normalized === 'perdido') return 'Marcado como desaparecido'
   return '-'
 }
 
@@ -42,136 +93,503 @@ const formatHistorialAccion = (value) => {
   const normalized = String(value || '').trim().toLowerCase()
   if (normalized === 'detectado') return 'Detectado'
   if (normalized === 'sumado_a_sucursal') return 'Sumado a sucursal'
-  if (normalized === 'marcado_como_perdido') return 'Marcado como perdido'
+  if (normalized === 'marcado_como_perdido') return 'Marcado como desaparecido'
   return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
+}
+
+const createInitialFilters = () => ({
+  global: { value: null, matchMode: FilterMatchMode.CONTAINS },
+  solicitud_no_documento: {
+    operator: FilterOperator.AND,
+    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
+  },
+  producto_codigo: {
+    operator: FilterOperator.AND,
+    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
+  },
+  producto_nombre: {
+    operator: FilterOperator.AND,
+    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
+  },
+  cantidad_faltante: {
+    operator: FilterOperator.AND,
+    constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }],
+  },
+  sucursal_proveedora: {
+    operator: FilterOperator.AND,
+    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
+  },
+  sucursal_solicitante: {
+    operator: FilterOperator.AND,
+    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
+  },
+  estado_label: {
+    operator: FilterOperator.AND,
+    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
+  },
+  resolucion_label: {
+    operator: FilterOperator.AND,
+    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
+  },
+  created_at_label: {
+    operator: FilterOperator.AND,
+    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
+  },
+})
+
+const selectionColStyle = {
+  width: '40px',
+  minWidth: '40px',
+  maxWidth: '40px',
+  padding: 0,
 }
 
 function TrasladosInconvenientesTable({ token, moduleActions }) {
   const toast = useRef(null)
+  const opColumns = useRef(null)
+  const quickSearchInputRef = useRef(null)
+
   const canRead = moduleActions?.puede_leer ?? true
   const canUpdate = moduleActions?.puede_actualizar ?? true
 
+  const columnsData = useMemo(
+    () => [
+      { nombrevar: 'solicitud_no_documento', header: 'Documento', filterPlaceholder: 'Buscar por documento' },
+      { nombrevar: 'producto_codigo', header: 'Codigo', filterPlaceholder: 'Buscar por codigo' },
+      { nombrevar: 'producto_nombre', header: 'Producto', filterPlaceholder: 'Buscar por producto' },
+      { nombrevar: 'cantidad_faltante', header: 'Faltante', filterPlaceholder: 'Buscar por faltante' },
+      { nombrevar: 'sucursal_proveedora', header: 'Sucursal proveedora', filterPlaceholder: 'Buscar por proveedora' },
+      { nombrevar: 'sucursal_solicitante', header: 'Sucursal destino', filterPlaceholder: 'Buscar por destino' },
+      { nombrevar: 'estado_label', header: 'Estado', filterPlaceholder: 'Buscar por estado' },
+      { nombrevar: 'resolucion_label', header: 'Resolucion', filterPlaceholder: 'Buscar por resolucion' },
+      { nombrevar: 'created_at_label', header: 'Creado', filterPlaceholder: 'Buscar por fecha' },
+    ],
+    []
+  )
+
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
-  const [expandedId, setExpandedId] = useState('')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [error, setError] = useState(null)
   const [statusFilter, setStatusFilter] = useState('pendiente')
+  const [filters, setFilters] = useState(() => createInitialFilters())
+  const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const [selectedColumns, setSelectedColumns] = useState(columnsData)
+  const selectedColumnsRef = useRef(selectedColumns)
+  const [processedRows, setProcessedRows] = useState(null)
+  const [selectedRows, setSelectedRows] = useState([])
 
-  const [resolverTarget, setResolverTarget] = useState(null)
+  const [selectedIssue, setSelectedIssue] = useState(null)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
+  const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
+  const [isMaximized, setIsMaximized] = useState(false)
+  const [isResizingModal, setIsResizingModal] = useState(false)
   const [resolverDecision, setResolverDecision] = useState('')
   const [resolverMotivo, setResolverMotivo] = useState('')
+  const [resolverBodegaId, setResolverBodegaId] = useState('')
+  const [resolverDivisionId, setResolverDivisionId] = useState('')
   const [resolverSubdivisionId, setResolverSubdivisionId] = useState('')
   const [resolverSubdivisions, setResolverSubdivisions] = useState([])
   const [resolverSubdivisionsLoading, setResolverSubdivisionsLoading] = useState(false)
+  const [resolverNeedsManualLocation, setResolverNeedsManualLocation] = useState(false)
+  const [resolverLocationDropdownField, setResolverLocationDropdownField] = useState('')
+  const [resolverLocationDropdownDirection, setResolverLocationDropdownDirection] = useState('down')
+  const [resolverLocationDropdownMaxHeight, setResolverLocationDropdownMaxHeight] = useState(null)
+  const [resolverLocationQuery, setResolverLocationQuery] = useState('')
+  const [resolverLocationDebouncedQuery, setResolverLocationDebouncedQuery] = useState('')
   const [resolverSubmitting, setResolverSubmitting] = useState(false)
   const [resolverError, setResolverError] = useState('')
+  const modalRef = useRef(null)
+  const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const modalResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
+  const modalSizeRef = useRef(modalSize)
+  const modalPositionRef = useRef(modalPosition)
+  const modalRestoreRef = useRef(null)
+  const resolverLocationDropdownRef = useRef(null)
 
-  const showError = useCallback((detail) => {
-    if (!detail) return
-    toast.current?.show({
-      severity: 'error',
-      summary: 'Error',
-      detail,
-      life: 3600,
-    })
+  const { shouldRender: shouldRenderDetailsModal, isClosing: isClosingDetailsModal } =
+    useModalAnimation(showDetailsModal)
+
+  const showErrorToast = useCallback(
+    (detail, summary = 'Error') =>
+      toast.current?.show({
+        severity: 'error',
+        summary,
+        detail,
+        life: 4000,
+      }),
+    []
+  )
+
+  const showSuccessToast = useCallback(
+    (detail, summary = 'Listo') =>
+      toast.current?.show({
+        severity: 'success',
+        summary,
+        detail,
+        life: 3000,
+      }),
+    []
+  )
+
+  const showWarningToast = useCallback(
+    (detail, summary = 'Aviso') =>
+      toast.current?.show({
+        severity: 'warn',
+        summary,
+        detail,
+        life: 2800,
+      }),
+    []
+  )
+
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+  const getViewportMetrics = useCallback(() => {
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+    return {
+      availableWidth,
+      availableHeight,
+      minWidth: Math.min(MIN_WIDTH, availableWidth),
+      minHeight: Math.min(MIN_HEIGHT, availableHeight),
+    }
   }, [])
 
-  const showSuccess = useCallback((detail) => {
-    if (!detail) return
-    toast.current?.show({
-      severity: 'success',
-      summary: 'Listo',
-      detail,
-      life: 2800,
-    })
-  }, [])
+  const normalizeRows = useCallback(
+    (list) =>
+      list.map((row, index) => {
+        const rowId = normalizeId(row?.id)
+        const state = String(row?.estado || '').trim().toLowerCase()
+        const productCode = String(row?.producto_codigo || '').trim()
+        const productName = String(row?.producto_nombre || '').trim() || 'Producto sin nombre'
+        const reason = String(row?.motivo || '').trim()
+        const missingQty = Number.parseInt(String(row?.cantidad_faltante || 0), 10) || 0
+        const keyFallback = `${normalizeId(row?.solicitud_id)}-${normalizeId(row?.producto_id)}-${index}`
+        return {
+          ...row,
+          row_key: rowId || keyFallback,
+          estado_key: state || 'pendiente',
+          estado_label: formatEstado(row?.estado),
+          resolucion_label: formatResolucion(row?.resolucion),
+          created_at_label: formatDateTime(row?.created_at),
+          producto_codigo: productCode || `Producto ${normalizeId(row?.producto_id) || '-'}`,
+          producto_nombre: productName,
+          producto_resumen: reason ? `${productCode || productName} | Novedad: ${reason}` : (productCode || productName),
+          cantidad_faltante: missingQty,
+          sucursal_proveedora: String(row?.sucursal_proveedora || '-').trim() || '-',
+          sucursal_solicitante: String(row?.sucursal_solicitante || '-').trim() || '-',
+          solicitud_no_documento: String(row?.solicitud_no_documento || row?.solicitud_id || '-').trim() || '-',
+        }
+      }),
+    []
+  )
 
-  const fetchRows = useCallback(async () => {
-    if (!token || !canRead) {
-      setRows([])
-      return []
-    }
-
-    setLoading(true)
-    try {
-      const endpoint = new URL(`${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/`)
-      if (statusFilter && statusFilter !== 'all') {
-        endpoint.searchParams.set('estado', statusFilter)
+  const fetchRows = useCallback(
+    async (options = {}) => {
+      const withOverlay = options?.withOverlay !== false
+      if (!token || !canRead) {
+        setRows([])
+        setSelectedRows([])
+        return []
       }
 
-      const response = await authFetch(endpoint.toString(), {}, token)
-      if (!response.ok) {
-        throw new Error('No se pudieron cargar los inconvenientes de traslado.')
+      if (withOverlay) {
+        setLoading(true)
+      } else {
+        setIsRefreshing(true)
       }
+      setError(null)
 
-      const payload = await response.json().catch(() => ([]))
-      const parsed = parseApiList(payload)
-      setRows(parsed)
-      return parsed
-    } catch (error) {
-      setRows([])
-      showError(error?.message || 'No se pudieron cargar los inconvenientes de traslado.')
-      return []
-    } finally {
-      setLoading(false)
-    }
-  }, [canRead, showError, statusFilter, token])
+      try {
+        const endpoint = new URL(`${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/`)
+        if (statusFilter && statusFilter !== 'all') {
+          endpoint.searchParams.set('estado', statusFilter)
+        }
+        const response = await authFetch(endpoint.toString(), {}, token)
+        if (!response.ok) {
+          throw new Error('No se pudieron cargar los inconvenientes de traslado.')
+        }
+
+        const payload = await response.json().catch(() => [])
+        const parsed = normalizeRows(parseApiList(payload))
+        setRows(parsed)
+        return parsed
+      } catch (requestError) {
+        const message = requestError?.message || 'No se pudieron cargar los inconvenientes de traslado.'
+        setRows([])
+        setError(message)
+        showErrorToast(message)
+        return []
+      } finally {
+        setLoading(false)
+        setIsRefreshing(false)
+      }
+    },
+    [canRead, normalizeRows, showErrorToast, statusFilter, token]
+  )
 
   useEffect(() => {
     void fetchRows()
   }, [fetchRows])
 
-  const resolverTargetBranchId = useMemo(() => {
-    if (!resolverTarget) return ''
-    if (resolverDecision === 'sumar_solicitante') return normalizeId(resolverTarget?.sucursal_solicitante_id)
-    if (resolverDecision === 'sumar_proveedora') return normalizeId(resolverTarget?.sucursal_proveedora_id)
-    return ''
-  }, [resolverDecision, resolverTarget])
-
-  const resolverTargetBranchLabel = useMemo(() => {
-    if (!resolverTarget) return ''
-    if (resolverDecision === 'sumar_solicitante') {
-      return String(resolverTarget?.sucursal_solicitante || '').trim() || 'Sucursal solicitante'
-    }
-    if (resolverDecision === 'sumar_proveedora') {
-      return String(resolverTarget?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'
-    }
-    return ''
-  }, [resolverDecision, resolverTarget])
+  useEffect(() => {
+    selectedColumnsRef.current = selectedColumns
+  }, [selectedColumns])
 
   useEffect(() => {
-    if (!token || !resolverTargetBranchId) {
+    const stored = localStorage.getItem('traslados-inconvenientes-columns')
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed) && parsed.length) {
+          setSelectedColumns(parsed)
+        }
+      } catch {
+        localStorage.removeItem('traslados-inconvenientes-columns')
+      }
+    }
+    return () => {
+      localStorage.setItem('traslados-inconvenientes-columns', JSON.stringify(selectedColumnsRef.current))
+    }
+  }, [])
+
+  useEffect(() => {
+    setSelectedColumns((prev) => {
+      if (!prev?.length) return columnsData
+      const currentKeys = new Set(prev.map((column) => column?.nombrevar))
+      const merged = columnsData.filter((column) => currentKeys.has(column.nombrevar))
+      columnsData.forEach((column) => {
+        if (!merged.some((item) => item.nombrevar === column.nombrevar)) {
+          merged.push(column)
+        }
+      })
+      return merged
+    })
+  }, [columnsData])
+
+  const selectedRowIds = useMemo(
+    () => new Set((selectedRows || []).map((row) => normalizeId(row?.id)).filter(Boolean)),
+    [selectedRows]
+  )
+
+  const resolverTargetBranchId = useMemo(() => {
+    if (!selectedIssue) return ''
+    if (resolverDecision === 'sumar_solicitante') return normalizeId(selectedIssue?.sucursal_solicitante_id)
+    if (resolverDecision === 'sumar_proveedora') return normalizeId(selectedIssue?.sucursal_proveedora_id)
+    return ''
+  }, [resolverDecision, selectedIssue])
+
+  const resolverTargetBranchLabel = useMemo(() => {
+    if (!selectedIssue) return ''
+    if (resolverDecision === 'sumar_solicitante') {
+      return String(selectedIssue?.sucursal_solicitante || '').trim() || 'Sucursal destino'
+    }
+    if (resolverDecision === 'sumar_proveedora') {
+      return String(selectedIssue?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'
+    }
+    return ''
+  }, [resolverDecision, selectedIssue])
+
+  const resolverSubdivisionPathById = useMemo(() => {
+    const map = new Map()
+    resolverSubdivisions.forEach((subdivision) => {
+      const subdivisionId = normalizeId(subdivision?.id)
+      const division = subdivision?.division
+      const divisionId = normalizeId(division?.id)
+      const bodega = division?.bodega
+      const bodegaId = normalizeId(bodega?.id)
+      if (!subdivisionId || !divisionId || !bodegaId) return
+      map.set(subdivisionId, { subdivisionId, divisionId, bodegaId })
+    })
+    return map
+  }, [resolverSubdivisions])
+
+  const resolverBodegas = useMemo(() => {
+    const map = new Map()
+    resolverSubdivisions.forEach((subdivision) => {
+      const bodega = subdivision?.division?.bodega
+      const bodegaId = normalizeId(bodega?.id)
+      if (!bodegaId || map.has(bodegaId)) return
+      map.set(bodegaId, { ...bodega, id: bodegaId })
+    })
+    return Array.from(map.values()).sort((a, b) =>
+      String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' })
+    )
+  }, [resolverSubdivisions])
+
+  const resolverDivisionsByBodega = useMemo(() => {
+    const map = new Map()
+    resolverSubdivisions.forEach((subdivision) => {
+      const division = subdivision?.division
+      const divisionId = normalizeId(division?.id)
+      const bodega = division?.bodega
+      const bodegaId = normalizeId(bodega?.id)
+      if (!divisionId || !bodegaId) return
+      if (!map.has(bodegaId)) map.set(bodegaId, new Map())
+      const divisionsMap = map.get(bodegaId)
+      if (divisionsMap.has(divisionId)) return
+      divisionsMap.set(divisionId, {
+        ...division,
+        id: divisionId,
+        bodega: { ...bodega, id: bodegaId },
+      })
+    })
+
+    const grouped = new Map()
+    map.forEach((divisionsMap, bodegaId) => {
+      grouped.set(
+        bodegaId,
+        Array.from(divisionsMap.values()).sort((a, b) =>
+          String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' })
+        )
+      )
+    })
+    return grouped
+  }, [resolverSubdivisions])
+
+  const resolverSubdivisionsByDivision = useMemo(() => {
+    const map = new Map()
+    resolverSubdivisions.forEach((subdivision) => {
+      const divisionId = normalizeId(subdivision?.division?.id)
+      const subdivisionId = normalizeId(subdivision?.id)
+      if (!divisionId || !subdivisionId) return
+      if (!map.has(divisionId)) map.set(divisionId, new Map())
+      const subdivisionsMap = map.get(divisionId)
+      if (subdivisionsMap.has(subdivisionId)) return
+      subdivisionsMap.set(subdivisionId, {
+        ...subdivision,
+        id: subdivisionId,
+      })
+    })
+
+    const grouped = new Map()
+    map.forEach((subdivisionsMap, divisionId) => {
+      grouped.set(
+        divisionId,
+        Array.from(subdivisionsMap.values()).sort((a, b) =>
+          String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' })
+        )
+      )
+    })
+    return grouped
+  }, [resolverSubdivisions])
+
+  const resolverDivisionOptions = useMemo(
+    () => resolverDivisionsByBodega.get(resolverBodegaId) || [],
+    [resolverBodegaId, resolverDivisionsByBodega]
+  )
+  const resolverSubdivisionOptions = useMemo(
+    () => resolverSubdivisionsByDivision.get(resolverDivisionId) || [],
+    [resolverDivisionId, resolverSubdivisionsByDivision]
+  )
+  const selectedResolverBodega = useMemo(
+    () => resolverBodegas.find((item) => normalizeId(item?.id) === resolverBodegaId) || null,
+    [resolverBodegaId, resolverBodegas]
+  )
+  const selectedResolverDivision = useMemo(
+    () => resolverDivisionOptions.find((item) => normalizeId(item?.id) === resolverDivisionId) || null,
+    [resolverDivisionId, resolverDivisionOptions]
+  )
+  const selectedResolverSubdivision = useMemo(
+    () => resolverSubdivisionOptions.find((item) => normalizeId(item?.id) === resolverSubdivisionId) || null,
+    [resolverSubdivisionId, resolverSubdivisionOptions]
+  )
+
+  const filterResolverLocationOptions = useCallback(
+    (options, getSearchLabel) => {
+      const term = String(resolverLocationDebouncedQuery || '').trim()
+      if (!term) return options
+      return (Array.isArray(options) ? options : []).filter((option) =>
+        normalizeValue(String(getSearchLabel?.(option) || '')).includes(term)
+      )
+    },
+    [resolverLocationDebouncedQuery]
+  )
+
+  useEffect(() => {
+    if (!showDetailsModal || !token || !resolverTargetBranchId) {
       setResolverSubdivisions([])
       setResolverSubdivisionId('')
+      setResolverNeedsManualLocation(false)
       return
     }
 
     let cancelled = false
-
     const loadSubdivisions = async () => {
       setResolverSubdivisionsLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(resolverTargetBranchId)}&modulo=movimientos_inconvenientes`,
+          `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(
+            resolverTargetBranchId
+          )}&modulo=movimientos_inconvenientes`,
           {},
           token
         )
         if (!response.ok) {
-          throw new Error('No se pudieron cargar las subdivisiones de la sucursal.')
+          throw new Error('No se pudieron cargar las subdivisiones de la sucursal seleccionada.')
         }
         const payload = await response.json().catch(() => ({}))
         if (cancelled) return
         const parsed = parseApiList(payload)
+        const availableSubdivisionIds = new Set(parsed.map((item) => normalizeId(item?.id)).filter(Boolean))
+
+        let preferredSubdivisionId = ''
+        const selectedProductId = Number.parseInt(String(selectedIssue?.producto_id || 0), 10)
+        if (selectedProductId > 0) {
+          try {
+            const inventoryResponse = await authFetch(
+              `${API_URL}/inventario/inventario/?page_size=400&producto_ids=${encodeURIComponent(
+                String(selectedProductId)
+              )}`,
+              {},
+              token
+            )
+            if (inventoryResponse.ok) {
+              const inventoryPayload = await inventoryResponse.json().catch(() => ({}))
+              const inventoryRows = parseApiList(inventoryPayload)
+              const branchKey = normalizeId(resolverTargetBranchId)
+              const preferred = inventoryRows
+                .map((row) => {
+                  const rowBranchId = normalizeId(
+                    row?.subdivision?.division?.bodega?.sucursal?.id ??
+                      row?.subdivision?.division?.bodega?.sucursal_id
+                  )
+                  if (rowBranchId !== branchKey) return null
+                  const subdivisionId = normalizeId(row?.subdivision?.id ?? row?.subdivision_id)
+                  if (!subdivisionId) return null
+                  const qty = Number.parseFloat(String(row?.cantidad ?? 0))
+                  return {
+                    subdivisionId,
+                    qty: Number.isFinite(qty) ? qty : 0,
+                  }
+                })
+                .filter(Boolean)
+                .sort((a, b) => b.qty - a.qty)
+              preferredSubdivisionId = normalizeId(preferred?.[0]?.subdivisionId)
+            }
+          } catch {
+            preferredSubdivisionId = ''
+          }
+        }
+
+        const preferredValid = preferredSubdivisionId && availableSubdivisionIds.has(preferredSubdivisionId)
         setResolverSubdivisions(parsed)
-        setResolverSubdivisionId((current) => current || normalizeId(parsed?.[0]?.id))
-      } catch (error) {
+        setResolverNeedsManualLocation(!preferredValid)
+        setResolverSubdivisionId((current) => {
+          const currentId = normalizeId(current)
+          if (currentId && availableSubdivisionIds.has(currentId)) return currentId
+          return preferredValid ? preferredSubdivisionId : ''
+        })
+      } catch (requestError) {
         if (cancelled) return
+        const message = requestError?.message || 'No se pudieron cargar las subdivisiones.'
         setResolverSubdivisions([])
         setResolverSubdivisionId('')
-        showError(error?.message || 'No se pudieron cargar las subdivisiones.')
+        setResolverNeedsManualLocation(false)
+        showErrorToast(message)
       } finally {
-        if (!cancelled) {
-          setResolverSubdivisionsLoading(false)
-        }
+        if (!cancelled) setResolverSubdivisionsLoading(false)
       }
     }
 
@@ -179,34 +597,163 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
     return () => {
       cancelled = true
     }
-  }, [resolverTargetBranchId, showError, token])
+  }, [resolverTargetBranchId, selectedIssue?.producto_id, showDetailsModal, showErrorToast, token])
 
-  const openResolver = useCallback((row) => {
-    setResolverTarget(row || null)
+  const resetResolverState = useCallback(() => {
     setResolverDecision('')
     setResolverMotivo('')
     setResolverSubdivisionId('')
     setResolverSubdivisions([])
     setResolverSubdivisionsLoading(false)
+    setResolverNeedsManualLocation(false)
     setResolverSubmitting(false)
     setResolverError('')
   }, [])
 
-  const closeResolver = useCallback(() => {
-    setResolverTarget(null)
-    setResolverDecision('')
-    setResolverMotivo('')
-    setResolverSubdivisionId('')
-    setResolverSubdivisions([])
-    setResolverSubdivisionsLoading(false)
-    setResolverSubmitting(false)
-    setResolverError('')
+  const openDetails = useCallback(
+    (row) => {
+      setSelectedIssue(row || null)
+      setShowDetailsModal(true)
+      setIsMaximized(false)
+      setIsResizingModal(false)
+      modalRestoreRef.current = null
+      modalDrag.current.active = false
+      modalResize.current.active = false
+      resetResolverState()
+    },
+    [resetResolverState]
+  )
+
+  const closeDetails = useCallback(() => {
+    if (resolverSubmitting) return
+    modalDrag.current.active = false
+    modalResize.current.active = false
+    setIsResizingModal(false)
+    setShowDetailsModal(false)
+  }, [resolverSubmitting])
+
+  const clearFilter = useCallback(() => {
+    setFilters(createInitialFilters())
+    setGlobalFilterValue('')
   }, [])
+
+  const refreshData = useCallback(() => {
+    void fetchRows({ withOverlay: false })
+  }, [fetchRows])
+
+  const handleGlobalFilterChange = useCallback((event) => {
+    const value = String(event?.target?.value ?? '')
+    setGlobalFilterValue(value)
+    setFilters((prev) => ({
+      ...(prev || {}),
+      global: { value: value || null, matchMode: FilterMatchMode.CONTAINS },
+    }))
+  }, [])
+
+  const handleTableFilterChange = useCallback((event) => {
+    const next = event?.filters || {}
+    setFilters(next)
+    setGlobalFilterValue(String(next?.global?.value || ''))
+  }, [])
+
+  const handleStatusFilterChange = useCallback((nextFilter) => {
+    setStatusFilter(String(nextFilter || 'all'))
+    setSelectedRows([])
+    setProcessedRows(null)
+  }, [])
+
+  const handleCheckboxChangeColumn = useCallback(
+    (column) => {
+      const key = column?.nombrevar
+      if (!key) return
+      setSelectedColumns((prev) => {
+        const exists = prev.some((item) => item.nombrevar === key)
+        if (exists) {
+          const next = prev.filter((item) => item.nombrevar !== key)
+          return next.length ? next : prev
+        }
+        const map = new Map(prev.map((item) => [item.nombrevar, item]))
+        map.set(key, column)
+        return columnsData.filter((item) => map.has(item.nombrevar))
+      })
+    },
+    [columnsData]
+  )
+
+  const handleRowClick = useCallback(
+    (event) => {
+      const target = event?.originalEvent?.target
+      if (
+        target?.closest?.('.p-checkbox') ||
+        target?.closest?.('.row-selection-column') ||
+        target?.closest?.('.transfer-issues-action-button')
+      ) {
+        return
+      }
+      if (!event?.data) return
+      openDetails(event.data)
+    },
+    [openDetails]
+  )
+
+  const getRowsToExport = useCallback(() => {
+    if (selectedRows.length) return selectedRows
+    if (Array.isArray(processedRows)) return processedRows
+    return rows
+  }, [processedRows, rows, selectedRows])
+
+  const exportColumns = useMemo(
+    () =>
+      selectedColumns.map((column) => ({
+        key: column.nombrevar,
+        header: column.header,
+      })),
+    [selectedColumns]
+  )
+
+  const getExportValue = useCallback((row, key) => row?.[key], [])
+
+  const handleExportExcel = useCallback(async () => {
+    if (!exportColumns.length) {
+      showWarningToast('Selecciona al menos una columna para exportar.')
+      return
+    }
+    const rowsToExport = getRowsToExport()
+    if (!rowsToExport.length) {
+      showWarningToast('No hay registros para exportar.')
+      return
+    }
+    await exportToExcel({
+      rows: rowsToExport,
+      columns: exportColumns,
+      valueGetter: getExportValue,
+      fileName: buildFileName('inconvenientes-traslado'),
+    })
+  }, [exportColumns, getExportValue, getRowsToExport, showWarningToast])
+
+  const handleExportPdf = useCallback(async () => {
+    if (!exportColumns.length) {
+      showWarningToast('Selecciona al menos una columna para exportar.')
+      return
+    }
+    const rowsToExport = getRowsToExport()
+    if (!rowsToExport.length) {
+      showWarningToast('No hay registros para exportar.')
+      return
+    }
+    await exportToPdf({
+      rows: rowsToExport,
+      columns: exportColumns,
+      valueGetter: getExportValue,
+      fileName: buildFileName('inconvenientes-traslado'),
+      title: 'Reporte de Inconvenientes de Traslado',
+    })
+  }, [exportColumns, getExportValue, getRowsToExport, showWarningToast])
 
   const submitResolver = useCallback(async () => {
-    if (!token || !resolverTarget) return
+    if (!token || !selectedIssue) return
     if (!resolverDecision) {
-      setResolverError('Debes seleccionar una decision.')
+      setResolverError('Debes elegir una decision para este producto.')
       return
     }
     if (
@@ -230,7 +777,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
 
       const response = await authFetch(
         `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/${encodeURIComponent(
-          normalizeId(resolverTarget?.id)
+          normalizeId(selectedIssue?.id)
         )}/resolver/`,
         {
           method: 'POST',
@@ -243,319 +790,804 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
         throw new Error(String(payload?.detail || '').trim() || 'No se pudo resolver el inconveniente.')
       }
 
-      showSuccess('Inconveniente resuelto.')
-      closeResolver()
-      await fetchRows()
-    } catch (error) {
-      setResolverError(error?.message || 'No se pudo resolver el inconveniente.')
+      showSuccessToast('Inconveniente resuelto correctamente.')
+      setShowDetailsModal(false)
+      await fetchRows({ withOverlay: false })
+    } catch (requestError) {
+      setResolverError(requestError?.message || 'No se pudo resolver el inconveniente.')
     } finally {
       setResolverSubmitting(false)
     }
   }, [
-    closeResolver,
     fetchRows,
     resolverDecision,
     resolverMotivo,
     resolverSubdivisionId,
-    resolverTarget,
-    showSuccess,
+    selectedIssue,
+    showSuccessToast,
     token,
   ])
 
+  const canResolveSelectedIssue = useMemo(() => {
+    const selectedState = String(selectedIssue?.estado || '').trim().toLowerCase()
+    return Boolean(canUpdate && selectedState === 'pendiente')
+  }, [canUpdate, selectedIssue])
+
+  const selectedHistoryRows = useMemo(() => {
+    if (!Array.isArray(selectedIssue?.historial)) return []
+    return selectedIssue.historial
+  }, [selectedIssue])
+
+  useEffect(() => {
+    modalSizeRef.current = modalSize
+  }, [modalSize])
+
+  useEffect(() => {
+    modalPositionRef.current = modalPosition
+  }, [modalPosition])
+
+  useLayoutEffect(() => {
+    if (!showDetailsModal || isMaximized) return
+    const { availableWidth, availableHeight, minWidth, minHeight } = getViewportMetrics()
+    const width = Math.min(Math.max(MIN_WIDTH, minWidth), availableWidth)
+    const height = Math.min(Math.max(MIN_HEIGHT, minHeight), availableHeight)
+    setModalSize({ width, height })
+    setModalPosition({
+      x: Math.max((window.innerWidth - width) / 2, VIEWPORT_PADDING),
+      y: Math.max((window.innerHeight - height) / 2, VIEWPORT_PADDING),
+    })
+  }, [getViewportMetrics, isMaximized, showDetailsModal])
+
+  const handleModalMouseDown = (event) => {
+    const target = event?.target
+    if (target?.closest?.('.create-user__icon-button') || target?.closest?.('.create-user__resize-handle')) {
+      return
+    }
+
+    if (isMaximized) {
+      const restore = modalRestoreRef.current
+      const fallbackSize = modalSizeRef.current
+      const restoredSize = restore?.size || fallbackSize
+      const restoredPosition = restore?.position || {
+        x: Math.max((window.innerWidth - restoredSize.width) / 2, VIEWPORT_PADDING),
+        y: Math.max((window.innerHeight - restoredSize.height) / 2, VIEWPORT_PADDING),
+      }
+
+      modalSizeRef.current = restoredSize
+      modalPositionRef.current = restoredPosition
+      setModalSize(restoredSize)
+      setModalPosition(restoredPosition)
+      setIsMaximized(false)
+
+      const offsetX = Math.min(
+        Math.max(event.clientX - restoredPosition.x, 24),
+        Math.max(restoredSize.width - 24, 24)
+      )
+      const offsetY = Math.min(
+        Math.max(event.clientY - restoredPosition.y, 12),
+        56
+      )
+      modalDrag.current = {
+        active: true,
+        offsetX,
+        offsetY,
+      }
+      return
+    }
+
+    if (!modalRef.current) return
+    const rect = modalRef.current.getBoundingClientRect()
+    modalDrag.current = {
+      active: true,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+  }
+
+  const handleResizeMouseDown = (event) => {
+    if (isMaximized) return
+    event.preventDefault()
+    event.stopPropagation()
+    const { minWidth, minHeight } = getViewportMetrics()
+    setIsResizingModal(true)
+    modalResize.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: modalSizeRef.current.width,
+      startHeight: modalSizeRef.current.height,
+    }
+
+    const handleResizeMove = (moveEvent) => {
+      if (!modalResize.current.active) return
+      const deltaX = moveEvent.clientX - modalResize.current.startX
+      const deltaY = moveEvent.clientY - modalResize.current.startY
+      const maxWidth = Math.max(minWidth, window.innerWidth - modalPositionRef.current.x - VIEWPORT_PADDING)
+      const maxHeight = Math.max(minHeight, window.innerHeight - modalPositionRef.current.y - VIEWPORT_PADDING)
+      const width = clamp(modalResize.current.startWidth + deltaX, minWidth, maxWidth)
+      const height = clamp(modalResize.current.startHeight + deltaY, minHeight, maxHeight)
+      setModalSize({ width, height })
+    }
+
+    const handleResizeUp = () => {
+      modalResize.current.active = false
+      setIsResizingModal(false)
+      window.removeEventListener('mousemove', handleResizeMove)
+      window.removeEventListener('mouseup', handleResizeUp)
+    }
+
+    window.addEventListener('mousemove', handleResizeMove)
+    window.addEventListener('mouseup', handleResizeUp)
+  }
+
+  useEffect(() => {
+    if (!showDetailsModal) return undefined
+    const handleMouseMove = (event) => {
+      if (isMaximized || !modalDrag.current.active) return
+      event.preventDefault()
+      const maxX = Math.max(window.innerWidth - modalSizeRef.current.width - VIEWPORT_PADDING, VIEWPORT_PADDING)
+      const maxY = Math.max(window.innerHeight - modalSizeRef.current.height - VIEWPORT_PADDING, VIEWPORT_PADDING)
+      const x = event.clientX - modalDrag.current.offsetX
+      const y = event.clientY - modalDrag.current.offsetY
+      setModalPosition({
+        x: Math.min(Math.max(x, VIEWPORT_PADDING), maxX),
+        y: Math.min(Math.max(y, VIEWPORT_PADDING), maxY),
+      })
+    }
+
+    const handleMouseUp = () => {
+      modalDrag.current.active = false
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [showDetailsModal, isMaximized])
+
+  useEffect(() => {
+    if (!showDetailsModal) return undefined
+    const handleWindowResize = () => {
+      const { minWidth, minHeight, availableWidth, availableHeight } = getViewportMetrics()
+
+      if (isMaximized) {
+        setModalSize({ width: availableWidth, height: availableHeight })
+        setModalPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+        return
+      }
+
+      setModalSize((prev) => {
+        const width = clamp(prev.width, minWidth, availableWidth)
+        const height = clamp(prev.height, minHeight, availableHeight)
+
+        setModalPosition((prevPosition) => ({
+          x: Math.min(
+            Math.max(prevPosition.x, VIEWPORT_PADDING),
+            Math.max(window.innerWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING)
+          ),
+          y: Math.min(
+            Math.max(prevPosition.y, VIEWPORT_PADDING),
+            Math.max(window.innerHeight - height - VIEWPORT_PADDING, VIEWPORT_PADDING)
+          ),
+        }))
+
+        return { width, height }
+      })
+    }
+
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
+  }, [getViewportMetrics, isMaximized, showDetailsModal])
+
+  const toggleMaximize = () => {
+    modalDrag.current.active = false
+    modalResize.current.active = false
+    setIsResizingModal(false)
+
+    if (isMaximized) {
+      const restore = modalRestoreRef.current
+      if (restore) {
+        setModalSize(restore.size)
+        setModalPosition(restore.position)
+      }
+      setIsMaximized(false)
+      return
+    }
+
+    modalRestoreRef.current = {
+      size: { ...modalSizeRef.current },
+      position: { ...modalPositionRef.current },
+    }
+    const { availableWidth, availableHeight } = getViewportMetrics()
+    setModalSize({ width: availableWidth, height: availableHeight })
+    setModalPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+    setIsMaximized(true)
+  }
+
+  const header = (
+    <div className="users-header">
+      <div className="users-header__left">
+        <div className="search-input-container">
+          <input
+            ref={quickSearchInputRef}
+            type="text"
+            value={globalFilterValue}
+            onChange={handleGlobalFilterChange}
+            className="search-input"
+            placeholder="Buscar en tabla"
+          />
+          <i className="pi pi-search search-input-icon" />
+        </div>
+
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={refreshData}
+          disabled={loading || isRefreshing}
+          title="Recargar"
+        >
+          <i className="pi pi-refresh" />
+        </button>
+
+        <button className="rounded-icon-btn" type="button" onClick={clearFilter} title="Limpiar filtros">
+          <i className="pi pi-filter-slash" />
+        </button>
+
+        <button className="rounded-icon-btn" type="button" onClick={(event) => opColumns.current?.toggle(event)} title="Campos">
+          <i className="pi pi-sliders-h" />
+        </button>
+      </div>
+
+      <div className="users-header__right">
+        <span className="users-header__count">Reg. {rows.length}</span>
+        <button className="users-circle users-circle--excel" type="button" title="Excel" onClick={handleExportExcel}>
+          <i className="pi pi-file-excel" />
+        </button>
+        <button className="users-circle users-circle--pdf" type="button" title="PDF" onClick={handleExportPdf}>
+          <i className="pi pi-file-pdf" />
+        </button>
+      </div>
+    </div>
+  )
+
+  const estadoBodyTemplate = useCallback(
+    (row) => (
+      <span className={`transfer-issues-state transfer-issues-state--${row?.estado_key || 'pendiente'}`}>
+        {row?.estado_label || '-'}
+      </span>
+    ),
+    []
+  )
+
+  const productoBodyTemplate = useCallback(
+    (row) => {
+      const reason = String(row?.motivo || '').trim()
+      return (
+        <div className="transfer-issues-product-cell">
+          <strong>{String(row?.producto_codigo || '-').trim() || '-'}</strong>
+          <span>{String(row?.producto_nombre || '-').trim() || '-'}</span>
+          {reason ? (
+            <small className="cell-tooltip" data-pr-tooltip={reason}>
+              Novedad: {reason}
+            </small>
+          ) : null}
+        </div>
+      )
+    },
+    []
+  )
+
+  const actionBodyTemplate = useCallback(
+    (row) => {
+      const rowState = String(row?.estado || '').trim().toLowerCase()
+      const canResolveRow = Boolean(canUpdate && rowState === 'pendiente')
+      return (
+        <div className="transfer-issues-actions">
+          <button
+            type="button"
+            className="transfer-issues-action-button"
+            onClick={() => openDetails(row)}
+          >
+            Detalles
+          </button>
+          {canResolveRow ? (
+            <button
+              type="button"
+              className="transfer-issues-action-button transfer-issues-action-button--resolve"
+              onClick={() => {
+                openDetails(row)
+                setResolverDecision('')
+              }}
+            >
+              <Wrench size={13} />
+              Resolver
+            </button>
+          ) : null}
+        </div>
+      )
+    },
+    [canUpdate, openDetails]
+  )
+
   if (!canRead) {
     return (
-      <section className="transfer-issues">
-        <p className="transfer-issues__empty">
-          No tienes permisos para ver inconvenientes de traslado.
-        </p>
-      </section>
+      <div className="users-page transfer-issues-page">
+        <Toast ref={toast} />
+        <div className="users-table users-table--card transfer-issues-no-access">
+          <p>No tienes permisos para ver inconvenientes de traslado.</p>
+        </div>
+      </div>
     )
   }
 
+  const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
+  const modalStyle = {
+    top: modalPosition.y,
+    left: modalPosition.x,
+    width: modalSize.width,
+    height: modalSize.height,
+    maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
+    maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+  }
+  const modalClassName = [
+    'create-user__modal',
+    'create-salida__modal',
+    isClosingDetailsModal ? 'create-user__modal--closing' : '',
+    isResizingModal ? 'create-salida__modal--resizing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const modalTitle = `Inconveniente: ${String(selectedIssue?.solicitud_no_documento || '-').trim() || '-'}`
+
   return (
-    <section className="transfer-issues">
+    <div className="users-page transfer-issues-page">
+      <Tooltip position="top" showDelay={250} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
       <Toast ref={toast} />
 
-      <header className="transfer-issues__head">
-        <div>
-          <h3>Inconvenientes</h3>
-          <p>Gestiona faltantes y deja historial de resoluciones.</p>
-        </div>
-        <div className="transfer-issues__controls">
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(String(event.target.value || 'all'))}
-            disabled={loading}
-          >
-            <option value="all">Todos</option>
-            <option value="pendiente">Pendientes</option>
-            <option value="resuelto">Resueltos</option>
-            <option value="perdido">Perdidos</option>
-          </select>
-          <button
+      <div className="users-page__top">
+        <div className="users-page__actions">
+          <Button
+            label="Buscar"
+            icon="pi pi-search"
+            className="users-topbtn users-topbtn--search"
+            onClick={() => {
+              quickSearchInputRef.current?.focus()
+              quickSearchInputRef.current?.select?.()
+            }}
             type="button"
-            className="transfer-issues__refresh"
-            onClick={() => void fetchRows()}
-            disabled={loading}
-            aria-label="Actualizar inconvenientes de traslado"
-          >
-            <RefreshCw size={14} />
-          </button>
+          />
+          <div className="transfer-issues-page__type-filter" role="group" aria-label="Filtros de estado">
+            {STATUS_FILTERS.map((option) => {
+              const active = statusFilter === option.key
+              return (
+                <Button
+                  key={option.key}
+                  label={option.label}
+                  type="button"
+                  className={`users-topbtn transfer-issues-page__type-btn${
+                    active ? ' transfer-issues-page__type-btn--active' : ''
+                  }`}
+                  onClick={() => handleStatusFilterChange(option.key)}
+                />
+              )
+            })}
+          </div>
         </div>
-      </header>
+      </div>
 
-      <div className="transfer-issues__table-wrap">
-        {loading && (
-          <div className="transfer-issues__table-loading">
-            <p className="transfer-issues__loading">
-              <Loader2 size={14} />
-              Cargando inconvenientes...
-            </p>
+      <div className="users-table users-table--card">
+        {(loading || isRefreshing) && (
+          <div className="spinner-container spinner-container--table">
+            <div className="spinner" />
           </div>
         )}
 
-        <table className="transfer-issues__table">
-          <thead>
-            <tr>
-              <th>Documento</th>
-              <th>Producto</th>
-              <th>Faltante</th>
-              <th>Sucursal envía</th>
-              <th>Sucursal recibe</th>
-              <th>Estado</th>
-              <th>Resolución</th>
-              <th>Creado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!rows.length ? (
-              <tr className="transfer-issues__empty-row">
-                <td colSpan={9} />
-              </tr>
-            ) : rows.map((row) => {
-              const rowId = normalizeId(row?.id)
-              const isExpanded = expandedId === rowId
-              const rowState = normalizeId(row?.estado).toLowerCase()
-              const canResolveRow = canUpdate && rowState === 'pendiente'
-              const historyRows = Array.isArray(row?.historial) ? row.historial : []
-              const rowKey = rowId || `${normalizeId(row?.solicitud_id)}-${normalizeId(row?.producto_id)}`
-              const productCode = String(row?.producto_codigo || '').trim()
-              const productName = String(row?.producto_nombre || '').trim() || 'Producto sin nombre'
-              const missingQty = Number.parseInt(String(row?.cantidad_faltante || 0), 10) || 0
-              const stateClass = rowState || 'pendiente'
+        {error && (
+          <div className="stale-data-msg">
+            <i className="pi pi-exclamation-circle" style={{ fontSize: '0.8rem', margin: 0, color: 'white' }} />
+            <span>
+              <strong>Los datos pueden estar desactualizados</strong> | intenta recargar la tabla
+            </span>
+          </div>
+        )}
 
-              return (
-                <React.Fragment key={`transfer-issue-${rowKey}`}>
-                  <tr className="transfer-issues__row">
-                    <td>{String(row?.solicitud_no_documento || row?.solicitud_id || '-').trim()}</td>
-                    <td>
-                      <div className="transfer-issues__product-cell">
-                        <strong>{productCode || `Producto ${row?.producto_id || '-'}`}</strong>
-                        <span>{productName}</span>
-                        {row?.motivo ? (
-                          <small title={String(row.motivo || '').trim()}>
-                            Novedad: {String(row.motivo || '').trim()}
-                          </small>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>{missingQty}</td>
-                    <td>{String(row?.sucursal_proveedora || '-').trim()}</td>
-                    <td>{String(row?.sucursal_solicitante || '-').trim()}</td>
-                    <td>
-                      <span className={`transfer-issues__state transfer-issues__state--${stateClass}`}>
-                        {formatEstado(row?.estado)}
-                      </span>
-                    </td>
-                    <td>{formatResolucion(row?.resolucion)}</td>
-                    <td>{formatDateTime(row?.created_at)}</td>
-                    <td>
-                      <div className="transfer-issues__item-actions">
-                        <button
-                          type="button"
-                          className="transfer-issues__action"
-                          onClick={() => setExpandedId(isExpanded ? '' : rowId)}
-                        >
-                          {isExpanded ? 'Ocultar historial' : 'Ver historial'}
-                        </button>
-                        {canResolveRow && (
-                          <button
-                            type="button"
-                            className="transfer-issues__action transfer-issues__action--resolve"
-                            onClick={() => openResolver(row)}
-                          >
-                            <Wrench size={13} />
-                            Resolver
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+        <DataTable
+          value={rows}
+          dataKey="row_key"
+          header={header}
+          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
+          tableStyle={{ width: '100%' }}
+          emptyMessage="No se encontraron inconvenientes"
+          showGridlines
+          size="small"
+          scrollable
+          scrollHeight="flex"
+          frozenWidth="40px"
+          paginator
+          rows={25}
+          rowsPerPageOptions={[5, 10, 25, 50]}
+          removableSort
+          filters={filters}
+          onFilter={handleTableFilterChange}
+          onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : [])}
+          globalFilterFields={[
+            'solicitud_no_documento',
+            'producto_codigo',
+            'producto_nombre',
+            'cantidad_faltante',
+            'sucursal_proveedora',
+            'sucursal_solicitante',
+            'estado_label',
+            'resolucion_label',
+            'created_at_label',
+          ]}
+          onRowClick={handleRowClick}
+          rowClassName={(rowData) => {
+            const classes = []
+            if (selectedRowIds.has(normalizeId(rowData?.id))) {
+              classes.push('selected-row-shadow')
+            }
+            const rowState = String(rowData?.estado_key || '').trim().toLowerCase()
+            if (rowState) {
+              classes.push(`transfer-issues-row--${rowState}`)
+            }
+            return classes.join(' ')
+          }}
+          selectionMode="multiple"
+          selection={selectedRows}
+          onSelectionChange={(event) => {
+            if (!isCheckboxSelection(event)) return
+            setSelectedRows(event.value || [])
+          }}
+        >
+          <Column
+            selectionMode="multiple"
+            frozen
+            headerClassName="row-selection-column"
+            bodyClassName="row-selection-column"
+            style={selectionColStyle}
+            headerStyle={selectionColStyle}
+            bodyStyle={selectionColStyle}
+            exportable={false}
+            reorderable={false}
+          />
 
-                  {isExpanded && (
-                    <tr className="transfer-issues__history-row-wrap">
-                      <td colSpan={9}>
-                        <div className="transfer-issues__history">
-                          {!historyRows.length ? (
-                            <p>Sin historial.</p>
-                          ) : (
-                            historyRows.map((item) => (
-                              <div key={`transfer-issue-history-${rowId}-${item.id}`} className="transfer-issues__history-row">
-                                <strong>{formatHistorialAccion(item?.accion)}</strong>
-                                <span>{String(item?.detalle || '-').trim()}</span>
-                                <small>
-                                  {String(item?.actor_nombre || 'Sistema').trim()} - {formatDateTime(item?.created_at)}
-                                </small>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
+          {selectedColumns.map((column) => {
+            const field = column.nombrevar
+            let bodyTemplate = null
+            if (field === 'producto_nombre') {
+              bodyTemplate = productoBodyTemplate
+            } else if (field === 'estado_label') {
+              bodyTemplate = estadoBodyTemplate
+            } else {
+              bodyTemplate = (rowData) => (
+                <span className="cell-tooltip" data-pr-tooltip={String(rowData?.[field] ?? '').trim()}>
+                  {String(rowData?.[field] ?? '').trim() || '-'}
+                </span>
               )
-            })}
-          </tbody>
-        </table>
+            }
+            const className =
+              field === 'cantidad_faltante' ? 'column-max-min-width--small' : 'column-max-min-width'
+            return (
+              <Column
+                key={field}
+                field={field}
+                header={column.header}
+                body={bodyTemplate}
+                sortable
+                filter
+                filterPlaceholder={column.filterPlaceholder}
+                className={className}
+                headerClassName={className}
+              />
+            )
+          })}
+
+          <Column
+            field="acciones"
+            header="Acciones"
+            body={actionBodyTemplate}
+            className="column-max-min-width"
+            headerClassName="column-max-min-width"
+            exportable={false}
+            reorderable={false}
+          />
+        </DataTable>
+
+        <OverlayPanel ref={opColumns} className="table-options-list">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <strong>Campos</strong>
+          </div>
+          {columnsData.map((column) => (
+            <div
+              key={column.nombrevar}
+              className="p-field-checkbox"
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}
+            >
+              <Checkbox
+                inputId={`inconvenientes-col-${column.nombrevar}`}
+                value={column}
+                onChange={() => handleCheckboxChangeColumn(column)}
+                checked={selectedColumns.some((item) => item.nombrevar === column.nombrevar)}
+              />
+              <label htmlFor={`inconvenientes-col-${column.nombrevar}`} style={{ cursor: 'pointer' }}>
+                {column.header}
+              </label>
+            </div>
+          ))}
+        </OverlayPanel>
       </div>
 
-      {resolverTarget && (
-        <div className="transfer-issues__resolver-overlay" onMouseDown={closeResolver}>
-          <div
-            className="transfer-issues__resolver-dialog"
-            onMouseDown={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Resolver inconveniente"
-          >
-            <header className="transfer-issues__resolver-head">
-              <div>
-                <h4>Resolver inconveniente</h4>
-                <p>
-                  #{String(resolverTarget?.solicitud_no_documento || resolverTarget?.solicitud_id || '-').trim()} |{' '}
-                  {String(resolverTarget?.producto_nombre || resolverTarget?.producto_codigo || '-').trim()}
-                </p>
+      {shouldRenderDetailsModal && selectedIssue && (
+        <div
+          className={`create-user__overlay${isClosingDetailsModal ? ' create-user__overlay--closing' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          style={overlayStyle}
+        >
+          <div ref={modalRef} className={modalClassName} style={modalStyle}>
+            <header className="create-user__header" onMouseDown={handleModalMouseDown}>
+              <div className="create-user__header-text">
+                <h3>{modalTitle}</h3>
               </div>
-              <button
-                type="button"
-                className="transfer-issues__resolver-close"
-                onClick={closeResolver}
-                disabled={resolverSubmitting}
-                aria-label="Cerrar"
-              >
-                <X size={16} />
-              </button>
+              <div className="create-user__header-actions">
+                <button
+                  type="button"
+                  className="create-user__icon-button create-user__icon-button--maximize"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={toggleMaximize}
+                  aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+                >
+                  <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="create-user__icon-button"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={closeDetails}
+                  aria-label="Cerrar"
+                >
+                  <i className="pi pi-times" />
+                </button>
+              </div>
             </header>
 
-            <div className="transfer-issues__resolver-body">
-              <div className="transfer-issues__resolver-decision">
-                <span>Decision</span>
-                <div className="transfer-issues__resolver-decision-grid">
-                  <button
-                    type="button"
-                    className={`transfer-issues__resolver-decision-btn${
-                      resolverDecision === 'sumar_solicitante' ? ' is-active' : ''
-                    }`}
-                    onClick={() => {
-                      setResolverDecision('sumar_solicitante')
-                      setResolverSubdivisionId('')
-                    }}
-                    disabled={resolverSubmitting}
-                  >
-                    Sumar a sucursal que recibe
-                  </button>
-                  <button
-                    type="button"
-                    className={`transfer-issues__resolver-decision-btn${
-                      resolverDecision === 'sumar_proveedora' ? ' is-active' : ''
-                    }`}
-                    onClick={() => {
-                      setResolverDecision('sumar_proveedora')
-                      setResolverSubdivisionId('')
-                    }}
-                    disabled={resolverSubmitting}
-                  >
-                    Devolver a sucursal que envía
-                  </button>
-                  <button
-                    type="button"
-                    className={`transfer-issues__resolver-decision-btn transfer-issues__resolver-decision-btn--danger${
-                      resolverDecision === 'perdido' ? ' is-active' : ''
-                    }`}
-                    onClick={() => {
-                      setResolverDecision('perdido')
-                      setResolverSubdivisionId('')
-                    }}
-                    disabled={resolverSubmitting}
-                  >
-                    Marcar perdido / robado
-                  </button>
-                </div>
+            <form
+              className="create-user__form"
+              noValidate
+              onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')}
+              onSubmit={(event) => event.preventDefault()}
+            >
+              <div className="create-user__body">
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Resumen</p>
+                      <h4>Detalle general</h4>
+                    </div>
+                  </div>
+                  <p className="create-user__hint transfer-issues-details__meta">
+                    Documento #{String(selectedIssue?.solicitud_no_documento || '-').trim() || '-'} |{' '}
+                    {String(selectedIssue?.producto_codigo || '-').trim() || '-'} -{' '}
+                    {String(selectedIssue?.producto_nombre || '-').trim() || '-'}
+                  </p>
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Producto</span>
+                      <input
+                        type="text"
+                        value={`${String(selectedIssue?.producto_codigo || '-').trim()} - ${String(
+                          selectedIssue?.producto_nombre || '-'
+                        ).trim()}`}
+                        readOnly
+                        disabled
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Faltante</span>
+                      <input
+                        type="text"
+                        value={String(Number.parseInt(String(selectedIssue?.cantidad_faltante || 0), 10) || 0)}
+                        readOnly
+                        disabled
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Sucursal proveedora</span>
+                      <input
+                        type="text"
+                        value={String(selectedIssue?.sucursal_proveedora || '-').trim() || '-'}
+                        readOnly
+                        disabled
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Sucursal destino</span>
+                      <input
+                        type="text"
+                        value={String(selectedIssue?.sucursal_solicitante || '-').trim() || '-'}
+                        readOnly
+                        disabled
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Estado</span>
+                      <input type="text" value={formatEstado(selectedIssue?.estado)} readOnly disabled />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Resolucion</span>
+                      <input type="text" value={formatResolucion(selectedIssue?.resolucion)} readOnly disabled />
+                    </label>
+                  </div>
+                  {String(selectedIssue?.motivo || '').trim() ? (
+                    <label className="create-user__field create-user__field--full">
+                      <span>Novedad</span>
+                      <textarea rows={2} value={String(selectedIssue?.motivo || '').trim()} readOnly disabled />
+                    </label>
+                  ) : null}
+                </section>
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Resolucion</p>
+                      <h4>Accion por producto</h4>
+                    </div>
+                  </div>
+                  {canResolveSelectedIssue ? (
+                    <>
+                      <p className="muted transfer-issues-details__hint">
+                        Decide si este faltante debe sumarse en la sucursal proveedora, en la sucursal destino, o marcarse como desaparecido.
+                      </p>
+                      <div className="transfer-issues-details__decisions">
+                        <button
+                          type="button"
+                          className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                            resolverDecision === 'sumar_proveedora' ? ' is-active' : ''
+                          }`}
+                          onClick={() => {
+                            setResolverDecision('sumar_proveedora')
+                            setResolverSubdivisionId('')
+                            setResolverNeedsManualLocation(false)
+                          }}
+                          disabled={resolverSubmitting}
+                        >
+                          Sumar a sucursal proveedora
+                        </button>
+                        <button
+                          type="button"
+                          className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                            resolverDecision === 'sumar_solicitante' ? ' is-active' : ''
+                          }`}
+                          onClick={() => {
+                            setResolverDecision('sumar_solicitante')
+                            setResolverSubdivisionId('')
+                            setResolverNeedsManualLocation(false)
+                          }}
+                          disabled={resolverSubmitting}
+                        >
+                          Sumar a sucursal destino
+                        </button>
+                        <button
+                          type="button"
+                          className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--danger${
+                            resolverDecision === 'perdido' ? ' is-active' : ''
+                          }`}
+                          onClick={() => {
+                            setResolverDecision('perdido')
+                            setResolverSubdivisionId('')
+                            setResolverNeedsManualLocation(false)
+                          }}
+                          disabled={resolverSubmitting}
+                        >
+                          Marcar como desaparecido
+                        </button>
+                      </div>
+
+                      {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') && (
+                        <label className="create-user__field create-user__field--full transfer-issues-details__field">
+                          <span>Subdivision destino ({resolverTargetBranchLabel})</span>
+                          <select
+                            value={resolverSubdivisionId}
+                            onChange={(event) => setResolverSubdivisionId(String(event.target.value || ''))}
+                            disabled={resolverSubmitting || resolverSubdivisionsLoading}
+                          >
+                            <option value="">Selecciona subdivision</option>
+                            {resolverSubdivisions.map((subdivision) => (
+                              <option key={`resolver-subdivision-${subdivision.id}`} value={subdivision.id}>
+                                {String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}
+                              </option>
+                            ))}
+                          </select>
+                          {resolverSubdivisionsLoading ? (
+                            <small className="transfer-issues-details__loading">
+                              <Loader2 size={12} />
+                              Cargando subdivisiones...
+                            </small>
+                          ) : null}
+                          {!resolverSubdivisionsLoading && resolverNeedsManualLocation ? (
+                            <small className="transfer-issues-details__manual-location-hint">
+                              Este producto no tiene ubicacion previa en esta sucursal. Selecciona una subdivision.
+                            </small>
+                          ) : null}
+                        </label>
+                      )}
+
+                      <label className="create-user__field create-user__field--full transfer-issues-details__field">
+                        <span>Motivo o nota (opcional)</span>
+                        <textarea
+                          rows={3}
+                          value={resolverMotivo}
+                          onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
+                          disabled={resolverSubmitting}
+                        />
+                      </label>
+                      {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
+                    </>
+                  ) : (
+                    <p className="muted transfer-issues-details__hint">
+                      Este registro ya fue procesado o no tienes permisos para resolverlo.
+                    </p>
+                  )}
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Seguimiento</p>
+                      <h4>Historial</h4>
+                    </div>
+                  </div>
+                  {!selectedHistoryRows.length ? (
+                    <p className="muted transfer-issues-details__hint">Sin historial.</p>
+                  ) : (
+                    <div className="transfer-issues-details__history">
+                      {selectedHistoryRows.map((item) => (
+                        <article key={`issue-history-${selectedIssue?.row_key}-${item?.id}`} className="transfer-issues-details__history-item">
+                          <strong>{formatHistorialAccion(item?.accion)}</strong>
+                          <p>{String(item?.detalle || '-').trim() || '-'}</p>
+                          <small>
+                            {String(item?.actor_nombre || 'Sistema').trim()} - {formatDateTime(item?.created_at)}
+                          </small>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
 
-              {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') && (
-                <label>
-                  <span>Subdivision destino ({resolverTargetBranchLabel})</span>
-                  <select
-                    value={resolverSubdivisionId}
-                    onChange={(event) => setResolverSubdivisionId(String(event.target.value || ''))}
-                    disabled={resolverSubmitting || resolverSubdivisionsLoading}
-                  >
-                    <option value="">Selecciona subdivision</option>
-                    {resolverSubdivisions.map((subdivision) => (
-                      <option key={`resolver-subdivision-${subdivision.id}`} value={subdivision.id}>
-                        {String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}
-                      </option>
-                    ))}
-                  </select>
-                  {resolverSubdivisionsLoading && (
-                    <small className="transfer-issues__resolver-loading">
-                      <Loader2 size={12} />
-                      Cargando subdivisiones...
-                    </small>
-                  )}
-                </label>
-              )}
-
-              <label>
-                <span>Motivo / nota (opcional)</span>
-                <textarea
-                  rows={3}
-                  value={resolverMotivo}
-                  onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
+              <footer className="create-user__footer">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={closeDetails}
                   disabled={resolverSubmitting}
-                />
-              </label>
-
-              {resolverError && (
-                <p className="transfer-issues__resolver-error">{resolverError}</p>
-              )}
-            </div>
-
-            <footer className="transfer-issues__resolver-actions">
-              <button
-                type="button"
-                className="transfer-issues__resolver-btn transfer-issues__resolver-btn--ghost"
-                onClick={closeResolver}
-                disabled={resolverSubmitting}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="transfer-issues__resolver-btn transfer-issues__resolver-btn--primary"
-                onClick={() => void submitResolver()}
-                disabled={resolverSubmitting}
-              >
-                {resolverSubmitting ? 'Guardando...' : 'Confirmar resolucion'}
-              </button>
-            </footer>
+                >
+                  Cerrar
+                </button>
+                {canResolveSelectedIssue ? (
+                  <button
+                    type="button"
+                    className="create-user__action create-user__action--primary"
+                    onClick={() => void submitResolver()}
+                    disabled={resolverSubmitting}
+                  >
+                    {resolverSubmitting ? 'Guardando...' : 'Confirmar decision'}
+                  </button>
+                ) : null}
+              </footer>
+            </form>
+            <button
+              type="button"
+              className="create-user__resize-handle"
+              onMouseDown={handleResizeMouseDown}
+              aria-label="Redimensionar modal"
+            />
           </div>
         </div>
       )}
-    </section>
+    </div>
   )
 }
 

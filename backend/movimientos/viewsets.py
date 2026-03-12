@@ -1541,9 +1541,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 )
             queryset = queryset.filter(sucursal_solicitante_id=int(sucursal_solicitante_raw))
 
-        allowed = get_readable_sucursal_ids(
+        allowed = get_allowed_sucursal_ids(
             request.user,
             RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+            action_key=("puede_crear", "puede_actualizar"),
         )
         if allowed is not None:
             if not allowed:
@@ -1622,8 +1623,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             request.user,
             [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
             solicitud.sucursal_solicitante_id,
-            field_label="sucursal solicitante",
-            action_key="puede_actualizar",
+            field_label="sucursal de destino",
+            action_key=("puede_crear", "puede_actualizar"),
         )
 
         if solicitud.estado != SolicitudTraslado.Estados.APROBADA:
@@ -2026,6 +2027,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="traslados-inconvenientes")
     def traslados_inconvenientes(self, request):
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response(
+                {
+                    "detail": (
+                        "Solo los administradores pueden consultar "
+                        "traslados con inconvenientes."
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         queryset = (
             TrasladoInconveniente.objects.select_related(
                 "solicitud",
@@ -2076,6 +2088,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         url_path=r"traslados-inconvenientes/(?P<inconveniente_id>\d+)/resolver",
     )
     def resolver_traslado_inconveniente(self, request, inconveniente_id=None):
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response(
+                {
+                    "detail": (
+                        "Solo los administradores pueden resolver "
+                        "traslados con inconvenientes."
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         inconveniente = (
             TrasladoInconveniente.objects.select_related(
                 "solicitud",

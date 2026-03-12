@@ -260,6 +260,7 @@ function QuickActions({
   const allowVisualUrgentShield = allowUrgentShield && !suppressAdminAlerts
   const hasPendingShipments = pendingShipments.length > 0
   const hasInTransitShipments = inTransitShipments.length > 0
+  const shouldAnimatePendingShipments = !suppressAdminAlerts && hasPendingShipments
   const canDecideTransferRequest = useMemo(() => {
     if (user?.is_staff || user?.is_superuser) return true
     if (!Array.isArray(user?.permisos)) return false
@@ -498,8 +499,9 @@ function QuickActions({
     return audioContextRef.current
   }, [])
 
-  const playNotificationTone = useCallback(() => {
-    if (suppressAdminAlerts) return
+  const playNotificationTone = useCallback((options = {}) => {
+    const forceForAdmin = Boolean(options?.forceForAdmin)
+    if (suppressAdminAlerts && !forceForAdmin) return
     const audio = notificationAudioRef.current
     if (audio) {
       try {
@@ -580,14 +582,15 @@ function QuickActions({
   }, [suppressAdminAlerts])
 
   const playInitialPendingToneIfNeeded = useCallback(
-    (ids, notificationDetail) => {
-      if (suppressAdminAlerts) return
+    (ids, notificationDetail, options = {}) => {
+      const allowAdminTone = Boolean(options?.allowAdminTone)
+      if (suppressAdminAlerts && !allowAdminTone) return
       if (didPlayInitialPendingToneRef.current) return
       const normalizedIds = Array.from(ids || []).map((id) => normalizeId(id)).filter(Boolean)
       if (!normalizedIds.length) return
 
       didPlayInitialPendingToneRef.current = true
-      playNotificationTone()
+      playNotificationTone({ forceForAdmin: allowAdminTone })
       if (notificationDetail?.type) {
         const nextDetail = {
           ...notificationDetail,
@@ -637,7 +640,7 @@ function QuickActions({
     [currentUserIds, reminders]
   )
 
-  useEffect(() => {
+	  useEffect(() => {
     if (suppressAdminAlerts) return undefined
     if (typeof window === 'undefined') return undefined
 
@@ -1054,14 +1057,14 @@ function QuickActions({
         .filter(Boolean)
     )
 
-    if (!didInitTransferResponseSnapshotRef.current) {
-      seenTransferResponseReminderIdsRef.current = nextIds
-      didInitTransferResponseSnapshotRef.current = true
-      playInitialPendingToneIfNeeded(nextIds, {
-        type: 'solicitud_traslado_resuelta',
-      })
-      return
-    }
+	    if (!didInitTransferResponseSnapshotRef.current) {
+	      seenTransferResponseReminderIdsRef.current = nextIds
+	      didInitTransferResponseSnapshotRef.current = true
+	      playInitialPendingToneIfNeeded(nextIds, {
+	        type: 'solicitud_traslado_resuelta',
+	      }, { allowAdminTone: true })
+	      return
+	    }
 
     const seenIds = seenTransferResponseReminderIdsRef.current
     const newReminderIds = []
@@ -1070,11 +1073,11 @@ function QuickActions({
     })
     seenTransferResponseReminderIdsRef.current = nextIds
 
-    if (newReminderIds.length) {
-      playNotificationTone()
-      const notificationDetail = {
-        type: 'solicitud_traslado_resuelta',
-        reminderIds: newReminderIds,
+	    if (newReminderIds.length) {
+	      playNotificationTone({ forceForAdmin: true })
+	      const notificationDetail = {
+	        type: 'solicitud_traslado_resuelta',
+	        reminderIds: newReminderIds,
       }
       emitTransferReminderNotification(notificationDetail)
       pushSystemTransferNotification(notificationDetail)
@@ -3078,7 +3081,7 @@ function QuickActions({
         {canDecideTransferRequest && hasPendingShipments && (
           <div
             ref={pendingShipmentsRef}
-            className={`quick-actions__pending-shipments${isPendingShipmentsOpen ? ' is-open' : ''}`}
+            className={`quick-actions__pending-shipments${isPendingShipmentsOpen ? ' is-open' : ''}${shouldAnimatePendingShipments ? ' has-login-animation' : ''}`}
           >
             <button
               ref={handlePendingShipmentsTriggerRef}
@@ -3563,14 +3566,16 @@ function QuickActions({
                 </p>
               ) : (
                 <div className="quick-actions__receive-list">
-                  {receiveShipmentRows.map((row) => {
-                    const rowProductId = normalizeId(row?.producto_id)
-                    const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
-                    const assignedQty = toPositiveInt(row?.cantidad_asignada, 0)
-                    const pendingAssignQty = Math.max(
-                      0,
-                      toPositiveInt(row?.cantidad_recibida, 0) - assignedQty
-                    )
+	                  {receiveShipmentRows.map((row) => {
+	                    const rowProductId = normalizeId(row?.producto_id)
+	                    const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
+	                    const expectedQty = toPositiveInt(row?.cantidad_enviada, 0)
+	                    const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
+	                    const assignedQty = toPositiveInt(row?.cantidad_asignada, 0)
+	                    const pendingAssignQty = Math.max(
+	                      0,
+	                      receivedQty - assignedQty
+	                    )
                     const selectedBodegaId = normalizeId(row?.location_draft_bodega_id)
                     const selectedBodega = inTransitBodegaById.get(selectedBodegaId) || null
                     const bodegaQuery = normalizeSearchText(row?.location_draft_bodega_query || '')
@@ -3606,25 +3611,24 @@ function QuickActions({
                     ) || null
                     return (
                       <article key={`receive-shipment-row-${rowProductId}`} className="quick-actions__receive-item">
-                        <div className="quick-actions__receive-item-head">
-                          <strong>
-                            {row?.producto_codigo ? `${row.producto_codigo} - ` : ''}
-                            {row?.producto_nombre || `Producto ${rowProductId}`}
-                          </strong>
-                          <span>Enviado: {toPositiveInt(row?.cantidad_enviada, 0)}</span>
-                        </div>
+	                        <div className="quick-actions__receive-item-head">
+	                          <strong>
+	                            {row?.producto_codigo ? `${row.producto_codigo} - ` : ''}
+	                            {row?.producto_nombre || `Producto ${rowProductId}`}
+	                          </strong>
+	                        </div>
 
                         <div className="quick-actions__receive-grid">
                           <label>
                             <span>Cantidad recibida</span>
-                            <input
-                              type="number"
-                              min={0}
-                              max={toPositiveInt(row?.cantidad_enviada, 0)}
-                              value={toPositiveInt(row?.cantidad_recibida, 0)}
-                              onChange={(event) =>
-                                handleReceiveShipmentDraftFieldChange(
-                                  rowProductId,
+	                            <input
+	                              type="number"
+	                              min={0}
+	                              max={expectedQty}
+	                              value={receivedQty}
+	                              onChange={(event) =>
+	                                handleReceiveShipmentDraftFieldChange(
+	                                  rowProductId,
                                   'cantidad_recibida',
                                   event.target.value
                                 )}
@@ -3633,9 +3637,12 @@ function QuickActions({
                           </label>
                           <label>
                             <span>Faltantes</span>
-                            <input type="number" value={missingQty} readOnly disabled />
-                          </label>
-                        </div>
+	                            <input type="number" value={missingQty} readOnly disabled />
+	                          </label>
+	                        </div>
+	                        <p className="quick-actions__receive-item-expected">
+	                          Cantidad esperada: <strong>{expectedQty}</strong> | Cantidad recibida: <strong>{receivedQty}</strong>
+	                        </p>
 
                         <div className="quick-actions__receive-location">
                           <div className="quick-actions__receive-location-row quick-actions__receive-location-row--compose">
