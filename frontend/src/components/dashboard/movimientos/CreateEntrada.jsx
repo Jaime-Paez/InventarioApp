@@ -93,12 +93,45 @@ const normalizeModuleScopes = (rawScopes) => {
   return scopes
 }
 
+const normalizeModuleScopeActions = (rawScopes) => {
+  const scopes = {}
+  ;(Array.isArray(rawScopes) ? rawScopes : []).forEach((item) => {
+    const moduleKey = normalizeString(item?.modulo)
+    if (!moduleKey) return
+
+    const branchActions = {}
+    ;(Array.isArray(item?.acciones_por_sucursal) ? item.acciones_por_sucursal : []).forEach((entry) => {
+      const branchId = normalizeId(entry?.sucursal_id)
+      if (!branchId) return
+      branchActions[branchId] = {
+        puede_crear: Boolean(entry?.puede_crear),
+        puede_actualizar: Boolean(entry?.puede_actualizar),
+      }
+    })
+
+    if (Object.keys(branchActions).length) {
+      scopes[moduleKey] = branchActions
+    }
+  })
+  return scopes
+}
+
 const hasModuleBranchAccess = (userItem, moduleKey, branchId) => {
   const normalizedModule = normalizeString(moduleKey)
   const normalizedBranchId = normalizeId(branchId)
   if (!normalizedModule || !normalizedBranchId) return false
   const ids = userItem?.moduleScopes?.[normalizedModule]
   return Array.isArray(ids) && ids.includes(normalizedBranchId)
+}
+
+const hasModuleBranchCreateAndUpdateAccess = (userItem, moduleKey, branchId) => {
+  if (!hasModuleBranchAccess(userItem, moduleKey, branchId)) return false
+  const normalizedModule = normalizeString(moduleKey)
+  const normalizedBranchId = normalizeId(branchId)
+  const moduleActions = userItem?.moduleScopeActions?.[normalizedModule]
+  const branchActions = moduleActions?.[normalizedBranchId]
+  if (!branchActions) return false
+  return Boolean(branchActions?.puede_crear && branchActions?.puede_actualizar)
 }
 
 const formatSubTipoLabel = (subTipo) => {
@@ -415,6 +448,8 @@ function CreateEntrada({
   }, [branches, selectedSucursalId])
   const selectedProveedorSucursalId = String(formData.sucursalObjetivoId || '').trim()
   const hasSelectedProveedorSucursal = Boolean(selectedProveedorSucursalId)
+  const selectedReminderTargetBranchId = selectedSucursalId
+  const hasSelectedReminderTargetBranch = Boolean(selectedReminderTargetBranchId)
   const hasProductSourceBranch = isTraslado ? hasSelectedProveedorSucursal : hasSelectedSucursal
   const providerBranchPool = providerBranches.length ? providerBranches : branches
   const destinationBranches = useMemo(() => {
@@ -598,31 +633,26 @@ function CreateEntrada({
     `${proveedorStockDisabledMessage} Disponible: ${selectedDraftStockRestante}.`
   )
   const reminderBranchUsers = useMemo(() => {
-    if (!isTraslado || !selectedProveedorSucursalId) return []
+    if (!isTraslado || !selectedReminderTargetBranchId) return []
     return reminderUsers.filter((userItem) =>
-      hasModuleBranchAccess(userItem, 'movimientos_salidas', selectedProveedorSucursalId)
+      hasModuleBranchCreateAndUpdateAccess(
+        userItem,
+        'movimientos_salidas',
+        selectedReminderTargetBranchId
+      )
     )
-  }, [isTraslado, reminderUsers, selectedProveedorSucursalId])
+  }, [isTraslado, reminderUsers, selectedReminderTargetBranchId])
 
   const adminReminderRecipients = useMemo(() => {
-    const recipients = reminderBranchUsers
+    return reminderBranchUsers
       .filter((userItem) => userItem.isAdmin)
       .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
       .filter(Boolean)
-
-    if (!recipients.length && isCurrentUserAdmin && currentCreatorId) {
-      const fallback = sanitizeRecipient({
-        id: currentCreatorId,
-        name: currentCreatorName || 'Administrador',
-      })
-      if (fallback) recipients.push(fallback)
-    }
-
-    return recipients.filter(
+      .filter(
       (recipient, index, list) =>
         list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
     )
-  }, [currentCreatorId, currentCreatorName, isCurrentUserAdmin, reminderBranchUsers])
+  }, [reminderBranchUsers])
 
   const adminReminderRecipientIds = useMemo(
     () => new Set(adminReminderRecipients.map((recipient) => normalizeId(recipient?.id)).filter(Boolean)),
@@ -759,9 +789,12 @@ function CreateEntrada({
       if (!producto) return ''
       const codigo = String(producto?.codigo || '').trim()
       const nombre = String(producto?.nombre || '').trim()
-      return [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
+      const baseLabel = [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
+      if (!showProveedorStockInfo) return baseLabel
+      const available = Number(stockByProduct[String(producto?.id)] ?? 0)
+      return `${baseLabel} (Disp: ${Number.isFinite(available) ? available : 0})`
     },
-    []
+    [showProveedorStockInfo, stockByProduct]
   )
 
   const searchProducts = useCallback(
@@ -1047,6 +1080,7 @@ function CreateEntrada({
           email: currentCreatorEmail,
           isAdmin: isCurrentUserAdmin,
           moduleScopes: normalizeModuleScopes(currentUser?.sucursales_por_modulo),
+          moduleScopeActions: normalizeModuleScopeActions(currentUser?.sucursales_por_modulo),
         },
         ...list,
       ]
@@ -1086,6 +1120,7 @@ function CreateEntrada({
           email: String(item?.correo || item?.email || '').trim(),
           isAdmin: hasUsersModuleAccess(item?.permisos_resumen),
           moduleScopes: normalizeModuleScopes(item?.sucursales_por_modulo),
+          moduleScopeActions: normalizeModuleScopeActions(item?.sucursales_por_modulo),
         })
       })
 
@@ -2040,11 +2075,23 @@ function CreateEntrada({
       return
     }
     const productPrice = resolveProductPrice(producto)
+    let suggestedCantidad = ''
+    if (isTraslado && normalizedProductId && !stockLoading) {
+      const available = Number(stockByProduct[normalizedProductId] ?? 0)
+      const alreadyUsed = details.reduce((acc, detail) => {
+        if (String(detail?.productoId || '').trim() !== normalizedProductId) return acc
+        const qty = parseIntValue(detail?.cantidad)
+        return acc + (Number.isFinite(qty) ? qty : 0)
+      }, 0)
+      const remaining = Math.max((Number.isFinite(available) ? Math.trunc(available) : 0) - alreadyUsed, 0)
+      suggestedCantidad = remaining > 0 ? String(remaining) : ''
+    }
     setDetailError('')
     setDetailDraft((prev) => ({
       ...prev,
       productoId: String(producto.id),
       valor: productPrice,
+      cantidad: isTraslado ? suggestedCantidad : prev.cantidad,
     }))
     setProductos((prev) => {
       if (prev.some((item) => String(item.id) === String(producto.id))) return prev
@@ -3191,13 +3238,12 @@ function CreateEntrada({
                                       <div className="create-user__result-info">
                                         <strong>{formatProductoOptionLabel(producto)}</strong>
                                         <small>
-                                          ID: {producto.id}
-                                          {showProveedorStockInfo && (
-                                            ` | Stock en ${proveedorBranchName || 'sucursal proveedora'}: ${Math.max(
-                                              0,
-                                              Math.trunc(stockEnSucursalProveedora)
-                                            )}`
-                                          )}
+                                          {showProveedorStockInfo
+                                            ? `Disponible en ${proveedorBranchName || 'sucursal proveedora'}: ${Math.max(
+                                                0,
+                                                Math.trunc(stockEnSucursalProveedora)
+                                              )}`
+                                            : `ID: ${producto.id}`}
                                         </small>
                                       </div>
                                       {isAlreadyAdded ? (
@@ -3490,12 +3536,16 @@ function CreateEntrada({
                     <p className="create-salida__reminder-helper">
                       Al crear la solicitud se genera automaticamente un recordatorio para administradores y usuarios seleccionados.
                     </p>
+                    <div className="create-salida__reminder-rule" role="note">
+                      Solo se listan usuarios con permisos de <strong>crear y editar</strong> en{' '}
+                      <strong>Movimientos - Salidas</strong> de la <strong>sucursal destino</strong>.
+                    </div>
 
-                    {!selectedProveedorSucursalId && (
-                      <small className="muted">Selecciona primero una sucursal proveedora para cargar usuarios.</small>
+                    {!hasSelectedReminderTargetBranch && (
+                      <small className="muted">Selecciona primero una sucursal destino para cargar usuarios.</small>
                     )}
 
-                    <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${selectedProveedorSucursalId && !reminderUsersLoading && !hasAdminReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
+                    <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdminReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
                       <div className="create-salida__reminder-head">
                         <h5>Administradores incluidos</h5>
                         <span className="create-salida__reminder-count">{adminReminderRows.length}</span>
@@ -3528,7 +3578,7 @@ function CreateEntrada({
                             {!adminReminderRows.length && (
                               <div className="permissions-matrix__row create-salida__reminder-row--empty">
                                 <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                  No se detectaron administradores para la sucursal proveedora seleccionada.
+                                  No se detectaron administradores para la sucursal destino seleccionada.
                                 </div>
                               </div>
                             )}
@@ -3537,12 +3587,12 @@ function CreateEntrada({
                       )}
                     </div>
 
-                    <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${selectedProveedorSucursalId && !reminderUsersLoading && !hasAdditionalReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
+                    <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
                       <div className="create-salida__reminder-head">
                         <h5>Usuarios adicionales</h5>
                         <span className="create-salida__reminder-count">{selectedReminderUserIds.length}</span>
                       </div>
-                      {selectedProveedorSucursalId && !reminderUsersLoading && !hasAdditionalReminderRecipients && (
+                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients && (
                         <small className="create-user__field-error">Debes seleccionar al menos un usuario adicional.</small>
                       )}
                       <div className="create-salida__reminder-table-wrap">
@@ -3553,18 +3603,18 @@ function CreateEntrada({
                             <div className="permissions-matrix__cell permissions-matrix__cell--action">Incluir</div>
                           </div>
 
-                          {!selectedProveedorSucursalId && (
+                          {!hasSelectedReminderTargetBranch && (
                             <div className="permissions-matrix__row create-salida__reminder-row--empty">
                               <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                Debes seleccionar una sucursal proveedora.
+                                Debes seleccionar una sucursal destino.
                               </div>
                             </div>
                           )}
 
-                          {selectedProveedorSucursalId && !reminderUsersLoading && !selectableReminderUsers.length && (
+                          {hasSelectedReminderTargetBranch && !reminderUsersLoading && !selectableReminderUsers.length && (
                             <div className="permissions-matrix__row create-salida__reminder-row--empty">
                               <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                No hay usuarios disponibles para esta sucursal.
+                                No hay usuarios disponibles con permisos de crear y editar en salidas para esta sucursal.
                               </div>
                             </div>
                           )}
@@ -3585,7 +3635,7 @@ function CreateEntrada({
                                     type="checkbox"
                                     checked={checked}
                                     onChange={() => toggleReminderUser(userId)}
-                                    disabled={loading || reminderUsersLoading || !selectedProveedorSucursalId}
+                                    disabled={loading || reminderUsersLoading || !hasSelectedReminderTargetBranch}
                                   />
                                 </label>
                               </div>

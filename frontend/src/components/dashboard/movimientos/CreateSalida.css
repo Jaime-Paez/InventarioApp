@@ -77,6 +77,21 @@
   color: var(--color-text-secondary);
 }
 
+.create-salida__reminder-rule {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 32%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+  font-size: 0.88rem;
+  line-height: 1.35;
+  color: var(--color-text-primary);
+}
+
+.create-salida__reminder-rule strong {
+  font-weight: 700;
+}
+
 .create-salida__reminder-block {
   margin-top: 14px;
   padding: 12px;
@@ -238,6 +253,12 @@
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
   border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-salida__reminder-rule {
+  border-color: color-mix(in srgb, var(--color-primary-dark) 58%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-dark) 24%, var(--color-surface));
+  color: var(--color-text-dark);
 }
 
 .dashboard-shell.dark .create-salida__reminder-count {

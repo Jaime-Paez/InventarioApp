@@ -16,7 +16,9 @@ import dj_database_url
 
 from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+# In local Windows environments a global DEBUG env var can exist (e.g. "release").
+# Override it with backend/.env so local server does not force HTTPS redirects.
+load_dotenv(BASE_DIR / ".env", override=True)
 
 
 # ============================================================
