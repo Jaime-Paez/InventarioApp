@@ -69,6 +69,7 @@ function CreateProducto({
   currentUser = null,
   showCostField = true,
   initialData = null,
+  lockModal = false,
 }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
@@ -546,6 +547,7 @@ function CreateProducto({
     const nextCodigo = toUpperProductCode(nextInitialData.codigo).trim()
     const nextNombre = String(nextInitialData.nombre || '').trim()
     const nextDescripcion = String(nextInitialData.descripcion || '').trim()
+    const nextMarcaId = String(nextInitialData.marcaId || '').trim()
     const nextMarcaNombre = String(nextInitialData.marcaNombre || '').trim()
     const nextOemItems = Array.isArray(nextInitialData.oemItems)
       ? nextInitialData.oemItems
@@ -559,6 +561,7 @@ function CreateProducto({
       codigo: nextCodigo,
       nombre: nextNombre,
       descripcion: nextDescripcion,
+      marcaId: nextMarcaId,
     })
     setMarcaQuery(nextMarcaNombre)
     setCasaSearch('')
@@ -1596,6 +1599,7 @@ function CreateProducto({
   }
 
   const handleMouseDown = (event) => {
+    if (lockModal) return
     if (isMaximized) {
       const restore = restoreRef.current
       const fallbackSize = sizeRef.current
@@ -1637,7 +1641,7 @@ function CreateProducto({
   }
 
   const handleResizeMouseDown = (event) => {
-    if (isMaximized) return
+    if (lockModal || isMaximized) return
     event.preventDefault()
     event.stopPropagation()
     const { minWidth, minHeight } = getViewportMetrics()
@@ -1724,6 +1728,7 @@ function CreateProducto({
   }, [isMaximized])
 
   const toggleMaximize = () => {
+    if (lockModal) return
     if (isMaximized) {
       const restore = restoreRef.current
       if (restore) {
@@ -1747,7 +1752,16 @@ function CreateProducto({
 
   if (!shouldRender) return null
 
-  const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
+  const overlayStyle = {
+    padding: `${VIEWPORT_PADDING}px`,
+    ...(lockModal
+      ? {
+          background: 'rgba(15, 23, 42, 0.28)',
+          backdropFilter: 'blur(1px)',
+          zIndex: 10030,
+        }
+      : {}),
+  }
   const modalStyle = {
     top: position.y,
     left: position.x,
@@ -1764,14 +1778,25 @@ function CreateProducto({
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
       <div className={`create-user__modal${submitAttempted ? ' create-user__modal--submitted' : ''}${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
-        <header className="create-user__header" onMouseDown={handleMouseDown}>
-          <div className="create-user__header-text">
+        <header
+          className="create-user__header"
+          onMouseDown={lockModal ? undefined : handleMouseDown}
+          style={lockModal ? { cursor: 'default' } : undefined}
+        >
+          <div
+            className="create-user__header-text"
+            style={lockModal ? { cursor: 'default' } : undefined}
+          >
             <h3>Crear nuevo producto</h3>
           </div>
           <div className="create-user__header-actions">
             <button
               type="button"
               className="create-user__icon-button create-user__icon-button--maximize"
+              style={lockModal ? { display: 'none' } : undefined}
+              hidden={lockModal}
+              tabIndex={lockModal ? -1 : undefined}
+              aria-hidden={lockModal ? 'true' : undefined}
               onMouseDown={(event) => event.stopPropagation()}
               onClick={toggleMaximize}
               aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
@@ -2702,12 +2727,14 @@ function CreateProducto({
           </div>
         </form>
 
-        <button
+        {!lockModal && (
+          <button
           type="button"
           aria-label="Cambiar tamaño de ventana"
           className="create-user__resize-handle"
           onMouseDown={handleResizeMouseDown}
-        />
+          />
+        )}
       </div>
     </div>
   )

@@ -354,6 +354,59 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=["post"], url_path="ligar-producto-creado")
+    def ligar_producto_creado(self, request, pk=None):
+        solicitud = self.get_object()
+        ensure_sucursal_allowed(
+            request.user,
+            RolPermiso.Modulos.SOLICITUDES,
+            getattr(solicitud, "sucursal_id", None),
+            action_key="puede_actualizar",
+        )
+
+        if (
+            solicitud.tabla != Solicitud.Tabla.PRODUCTO_SOLICITADO
+            or solicitud.producto_solicitado_id is None
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "Solo las solicitudes de producto solicitado pueden ligarse a un producto creado."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw_producto_id = request.data.get("producto_id")
+        try:
+            producto = Producto.objects.get(pk=int(raw_producto_id))
+        except Producto.DoesNotExist:
+            return Response(
+                {"producto_id": "Producto no encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except (TypeError, ValueError):
+            return Response(
+                {"producto_id": "Debe enviar un producto_id valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        producto_solicitado = solicitud.producto_solicitado
+        with transaction.atomic():
+            update_fields = []
+            if producto_solicitado.producto_id != producto.id:
+                producto_solicitado.producto = producto
+                update_fields.append("producto")
+            if not producto_solicitado.conseguido:
+                producto_solicitado.conseguido = True
+                update_fields.append("conseguido")
+            if update_fields:
+                producto_solicitado.save(update_fields=update_fields)
+
+        solicitud.refresh_from_db()
+        serializer = self.get_serializer(solicitud)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=["post"], url_path="crear-lote")
     def crear_lote(self, request):
         payload = request.data or {}

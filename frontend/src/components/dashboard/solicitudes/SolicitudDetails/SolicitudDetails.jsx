@@ -7,6 +7,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
+import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -45,6 +46,31 @@ const emptyCliente = {
 const normalizeText = (value) => String(value ?? '').trim()
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+const parseApiErrorValue = (value) => {
+  if (!value) return ''
+  if (typeof value === 'string') return value.trim()
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const parsed = parseApiErrorValue(entry)
+      if (parsed) return parsed
+    }
+    return ''
+  }
+  if (typeof value === 'object') {
+    for (const entry of Object.values(value)) {
+      const parsed = parseApiErrorValue(entry)
+      if (parsed) return parsed
+    }
+  }
+  return ''
+}
+const resolveApiErrorMessage = (payload, fallback) => {
+  const detail = parseApiErrorValue(payload?.detail)
+  if (detail) return detail
+  const fallbackFromBody = parseApiErrorValue(payload)
+  if (fallbackFromBody) return fallbackFromBody
+  return fallback
+}
 const normalizeScopeModuleKey = (value) => String(value ?? '').trim().toLowerCase()
 const normalizeScopeBranchId = (value) => String(value ?? '').trim()
 const getModuleCreateBranchIdSet = (rawScopes, moduleKey) => {
@@ -145,7 +171,52 @@ const buildGroupItem = (solicitud) => {
       ? productoSolicitado.oem_codigos
       : [],
     cantidad: Number(solicitud?.cantidad || 0),
+    comentario: String(solicitud?.comentario || ''),
+    catalogProductId:
+      tabla === 'producto'
+        ? Number(solicitud?.producto_id || productoCatalogo?.id || 0)
+        : Number(
+            productoSolicitado?.producto_id || productoSolicitado?.producto_data?.id || 0
+          ),
+    createdFromSolicitud:
+      tabla === 'producto_solicitado' &&
+      Number(productoSolicitado?.producto_id || productoSolicitado?.producto_data?.id || 0) > 0,
   }
+}
+
+const formatResolvedProductLocations = (productDetail) => {
+  const entries = Array.isArray(productDetail?.inventario_context?.inventario_entries)
+    ? productDetail.inventario_context.inventario_entries
+    : []
+  if (!entries.length) return 'Sin ubicaciones registradas.'
+
+  return entries
+    .map((entry) => {
+      const subdivision = entry?.subdivision || {}
+      const division = subdivision?.division || {}
+      const bodega = division?.bodega || {}
+      const sucursal = bodega?.sucursal || {}
+      const locationPath = [
+        sucursal?.nombre,
+        bodega?.nombre,
+        division?.nombre,
+        subdivision?.nombre,
+      ]
+        .map((value) => normalizeText(value))
+        .filter(Boolean)
+        .join(' / ')
+      const referencia = normalizeText(entry?.referencia)
+      const cantidad = Number(entry?.cantidad || 0)
+      const suffix = [
+        referencia ? `Ref: ${referencia}` : '',
+        Number.isFinite(cantidad) && cantidad > 0 ? `Cant.: ${cantidad}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ')
+
+      return [locationPath || 'Ubicacion', suffix].filter(Boolean).join(' - ')
+    })
+    .join('\n')
 }
 
 function SolicitudDetails({
@@ -172,13 +243,20 @@ function SolicitudDetails({
   const [productLoading, setProductLoading] = useState(false)
   const [productCodeExists, setProductCodeExists] = useState(false)
   const [productCodeCheckLoading, setProductCodeCheckLoading] = useState(false)
+  const [resolvedProductDetail, setResolvedProductDetail] = useState(null)
+  const [resolvedProductLoading, setResolvedProductLoading] = useState(false)
+  const [linkingCreatedProduct, setLinkingCreatedProduct] = useState(false)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const [isEditing, setIsEditing] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [isProductModalOpen, setIsProductModalOpen] = useState(false)
+  const [isCatalogProductModalOpen, setIsCatalogProductModalOpen] = useState(false)
   const [isCreateProductModalOpen, setIsCreateProductModalOpen] = useState(false)
   const [isProductModalMaximized, setIsProductModalMaximized] = useState(false)
+  const [catalogProductId, setCatalogProductId] = useState(null)
+  const [catalogProductNotice, setCatalogProductNotice] = useState('')
+  const [catalogProductSolicitudComment, setCatalogProductSolicitudComment] = useState('')
   const [position, setPosition] = useState({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
   const [modalSize, setModalSize] = useState({
     width: MIN_WIDTH,
@@ -309,13 +387,69 @@ function SolicitudDetails({
         const data = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(data?.detail || 'No se pudo cargar el producto.')
         applyProductState(data)
+        return data
       } catch (err) {
         notifyError(err?.message || 'No se pudo cargar el producto.')
+        return null
       } finally {
         setProductLoading(false)
       }
     },
     [applyProductState, notifyError, token]
+  )
+
+  const loadResolvedProductDetail = useCallback(
+    async (productId) => {
+      if (!productId || !token) {
+        setResolvedProductDetail(null)
+        setResolvedProductLoading(false)
+        return
+      }
+
+      setResolvedProductLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/productos/listado/${productId}/?include_inventory_context=1`,
+          {},
+          token
+        )
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(data?.detail || 'No se pudo cargar el producto ligado.')
+        }
+        setResolvedProductDetail(data)
+      } catch (err) {
+        setResolvedProductDetail(null)
+        notifyError(err?.message || 'No se pudo cargar el producto ligado.')
+      } finally {
+        setResolvedProductLoading(false)
+      }
+    },
+    [notifyError, token]
+  )
+
+  const resolveCatalogProductByCode = useCallback(
+    async (codigo) => {
+      const normalizedCode = normalizeText(codigo)
+      if (!normalizedCode || !token) return null
+
+      try {
+        const response = await authFetch(
+          `${API_URL}/productos/listado/?codigo=${encodeURIComponent(normalizedCode)}&page_size=5`,
+          {},
+          token
+        )
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error()
+        const exactMatch = parseApiList(data).find(
+          (item) => normalizeText(item?.codigo).toLowerCase() === normalizedCode.toLowerCase()
+        )
+        return exactMatch || null
+      } catch {
+        return null
+      }
+    },
+    [token]
   )
 
   useEffect(() => {
@@ -324,10 +458,17 @@ function SolicitudDetails({
     setIsEditing(false)
     setIsMaximized(false)
     setIsProductModalOpen(false)
+    setIsCatalogProductModalOpen(false)
     setIsCreateProductModalOpen(false)
     setIsProductModalMaximized(false)
     setProductCodeExists(false)
     setProductCodeCheckLoading(false)
+    setResolvedProductDetail(null)
+    setResolvedProductLoading(false)
+    setLinkingCreatedProduct(false)
+    setCatalogProductId(null)
+    setCatalogProductNotice('')
+    setCatalogProductSolicitudComment('')
     productCodeCheckSeqRef.current = 0
     restoreRef.current = null
     productRestoreRef.current = null
@@ -346,8 +487,25 @@ function SolicitudDetails({
 
   useEffect(() => {
     if (!open || !isProductModalOpen || !selectedSolicitudId) return
+    if (String(productSolicitud?.id || '') === String(selectedSolicitudId)) return
     loadProductSolicitud(selectedSolicitudId)
-  }, [isProductModalOpen, loadProductSolicitud, open, selectedSolicitudId])
+  }, [isProductModalOpen, loadProductSolicitud, open, productSolicitud?.id, selectedSolicitudId])
+
+  useEffect(() => {
+    const resolvedProductId = Number(productSolicitud?.producto_resuelto_data?.id || 0)
+    if (!open || !isProductModalOpen || !resolvedProductId) {
+      setResolvedProductDetail(null)
+      setResolvedProductLoading(false)
+      return
+    }
+
+    loadResolvedProductDetail(resolvedProductId)
+  }, [
+    isProductModalOpen,
+    loadResolvedProductDetail,
+    open,
+    productSolicitud?.producto_resuelto_data?.id,
+  ])
 
   useEffect(() => {
     if (!open || !isProductModalOpen) {
@@ -375,7 +533,7 @@ function SolicitudDetails({
     const run = async () => {
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(codigo)}&page_size=5`,
+          `${API_URL}/productos/listado/?codigo=${encodeURIComponent(codigo)}&page_size=5`,
           {},
           token
         )
@@ -733,24 +891,82 @@ function SolicitudDetails({
     setIsProductModalMaximized(false)
     setProductCodeExists(false)
     setProductCodeCheckLoading(false)
+    setResolvedProductDetail(null)
+    setResolvedProductLoading(false)
     productRestoreRef.current = null
     setSelectedSolicitudId(null)
     setProductSolicitud(null)
     setProductFormData(emptyForm)
   }
 
-  const handleSelectGroupItem = (itemId) => {
+  const handleCloseCatalogProductModal = () => {
+    setIsCatalogProductModalOpen(false)
+    setCatalogProductId(null)
+    setCatalogProductNotice('')
+    setCatalogProductSolicitudComment('')
+  }
+
+  const handleOpenCatalogProductModal = useCallback((productId, options = {}) => {
+    const nextProductId = Number(productId || 0)
+    if (!nextProductId) return
+    const createdFromSolicitud = Boolean(options.createdFromSolicitud)
+    const solicitudComment = String(options.solicitudComment || '').trim()
+
+    setIsProductModalOpen(false)
+    setCatalogProductId(nextProductId)
+    setCatalogProductNotice(createdFromSolicitud ? 'Creado desde esta solicitud.' : '')
+    setCatalogProductSolicitudComment(createdFromSolicitud ? solicitudComment : '')
+    setIsCatalogProductModalOpen(true)
+  }, [])
+
+  const handleSelectGroupItem = async (itemId) => {
     if (loading || saving) return
+    const targetItem = groupItems.find((item) => String(item.id || '') === String(itemId || ''))
+    if (!targetItem) return
+
     setProductSolicitud(null)
     setProductFormData(emptyForm)
     setProductCodeExists(false)
     setProductCodeCheckLoading(false)
+    setResolvedProductDetail(null)
+    setResolvedProductLoading(false)
+    setIsCatalogProductModalOpen(false)
+    setCatalogProductId(null)
+    setCatalogProductNotice('')
+    setCatalogProductSolicitudComment('')
     setSelectedSolicitudId(itemId)
+
+    const directProductId = Number(targetItem.catalogProductId || 0)
+    if (directProductId > 0) {
+      handleOpenCatalogProductModal(directProductId, {
+        createdFromSolicitud: targetItem.createdFromSolicitud,
+        solicitudComment: targetItem.comentario,
+      })
+      return
+    }
+
+    const existingProduct = await resolveCatalogProductByCode(targetItem.productoCodigo)
+    if (existingProduct?.id) {
+      handleOpenCatalogProductModal(existingProduct.id, {
+        createdFromSolicitud: false,
+        solicitudComment: '',
+      })
+      return
+    }
+
+    await loadProductSolicitud(itemId)
     setIsProductModalOpen(true)
   }
 
   const handleOpenCreateProductModal = () => {
-    if (productCodeCheckLoading || !canCreateProducts || productCodeExists) return
+    if (
+      productCodeCheckLoading ||
+      !canCreateProducts ||
+      productCodeExists ||
+      productSolicitud?.producto_resuelto_data?.id
+    ) {
+      return
+    }
     setIsProductModalOpen(false)
     setIsCreateProductModalOpen(true)
   }
@@ -762,11 +978,53 @@ function SolicitudDetails({
     }
   }
 
-  const handleProductCreated = () => {
-    setIsCreateProductModalOpen(false)
-    setProductCodeExists(true)
-    if (selectedSolicitudId) {
-      setIsProductModalOpen(true)
+  const handleProductCreated = async (createdProduct) => {
+    const createdProductId = Number(createdProduct?.id || 0)
+    setLinkingCreatedProduct(true)
+
+    try {
+      if (!selectedSolicitudId || !createdProductId) {
+        throw new Error('No se pudo identificar el producto creado para ligarlo a la solicitud.')
+      }
+
+      const response = await authFetch(
+        `${API_URL}/solicitudes/solicitudes/${selectedSolicitudId}/ligar-producto-creado/`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ producto_id: createdProductId }),
+        },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(
+          resolveApiErrorMessage(data, 'No se pudo ligar el producto creado a la solicitud.')
+        )
+      }
+
+      setIsCreateProductModalOpen(false)
+      setProductCodeExists(true)
+      setIsProductModalOpen(false)
+
+      await Promise.all([
+        loadSolicitud(rootSolicitudId || selectedSolicitudId),
+        loadProductSolicitud(selectedSolicitudId),
+        loadResolvedProductDetail(createdProductId),
+      ])
+      handleOpenCatalogProductModal(createdProductId, {
+        createdFromSolicitud: true,
+        solicitudComment: String(data?.comentario || productFormData.comentario || '').trim(),
+      })
+      onUpdated?.()
+    } catch (err) {
+      setIsCreateProductModalOpen(false)
+      if (selectedSolicitudId) {
+        setIsProductModalOpen(true)
+      }
+      notifyError(err?.message || 'No se pudo ligar el producto creado a la solicitud.')
+    } finally {
+      setLinkingCreatedProduct(false)
     }
   }
 
@@ -817,7 +1075,9 @@ function SolicitudDetails({
 
   const editorDisabled = loading || saving || !isEditing
   const productPopupLoading =
-    productLoading || (isProductModalOpen && Boolean(selectedSolicitudId) && !productSolicitud)
+    productLoading ||
+    linkingCreatedProduct ||
+    (isProductModalOpen && Boolean(selectedSolicitudId) && !productSolicitud)
   const selectedGroupItem = groupItems.find(
     (item) => String(item.id || '') === String(selectedSolicitudId || '')
   )
@@ -834,6 +1094,13 @@ function SolicitudDetails({
   ]
     .filter(Boolean)
     .join(' - ')
+  const resolvedProductId = Number(productSolicitud?.producto_resuelto_data?.id || 0)
+  const resolvedProductSummary = normalizeText(
+    resolvedProductDetail
+      ? `${resolvedProductDetail.codigo || ''} ${resolvedProductDetail.nombre || ''}`
+      : productSolicitud?.producto_conseguido || ''
+  )
+  const resolvedProductLocations = formatResolvedProductLocations(resolvedProductDetail)
   const shouldShowCreateProductButton = Boolean(
     isProductModalOpen &&
       !productPopupLoading &&
@@ -841,12 +1108,18 @@ function SolicitudDetails({
       productFormData.tabla === 'producto_solicitado' &&
       normalizeText(productFormData.productoCodigo) &&
       !productCodeCheckLoading &&
-      !productCodeExists
+      !productCodeExists &&
+      !resolvedProductId
   )
   const createProductInitialData = {
     codigo: productFormData.productoCodigo,
     nombre: productFormData.productoNombre,
     descripcion: productFormData.productoDescripcion,
+    marcaId: String(
+      productSolicitud?.producto_solicitado_data?.marca_id ||
+        productSolicitud?.producto_solicitado_data?.marca_data?.id ||
+        ''
+    ),
     marcaNombre: productFormData.productoMarca,
     oemItems: String(productFormData.productoOems || '')
       .split(',')
@@ -955,7 +1228,15 @@ function SolicitudDetails({
                     <>
                       <label className="create-user__field">
                         <span>Marca</span>
-                        <input name="productoMarca" value={productFormData.productoMarca} disabled />
+                        <select
+                          name="productoMarca"
+                          value={productFormData.productoMarca || ''}
+                          disabled
+                        >
+                          <option value={productFormData.productoMarca || ''}>
+                            {productFormData.productoMarca || 'Sin marca'}
+                          </option>
+                        </select>
                       </label>
                       <label className="create-user__field">
                         <span>OEM</span>
@@ -978,6 +1259,29 @@ function SolicitudDetails({
                     <span>Conseguido</span>
                     <input value={productSolicitud?.conseguido ? 'Si' : 'No'} disabled />
                   </label>
+                  {productFormData.tabla === 'producto_solicitado' && resolvedProductId > 0 && (
+                    <>
+                      <label className="create-user__field">
+                        <span>Producto creado</span>
+                        <input value={resolvedProductSummary || '-'} disabled />
+                      </label>
+                      <label className="create-user__field">
+                        <span>Historial</span>
+                        <input value="Creado desde esta solicitud" disabled />
+                      </label>
+                      <label className="create-user__field create-user__field--full">
+                        <span>Ubicaciones del producto creado</span>
+                        <textarea
+                          value={
+                            resolvedProductLoading
+                              ? 'Cargando ubicaciones del producto creado...'
+                              : resolvedProductLocations
+                          }
+                          disabled
+                        />
+                      </label>
+                    </>
+                  )}
                   {productFormData.tabla === 'producto_solicitado' && (
                     <label className="create-user__field create-user__field--full">
                       <span>Descripcion</span>
@@ -1043,7 +1347,33 @@ function SolicitudDetails({
       token={token}
       onError={notifyError}
       currentUser={currentUser}
+      lockModal
       initialData={createProductInitialData}
+    />
+  ) : null
+  const catalogProductModal = isCatalogProductModalOpen && catalogProductId ? (
+    <ProductoDetails
+      open={isCatalogProductModalOpen}
+      productoId={catalogProductId}
+      token={token}
+      onClose={handleCloseCatalogProductModal}
+      onUpdated={async (...args) => {
+        if (rootSolicitudId) {
+          await loadSolicitud(rootSolicitudId)
+        }
+        onUpdated?.(...args)
+      }}
+      onDeleted={async (...args) => {
+        handleCloseCatalogProductModal()
+        if (rootSolicitudId) {
+          await loadSolicitud(rootSolicitudId)
+        }
+        onUpdated?.(...args)
+      }}
+      onError={notifyError}
+      currentUser={currentUser}
+      contextNotice={catalogProductNotice}
+      contextComment={catalogProductSolicitudComment}
     />
   ) : null
 
@@ -1053,7 +1383,12 @@ function SolicitudDetails({
         className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`}
         role="dialog"
         aria-modal="true"
-        style={overlayStyle}
+        aria-hidden={isCreateProductModalOpen || isCatalogProductModalOpen ? 'true' : undefined}
+        style={{
+          ...overlayStyle,
+          pointerEvents: isCreateProductModalOpen || isCatalogProductModalOpen ? 'none' : 'auto',
+          userSelect: isCreateProductModalOpen || isCatalogProductModalOpen ? 'none' : undefined,
+        }}
       >
         <div
           className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
@@ -1364,6 +1699,7 @@ function SolicitudDetails({
         </div>
       </div>
       {productModalOverlay && (canUsePortal ? createPortal(productModalOverlay, document.body) : productModalOverlay)}
+      {catalogProductModal && (canUsePortal ? createPortal(catalogProductModal, document.body) : catalogProductModal)}
       {createProductModal && (canUsePortal ? createPortal(createProductModal, document.body) : createProductModal)}
     </>
   )

@@ -105,6 +105,8 @@ function ProductoDetails({
   allowDelete = true,
   allowComment = false,
   showCostField = true,
+  contextNotice = '',
+  contextComment = '',
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
@@ -1375,6 +1377,33 @@ function ProductoDetails({
             <div className="create-user__loading-overlay" role="status" aria-live="polite">
               <i className="pi pi-spin pi-spinner" aria-hidden="true" />
               <span>Cargando datos...</span>
+            </div>
+          )}
+          {(contextNotice || contextComment) && (
+            <div
+              style={{
+                margin: '14px 18px 0',
+                padding: '12px 14px',
+                borderRadius: '12px',
+                border: '1px solid color-mix(in srgb, var(--color-primary-dark) 28%, var(--color-border))',
+                background: 'color-mix(in srgb, var(--color-primary-dark) 8%, var(--modal-color))',
+                color: 'var(--color-text-primary)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+              }}
+            >
+              <Info size={18} style={{ flexShrink: 0, marginTop: '1px', color: 'var(--color-primary-dark)' }} />
+              <div style={{ minWidth: 0 }}>
+                {contextNotice && (
+                  <p style={{ margin: 0, fontWeight: 700, lineHeight: 1.3 }}>{contextNotice}</p>
+                )}
+                {contextComment && (
+                  <p style={{ margin: contextNotice ? '4px 0 0' : 0, lineHeight: 1.35 }}>
+                    Comentario en la solicitud: {contextComment}
+                  </p>
+                )}
+              </div>
             </div>
           )}
           <div className="create-user__tabs" role="tablist" aria-label="Secciones del producto">
