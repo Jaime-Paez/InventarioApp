@@ -301,7 +301,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
           ...module,
           key: normalizeModuleKey(module?.key),
         }))
-        .filter((module) => module.key)
+        .filter((module) => module.key && module.key !== 'configuracion')
       const scopedModules = Array.isArray(data?.modulos_con_sucursales) ? data.modulos_con_sucursales : []
       setPermissionOptions(modulos)
       setBranchScopedModules(

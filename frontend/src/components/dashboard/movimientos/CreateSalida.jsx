@@ -350,6 +350,10 @@ function CreateSalida({
   const requiresStockValidation = isTraslado || isVenta || isDevolucion
   const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
+  const selectedClienteLabel = useMemo(
+    () => formatClienteDropdownLabel(selectedCliente) || formatClienteFieldValue(selectedCliente),
+    [selectedCliente]
+  )
   const isSelectorStep = !formData.subTipoId
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'No. de Traslado' : 'No. de Factura'
@@ -1692,22 +1696,25 @@ function CreateSalida({
     const value = event.target.value
     setError('')
     setClienteQuery(value)
-    setShowClienteDropdown(Boolean(value))
     if (!value.trim()) {
-      if (selectedCliente) {
-        setSelectedCliente(null)
-        setFormData((prev) => ({ ...prev, cliente: '' }))
-      }
       setClienteOptions([])
       setClienteLoading(false)
       return
     }
+  }
 
-    const currentLabel = formatClienteFieldValue(selectedCliente)
-    if (selectedCliente && normalizeValue(value) !== normalizeValue(currentLabel)) {
-      setSelectedCliente(null)
-      setFormData((prev) => ({ ...prev, cliente: '' }))
-    }
+  const handleClienteDropdownToggle = () => {
+    if (loading) return
+    setError('')
+    setShowClienteDropdown((prev) => {
+      const next = !prev
+      if (next) {
+        setClienteQuery('')
+        setClienteOptions([])
+        setClienteLoading(false)
+      }
+      return next
+    })
   }
 
   const handleClienteFieldChange = (event) => {
@@ -1726,7 +1733,7 @@ function CreateSalida({
     setClienteMode(CLIENT_MODE_EXISTING)
     setSelectedCliente(cliente || null)
     setFormData((prev) => ({ ...prev, cliente: label }))
-    setClienteQuery(label)
+    setClienteQuery('')
     setClienteForm(normalizeClientePayload(cliente))
     setShowClienteDropdown(false)
     setClienteOptions([])
@@ -1985,7 +1992,7 @@ function CreateSalida({
 
           setSelectedCliente(createClienteData)
           setClienteForm(normalizeClientePayload(createClienteData))
-          setClienteQuery(ventaClienteLabel)
+          setClienteQuery('')
           setClienteMode(CLIENT_MODE_EXISTING)
         }
 
@@ -2721,18 +2728,34 @@ function CreateSalida({
                       {useExistingCliente && (
                         <label className="create-user__field create-user__field--full">
                           <span>Cliente</span>
-                          <div className="create-user__dropdown" ref={clienteDropdownRef}>
-                            <input
-                              type="text"
-                              placeholder="Buscar por cedula o nombre"
-                              value={clienteQuery}
-                              onChange={handleClienteQueryChange}
-                              onFocus={() => setShowClienteDropdown(Boolean(clienteQuery))}
+                          <div className="create-user__dropdown create-salida__cliente-dropdown" ref={clienteDropdownRef}>
+                            <button
+                              type="button"
+                              className={`create-user__dropdown-trigger${
+                                !selectedClienteLabel ? ' create-salida__cliente-trigger--placeholder' : ''
+                              }`}
+                              onClick={handleClienteDropdownToggle}
                               disabled={loading}
-                              autoComplete="off"
-                            />
+                              aria-haspopup="listbox"
+                              aria-expanded={showClienteDropdown}
+                            >
+                              <span>{selectedClienteLabel || 'Selecciona un cliente'}</span>
+                              <i className={`pi pi-chevron-${showClienteDropdown ? 'up' : 'down'}`} />
+                            </button>
                             {showClienteDropdown && (
                               <div className="create-user__dropdown-panel create-salida__cliente-panel">
+                                <div className="create-user__dropdown-search">
+                                  <i className="pi pi-search" />
+                                  <input
+                                    type="text"
+                                    placeholder="Buscar por cedula o nombre"
+                                    value={clienteQuery}
+                                    onChange={handleClienteQueryChange}
+                                    disabled={loading}
+                                    autoComplete="off"
+                                    autoFocus
+                                  />
+                                </div>
                                 <div className="create-user__dropdown-results">
                                   {clienteLoading && <small className="muted">Buscando cliente...</small>}
                                   {!clienteLoading && !clienteQuery.trim() && (

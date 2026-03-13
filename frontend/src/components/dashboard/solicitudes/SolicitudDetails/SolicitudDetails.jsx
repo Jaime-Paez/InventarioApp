@@ -238,7 +238,6 @@ function SolicitudDetails({
   allowDelete = true,
 }) {
   const [solicitud, setSolicitud] = useState(null)
-  const [rootSolicitudId, setRootSolicitudId] = useState(null)
   const [selectedSolicitudId, setSelectedSolicitudId] = useState(null)
   const [productSolicitud, setProductSolicitud] = useState(null)
   const [groupItems, setGroupItems] = useState([])
@@ -287,6 +286,7 @@ function SolicitudDetails({
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const productDragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
+  const rootSolicitudRequestSeqRef = useRef(0)
   const positionRef = useRef(position)
   const modalSizeRef = useRef(modalSize)
   const productModalPositionRef = useRef(productModalPosition)
@@ -341,10 +341,14 @@ function SolicitudDetails({
   const canCreateProducts = Boolean(currentUser?.es_administrador) || productCreateBranchIds.size > 0
 
   const fetchGroupItems = useCallback(
-    async (baseSolicitud) => {
+    async (baseSolicitud, requestSeq = null) => {
       const grupoCodigo = normalizeText(baseSolicitud?.grupo_codigo)
+      const isStaleRequest = () =>
+        requestSeq != null && requestSeq !== rootSolicitudRequestSeqRef.current
       if (!grupoCodigo || !token) {
-        setGroupItems(baseSolicitud ? [buildGroupItem(baseSolicitud)] : [])
+        if (!isStaleRequest()) {
+          setGroupItems(baseSolicitud ? [buildGroupItem(baseSolicitud)] : [])
+        }
         return
       }
 
@@ -356,6 +360,7 @@ function SolicitudDetails({
         )
         const data = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error()
+        if (isStaleRequest()) return
 
         const mergedById = new Map()
         parseApiList(data).forEach((item) => {
@@ -369,7 +374,9 @@ function SolicitudDetails({
             .map((item) => buildGroupItem(item))
         )
       } catch {
-        setGroupItems(baseSolicitud ? [buildGroupItem(baseSolicitud)] : [])
+        if (!isStaleRequest()) {
+          setGroupItems(baseSolicitud ? [buildGroupItem(baseSolicitud)] : [])
+        }
       }
     },
     [token]
@@ -378,17 +385,23 @@ function SolicitudDetails({
   const loadSolicitud = useCallback(
     async (id) => {
       if (!id || !token) return
+      const requestSeq = rootSolicitudRequestSeqRef.current + 1
+      rootSolicitudRequestSeqRef.current = requestSeq
       setLoading(true)
       try {
         const response = await authFetch(`${API_URL}/solicitudes/solicitudes/${id}/`, {}, token)
         const data = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(data?.detail || 'No se pudo cargar la solicitud.')
+        if (requestSeq !== rootSolicitudRequestSeqRef.current) return
         applySolicitudState(data)
-        await fetchGroupItems(data)
+        await fetchGroupItems(data, requestSeq)
       } catch (err) {
+        if (requestSeq !== rootSolicitudRequestSeqRef.current) return
         notifyError(err?.message || 'No se pudo cargar la solicitud.')
       } finally {
-        setLoading(false)
+        if (requestSeq === rootSolicitudRequestSeqRef.current) {
+          setLoading(false)
+        }
       }
     },
     [applySolicitudState, fetchGroupItems, notifyError, token]
@@ -469,6 +482,7 @@ function SolicitudDetails({
   )
 
   useEffect(() => {
+    rootSolicitudRequestSeqRef.current += 1
     if (!open) return
     setActiveTab('productos')
     setIsEditing(false)
@@ -491,15 +505,14 @@ function SolicitudDetails({
     setSolicitud(null)
     setProductSolicitud(null)
     setGroupItems([])
-    setRootSolicitudId(solicitudId || null)
     setSelectedSolicitudId(null)
     setProductFormData(emptyForm)
   }, [open, solicitudId])
 
   useEffect(() => {
-    if (!open || !rootSolicitudId) return
-    loadSolicitud(rootSolicitudId)
-  }, [open, rootSolicitudId, loadSolicitud])
+    if (!open || !solicitudId) return
+    loadSolicitud(solicitudId)
+  }, [open, solicitudId, loadSolicitud])
 
   useEffect(() => {
     if (!open || !isProductModalOpen || !selectedSolicitudId) return
@@ -1029,7 +1042,7 @@ function SolicitudDetails({
       setIsProductModalOpen(false)
 
       await Promise.all([
-        loadSolicitud(rootSolicitudId || selectedSolicitudId),
+        loadSolicitud(solicitudId || selectedSolicitudId),
         loadProductSolicitud(selectedSolicitudId),
         loadResolvedProductDetail(createdProductId),
       ])
@@ -1050,7 +1063,7 @@ function SolicitudDetails({
   }
 
   const handleSave = async () => {
-    if (!isEditing || saving || !rootSolicitudId) return
+    if (!isEditing || saving || !solicitudId) return
 
     const payload = {
       placa: normalizeText(formData.placa),
@@ -1074,7 +1087,7 @@ function SolicitudDetails({
     setSaving(true)
     try {
       const response = await authFetch(
-        `${API_URL}/solicitudes/solicitudes/${rootSolicitudId}/`,
+        `${API_URL}/solicitudes/solicitudes/${solicitudId}/`,
         { method: 'PATCH', body: JSON.stringify(payload) },
         token
       )
@@ -1092,7 +1105,7 @@ function SolicitudDetails({
   }
 
   const handleDelete = async () => {
-    const deleteTargetId = Number(rootSolicitudId || solicitudId || 0)
+    const deleteTargetId = Number(solicitudId || 0)
     if (!allowDelete || !deleteTargetId || deleteLoading) return
 
     setDeleteLoading(true)
@@ -1136,12 +1149,12 @@ function SolicitudDetails({
     (item) => String(item.id || '') === String(selectedSolicitudId || '')
   )
   const rootGroupItem = groupItems.find(
-    (item) => String(item.id || '') === String(rootSolicitudId || '')
+    (item) => String(item.id || '') === String(solicitudId || '')
   )
   const modalTitle =
     rootGroupItem?.codigo ||
     solicitud?.codigo ||
-    (rootSolicitudId ? `Solicitud #${rootSolicitudId}` : 'Detalle de solicitud')
+    (solicitudId ? `Solicitud #${solicitudId}` : 'Detalle de solicitud')
   const productModalTitle = [
     selectedGroupItem?.productoCodigo || productFormData.productoCodigo || 'Producto',
     selectedGroupItem?.productoNombre || productFormData.productoNombre || '',
@@ -1432,15 +1445,15 @@ function SolicitudDetails({
       token={token}
       onClose={handleCloseCatalogProductModal}
       onUpdated={async (...args) => {
-        if (rootSolicitudId) {
-          await loadSolicitud(rootSolicitudId)
+        if (solicitudId) {
+          await loadSolicitud(solicitudId)
         }
         onUpdated?.(...args)
       }}
       onDeleted={async (...args) => {
         handleCloseCatalogProductModal()
-        if (rootSolicitudId) {
-          await loadSolicitud(rootSolicitudId)
+        if (solicitudId) {
+          await loadSolicitud(solicitudId)
         }
         onUpdated?.(...args)
       }}
@@ -1748,7 +1761,7 @@ function SolicitudDetails({
                 token={token}
                 currentUser={currentUser}
                 entityType="solicitud"
-                entityId={rootSolicitudId}
+                entityId={solicitudId}
                 isOpen={open}
                 entityLabel={modalTitle}
                 canCreateReminder={allowEdit && isEditing}
@@ -1783,7 +1796,7 @@ function SolicitudDetails({
             )}
           </div>
           <div className="user-details__footer-right">
-            {allowDelete && (
+            {allowDelete && isEditing && (
               <button
                 type="button"
                 className="create-user__action user-details__delete"

@@ -55,6 +55,10 @@ export const MENU_STRUCTURE = [
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
 ]
 
+const STANDALONE_LABEL_MODULE_KEYS = {
+  Configuraciones: 'configuracion',
+}
+
 const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'movimientos_entradas',
   'movimientos_salidas',
@@ -155,7 +159,51 @@ export const buildModuleScopeAccessIndex = (moduleScopes, isAdmin = false) => {
 
 const MODULE_ACTION_KEYS = ['puede_crear', 'puede_leer', 'puede_actualizar', 'puede_eliminar']
 
-export const getModuleActions = (moduleKey, permissionIndex) => {
+const getScopedModuleActions = (moduleKey, moduleScopes) => {
+  const normalizedModuleKey = normalizeModuleKey(moduleKey)
+  const initialActions = {
+    puede_crear: false,
+    puede_leer: false,
+    puede_actualizar: false,
+    puede_eliminar: false,
+  }
+
+  if (
+    !normalizedModuleKey ||
+    !BRANCH_SCOPED_MODULE_KEYS.has(normalizedModuleKey) ||
+    !Array.isArray(moduleScopes)
+  ) {
+    return initialActions
+  }
+
+  return moduleScopes.reduce((acc, scope) => {
+    if (normalizeModuleKey(scope?.modulo) !== normalizedModuleKey) return acc
+
+    const actionsByBranch = Array.isArray(scope?.acciones_por_sucursal) ? scope.acciones_por_sucursal : []
+    if (actionsByBranch.length) {
+      actionsByBranch.forEach((entry) => {
+        acc.puede_crear = acc.puede_crear || Boolean(entry?.puede_crear)
+        acc.puede_leer = acc.puede_leer || Boolean(
+          entry?.puede_leer ||
+          entry?.puede_crear ||
+          entry?.puede_actualizar ||
+          entry?.puede_eliminar
+        )
+        acc.puede_actualizar = acc.puede_actualizar || Boolean(entry?.puede_actualizar)
+        acc.puede_eliminar = acc.puede_eliminar || Boolean(entry?.puede_eliminar)
+      })
+      return acc
+    }
+
+    const branchIds = Array.isArray(scope?.sucursales_ids) ? scope.sucursales_ids : []
+    if (branchIds.length) {
+      acc.puede_leer = true
+    }
+    return acc
+  }, initialActions)
+}
+
+export const getModuleActions = (moduleKey, permissionIndex, moduleScopes = null) => {
   if (!permissionIndex || !moduleKey) {
     return {
       puede_crear: true,
@@ -166,11 +214,12 @@ export const getModuleActions = (moduleKey, permissionIndex) => {
   }
 
   const permiso = permissionIndex.get(moduleKey)
+  const scopedActions = getScopedModuleActions(moduleKey, moduleScopes)
   return {
-    puede_crear: Boolean(permiso?.puede_crear),
-    puede_leer: Boolean(permiso?.puede_leer),
-    puede_actualizar: Boolean(permiso?.puede_actualizar),
-    puede_eliminar: Boolean(permiso?.puede_eliminar),
+    puede_crear: Boolean(permiso?.puede_crear) || Boolean(scopedActions?.puede_crear),
+    puede_leer: Boolean(permiso?.puede_leer) || Boolean(scopedActions?.puede_leer),
+    puede_actualizar: Boolean(permiso?.puede_actualizar) || Boolean(scopedActions?.puede_actualizar),
+    puede_eliminar: Boolean(permiso?.puede_eliminar) || Boolean(scopedActions?.puede_eliminar),
   }
 }
 
@@ -239,6 +288,13 @@ export const labelHasAccess = (
 ) => {
   const flattened = flattenMenu(menu)
   const item = flattened.find((entry) => entry.label === label)
-  if (!item) return true
+  if (!item) {
+    const standaloneModuleKey = STANDALONE_LABEL_MODULE_KEYS[label]
+    if (!standaloneModuleKey) return true
+    return (
+      hasPermissionForTarget(standaloneModuleKey, permissionIndex) &&
+      hasBranchScopeAccessForTarget(standaloneModuleKey, moduleScopeAccessIndex)
+    )
+  }
   return itemHasAccess(item, permissionIndex, moduleScopeAccessIndex)
 }

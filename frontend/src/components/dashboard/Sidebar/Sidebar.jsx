@@ -47,6 +47,12 @@ function Sidebar({
 
   const firstName = (user?.nombre || user?.first_name || '').trim()
   const lastName = (user?.apellido || user?.last_name || '').trim()
+  const canAccessConfiguration = Boolean(
+    user?.is_superuser ||
+      user?.is_staff ||
+      user?.es_administrador ||
+      String(user?.rol || '').trim().toLowerCase() === 'administrador'
+  )
 
   const userInitial = (firstName[0] || lastName[0] || 'U').toUpperCase()
   const lastNameInitial = lastName ? `${lastName[0].toUpperCase()}.` : ''
@@ -132,14 +138,16 @@ function Sidebar({
             <PanelLeftClose />
             Cerrar panel
           </button>
-          <button
-            type="button"
-            className="sidebar__action ghost"
-            onClick={() => onSelect('Configuraciones')}
-          >
-            <Settings />
-            Configuración
-          </button>
+          {canAccessConfiguration ? (
+            <button
+              type="button"
+              className="sidebar__action ghost"
+              onClick={() => onSelect('Configuraciones')}
+            >
+              <Settings />
+              Configuración
+            </button>
+          ) : null}
         </div>
 
         <div className="sidebar__profile">

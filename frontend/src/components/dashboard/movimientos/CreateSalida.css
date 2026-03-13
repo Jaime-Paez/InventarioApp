@@ -342,6 +342,24 @@
   max-height: 210px;
 }
 
+.create-salida__cliente-dropdown .create-user__dropdown-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.create-salida__cliente-trigger--placeholder > span {
+  opacity: 0.45;
+}
+
+.create-salida__cliente-panel {
+  min-width: 0;
+}
+
+.create-salida__cliente-panel .create-user__dropdown-results {
+  max-height: 210px;
+}
+
 .create-entrada__location-picker-grid {
   display: grid;
   gap: 8px;

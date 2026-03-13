@@ -36,7 +36,7 @@ const hasUsersModuleAccess = (permissions) =>
     )
   })
 
-function Configuracion({ token, darkMode, onToggleTheme, user }) {
+function Configuracion({ token, user }) {
   const [ivaPercent, setIvaPercent] = useState(String(DEFAULT_IVA))
   const [randomInspectionItemsPerDay, setRandomInspectionItemsPerDay] = useState(
     String(DEFAULT_RANDOM_INSPECTION_ITEMS_PER_DAY)
@@ -45,7 +45,6 @@ function Configuracion({ token, darkMode, onToggleTheme, user }) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const toast = useRef(null)
-  const canToggleTheme = typeof onToggleTheme === 'function'
 
   const canManageInspectionItems = useMemo(
     () => Boolean(
@@ -57,12 +56,6 @@ function Configuracion({ token, darkMode, onToggleTheme, user }) {
     ),
     [user]
   )
-
-  const setTheme = (target) => {
-    if (!canToggleTheme) return
-    const wantsDark = target === 'dark'
-    if (wantsDark !== Boolean(darkMode)) onToggleTheme()
-  }
 
   const notify = useCallback((severity, summary, detail) => {
     toast.current?.show({ severity, summary, detail, life: 3000 })
@@ -291,44 +284,6 @@ function Configuracion({ token, darkMode, onToggleTheme, user }) {
           </div>
         </section>
       )}
-
-      <section className="create-user__section configuracion__section">
-        <div className="create-user__section-header">
-          <div>
-            <h4>Apariencia</h4>
-            <p className="create-user__hint">
-              Define el modo visual del panel. Se guarda en este navegador.
-            </p>
-          </div>
-        </div>
-
-        <div className="create-user__grid create-user__grid--two">
-          <div className="configuracion__preview">
-            <span>Modo actual</span>
-            <strong>{darkMode ? 'Oscuro' : 'Claro'}</strong>
-            <small>{darkMode ? 'Contraste alto y fondo oscuro.' : 'Fondo claro y lectura limpia.'}</small>
-          </div>
-
-          <div className="configuracion__theme-toggle" role="group" aria-label="Modo de color">
-            <button
-              type="button"
-              className={`configuracion__theme-option ${!darkMode ? 'active' : ''}`}
-              onClick={() => setTheme('light')}
-              disabled={!canToggleTheme}
-            >
-              Claro
-            </button>
-            <button
-              type="button"
-              className={`configuracion__theme-option ${darkMode ? 'active' : ''}`}
-              onClick={() => setTheme('dark')}
-              disabled={!canToggleTheme}
-            >
-              Oscuro
-            </button>
-          </div>
-        </div>
-      </section>
     </div>
   )
 }

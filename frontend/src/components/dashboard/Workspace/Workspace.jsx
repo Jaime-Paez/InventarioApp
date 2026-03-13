@@ -109,6 +109,12 @@ function Workspace({
     .filter(Boolean)
     .join(' ')
     .trim() || 'usuario'
+  const isAdministrator = Boolean(
+    user?.is_superuser ||
+      user?.is_staff ||
+      user?.es_administrador ||
+      String(user?.rol || '').trim().toLowerCase() === 'administrador'
+  )
 
   const showWelcome = !activeItem
   const farewellTitle = `Hasta luego, ${username}.`
@@ -374,7 +380,7 @@ function Workspace({
     const hasAccess = labelHasAccess(tab, permissionIndex, undefined, moduleScopeAccessIndex)
     const TabComponent = tabComponentMap[tab]
     const moduleKey = MODULE_KEY_BY_TAB[tab] || ''
-    const moduleActions = getModuleActions(moduleKey, permissionIndex)
+    const moduleActions = getModuleActions(moduleKey, permissionIndex, user?.sucursales_por_modulo)
 
     if (!TabComponent) {
       return (
@@ -393,7 +399,14 @@ function Workspace({
     }
 
     if (tab === 'Configuraciones') {
-      return <TabComponent token={token} darkMode={darkMode} onToggleTheme={onToggleTheme} user={user} />
+      if (!isAdministrator) {
+        return (
+          <p className="workspace__subtitle">
+            No tienes permisos para acceder a este módulo. Solicita acceso a un administrador.
+          </p>
+        )
+      }
+      return <TabComponent token={token} user={user} />
     }
 
     const createBranchId = tab === 'Entradas'
