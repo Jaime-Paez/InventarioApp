@@ -11,16 +11,17 @@ class ClienteAdmin(admin.ModelAdmin):
 
 @admin.register(ProductoSolicitado)
 class ProductoSolicitadoAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "conseguido", "producto")
+    list_display = ("nombre", "marca", "conseguido", "producto")
     list_filter = ("conseguido",)
-    search_fields = ("nombre", "descripcion", "producto__nombre", "producto__codigo")
+    search_fields = ("nombre", "descripcion", "marca__nombre", "producto__nombre", "producto__codigo")
 
 
 @admin.register(Solicitud)
 class SolicitudAdmin(admin.ModelAdmin):
-    list_display = ("id", "cliente", "tabla", "cantidad", "fecha", "sucursal")
+    list_display = ("codigo", "id", "cliente", "tabla", "cantidad", "fecha", "sucursal")
     list_filter = ("tabla", "fecha", "sucursal")
     search_fields = (
+        "codigo",
         "cliente__nombres",
         "cliente__apellidos",
         "cliente__cedula_ruc",

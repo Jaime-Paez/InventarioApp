@@ -60,7 +60,16 @@ const getModuleScopeBranchIdSet = (rawScopes, moduleKey) => {
   return new Set(ids)
 }
 
-function CreateProducto({ open, onClose, onCreated, token, onError, currentUser = null, showCostField = true }) {
+function CreateProducto({
+  open,
+  onClose,
+  onCreated,
+  token,
+  onError,
+  currentUser = null,
+  showCostField = true,
+  initialData = null,
+}) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
@@ -533,8 +542,25 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
 
   useEffect(() => {
     if (!open) return
-    setFormData(initialForm)
-    setMarcaQuery('')
+    const nextInitialData = initialData && typeof initialData === 'object' ? initialData : {}
+    const nextCodigo = toUpperProductCode(nextInitialData.codigo).trim()
+    const nextNombre = String(nextInitialData.nombre || '').trim()
+    const nextDescripcion = String(nextInitialData.descripcion || '').trim()
+    const nextMarcaNombre = String(nextInitialData.marcaNombre || '').trim()
+    const nextOemItems = Array.isArray(nextInitialData.oemItems)
+      ? nextInitialData.oemItems
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+          .map((codigo) => ({ codigo, descripcion: '' }))
+      : []
+
+    setFormData({
+      ...initialForm,
+      codigo: nextCodigo,
+      nombre: nextNombre,
+      descripcion: nextDescripcion,
+    })
+    setMarcaQuery(nextMarcaNombre)
     setCasaSearch('')
     setLoading(false)
     setActiveTab('general')
@@ -546,7 +572,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
     setShowAlternoForm(false)
     setAlternoDraft(null)
     setAlternoError('')
-    setOemItems([])
+    setOemItems(nextOemItems)
     setShowOemForm(false)
     setOemDraft({ codigo: '', descripcion: '' })
     setOemError('')
@@ -613,7 +639,7 @@ function CreateProducto({ open, onClose, onCreated, token, onError, currentUser 
     searchLocationBranches('').finally(() => {
       setLocationsLoading(false)
     })
-  }, [open, searchLocationBranches])
+  }, [initialData, open, searchLocationBranches])
 
   useEffect(
     () => () => {

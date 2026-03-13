@@ -1,7 +1,42 @@
+import re
+import uuid
+import unicodedata
+
 from django.core.exceptions import ValidationError
 from django.db import models
 
 from marcas.models import Marca
+
+
+def normalize_sucursal_name(value):
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return ""
+    normalized = unicodedata.normalize("NFKD", raw_value)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    collapsed = re.sub(r"[^a-zA-Z0-9]+", " ", ascii_text).strip().lower()
+    return re.sub(r"\s+", " ", collapsed)
+
+
+def resolve_solicitud_sucursal_code(sucursal):
+    normalized_name = normalize_sucursal_name(getattr(sucursal, "nombre", ""))
+    if not normalized_name:
+        return "SUC"
+
+    if "norte" in normalized_name:
+        return "NOR"
+    if "sur" in normalized_name:
+        return "SUR"
+    if "octubre" in normalized_name and "9" in normalized_name:
+        return "9OCT"
+
+    tokens = re.findall(r"[a-z0-9]+", normalized_name)
+    compact = "".join(tokens).upper()
+    if not compact:
+        return "SUC"
+    if compact[0].isdigit():
+        return compact[:4]
+    return compact[:3]
 
 
 class Cliente(models.Model):
@@ -54,7 +89,11 @@ class ProductoSolicitado(models.Model):
 
     codigo = models.CharField(max_length=80, blank=True)
     nombre = models.CharField(max_length=255)
-    marca = models.CharField(max_length=120, blank=True)
+    marca = models.ForeignKey(
+        Marca,
+        on_delete=models.PROTECT,
+        related_name="productos_solicitados",
+    )
     descripcion = models.TextField(blank=True)
     conseguido = models.BooleanField(default=False)
     producto = models.ForeignKey(
@@ -80,6 +119,8 @@ class Solicitud(models.Model):
         PRODUCTO = "producto", "Producto"
         PRODUCTO_SOLICITADO = "producto_solicitado", "Producto solicitado"
 
+    codigo = models.CharField(max_length=80, unique=True, blank=True, default="")
+    grupo_codigo = models.CharField(max_length=80, blank=True, default="", db_index=True)
     cantidad = models.PositiveIntegerField()
     producto = models.ForeignKey(
         "productos.Producto",
@@ -118,6 +159,38 @@ class Solicitud(models.Model):
         verbose_name = "Solicitud"
         verbose_name_plural = "Solicitudes"
 
+    @classmethod
+    def build_codigo_base(cls, sucursal):
+        branch_code = resolve_solicitud_sucursal_code(sucursal)
+        return f"SOL-{branch_code}"
+
+    @classmethod
+    def generate_next_codigo(cls, sucursal, exclude_id=None):
+        base = cls.build_codigo_base(sucursal)
+        queryset = cls.objects.filter(codigo__istartswith=f"{base}-")
+        if exclude_id is not None:
+            queryset = queryset.exclude(pk=exclude_id)
+
+        matcher = re.compile(rf"^{re.escape(base)}-(\d+)$", flags=re.IGNORECASE)
+        max_number = 0
+        for raw_codigo in queryset.values_list("codigo", flat=True):
+            matched = matcher.match(str(raw_codigo or "").strip())
+            if not matched:
+                continue
+            try:
+                max_number = max(max_number, int(matched.group(1)))
+            except (TypeError, ValueError):
+                continue
+
+        return f"{base}-{max_number + 1}"
+
+    def should_regenerate_codigo(self):
+        if not self.sucursal_id:
+            return False
+        current_codigo = str(self.codigo or "").strip().upper()
+        expected_prefix = f"{self.build_codigo_base(self.sucursal)}-"
+        return not current_codigo or not current_codigo.startswith(expected_prefix)
+
     def __str__(self) -> str:  # pragma: no cover - representación legible
         if self.tabla == self.Tabla.PRODUCTO and self.producto:
             referencia = self.producto.nombre
@@ -125,7 +198,8 @@ class Solicitud(models.Model):
             referencia = self.producto_solicitado.nombre
         else:  # pragma: no cover - fallback seguro
             referencia = "Producto"
-        return f"Solicitud #{self.pk or 'nuevo'} - {referencia}"
+        codigo = str(self.codigo or "").strip() or f"Solicitud #{self.pk or 'nuevo'}"
+        return f"{codigo} - {referencia}"
 
     def clean(self):
         """Valida que la tabla seleccionada coincida con la referencia asociada."""
@@ -148,6 +222,20 @@ class Solicitud(models.Model):
             raise ValidationError({"tabla": "Selección de tabla inválida."})
 
     def save(self, *args, **kwargs):
+        if not self.grupo_codigo:
+            self.grupo_codigo = uuid.uuid4().hex
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                updated = set(update_fields)
+                updated.add("grupo_codigo")
+                kwargs["update_fields"] = list(updated)
+        if self.should_regenerate_codigo():
+            self.codigo = self.generate_next_codigo(self.sucursal, exclude_id=self.pk)
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                updated = set(update_fields)
+                updated.add("codigo")
+                kwargs["update_fields"] = list(updated)
         self.full_clean()
         return super().save(*args, **kwargs)
 

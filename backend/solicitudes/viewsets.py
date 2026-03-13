@@ -1,5 +1,7 @@
+import uuid
+
 from django.db import transaction
-from django.db.models import Case, CharField, Count, F, Q, Sum, TextField, Value, When
+from django.db.models import CharField, Count, F, Q, Sum, TextField, Value
 from django.db.models.functions import Coalesce, Concat
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -10,6 +12,7 @@ from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
 from inventario.models import Inventario, Sucursal
+from marcas.models import Marca
 from productos.models import OEM, Producto
 from usuarios.models import RolPermiso
 from usuarios.permissions import ClientesModulePermission, SolicitudesModulePermission
@@ -87,12 +90,12 @@ class ClienteViewSet(viewsets.ModelViewSet):
 
 
 class ProductoSolicitadoViewSet(viewsets.ModelViewSet):
-    queryset = ProductoSolicitado.objects.select_related("producto").all().order_by("-id")
+    queryset = ProductoSolicitado.objects.select_related("producto", "marca").all().order_by("-id")
     serializer_class = ProductoSolicitadoSerializer
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombre", "descripcion", "producto__nombre", "producto__codigo"]
-    ordering_fields = ["nombre", "conseguido", "producto__nombre"]
+    search_fields = ["nombre", "descripcion", "marca__nombre", "producto__nombre", "producto__codigo"]
+    ordering_fields = ["nombre", "marca__nombre", "conseguido", "producto__nombre"]
 
 
 class OEMProductoSolicitadoViewSet(viewsets.ModelViewSet):
@@ -119,6 +122,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "sucursal",
             "producto",
             "producto_solicitado",
+            "producto_solicitado__marca",
             "producto_solicitado__producto",
         )
         .prefetch_related("producto_solicitado__oem_relaciones__oem")
@@ -129,6 +133,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
+            "codigo",
             "descripcion_general",
             "comentario",
             "placa",
@@ -139,12 +144,13 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "producto__codigo",
             "producto_solicitado__nombre",
             "producto_solicitado__codigo",
-            "producto_solicitado__marca",
+            "producto_solicitado__marca__nombre",
             "producto_solicitado__descripcion",
             "producto_solicitado__oem_relaciones__oem__codigo",
             "sucursal__nombre",
         ]
     ordering_fields = [
+        "codigo",
         "fecha",
         "cantidad",
         "cliente__nombres",
@@ -155,7 +161,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         "producto_solicitado_descripcion_text",
         "descripcion_general",
         "producto_conseguido_text",
-        "conseguido_label_text",
         "cliente_nombre_text",
         "placa",
     ]
@@ -180,12 +185,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 Coalesce("producto_solicitado__producto__nombre", Value("")),
                 output_field=CharField(),
             ),
-            conseguido_label_text=Case(
-                When(tabla=Solicitud.Tabla.PRODUCTO, then=Value("Si")),
-                When(producto_solicitado__conseguido=True, then=Value("Si")),
-                default=Value("No"),
-                output_field=CharField(),
-            ),
         )
         queryset = apply_sucursal_scope(
             queryset,
@@ -208,6 +207,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         cliente_id = (params.get("cliente_id") or "").strip()
         if cliente_id:
             queryset = queryset.filter(cliente_id=cliente_id)
+
+        grupo_codigo = (params.get("grupo_codigo") or "").strip()
+        if grupo_codigo:
+            queryset = queryset.filter(grupo_codigo__iexact=grupo_codigo)
 
         cedula_ruc = (params.get("cedula_ruc") or "").strip()
         if cedula_ruc:
@@ -240,6 +243,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             queryset,
             parse_column_filters(params.get("column_filters")),
             {
+                "codigo": "codigo",
                 "fecha": {"lookup": "fecha", "type": "date"},
                 "cliente_nombre": "cliente_nombre_text",
                 "cedula_ruc": "cliente__cedula_ruc",
@@ -250,11 +254,24 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 "placa": "placa",
                 "producto_conseguido": "producto_conseguido_text",
                 "cantidad": {"lookup": "cantidad", "type": "number"},
-                "conseguido_label": "conseguido_label_text",
             },
         )
 
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        grupo_codigo = (request.query_params.get("grupo_codigo") or "").strip()
+        if grupo_codigo:
+            return super().list(request, *args, **kwargs)
+
+        queryset = self.filter_queryset(self.get_queryset())
+        grouped_rows = self._build_grouped_list_payload(queryset)
+
+        page = self.paginate_queryset(grouped_rows)
+        if page is not None:
+            return self.get_paginated_response(page)
+
+        return Response(grouped_rows)
 
     def perform_create(self, serializer):
         sucursal = serializer.validated_data.get("sucursal")
@@ -274,19 +291,15 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             getattr(sucursal, "id", None),
             action_key="puede_actualizar",
         )
-        serializer.save()
+        with transaction.atomic():
+            instance = serializer.save()
+            self._sync_group_shared_fields(instance, self.request.data)
 
     def update(self, request, *args, **kwargs):
-        return Response(
-            {"detail": "Una solicitud creada no se puede editar."},
-            status=status.HTTP_405_METHOD_NOT_ALLOWED,
-        )
+        return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
-        return Response(
-            {"detail": "Una solicitud creada no se puede editar."},
-            status=status.HTTP_405_METHOD_NOT_ALLOWED,
-        )
+        return super().partial_update(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"], url_path="buscar-cliente")
     def buscar_cliente(self, request):
@@ -471,10 +484,29 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            marca = str(item.get("marca") or "").strip()
-            if not marca:
+            marca_id = item.get("marca_id")
+            marca_input = str(item.get("marca") or "").strip()
+            if marca_id in (None, "") and not marca_input:
                 return Response(
                     {"productos": f"La marca es obligatoria en la fila {index + 1}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            marca = None
+            if marca_id not in (None, ""):
+                try:
+                    marca = Marca.objects.filter(pk=int(marca_id)).only("id", "nombre").first()
+                except (TypeError, ValueError):
+                    marca = None
+            if marca is None:
+                marca = (
+                    Marca.objects.filter(nombre__iexact=marca_input)
+                    .only("id", "nombre")
+                    .order_by("nombre", "id")
+                    .first()
+                )
+            if marca is None:
+                return Response(
+                    {"productos": f"La marca de la fila {index + 1} debe existir en la base de datos."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -523,9 +555,11 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             solicitudes = []
+            grupo_codigo = uuid.uuid4().hex
             for item in productos_normalizados:
                 if item["tipo"] == Solicitud.Tabla.PRODUCTO:
                     solicitud = Solicitud.objects.create(
+                        grupo_codigo=grupo_codigo,
                         cantidad=item["cantidad"],
                         tabla=Solicitud.Tabla.PRODUCTO,
                         fecha=fecha,
@@ -554,6 +588,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         )
 
                     solicitud = Solicitud.objects.create(
+                        grupo_codigo=grupo_codigo,
                         cantidad=item["cantidad"],
                         tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
                         fecha=fecha,
@@ -567,10 +602,222 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 solicitudes.append(solicitud)
 
         serializer = self.get_serializer(solicitudes, many=True)
+        grouped_results = self._build_grouped_list_payload(
+            SolicitudViewSet.queryset.filter(grupo_codigo=grupo_codigo)
+        )
         return Response(
-            {"count": len(solicitudes), "results": serializer.data},
+            {
+                "count": len(grouped_results),
+                "results": grouped_results,
+                "items": serializer.data,
+            },
             status=status.HTTP_201_CREATED,
         )
+
+    def _build_grouped_list_payload(self, queryset):
+        filtered_rows = list(queryset)
+        if not filtered_rows:
+            return []
+
+        ordered_group_keys = []
+        representatives = {}
+        requested_group_codes = []
+        for row in filtered_rows:
+            group_key = self._get_group_key(row)
+            if group_key not in representatives:
+                ordered_group_keys.append(group_key)
+                representatives[group_key] = row
+            group_code = str(getattr(row, "grupo_codigo", "") or "").strip()
+            if group_code:
+                requested_group_codes.append(group_code)
+
+        members_by_group = {group_key: [] for group_key in ordered_group_keys}
+        if requested_group_codes:
+            members_queryset = (
+                Solicitud.objects.select_related(
+                    "cliente",
+                    "sucursal",
+                    "producto",
+                    "producto_solicitado",
+                    "producto_solicitado__producto",
+                )
+                .prefetch_related("producto_solicitado__oem_relaciones__oem")
+                .filter(grupo_codigo__in=list(dict.fromkeys(requested_group_codes)))
+                .order_by("id")
+            )
+            for row in members_queryset:
+                group_key = self._get_group_key(row)
+                if group_key in members_by_group:
+                    members_by_group[group_key].append(row)
+
+        payload = []
+        for group_key in ordered_group_keys:
+            representative = representatives[group_key]
+            group_rows = members_by_group.get(group_key) or [representative]
+            payload.append(self._serialize_group_row_payload(group_rows))
+
+        return payload
+
+    def _serialize_group_row_payload(self, group_rows):
+        sorted_rows = sorted(group_rows, key=lambda item: int(getattr(item, "id", 0) or 0))
+        lead = sorted_rows[0]
+        data = dict(self.get_serializer(lead).data)
+
+        total_cantidad = 0
+        nombres = []
+        descripciones = []
+        resueltos = []
+
+        for row in sorted_rows:
+            total_cantidad += int(getattr(row, "cantidad", 0) or 0)
+
+            nombre = self._resolve_row_product_name(row)
+            if nombre:
+                nombres.append(nombre)
+
+            descripcion = self._resolve_row_product_description(row)
+            if descripcion:
+                descripciones.append(descripcion)
+
+            resuelto = self._resolve_row_resolved_product(row)
+            if resuelto:
+                resueltos.append(resuelto)
+
+        data["id"] = int(getattr(lead, "id", 0) or 0)
+        data["codigo"] = str(data.get("codigo") or f"Solicitud #{lead.pk}").strip()
+        data["grupo_codigo"] = str(getattr(lead, "grupo_codigo", "") or "").strip()
+        data["cantidad"] = total_cantidad
+        data["producto_referencia"] = self._build_preview_text(nombres)
+        data["producto_solicitado_nombre"] = self._build_preview_text(nombres)
+        data["producto_solicitado_descripcion"] = (
+            f"{len(sorted_rows)} productos en la solicitud"
+            if len(sorted_rows) > 1
+            else self._build_preview_text(descripciones)
+        )
+        data["producto_conseguido"] = self._build_preview_text(resueltos)
+        data.pop("conseguido", None)
+        data.pop("conseguido_label", None)
+        data["detalle_count"] = len(sorted_rows)
+        return data
+
+    @staticmethod
+    def _get_group_key(instance):
+        grupo_codigo = str(getattr(instance, "grupo_codigo", "") or "").strip()
+        if grupo_codigo:
+            return grupo_codigo
+        codigo = str(getattr(instance, "codigo", "") or "").strip()
+        if codigo:
+            return codigo
+        return f"solicitud-{getattr(instance, 'pk', '0')}"
+
+    @staticmethod
+    def _build_preview_text(values, empty_value="-", max_items=3):
+        unique_values = []
+        seen = set()
+        for value in values:
+            text = str(value or "").strip()
+            if not text:
+                continue
+            key = text.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_values.append(text)
+
+        if not unique_values:
+            return empty_value
+
+        preview = ", ".join(unique_values[:max_items])
+        if len(unique_values) > max_items:
+            preview = f"{preview} +{len(unique_values) - max_items}"
+        return preview
+
+    @staticmethod
+    def _resolve_row_product_name(row):
+        if getattr(row, "tabla", "") == Solicitud.Tabla.PRODUCTO and getattr(row, "producto", None):
+            return str(getattr(row.producto, "nombre", "") or "").strip()
+        if getattr(row, "producto_solicitado", None):
+            return str(getattr(row.producto_solicitado, "nombre", "") or "").strip()
+        return ""
+
+    @staticmethod
+    def _resolve_row_product_description(row):
+        if getattr(row, "tabla", "") == Solicitud.Tabla.PRODUCTO and getattr(row, "producto", None):
+            return str(getattr(row.producto, "descripcion", "") or "").strip()
+        if getattr(row, "producto_solicitado", None):
+            return str(getattr(row.producto_solicitado, "descripcion", "") or "").strip()
+        return ""
+
+    @staticmethod
+    def _resolve_row_resolved_product(row):
+        if getattr(row, "tabla", "") == Solicitud.Tabla.PRODUCTO and getattr(row, "producto", None):
+            codigo = str(getattr(row.producto, "codigo", "") or "").strip()
+            nombre = str(getattr(row.producto, "nombre", "") or "").strip()
+            return f"{codigo} {nombre}".strip()
+
+        producto_solicitado = getattr(row, "producto_solicitado", None)
+        producto_resuelto = getattr(producto_solicitado, "producto", None)
+        if producto_resuelto is None:
+            return ""
+
+        codigo = str(getattr(producto_resuelto, "codigo", "") or "").strip()
+        nombre = str(getattr(producto_resuelto, "nombre", "") or "").strip()
+        return f"{codigo} {nombre}".strip()
+
+    @staticmethod
+    def _sync_group_shared_fields(instance, payload):
+        grupo_codigo = str(getattr(instance, "grupo_codigo", "") or "").strip()
+        if not grupo_codigo:
+            return
+
+        sync_sucursal = "sucursal_id" in payload
+        sync_placa = "placa" in payload
+        sync_descripcion_general = "descripcion_general" in payload
+        sync_cliente = any(
+            key in payload
+            for key in (
+                "cliente_id",
+                "cliente_nombres",
+                "cliente_apellidos",
+                "cliente_cedula_ruc",
+                "cliente_correo",
+                "cliente_telefono",
+                "cliente_direccion",
+            )
+        )
+
+        if not any((sync_sucursal, sync_placa, sync_descripcion_general, sync_cliente)):
+            return
+
+        siblings = (
+            Solicitud.objects.select_related("cliente", "sucursal")
+            .filter(grupo_codigo=grupo_codigo)
+            .exclude(pk=instance.pk)
+        )
+        for sibling in siblings:
+            update_fields = []
+
+            if sync_sucursal and sibling.sucursal_id != instance.sucursal_id:
+                sibling.sucursal = instance.sucursal
+                update_fields.append("sucursal")
+
+            if sync_placa and sibling.placa != instance.placa:
+                sibling.placa = instance.placa
+                update_fields.append("placa")
+
+            if (
+                sync_descripcion_general
+                and sibling.descripcion_general != instance.descripcion_general
+            ):
+                sibling.descripcion_general = instance.descripcion_general
+                update_fields.append("descripcion_general")
+
+            if sync_cliente and sibling.cliente_id != instance.cliente_id:
+                sibling.cliente = instance.cliente
+                update_fields.append("cliente")
+
+            if update_fields:
+                sibling.save(update_fields=update_fields)
 
     @staticmethod
     def _parse_bool_param(raw_value):

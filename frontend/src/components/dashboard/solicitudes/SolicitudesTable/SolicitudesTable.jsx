@@ -24,6 +24,7 @@ import {
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
 const SOLICITUD_FILTER_FIELDS = [
+  'codigo',
   'fecha',
   'cliente_nombre',
   'cedula_ruc',
@@ -34,9 +35,9 @@ const SOLICITUD_FILTER_FIELDS = [
   'descripcion_general',
   'producto_conseguido',
   'cantidad',
-  'conseguido_label',
 ]
 const SOLICITUD_FILTER_DEFAULT_MODES = {
+  codigo: FilterMatchMode.STARTS_WITH,
   fecha: FilterMatchMode.CONTAINS,
   cliente_nombre: FilterMatchMode.CONTAINS,
   cedula_ruc: FilterMatchMode.STARTS_WITH,
@@ -47,9 +48,9 @@ const SOLICITUD_FILTER_DEFAULT_MODES = {
   descripcion_general: FilterMatchMode.CONTAINS,
   producto_conseguido: FilterMatchMode.CONTAINS,
   cantidad: FilterMatchMode.EQUALS,
-  conseguido_label: FilterMatchMode.CONTAINS,
 }
 const SOLICITUD_ORDERING_MAP = {
+  codigo: 'codigo',
   fecha: 'fecha',
   cliente_nombre: 'cliente_nombre_text',
   cedula_ruc: 'cliente__cedula_ruc',
@@ -60,7 +61,6 @@ const SOLICITUD_ORDERING_MAP = {
   descripcion_general: 'descripcion_general',
   producto_conseguido: 'producto_conseguido_text',
   cantidad: 'cantidad',
-  conseguido_label: 'conseguido_label_text',
 }
 const createBulkCancelError = () => {
   const err = new Error('Seleccion global cancelada.')
@@ -189,13 +189,9 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
             : '') ||
           '-'
 
-        const conseguidoLabel =
-          item?.conseguido_label ||
-          item?.conseguido_label_text ||
-          (item?.conseguido ? 'Si' : 'No')
-
         return {
           ...item,
+          codigo: item?.codigo || '-',
           cliente_nombre: clienteNombre,
           cedula_ruc: cedulaRuc,
           placa,
@@ -204,7 +200,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           producto_solicitado_descripcion: productoSolicitadoDescripcion,
           descripcion_general: item?.descripcion_general || '-',
           producto_conseguido: productoConseguido,
-          conseguido_label: conseguidoLabel,
         }
       }),
     []
@@ -234,8 +229,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
     addIfPresent('sucursal_id', criteria?.sucursal_id)
     addIfPresent('fecha_desde', criteria?.fecha_desde)
     addIfPresent('fecha_hasta', criteria?.fecha_hasta)
-    addIfPresent('conseguido', criteria?.conseguido)
-
     if (branchContextId && branchContextId !== 'all') {
       params.set('sucursal_id', branchContextId)
     }
@@ -400,6 +393,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const initFilters = () => {
     const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
+      codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       fecha: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       cliente_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       cedula_ruc: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
@@ -418,7 +412,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
       },
       producto_conseguido: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      conseguido_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       cantidad: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
     }
     setFilters(nextFilters)
@@ -489,7 +482,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
     sucursal_id: '',
     fecha_desde: '',
     fecha_hasta: '',
-    conseguido: '',
   }
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
@@ -572,7 +564,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         sucursal_id: '',
         fecha_desde: '',
         fecha_hasta: '',
-        conseguido: '',
       }),
       sucursal_id: forcedBranchId,
     }
@@ -590,7 +581,15 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       tableSortOrder: sortOrder,
       branchContextId: normalizedCreateBranchId,
     })
-  }, [hasSpecificCreateBranch, normalizedCreateBranchId])
+  }, [
+    fetchClients,
+    filters,
+    hasSpecificCreateBranch,
+    normalizedCreateBranchId,
+    pageSize,
+    sortField,
+    sortOrder,
+  ])
 
   const filterClearTemplate = (options) => (
     <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
@@ -675,6 +674,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
+      { nombrevar: 'codigo', header: 'Codigo', filterPlaceholder: 'Buscar por codigo' },
       { nombrevar: 'fecha', header: 'Fecha', filterPlaceholder: 'Buscar por fecha' },
       { nombrevar: 'cliente_nombre', header: 'Cliente', filterPlaceholder: 'Buscar por cliente' },
       { nombrevar: 'cedula_ruc', header: 'Cedula/RUC', filterPlaceholder: 'Buscar por cedula/RUC' },
@@ -701,7 +701,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         filterPlaceholder: 'Buscar por producto conseguido',
       },
       { nombrevar: 'cantidad', header: 'Cantidad', filterPlaceholder: 'Buscar por cantidad' },
-      { nombrevar: 'conseguido_label', header: 'Conseguido', filterPlaceholder: 'Buscar por estado' },
     ],
     []
   )
@@ -716,11 +715,24 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
 
   useEffect(() => {
     const stored = localStorage.getItem('solicitudes-table-columns')
-    if (stored) setSelectedColumns(JSON.parse(stored))
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        const availableColumns = new Map(columnsData.map((column) => [column.nombrevar, column]))
+        const nextColumns = Array.isArray(parsed)
+          ? parsed
+              .map((column) => availableColumns.get(column?.nombrevar))
+              .filter(Boolean)
+          : []
+        setSelectedColumns(nextColumns.length ? nextColumns : columnsData)
+      } catch {
+        setSelectedColumns(columnsData)
+      }
+    }
     return () => {
       localStorage.setItem('solicitudes-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
-  }, [])
+  }, [columnsData])
 
   const handleCheckboxChangeColumn = (column) => {
     if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
@@ -742,11 +754,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   )
 
   const getExportValue = useCallback((row, field) => row?.[field] ?? '', [])
-
-  const getRowsToExport = useCallback(() => {
-    if (selectedRows?.length) return selectedRows
-    return processedRows === null ? clients : processedRows
-  }, [processedRows, selectedRows, clients])
 
   const notifyExportWarning = useCallback((detail) => {
     toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail, life: 3000 })
@@ -1366,7 +1373,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
             'descripcion_general',
             'producto_conseguido',
             'cantidad',
-            'conseguido_label',
           ]}
           reorderableColumns
           onColReorder={handleOrderChange}
@@ -1760,18 +1766,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
                       />
                     </label>
 
-                    <label className="create-user__field">
-                      <span>Conseguido</span>
-                      <select
-                        name="conseguido"
-                        value={searchCriteria.conseguido}
-                        onChange={handleSearchInputChange}
-                      >
-                        <option value="">Todos</option>
-                        <option value="true">Si</option>
-                        <option value="false">No</option>
-                      </select>
-                    </label>
                   </div>
                 </section>
               </div>

@@ -32,6 +32,7 @@ const initialProductoDraft = {
   codigo: '',
   nombre: '',
   oems: '',
+  marcaId: '',
   marca: '',
   comentario: '',
   cantidad: '1',
@@ -178,6 +179,10 @@ function CreateSolicitud({
   const [showOemDropdown, setShowOemDropdown] = useState(false)
   const [oemOptions, setOemOptions] = useState([])
   const [oemLoading, setOemLoading] = useState(false)
+  const [showMarcaDropdown, setShowMarcaDropdown] = useState(false)
+  const [marcaSearchTerm, setMarcaSearchTerm] = useState('')
+  const [marcaOptions, setMarcaOptions] = useState([])
+  const [marcaLoading, setMarcaLoading] = useState(false)
 
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [productoAttempted, setProductoAttempted] = useState(false)
@@ -195,11 +200,14 @@ function CreateSolicitud({
   const clienteDropdownRef = useRef(null)
   const codigoDropdownRef = useRef(null)
   const oemDropdownRef = useRef(null)
+  const marcaDropdownRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
   const codigoSearchTimerRef = useRef(null)
   const codigoSearchSeqRef = useRef(0)
   const oemSearchTimerRef = useRef(null)
   const oemSearchSeqRef = useRef(0)
+  const marcaSearchTimerRef = useRef(null)
+  const marcaSearchSeqRef = useRef(0)
   const addingProductoRef = useRef(false)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
@@ -262,6 +270,10 @@ function CreateSolicitud({
     setShowOemDropdown(false)
     setOemOptions([])
     setOemLoading(false)
+    setShowMarcaDropdown(false)
+    setMarcaSearchTerm('')
+    setMarcaOptions([])
+    setMarcaLoading(false)
 
     setSubmitAttempted(false)
     setProductoAttempted(false)
@@ -285,6 +297,10 @@ function CreateSolicitud({
     if (oemSearchTimerRef.current) {
       clearTimeout(oemSearchTimerRef.current)
       oemSearchTimerRef.current = null
+    }
+    if (marcaSearchTimerRef.current) {
+      clearTimeout(marcaSearchTimerRef.current)
+      marcaSearchTimerRef.current = null
     }
   }, [normalizedPrefilledSucursalId])
 
@@ -403,6 +419,7 @@ function CreateSolicitud({
       if (clienteSearchTimerRef.current) clearTimeout(clienteSearchTimerRef.current)
       if (codigoSearchTimerRef.current) clearTimeout(codigoSearchTimerRef.current)
       if (oemSearchTimerRef.current) clearTimeout(oemSearchTimerRef.current)
+      if (marcaSearchTimerRef.current) clearTimeout(marcaSearchTimerRef.current)
     },
     []
   )
@@ -537,6 +554,50 @@ function CreateSolicitud({
     }
   }, [open, showOemDropdown, token, oemSearchTerm])
 
+  useEffect(() => {
+    if (!open || !showMarcaDropdown) return
+    const term = String(marcaSearchTerm || '').trim()
+    if (!term || term.length < 2 || !token) {
+      setMarcaOptions([])
+      setMarcaLoading(false)
+      return
+    }
+
+    if (marcaSearchTimerRef.current) clearTimeout(marcaSearchTimerRef.current)
+
+    setMarcaLoading(true)
+    marcaSearchTimerRef.current = setTimeout(async () => {
+      const requestId = marcaSearchSeqRef.current + 1
+      marcaSearchSeqRef.current = requestId
+
+      try {
+        const response = await authFetch(
+          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar las marcas.')
+        const data = await response.json()
+        if (requestId !== marcaSearchSeqRef.current) return
+        setMarcaOptions(parseApiList(data))
+      } catch {
+        if (requestId !== marcaSearchSeqRef.current) return
+        setMarcaOptions([])
+      } finally {
+        if (requestId === marcaSearchSeqRef.current) {
+          setMarcaLoading(false)
+        }
+      }
+    }, 320)
+
+    return () => {
+      if (marcaSearchTimerRef.current) {
+        clearTimeout(marcaSearchTimerRef.current)
+        marcaSearchTimerRef.current = null
+      }
+    }
+  }, [marcaSearchTerm, open, showMarcaDropdown, token])
+
   useLayoutEffect(() => {
     if (!open) return
     const { availableWidth, availableHeight } = getViewportMetrics()
@@ -574,10 +635,15 @@ function CreateSolicitud({
           setShowOemDropdown(false)
         }
       }
+      if (showMarcaDropdown) {
+        if (!marcaDropdownRef.current || !marcaDropdownRef.current.contains(event.target)) {
+          setShowMarcaDropdown(false)
+        }
+      }
     }
     window.addEventListener('mousedown', handleClickOutside)
     return () => window.removeEventListener('mousedown', handleClickOutside)
-  }, [showClienteDropdown, showCodigoDropdown, showOemDropdown])
+  }, [showClienteDropdown, showCodigoDropdown, showMarcaDropdown, showOemDropdown])
 
   useEffect(() => {
     const handleMouseMove = (event) => {
@@ -778,7 +844,7 @@ function CreateSolicitud({
     const { name, value } = event.target
     const normalizedValue = name === 'codigo' ? String(value || '').toUpperCase() : value
     const shouldDetachSelectedProduct =
-      selectedDraftProducto && ['codigo', 'nombre', 'oems', 'marca'].includes(name)
+      selectedDraftProducto && ['codigo', 'nombre', 'oems'].includes(name)
 
     if (name === 'codigo') {
       const shouldShow = String(normalizedValue || '').trim().length >= 1
@@ -809,6 +875,7 @@ function CreateSolicitud({
     const codigo = String(producto?.codigo || '').trim().toUpperCase()
     const nombre = String(producto?.nombre || '').trim()
     const marca = String(producto?.marca?.nombre || producto?.marca || '').trim()
+    const marcaId = String(producto?.marca?.id || '')
     const oems = extractProductoOems(producto)
 
     setSelectedDraftProducto(producto)
@@ -818,14 +885,72 @@ function CreateSolicitud({
       codigo,
       nombre,
       oems: oems.join(', '),
+      marcaId,
       marca,
       cantidad: prev.cantidad || '1',
     }))
     setShowCodigoDropdown(false)
     setShowOemDropdown(false)
+    setShowMarcaDropdown(false)
+    setMarcaSearchTerm('')
     setCodigoOptions([])
     setOemOptions([])
+    setMarcaOptions([])
   }, [])
+
+  const handleMarcaSelect = useCallback((marcaOption) => {
+    if (!marcaOption?.id) return
+    const nextMarcaId = String(marcaOption.id)
+    const nextMarcaNombre = String(marcaOption.nombre || '').trim()
+    const currentSelectedMarcaId = String(selectedDraftProducto?.marca?.id || '')
+    const currentSelectedMarca = String(
+      selectedDraftProducto?.marca?.nombre || selectedDraftProducto?.marca || ''
+    ).trim()
+    const keepSelectedProduct =
+      Boolean(selectedDraftProducto?.id) &&
+      (
+        (currentSelectedMarcaId && currentSelectedMarcaId === nextMarcaId) ||
+        (normalizeString(currentSelectedMarca) && normalizeString(currentSelectedMarca) === normalizeString(nextMarcaNombre))
+      )
+
+    if (!keepSelectedProduct) {
+      setSelectedDraftProducto(null)
+    }
+
+    setProductoDraft((prev) => ({
+      ...prev,
+      productoId: keepSelectedProduct ? prev.productoId : '',
+      marcaId: nextMarcaId,
+      marca: nextMarcaNombre,
+    }))
+    setShowMarcaDropdown(false)
+    setMarcaSearchTerm('')
+    setMarcaOptions([])
+    setMarcaLoading(false)
+  }, [selectedDraftProducto])
+
+  const handleMarcaSearchChange = (event) => {
+    const value = event.target.value
+    setMarcaSearchTerm(value)
+    if (!showMarcaDropdown) {
+      setShowMarcaDropdown(true)
+    }
+    if (!String(value || '').trim()) {
+      setMarcaOptions([])
+      setMarcaLoading(false)
+    }
+  }
+
+  const handleMarcaDropdownToggle = () => {
+    if (showMarcaDropdown) {
+      setShowMarcaDropdown(false)
+      return
+    }
+    setMarcaSearchTerm('')
+    setMarcaOptions([])
+    setMarcaLoading(false)
+    setShowMarcaDropdown(true)
+  }
 
   const draftOemList = useMemo(() => parseOemInput(productoDraft.oems), [productoDraft.oems])
 
@@ -970,7 +1095,9 @@ function CreateSolicitud({
     const cantidadRaw = Number(productoDraft.cantidad)
     const cantidad = Number.isFinite(cantidadRaw) ? Math.max(1, Math.floor(cantidadRaw)) : 0
     let productoIdRaw = Number(productoDraft.productoId)
+    let marcaIdRaw = Number(productoDraft.marcaId)
     let hasProductoId = Number.isFinite(productoIdRaw) && productoIdRaw > 0
+    let hasMarcaId = Number.isFinite(marcaIdRaw) && marcaIdRaw > 0
 
     let codigo = String(productoDraft.codigo || '').trim().toUpperCase()
     let nombre = String(productoDraft.nombre || '').trim()
@@ -992,6 +1119,8 @@ function CreateSolicitud({
         if (matchedProducto) {
           productoIdRaw = Number(matchedProducto.id)
           hasProductoId = Number.isFinite(productoIdRaw) && productoIdRaw > 0
+          marcaIdRaw = Number(matchedProducto?.marca?.id || 0)
+          hasMarcaId = Number.isFinite(marcaIdRaw) && marcaIdRaw > 0
           codigo = String(matchedProducto?.codigo || '').trim().toUpperCase()
           nombre = String(matchedProducto?.nombre || '').trim()
           marca = String(matchedProducto?.marca?.nombre || matchedProducto?.marca || '').trim()
@@ -1028,13 +1157,13 @@ function CreateSolicitud({
       }
     }
 
-    if (!codigo || !nombre || !marca) {
-      notifyError('Codigo, nombre y marca son obligatorios.')
+    if (!codigo || !nombre) {
+      notifyError('Codigo y nombre son obligatorios.')
       return
     }
 
-    if (!hasProductoId && !oemList.length) {
-      notifyError('El OEM es obligatorio para productos nuevos.')
+    if (!hasMarcaId || !marca) {
+      notifyError('Debes seleccionar una marca existente.')
       return
     }
 
@@ -1059,6 +1188,7 @@ function CreateSolicitud({
       productoId: hasProductoId ? productoIdRaw : null,
       codigo,
       nombre,
+      marcaId: marcaIdRaw,
       oems: oemList,
       marca,
       comentario,
@@ -1071,8 +1201,10 @@ function CreateSolicitud({
     setProductoAttempted(false)
     setShowCodigoDropdown(false)
     setShowOemDropdown(false)
+    setShowMarcaDropdown(false)
     setCodigoOptions([])
     setOemOptions([])
+    setMarcaOptions([])
     } finally {
       addingProductoRef.current = false
       setAddingProducto(false)
@@ -1183,6 +1315,7 @@ function CreateSolicitud({
           ...base,
           codigo: String(item.codigo || '').trim(),
           nombre: String(item.nombre || '').trim(),
+          marca_id: Number(item.marcaId),
           marca: String(item.marca || '').trim(),
           oems: Array.isArray(item.oems) ? item.oems : parseOemInput(item.oems),
           descripcion: '',
@@ -1232,15 +1365,30 @@ function CreateSolicitud({
         const creatorId = normalizeId(currentCreatorId)
         const creatorName = String(currentCreatorName || 'Usuario').trim() || 'Usuario'
         const now = getNowDateParts()
-        const newReminders = createdSolicitudes
+        const groupedSolicitudes = Array.from(
+          createdSolicitudes.reduce((acc, solicitudItem) => {
+            const groupKey = String(solicitudItem?.grupo_codigo || solicitudItem?.id || '').trim()
+            const solicitudId = normalizeId(solicitudItem?.id)
+            if (!groupKey || !solicitudId) return acc
+
+            const current = acc.get(groupKey)
+            if (!current || Number(solicitudId) < Number(normalizeId(current?.id) || Number.MAX_SAFE_INTEGER)) {
+              acc.set(groupKey, solicitudItem)
+            }
+            return acc
+          }, new Map()).values()
+        )
+
+        const newReminders = groupedSolicitudes
           .map((solicitudItem) => {
             const solicitudId = normalizeId(solicitudItem?.id)
             if (!solicitudId) return null
+            const solicitudLabel = String(solicitudItem?.codigo || `Solicitud #${solicitudId}`).trim()
             return {
               id: createReminderId(),
               date: now.date,
               time: now.time,
-              description: `Nueva solicitud #${solicitudId}. Revisar gestion pendiente.`,
+              description: `Nueva solicitud ${solicitudLabel}. Revisar gestion pendiente.`,
               creator: {
                 id: creatorId,
                 name: creatorName,
@@ -1249,7 +1397,7 @@ function CreateSolicitud({
               context: {
                 type: 'solicitud',
                 id: solicitudId,
-                label: `Solicitud #${solicitudId}`,
+                label: solicitudLabel,
               },
               createdAt: new Date().toISOString(),
               completedBy: [],
@@ -1293,11 +1441,7 @@ function CreateSolicitud({
   const draftCantidadRaw = Number(productoDraft.cantidad)
   const productoCodigoInvalid = productoAttempted && !String(productoDraft.codigo || '').trim()
   const productoNombreInvalid = productoAttempted && !String(productoDraft.nombre || '').trim()
-  const productoOemsInvalid =
-    productoAttempted &&
-    !String(productoDraft.productoId || '').trim() &&
-    !draftOemList.length
-  const productoMarcaInvalid = productoAttempted && !String(productoDraft.marca || '').trim()
+  const productoMarcaInvalid = productoAttempted && !String(productoDraft.marcaId || '').trim()
   const productoCantidadInvalid = productoAttempted && (!Number.isFinite(draftCantidadRaw) || draftCantidadRaw <= 0)
   const sucursalInvalid = submitAttempted && !sucursalId
   const productosInvalid = submitAttempted && !productos.length
@@ -1504,7 +1648,6 @@ function CreateSolicitud({
                       <span>
                         <div className="create-solicitud__inline-dropdown" ref={oemDropdownRef}>
                           <input
-                            className={productoOemsInvalid ? 'create-solicitud__input--invalid' : ''}
                             name="oems"
                             type="text"
                             placeholder="OEM1, OEM2"
@@ -1569,15 +1712,75 @@ function CreateSolicitud({
                       </span>
 
                       <span>
-                        <input
-                          className={productoMarcaInvalid ? 'create-solicitud__input--invalid' : ''}
-                          name="marca"
-                          type="text"
-                          placeholder="Marca"
-                          value={productoDraft.marca}
-                          onChange={handleProductoDraftChange}
-                          disabled={loading}
-                        />
+                        <div className="create-solicitud__inline-dropdown" ref={marcaDropdownRef}>
+                          <button
+                            type="button"
+                            className={`create-solicitud__inline-trigger${!productoDraft.marca ? ' create-solicitud__inline-trigger--placeholder' : ''}${productoMarcaInvalid ? ' create-solicitud__inline-trigger--invalid' : ''}`}
+                            onClick={handleMarcaDropdownToggle}
+                            disabled={loading}
+                            aria-haspopup="listbox"
+                            aria-expanded={showMarcaDropdown}
+                          >
+                            <span>{productoDraft.marca || 'Seleccionar marca'}</span>
+                            <i
+                              className={`pi pi-chevron-${showMarcaDropdown ? 'up' : 'down'}`}
+                              aria-hidden="true"
+                            />
+                          </button>
+                          {showMarcaDropdown && (
+                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--wide">
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar marca"
+                                  value={marcaSearchTerm}
+                                  onChange={handleMarcaSearchChange}
+                                  autoFocus
+                                  autoComplete="off"
+                                />
+                              </div>
+                              <div className="create-solicitud__inline-results">
+                                {marcaLoading && <small className="muted">Buscando marcas...</small>}
+                                {!marcaLoading && String(marcaSearchTerm || '').trim().length < 2 && (
+                                  <small className="muted">Escribe al menos 2 caracteres.</small>
+                                )}
+                                {!marcaLoading &&
+                                  String(marcaSearchTerm || '').trim().length >= 2 &&
+                                  !marcaOptions.length && (
+                                    <small className="muted">
+                                      Sin coincidencias. Debes seleccionar una marca existente.
+                                    </small>
+                                  )}
+                                {marcaOptions.map((marcaOption) => {
+                                  const isSelected =
+                                    String(productoDraft.marcaId || '') === String(marcaOption.id)
+                                  return (
+                                    <button
+                                      key={`marca-opt-${marcaOption.id}`}
+                                      type="button"
+                                      className="create-user__result-option"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => handleMarcaSelect(marcaOption)}
+                                    >
+                                      <div className="create-user__result-info">
+                                        <strong>{marcaOption.nombre || `Marca ${marcaOption.id}`}</strong>
+                                        <small>
+                                          {marcaOption.codigo
+                                            ? `Codigo: ${marcaOption.codigo}`
+                                            : `ID: ${marcaOption.id}`}
+                                        </small>
+                                      </div>
+                                      {isSelected && (
+                                        <span className="create-user__result-tag is-selected">Seleccionada</span>
+                                      )}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </span>
 
                       <span>
