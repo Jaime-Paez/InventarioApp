@@ -231,9 +231,11 @@ function SolicitudDetails({
   token,
   onClose,
   onUpdated,
+  onDeleted,
   onError,
   currentUser,
   allowEdit = true,
+  allowDelete = true,
 }) {
   const [solicitud, setSolicitud] = useState(null)
   const [rootSolicitudId, setRootSolicitudId] = useState(null)
@@ -254,6 +256,8 @@ function SolicitudDetails({
   const [linkingCreatedProduct, setLinkingCreatedProduct] = useState(false)
   const [openingProductSelection, setOpeningProductSelection] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const [isEditing, setIsEditing] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -298,6 +302,11 @@ function SolicitudDetails({
     },
     [onError]
   )
+
+  useEffect(() => {
+    if (allowDelete || !showDeleteDialog) return
+    setShowDeleteDialog(false)
+  }, [allowDelete, showDeleteDialog])
 
   const getViewportMetrics = useCallback((baseMinWidth = MIN_WIDTH, baseMinHeight = MIN_HEIGHT) => {
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
@@ -1082,6 +1091,37 @@ function SolicitudDetails({
     }
   }
 
+  const handleDelete = async () => {
+    const deleteTargetId = Number(rootSolicitudId || solicitudId || 0)
+    if (!allowDelete || !deleteTargetId || deleteLoading) return
+
+    setDeleteLoading(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/solicitudes/solicitudes/${deleteTargetId}/`,
+        { method: 'DELETE' },
+        token
+      )
+
+      if (!response.ok && response.status !== 204) {
+        const responseClone = response.clone()
+        const data = await response.json().catch(() => null)
+        const rawText = data == null ? await responseClone.text().catch(() => '') : ''
+        const safeRawText = rawText && !/<[a-z][\s\S]*>/i.test(rawText) ? rawText.trim() : ''
+        throw new Error(
+          resolveApiErrorMessage(data || { detail: safeRawText }, 'No se pudo eliminar la solicitud.')
+        )
+      }
+
+      setShowDeleteDialog(false)
+      onDeleted?.(deleteTargetId)
+    } catch (err) {
+      notifyError(err?.message || 'No se pudo eliminar la solicitud.')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
   const { shouldRender, isClosing } = useModalAnimation(open)
   if (!shouldRender) return null
 
@@ -1724,7 +1764,7 @@ function SolicitudDetails({
               type="button"
               className="create-user__action create-user__action--cancel"
               onClick={isEditing ? handleCancelEdit : onClose}
-              disabled={loading || saving}
+              disabled={loading || saving || deleteLoading}
             >
               Cancelar
             </button>
@@ -1733,7 +1773,7 @@ function SolicitudDetails({
                 type="button"
                 className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
                 onClick={() => (isEditing ? handleCancelEdit() : setIsEditing(true))}
-                disabled={loading || saving}
+                disabled={loading || saving || deleteLoading}
               >
                 <span className="user-details__toggle-icon" aria-hidden="true">
                   {isEditing ? <Eye size={14} /> : <Pencil size={14} />}
@@ -1743,18 +1783,60 @@ function SolicitudDetails({
             )}
           </div>
           <div className="user-details__footer-right">
+            {allowDelete && (
+              <button
+                type="button"
+                className="create-user__action user-details__delete"
+                onClick={() => setShowDeleteDialog(true)}
+                disabled={loading || saving || deleteLoading}
+              >
+                {deleteLoading ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            )}
             {isEditing && (
               <button
                 type="button"
                 className="create-user__action create-user__action--primary"
                 onClick={handleSave}
-                disabled={loading || saving}
+                disabled={loading || saving || deleteLoading}
               >
                 {saving ? 'Guardando...' : 'Guardar cambios'}
               </button>
             )}
           </div>
         </div>
+
+        {allowDelete && showDeleteDialog && (
+          <div className="user-details__confirm-overlay">
+            <div className="user-details__confirm-dialog">
+              <div className="user-details__confirm-icon">
+                <Info size={18} />
+              </div>
+              <div className="user-details__confirm-content">
+                <h4>Eliminar solicitud</h4>
+                <p>Deseas eliminar esta solicitud y todos sus productos? Esta accion no se puede deshacer.</p>
+              </div>
+              <div className="user-details__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={() => setShowDeleteDialog(false)}
+                  disabled={deleteLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action user-details__delete"
+                  onClick={handleDelete}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? 'Eliminando...' : 'Eliminar solicitud'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <button
           type="button"

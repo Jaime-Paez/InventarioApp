@@ -80,6 +80,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const opColumns = useRef(null)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
+  const canDelete = moduleActions?.puede_eliminar ?? true
   const normalizedCreateBranchIdRaw = String(createBranchId || '').trim()
   const normalizedCreateBranchId = (
     normalizedCreateBranchIdRaw.toLowerCase() === 'all' ? 'all' : normalizedCreateBranchIdRaw
@@ -849,6 +850,13 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const handleUpdated = () => {
     refreshData()
     toast.current?.show({ severity: 'success', summary: 'Actualizado', detail: 'Solicitud actualizada correctamente', life: 2500 })
+  }
+
+  const handleDeleted = () => {
+    setShowDetailsModal(false)
+    setSelectedId(null)
+    refreshData()
+    toast.current?.show({ severity: 'success', summary: 'Eliminado', detail: 'Solicitud eliminada correctamente', life: 2500 })
   }
 
   // ---------------- Header ----------------
@@ -1652,10 +1660,11 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         onClose={() => setShowDetailsModal(false)}
         token={token}
         onUpdated={handleUpdated}
+        onDeleted={handleDeleted}
         onError={showErrorToast}
         currentUser={user}
         allowEdit={canEdit}
-        allowCreate={canCreate}
+        allowDelete={canDelete}
       />
 
       {shouldRenderSearchModal && (
