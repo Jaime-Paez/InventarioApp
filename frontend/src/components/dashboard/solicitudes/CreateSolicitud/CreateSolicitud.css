@@ -45,21 +45,26 @@
 
 .create-solicitud__inline-trigger {
   width: 100%;
-  min-height: 40px;
+  min-height: 28px;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--modal-color);
+  border-radius: 6px;
+  background: #fff;
   color: var(--color-text-primary);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 0 14px;
+  gap: 8px;
+  padding: 0.35rem 0.6rem;
   text-align: left;
   cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.2;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .create-solicitud__inline-trigger > span {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -74,6 +79,19 @@
 .create-solicitud__inline-trigger:disabled {
   cursor: not-allowed;
   opacity: 0.7;
+  background: #f3f4f6;
+}
+
+.create-solicitud__inline-trigger:focus-visible,
+.create-solicitud__inline-trigger[aria-expanded='true'] {
+  outline: none;
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 25%, transparent);
+}
+
+.create-solicitud__inline-trigger--placeholder {
+  color: var(--color-text-primary);
+  opacity: 0.35;
 }
 
 .create-solicitud__inline-trigger--invalid {
@@ -97,6 +115,11 @@
 .create-solicitud__inline-panel--wide {
   width: max(420px, 100%);
   max-width: min(680px, calc(100vw - 32px));
+}
+
+.create-solicitud__inline-panel--compact {
+  width: max(260px, 100%);
+  max-width: min(360px, calc(100vw - 32px));
 }
 
 .create-solicitud__inline-panel--align-right {
@@ -145,9 +168,26 @@
 }
 
 .dashboard-shell.dark .create-solicitud__inline-trigger {
-  background: var(--table-color-dark);
+  background: var(--color-surface-darker);
   border-color: var(--color-border);
   color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .create-solicitud__inline-trigger:disabled {
+  background: #2a2f36;
+  color: var(--color-text-dark);
+  opacity: 0.6;
+}
+
+.dashboard-shell.dark .create-solicitud__inline-trigger:focus-visible,
+.dashboard-shell.dark .create-solicitud__inline-trigger[aria-expanded='true'] {
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 25%, transparent);
+}
+
+.dashboard-shell.dark .create-solicitud__inline-trigger--placeholder {
+  color: var(--color-text-dark);
+  opacity: 0.35;
 }
 
 .dashboard-shell.dark .create-solicitud__inline-trigger--invalid {
@@ -321,5 +361,10 @@
   .create-solicitud__inline-panel--wide {
     width: max(320px, 100%);
     max-width: min(560px, calc(100vw - 24px));
+  }
+
+  .create-solicitud__inline-panel--compact {
+    width: max(240px, 100%);
+    max-width: min(320px, calc(100vw - 24px));
   }
 }

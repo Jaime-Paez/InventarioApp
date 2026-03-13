@@ -1728,7 +1728,7 @@ function CreateSolicitud({
                             />
                           </button>
                           {showMarcaDropdown && (
-                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--wide">
+                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--compact">
                               <div className="create-user__dropdown-search">
                                 <i className="pi pi-search" />
                                 <input
