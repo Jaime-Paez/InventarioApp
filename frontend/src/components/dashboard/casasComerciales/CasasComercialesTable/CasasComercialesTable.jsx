@@ -146,7 +146,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
       setSearchPaisLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/tipos/paises/?search=${encodeURIComponent(term)}&page_size=20`,
+          `${API_URL}/tipos/paises/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )

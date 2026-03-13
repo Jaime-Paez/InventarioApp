@@ -302,7 +302,7 @@ function CreateProducto({
       }
       try {
         const response = await authFetch(
-          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )
@@ -326,7 +326,7 @@ function CreateProducto({
       }
       try {
         const response = await authFetch(
-          `${API_URL}/casa-comercial/casas/?search=${encodeURIComponent(term)}&page_size=20`,
+          `${API_URL}/casa-comercial/casas/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )
@@ -523,7 +523,7 @@ function CreateProducto({
       setAlternoLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )
@@ -878,7 +878,7 @@ function CreateProducto({
       codigoCheckTimerRef.current = setTimeout(async () => {
         try {
           const response = await authFetch(
-            `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+            `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
             {},
             token
           )
@@ -1376,7 +1376,7 @@ function CreateProducto({
     }
 
     const searchResponse = await authFetch(
-      `${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}&page_size=20`,
+      `${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}&page_size=5`,
       {},
       token
     )
@@ -1405,7 +1405,7 @@ function CreateProducto({
 
     // Fallback por carrera: si otro proceso lo creó entre el search y este POST.
     const retrySearchResponse = await authFetch(
-      `${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}&page_size=20`,
+      `${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}&page_size=5`,
       {},
       token
     )

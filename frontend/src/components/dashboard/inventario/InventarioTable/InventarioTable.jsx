@@ -435,7 +435,7 @@ function InventarioTable({ token, user, permissionIndex }) {
       setSearchMarcaLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )
@@ -462,7 +462,7 @@ function InventarioTable({ token, user, permissionIndex }) {
       setSearchCasaLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/casa-comercial/casas/?search=${encodeURIComponent(term)}&page_size=20`,
+          `${API_URL}/casa-comercial/casas/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )

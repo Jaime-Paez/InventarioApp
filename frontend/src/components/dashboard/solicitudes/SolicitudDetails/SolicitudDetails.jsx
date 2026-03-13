@@ -375,7 +375,7 @@ function SolicitudDetails({
     const run = async () => {
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(codigo)}&page_size=20`,
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(codigo)}&page_size=5`,
           {},
           token
         )

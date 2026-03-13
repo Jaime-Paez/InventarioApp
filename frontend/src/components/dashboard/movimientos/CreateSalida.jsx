@@ -809,7 +809,7 @@ function CreateSalida({
       setProductLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )

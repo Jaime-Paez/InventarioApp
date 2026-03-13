@@ -107,6 +107,8 @@ const parseOemInput = (rawValue) => {
   return list
 }
 
+const normalizePlaca = (value) => String(value ?? '').toUpperCase()
+
 const extractProductoOems = (producto) => {
   const relaciones = Array.isArray(producto?.oem_productos) ? producto.oem_productos : []
   const seen = new Set()
@@ -485,7 +487,7 @@ function CreateSolicitud({
 
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )
@@ -528,7 +530,7 @@ function CreateSolicitud({
 
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?oem=${encodeURIComponent(oemSearchTerm)}&page_size=20`,
+          `${API_URL}/productos/listado/?oem=${encodeURIComponent(oemSearchTerm)}&page_size=5`,
           {},
           token
         )
@@ -572,7 +574,7 @@ function CreateSolicitud({
 
       try {
         const response = await authFetch(
-          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=20`,
+          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )
@@ -1157,13 +1159,25 @@ function CreateSolicitud({
       }
     }
 
-    if (!codigo || !nombre) {
-      notifyError('Codigo y nombre son obligatorios.')
-      return
-    }
+    const missingFields = []
+    if (!codigo) missingFields.push('codigo')
+    if (!nombre) missingFields.push('nombre')
+    if (!hasMarcaId || !marca) missingFields.push('marca')
 
-    if (!hasMarcaId || !marca) {
-      notifyError('Debes seleccionar una marca existente.')
+    if (missingFields.length) {
+      if (missingFields.length === 1 && missingFields[0] === 'marca') {
+        notifyError('Marca es obligatoria. Debes seleccionar una marca existente.')
+        return
+      }
+
+      if (missingFields.length === 1) {
+        const fieldLabel = missingFields[0]
+        notifyError(`${fieldLabel.charAt(0).toUpperCase()}${fieldLabel.slice(1)} es obligatorio.`)
+        return
+      }
+
+      const missingLabel = `${missingFields.slice(0, -1).join(', ')} y ${missingFields.at(-1)}`
+      notifyError(`${missingLabel.charAt(0).toUpperCase()}${missingLabel.slice(1)} son obligatorios.`)
       return
     }
 
@@ -1297,7 +1311,7 @@ function CreateSolicitud({
     const payload = {
       sucursal_id: Number(sucursalId),
       descripcion_general: String(descripcionGeneral || '').trim(),
-      placa: String(placa || '').trim(),
+      placa: normalizePlaca(placa).trim(),
       productos: productos.map((item) => {
         const base = {
           cantidad: Number(item.cantidad),
@@ -1536,7 +1550,7 @@ function CreateSolicitud({
                         type="text"
                         placeholder="Placa (opcional)"
                         value={placa}
-                        onChange={(event) => setPlaca(event.target.value)}
+                        onChange={(event) => setPlaca(normalizePlaca(event.target.value))}
                         disabled={loading}
                       />
                     </label>
@@ -1582,7 +1596,7 @@ function CreateSolicitud({
                             autoComplete="off"
                           />
                           {showCodigoDropdown && (
-                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--wide">
+                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
                               <div className="create-solicitud__inline-results">
                                 {codigoLoading && <small className="muted">Buscando por codigo...</small>}
                                 {!codigoLoading && String(productoDraft.codigo || '').trim().length < 2 && (
