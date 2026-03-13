@@ -82,11 +82,16 @@
   background: #f3f4f6;
 }
 
-.create-solicitud__inline-trigger:focus-visible,
-.create-solicitud__inline-trigger[aria-expanded='true'] {
+.create-solicitud__inline-trigger:focus-visible {
   outline: none;
-  border-color: var(--color-primary-dark);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 25%, transparent);
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+.create-solicitud__inline-trigger[aria-expanded='true'] {
+  border-color: var(--color-border);
+  box-shadow: none;
+  background: #fff;
 }
 
 .create-solicitud__inline-trigger--placeholder {
@@ -162,6 +167,33 @@
   word-break: break-word;
 }
 
+.create-solicitud__inline-panel .create-user__dropdown-search {
+  min-height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  background: #fff;
+  box-shadow: none;
+}
+
+.create-solicitud__inline-panel .create-user__dropdown-search:focus-within {
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+.create-solicitud__inline-panel .create-user__dropdown-search input {
+  min-height: 20px;
+  padding: 0;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.create-solicitud__inline-panel .create-user__dropdown-search input:focus {
+  outline: none;
+  box-shadow: none !important;
+}
+
 .dashboard-shell.dark .create-solicitud__inline-panel {
   background: var(--table-color-dark);
   border-color: var(--color-border);
@@ -179,15 +211,31 @@
   opacity: 0.6;
 }
 
-.dashboard-shell.dark .create-solicitud__inline-trigger:focus-visible,
-.dashboard-shell.dark .create-solicitud__inline-trigger[aria-expanded='true'] {
-  border-color: var(--color-primary-dark);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 25%, transparent);
+.dashboard-shell.dark .create-solicitud__inline-trigger:focus-visible {
+  border-color: var(--color-border);
+  box-shadow: none;
 }
 
 .dashboard-shell.dark .create-solicitud__inline-trigger--placeholder {
   color: var(--color-text-dark);
   opacity: 0.35;
+}
+
+.dashboard-shell.dark .create-solicitud__inline-panel .create-user__dropdown-search {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+.dashboard-shell.dark .create-solicitud__inline-trigger[aria-expanded='true'] {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+.dashboard-shell.dark .create-solicitud__inline-panel .create-user__dropdown-search:focus-within {
+  border-color: var(--color-border);
+  box-shadow: none;
 }
 
 .dashboard-shell.dark .create-solicitud__inline-trigger--invalid {
