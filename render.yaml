@@ -6,3 +6,14 @@ services:
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
     startCommand: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile -
     healthCheckPath: /ping/
+    envVars:
+      - key: DEBUG
+        value: "0"
+      - key: ALLOWED_HOSTS
+        value: "inventarioapp-0mta.onrender.com,.onrender.com"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://kavajaimepaez.onrender.com,https://kava.peugeotjpaez.com"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://kavajaimepaez.onrender.com,https://kava.peugeotjpaez.com"
+      - key: CORS_ALLOW_CREDENTIALS
+        value: "1"

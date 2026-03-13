@@ -40,6 +40,19 @@ def env_list(key: str, default=None, sep: str = ","):
     return [item.strip() for item in v.split(sep) if item.strip()]
 
 
+def merge_unique_lists(*lists):
+    merged = []
+    seen = set()
+    for current in lists:
+        for item in current or []:
+            normalized = str(item or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            merged.append(normalized)
+    return merged
+
+
 # ============================================================
 # DATABASE CONFIGURATION (LOCAL FALLBACK)
 # ============================================================
@@ -264,16 +277,25 @@ if SERVE_FRONTEND:
 # CORS / CSRF CONFIG
 # ============================================================
 # En Render setea:
-# CORS_ALLOWED_ORIGINS="https://tu-frontend.onrender.com"
-# CSRF_TRUSTED_ORIGINS="https://tu-frontend.onrender.com"
-CORS_ALLOWED_ORIGINS = env_list(
-    "CORS_ALLOWED_ORIGINS",
-    default=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "https://kavajaimepaez.onrender.com",
-        "https://kava.peugeotjpaez.com",
-    ],
+# CORS_ALLOWED_ORIGINS="https://tu-frontend.onrender.com,https://tu-dominio.com"
+# CSRF_TRUSTED_ORIGINS="https://tu-frontend.onrender.com,https://tu-dominio.com"
+RENDER_FRONTEND_ORIGINS = [
+    "https://kavajaimepaez.onrender.com",
+    "https://kava.peugeotjpaez.com",
+]
+LOCAL_FRONTEND_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+DEFAULT_FRONTEND_ORIGINS = merge_unique_lists(
+    LOCAL_FRONTEND_ORIGINS if DEBUG else [],
+    RENDER_FRONTEND_ORIGINS,
+)
+
+CORS_ALLOWED_ORIGINS = merge_unique_lists(
+    DEFAULT_FRONTEND_ORIGINS,
+    env_list("CORS_ALLOWED_ORIGINS", default=[]),
+    env_list("CORS_ALLOWED_ORIGINS_EXTRA", default=[]),
 )
 
 CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", default=True)
@@ -282,13 +304,10 @@ CORS_EXPOSE_HEADERS = [
     "X-Sucursal-Scope-Writable-Ids",
 ]
 
-CSRF_TRUSTED_ORIGINS = env_list(
-    "CSRF_TRUSTED_ORIGINS",
-    default=[
-        "http://localhost:5173",
-        "https://kavajaimepaez.onrender.com",
-        "https://kava.peugeotjpaez.com",
-    ],
+CSRF_TRUSTED_ORIGINS = merge_unique_lists(
+    DEFAULT_FRONTEND_ORIGINS,
+    env_list("CSRF_TRUSTED_ORIGINS", default=[]),
+    env_list("CSRF_TRUSTED_ORIGINS_EXTRA", default=[]),
 )
 
 
