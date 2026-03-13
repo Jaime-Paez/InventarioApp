@@ -119,7 +119,7 @@ class Solicitud(models.Model):
         PRODUCTO = "producto", "Producto"
         PRODUCTO_SOLICITADO = "producto_solicitado", "Producto solicitado"
 
-    codigo = models.CharField(max_length=80, unique=True, blank=True, default="")
+    codigo = models.CharField(max_length=80, blank=True, default="", db_index=True)
     grupo_codigo = models.CharField(max_length=80, blank=True, default="", db_index=True)
     cantidad = models.PositiveIntegerField()
     producto = models.ForeignKey(
@@ -173,7 +173,7 @@ class Solicitud(models.Model):
 
         matcher = re.compile(rf"^{re.escape(base)}-(\d+)$", flags=re.IGNORECASE)
         max_number = 0
-        for raw_codigo in queryset.values_list("codigo", flat=True):
+        for raw_codigo in queryset.values_list("codigo", flat=True).distinct():
             matched = matcher.match(str(raw_codigo or "").strip())
             if not matched:
                 continue

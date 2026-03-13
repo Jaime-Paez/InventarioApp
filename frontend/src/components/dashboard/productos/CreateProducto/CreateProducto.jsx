@@ -1590,7 +1590,7 @@ function CreateProducto({
         cantidad: '1',
       })
       setSubmitAttempted(false)
-      onCreated?.(data)
+      await onCreated?.(data)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al crear el producto.')
     } finally {
@@ -1759,6 +1759,7 @@ function CreateProducto({
           background: 'rgba(15, 23, 42, 0.28)',
           backdropFilter: 'blur(1px)',
           zIndex: 10030,
+          pointerEvents: 'auto',
         }
       : {}),
   }
@@ -1774,10 +1775,24 @@ function CreateProducto({
   const marcaInvalid = submitAttempted && !Number(formData.marcaId)
   const casaInvalid =
     submitAttempted && !(Array.isArray(formData.casasIds) && formData.casasIds.length)
+  const loadingMessage = lockModal ? 'Creando y vinculando producto...' : 'Creando producto...'
 
   return (
-    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
+    <div
+      className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      style={overlayStyle}
+      onMouseDown={lockModal ? (event) => event.stopPropagation() : undefined}
+      onClick={lockModal ? (event) => event.stopPropagation() : undefined}
+    >
       <div className={`create-user__modal${submitAttempted ? ' create-user__modal--submitted' : ''}${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
+        {loading ? (
+          <div className="create-user__loading-overlay" role="status" aria-live="polite">
+            <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+            <span>{loadingMessage}</span>
+          </div>
+        ) : null}
         <header
           className="create-user__header"
           onMouseDown={lockModal ? undefined : handleMouseDown}
@@ -1806,6 +1821,7 @@ function CreateProducto({
             <button
               type="button"
               className="create-user__icon-button"
+              disabled={loading}
               onMouseDown={(event) => event.stopPropagation()}
               onClick={onClose}
               aria-label="Cerrar"
@@ -2714,7 +2730,12 @@ function CreateProducto({
           </div>
 
           <div className="create-user__footer">
-            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>
+            <button
+              type="button"
+              className="create-user__action create-user__action--cancel"
+              onClick={onClose}
+              disabled={loading}
+            >
               Cancelar
             </button>
             <button
@@ -2722,7 +2743,7 @@ function CreateProducto({
               className="create-user__action create-user__action--primary"
               disabled={loading}
             >
-              {loading ? 'Guardando...' : 'Crear producto'}
+              {loading ? 'Creando producto...' : 'Crear producto'}
             </button>
           </div>
         </form>

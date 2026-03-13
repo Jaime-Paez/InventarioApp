@@ -1291,7 +1291,11 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   return (
     <div className="users-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
-      <Toast ref={toast} />
+      <Toast
+        ref={toast}
+        baseZIndex={12050}
+        appendTo={typeof document !== 'undefined' ? document.body : undefined}
+      />
 
       <div className="users-page__top">
         <div className="users-page__actions">

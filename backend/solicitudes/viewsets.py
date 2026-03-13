@@ -609,9 +609,11 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             solicitudes = []
             grupo_codigo = uuid.uuid4().hex
+            codigo_solicitud = Solicitud.generate_next_codigo(sucursal)
             for item in productos_normalizados:
                 if item["tipo"] == Solicitud.Tabla.PRODUCTO:
                     solicitud = Solicitud.objects.create(
+                        codigo=codigo_solicitud,
                         grupo_codigo=grupo_codigo,
                         cantidad=item["cantidad"],
                         tabla=Solicitud.Tabla.PRODUCTO,
@@ -641,6 +643,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         )
 
                     solicitud = Solicitud.objects.create(
+                        codigo=codigo_solicitud,
                         grupo_codigo=grupo_codigo,
                         cantidad=item["cantidad"],
                         tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
@@ -853,6 +856,9 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             if sync_sucursal and sibling.sucursal_id != instance.sucursal_id:
                 sibling.sucursal = instance.sucursal
                 update_fields.append("sucursal")
+            if sync_sucursal and sibling.codigo != instance.codigo:
+                sibling.codigo = instance.codigo
+                update_fields.append("codigo")
 
             if sync_placa and sibling.placa != instance.placa:
                 sibling.placa = instance.placa

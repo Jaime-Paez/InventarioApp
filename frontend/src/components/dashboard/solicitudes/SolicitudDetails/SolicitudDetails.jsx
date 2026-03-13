@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, Pencil } from 'lucide-react'
+import { Eye, Info, Pencil } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -181,6 +181,12 @@ const buildGroupItem = (solicitud) => {
     createdFromSolicitud:
       tabla === 'producto_solicitado' &&
       Number(productoSolicitado?.producto_id || productoSolicitado?.producto_data?.id || 0) > 0,
+    existsInCatalog:
+      Number(
+        tabla === 'producto'
+          ? solicitud?.producto_id || productoCatalogo?.id || 0
+          : productoSolicitado?.producto_id || productoSolicitado?.producto_data?.id || 0
+      ) > 0,
   }
 }
 
@@ -246,6 +252,7 @@ function SolicitudDetails({
   const [resolvedProductDetail, setResolvedProductDetail] = useState(null)
   const [resolvedProductLoading, setResolvedProductLoading] = useState(false)
   const [linkingCreatedProduct, setLinkingCreatedProduct] = useState(false)
+  const [openingProductSelection, setOpeningProductSelection] = useState(false)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const [isEditing, setIsEditing] = useState(false)
@@ -920,42 +927,47 @@ function SolicitudDetails({
   }, [])
 
   const handleSelectGroupItem = async (itemId) => {
-    if (loading || saving) return
+    if (loading || saving || openingProductSelection) return
     const targetItem = groupItems.find((item) => String(item.id || '') === String(itemId || ''))
     if (!targetItem) return
 
-    setProductSolicitud(null)
-    setProductFormData(emptyForm)
-    setProductCodeExists(false)
-    setProductCodeCheckLoading(false)
-    setResolvedProductDetail(null)
-    setResolvedProductLoading(false)
-    setIsCatalogProductModalOpen(false)
-    setCatalogProductId(null)
-    setCatalogProductNotice('')
-    setCatalogProductSolicitudComment('')
-    setSelectedSolicitudId(itemId)
+    setOpeningProductSelection(true)
+    try {
+      setProductSolicitud(null)
+      setProductFormData(emptyForm)
+      setProductCodeExists(false)
+      setProductCodeCheckLoading(false)
+      setResolvedProductDetail(null)
+      setResolvedProductLoading(false)
+      setIsCatalogProductModalOpen(false)
+      setCatalogProductId(null)
+      setCatalogProductNotice('')
+      setCatalogProductSolicitudComment('')
+      setSelectedSolicitudId(itemId)
 
-    const directProductId = Number(targetItem.catalogProductId || 0)
-    if (directProductId > 0) {
-      handleOpenCatalogProductModal(directProductId, {
-        createdFromSolicitud: targetItem.createdFromSolicitud,
-        solicitudComment: targetItem.comentario,
-      })
-      return
+      const directProductId = Number(targetItem.catalogProductId || 0)
+      if (directProductId > 0) {
+        handleOpenCatalogProductModal(directProductId, {
+          createdFromSolicitud: targetItem.createdFromSolicitud,
+          solicitudComment: targetItem.comentario,
+        })
+        return
+      }
+
+      const existingProduct = await resolveCatalogProductByCode(targetItem.productoCodigo)
+      if (existingProduct?.id) {
+        handleOpenCatalogProductModal(existingProduct.id, {
+          createdFromSolicitud: false,
+          solicitudComment: '',
+        })
+        return
+      }
+
+      await loadProductSolicitud(itemId)
+      setIsProductModalOpen(true)
+    } finally {
+      setOpeningProductSelection(false)
     }
-
-    const existingProduct = await resolveCatalogProductByCode(targetItem.productoCodigo)
-    if (existingProduct?.id) {
-      handleOpenCatalogProductModal(existingProduct.id, {
-        createdFromSolicitud: false,
-        solicitudComment: '',
-      })
-      return
-    }
-
-    await loadProductSolicitud(itemId)
-    setIsProductModalOpen(true)
   }
 
   const handleOpenCreateProductModal = () => {
@@ -1078,6 +1090,8 @@ function SolicitudDetails({
     productLoading ||
     linkingCreatedProduct ||
     (isProductModalOpen && Boolean(selectedSolicitudId) && !productSolicitud)
+  const groupTableGridTemplate =
+    'minmax(84px, 0.78fr) minmax(0, 1.28fr) minmax(0, 0.82fr) minmax(0, 0.72fr) minmax(0, 1.08fr) minmax(54px, 0.34fr) 42px'
   const selectedGroupItem = groupItems.find(
     (item) => String(item.id || '') === String(selectedSolicitudId || '')
   )
@@ -1215,6 +1229,36 @@ function SolicitudDetails({
                   </div>
                 </div>
 
+                {productFormData.tabla === 'producto_solicitado' && !resolvedProductId && (
+                  <div
+                    style={{
+                      margin: '0 0 14px',
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      border:
+                        '1px solid color-mix(in srgb, var(--color-primary-dark) 28%, var(--color-border))',
+                      background:
+                        'color-mix(in srgb, var(--color-primary-dark) 8%, var(--modal-color))',
+                      color: 'var(--color-text-primary)',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                    }}
+                  >
+                    <Info
+                      size={18}
+                      style={{
+                        flexShrink: 0,
+                        marginTop: '1px',
+                        color: 'var(--color-primary-dark)',
+                      }}
+                    />
+                    <p style={{ margin: 0, fontWeight: 700, lineHeight: 1.35 }}>
+                      Este producto aun no existe en la base de datos.
+                    </p>
+                  </div>
+                )}
+
                 <div className="create-user__grid create-user__grid--two">
                   <label className="create-user__field">
                     <span>Codigo</span>
@@ -1281,16 +1325,6 @@ function SolicitudDetails({
                         />
                       </label>
                     </>
-                  )}
-                  {productFormData.tabla === 'producto_solicitado' && (
-                    <label className="create-user__field create-user__field--full">
-                      <span>Descripcion</span>
-                      <textarea
-                        name="productoDescripcion"
-                        value={productFormData.productoDescripcion}
-                        disabled
-                      />
-                    </label>
                   )}
                   <label className="create-user__field create-user__field--full">
                     <span>Comentario por producto</span>
@@ -1395,6 +1429,12 @@ function SolicitudDetails({
           ref={modalRef}
           style={modalStyle}
         >
+        {openingProductSelection ? (
+          <div className="create-user__loading-overlay" role="status" aria-live="polite" style={{ zIndex: 80 }}>
+            <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+            <span>Abriendo producto...</span>
+          </div>
+        ) : null}
         <header className="create-user__header" onMouseDown={handleHeaderMouseDown}>
           <div className="create-user__header-text">
             <h3>{modalTitle}</h3>
@@ -1506,12 +1546,17 @@ function SolicitudDetails({
                   </div>
 
                   <div className="create-user__locations-table">
-                    <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Codigo</span>
-                      <span>Nombre</span>
-                      <span>Marca</span>
-                      <span>OEM</span>
-                      <span>Cantidad</span>
+                    <div
+                      className="create-user__locations-row create-user__locations-row--head"
+                      style={{ gridTemplateColumns: groupTableGridTemplate }}
+                    >
+                      <span style={{ minWidth: 0 }}>Codigo</span>
+                      <span style={{ minWidth: 0 }}>Nombre</span>
+                      <span style={{ minWidth: 0 }}>Marca</span>
+                      <span style={{ minWidth: 0 }}>OEM</span>
+                      <span style={{ minWidth: 0 }}>Comentario</span>
+                      <span style={{ minWidth: 0 }}>Cantidad</span>
+                      <span style={{ textAlign: 'center' }}>Existe</span>
                     </div>
 
                     {groupItems.map((item) => (
@@ -1520,27 +1565,48 @@ function SolicitudDetails({
                         type="button"
                         className="create-user__locations-row"
                         onClick={() => handleSelectGroupItem(item.id)}
-                        disabled={loading || saving}
+                        disabled={loading || saving || openingProductSelection}
                         style={{
+                          gridTemplateColumns: groupTableGridTemplate,
                           width: '100%',
+                          maxWidth: '100%',
+                          boxSizing: 'border-box',
                           border: 0,
                           color: 'inherit',
                           textAlign: 'left',
-                          cursor: loading || saving ? 'wait' : 'pointer',
+                          cursor:
+                            loading || saving || openingProductSelection ? 'wait' : 'pointer',
                           background: 'transparent',
                           boxShadow: 'none',
                         }}
                       >
-                        <span>{item.productoCodigo || '-'}</span>
-                        <span>
+                        <span style={{ minWidth: 0 }}>{item.productoCodigo || '-'}</span>
+                        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                           {item.productoNombre || '-'}
-                          {item.tabla === 'producto' && (
-                            <small className="create-solicitud__chip">Catalogo</small>
-                          )}
                         </span>
-                        <span>{item.productoMarca || '-'}</span>
-                        <span>{item.productoOems.length ? item.productoOems.join(', ') : '-'}</span>
-                        <span>{item.cantidad || '-'}</span>
+                        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                          {item.productoMarca || '-'}
+                        </span>
+                        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                          {item.productoOems.length ? item.productoOems.join(', ') : '-'}
+                        </span>
+                        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                          {item.comentario || '-'}
+                        </span>
+                        <span style={{ minWidth: 0 }}>{item.cantidad || '-'}</span>
+                        <span
+                          aria-label={item.existsInCatalog ? 'Existe' : 'No existe'}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <i
+                            className={`pi pi-${item.existsInCatalog ? 'check-circle' : 'times-circle'}`}
+                            style={{ color: item.existsInCatalog ? '#22c55e' : '#9ca3af' }}
+                            aria-hidden="true"
+                          />
+                        </span>
                       </button>
                     ))}
                   </div>
