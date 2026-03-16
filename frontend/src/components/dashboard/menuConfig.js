@@ -51,12 +51,13 @@ export const MENU_STRUCTURE = [
   },
   { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
-  { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios' },
+  { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios', requiresAdmin: true },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
 ]
 
-const STANDALONE_LABEL_MODULE_KEYS = {
-  Configuraciones: 'configuracion',
+const STANDALONE_LABEL_RULES = {
+  Configuraciones: { moduleKey: 'configuracion', requiresAdmin: true },
+  'Revision de inventario por sucursal': { moduleKey: 'usuarios', requiresAdmin: true },
 }
 
 const BRANCH_SCOPED_MODULE_KEYS = new Set([
@@ -245,10 +246,18 @@ const hasBranchScopeAccessForTarget = (moduleKey, moduleScopeAccessIndex) => {
   return Boolean(moduleScopeAccessIndex?.get(moduleKey))
 }
 
-export const itemHasAccess = (item, permissionIndex, moduleScopeAccessIndex = null) => {
+const itemRequiresAdministrator = (item) => Boolean(item?.requiresAdmin)
+
+export const itemHasAccess = (
+  item,
+  permissionIndex,
+  moduleScopeAccessIndex = null,
+  isAdministrator = false
+) => {
+  if (itemRequiresAdministrator(item) && !isAdministrator) return false
   if (!permissionIndex) return true
   if (item.children?.length) {
-    return item.children.some((child) => itemHasAccess(child, permissionIndex, moduleScopeAccessIndex))
+    return item.children.some((child) => itemHasAccess(child, permissionIndex, moduleScopeAccessIndex, isAdministrator))
   }
   return (
     hasPermissionForTarget(item.moduleKey, permissionIndex) &&
@@ -256,19 +265,24 @@ export const itemHasAccess = (item, permissionIndex, moduleScopeAccessIndex = nu
   )
 }
 
-export const filterMenuByPermissions = (menu, permissionIndex, moduleScopeAccessIndex = null) => {
+export const filterMenuByPermissions = (
+  menu,
+  permissionIndex,
+  moduleScopeAccessIndex = null,
+  isAdministrator = false
+) => {
   if (!permissionIndex) return menu
 
   return menu
     .map((item) => {
       if (item.children?.length) {
         const filteredChildren = item.children.filter((child) =>
-          itemHasAccess(child, permissionIndex, moduleScopeAccessIndex)
+          itemHasAccess(child, permissionIndex, moduleScopeAccessIndex, isAdministrator)
         )
         if (!filteredChildren.length) return null
         return { ...item, children: filteredChildren }
       }
-      return itemHasAccess(item, permissionIndex, moduleScopeAccessIndex) ? item : null
+      return itemHasAccess(item, permissionIndex, moduleScopeAccessIndex, isAdministrator) ? item : null
     })
     .filter(Boolean)
 }
@@ -284,17 +298,19 @@ export const labelHasAccess = (
   label,
   permissionIndex,
   menu = MENU_STRUCTURE,
-  moduleScopeAccessIndex = null
+  moduleScopeAccessIndex = null,
+  isAdministrator = false
 ) => {
   const flattened = flattenMenu(menu)
   const item = flattened.find((entry) => entry.label === label)
   if (!item) {
-    const standaloneModuleKey = STANDALONE_LABEL_MODULE_KEYS[label]
-    if (!standaloneModuleKey) return true
+    const standaloneRule = STANDALONE_LABEL_RULES[label]
+    if (!standaloneRule) return true
+    if (standaloneRule.requiresAdmin && !isAdministrator) return false
     return (
-      hasPermissionForTarget(standaloneModuleKey, permissionIndex) &&
-      hasBranchScopeAccessForTarget(standaloneModuleKey, moduleScopeAccessIndex)
+      hasPermissionForTarget(standaloneRule.moduleKey, permissionIndex) &&
+      hasBranchScopeAccessForTarget(standaloneRule.moduleKey, moduleScopeAccessIndex)
     )
   }
-  return itemHasAccess(item, permissionIndex, moduleScopeAccessIndex)
+  return itemHasAccess(item, permissionIndex, moduleScopeAccessIndex, isAdministrator)
 }

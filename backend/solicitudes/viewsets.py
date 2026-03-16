@@ -88,6 +88,29 @@ class ClienteViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        linked_entities = []
+
+        if instance.autos.exists():
+            linked_entities.append("autos")
+        if instance.solicitudes.exists():
+            linked_entities.append("solicitudes")
+
+        if linked_entities:
+            joined_entities = " y ".join(linked_entities)
+            return Response(
+                {
+                    "detail": (
+                        "No se puede eliminar el cliente porque tiene "
+                        f"{joined_entities} asociados."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return super().destroy(request, *args, **kwargs)
+
 
 class ProductoSolicitadoViewSet(viewsets.ModelViewSet):
     queryset = ProductoSolicitado.objects.select_related("producto", "marca").all().order_by("-id")
@@ -164,6 +187,20 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         "cliente_nombre_text",
         "placa",
     ]
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        grupo_codigo = str(getattr(instance, "grupo_codigo", "") or "").strip()
+        queryset = (
+            Solicitud.objects.filter(grupo_codigo=grupo_codigo)
+            if grupo_codigo
+            else Solicitud.objects.filter(pk=instance.pk)
+        )
+
+        with transaction.atomic():
+            queryset.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_queryset(self):
         queryset = super().get_queryset().annotate(

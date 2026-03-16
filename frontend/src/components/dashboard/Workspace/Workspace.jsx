@@ -217,7 +217,7 @@ function Workspace({
     const solicitudIdRaw = payload?.solicitudId ?? payloadSolicitud?.id
     const solicitudId = String(solicitudIdRaw || '').trim()
     if (!solicitudId) return
-    if (!labelHasAccess('Salidas', permissionIndex, undefined, moduleScopeAccessIndex)) return
+    if (!labelHasAccess('Salidas', permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
 
     const sucursalProveedoraRaw = (
       payload?.nextAction?.sucursal_proveedora_id ??
@@ -235,7 +235,7 @@ function Workspace({
       sucursalProveedoraId,
       solicitud: payloadSolicitud,
     })
-  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex])
+  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
 
   const handleTransferSalidaRequestHandled = useCallback(() => {
     setPendingTransferSalidaRequest(null)
@@ -245,7 +245,7 @@ function Workspace({
     const previewData = payload?.previewData || null
     const solicitudId = String(payload?.solicitudId || previewData?.solicitud_traslado_id || '').trim()
     if (!solicitudId) return
-    if (!labelHasAccess('Entradas', permissionIndex, undefined, moduleScopeAccessIndex)) return
+    if (!labelHasAccess('Entradas', permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
     const requestMode = String(payload?.mode || '').trim().toLowerCase()
     const movimientoEntradaId = String(
       payload?.movimientoEntradaId ||
@@ -273,13 +273,13 @@ function Workspace({
       movimientoEntradaId,
       mode: requestMode === 'view' && movimientoEntradaId ? 'view' : 'preview',
     })
-  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex])
+  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
 
   const handleOpenTransferRequestInSalidas = useCallback((payload) => {
     const solicitud = payload?.solicitud || null
     const solicitudId = String(payload?.solicitudId || solicitud?.id || '').trim()
     if (!solicitudId) return
-    if (!labelHasAccess('Salidas', permissionIndex, undefined, moduleScopeAccessIndex)) return
+    if (!labelHasAccess('Salidas', permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
 
     const sucursalProveedoraId = String(
       payload?.sucursalProveedoraId ||
@@ -305,17 +305,17 @@ function Workspace({
       solicitud,
       mode: 'view',
     })
-  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex])
+  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
 
   const handleOpenInventoryReviewSection = useCallback(() => {
-    if (!labelHasAccess(INVENTORY_REVIEW_TAB, permissionIndex, undefined, moduleScopeAccessIndex)) {
-      if (!labelHasAccess(INVENTORY_REVIEW_TAB_LEGACY, permissionIndex, undefined, moduleScopeAccessIndex)) return false
+    if (!labelHasAccess(INVENTORY_REVIEW_TAB, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) {
+      if (!labelHasAccess(INVENTORY_REVIEW_TAB_LEGACY, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return false
       onSelectTab?.(INVENTORY_REVIEW_TAB_LEGACY)
       return true
     }
     onSelectTab?.(INVENTORY_REVIEW_TAB)
     return true
-  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex])
+  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
 
   const handleTransferEntradaRequestHandled = useCallback(() => {
     setPendingTransferEntradaRequest(null)
@@ -377,7 +377,7 @@ function Workspace({
   }, [isMovementBranchMenuOpen])
 
   const renderTabContent = (tab, isActive = false) => {
-    const hasAccess = labelHasAccess(tab, permissionIndex, undefined, moduleScopeAccessIndex)
+    const hasAccess = labelHasAccess(tab, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)
     const TabComponent = tabComponentMap[tab]
     const moduleKey = MODULE_KEY_BY_TAB[tab] || ''
     const moduleActions = getModuleActions(moduleKey, permissionIndex, user?.sucursales_por_modulo)

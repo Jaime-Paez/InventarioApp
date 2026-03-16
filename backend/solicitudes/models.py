@@ -63,7 +63,7 @@ class Auto(models.Model):
 
     cliente = models.ForeignKey(
         Cliente,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="autos",
     )
     placa = models.CharField(max_length=20)

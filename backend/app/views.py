@@ -22,11 +22,13 @@ from usuarios.sucursal_scope import get_allowed_sucursal_ids
 from usuarios.utils import (
     build_full_permissions,
     get_permisos_efectivos,
+    get_random_inspection_branch_ids,
     get_usuario_interno_por_correo,
 )
 
 from .models import (
     InspeccionAleatoriaDiaria,
+    InspeccionAleatoriaConfiguracion,
     InspeccionAleatoriaItem,
     ReminderState,
     UsuarioPreferencia,
@@ -458,15 +460,7 @@ def _format_user_display_name(user):
 
 
 def _is_random_inspection_enabled_for_user(user):
-    if user is None or not getattr(user, "is_authenticated", False):
-        return False
-    preference = getattr(user, "preferencia_operativa", None)
-    if preference is not None:
-        return bool(getattr(preference, "inspeccion_aleatoria", False))
-    return UsuarioPreferencia.objects.filter(
-        usuario=user,
-        inspeccion_aleatoria=True,
-    ).exists()
+    return bool(_get_random_inspection_branch_ids_for_user(user))
 
 
 def _get_allowed_inventory_branch_ids_for_user(user):
@@ -476,16 +470,33 @@ def _get_allowed_inventory_branch_ids_for_user(user):
     return {int(branch_id) for branch_id in allowed if branch_id is not None}
 
 
-def _collect_random_inspection_candidates(user):
+def _get_random_inspection_branch_ids_for_user(user):
+    if user is None or not getattr(user, "is_authenticated", False):
+        return set()
+
+    branch_ids = {
+        int(branch_id)
+        for branch_id in get_random_inspection_branch_ids(user)
+        if branch_id is not None
+    }
+    if not branch_ids:
+        return set()
+
     allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(user)
-    if allowed_branch_ids is not None and not allowed_branch_ids:
+    if allowed_branch_ids is None:
+        return branch_ids
+    return branch_ids.intersection(allowed_branch_ids)
+
+
+def _collect_random_inspection_candidates(user):
+    allowed_branch_ids = _get_random_inspection_branch_ids_for_user(user)
+    if not allowed_branch_ids:
         return []
 
     queryset = Inventario.objects.filter(cantidad__gt=0)
-    if allowed_branch_ids is not None:
-        queryset = queryset.filter(
-            subdivision__division__bodega__sucursal_id__in=sorted(allowed_branch_ids)
-        )
+    queryset = queryset.filter(
+        subdivision__division__bodega__sucursal_id__in=sorted(allowed_branch_ids)
+    )
 
     rows = (
         queryset.values(
@@ -614,6 +625,10 @@ def _calculate_random_inspection_coverage(user, candidate_keys):
 
     reviewed_rows = InspeccionAleatoriaItem.objects.filter(
         inspeccion__usuario=user
+    ).exclude(
+        estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
+    ).exclude(
+        verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
     ).values_list("sucursal_id", "producto_id")
     reviewed_keys = {
         (int(sucursal_id), int(producto_id))
@@ -1825,9 +1840,30 @@ class RandomInspectionAdminSummaryAPIView(APIView):
         inspected_rows = (
             inspected_qs.values("sucursal_id", "sucursal__nombre")
             .annotate(
-                productos_revisados=Count("producto_id", distinct=True),
+                productos_revisados=Count(
+                    "producto_id",
+                    distinct=True,
+                    filter=(
+                        ~Q(
+                            estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
+                        )
+                        & ~Q(
+                            verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
+                        )
+                    ),
+                ),
                 inspecciones_totales=Count("inspeccion_id", distinct=True),
-                items_revisados=Count("id"),
+                items_revisados=Count(
+                    "id",
+                    filter=(
+                        ~Q(
+                            estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
+                        )
+                        & ~Q(
+                            verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
+                        )
+                    ),
+                ),
                 diferencias_reportadas=Count(
                     "id",
                     filter=Q(
@@ -2021,6 +2057,120 @@ class RandomInspectionAdminItemsAPIView(APIView):
                 "count": len(serialized),
                 "sucursal_id": int(sucursal_id),
                 "estado": estado,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RandomInspectionConfigAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para consultar esta configuracion."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        config = InspeccionAleatoriaConfiguracion.get_global()
+        sys_config = ConfiguracionSistema.get_solo()
+        hora = config.hora_recordatorio
+        return Response(
+            {
+                "hora_recordatorio": hora.strftime("%H:%M") if hora else "",
+                "cantidad_productos": int(sys_config.random_inspection_items_per_day),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def patch(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para actualizar esta configuracion."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        with transaction.atomic():
+            config = InspeccionAleatoriaConfiguracion.get_global(for_update=True)
+            hora_raw = _normalize_text(request.data.get("hora_recordatorio", ""))
+            if hora_raw:
+                parts = hora_raw.split(":")
+                try:
+                    hour = int(parts[0])
+                    minute = int(parts[1]) if len(parts) > 1 else 0
+                    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                        raise ValueError()
+                    config.hora_recordatorio = dt_time(hour, minute)
+                except (ValueError, IndexError):
+                    return Response(
+                        {"detail": "Formato de hora invalido. Usa HH:MM."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            else:
+                config.hora_recordatorio = None
+            config.save(update_fields=["hora_recordatorio", "updated_at"])
+
+            cantidad_raw = request.data.get("cantidad_productos")
+            if cantidad_raw not in (None, ""):
+                cantidad = _normalize_int(cantidad_raw, 0)
+                if cantidad < 1 or cantidad > 200:
+                    return Response(
+                        {"detail": "La cantidad de productos debe estar entre 1 y 200."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                sys_config = ConfiguracionSistema.get_solo()
+                sys_config.random_inspection_items_per_day = cantidad
+                sys_config.save(update_fields=["random_inspection_items_per_day"])
+            else:
+                sys_config = ConfiguracionSistema.get_solo()
+
+        hora = config.hora_recordatorio
+        return Response(
+            {
+                "hora_recordatorio": hora.strftime("%H:%M") if hora else "",
+                "cantidad_productos": int(sys_config.random_inspection_items_per_day),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RandomInspectionSendNowAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta accion."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        User = get_user_model()
+        enabled_users = (
+            User.objects.filter(
+                is_active=True,
+                preferencia_operativa__inspeccion_aleatoria=True,
+            )
+            .select_related("preferencia_operativa")
+            .distinct()
+        )
+
+        dispatched = []
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            for user in enabled_users:
+                inspection, changed = _ensure_daily_random_inspection_for_user(user, store)
+                if inspection is not None:
+                    dispatched.append(
+                        {
+                            "usuario_id": int(user.id),
+                            "nombre": _format_user_display_name(user),
+                            "inspeccion_id": int(inspection.id),
+                        }
+                    )
+            store.save()
+
+        return Response(
+            {
+                "dispatched": dispatched,
+                "count": len(dispatched),
             },
             status=status.HTTP_200_OK,
         )

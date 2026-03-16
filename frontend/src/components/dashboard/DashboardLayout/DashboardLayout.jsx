@@ -34,10 +34,19 @@ function DashboardLayout({
   const heroLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const brandLogo = useMemo(() => (darkMode ? kavaDark : kavaLight), [darkMode])
   const partnerLogo = useMemo(() => (darkMode ? jpaezDark : jpaezLight), [darkMode])
+  const isAdministrator = useMemo(
+    () => Boolean(
+      user?.is_superuser ||
+        user?.is_staff ||
+        user?.es_administrador ||
+        String(user?.rol || '').trim().toLowerCase() === 'administrador'
+    ),
+    [user?.es_administrador, user?.is_staff, user?.is_superuser, user?.rol]
+  )
   const permissionIndex = useMemo(() => buildPermissionIndex(permissions), [permissions])
   const moduleScopeAccessIndex = useMemo(
-    () => buildModuleScopeAccessIndex(user?.sucursales_por_modulo, Boolean(user?.es_administrador)),
-    [user?.es_administrador, user?.sucursales_por_modulo]
+    () => buildModuleScopeAccessIndex(user?.sucursales_por_modulo, isAdministrator),
+    [isAdministrator, user?.sucursales_por_modulo]
   )
 
   useEffect(() => {
@@ -57,12 +66,15 @@ function DashboardLayout({
 
   useEffect(() => {
     setOpenTabs((prev) =>
-      prev.filter((tab) => labelHasAccess(tab, permissionIndex, undefined, moduleScopeAccessIndex))
+      prev.filter((tab) => labelHasAccess(tab, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator))
     )
-    if (activeItem && !labelHasAccess(activeItem, permissionIndex, undefined, moduleScopeAccessIndex)) {
+    if (
+      activeItem &&
+      !labelHasAccess(activeItem, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)
+    ) {
       setActiveItem('')
     }
-  }, [permissionIndex, activeItem, moduleScopeAccessIndex])
+  }, [permissionIndex, activeItem, moduleScopeAccessIndex, isAdministrator])
 
   useEffect(() => {
     if (isLeaving) {
@@ -72,7 +84,7 @@ function DashboardLayout({
   }, [isLeaving])
 
   const handleSelect = (label) => {
-    if (!labelHasAccess(label, permissionIndex, undefined, moduleScopeAccessIndex)) return
+    if (!labelHasAccess(label, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
     setActiveItem(label)
     setOpenTabs((prev) => (prev.includes(label) ? prev : [...prev, label]))
     if (isMobileViewport) {

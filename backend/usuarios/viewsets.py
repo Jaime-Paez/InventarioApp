@@ -1,6 +1,7 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.db import transaction
 from django.db.models import Q
+from inventario.models import Sucursal
 from rest_framework import filters, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
@@ -25,8 +26,11 @@ from .utils import (
     build_full_permissions,
     get_modulos_con_alcance_sucursal_options,
     get_permisos_efectivos,
+    get_random_inspection_branch_ids,
     get_usuario_interno_por_correo,
     remove_personalized_role_for_email,
+    sync_random_inspection_branch_assignment,
+    user_has_module_action,
 )
 
 
@@ -67,6 +71,47 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     ordering_fields = ["last_name", "first_name", "email"]
 
     @staticmethod
+    def _parse_bool_payload(value):
+        if isinstance(value, bool):
+            return value
+        normalized = str(value or "").strip().lower()
+        if normalized in {"true", "1", "si", "sí", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+        raise ValueError("Debes enviar un valor booleano valido.")
+
+    @staticmethod
+    def _format_display_name(instance):
+        full_name = str(instance.get_full_name() or "").strip()
+        if full_name:
+            return full_name
+        first_name = str(instance.first_name or "").strip()
+        if first_name:
+            return first_name
+        email = str(instance.email or "").strip()
+        return email or f"Usuario {instance.pk}"
+
+    def _serialize_random_inspection_assignment(self, instance):
+        inspection_branch_ids = get_random_inspection_branch_ids(instance)
+        return {
+            "id": int(instance.id),
+            "nombres": str(instance.first_name or "").strip(),
+            "apellidos": str(instance.last_name or "").strip(),
+            "nombre_completo": self._format_display_name(instance),
+            "correo": str(instance.email or "").strip(),
+            "activo": bool(instance.is_active),
+            "es_administrador": bool(instance.is_staff or instance.is_superuser),
+            "inspeccion_aleatoria": bool(inspection_branch_ids),
+            "inspeccion_aleatoria_sucursales": inspection_branch_ids,
+            "puede_ver_inventario": user_has_module_action(
+                instance,
+                RolPermiso.Modulos.INVENTARIO,
+                action_key="puede_leer",
+            ),
+        }
+
+    @staticmethod
     def _is_protected_admin_user(instance):
         first_name = str(instance.first_name or "").strip().lower()
         last_name = str(instance.last_name or "").strip().lower()
@@ -92,6 +137,91 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         usuario = self.get_object()
         permisos = get_permisos_efectivos(usuario, usuario.email)
         return Response({"permisos": permisos})
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="inspeccion-aleatoria-asignaciones",
+    )
+    def inspeccion_aleatoria_asignaciones(self, request):
+        search_term = str(request.query_params.get("search") or "").strip()
+        queryset = self.get_queryset()
+        if search_term:
+            queryset = queryset.filter(
+                Q(first_name__icontains=search_term)
+                | Q(last_name__icontains=search_term)
+                | Q(email__icontains=search_term)
+            )
+
+        queryset = queryset.order_by("is_active", "first_name", "last_name", "email")
+        payload = [
+            self._serialize_random_inspection_assignment(instance)
+            for instance in queryset
+        ]
+        payload.sort(
+            key=lambda row: (
+                not bool(row.get("activo")),
+                str(row.get("nombre_completo") or "").lower(),
+                int(row.get("id") or 0),
+            )
+        )
+        branch_options = list(
+            Sucursal.objects.order_by("nombre", "id").values("id", "nombre")
+        )
+        return Response({"results": payload, "sucursales": branch_options})
+
+    @action(
+        detail=True,
+        methods=["patch"],
+        url_path="inspeccion-aleatoria-asignacion",
+    )
+    @transaction.atomic
+    def inspeccion_aleatoria_asignacion(self, request, pk=None):
+        usuario = self.get_object()
+        raw_branch_id = request.data.get("sucursal_id")
+        if raw_branch_id is None:
+            raw_branch_id = request.data.get("branch_id")
+        try:
+            branch_id = int(raw_branch_id)
+        except (TypeError, ValueError):
+            branch_id = 0
+        if branch_id <= 0 or not Sucursal.objects.filter(pk=branch_id).exists():
+            return Response(
+                {"detail": "Debes enviar un `sucursal_id` valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw_enabled = request.data.get("habilitado")
+        if raw_enabled is None:
+            raw_enabled = request.data.get("enabled")
+        if raw_enabled is None:
+            raw_enabled = request.data.get("inspeccion_aleatoria")
+        if raw_enabled is None:
+            return Response(
+                {"detail": "Debes enviar `habilitado` con un valor booleano."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            enabled = self._parse_bool_payload(raw_enabled)
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sync_random_inspection_branch_assignment(usuario, branch_id, enabled)
+        usuario = self.get_queryset().filter(pk=usuario.pk).first()
+        if usuario is None:
+            return Response(
+                {"detail": "No se pudo recargar el usuario actualizado."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            self._serialize_random_inspection_assignment(usuario),
+            status=status.HTTP_200_OK,
+        )
 
     @action(
         detail=False,

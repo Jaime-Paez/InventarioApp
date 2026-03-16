@@ -10,6 +10,16 @@ urlpatterns = [
     ),
     path("recordatorios/estado/", views.ReminderStateAPIView.as_view(), name="recordatorios-estado"),
     path(
+        "recordatorios/inspeccion-aleatoria/configuracion/",
+        views.RandomInspectionConfigAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-configuracion",
+    ),
+    path(
+        "recordatorios/inspeccion-aleatoria/enviar-ahora/",
+        views.RandomInspectionSendNowAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-enviar-ahora",
+    ),
+    path(
         "recordatorios/inspeccion-aleatoria/admin/resumen/",
         views.RandomInspectionAdminSummaryAPIView.as_view(),
         name="recordatorios-inspeccion-aleatoria-admin-resumen",

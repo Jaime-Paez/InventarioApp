@@ -227,7 +227,6 @@ const initialForm = {
   cargo: '',
   activo: true,
   es_administrador: false,
-  inspeccion_aleatoria: false,
 }
 
 function CreateUsuario({ open, onClose, onCreated, token, onError }) {
@@ -449,7 +448,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
       const branchKey = String(normalizedBranchId)
       const current = nextModuleScopes[branchKey] || EMPTY_PERMISSION_ENTRY
-      const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, !Boolean(current[actionKey]))
+      const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, !current[actionKey])
 
       if (hasAnyAllowedActionEnabled(moduleKey, updatedEntry)) {
         nextModuleScopes[branchKey] = updatedEntry
@@ -500,7 +499,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
       const branchKey = String(normalizedBranchId)
       const current = nextModuleScopes[branchKey] || EMPTY_PERMISSION_ENTRY
-      const currentlyChecked = Boolean(current[actionKey])
+      const currentlyChecked = current[actionKey]
       if (currentlyChecked === checked) return
 
       const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, checked)
@@ -552,7 +551,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       const current = moduleUsesBranchScope
         ? getBranchPermissionEntry(moduleBranchMatrix, moduleKey, normalizedBranchId)
         : (permissionsMatrix[moduleKey] || EMPTY_PERMISSION_ENTRY)
-      if (Boolean(current[actionKey])) selected += 1
+      if (current[actionKey]) selected += 1
     })
 
     return {
@@ -616,12 +615,13 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
     setLoading(true)
 
     const payload = {
-      ...formData,
       nombres: formData.nombres.trim(),
       apellidos: formData.apellidos.trim(),
       correo: formData.correo.trim().toLowerCase(),
       telefono: formData.telefono.trim(),
       cargo: formData.cargo.trim(),
+      activo: Boolean(formData.activo),
+      es_administrador: Boolean(formData.es_administrador),
       permisos_personalizados: serializeMatrix(effectivePermissionsMatrix),
       sucursales_por_modulo: serializeModuleBranchMatrix(moduleBranchMatrix, branchScopedModules),
     }
@@ -1085,18 +1085,6 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                         <div>
                           <span>Administrador</span>
                           <p>Tendra acceso total y no recibira alertas urgentes de traslado.</p>
-                        </div>
-                      </label>
-                      <label className="create-user__checkbox">
-                        <input
-                          type="checkbox"
-                          name="inspeccion_aleatoria"
-                          checked={Boolean(formData.inspeccion_aleatoria)}
-                          onChange={handleChange}
-                        />
-                        <div>
-                          <span>Inspección aleatoria</span>
-                          <p>Recibirá un recordatorio diario a las 09:00 para auditar 5 productos.</p>
                         </div>
                       </label>
                     </div>

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python manage.py migrate app 0005)",
+      "Bash(python3 manage.py migrate app 0005)",
+      "Bash(py manage.py migrate app 0005)"
+    ]
+  }
+}

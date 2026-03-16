@@ -45,6 +45,11 @@ class UsuarioPreferencia(models.Model):
         related_name="preferencia_operativa",
     )
     inspeccion_aleatoria = models.BooleanField(default=False)
+    inspeccion_aleatoria_sucursales = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Sucursales asignadas para revision diaria de inventario.",
+    )
     table_layouts = models.JSONField(
         default=dict,
         blank=True,
@@ -59,6 +64,36 @@ class UsuarioPreferencia(models.Model):
 
     def __str__(self) -> str:
         return f"Preferencias<{self.usuario_id}>"
+
+
+class InspeccionAleatoriaConfiguracion(models.Model):
+    """Configuracion global del modulo de inspeccion aleatoria diaria (singleton)."""
+
+    GLOBAL_KEY = "global"
+
+    key = models.CharField(max_length=50, unique=True, default=GLOBAL_KEY)
+    hora_recordatorio = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Hora del dia en que se envia el recordatorio de inspeccion aleatoria.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Configuracion de inspeccion aleatoria"
+        verbose_name_plural = "Configuraciones de inspeccion aleatoria"
+
+    def __str__(self) -> str:
+        return f"InspeccionAleatoriaConfiguracion<{self.key}>"
+
+    @classmethod
+    def get_global(cls, *, for_update=False):
+        queryset = cls.objects
+        if for_update:
+            queryset = queryset.select_for_update()
+        instance, _ = queryset.get_or_create(key=cls.GLOBAL_KEY)
+        return instance
 
 
 class InspeccionAleatoriaDiaria(models.Model):

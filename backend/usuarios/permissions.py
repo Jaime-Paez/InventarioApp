@@ -356,6 +356,11 @@ class ClientesModulePermission(ModulePermission):
 class ConfiguracionModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.CONFIGURACION
 
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        return bool(request.user.is_staff or request.user.is_superuser)
+
 
 class MovimientoInventarioModulePermission(ModulePermission):
     """Valida permisos dependiendo del tipo de movimiento (entrada/salida)."""

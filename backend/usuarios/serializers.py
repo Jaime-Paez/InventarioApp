@@ -2,7 +2,6 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
-from app.models import UsuarioPreferencia
 from inventario.models import Sucursal
 
 from .models import (
@@ -16,7 +15,9 @@ from .utils import (
     ADMIN_ONLY_MODULES,
     build_permissions_summary,
     build_sucursal_scope_summary,
+    get_random_inspection_branch_ids,
     get_personalized_role_for_email,
+    sync_random_inspection_assignment,
 )
 
 
@@ -356,10 +357,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             if roles is not None:
                 user.roles.set(roles)
 
-            UsuarioPreferencia.objects.update_or_create(
-                usuario=user,
-                defaults={"inspeccion_aleatoria": inspeccion_aleatoria},
-            )
+            sync_random_inspection_assignment(user, inspeccion_aleatoria)
             if user.is_staff:
                 self._sync_personalized_permissions(user, [])
                 self._sync_sucursales_por_modulo(user, [])
@@ -390,10 +388,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             instance.roles.set(roles)
 
         if inspeccion_aleatoria is not None:
-            UsuarioPreferencia.objects.update_or_create(
-                usuario=instance,
-                defaults={"inspeccion_aleatoria": bool(inspeccion_aleatoria)},
-            )
+            sync_random_inspection_assignment(instance, bool(inspeccion_aleatoria))
 
         if instance.is_staff:
             self._sync_personalized_permissions(instance, [])
@@ -570,16 +565,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         )
 
     def get_inspeccion_aleatoria(self, obj):
-        preference = getattr(obj, "preferencia_operativa", None)
-        if preference is not None:
-            return bool(getattr(preference, "inspeccion_aleatoria", False))
-
-        preference = (
-            UsuarioPreferencia.objects.filter(usuario=obj)
-            .only("inspeccion_aleatoria")
-            .first()
-        )
-        return bool(getattr(preference, "inspeccion_aleatoria", False))
+        return bool(get_random_inspection_branch_ids(obj))
 
 
 class UsuarioDestinatarioSerializer(serializers.ModelSerializer):

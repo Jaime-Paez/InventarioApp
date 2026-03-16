@@ -4,6 +4,7 @@ from .models import MODULOS_CON_ALCANCE_SUCURSAL, Rol, RolPermiso, UsuarioModulo
 
 ADMIN_ONLY_MODULES = {
     RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
+    RolPermiso.Modulos.CONFIGURACION,
 }
 
 
@@ -157,6 +158,185 @@ def remove_personalized_role_for_email(email):
     if role:
         role.permisos.all().delete()
         role.delete()
+
+
+def user_has_module_action(usuario, module_key, action_key="puede_leer"):
+    if not usuario:
+        return False
+
+    if usuario.is_staff or usuario.is_superuser:
+        return True
+
+    permisos = get_permisos_efectivos(usuario, getattr(usuario, "email", ""))
+    for permiso in permisos:
+        if str(permiso.get("modulo") or "").strip() != str(module_key or "").strip():
+            continue
+        if bool(permiso.get(action_key)):
+            return True
+        if action_key == "puede_leer" and any(
+            (
+                permiso.get("puede_crear"),
+                permiso.get("puede_actualizar"),
+                permiso.get("puede_eliminar"),
+            )
+        ):
+            return True
+    return False
+
+
+def normalize_random_inspection_branch_ids(raw_ids):
+    if raw_ids is None:
+        return []
+
+    if isinstance(raw_ids, str):
+        raw_ids = [part.strip() for part in raw_ids.split(",")]
+
+    if not isinstance(raw_ids, (list, tuple, set)):
+        return []
+
+    normalized = []
+    seen = set()
+    for value in raw_ids:
+        try:
+            branch_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if branch_id <= 0 or branch_id in seen:
+            continue
+        normalized.append(branch_id)
+        seen.add(branch_id)
+    return normalized
+
+
+def _get_existing_branch_ids():
+    from inventario.models import Sucursal
+
+    return list(
+        Sucursal.objects.order_by("nombre", "id").values_list("id", flat=True)
+    )
+
+
+def get_random_inspection_branch_ids(usuario):
+    from app.models import UsuarioPreferencia
+
+    if not usuario:
+        return []
+
+    preference = getattr(usuario, "preferencia_operativa", None)
+    if preference is None:
+        preference = (
+            UsuarioPreferencia.objects.filter(usuario=usuario)
+            .only("inspeccion_aleatoria", "inspeccion_aleatoria_sucursales")
+            .first()
+        )
+
+    valid_branch_ids = set(_get_existing_branch_ids())
+    branch_ids = [
+        branch_id
+        for branch_id in normalize_random_inspection_branch_ids(
+            getattr(preference, "inspeccion_aleatoria_sucursales", [])
+        )
+        if branch_id in valid_branch_ids
+    ]
+
+    if branch_ids:
+        return branch_ids
+
+    if preference is not None and bool(
+        getattr(preference, "inspeccion_aleatoria", False)
+    ):
+        return sorted(valid_branch_ids)
+
+    return []
+
+
+def _sync_random_inspection_inventory_access(usuario, enabled):
+    enabled = bool(enabled)
+
+    if usuario.is_staff or usuario.is_superuser:
+        return
+
+    personalized_role = get_personalized_role_for_email(
+        getattr(usuario, "email", ""),
+        create=enabled,
+    )
+
+    if enabled:
+        if personalized_role is None:
+            return
+
+        permiso, created = RolPermiso.objects.get_or_create(
+            rol=personalized_role,
+            modulo=RolPermiso.Modulos.INVENTARIO,
+            submodulo="",
+            defaults={
+                "puede_crear": False,
+                "puede_leer": True,
+                "puede_actualizar": False,
+                "puede_eliminar": False,
+            },
+        )
+        if not created and not permiso.puede_leer:
+            permiso.puede_leer = True
+            permiso.save(update_fields=["puede_leer"])
+        return
+
+    if personalized_role is None:
+        return
+
+    personalized_role.permisos.filter(
+        modulo=RolPermiso.Modulos.INVENTARIO,
+        submodulo="",
+    ).delete()
+    if not personalized_role.permisos.exists():
+        personalized_role.delete()
+
+
+def set_random_inspection_branch_ids(usuario, branch_ids):
+    from app.models import UsuarioPreferencia
+
+    existing_branch_ids = set(_get_existing_branch_ids())
+    normalized_branch_ids = [
+        branch_id
+        for branch_id in normalize_random_inspection_branch_ids(branch_ids)
+        if branch_id in existing_branch_ids
+    ]
+    enabled = bool(normalized_branch_ids)
+
+    UsuarioPreferencia.objects.update_or_create(
+        usuario=usuario,
+        defaults={
+            "inspeccion_aleatoria": enabled,
+            "inspeccion_aleatoria_sucursales": normalized_branch_ids,
+        },
+    )
+
+    _sync_random_inspection_inventory_access(usuario, enabled)
+    return normalized_branch_ids
+
+
+def sync_random_inspection_assignment(usuario, enabled):
+    enabled = bool(enabled)
+    branch_ids = _get_existing_branch_ids() if enabled else []
+    set_random_inspection_branch_ids(usuario, branch_ids)
+
+
+def sync_random_inspection_branch_assignment(usuario, branch_id, enabled):
+    branch_ids = set(get_random_inspection_branch_ids(usuario))
+    try:
+        normalized_branch_id = int(branch_id)
+    except (TypeError, ValueError):
+        normalized_branch_id = 0
+
+    if normalized_branch_id <= 0:
+        return sorted(branch_ids)
+
+    if enabled:
+        branch_ids.add(normalized_branch_id)
+    else:
+        branch_ids.discard(normalized_branch_id)
+
+    return set_random_inspection_branch_ids(usuario, sorted(branch_ids))
 
 
 def get_modulos_con_alcance_sucursal_options():

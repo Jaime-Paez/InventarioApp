@@ -18,10 +18,21 @@ function Sidebar({
 }) {
   const [openGroups, setOpenGroups] = useState({})
   const [profileOpen, setProfileOpen] = useState(false)
+  const canAccessConfiguration = Boolean(
+    user?.is_superuser ||
+      user?.is_staff ||
+      user?.es_administrador ||
+      String(user?.rol || '').trim().toLowerCase() === 'administrador'
+  )
 
   const menuItems = useMemo(
-    () => filterMenuByPermissions(MENU_STRUCTURE, permissionIndex, moduleScopeAccessIndex),
-    [moduleScopeAccessIndex, permissionIndex]
+    () => filterMenuByPermissions(
+      MENU_STRUCTURE,
+      permissionIndex,
+      moduleScopeAccessIndex,
+      canAccessConfiguration
+    ),
+    [canAccessConfiguration, moduleScopeAccessIndex, permissionIndex]
   )
   const openTabSet = useMemo(() => new Set(openTabs), [openTabs])
 
@@ -47,12 +58,6 @@ function Sidebar({
 
   const firstName = (user?.nombre || user?.first_name || '').trim()
   const lastName = (user?.apellido || user?.last_name || '').trim()
-  const canAccessConfiguration = Boolean(
-    user?.is_superuser ||
-      user?.is_staff ||
-      user?.es_administrador ||
-      String(user?.rol || '').trim().toLowerCase() === 'administrador'
-  )
 
   const userInitial = (firstName[0] || lastName[0] || 'U').toUpperCase()
   const lastNameInitial = lastName ? `${lastName[0].toUpperCase()}.` : ''
