@@ -108,6 +108,13 @@ class InspeccionAleatoriaDiaria(models.Model):
         on_delete=models.CASCADE,
         related_name="inspecciones_aleatorias",
     )
+    sucursal = models.ForeignKey(
+        "inventario.Sucursal",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inspecciones_aleatorias_diarias",
+    )
     fecha_programada = models.DateField(db_index=True)
     estado = models.CharField(
         max_length=20,
@@ -124,7 +131,18 @@ class InspeccionAleatoriaDiaria(models.Model):
         verbose_name = "Inspeccion aleatoria diaria"
         verbose_name_plural = "Inspecciones aleatorias diarias"
         ordering = ["-fecha_programada", "-id"]
-        unique_together = ("usuario", "fecha_programada")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["usuario", "fecha_programada"],
+                condition=models.Q(sucursal__isnull=True),
+                name="unique_insp_aleatoria_usuario_fecha",
+            ),
+            models.UniqueConstraint(
+                fields=["usuario", "sucursal", "fecha_programada"],
+                condition=models.Q(sucursal__isnull=False),
+                name="unique_insp_aleatoria_usuario_sucursal_fecha",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"Inspeccion<{self.usuario_id}:{self.fecha_programada}>"

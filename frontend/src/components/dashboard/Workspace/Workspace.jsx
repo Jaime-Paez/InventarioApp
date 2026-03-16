@@ -442,7 +442,12 @@ function Workspace({
       <TabComponent
         token={token}
         user={user}
-        isTabActive={tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ? isActive : undefined}
+        isTabActive={
+          tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ||
+          tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY
+            ? isActive
+            : undefined
+        }
         createBranchId={createBranchId}
         moduleKey={moduleKey}
         moduleActions={scopedModuleActions}

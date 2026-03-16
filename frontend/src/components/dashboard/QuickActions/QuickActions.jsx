@@ -25,6 +25,8 @@ import {
   isReminderCreatedByCurrentUser,
   isReminderForCurrentUser,
   isReminderPendingForCurrentUser,
+  isReminderSeenByCurrentUser,
+  isRandomInspectionReminder,
   isSpecialTransferDecisionReminder,
   normalizeId,
   readRemindersFromStorage,
@@ -200,6 +202,8 @@ function QuickActions({
   const seenPendingShipmentUrgentIdsRef = useRef(new Set())
   const didInitTransferResponseSnapshotRef = useRef(false)
   const seenTransferResponseReminderIdsRef = useRef(new Set())
+  const didInitRandomInspectionSnapshotRef = useRef(false)
+  const seenRandomInspectionReminderIdsRef = useRef(new Set())
   const didPlayInitialPendingToneRef = useRef(false)
   const didRequestSystemNotificationPermissionRef = useRef(false)
   const toast = useRef(null)
@@ -1000,6 +1004,52 @@ function QuickActions({
     playNotificationTone,
     pushSystemTransferNotification,
   ])
+
+  const randomInspectionReminders = useMemo(
+    () =>
+      reminders.filter(
+        (reminder) =>
+          isRandomInspectionReminder(reminder) &&
+          isReminderForCurrentUser(reminder, currentUserIds) &&
+          !isReminderSeenByCurrentUser(reminder, currentUserIds)
+      ),
+    [currentUserIds, reminders]
+  )
+
+  useEffect(() => {
+    const nextIds = new Set(
+      randomInspectionReminders
+        .map((reminder) => normalizeId(reminder?.id))
+        .filter(Boolean)
+    )
+
+    if (!didInitRandomInspectionSnapshotRef.current) {
+      seenRandomInspectionReminderIdsRef.current = nextIds
+      didInitRandomInspectionSnapshotRef.current = true
+      playInitialPendingToneIfNeeded(nextIds, {
+        type: 'inspeccion_aleatoria_diaria',
+      })
+      return
+    }
+
+    const seenIds = seenRandomInspectionReminderIdsRef.current
+    const newReminderIds = []
+    nextIds.forEach((id) => {
+      if (!seenIds.has(id)) newReminderIds.push(id)
+    })
+    seenRandomInspectionReminderIdsRef.current = nextIds
+
+    if (newReminderIds.length) {
+      playNotificationTone()
+      void showSystemNotification({
+        title: 'Tienes una inspección aleatoria pendiente',
+        body: `Revisa ${newReminderIds.length} recordatorio(s) de inspección.`,
+        tag: 'inventario-inspeccion-aleatoria',
+        url: '/',
+        requireInteraction: true,
+      })
+    }
+  }, [randomInspectionReminders, playInitialPendingToneIfNeeded, playNotificationTone])
 
   useEffect(() => {
     const nextIds = new Set(

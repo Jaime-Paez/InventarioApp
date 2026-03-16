@@ -51,7 +51,7 @@ const ASSIGNMENTS_MODAL_MIN_WIDTH = 720
 const ASSIGNMENTS_MODAL_MIN_HEIGHT = 520
 const ASSIGNMENTS_VIEWPORT_PADDING = 12
 
-function RandomInspectionAdminTable({ token, moduleActions }) {
+function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const toast = useRef(null)
   const canRead = moduleActions?.puede_leer ?? true
   const canUpdate = moduleActions?.puede_actualizar ?? true
@@ -83,6 +83,8 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
   const [configLoading, setConfigLoading] = useState(false)
   const [showSendNowDialog, setShowSendNowDialog] = useState(false)
   const [sendNowLoading, setSendNowLoading] = useState(false)
+  const [sendNowDialogLoading, setSendNowDialogLoading] = useState(false)
+  const [sendNowParams, setSendNowParams] = useState({ cantidad_productos: '', hora_recordatorio: '' })
   const [assignmentsModalPosition, setAssignmentsModalPosition] = useState({ x: 0, y: 0 })
   const [assignmentsModalSize, setAssignmentsModalSize] = useState({
     width: ASSIGNMENTS_MODAL_MIN_WIDTH,
@@ -155,11 +157,43 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
 
   const sendNow = useCallback(async () => {
     if (!token) return
+
+    const hora = String(sendNowParams?.hora_recordatorio || '').trim()
+    if (!hora) {
+      notifyError('Debes seleccionar la hora del recordatorio.')
+      return
+    }
+
+    const parts = hora.split(':')
+    const parsedHour = Number.parseInt(parts[0], 10)
+    const parsedMinute = Number.parseInt(parts[1] ?? '0', 10)
+    const now = new Date()
+
+    if (
+      !Number.isFinite(parsedHour) ||
+      !Number.isFinite(parsedMinute) ||
+      parsedHour < 0 ||
+      parsedHour > 23 ||
+      parsedMinute < 0 ||
+      parsedMinute > 59
+    ) {
+      notifyError('Formato de hora invalido. Usa HH:MM.')
+      return
+    }
+
+    if (
+      parsedHour < now.getHours() ||
+      (parsedHour === now.getHours() && parsedMinute < now.getMinutes())
+    ) {
+      notifyError('La hora debe ser igual o posterior a la hora actual.')
+      return
+    }
+
     setSendNowLoading(true)
     try {
       const response = await authFetch(
         `${API_URL}/recordatorios/inspeccion-aleatoria/enviar-ahora/`,
-        { method: 'POST' },
+        { method: 'POST', body: JSON.stringify(sendNowParams) },
         token
       )
       const payload = await response.json().catch(() => ({}))
@@ -171,7 +205,7 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
     } finally {
       setSendNowLoading(false)
     }
-  }, [token, notifyError, notifySuccess])
+  }, [token, sendNowParams, notifyError, notifySuccess])
 
   const loadAssignments = useCallback(async () => {
     if (!token || !canUpdate) {
@@ -702,12 +736,31 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
             <button
               type="button"
               className="inspection-admin__manage"
-              onClick={() => {
-                void loadAssignments()
-                void loadConfig()
-                setShowSendNowDialog(true)
+              onClick={async () => {
+                setSendNowDialogLoading(true)
+                try {
+                  const now = new Date()
+                  now.setMinutes(now.getMinutes() + 5)
+                  const defaultTime = `${String(now.getHours()).padStart(2, '0')}:${String(
+                    now.getMinutes()
+                  ).padStart(2, '0')}`
+
+                  setSendNowParams({
+                    cantidad_productos: configData.cantidad_productos,
+                    hora_recordatorio: defaultTime,
+                  })
+
+                  // Load data in parallel
+                  await Promise.all([loadAssignments(), loadConfig()])
+
+                  setShowSendNowDialog(true)
+                } catch (error) {
+                  notifyError('Error al cargar datos para enviar recordatorios.')
+                } finally {
+                  setSendNowDialogLoading(false)
+                }
               }}
-              disabled={sendNowLoading}
+              disabled={sendNowLoading || sendNowDialogLoading}
             >
               <Send size={14} />
               Enviar revision ahora
@@ -971,7 +1024,7 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
       )}
 
       {showSendNowDialog && (
-        <div className="inspection-admin__dialog-overlay" onMouseDown={() => !sendNowLoading && setShowSendNowDialog(false)}>
+        <div className="inspection-admin__dialog-overlay" onMouseDown={() => !(sendNowLoading || sendNowDialogLoading) && setShowSendNowDialog(false)}>
           <div
             className="inspection-admin__dialog"
             role="dialog"
@@ -979,6 +1032,14 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
             aria-label="Enviar revision ahora"
             onMouseDown={(e) => e.stopPropagation()}
           >
+            {(sendNowLoading || sendNowDialogLoading) && (
+              <div className="inspection-admin__dialog-loading">
+                <div className="inspection-admin__dialog-loading-content">
+                  <Loader2 className="inspection-admin__dialog-loading-spinner" size={24} />
+                  <span>{sendNowDialogLoading ? 'Cargando datos...' : 'Enviando recordatorios...'}</span>
+                </div>
+              </div>
+            )}
             <header className="inspection-admin__dialog-head">
               <div>
                 <h4>Enviar revision ahora</h4>
@@ -988,7 +1049,7 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
                 type="button"
                 className="inspection-admin__dialog-close"
                 onClick={() => setShowSendNowDialog(false)}
-                disabled={sendNowLoading}
+                disabled={sendNowLoading || sendNowDialogLoading}
                 aria-label="Cerrar"
               >
                 <X size={16} />
@@ -996,19 +1057,30 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
             </header>
 
             <div className="inspection-admin__dialog-body">
-              <div className="inspection-admin__sendnow-summary">
-                <div className="inspection-admin__sendnow-row">
-                  <span className="inspection-admin__sendnow-label">Productos por inspeccion</span>
-                  <strong className="inspection-admin__sendnow-value">
-                    {configData.cantidad_productos || '—'}
-                  </strong>
-                </div>
-                <div className="inspection-admin__sendnow-row">
-                  <span className="inspection-admin__sendnow-label">Hora de recordatorio</span>
-                  <strong className="inspection-admin__sendnow-value">
-                    {configData.hora_recordatorio || '—'}
-                  </strong>
-                </div>
+              <div className="inspection-admin__config-fields" style={{ marginBottom: '12px' }}>
+                <label className="create-user__field">
+                  <span>Productos por sucursal</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="200"
+                    step="1"
+                    value={sendNowParams.cantidad_productos}
+                    onChange={(e) => setSendNowParams((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
+                    placeholder="Ej: 5"
+                    disabled={sendNowLoading || sendNowDialogLoading}
+                  />
+                </label>
+                <label className="create-user__field">
+                  <span>Hora del recordatorio</span>
+                  <input
+                    type="time"
+                    min={`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`}
+                    value={sendNowParams.hora_recordatorio}
+                    onChange={(e) => setSendNowParams((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
+                    disabled={sendNowLoading || sendNowDialogLoading}
+                  />
+                </label>
               </div>
 
               {sendNowSummary.length === 0 ? (
@@ -1039,7 +1111,7 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
                 type="button"
                 className="inspection-admin__btn inspection-admin__btn--ghost"
                 onClick={() => setShowSendNowDialog(false)}
-                disabled={sendNowLoading}
+                disabled={sendNowLoading || sendNowDialogLoading}
               >
                 Cancelar
               </button>
@@ -1047,7 +1119,7 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
                 type="button"
                 className="inspection-admin__btn inspection-admin__btn--primary"
                 onClick={() => void sendNow()}
-                disabled={sendNowLoading || sendNowSummary.length === 0}
+                disabled={sendNowLoading || sendNowDialogLoading || sendNowSummary.length === 0}
               >
                 {sendNowLoading ? 'Enviando...' : 'Enviar ahora'}
               </button>
@@ -1056,7 +1128,7 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
         </div>
       )}
 
-      {showAssignmentsDialog && typeof document !== 'undefined' && createPortal(
+      {showAssignmentsDialog && isTabActive !== false && typeof document !== 'undefined' && createPortal(
         <div
           className={`create-user__overlay inspection-admin__reviewers-overlay${isDarkTheme ? ' inspection-admin__reviewers-overlay--dark' : ''}`}
           role="dialog"
@@ -1099,7 +1171,13 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
               </div>
             </header>
 
-            <div className="create-user__form">
+            <div className="create-user__form" style={{ position: 'relative' }}>
+              {(assignmentsLoading || configLoading) && (
+                <div className="create-user__loading-overlay" role="status" aria-live="polite">
+                  <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+                  <span>Cargando...</span>
+                </div>
+              )}
               <div className="create-user__tabs" role="tablist" aria-label="Secciones de configuracion">
                 <button
                   type="button"
@@ -1242,7 +1320,12 @@ function RandomInspectionAdminTable({ token, moduleActions }) {
                       onClick={handleToggleEdit}
                       disabled={assignmentsLoading || assignmentsSaving}
                     >
-                      {isEditingAssignments ? (
+                      {(assignmentsLoading || configLoading) ? (
+                        <>
+                          <span className="inspection-admin__toggle-icon" aria-hidden="true"><Loader2 size={15} className="inspection-admin__dialog-loading-spinner" /></span>
+                          <span>Cargando...</span>
+                        </>
+                      ) : isEditingAssignments ? (
                         <>
                           <span className="inspection-admin__toggle-icon" aria-hidden="true"><Eye size={15} /></span>
                           <span>Solo lectura</span>

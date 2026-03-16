@@ -540,10 +540,53 @@ def _collect_random_inspection_candidates(user):
     return candidates
 
 
-def _collect_random_inspection_history(user):
+def _collect_branch_inspection_candidates(branch_id):
+    """Collect inventory candidates for a single branch."""
+    queryset = Inventario.objects.filter(
+        cantidad__gt=0,
+        subdivision__division__bodega__sucursal_id=branch_id,
+    )
     rows = (
-        InspeccionAleatoriaItem.objects.filter(inspeccion__usuario=user)
-        .values("sucursal_id", "producto_id")
+        queryset.values(
+            "subdivision__division__bodega__sucursal_id",
+            "subdivision__division__bodega__sucursal__nombre",
+            "producto_id",
+            "producto__codigo",
+            "producto__nombre",
+        )
+        .annotate(cantidad_esperada=Sum("cantidad"))
+        .order_by("producto_id")
+    )
+    candidates = []
+    for row in rows:
+        sucursal_id = _normalize_int(row.get("subdivision__division__bodega__sucursal_id"), 0)
+        producto_id = _normalize_int(row.get("producto_id"), 0)
+        cantidad_esperada = _normalize_int(row.get("cantidad_esperada"), 0)
+        if sucursal_id <= 0 or producto_id <= 0 or cantidad_esperada <= 0:
+            continue
+        candidates.append({
+            "sucursal_id": sucursal_id,
+            "sucursal_nombre": _normalize_text(
+                row.get("subdivision__division__bodega__sucursal__nombre")
+            ) or f"Sucursal {sucursal_id}",
+            "producto_id": producto_id,
+            "producto_codigo": _normalize_text(row.get("producto__codigo")),
+            "producto_nombre": _normalize_text(row.get("producto__nombre")) or f"Producto {producto_id}",
+            "cantidad_esperada": cantidad_esperada,
+        })
+    return candidates
+
+
+def _collect_random_inspection_history(user):
+    # Only count completed inspections (not pending ones)
+    rows = (
+        InspeccionAleatoriaItem.objects.filter(
+            inspeccion__usuario=user
+        ).exclude(
+            estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
+        ).exclude(
+            verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
+        ).values("sucursal_id", "producto_id")
         .annotate(total_revisiones=Count("id"), ultima_revision=Max("revisado_en"))
     )
     history = {}
@@ -639,7 +682,7 @@ def _calculate_random_inspection_coverage(user, candidate_keys):
     return round((reviewed_in_scope / len(candidate_keys)) * 100, 2)
 
 
-def _build_random_inspection_reminder(inspection, user):
+def _build_random_inspection_reminder(inspection, user, *, branch_nombre=None, time_str=None):
     date_value = inspection.fecha_programada.isoformat()
     reminder_id = f"insp-{int(inspection.id)}"
     created_at = _parse_iso_timestamp(getattr(inspection, "created_at", None)) or _iso_now()
@@ -651,14 +694,21 @@ def _build_random_inspection_reminder(inspection, user):
     if total_items <= 0:
         total_items = RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY
     items_label = "producto" if total_items == 1 else "productos"
-    description = (
-        f"Inspeccion aleatoria diaria: revisa {total_items} {items_label} del inventario y confirma "
-        "si coinciden con el sistema."
-    )
+    if branch_nombre:
+        description = (
+            f"Inspeccion aleatoria: revisa {total_items} {items_label} de {branch_nombre} y confirma "
+            "si coinciden con el sistema."
+        )
+    else:
+        description = (
+            f"Inspeccion aleatoria diaria: revisa {total_items} {items_label} del inventario y confirma "
+            "si coinciden con el sistema."
+        )
+    reminder_time = time_str if time_str else f"{RANDOM_INSPECTION_START_HOUR:02d}:00"
     return {
         "id": reminder_id,
         "date": date_value,
-        "time": f"{RANDOM_INSPECTION_START_HOUR:02d}:00",
+        "time": reminder_time,
         "description": description,
         "creator": {"id": "sistema", "name": "Sistema"},
         "recipients": [recipient],
@@ -686,13 +736,15 @@ def _upsert_random_inspection_reminder(
     user,
     *,
     mark_completed=False,
+    branch_nombre=None,
+    time_str=None,
 ):
     existing_payload = (
         list(store.payload)
         if isinstance(store.payload, list)
         else []
     )
-    reminder = _sanitize_reminder(_build_random_inspection_reminder(inspection, user))
+    reminder = _sanitize_reminder(_build_random_inspection_reminder(inspection, user, branch_nombre=branch_nombre, time_str=time_str))
     if reminder is None:
         return False
 
@@ -759,7 +811,7 @@ def _ensure_daily_random_inspection_for_user(user, store):
     scheduled_date = now_local.date()
     inspection = (
         InspeccionAleatoriaDiaria.objects.select_for_update()
-        .filter(usuario=user, fecha_programada=scheduled_date)
+        .filter(usuario=user, fecha_programada=scheduled_date, sucursal__isnull=True)
         .first()
     )
 
@@ -787,6 +839,7 @@ def _ensure_daily_random_inspection_for_user(user, store):
 
         inspection = InspeccionAleatoriaDiaria.objects.create(
             usuario=user,
+            sucursal=None,
             fecha_programada=scheduled_date,
             estado=InspeccionAleatoriaDiaria.Estados.PENDIENTE,
             total_items=len(selected),
@@ -2142,29 +2195,146 @@ class RandomInspectionSendNowAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        User = get_user_model()
-        enabled_users = (
-            User.objects.filter(
-                is_active=True,
-                preferencia_operativa__inspeccion_aleatoria=True,
+        # Parse cantidad_productos
+        cantidad_raw = request.data.get("cantidad_productos")
+        cantidad = _normalize_int(cantidad_raw, 0)
+        if cantidad <= 0:
+            cantidad = _resolve_random_inspection_items_per_day()
+        cantidad = max(RANDOM_INSPECTION_MIN_ITEMS_PER_DAY, min(RANDOM_INSPECTION_MAX_ITEMS_PER_DAY, cantidad))
+
+        # Parse hora_recordatorio (solo para hoy)
+        hora_raw = _normalize_text(request.data.get("hora_recordatorio", ""))
+        if not hora_raw:
+            return Response(
+                {"detail": "Debes especificar la hora del recordatorio."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            .select_related("preferencia_operativa")
-            .distinct()
+
+        parts = hora_raw.split(":")
+        try:
+            h = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else 0
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                raise ValueError()
+        except (ValueError, IndexError):
+            return Response(
+                {"detail": "Formato de hora invalido. Usa HH:MM."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.localtime().time()
+        if (h, m) < (now.hour, now.minute):
+            return Response(
+                {"detail": "La hora debe ser igual o posterior a la hora actual."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        time_str = f"{h:02d}:{m:02d}"
+
+        enabled_prefs = (
+            UsuarioPreferencia.objects.filter(
+                inspeccion_aleatoria=True,
+                usuario__is_active=True,
+            )
+            .select_related("usuario")
         )
 
+        # Global deduplication: (sucursal_id, producto_id) already assigned in this batch
+        used_keys = set()
         dispatched = []
+        scheduled_date = timezone.localdate()
+
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
-            for user in enabled_users:
-                inspection, changed = _ensure_daily_random_inspection_for_user(user, store)
-                if inspection is not None:
-                    dispatched.append(
-                        {
-                            "usuario_id": int(user.id),
-                            "nombre": _format_user_display_name(user),
-                            "inspeccion_id": int(inspection.id),
-                        }
+
+            for pref in enabled_prefs:
+                user = pref.usuario
+                branch_ids = [
+                    int(bid)
+                    for bid in (pref.inspeccion_aleatoria_sucursales or [])
+                    if bid is not None
+                ]
+
+                for branch_id in branch_ids:
+                    # Collect all products from this branch
+                    all_candidates = _collect_branch_inspection_candidates(branch_id)
+                    if not all_candidates:
+                        continue
+
+                    # Filter out products already assigned in this batch
+                    available = [
+                        c for c in all_candidates
+                        if (c["sucursal_id"], c["producto_id"]) not in used_keys
+                    ]
+                    if not available:
+                        continue
+
+                    # Select random products (reuses history-aware selection logic)
+                    selected = _select_random_inspection_candidates(
+                        user,
+                        scheduled_date,
+                        available,
+                        items_per_day=cantidad,
                     )
+                    if not selected:
+                        continue
+
+                    # Mark selected as globally used
+                    for item in selected:
+                        used_keys.add((item["sucursal_id"], item["producto_id"]))
+
+                    branch_nombre = selected[0].get("sucursal_nombre") or f"Sucursal {branch_id}"
+
+                    # Create inspection for this user-branch if not already created today
+                    inspection = (
+                        InspeccionAleatoriaDiaria.objects.select_for_update()
+                        .filter(usuario=user, sucursal_id=branch_id, fecha_programada=scheduled_date)
+                        .first()
+                    )
+
+                    if inspection is None:
+                        candidate_keys = {
+                            (c["sucursal_id"], c["producto_id"])
+                            for c in all_candidates
+                        }
+                        coverage = _calculate_random_inspection_coverage(user, candidate_keys)
+
+                        inspection = InspeccionAleatoriaDiaria.objects.create(
+                            usuario=user,
+                            sucursal_id=branch_id,
+                            fecha_programada=scheduled_date,
+                            estado=InspeccionAleatoriaDiaria.Estados.PENDIENTE,
+                            total_items=len(selected),
+                            cobertura_porcentaje=coverage,
+                        )
+
+                        InspeccionAleatoriaItem.objects.bulk_create([
+                            InspeccionAleatoriaItem(
+                                inspeccion=inspection,
+                                sucursal_id=branch_id,
+                                producto_id=item["producto_id"],
+                                cantidad_esperada=item["cantidad_esperada"],
+                            )
+                            for item in selected
+                        ])
+
+                    _upsert_random_inspection_reminder(
+                        store,
+                        inspection,
+                        user,
+                        branch_nombre=branch_nombre,
+                        time_str=time_str,
+                    )
+
+                    dispatched.append({
+                        "usuario_id": int(user.id),
+                        "nombre": _format_user_display_name(user),
+                        "sucursal_id": branch_id,
+                        "sucursal_nombre": branch_nombre,
+                        "inspeccion_id": int(inspection.id),
+                        "productos": len(selected),
+                    })
+
             store.save()
 
         return Response(
