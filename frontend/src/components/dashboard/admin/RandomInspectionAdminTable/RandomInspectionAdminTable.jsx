@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, Loader2, Pencil, RefreshCw, Send, Settings, Wrench, X } from 'lucide-react'
+import { Eye, Loader2, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
 import '../CreateUsuario/CreateUsuario.css'
@@ -697,6 +697,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       await Promise.all([loadSummary(), loadItems()])
     } catch (error) {
       setSubmitError(error?.message || 'No se pudo guardar la verificacion.')
+      void Promise.all([loadSummary(), loadItems()])
     } finally {
       setSubmitLoading(false)
     }
@@ -777,24 +778,25 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
               Configuracion
             </button>
           )}
+        </div>
+      </header>
+
+      <div className="inspection-admin__block">
+        <div className="inspection-admin__block-head">
+          <h4>Sucursales</h4>
           <button
             type="button"
-            className="inspection-admin__refresh"
+            className="rounded-icon-btn"
             onClick={() => {
               void loadSummary()
               void loadItems()
             }}
             disabled={summaryLoading || itemsLoading}
-            aria-label="Actualizar resumen de inspecciones"
+            title="Actualizar"
           >
-            <RefreshCw size={14} />
-            Actualizar
+            <i className={`pi ${summaryLoading || itemsLoading ? 'pi-spin pi-spinner' : 'pi-refresh'}`} />
           </button>
         </div>
-      </header>
-
-      <div className="inspection-admin__block">
-        <h4>Sucursales</h4>
         <div className="inspection-admin__table-wrap">
           <table className="inspection-admin__table inspection-admin__table--summary">
             <thead>
