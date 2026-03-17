@@ -111,7 +111,6 @@ INSTALLED_APPS = [
     "inventario",
     "tipos",
     "casa_comercial",
-    "marcas",
     "productos",
     "movimientos",
     "usuarios",

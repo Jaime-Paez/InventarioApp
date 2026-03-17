@@ -52,7 +52,6 @@ const initialSearchCriteria = {
   nombre: '',
   oem: '',
   descripcion: '',
-  marca: '',
   casa_comercial: '',
   pieza_original: '',
   costo_minimo: '',
@@ -65,7 +64,6 @@ const buildDefaultAppliedCriteria = () => ({ ...initialSearchCriteria, __onlyWit
 const INVENTARIO_FILTER_FIELDS = [
   'codigo',
   'nombre',
-  'marca_nombre',
   'pieza_original_label',
   'costo_minimo',
   'precio',
@@ -76,7 +74,6 @@ const INVENTARIO_FILTER_FIELDS = [
 const INVENTARIO_FILTER_DEFAULT_MODES = {
   codigo: FilterMatchMode.STARTS_WITH,
   nombre: FilterMatchMode.STARTS_WITH,
-  marca_nombre: FilterMatchMode.STARTS_WITH,
   pieza_original_label: FilterMatchMode.STARTS_WITH,
   costo_minimo: FilterMatchMode.EQUALS,
   precio: FilterMatchMode.EQUALS,
@@ -87,7 +84,6 @@ const INVENTARIO_FILTER_DEFAULT_MODES = {
 const INVENTARIO_ORDERING_MAP = {
   codigo: 'codigo',
   nombre: 'nombre',
-  marca_nombre: 'marca_nombre',
   pieza_original_label: 'pieza_original_label',
   costo_minimo: 'costo_minimo',
   precio: 'precio',
@@ -126,15 +122,10 @@ function InventarioTable({ token, user, permissionIndex }) {
   const SEARCH_MIN_HEIGHT = 480
   const SEARCH_PADDING = 12
   const lastSearchRef = useRef(buildDefaultAppliedCriteria())
-  const [searchMarcaQuery, setSearchMarcaQuery] = useState('')
   const [searchCasaQuery, setSearchCasaQuery] = useState('')
-  const [searchMarcaOptions, setSearchMarcaOptions] = useState([])
   const [searchCasaOptions, setSearchCasaOptions] = useState([])
-  const [searchMarcaLoading, setSearchMarcaLoading] = useState(false)
   const [searchCasaLoading, setSearchCasaLoading] = useState(false)
-  const [showSearchMarcaDropdown, setShowSearchMarcaDropdown] = useState(false)
   const [showSearchCasaDropdown, setShowSearchCasaDropdown] = useState(false)
-  const searchMarcaDropdownRef = useRef(null)
   const searchCasaDropdownRef = useRef(null)
   const [activeProduct, setActiveProduct] = useState(null)
   const [activeProductInventoryEntries, setActiveProductInventoryEntries] = useState([])
@@ -190,7 +181,6 @@ function InventarioTable({ token, user, permissionIndex }) {
     addIfPresent('nombre', criteria?.nombre)
     addIfPresent('oem', criteria?.oem)
     addIfPresent('descripcion', criteria?.descripcion)
-    addIfPresent('marca', criteria?.marca)
     addIfPresent('casa_comercial', criteria?.casa_comercial)
     addIfPresent('pieza_original', criteria?.pieza_original)
     addIfPresent('costo_minimo', criteria?.costo_minimo)
@@ -425,33 +415,6 @@ function InventarioTable({ token, user, permissionIndex }) {
     }))
   }
 
-  const searchMarcas = useCallback(
-    async (query) => {
-      const term = String(query ?? '').trim()
-      if (!term || !token) {
-        setSearchMarcaOptions([])
-        return
-      }
-      setSearchMarcaLoading(true)
-      try {
-        const response = await authFetch(
-          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=5`,
-          {},
-          token
-        )
-        if (!response.ok) throw new Error('No se pudieron cargar las marcas.')
-        const data = await response.json()
-        const list = Array.isArray(data) ? data : data?.results || []
-        setSearchMarcaOptions(list)
-      } catch {
-        setSearchMarcaOptions([])
-      } finally {
-        setSearchMarcaLoading(false)
-      }
-    },
-    [token]
-  )
-
   const searchCasas = useCallback(
     async (query) => {
       const term = String(query ?? '').trim()
@@ -481,19 +444,6 @@ function InventarioTable({ token, user, permissionIndex }) {
 
   useEffect(() => {
     if (!showSearchModal) return
-    const term = searchMarcaQuery.trim()
-    if (!term) {
-      setSearchMarcaOptions([])
-      return
-    }
-    const handle = setTimeout(() => {
-      searchMarcas(term)
-    }, 300)
-    return () => clearTimeout(handle)
-  }, [searchMarcaQuery, searchMarcas, showSearchModal])
-
-  useEffect(() => {
-    if (!showSearchModal) return
     const term = searchCasaQuery.trim()
     if (!term) {
       setSearchCasaOptions([])
@@ -507,20 +457,12 @@ function InventarioTable({ token, user, permissionIndex }) {
 
   useEffect(() => {
     if (!showSearchModal) return
-    setSearchMarcaQuery(searchCriteria.marca || '')
     setSearchCasaQuery(searchCriteria.casa_comercial || '')
-  }, [showSearchModal, searchCriteria.marca, searchCriteria.casa_comercial])
+  }, [showSearchModal, searchCriteria.casa_comercial])
 
   useEffect(() => {
     if (!showSearchModal) return
     const handleClick = (event) => {
-      if (
-        showSearchMarcaDropdown &&
-        searchMarcaDropdownRef.current &&
-        !searchMarcaDropdownRef.current.contains(event.target)
-      ) {
-        setShowSearchMarcaDropdown(false)
-      }
       if (
         showSearchCasaDropdown &&
         searchCasaDropdownRef.current &&
@@ -531,7 +473,7 @@ function InventarioTable({ token, user, permissionIndex }) {
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [showSearchModal, showSearchMarcaDropdown, showSearchCasaDropdown])
+  }, [showSearchModal, showSearchCasaDropdown])
 
   const handleSearchSubmit = async (event) => {
     event.preventDefault()
@@ -580,11 +522,8 @@ function InventarioTable({ token, user, permissionIndex }) {
 
   const resetSearch = () => {
     setSearchCriteria(initialSearchCriteria)
-    setSearchMarcaQuery('')
     setSearchCasaQuery('')
-    setSearchMarcaOptions([])
     setSearchCasaOptions([])
-    setShowSearchMarcaDropdown(false)
     setShowSearchCasaDropdown(false)
   }
 
@@ -617,7 +556,6 @@ function InventarioTable({ token, user, permissionIndex }) {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      marca_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       pieza_original_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       casa_comercial_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       costo_minimo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
@@ -661,12 +599,14 @@ function InventarioTable({ token, user, permissionIndex }) {
     setGlobalFilterValue('')
     const defaultApplied = buildDefaultAppliedCriteria()
     lastSearchRef.current = defaultApplied
+    setSortField(null)
+    setSortOrder(null)
     setPageFirst(0)
     setIsRefreshing(true)
     await fetchData(defaultApplied, 1, pageSize, {
       globalSearchValue: '',
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
+      tableSortField: null,
+      tableSortOrder: null,
       tableFilters: nextFilters,
     })
   }
@@ -757,7 +697,6 @@ function InventarioTable({ token, user, permissionIndex }) {
     () => [
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Producto', filterPlaceholder: 'Buscar por producto' },
-      { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
       { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Activo/Inactivo' },
       { nombrevar: 'casa_comercial_nombre', header: 'Casa comercial', filterPlaceholder: 'Buscar por casa comercial' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
@@ -1028,7 +967,37 @@ function InventarioTable({ token, user, permissionIndex }) {
     []
   )
 
+  const clickTimerRef = useRef(null)
+
   const handleRowClick = (event) => {
+    const t = event?.originalEvent?.target
+    if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
+
+    const rowData = event?.data
+    if (!rowData) return
+    const id = normId(rowData?.id)
+    if (!id) return
+
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = setTimeout(() => {
+      setSelectedRows((prev) => {
+        const prevMap = new Map((prev || []).map((r) => [normId(r?.id), r]))
+        if (prevMap.has(id)) {
+          prevMap.delete(id)
+        } else {
+          prevMap.set(id, rowData)
+        }
+        return Array.from(prevMap.values())
+      })
+    }, 220)
+  }
+
+  const handleRowDoubleClick = (event) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+
     const t = event?.originalEvent?.target
     if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
     const row = event?.data
@@ -1271,7 +1240,7 @@ function InventarioTable({ token, user, permissionIndex }) {
           size="small"
           scrollable
           scrollHeight="flex"
-          frozenWidth="40px"
+          frozenWidth="190px"
           lazy
           paginator
           first={pageFirst}
@@ -1292,6 +1261,7 @@ function InventarioTable({ token, user, permissionIndex }) {
           resizableColumns
           columnResizeMode="fit"
           onRowClick={handleRowClick}
+          onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) =>
             selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow inventario__row' : 'inventario__row'
           }
@@ -1327,7 +1297,6 @@ function InventarioTable({ token, user, permissionIndex }) {
             switch (column.nombrevar) {
               case 'codigo':
               case 'nombre':
-              case 'marca_nombre':
               case 'casa_comercial_nombre':
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
@@ -1369,6 +1338,7 @@ function InventarioTable({ token, user, permissionIndex }) {
                 body={bodyTemplate}
                 sortable
                 reorderable
+                frozen={column.nombrevar === 'codigo'}
                 filter
                 filterField={column.nombrevar}
                 filterPlaceholder={column.filterPlaceholder}
@@ -1503,71 +1473,6 @@ function InventarioTable({ token, user, permissionIndex }) {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Marca</span>
-                      <div className="create-user__dropdown" ref={searchMarcaDropdownRef}>
-                        <button
-                          type="button"
-                          className="create-user__dropdown-trigger"
-                          onClick={() => {
-                            setShowSearchMarcaDropdown((prev) => !prev)
-                            setShowSearchCasaDropdown(false)
-                          }}
-                        >
-                          <span>{searchMarcaQuery.trim() ? searchMarcaQuery : 'Selecciona una marca'}</span>
-                          <i className={`pi pi-chevron-${showSearchMarcaDropdown ? 'up' : 'down'}`} />
-                        </button>
-
-                        {showSearchMarcaDropdown && (
-                          <div className="create-user__dropdown-panel">
-                            <div className="create-user__dropdown-search">
-                              <i className="pi pi-search" />
-                              <input
-                                type="text"
-                                placeholder="Buscar marcas"
-                                value={searchMarcaQuery}
-                                onChange={(event) => {
-                                  const value = event.target.value
-                                  setSearchMarcaQuery(value)
-                                  setSearchCriteria((prev) => ({ ...prev, marca: value }))
-                                }}
-                              />
-                            </div>
-
-                            <div className="create-user__dropdown-results">
-                              {searchMarcaLoading && <small className="muted">Buscando marcas...</small>}
-                              {!searchMarcaLoading && !searchMarcaQuery.trim() && (
-                                <small className="muted">Escribe para buscar.</small>
-                              )}
-                              {!searchMarcaLoading && searchMarcaQuery.trim() && !searchMarcaOptions.length && (
-                                <small className="muted">Sin resultados.</small>
-                              )}
-                              {searchMarcaOptions.map((marca) => (
-                                <button
-                                  key={marca.id}
-                                  type="button"
-                                  className="create-user__result-option"
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    setSearchMarcaQuery(marca.nombre)
-                                    setSearchCriteria((prev) => ({ ...prev, marca: marca.nombre }))
-                                    setShowSearchMarcaDropdown(false)
-                                  }}
-                                >
-                                  <div className="create-user__result-info">
-                                    <strong>{marca.nombre}</strong>
-                                    <small>{marca.codigo ? `Código: ${marca.codigo}` : `ID: ${marca.id}`}</small>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </label>
-
-                    <label className="create-user__field">
                       <span>Código</span>
                       <input
                         name="codigo"
@@ -1586,7 +1491,6 @@ function InventarioTable({ token, user, permissionIndex }) {
                           className="create-user__dropdown-trigger"
                           onClick={() => {
                             setShowSearchCasaDropdown((prev) => !prev)
-                            setShowSearchMarcaDropdown(false)
                           }}
                         >
                           <span>{searchCasaQuery.trim() ? searchCasaQuery : 'Selecciona una casa comercial'}</span>

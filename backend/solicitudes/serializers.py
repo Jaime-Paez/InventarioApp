@@ -2,8 +2,8 @@ from django.db.models import F, Sum, Value
 from django.db.models.functions import Coalesce
 from rest_framework import serializers
 
+from casa_comercial.models import CasaComercial
 from inventario.models import Inventario, Sucursal
-from marcas.models import Marca
 from productos.models import OEM, Producto
 
 from .models import Auto, Cliente, OEMProductoSolicitado, ProductoSolicitado, Solicitud
@@ -37,21 +37,9 @@ def parse_oem_codes(raw_value):
 
 
 class AutoSerializer(serializers.ModelSerializer):
-    marca = serializers.StringRelatedField(read_only=True)
-    marca_id = serializers.PrimaryKeyRelatedField(
-        source="marca",
-        queryset=Marca.objects.all(),
-        write_only=True,
-    )
-
     class Meta:
         model = Auto
-        fields = ["id", "placa", "modelo", "anio", "marca", "marca_id", "color"]
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        data["marca_id"] = instance.marca_id
-        return data
+        fields = ["id", "placa", "modelo", "anio", "marca", "color"]
 
 
 class ClienteSerializer(serializers.ModelSerializer):
@@ -110,20 +98,22 @@ class ClienteSerializer(serializers.ModelSerializer):
         return cliente
 
 
-class MarcaLiteSerializer(serializers.ModelSerializer):
+class CasaComercialLiteSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Marca
-        fields = ["id", "codigo", "nombre"]
+        model = CasaComercial
+        fields = ["id", "codigo", "nombre", "tipo"]
 
 
 class ProductoSolicitadoSerializer(serializers.ModelSerializer):
-    marca = serializers.CharField(source="marca.nombre", read_only=True)
-    marca_id = serializers.PrimaryKeyRelatedField(
-        source="marca",
-        queryset=Marca.objects.all(),
+    casa_comercial_nombre = serializers.SerializerMethodField(read_only=True)
+    casa_comercial_id = serializers.PrimaryKeyRelatedField(
+        source="casa_comercial",
+        queryset=CasaComercial.objects.all(),
+        allow_null=True,
+        required=False,
         write_only=True,
     )
-    marca_data = MarcaLiteSerializer(source="marca", read_only=True)
+    casa_comercial_data = CasaComercialLiteSerializer(source="casa_comercial", read_only=True)
     producto = serializers.StringRelatedField(read_only=True)
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
@@ -139,18 +129,23 @@ class ProductoSolicitadoSerializer(serializers.ModelSerializer):
             "id",
             "codigo",
             "nombre",
-            "marca",
-            "marca_id",
-            "marca_data",
+            "casa_comercial_nombre",
+            "casa_comercial_id",
+            "casa_comercial_data",
             "descripcion",
             "conseguido",
             "producto",
             "producto_id",
         ]
 
+    def get_casa_comercial_nombre(self, obj):
+        if obj.casa_comercial_id:
+            return obj.casa_comercial.nombre
+        return ""
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data["marca_id"] = instance.marca_id
+        data["casa_comercial_id"] = instance.casa_comercial_id
         data["producto_id"] = instance.producto_id
         return data
 
@@ -188,9 +183,9 @@ class ProductoLiteSerializer(serializers.ModelSerializer):
 
 
 class ProductoSolicitadoLiteSerializer(serializers.ModelSerializer):
-    marca = serializers.CharField(source="marca.nombre", read_only=True)
-    marca_id = serializers.IntegerField(read_only=True)
-    marca_data = MarcaLiteSerializer(source="marca", read_only=True)
+    casa_comercial_nombre = serializers.SerializerMethodField(read_only=True)
+    casa_comercial_id = serializers.IntegerField(read_only=True)
+    casa_comercial_data = CasaComercialLiteSerializer(source="casa_comercial", read_only=True)
     producto_id = serializers.IntegerField(read_only=True)
     producto_data = ProductoLiteSerializer(source="producto", read_only=True)
     oem_codigos = serializers.SerializerMethodField()
@@ -201,15 +196,20 @@ class ProductoSolicitadoLiteSerializer(serializers.ModelSerializer):
             "id",
             "codigo",
             "nombre",
-            "marca",
-            "marca_id",
-            "marca_data",
+            "casa_comercial_nombre",
+            "casa_comercial_id",
+            "casa_comercial_data",
             "descripcion",
             "conseguido",
             "producto_id",
             "producto_data",
             "oem_codigos",
         ]
+
+    def get_casa_comercial_nombre(self, obj):
+        if obj.casa_comercial_id:
+            return obj.casa_comercial.nombre
+        return ""
 
     def get_oem_codigos(self, obj):
         relaciones = getattr(obj, "oem_relaciones", None)
@@ -292,8 +292,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
     cliente_direccion = serializers.CharField(write_only=True, required=False, allow_blank=True)
     producto_codigo = serializers.CharField(write_only=True, required=False, allow_blank=True)
     producto_nombre = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    producto_marca_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
-    producto_marca = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    producto_casa_comercial_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     producto_descripcion = serializers.CharField(write_only=True, required=False, allow_blank=True)
     producto_oems = serializers.ListField(
         child=serializers.CharField(allow_blank=False),
@@ -342,8 +341,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "cliente_direccion",
             "producto_codigo",
             "producto_nombre",
-            "producto_marca_id",
-            "producto_marca",
+            "producto_casa_comercial_id",
             "producto_descripcion",
             "producto_oems",
         ]
@@ -366,8 +364,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
             (
                 "producto_codigo",
                 "producto_nombre",
-                "producto_marca_id",
-                "producto_marca",
+                "producto_casa_comercial_id",
                 "producto_descripcion",
                 "producto_oems",
             ),
@@ -647,10 +644,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
         is_new = target.pk is None
         codigo = normalize_text(payload.get("producto_codigo", getattr(target, "codigo", "")))
         nombre = normalize_text(payload.get("producto_nombre", getattr(target, "nombre", "")))
-        marca_id = payload.get("producto_marca_id", getattr(target, "marca_id", None))
-        marca_nombre = normalize_text(
-            payload.get("producto_marca", getattr(getattr(target, "marca", None), "nombre", ""))
-        )
+        casa_comercial_id = payload.get("producto_casa_comercial_id", getattr(target, "casa_comercial_id", None))
         descripcion = normalize_text(payload.get("producto_descripcion", getattr(target, "descripcion", "")))
 
         if "producto_oems" in payload:
@@ -663,29 +657,21 @@ class SolicitudSerializer(serializers.ModelSerializer):
             errors["producto_codigo"] = "El codigo es obligatorio."
         if not nombre:
             errors["producto_nombre"] = "El nombre es obligatorio."
-        if not marca_id and not marca_nombre:
-            errors["producto_marca_id"] = "La marca es obligatoria."
         if errors:
             raise serializers.ValidationError(errors)
 
-        marca = None
-        if marca_id not in (None, "", serializers.empty):
+        casa_comercial = None
+        if casa_comercial_id not in (None, "", serializers.empty):
             try:
-                marca = Marca.objects.get(pk=int(marca_id))
-            except Marca.DoesNotExist as exc:
+                casa_comercial = CasaComercial.objects.get(pk=int(casa_comercial_id))
+            except CasaComercial.DoesNotExist as exc:
                 raise serializers.ValidationError(
-                    {"producto_marca_id": "La marca seleccionada no existe."}
+                    {"producto_casa_comercial_id": "La casa comercial seleccionada no existe."}
                 ) from exc
             except (TypeError, ValueError) as exc:
                 raise serializers.ValidationError(
-                    {"producto_marca_id": "La marca seleccionada no existe."}
+                    {"producto_casa_comercial_id": "La casa comercial seleccionada no existe."}
                 ) from exc
-        elif marca_nombre:
-            marca = Marca.objects.filter(nombre__iexact=marca_nombre).order_by("nombre", "id").first()
-            if marca is None:
-                raise serializers.ValidationError(
-                    {"producto_marca_id": "La marca seleccionada no existe."}
-                )
 
         if is_new or "producto_codigo" in payload:
             if Producto.objects.filter(codigo__iexact=codigo).exists():
@@ -702,7 +688,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
 
         target.codigo = codigo
         target.nombre = nombre
-        target.marca = marca
+        target.casa_comercial = casa_comercial
         target.descripcion = descripcion
         target.save()
 

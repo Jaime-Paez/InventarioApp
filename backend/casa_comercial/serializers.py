@@ -105,6 +105,7 @@ class CasaComercialSerializer(serializers.ModelSerializer):
             "id",
             "codigo",
             "nombre",
+            "tipo",
             "descripcion",
             "telefono",
             "correo",

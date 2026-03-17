@@ -39,7 +39,6 @@ class RolPermiso(models.Model):
         PRODUCTOS = "productos", "Productos"
         SUCURSALES_SUCURSALES = "sucursales_sucursales", "Sucursales - Sucursales"
         SUCURSALES_BODEGAS = "sucursales_bodegas", "Sucursales - Bodegas"
-        PROVEEDORES_MARCAS = "proveedores_marcas", "Proveedores - Marcas"
         PROVEEDORES_CASAS = "proveedores_casas", "Proveedores - Casas comerciales"
         SOLICITUDES = "solicitudes", "Solicitudes"
         CLIENTES = "clientes", "Clientes"

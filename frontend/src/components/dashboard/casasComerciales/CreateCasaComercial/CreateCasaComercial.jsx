@@ -10,6 +10,7 @@ const VIEWPORT_PADDING = 12
 const initialForm = {
   nombre: '',
   codigo: '',
+  tipo: 'local',
   descripcion: '',
   paisId: '',
   telefono: '',
@@ -327,6 +328,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
     const payload = {
       nombre: formData.nombre.trim(),
       codigo: generatedCodigo,
+      tipo: formData.tipo,
       descripcion: formData.descripcion.trim(),
       telefono: formData.telefono.trim(),
       correo: formData.correo.trim(),
@@ -679,6 +681,19 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                       {selectedFlagUrl ? <img src={selectedFlagUrl} alt="" /> : '□'}
                     </span>
                   </div>
+                </label>
+
+                <label className="create-user__field">
+                  <span>Tipo</span>
+                  <select
+                    name="tipo"
+                    value={formData.tipo}
+                    onChange={handleChange}
+                    disabled={loading}
+                  >
+                    <option value="local">Local</option>
+                    <option value="importacion">Importación</option>
+                  </select>
                 </label>
 
                 <label className="create-user__field">

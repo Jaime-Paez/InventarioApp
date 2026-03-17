@@ -33,8 +33,7 @@ from .serializers import (
 
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = (
-        Producto.objects.select_related("marca")
-        .prefetch_related("casas_comerciales", "oem_productos__oem")
+        Producto.objects.prefetch_related("casas_comerciales", "oem_productos__oem")
         .all()
         .order_by("-creado_en", "-id")
     )
@@ -46,7 +45,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
         "nombre",
         "descripcion",
         "casas_comerciales__nombre",
-        "marca__nombre",
         "oem_productos__oem__codigo",
     ]
     ordering_fields = [
@@ -54,7 +52,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
         "codigo",
         "descripcion",
         "casas_comerciales__nombre",
-        "marca__nombre",
         "pieza_original",
         "costo_minimo",
         "precio",
@@ -110,10 +107,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
         if descripcion:
             queryset = queryset.filter(descripcion__icontains=descripcion)
 
-        marca = (params.get("marca") or "").strip()
-        if marca:
-            queryset = queryset.filter(marca__nombre__icontains=marca)
-
         casa_comercial = (params.get("casa_comercial") or "").strip()
         if casa_comercial:
             queryset = queryset.filter(casas_comerciales__nombre__icontains=casa_comercial)
@@ -154,7 +147,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
             {
                 "codigo": "codigo",
                 "nombre": "nombre",
-                "marca_nombre": "marca__nombre",
                 "pieza_original_label": "pieza_original_label_text",
                 "costo_minimo": {"lookup": "costo_minimo", "type": "number"},
                 "precio": {"lookup": "precio", "type": "number"},

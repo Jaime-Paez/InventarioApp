@@ -11,8 +11,6 @@ from rest_framework import serializers
 from casa_comercial.models import CasaComercial
 from casa_comercial.serializers import CasaComercialSerializer
 from inventario.models import Bodega, SubDivision, Sucursal
-from marcas.models import Marca
-from marcas.serializers import MarcaSerializer
 from movimientos.models import DetalleMovimiento
 
 from .models import OEM, OEMProducto, Producto, ProductoAlterno, ProductoCalificacion
@@ -313,12 +311,6 @@ class ProductoSerializer(serializers.ModelSerializer):
         allow_empty=False,
         write_only=True,
     )
-    marca = MarcaSerializer(read_only=True)
-    marca_id = serializers.PrimaryKeyRelatedField(
-        source="marca",
-        queryset=Marca.objects.all(),
-        write_only=True,
-    )
     oem_productos = OEMProductoSerializer(many=True, read_only=True)
     alternativas = serializers.SerializerMethodField()
 
@@ -334,8 +326,6 @@ class ProductoSerializer(serializers.ModelSerializer):
             "precio",
             "casas_comerciales",
             "casas_comerciales_ids",
-            "marca",
-            "marca_id",
             "oem_productos",
             "alternativas",
             "creado_en",

@@ -330,12 +330,14 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
     }
     const nextFilters = initFilters()
     if (!lastSearchRef.current) return
+    setSortField(null)
+    setSortOrder(null)
     setPageFirst(0)
     setIsRefreshing(true)
     await fetchClients(lastSearchRef.current, 1, pageSize, {
       tableFilters: nextFilters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
+      tableSortField: null,
+      tableSortOrder: null,
     })
   }
 

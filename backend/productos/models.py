@@ -3,7 +3,6 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from casa_comercial.models import CasaComercial
-from marcas.models import Marca
 
 
 class Producto(models.Model):
@@ -32,11 +31,6 @@ class Producto(models.Model):
         CasaComercial,
         related_name="productos",
         blank=True,
-    )
-    marca = models.ForeignKey(
-        Marca,
-        on_delete=models.PROTECT,
-        related_name="productos",
     )
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)

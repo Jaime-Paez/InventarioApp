@@ -332,7 +332,7 @@
 /* Prime usa column en flex-scrollable y genera espacio muerto inferior en varias tablas. */
 .users-datatable.p-datatable-flex-scrollable > .p-datatable-wrapper {
   flex-direction: row !important;
-  align-items: stretch;
+  align-items: flex-start;
 }
 
 /* No comprimir columnas: usar ancho natural y permitir desplazamiento horizontal */
@@ -343,6 +343,11 @@
   width: max-content;
   min-width: 100%;
   table-layout: auto;
+}
+
+/* Evitar que las filas se expandan para llenar el espacio vacío */
+.users-datatable table {
+  height: auto !important;
 }
 
 /* --- FIX: que la tabla y su wrapper hereden bien el fondo en dark --- */
@@ -358,6 +363,11 @@
 
 .users-datatable .p-datatable-table {
   font-size: var(--font-size-base);
+  height: auto !important;
+}
+
+.users-datatable .p-datatable-tbody > tr {
+  height: 26px;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-wrapper {
@@ -370,18 +380,26 @@
   color: var(--color-text-primary);
   font-weight: 800;
   border: none;
-  border-bottom: none;
+  border-bottom: 2px solid var(--table-color-border);
+  border-right: 1px solid var(--table-color-border);
   white-space: nowrap;
+}
+.users-datatable .p-datatable-thead > tr > th:last-child {
+  border-right: none;
 }
 
 /* ====== TBODY ====== */
 .users-datatable .p-datatable-tbody > tr > td {
   border: none;
   border-bottom: 1px solid var(--table-color-border);
+  border-right: 1px solid var(--table-color-border);
   padding: 3px;
   color: var(--color-text-primary);
   background: var(--table-color);
   white-space: nowrap;
+}
+.users-datatable .p-datatable-tbody > tr > td:last-child {
+  border-right: none;
 }
 
 .users-datatable .p-datatable-tbody > tr.p-datatable-emptymessage > td,
@@ -402,11 +420,6 @@
   background: var(--table-color-selected-hover);
 }
 
-/* ====== GRIDLINES (showGridlines) ====== */
-.users-datatable.p-datatable-gridlines .p-datatable-thead > tr > th,
-.users-datatable.p-datatable-gridlines .p-datatable-tbody > tr > td {
-  border-right: none;
-}
 
 /* ====== DARK MODE: tabla completa ====== */
 .dashboard-shell.dark .users-datatable .p-datatable-table {
@@ -436,8 +449,13 @@
 /* TBODY dark */
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr > td {
   border-bottom-color: var(--color-border-dark);
+  border-right-color: var(--color-border-dark);
   color: var(--color-text-dark);
   background: var(--table-color-dark);
+}
+.dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th {
+  border-right-color: var(--color-border-dark);
+  border-bottom-color: var(--color-border-dark);
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr:hover > td,

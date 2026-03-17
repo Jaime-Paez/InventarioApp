@@ -11,9 +11,9 @@ class ClienteAdmin(admin.ModelAdmin):
 
 @admin.register(ProductoSolicitado)
 class ProductoSolicitadoAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "marca", "conseguido", "producto")
+    list_display = ("nombre", "casa_comercial", "conseguido", "producto")
     list_filter = ("conseguido",)
-    search_fields = ("nombre", "descripcion", "marca__nombre", "producto__nombre", "producto__codigo")
+    search_fields = ("nombre", "descripcion", "casa_comercial__nombre", "producto__nombre", "producto__codigo")
 
 
 @admin.register(Solicitud)

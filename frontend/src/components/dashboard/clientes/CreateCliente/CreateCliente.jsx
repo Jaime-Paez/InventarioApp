@@ -20,8 +20,7 @@ const emptyAuto = {
   placa: '',
   modelo: '',
   anio: '',
-  marcaId: '',
-  marcaNombre: '',
+  marca: '',
   color: '',
 }
 
@@ -29,21 +28,16 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [autos, setAutos] = useState([])
   const [loading, setLoading] = useState(false)
-  const [marcas, setMarcas] = useState([])
-  const [loadingMarcas, setLoadingMarcas] = useState(false)
-  const [activeAutoMarcaDropdown, setActiveAutoMarcaDropdown] = useState(null)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
   const modalRef = useRef(null)
-  const autoMarcaDropdownRefs = useRef({})
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const sizeRef = useRef(size)
   const positionRef = useRef(position)
   const restoreRef = useRef(null)
-  const marcaSearchRef = useRef(null)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const getViewportMetrics = () => {
@@ -69,48 +63,13 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
     [onError]
   )
 
-  const getMarcaLabel = useCallback(
-    (marcaId) => marcas.find((marca) => String(marca.id) === String(marcaId))?.nombre || '',
-    [marcas]
-  )
-
-  const searchMarcas = useCallback(
-    (query) => {
-      const term = String(query ?? '').trim()
-      if (marcaSearchRef.current) clearTimeout(marcaSearchRef.current)
-      if (!term || !token) {
-        setMarcas([])
-        return
-      }
-      marcaSearchRef.current = setTimeout(async () => {
-        setLoadingMarcas(true)
-        try {
-          const response = await authFetch(
-            `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=5`,
-            {},
-            token
-          )
-          if (!response.ok) return
-          const data = await response.json()
-          const list = Array.isArray(data) ? data : data?.results || []
-          setMarcas(list)
-        } finally {
-          setLoadingMarcas(false)
-        }
-      }, 300)
-    },
-    [token]
-  )
-
   useEffect(() => {
     if (!open) return
     setFormData(initialForm)
     setAutos([])
     setLoading(false)
-    setActiveAutoMarcaDropdown(null)
     setIsMaximized(false)
     restoreRef.current = null
-    setMarcas([])
   }, [open])
 
   useLayoutEffect(() => {
@@ -133,18 +92,6 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
     positionRef.current = position
   }, [position])
 
-  useEffect(() => {
-    if (activeAutoMarcaDropdown === null) return
-    const handleClick = (event) => {
-      const node = autoMarcaDropdownRefs.current[activeAutoMarcaDropdown]
-      if (node && !node.contains(event.target)) {
-        setActiveAutoMarcaDropdown(null)
-      }
-    }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
-  }, [activeAutoMarcaDropdown])
-
   const handleChange = (event) => {
     const { name, value } = event.target
     setFormData((prev) => ({
@@ -159,41 +106,10 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
     )
   }
 
-  const handleAutoMarcaChange = (index, value) => {
-    setAutos((prev) =>
-      prev.map((auto, i) =>
-        i === index
-          ? {
-              ...auto,
-              marcaNombre: value,
-              marcaId: '',
-            }
-          : auto
-      )
-    )
-    searchMarcas(value)
-  }
-
-  const handleAutoMarcaSelect = (index, marca) => {
-    if (!marca) return
-    setAutos((prev) =>
-      prev.map((auto, i) =>
-        i === index
-          ? {
-              ...auto,
-              marcaNombre: marca.nombre,
-              marcaId: String(marca.id),
-            }
-          : auto
-      )
-    )
-    setActiveAutoMarcaDropdown(null)
-  }
-
   const canAddAuto = useCallback(() => {
     if (!autos.length) return true
     const last = autos[autos.length - 1]
-    return Boolean(last.placa && last.modelo && last.anio && last.marcaId)
+    return Boolean(last.placa && last.modelo && last.anio)
   }, [autos])
 
   const addAutoRow = () => {
@@ -226,18 +142,18 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
         placa: auto.placa.trim(),
         modelo: auto.modelo.trim(),
         anio: auto.anio ? Number(auto.anio) : null,
-        marca_id: auto.marcaId ? Number(auto.marcaId) : null,
+        marca: auto.marca.trim(),
         color: auto.color.trim(),
       }))
-      .filter((auto) => auto.placa || auto.modelo || auto.anio || auto.marca_id || auto.color)
+      .filter((auto) => auto.placa || auto.modelo || auto.anio || auto.marca || auto.color)
 
     if (autosPayload.length) {
       const validAutos = autosPayload.filter(
-        (auto) => auto.placa && auto.modelo && Number.isFinite(auto.anio) && auto.marca_id
+        (auto) => auto.placa && auto.modelo && Number.isFinite(auto.anio)
       )
       if (validAutos.length !== autosPayload.length) {
         setLoading(false)
-      notifyError('Completa placa, modelo, año y marca para cada auto agregado.')
+        notifyError('Completa placa, modelo y año para cada auto agregado.')
         return
       }
       payload.autos = validAutos
@@ -619,66 +535,12 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
 
                       <label className="create-user__field">
                         <span>Marca</span>
-                        <div
-                          className="create-user__dropdown"
-                          ref={(node) => {
-                            autoMarcaDropdownRefs.current[index] = node
-                          }}
-                        >
-                          <button
-                            type="button"
-                            className="create-user__dropdown-trigger"
-                            onClick={() =>
-                              setActiveAutoMarcaDropdown((prev) => (prev === index ? null : index))
-                            }
-                            disabled={loading || loadingMarcas}
-                          >
-                            <span>{auto.marcaNombre || getMarcaLabel(auto.marcaId) || 'Selecciona una marca'}</span>
-                            <i className={`pi pi-chevron-${activeAutoMarcaDropdown === index ? 'up' : 'down'}`} />
-                          </button>
-
-                          {activeAutoMarcaDropdown === index && (
-                            <div className="create-user__dropdown-panel">
-                              <div className="create-user__dropdown-search">
-                                <i className="pi pi-search" />
-                                <input
-                                  type="text"
-                                  placeholder="Buscar marcas"
-                                  value={auto.marcaNombre}
-                                  onChange={(event) => handleAutoMarcaChange(index, event.target.value)}
-                                />
-                              </div>
-
-                              <div className="create-user__dropdown-results">
-                                {loadingMarcas && <small className="muted">Buscando marcas...</small>}
-                                {!loadingMarcas && !auto.marcaNombre?.trim() && (
-                                  <small className="muted">Escribe para buscar.</small>
-                                )}
-                                {!loadingMarcas && auto.marcaNombre?.trim() && !marcas.length && (
-                                  <small className="muted">Sin resultados.</small>
-                                )}
-                                {marcas.map((marca) => (
-                                  <button
-                                    key={marca.id}
-                                    type="button"
-                                    className="create-user__result-option"
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={(event) => {
-                                      event.preventDefault()
-                                      event.stopPropagation()
-                                      handleAutoMarcaSelect(index, marca)
-                                    }}
-                                  >
-                                    <div className="create-user__result-info">
-                                      <strong>{marca.nombre}</strong>
-                                      <small>{marca.codigo ? `Código: ${marca.codigo}` : `ID: ${marca.id}`}</small>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <input
+                          type="text"
+                          value={auto.marca}
+                          onChange={(event) => handleAutoChange(index, 'marca', event.target.value)}
+                          disabled={loading}
+                        />
                       </label>
 
                       <label className="create-user__field">

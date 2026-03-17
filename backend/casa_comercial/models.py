@@ -6,8 +6,16 @@ from tipos.models import Pais
 class CasaComercial(models.Model):
     """Proveedor o casa comercial donde se adquiere el producto."""
 
+    TIPO_LOCAL = "local"
+    TIPO_IMPORTACION = "importacion"
+    TIPO_CHOICES = [
+        (TIPO_LOCAL, "Local"),
+        (TIPO_IMPORTACION, "Importación"),
+    ]
+
     nombre = models.CharField(max_length=150)
     codigo = models.CharField(max_length=50, unique=True)
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default=TIPO_LOCAL)
     descripcion = models.TextField(blank=True)
     pais = models.ForeignKey(
         Pais,

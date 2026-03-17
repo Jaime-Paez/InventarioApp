@@ -253,39 +253,6 @@ class BodegasDependentReadPermission(ModulePermission):
         return [self.module_key]
 
 
-class ProveedoresMarcasModulePermission(ModulePermission):
-    module_key = RolPermiso.Modulos.PROVEEDORES_MARCAS
-
-
-class MarcasDependentReadPermission(ModulePermission):
-    """
-    Permite leer marcas desde módulos que dependen de ese catálogo.
-
-    - GET/HEAD/OPTIONS:
-      - Si llega `?modulo=<key>` usa ese módulo.
-      - Si no llega, permite por cualquiera de los módulos consumidores.
-    - Escritura mantiene el módulo propio de marcas.
-    """
-
-    module_key = RolPermiso.Modulos.PROVEEDORES_MARCAS
-    read_module_keys = (
-        RolPermiso.Modulos.PROVEEDORES_MARCAS,
-        RolPermiso.Modulos.INVENTARIO,
-        RolPermiso.Modulos.PRODUCTOS,
-        RolPermiso.Modulos.CLIENTES,
-        RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
-        RolPermiso.Modulos.SOLICITUDES,
-    )
-
-    def get_target_module_keys(self, request, view):
-        if request.method in ("GET", "HEAD", "OPTIONS"):
-            query_module = (request.query_params.get("modulo") or "").strip()
-            if query_module and query_module in set(self.read_module_keys):
-                return [query_module]
-            return list(self.read_module_keys)
-        return [self.module_key]
-
-
 class ProveedoresCasasModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.PROVEEDORES_CASAS
 
@@ -333,7 +300,6 @@ class ProveedoresCatalogosDependentReadPermission(ModulePermission):
     module_key = RolPermiso.Modulos.PROVEEDORES_CASAS
     read_module_keys = (
         RolPermiso.Modulos.PROVEEDORES_CASAS,
-        RolPermiso.Modulos.PROVEEDORES_MARCAS,
     )
 
     def get_target_module_keys(self, request, view):

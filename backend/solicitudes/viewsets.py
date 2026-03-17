@@ -11,8 +11,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
+from casa_comercial.models import CasaComercial
 from inventario.models import Inventario, Sucursal
-from marcas.models import Marca
 from productos.models import OEM, Producto
 from usuarios.models import RolPermiso
 from usuarios.permissions import ClientesModulePermission, SolicitudesModulePermission
@@ -113,12 +113,12 @@ class ClienteViewSet(viewsets.ModelViewSet):
 
 
 class ProductoSolicitadoViewSet(viewsets.ModelViewSet):
-    queryset = ProductoSolicitado.objects.select_related("producto", "marca").all().order_by("-id")
+    queryset = ProductoSolicitado.objects.select_related("producto", "casa_comercial").all().order_by("-id")
     serializer_class = ProductoSolicitadoSerializer
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombre", "descripcion", "marca__nombre", "producto__nombre", "producto__codigo"]
-    ordering_fields = ["nombre", "marca__nombre", "conseguido", "producto__nombre"]
+    search_fields = ["nombre", "descripcion", "casa_comercial__nombre", "producto__nombre", "producto__codigo"]
+    ordering_fields = ["nombre", "casa_comercial__nombre", "conseguido", "producto__nombre"]
 
 
 class OEMProductoSolicitadoViewSet(viewsets.ModelViewSet):
@@ -145,7 +145,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "sucursal",
             "producto",
             "producto_solicitado",
-            "producto_solicitado__marca",
+            "producto_solicitado__casa_comercial",
             "producto_solicitado__producto",
         )
         .prefetch_related("producto_solicitado__oem_relaciones__oem")
@@ -167,7 +167,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "producto__codigo",
             "producto_solicitado__nombre",
             "producto_solicitado__codigo",
-            "producto_solicitado__marca__nombre",
+            "producto_solicitado__casa_comercial__nombre",
             "producto_solicitado__descripcion",
             "producto_solicitado__oem_relaciones__oem__codigo",
             "sucursal__nombre",
@@ -574,31 +574,13 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            marca_id = item.get("marca_id")
-            marca_input = str(item.get("marca") or "").strip()
-            if marca_id in (None, "") and not marca_input:
-                return Response(
-                    {"productos": f"La marca es obligatoria en la fila {index + 1}."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            marca = None
-            if marca_id not in (None, ""):
+            casa_comercial_id = item.get("casa_comercial_id")
+            casa_comercial = None
+            if casa_comercial_id not in (None, ""):
                 try:
-                    marca = Marca.objects.filter(pk=int(marca_id)).only("id", "nombre").first()
+                    casa_comercial = CasaComercial.objects.filter(pk=int(casa_comercial_id)).only("id", "nombre").first()
                 except (TypeError, ValueError):
-                    marca = None
-            if marca is None:
-                marca = (
-                    Marca.objects.filter(nombre__iexact=marca_input)
-                    .only("id", "nombre")
-                    .order_by("nombre", "id")
-                    .first()
-                )
-            if marca is None:
-                return Response(
-                    {"productos": f"La marca de la fila {index + 1} debe existir en la base de datos."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                    casa_comercial = None
 
             descripcion = str(item.get("descripcion") or "").strip()
             oem_codigos = self._parse_oem_codes(item.get("oems"))
@@ -635,7 +617,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     "tipo": Solicitud.Tabla.PRODUCTO_SOLICITADO,
                     "codigo": codigo,
                     "nombre": nombre,
-                    "marca": marca,
+                    "casa_comercial": casa_comercial,
                     "descripcion": descripcion,
                     "oem_codigos": oem_codigos,
                     "cantidad": cantidad,
@@ -666,7 +648,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     producto_solicitado = ProductoSolicitado.objects.create(
                         codigo=item["codigo"],
                         nombre=item["nombre"],
-                        marca=item["marca"],
+                        casa_comercial=item.get("casa_comercial"),
                         descripcion=item["descripcion"],
                     )
                     for oem_codigo in item.get("oem_codigos", []):

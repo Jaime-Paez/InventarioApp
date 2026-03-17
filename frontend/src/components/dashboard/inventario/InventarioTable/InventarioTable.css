@@ -150,6 +150,57 @@
   z-index: 3;
 }
 
+/* Fix: frozen columns (position:sticky) need an opaque background and z-index
+   so scrolling content cannot bleed through or appear on top.
+   PrimeReact 10 sets z-index:1 on th.p-frozen-column but NOT on td, and sets
+   "background: inherit" which picks up any semi-transparent row background. */
+.inventario-datatable .p-datatable-tbody > tr > td.p-frozen-column {
+  z-index: 1;
+  background-color: var(--table-color);
+}
+
+.inventario-datatable .p-datatable-thead > tr > th.p-frozen-column {
+  background-color: var(--table-color);
+}
+
+/* Hover: --table-color-hover is semi-transparent (#00457050).
+   background-color gives the solid base; background-image layers the tint on top. */
+.inventario-datatable .p-datatable-tbody > tr:hover > td.p-frozen-column {
+  z-index: 1;
+  background-color: var(--table-color);
+  background-image: linear-gradient(var(--table-color-hover), var(--table-color-hover));
+}
+
+.inventario-datatable .p-datatable-tbody > tr.p-highlight > td.p-frozen-column {
+  background-color: var(--table-color-selected);
+  background-image: none;
+}
+
+.inventario-datatable .p-datatable-tbody > tr.p-highlight:hover > td.p-frozen-column {
+  background-color: var(--table-color-selected-hover);
+  background-image: none;
+}
+
+/* Dark mode — hover colors are already opaque so no layering trick needed */
+.dashboard-shell.dark .inventario-datatable .p-frozen-column {
+  background-color: var(--table-color-dark);
+}
+
+.dashboard-shell.dark .inventario-datatable .p-datatable-tbody > tr:hover > td.p-frozen-column {
+  background-color: var(--table-color-dark-hover);
+  background-image: none;
+}
+
+.dashboard-shell.dark .inventario-datatable .p-datatable-tbody > tr.p-highlight > td.p-frozen-column {
+  background-color: var(--table-color-selected-dark);
+  background-image: none;
+}
+
+.dashboard-shell.dark .inventario-datatable .p-datatable-tbody > tr.p-highlight:hover > td.p-frozen-column {
+  background-color: var(--table-color-selected-hover-dark);
+  background-image: none;
+}
+
 /* Fix: clamp checkbox/frozen column width for Inventario table */
 .inventario-datatable .p-datatable-frozen-view {
   width: 40px !important;

@@ -6,7 +6,6 @@ import RandomInspectionAdminTable from '../admin/RandomInspectionAdminTable/Rand
 import AuditoriaTable from '../admin/AuditoriaTable/AuditoriaTable'
 import SucursalesTable from '../sucursales/SucursalesTable/SucursalesTable'
 import BodegasTable from '../bodegas/BodegasTable/BodegasTable'
-import MarcasTable from '../marcas/MarcasTable/MarcasTable'
 import CasasComercialesTable from '../casasComerciales/CasasComercialesTable/CasasComercialesTable'
 import ClientesTable from '../clientes/ClientesTable/ClientesTable'
 import ProductosTable from '../productos/ProductosTable/ProductosTable'
@@ -54,7 +53,6 @@ const MODULE_KEY_BY_TAB = {
   [INVENTORY_REVIEW_TAB_LEGACY]: 'usuarios',
   Sucursales: 'sucursales_sucursales',
   Bodegas: 'sucursales_bodegas',
-  Marcas: 'proveedores_marcas',
   'Casas comerciales': 'proveedores_casas',
   Productos: 'productos',
   Solicitudes: 'solicitudes',
@@ -128,7 +126,6 @@ function Workspace({
     [INVENTORY_REVIEW_TAB_LEGACY]: RandomInspectionAdminTable,
     Sucursales: SucursalesTable,
     Bodegas: BodegasTable,
-    Marcas: MarcasTable,
     'Casas comerciales': CasasComercialesTable,
     Productos: ProductosTable,
     Solicitudes: SolicitudesTable,

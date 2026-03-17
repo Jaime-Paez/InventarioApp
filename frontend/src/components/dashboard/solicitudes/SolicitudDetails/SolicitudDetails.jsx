@@ -28,7 +28,8 @@ const emptyForm = {
   productoId: '',
   productoCodigo: '',
   productoNombre: '',
-  productoMarca: '',
+  casaComercialId: '',
+  casaComercialNombre: '',
   productoDescripcion: '',
   productoOems: '',
 }
@@ -119,10 +120,15 @@ const buildFormData = (solicitud) => {
         ? productoCatalogo?.nombre || solicitud?.producto_referencia || ''
         : productoSolicitado?.nombre || solicitud?.producto_referencia || ''
     ),
-    productoMarca: String(
-      tabla === 'producto'
-        ? productoCatalogo?.marca?.nombre || productoCatalogo?.marca || ''
-        : productoSolicitado?.marca || ''
+    casaComercialId: String(
+      tabla === 'producto_solicitado'
+        ? productoSolicitado?.casa_comercial_id || productoSolicitado?.casa_comercial_data?.id || ''
+        : ''
+    ),
+    casaComercialNombre: String(
+      tabla === 'producto_solicitado'
+        ? productoSolicitado?.casa_comercial_data?.nombre || productoSolicitado?.casa_comercial_nombre || ''
+        : ''
     ),
     productoDescripcion: String(
       tabla === 'producto' ? productoCatalogo?.descripcion || '' : productoSolicitado?.descripcion || ''
@@ -162,10 +168,10 @@ const buildGroupItem = (solicitud) => {
         ? productoCatalogo?.nombre || solicitud?.producto_referencia || ''
         : productoSolicitado?.nombre || solicitud?.producto_referencia || ''
     ),
-    productoMarca: String(
-      tabla === 'producto'
-        ? productoCatalogo?.marca?.nombre || productoCatalogo?.marca || ''
-        : productoSolicitado?.marca || ''
+    casaComercialNombre: String(
+      tabla === 'producto_solicitado'
+        ? productoSolicitado?.casa_comercial_data?.nombre || productoSolicitado?.casa_comercial_nombre || ''
+        : ''
     ),
     productoOems: Array.isArray(productoSolicitado?.oem_codigos)
       ? productoSolicitado.oem_codigos
@@ -1182,12 +1188,8 @@ function SolicitudDetails({
     codigo: productFormData.productoCodigo,
     nombre: productFormData.productoNombre,
     descripcion: productFormData.productoDescripcion,
-    marcaId: String(
-      productSolicitud?.producto_solicitado_data?.marca_id ||
-        productSolicitud?.producto_solicitado_data?.marca_data?.id ||
-        ''
-    ),
-    marcaNombre: productFormData.productoMarca,
+    casaComercialId: productFormData.casaComercialId,
+    casaComercialNombre: productFormData.casaComercialNombre,
     oemItems: String(productFormData.productoOems || '')
       .split(',')
       .map((item) => item.trim())
@@ -1324,16 +1326,13 @@ function SolicitudDetails({
                   {productFormData.tabla === 'producto_solicitado' && (
                     <>
                       <label className="create-user__field">
-                        <span>Marca</span>
-                        <select
-                          name="productoMarca"
-                          value={productFormData.productoMarca || ''}
+                        <span>Casa comercial</span>
+                        <input
+                          name="casaComercialNombre"
+                          value={productFormData.casaComercialNombre || ''}
+                          placeholder="Sin casa comercial"
                           disabled
-                        >
-                          <option value={productFormData.productoMarca || ''}>
-                            {productFormData.productoMarca || 'Sin marca'}
-                          </option>
-                        </select>
+                        />
                       </label>
                       <label className="create-user__field">
                         <span>OEM</span>
@@ -1605,7 +1604,7 @@ function SolicitudDetails({
                     >
                       <span style={{ minWidth: 0 }}>Codigo</span>
                       <span style={{ minWidth: 0 }}>Nombre</span>
-                      <span style={{ minWidth: 0 }}>Marca</span>
+                      <span style={{ minWidth: 0 }}>Casa comercial</span>
                       <span style={{ minWidth: 0 }}>OEM</span>
                       <span style={{ minWidth: 0 }}>Comentario</span>
                       <span style={{ minWidth: 0 }}>Cantidad</span>
@@ -1638,7 +1637,7 @@ function SolicitudDetails({
                           {item.productoNombre || '-'}
                         </span>
                         <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                          {item.productoMarca || '-'}
+                          {item.casaComercialNombre || '-'}
                         </span>
                         <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                           {item.productoOems.length ? item.productoOems.join(', ') : '-'}

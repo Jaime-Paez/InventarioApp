@@ -32,8 +32,8 @@ const initialProductoDraft = {
   codigo: '',
   nombre: '',
   oems: '',
-  marcaId: '',
-  marca: '',
+  casaComercialId: '',
+  casaComercialNombre: '',
   comentario: '',
   cantidad: '1',
 }
@@ -181,10 +181,10 @@ function CreateSolicitud({
   const [showOemDropdown, setShowOemDropdown] = useState(false)
   const [oemOptions, setOemOptions] = useState([])
   const [oemLoading, setOemLoading] = useState(false)
-  const [showMarcaDropdown, setShowMarcaDropdown] = useState(false)
-  const [marcaSearchTerm, setMarcaSearchTerm] = useState('')
-  const [marcaOptions, setMarcaOptions] = useState([])
-  const [marcaLoading, setMarcaLoading] = useState(false)
+  const [showCasaComercialDropdown, setShowCasaComercialDropdown] = useState(false)
+  const [casaComercialSearchTerm, setCasaComercialSearchTerm] = useState('')
+  const [casaComercialOptions, setCasaComercialOptions] = useState([])
+  const [casaComercialLoading, setCasaComercialLoading] = useState(false)
 
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [productoAttempted, setProductoAttempted] = useState(false)
@@ -202,14 +202,14 @@ function CreateSolicitud({
   const clienteDropdownRef = useRef(null)
   const codigoDropdownRef = useRef(null)
   const oemDropdownRef = useRef(null)
-  const marcaDropdownRef = useRef(null)
+  const casaComercialDropdownRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
   const codigoSearchTimerRef = useRef(null)
   const codigoSearchSeqRef = useRef(0)
   const oemSearchTimerRef = useRef(null)
   const oemSearchSeqRef = useRef(0)
-  const marcaSearchTimerRef = useRef(null)
-  const marcaSearchSeqRef = useRef(0)
+  const casaComercialSearchTimerRef = useRef(null)
+  const casaComercialSearchSeqRef = useRef(0)
   const addingProductoRef = useRef(false)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
@@ -272,10 +272,10 @@ function CreateSolicitud({
     setShowOemDropdown(false)
     setOemOptions([])
     setOemLoading(false)
-    setShowMarcaDropdown(false)
-    setMarcaSearchTerm('')
-    setMarcaOptions([])
-    setMarcaLoading(false)
+    setShowCasaComercialDropdown(false)
+    setCasaComercialSearchTerm('')
+    setCasaComercialOptions([])
+    setCasaComercialLoading(false)
 
     setSubmitAttempted(false)
     setProductoAttempted(false)
@@ -300,9 +300,9 @@ function CreateSolicitud({
       clearTimeout(oemSearchTimerRef.current)
       oemSearchTimerRef.current = null
     }
-    if (marcaSearchTimerRef.current) {
-      clearTimeout(marcaSearchTimerRef.current)
-      marcaSearchTimerRef.current = null
+    if (casaComercialSearchTimerRef.current) {
+      clearTimeout(casaComercialSearchTimerRef.current)
+      casaComercialSearchTimerRef.current = null
     }
   }, [normalizedPrefilledSucursalId])
 
@@ -421,7 +421,7 @@ function CreateSolicitud({
       if (clienteSearchTimerRef.current) clearTimeout(clienteSearchTimerRef.current)
       if (codigoSearchTimerRef.current) clearTimeout(codigoSearchTimerRef.current)
       if (oemSearchTimerRef.current) clearTimeout(oemSearchTimerRef.current)
-      if (marcaSearchTimerRef.current) clearTimeout(marcaSearchTimerRef.current)
+      if (casaComercialSearchTimerRef.current) clearTimeout(casaComercialSearchTimerRef.current)
     },
     []
   )
@@ -557,48 +557,48 @@ function CreateSolicitud({
   }, [open, showOemDropdown, token, oemSearchTerm])
 
   useEffect(() => {
-    if (!open || !showMarcaDropdown) return
-    const term = String(marcaSearchTerm || '').trim()
+    if (!open || !showCasaComercialDropdown) return
+    const term = String(casaComercialSearchTerm || '').trim()
     if (!term || term.length < 2 || !token) {
-      setMarcaOptions([])
-      setMarcaLoading(false)
+      setCasaComercialOptions([])
+      setCasaComercialLoading(false)
       return
     }
 
-    if (marcaSearchTimerRef.current) clearTimeout(marcaSearchTimerRef.current)
+    if (casaComercialSearchTimerRef.current) clearTimeout(casaComercialSearchTimerRef.current)
 
-    setMarcaLoading(true)
-    marcaSearchTimerRef.current = setTimeout(async () => {
-      const requestId = marcaSearchSeqRef.current + 1
-      marcaSearchSeqRef.current = requestId
+    setCasaComercialLoading(true)
+    casaComercialSearchTimerRef.current = setTimeout(async () => {
+      const requestId = casaComercialSearchSeqRef.current + 1
+      casaComercialSearchSeqRef.current = requestId
 
       try {
         const response = await authFetch(
-          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=5`,
+          `${API_URL}/casa-comercial/casas/?search=${encodeURIComponent(term)}&page_size=5`,
           {},
           token
         )
-        if (!response.ok) throw new Error('No se pudieron cargar las marcas.')
+        if (!response.ok) throw new Error('No se pudieron cargar las casas comerciales.')
         const data = await response.json()
-        if (requestId !== marcaSearchSeqRef.current) return
-        setMarcaOptions(parseApiList(data))
+        if (requestId !== casaComercialSearchSeqRef.current) return
+        setCasaComercialOptions(parseApiList(data))
       } catch {
-        if (requestId !== marcaSearchSeqRef.current) return
-        setMarcaOptions([])
+        if (requestId !== casaComercialSearchSeqRef.current) return
+        setCasaComercialOptions([])
       } finally {
-        if (requestId === marcaSearchSeqRef.current) {
-          setMarcaLoading(false)
+        if (requestId === casaComercialSearchSeqRef.current) {
+          setCasaComercialLoading(false)
         }
       }
     }, 320)
 
     return () => {
-      if (marcaSearchTimerRef.current) {
-        clearTimeout(marcaSearchTimerRef.current)
-        marcaSearchTimerRef.current = null
+      if (casaComercialSearchTimerRef.current) {
+        clearTimeout(casaComercialSearchTimerRef.current)
+        casaComercialSearchTimerRef.current = null
       }
     }
-  }, [marcaSearchTerm, open, showMarcaDropdown, token])
+  }, [casaComercialSearchTerm, open, showCasaComercialDropdown, token])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -637,15 +637,15 @@ function CreateSolicitud({
           setShowOemDropdown(false)
         }
       }
-      if (showMarcaDropdown) {
-        if (!marcaDropdownRef.current || !marcaDropdownRef.current.contains(event.target)) {
-          setShowMarcaDropdown(false)
+      if (showCasaComercialDropdown) {
+        if (!casaComercialDropdownRef.current || !casaComercialDropdownRef.current.contains(event.target)) {
+          setShowCasaComercialDropdown(false)
         }
       }
     }
     window.addEventListener('mousedown', handleClickOutside)
     return () => window.removeEventListener('mousedown', handleClickOutside)
-  }, [showClienteDropdown, showCodigoDropdown, showMarcaDropdown, showOemDropdown])
+  }, [showCasaComercialDropdown, showClienteDropdown, showCodigoDropdown, showOemDropdown])
 
   useEffect(() => {
     const handleMouseMove = (event) => {
@@ -876,8 +876,6 @@ function CreateSolicitud({
 
     const codigo = String(producto?.codigo || '').trim().toUpperCase()
     const nombre = String(producto?.nombre || '').trim()
-    const marca = String(producto?.marca?.nombre || producto?.marca || '').trim()
-    const marcaId = String(producto?.marca?.id || '')
     const oems = extractProductoOems(producto)
 
     setSelectedDraftProducto(producto)
@@ -887,71 +885,56 @@ function CreateSolicitud({
       codigo,
       nombre,
       oems: oems.join(', '),
-      marcaId,
-      marca,
+      casaComercialId: '',
+      casaComercialNombre: '',
       cantidad: prev.cantidad || '1',
     }))
     setShowCodigoDropdown(false)
     setShowOemDropdown(false)
-    setShowMarcaDropdown(false)
-    setMarcaSearchTerm('')
+    setShowCasaComercialDropdown(false)
+    setCasaComercialSearchTerm('')
     setCodigoOptions([])
     setOemOptions([])
-    setMarcaOptions([])
+    setCasaComercialOptions([])
   }, [])
 
-  const handleMarcaSelect = useCallback((marcaOption) => {
-    if (!marcaOption?.id) return
-    const nextMarcaId = String(marcaOption.id)
-    const nextMarcaNombre = String(marcaOption.nombre || '').trim()
-    const currentSelectedMarcaId = String(selectedDraftProducto?.marca?.id || '')
-    const currentSelectedMarca = String(
-      selectedDraftProducto?.marca?.nombre || selectedDraftProducto?.marca || ''
-    ).trim()
-    const keepSelectedProduct =
-      Boolean(selectedDraftProducto?.id) &&
-      (
-        (currentSelectedMarcaId && currentSelectedMarcaId === nextMarcaId) ||
-        (normalizeString(currentSelectedMarca) && normalizeString(currentSelectedMarca) === normalizeString(nextMarcaNombre))
-      )
-
-    if (!keepSelectedProduct) {
-      setSelectedDraftProducto(null)
-    }
+  const handleCasaComercialSelect = useCallback((casaOption) => {
+    if (!casaOption?.id) return
+    const nextId = String(casaOption.id)
+    const nextNombre = String(casaOption.nombre || '').trim()
 
     setProductoDraft((prev) => ({
       ...prev,
-      productoId: keepSelectedProduct ? prev.productoId : '',
-      marcaId: nextMarcaId,
-      marca: nextMarcaNombre,
+      casaComercialId: nextId,
+      casaComercialNombre: nextNombre,
     }))
-    setShowMarcaDropdown(false)
-    setMarcaSearchTerm('')
-    setMarcaOptions([])
-    setMarcaLoading(false)
-  }, [selectedDraftProducto])
+    setShowCasaComercialDropdown(false)
+    setCasaComercialSearchTerm('')
+    setCasaComercialOptions([])
+    setCasaComercialLoading(false)
+  }, [])
 
-  const handleMarcaSearchChange = (event) => {
+  const handleCasaComercialSearchChange = (event) => {
     const value = event.target.value
-    setMarcaSearchTerm(value)
-    if (!showMarcaDropdown) {
-      setShowMarcaDropdown(true)
+    setCasaComercialSearchTerm(value)
+    if (!showCasaComercialDropdown) {
+      setShowCasaComercialDropdown(true)
     }
     if (!String(value || '').trim()) {
-      setMarcaOptions([])
-      setMarcaLoading(false)
+      setCasaComercialOptions([])
+      setCasaComercialLoading(false)
     }
   }
 
-  const handleMarcaDropdownToggle = () => {
-    if (showMarcaDropdown) {
-      setShowMarcaDropdown(false)
+  const handleCasaComercialDropdownToggle = () => {
+    if (showCasaComercialDropdown) {
+      setShowCasaComercialDropdown(false)
       return
     }
-    setMarcaSearchTerm('')
-    setMarcaOptions([])
-    setMarcaLoading(false)
-    setShowMarcaDropdown(true)
+    setCasaComercialSearchTerm('')
+    setCasaComercialOptions([])
+    setCasaComercialLoading(false)
+    setShowCasaComercialDropdown(true)
   }
 
   const draftOemList = useMemo(() => parseOemInput(productoDraft.oems), [productoDraft.oems])
@@ -1097,13 +1080,12 @@ function CreateSolicitud({
     const cantidadRaw = Number(productoDraft.cantidad)
     const cantidad = Number.isFinite(cantidadRaw) ? Math.max(1, Math.floor(cantidadRaw)) : 0
     let productoIdRaw = Number(productoDraft.productoId)
-    let marcaIdRaw = Number(productoDraft.marcaId)
+    let casaComercialIdRaw = Number(productoDraft.casaComercialId)
+    let hasCasaComercialId = Number.isFinite(casaComercialIdRaw) && casaComercialIdRaw > 0
     let hasProductoId = Number.isFinite(productoIdRaw) && productoIdRaw > 0
-    let hasMarcaId = Number.isFinite(marcaIdRaw) && marcaIdRaw > 0
 
     let codigo = String(productoDraft.codigo || '').trim().toUpperCase()
     let nombre = String(productoDraft.nombre || '').trim()
-    let marca = String(productoDraft.marca || '').trim()
     let oemList = draftOemList
     const comentario = String(productoDraft.comentario || '').trim()
 
@@ -1121,11 +1103,8 @@ function CreateSolicitud({
         if (matchedProducto) {
           productoIdRaw = Number(matchedProducto.id)
           hasProductoId = Number.isFinite(productoIdRaw) && productoIdRaw > 0
-          marcaIdRaw = Number(matchedProducto?.marca?.id || 0)
-          hasMarcaId = Number.isFinite(marcaIdRaw) && marcaIdRaw > 0
           codigo = String(matchedProducto?.codigo || '').trim().toUpperCase()
           nombre = String(matchedProducto?.nombre || '').trim()
-          marca = String(matchedProducto?.marca?.nombre || matchedProducto?.marca || '').trim()
           oemList = extractProductoOems(matchedProducto)
           setSelectedDraftProducto(matchedProducto)
         }
@@ -1162,14 +1141,8 @@ function CreateSolicitud({
     const missingFields = []
     if (!codigo) missingFields.push('codigo')
     if (!nombre) missingFields.push('nombre')
-    if (!hasMarcaId || !marca) missingFields.push('marca')
 
     if (missingFields.length) {
-      if (missingFields.length === 1 && missingFields[0] === 'marca') {
-        notifyError('Marca es obligatoria. Debes seleccionar una marca existente.')
-        return
-      }
-
       if (missingFields.length === 1) {
         const fieldLabel = missingFields[0]
         notifyError(`${fieldLabel.charAt(0).toUpperCase()}${fieldLabel.slice(1)} es obligatorio.`)
@@ -1202,9 +1175,9 @@ function CreateSolicitud({
       productoId: hasProductoId ? productoIdRaw : null,
       codigo,
       nombre,
-      marcaId: marcaIdRaw,
+      casaComercialId: hasCasaComercialId ? casaComercialIdRaw : null,
+      casaComercialNombre: String(productoDraft.casaComercialNombre || '').trim(),
       oems: oemList,
-      marca,
       comentario,
       cantidad,
     }
@@ -1215,10 +1188,10 @@ function CreateSolicitud({
     setProductoAttempted(false)
     setShowCodigoDropdown(false)
     setShowOemDropdown(false)
-    setShowMarcaDropdown(false)
+    setShowCasaComercialDropdown(false)
     setCodigoOptions([])
     setOemOptions([])
-    setMarcaOptions([])
+    setCasaComercialOptions([])
     } finally {
       addingProductoRef.current = false
       setAddingProducto(false)
@@ -1325,15 +1298,17 @@ function CreateSolicitud({
           }
         }
 
-        return {
+        const newProductPayload = {
           ...base,
           codigo: String(item.codigo || '').trim(),
           nombre: String(item.nombre || '').trim(),
-          marca_id: Number(item.marcaId),
-          marca: String(item.marca || '').trim(),
           oems: Array.isArray(item.oems) ? item.oems : parseOemInput(item.oems),
           descripcion: '',
         }
+        if (item.casaComercialId) {
+          newProductPayload.producto_casa_comercial_id = Number(item.casaComercialId)
+        }
+        return newProductPayload
       }),
     }
 
@@ -1455,7 +1430,6 @@ function CreateSolicitud({
   const draftCantidadRaw = Number(productoDraft.cantidad)
   const productoCodigoInvalid = productoAttempted && !String(productoDraft.codigo || '').trim()
   const productoNombreInvalid = productoAttempted && !String(productoDraft.nombre || '').trim()
-  const productoMarcaInvalid = productoAttempted && !String(productoDraft.marcaId || '').trim()
   const productoCantidadInvalid = productoAttempted && (!Number.isFinite(draftCantidadRaw) || draftCantidadRaw <= 0)
   const sucursalInvalid = submitAttempted && !sucursalId
   const productosInvalid = submitAttempted && !productos.length
@@ -1572,7 +1546,7 @@ function CreateSolicitud({
                       <span>Codigo</span>
                       <span>Nombre</span>
                       <span>OEM</span>
-                      <span>Marca</span>
+                      <span>Casa comercial</span>
                       <span>Comentario</span>
                       <span>Cantidad</span>
                       <span>Acciones</span>
@@ -1726,63 +1700,63 @@ function CreateSolicitud({
                       </span>
 
                       <span>
-                        <div className="create-solicitud__inline-dropdown" ref={marcaDropdownRef}>
+                        <div className="create-solicitud__inline-dropdown" ref={casaComercialDropdownRef}>
                           <button
                             type="button"
-                            className={`create-solicitud__inline-trigger${!productoDraft.marca ? ' create-solicitud__inline-trigger--placeholder' : ''}${productoMarcaInvalid ? ' create-solicitud__inline-trigger--invalid' : ''}`}
-                            onClick={handleMarcaDropdownToggle}
+                            className={`create-solicitud__inline-trigger${!productoDraft.casaComercialNombre ? ' create-solicitud__inline-trigger--placeholder' : ''}`}
+                            onClick={handleCasaComercialDropdownToggle}
                             disabled={loading}
                             aria-haspopup="listbox"
-                            aria-expanded={showMarcaDropdown}
+                            aria-expanded={showCasaComercialDropdown}
                           >
-                            <span>{productoDraft.marca || 'Seleccionar marca'}</span>
+                            <span>{productoDraft.casaComercialNombre || 'Casa comercial (opcional)'}</span>
                             <i
-                              className={`pi pi-chevron-${showMarcaDropdown ? 'up' : 'down'}`}
+                              className={`pi pi-chevron-${showCasaComercialDropdown ? 'up' : 'down'}`}
                               aria-hidden="true"
                             />
                           </button>
-                          {showMarcaDropdown && (
+                          {showCasaComercialDropdown && (
                             <div className="create-solicitud__inline-panel create-solicitud__inline-panel--compact">
                               <div className="create-user__dropdown-search">
                                 <i className="pi pi-search" />
                                 <input
                                   type="text"
-                                  placeholder="Buscar marca"
-                                  value={marcaSearchTerm}
-                                  onChange={handleMarcaSearchChange}
+                                  placeholder="Buscar casa comercial"
+                                  value={casaComercialSearchTerm}
+                                  onChange={handleCasaComercialSearchChange}
                                   autoFocus
                                   autoComplete="off"
                                 />
                               </div>
                               <div className="create-solicitud__inline-results">
-                                {marcaLoading && <small className="muted">Buscando marcas...</small>}
-                                {!marcaLoading && String(marcaSearchTerm || '').trim().length < 2 && (
+                                {casaComercialLoading && <small className="muted">Buscando casas comerciales...</small>}
+                                {!casaComercialLoading && String(casaComercialSearchTerm || '').trim().length < 2 && (
                                   <small className="muted">Escribe al menos 2 caracteres.</small>
                                 )}
-                                {!marcaLoading &&
-                                  String(marcaSearchTerm || '').trim().length >= 2 &&
-                                  !marcaOptions.length && (
+                                {!casaComercialLoading &&
+                                  String(casaComercialSearchTerm || '').trim().length >= 2 &&
+                                  !casaComercialOptions.length && (
                                     <small className="muted">
-                                      Sin coincidencias. Debes seleccionar una marca existente.
+                                      Sin coincidencias.
                                     </small>
                                   )}
-                                {marcaOptions.map((marcaOption) => {
+                                {casaComercialOptions.map((casaOption) => {
                                   const isSelected =
-                                    String(productoDraft.marcaId || '') === String(marcaOption.id)
+                                    String(productoDraft.casaComercialId || '') === String(casaOption.id)
                                   return (
                                     <button
-                                      key={`marca-opt-${marcaOption.id}`}
+                                      key={`casa-opt-${casaOption.id}`}
                                       type="button"
                                       className="create-user__result-option"
                                       onMouseDown={(event) => event.preventDefault()}
-                                      onClick={() => handleMarcaSelect(marcaOption)}
+                                      onClick={() => handleCasaComercialSelect(casaOption)}
                                     >
                                       <div className="create-user__result-info">
-                                        <strong>{marcaOption.nombre || `Marca ${marcaOption.id}`}</strong>
+                                        <strong>{casaOption.nombre || `Casa comercial ${casaOption.id}`}</strong>
                                         <small>
-                                          {marcaOption.codigo
-                                            ? `Codigo: ${marcaOption.codigo}`
-                                            : `ID: ${marcaOption.id}`}
+                                          {casaOption.codigo
+                                            ? `Codigo: ${casaOption.codigo}`
+                                            : `ID: ${casaOption.id}`}
                                         </small>
                                       </div>
                                       {isSelected && (
@@ -1848,7 +1822,7 @@ function CreateSolicitud({
                         </span>
                         <span>{item.nombre || '-'}</span>
                         <span>{item.oems?.length ? item.oems.join(', ') : '-'}</span>
-                        <span>{item.marca || '-'}</span>
+                        <span>{item.casaComercialNombre || '-'}</span>
                         <span>{item.comentario || '-'}</span>
                         <span className="create-solicitud__quantity-cell">{item.cantidad}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">

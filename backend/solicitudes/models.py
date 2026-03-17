@@ -5,7 +5,7 @@ import unicodedata
 from django.core.exceptions import ValidationError
 from django.db import models
 
-from marcas.models import Marca
+from casa_comercial.models import CasaComercial
 
 
 def normalize_sucursal_name(value):
@@ -69,11 +69,7 @@ class Auto(models.Model):
     placa = models.CharField(max_length=20)
     modelo = models.CharField(max_length=120)
     anio = models.PositiveSmallIntegerField("Anio")
-    marca = models.ForeignKey(
-        Marca,
-        on_delete=models.PROTECT,
-        related_name="autos",
-    )
+    marca = models.CharField(max_length=120, blank=True)
     color = models.CharField(max_length=50, blank=True)
 
     class Meta:
@@ -89,10 +85,12 @@ class ProductoSolicitado(models.Model):
 
     codigo = models.CharField(max_length=80, blank=True)
     nombre = models.CharField(max_length=255)
-    marca = models.ForeignKey(
-        Marca,
+    casa_comercial = models.ForeignKey(
+        CasaComercial,
         on_delete=models.PROTECT,
         related_name="productos_solicitados",
+        null=True,
+        blank=True,
     )
     descripcion = models.TextField(blank=True)
     conseguido = models.BooleanField(default=False)

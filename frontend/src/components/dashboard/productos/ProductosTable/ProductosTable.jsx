@@ -29,19 +29,16 @@ const DEFAULT_IVA_RATE = 0.15
 const PRODUCT_FILTER_FIELDS = [
   'codigo',
   'nombre',
-  'marca_nombre',
   'casa_comercial_nombre',
 ]
 const PRODUCT_FILTER_DEFAULT_MODES = {
   codigo: FilterMatchMode.STARTS_WITH,
   nombre: FilterMatchMode.STARTS_WITH,
-  marca_nombre: FilterMatchMode.STARTS_WITH,
   casa_comercial_nombre: FilterMatchMode.STARTS_WITH,
 }
 const PRODUCT_ORDERING_MAP = {
   codigo: 'codigo',
   nombre: 'nombre',
-  marca_nombre: 'marca__nombre',
   pieza_original_label: 'pieza_original',
   costo_minimo: 'costo_minimo',
   precio: 'precio',
@@ -132,7 +129,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         const firstHouseName = houses.map((house) => house?.nombre).find(Boolean) ?? '-'
         return {
           ...product,
-          marca_nombre: product?.marca?.nombre ?? '-',
           casa_comercial_nombre: firstHouseName,
           casas_comerciales_nombres: houses.map((house) => house?.nombre).filter(Boolean).join(', '),
           pieza_original_label: product?.pieza_original ? 'Si' : 'No',
@@ -165,7 +161,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     addIfPresent('nombre', criteria?.nombre)
     addIfPresent('oem', criteria?.oem)
     addIfPresent('descripcion', criteria?.descripcion)
-    addIfPresent('marca', criteria?.marca)
     addIfPresent('casa_comercial', criteria?.casa_comercial)
     addIfPresent('pieza_original', criteria?.pieza_original)
     if (canSeeCost) {
@@ -375,7 +370,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      marca_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       pieza_original_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       costo_minimo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       precio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
@@ -440,13 +434,15 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     }
     setIsGlobalSearchPending(false)
     const nextFilters = initFilters()
+    setSortField(null)
+    setSortOrder(null)
     if (!lastSearchRef.current) return
     setPageFirst(0)
     setIsRefreshing(true)
     await fetchProducts(lastSearchRef.current, 1, pageSize, {
       tableFilters: nextFilters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
+      tableSortField: null,
+      tableSortOrder: null,
       globalSearchValue: '',
     })
   }
@@ -456,7 +452,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     nombre: '',
     oem: '',
     descripcion: '',
-    marca: '',
     casa_comercial: '',
     pieza_original: '',
     costo_minimo: '',
@@ -465,13 +460,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   }
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
-  const [searchMarcaQuery, setSearchMarcaQuery] = useState('')
   const [searchCasaQuery, setSearchCasaQuery] = useState('')
-  const [searchMarcaOptions, setSearchMarcaOptions] = useState([])
   const [searchCasaOptions, setSearchCasaOptions] = useState([])
-  const [searchMarcaLoading, setSearchMarcaLoading] = useState(false)
   const [searchCasaLoading, setSearchCasaLoading] = useState(false)
-  const [showSearchMarcaDropdown, setShowSearchMarcaDropdown] = useState(false)
   const [showSearchCasaDropdown, setShowSearchCasaDropdown] = useState(false)
   const [showSearchModal, setShowSearchModal] = useState(false)
   const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
@@ -483,7 +474,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
   const searchModalRef = useRef(null)
-  const searchMarcaDropdownRef = useRef(null)
   const searchCasaDropdownRef = useRef(null)
   const searchDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const searchResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
@@ -514,33 +504,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     }))
   }
 
-  const searchMarcas = useCallback(
-    async (query) => {
-      const term = String(query ?? '').trim()
-      if (!term || !token) {
-        setSearchMarcaOptions([])
-        return
-      }
-      setSearchMarcaLoading(true)
-      try {
-        const response = await authFetch(
-          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=5`,
-          {},
-          token
-        )
-        if (!response.ok) throw new Error('No se pudieron cargar las marcas.')
-        const data = await response.json()
-        const list = Array.isArray(data) ? data : data?.results || []
-        setSearchMarcaOptions(list)
-      } catch {
-        setSearchMarcaOptions([])
-      } finally {
-        setSearchMarcaLoading(false)
-      }
-    },
-    [token]
-  )
-
   const searchCasas = useCallback(
     async (query) => {
       const term = String(query ?? '').trim()
@@ -570,19 +533,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
 
   useEffect(() => {
     if (!showSearchModal) return
-    const term = searchMarcaQuery.trim()
-    if (!term) {
-      setSearchMarcaOptions([])
-      return
-    }
-    const handle = setTimeout(() => {
-      searchMarcas(term)
-    }, 300)
-    return () => clearTimeout(handle)
-  }, [searchMarcaQuery, searchMarcas, showSearchModal])
-
-  useEffect(() => {
-    if (!showSearchModal) return
     const term = searchCasaQuery.trim()
     if (!term) {
       setSearchCasaOptions([])
@@ -596,20 +546,12 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
 
   useEffect(() => {
     if (!showSearchModal) return
-    setSearchMarcaQuery(searchCriteria.marca || '')
     setSearchCasaQuery(searchCriteria.casa_comercial || '')
-  }, [showSearchModal, searchCriteria.marca, searchCriteria.casa_comercial])
+  }, [showSearchModal, searchCriteria.casa_comercial])
 
   useEffect(() => {
     if (!showSearchModal) return
     const handleClick = (event) => {
-      if (
-        showSearchMarcaDropdown &&
-        searchMarcaDropdownRef.current &&
-        !searchMarcaDropdownRef.current.contains(event.target)
-      ) {
-        setShowSearchMarcaDropdown(false)
-      }
       if (
         showSearchCasaDropdown &&
         searchCasaDropdownRef.current &&
@@ -620,7 +562,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [showSearchModal, showSearchMarcaDropdown, showSearchCasaDropdown])
+  }, [showSearchModal, showSearchCasaDropdown])
 
   const handleSearchSubmit = async (event) => {
     event.preventDefault()
@@ -736,7 +678,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     () => [
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
-      { nombrevar: 'marca_nombre', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
       { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
       { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
@@ -817,8 +758,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const getExportValue = useCallback(
     (row, field) => {
       switch (field) {
-        case 'marca_nombre':
-          return row?.marca?.nombre ?? row?.marca_nombre ?? ''
         case 'pieza_original_label':
           return row?.pieza_original ? 'Si' : 'No'
         case 'casa_comercial_nombre':
@@ -933,7 +872,37 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   }
 
   // ---------------- Row click -> detalles ----------------
+  const clickTimerRef = useRef(null)
+
   const handleRowClick = (event) => {
+    const target = event?.originalEvent?.target
+    if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
+
+    const rowData = event?.data
+    if (!rowData) return
+    const id = normId(rowData?.id)
+    if (!id) return
+
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = setTimeout(() => {
+      setSelectedRows((prev) => {
+        const prevMap = new Map((prev || []).map((r) => [normId(r?.id), r]))
+        if (prevMap.has(id)) {
+          prevMap.delete(id)
+        } else {
+          prevMap.set(id, rowData)
+        }
+        return Array.from(prevMap.values())
+      })
+    }, 220)
+  }
+
+  const handleRowDoubleClick = (event) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+
     const target = event?.originalEvent?.target
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
 
@@ -1463,7 +1432,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
           size="small"
           scrollable
           scrollHeight="flex"
-          frozenWidth="40px"
+          frozenWidth="190px"
           lazy
           paginator
           first={pageFirst}
@@ -1483,7 +1452,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
             'nombre',
             'oem_codes',
             'descripcion',
-            'marca_nombre',
             'pieza_original_label',
             'precio',
             'precio_con_iva',
@@ -1496,6 +1464,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
           resizableColumns
           columnResizeMode="fit"
           onRowClick={handleRowClick}
+          onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
           selectionMode="multiple"
           selection={selectedRows}
@@ -1557,7 +1526,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                 filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'nombre':
-              case 'marca_nombre':
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
@@ -1599,6 +1567,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                 body={bodyTemplate}
                 sortable
                 reorderable
+                frozen={column.nombrevar === 'codigo'}
                 filter={enableFilter}
                 filterPlaceholder={column.filterPlaceholder}
                 filterMatchMode={filterMatchMode}
@@ -1862,71 +1831,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                     </label>
 
                     <label className="create-user__field">
-                      <span>Marca</span>
-                      <div className="create-user__dropdown" ref={searchMarcaDropdownRef}>
-                        <button
-                          type="button"
-                          className="create-user__dropdown-trigger"
-                          onClick={() => {
-                            setShowSearchMarcaDropdown((prev) => !prev)
-                            setShowSearchCasaDropdown(false)
-                          }}
-                        >
-                          <span>{searchMarcaQuery.trim() ? searchMarcaQuery : 'Selecciona una marca'}</span>
-                          <i className={`pi pi-chevron-${showSearchMarcaDropdown ? 'up' : 'down'}`} />
-                        </button>
-
-                        {showSearchMarcaDropdown && (
-                          <div className="create-user__dropdown-panel">
-                            <div className="create-user__dropdown-search">
-                              <i className="pi pi-search" />
-                              <input
-                                type="text"
-                                placeholder="Buscar marcas"
-                                value={searchMarcaQuery}
-                                onChange={(event) => {
-                                  const value = event.target.value
-                                  setSearchMarcaQuery(value)
-                                  setSearchCriteria((prev) => ({ ...prev, marca: value }))
-                                }}
-                              />
-                            </div>
-
-                            <div className="create-user__dropdown-results">
-                              {searchMarcaLoading && <small className="muted">Buscando marcas...</small>}
-                              {!searchMarcaLoading && !searchMarcaQuery.trim() && (
-                                <small className="muted">Escribe para buscar.</small>
-                              )}
-                              {!searchMarcaLoading && searchMarcaQuery.trim() && !searchMarcaOptions.length && (
-                                <small className="muted">Sin resultados.</small>
-                              )}
-                              {searchMarcaOptions.map((marca) => (
-                                <button
-                                  key={marca.id}
-                                  type="button"
-                                  className="create-user__result-option"
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    setSearchMarcaQuery(marca.nombre)
-                                    setSearchCriteria((prev) => ({ ...prev, marca: marca.nombre }))
-                                    setShowSearchMarcaDropdown(false)
-                                  }}
-                                >
-                                  <div className="create-user__result-info">
-                                    <strong>{marca.nombre}</strong>
-                                    <small>{marca.codigo ? `Código: ${marca.codigo}` : `ID: ${marca.id}`}</small>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </label>
-
-                    <label className="create-user__field">
                       <span>Casa comercial</span>
                       <div className="create-user__dropdown" ref={searchCasaDropdownRef}>
                         <button
@@ -1934,7 +1838,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                           className="create-user__dropdown-trigger"
                           onClick={() => {
                             setShowSearchCasaDropdown((prev) => !prev)
-                            setShowSearchMarcaDropdown(false)
                           }}
                         >
                           <span>{searchCasaQuery.trim() ? searchCasaQuery : 'Selecciona una casa comercial'}</span>

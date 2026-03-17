@@ -23,10 +23,11 @@ import {
 } from '../../../../utils/primeTableQuery'
 
 const normId = (v) => (v == null ? null : String(v))
-const COMPANY_FILTER_FIELDS = ['nombre', 'codigo', 'pais_nombre', 'telefono', 'correo', 'descripcion']
+const COMPANY_FILTER_FIELDS = ['nombre', 'codigo', 'tipo', 'pais_nombre', 'telefono', 'correo', 'descripcion']
 const COMPANY_FILTER_DEFAULT_MODES = {
   nombre: FilterMatchMode.STARTS_WITH,
   codigo: FilterMatchMode.STARTS_WITH,
+  tipo: FilterMatchMode.STARTS_WITH,
   pais_nombre: FilterMatchMode.STARTS_WITH,
   telefono: FilterMatchMode.CONTAINS,
   correo: FilterMatchMode.CONTAINS,
@@ -35,6 +36,7 @@ const COMPANY_FILTER_DEFAULT_MODES = {
 const COMPANY_ORDERING_MAP = {
   nombre: 'nombre',
   codigo: 'codigo',
+  tipo: 'tipo',
   pais_nombre: 'pais__nombre',
   telefono: 'telefono',
   correo: 'correo',
@@ -54,7 +56,6 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
-  const canCreateMarca = getModuleActions('proveedores_marcas', permissionIndex)?.puede_crear ?? true
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -83,6 +84,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
     return list.map((item) => ({
       ...item,
       pais_nombre: item?.pais?.nombre ?? '-',
+      tipo_label: item?.tipo === 'importacion' ? 'Importación' : 'Local',
     }))
   }, [])
 
@@ -273,6 +275,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      tipo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       pais_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
@@ -330,12 +333,14 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
     }
     const nextFilters = initFilters()
     if (!lastSearchRef.current) return
+    setSortField(null)
+    setSortOrder(null)
     setPageFirst(0)
     setIsRefreshing(true)
     await fetchCompanies(lastSearchRef.current, 1, pageSize, {
       tableFilters: nextFilters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
+      tableSortField: null,
+      tableSortOrder: null,
     })
   }
 
@@ -432,6 +437,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
     () => [
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
+      { nombrevar: 'tipo_label', header: 'Tipo', filterPlaceholder: 'Buscar por tipo' },
       { nombrevar: 'pais_nombre', header: 'País', filterPlaceholder: 'Buscar por país' },
       { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
       { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
@@ -1091,7 +1097,6 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
         onDeleted={handleDeleted}
         onDuplicated={handleDuplicated}
         onError={showErrorToast}
-        allowCreate={canCreateMarca}
         allowEdit={canEdit}
         allowDelete={canDelete}
       />

@@ -21,7 +21,6 @@ const emptyForm = {
   pieza_original: false,
   costo_minimo: '',
   precio: '',
-  marcaId: '',
   casasIds: [],
 }
 
@@ -110,15 +109,11 @@ function ProductoDetails({
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
-  const [brands, setBrands] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [selectedCasa, setSelectedCasa] = useState(null)
   const [originalCasa, setOriginalCasa] = useState(null)
-  const [originalMarcaNombre, setOriginalMarcaNombre] = useState('')
-  const [marcaQuery, setMarcaQuery] = useState('')
   const [casaSearch, setCasaSearch] = useState('')
   const [activeTab, setActiveTab] = useState('general')
-  const [showMarcaDropdown, setShowMarcaDropdown] = useState(false)
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const [alternativas, setAlternativas] = useState([])
   const [originalAlternativas, setOriginalAlternativas] = useState([])
@@ -152,7 +147,6 @@ function ProductoDetails({
   const hasExternalInventoryContext = Boolean(inventoryContext)
 
   const modalRef = useRef(null)
-  const marcaDropdownRef = useRef(null)
   const casaDropdownRef = useRef(null)
   const alternoDropdownRef = useRef(null)
   const inventarioEditorRef = useRef(null)
@@ -226,7 +220,6 @@ function ProductoDetails({
     pieza_original: Boolean(data?.pieza_original),
     costo_minimo: formatMoneyFromValue(data?.costo_minimo),
     precio: formatMoneyFromValue(data?.precio),
-    marcaId: data?.marca?.id ?? '',
     casasIds: Array.isArray(data?.casas_comerciales) ? data.casas_comerciales.map((casa) => String(casa.id)) : [],
   })
 
@@ -318,9 +311,6 @@ function ProductoDetails({
       const normalized = normalizeProducto(data)
       setFormData(normalized)
       setOriginalData(normalized)
-      const marcaNombre = data?.marca?.nombre ?? ''
-      setOriginalMarcaNombre(marcaNombre)
-      setMarcaQuery(marcaNombre)
       const casas = Array.isArray(data?.casas_comerciales) ? data.casas_comerciales : []
       const casaPrincipal = casas[0] || null
       setSelectedCasa(casaPrincipal)
@@ -369,30 +359,6 @@ function ProductoDetails({
       setLoadingData(false)
     }
   }, [buildInventoryContextFromProducto, enrichAlternativas, hasExternalInventoryContext, notifyError, token, productoId])
-
-  const searchBrands = useCallback(
-    async (query) => {
-      const term = String(query ?? '').trim()
-      if (!term || !token) {
-        setBrands([])
-        return
-      }
-      try {
-        const response = await authFetch(
-          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=5`,
-          {},
-          token
-        )
-        if (!response.ok) throw new Error('No se pudieron cargar las marcas.')
-        const data = await response.json()
-        const list = Array.isArray(data) ? data : data?.results || []
-        setBrands(list)
-      } catch (err) {
-        notifyError(err.message || 'Ocurrió un error al cargar las marcas.')
-      }
-    },
-    [notifyError, token]
-  )
 
   const searchSuppliers = useCallback(
     async (query) => {
@@ -486,8 +452,6 @@ function ProductoDetails({
     setActiveTab('general')
     setFormData(emptyForm)
     setOriginalData(emptyForm)
-    setOriginalMarcaNombre('')
-    setMarcaQuery('')
     setCasaSearch('')
     setSelectedCasa(null)
     setOriginalCasa(null)
@@ -505,7 +469,6 @@ function ProductoDetails({
     setShowAlternoForm(false)
     setAlternoDraft(null)
     setAlternoError('')
-    setShowMarcaDropdown(false)
     setShowCasaDropdown(false)
     setIsMaximized(false)
     restoreRef.current = null
@@ -536,18 +499,6 @@ function ProductoDetails({
   }, [allowDelete, showDeleteDialog])
 
   useEffect(() => {
-    const term = marcaQuery.trim()
-    if (!term) {
-      setBrands([])
-      return
-    }
-    const handle = setTimeout(() => {
-      searchBrands(term)
-    }, 300)
-    return () => clearTimeout(handle)
-  }, [marcaQuery, searchBrands])
-
-  useEffect(() => {
     const term = casaSearch.trim()
     if (!term) {
       setSuppliers([])
@@ -573,9 +524,6 @@ function ProductoDetails({
 
   useEffect(() => {
     const handleClick = (event) => {
-      if (showMarcaDropdown && marcaDropdownRef.current && !marcaDropdownRef.current.contains(event.target)) {
-        setShowMarcaDropdown(false)
-      }
       if (showCasaDropdown && casaDropdownRef.current && !casaDropdownRef.current.contains(event.target)) {
         setShowCasaDropdown(false)
       }
@@ -585,7 +533,7 @@ function ProductoDetails({
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [showMarcaDropdown, showCasaDropdown, showAlternoDropdown])
+  }, [showCasaDropdown, showAlternoDropdown])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -628,27 +576,6 @@ function ProductoDetails({
       ...prev,
       [name]: value,
     }))
-  }
-
-  const handleMarcaInputChange = (event) => {
-    if (!isEditing) return
-    const value = event.target.value
-    setMarcaQuery(value)
-    const match = brands.find((brand) => normalizeValue(brand?.nombre) === normalizeValue(value))
-    setFormData((prev) => ({
-      ...prev,
-      marcaId: match ? String(match.id) : '',
-    }))
-  }
-
-  const handleMarcaSelect = (brand) => {
-    if (!isEditing || !brand) return
-    setMarcaQuery(brand.nombre || '')
-    setFormData((prev) => ({
-      ...prev,
-      marcaId: String(brand.id),
-    }))
-    setShowMarcaDropdown(false)
   }
 
   const handleCasaSelect = (supplier) => {
@@ -978,7 +905,6 @@ function ProductoDetails({
       pieza_original: Boolean(formData.pieza_original),
       costo_minimo: parseNumber(formData.costo_minimo),
       precio: parseNumber(formData.precio),
-      marca_id: formData.marcaId ? Number(formData.marcaId) : null,
       casas_comerciales_ids: (formData.casasIds || []).map((id) => Number(id)),
     }
 
@@ -997,12 +923,6 @@ function ProductoDetails({
     if (!payload.descripcion) {
       setSaving(false)
       notifyError('Define una descripcion para el producto.')
-      return
-    }
-
-    if (!payload.marca_id) {
-      setSaving(false)
-      notifyError('Selecciona una marca para el producto.')
       return
     }
 
@@ -1036,7 +956,6 @@ function ProductoDetails({
           data?.nombre?.[0] ||
           data?.descripcion?.[0] ||
           data?.precio?.[0] ||
-          data?.marca_id?.[0] ||
           data?.casas_comerciales_ids?.[0] ||
           'No se pudo actualizar el producto.'
         throw new Error(detail)
@@ -1045,9 +964,6 @@ function ProductoDetails({
       const normalized = normalizeProducto(data)
       setFormData(normalized)
       setOriginalData(normalized)
-      const marcaNombre = data?.marca?.nombre ?? ''
-      setMarcaQuery(marcaNombre)
-      setOriginalMarcaNombre(marcaNombre)
       const casas = Array.isArray(data?.casas_comerciales) ? data.casas_comerciales : []
       const casaPrincipal = casas[0] || null
       setSelectedCasa(casaPrincipal)
@@ -1061,7 +977,6 @@ function ProductoDetails({
       setShowOemForm(false)
       setOemDraft({ codigo: '', descripcion: '' })
       setOemError('')
-      setShowMarcaDropdown(false)
       setShowCasaDropdown(false)
       setAlternoQuery('')
       setAlternoOptions([])
@@ -1127,7 +1042,6 @@ function ProductoDetails({
 
   const handleCancelEdit = () => {
     setFormData(originalData)
-    setMarcaQuery(originalMarcaNombre)
     setSelectedCasa(originalCasa)
     setAlternativas(originalAlternativas)
     setOemItems(originalOemItems)
@@ -1140,7 +1054,6 @@ function ProductoDetails({
     setShowAlternoForm(false)
     setAlternoDraft(null)
     setAlternoError('')
-    setShowMarcaDropdown(false)
     setShowCasaDropdown(false)
     setSubmitAttempted(false)
     setIsEditing(false)
@@ -1327,7 +1240,6 @@ function ProductoDetails({
 
   const editorDisabled = saving || loadingData || !isEditing
   const precioInvalid = submitAttempted && isEditing && parseNumber(formData.precio) === null
-  const marcaInvalid = submitAttempted && isEditing && !Number(formData.marcaId)
   const casaInvalid = submitAttempted && isEditing && !(Array.isArray(formData.casasIds) && formData.casasIds.length)
 
   return (
@@ -1472,67 +1384,6 @@ function ProductoDetails({
                       />
                     </label>
 
-                    <label className="create-user__field create-user__field--required">
-                      <span>Marca</span>
-                      <div
-                        className={`create-user__dropdown${marcaInvalid ? ' create-user__dropdown--invalid' : ''}`}
-                        ref={marcaDropdownRef}
-                      >
-                        <button
-                          type="button"
-                          className="create-user__dropdown-trigger"
-                          onClick={() => {
-                            if (editorDisabled) return
-                            setShowMarcaDropdown((prev) => !prev)
-                            setShowCasaDropdown(false)
-                          }}
-                          disabled={editorDisabled}
-                        >
-                          <span>{marcaQuery.trim() ? marcaQuery : 'Selecciona una marca'}</span>
-                          <i className={`pi pi-chevron-${showMarcaDropdown ? 'up' : 'down'}`} />
-                        </button>
-
-                        {showMarcaDropdown && (
-                          <div className="create-user__dropdown-panel">
-                            <div className="create-user__dropdown-search">
-                              <i className="pi pi-search" />
-                              <input
-                                type="text"
-                                placeholder="Buscar marcas"
-                                value={marcaQuery}
-                                onChange={handleMarcaInputChange}
-                                disabled={editorDisabled}
-                              />
-                            </div>
-
-                            <div className="create-user__dropdown-results">
-                              {!marcaQuery.trim() && <small className="muted">Escribe para buscar.</small>}
-                              {marcaQuery.trim() && !brands.length && <small className="muted">Sin resultados.</small>}
-                              {brands.slice(0, 40).map((brand) => (
-                                <button
-                                  key={brand.id}
-                                  type="button"
-                                  className="create-user__result-option"
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    handleMarcaSelect(brand)
-                                  }}
-                                  disabled={editorDisabled}
-                                >
-                                  <div className="create-user__result-info">
-                                    <strong>{brand.nombre}</strong>
-                                    <small>{brand.codigo ? `Código: ${brand.codigo}` : `ID: ${brand.id}`}</small>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </label>
-
                     <label className="create-user__field">
                       <span>Código</span>
                       <input
@@ -1557,7 +1408,6 @@ function ProductoDetails({
                           onClick={() => {
                             if (editorDisabled) return
                             setShowCasaDropdown((prev) => !prev)
-                            setShowMarcaDropdown(false)
                           }}
                           disabled={editorDisabled}
                         >
@@ -1832,7 +1682,6 @@ function ProductoDetails({
                             onClick={() => {
                               if (editorDisabled) return
                               setShowAlternoDropdown((prev) => !prev)
-                              setShowMarcaDropdown(false)
                               setShowCasaDropdown(false)
                             }}
                             disabled={editorDisabled}

@@ -15,7 +15,6 @@ const initialForm = {
   pieza_original: false,
   costo_minimo: '',
   precio: '',
-  marcaId: '',
   casasIds: [],
 }
 
@@ -86,9 +85,7 @@ function CreateProducto({
   const [showOemForm, setShowOemForm] = useState(false)
   const [oemDraft, setOemDraft] = useState({ codigo: '', descripcion: '' })
   const [oemError, setOemError] = useState('')
-  const [showMarcaDropdown, setShowMarcaDropdown] = useState(false)
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
-  const [brands, setBrands] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [branches, setBranches] = useState([])
   const [bodegas, setBodegas] = useState([])
@@ -128,7 +125,6 @@ function CreateProducto({
   const [editingValue, setEditingValue] = useState('')
   const [editError, setEditError] = useState('')
   const [selectedCasa, setSelectedCasa] = useState(null)
-  const [marcaQuery, setMarcaQuery] = useState('')
   const [casaSearch, setCasaSearch] = useState('')
   const [codigoChecking, setCodigoChecking] = useState(false)
   const [codigoError, setCodigoError] = useState('')
@@ -138,7 +134,6 @@ function CreateProducto({
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
   const modalRef = useRef(null)
-  const marcaDropdownRef = useRef(null)
   const casaDropdownRef = useRef(null)
   const alternoDropdownRef = useRef(null)
   const locationBranchDropdownRef = useRef(null)
@@ -293,30 +288,6 @@ function CreateProducto({
   )
 
   const createLocationUid = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-
-  const searchBrands = useCallback(
-    async (query) => {
-      const term = String(query ?? '').trim()
-      if (!term || !token) {
-        setBrands([])
-        return
-      }
-      try {
-        const response = await authFetch(
-          `${API_URL}/marcas/listado/?search=${encodeURIComponent(term)}&page_size=5`,
-          {},
-          token
-        )
-        if (!response.ok) throw new Error('No se pudieron cargar las marcas.')
-        const data = await response.json()
-        const list = Array.isArray(data) ? data : data?.results || []
-        setBrands(list)
-      } catch (err) {
-        notifyError(err.message || 'Ocurrió un error al cargar las marcas.')
-      }
-    },
-    [notifyError, token]
-  )
 
   const searchSuppliers = useCallback(
     async (query) => {
@@ -547,8 +518,6 @@ function CreateProducto({
     const nextCodigo = toUpperProductCode(nextInitialData.codigo).trim()
     const nextNombre = String(nextInitialData.nombre || '').trim()
     const nextDescripcion = String(nextInitialData.descripcion || '').trim()
-    const nextMarcaId = String(nextInitialData.marcaId || '').trim()
-    const nextMarcaNombre = String(nextInitialData.marcaNombre || '').trim()
     const nextOemItems = Array.isArray(nextInitialData.oemItems)
       ? nextInitialData.oemItems
           .map((item) => String(item || '').trim())
@@ -561,9 +530,7 @@ function CreateProducto({
       codigo: nextCodigo,
       nombre: nextNombre,
       descripcion: nextDescripcion,
-      marcaId: nextMarcaId,
     })
-    setMarcaQuery(nextMarcaNombre)
     setCasaSearch('')
     setLoading(false)
     setActiveTab('general')
@@ -579,7 +546,6 @@ function CreateProducto({
     setShowOemForm(false)
     setOemDraft({ codigo: '', descripcion: '' })
     setOemError('')
-    setShowMarcaDropdown(false)
     setShowCasaDropdown(false)
     setIsMaximized(false)
     setSelectedCasa(null)
@@ -636,7 +602,6 @@ function CreateProducto({
     setCodigoChecking(false)
     setCodigoError('')
     setSubmitAttempted(false)
-    setBrands([])
     setSuppliers([])
     setLocationsLoading(true)
     searchLocationBranches('').finally(() => {
@@ -652,18 +617,6 @@ function CreateProducto({
     },
     []
   )
-
-  useEffect(() => {
-    const term = marcaQuery.trim()
-    if (!term) {
-      setBrands([])
-      return
-    }
-    const handle = setTimeout(() => {
-      searchBrands(term)
-    }, 300)
-    return () => clearTimeout(handle)
-  }, [marcaQuery, searchBrands])
 
   useEffect(() => {
     const term = casaSearch.trim()
@@ -762,9 +715,6 @@ function CreateProducto({
       if (showAlternoDropdown && alternoDropdownRef.current && !alternoDropdownRef.current.contains(event.target)) {
         setShowAlternoDropdown(false)
       }
-      if (showMarcaDropdown && marcaDropdownRef.current && !marcaDropdownRef.current.contains(event.target)) {
-        setShowMarcaDropdown(false)
-      }
       if (showCasaDropdown && casaDropdownRef.current && !casaDropdownRef.current.contains(event.target)) {
         setShowCasaDropdown(false)
       }
@@ -806,7 +756,6 @@ function CreateProducto({
     showLocationBranchDropdown,
     showLocationDivisionDropdown,
     showLocationSubdivisionDropdown,
-    showMarcaDropdown,
   ])
 
   useLayoutEffect(() => {
@@ -927,26 +876,6 @@ function CreateProducto({
     })
   }, [scheduleCodigoCheck])
 
-  const handleMarcaInputChange = (event) => {
-    const value = event.target.value
-    setMarcaQuery(value)
-    setFormData((prev) => ({
-      ...prev,
-      marcaId: '',
-    }))
-  }
-
-  const handleMarcaSelect = (brand) => {
-    if (!brand) return
-    setMarcaQuery(brand.nombre || '')
-    setFormData((prev) => ({
-      ...prev,
-      marcaId: String(brand.id),
-    }))
-    setShowMarcaDropdown(false)
-    applyCodigoPrefix(brand.codigo)
-  }
-
   const handleCasaToggle = (supplier) => {
     if (!supplier) return
     const id = String(supplier.id)
@@ -962,7 +891,7 @@ function CreateProducto({
       setSelectedCasa({ id: supplier.id, nombre: supplier.nombre })
       return { ...prev, casasIds: [id] }
     })
-    if (didSelect && !formData.marcaId) {
+    if (didSelect) {
       applyCodigoPrefix(supplier.codigo)
     }
     setCasaSearch('')
@@ -1484,7 +1413,6 @@ function CreateProducto({
       pieza_original: Boolean(formData.pieza_original),
       costo_minimo: parseNumber(formData.costo_minimo),
       precio: parseNumber(formData.precio),
-      marca_id: formData.marcaId ? Number(formData.marcaId) : null,
       casas_comerciales_ids: (formData.casasIds || []).map((id) => Number(id)),
     }
 
@@ -1492,7 +1420,6 @@ function CreateProducto({
       !payload.codigo ||
       !payload.nombre ||
       !payload.descripcion ||
-      !payload.marca_id ||
       !payload.casas_comerciales_ids.length ||
       payload.precio === null
     )
@@ -1523,7 +1450,6 @@ function CreateProducto({
           data?.nombre?.[0] ||
           data?.descripcion?.[0] ||
           data?.precio?.[0] ||
-          data?.marca_id?.[0] ||
           data?.casas_comerciales_ids?.[0] ||
           'No se pudo crear el producto.'
         throw new Error(detail)
@@ -1772,7 +1698,6 @@ function CreateProducto({
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
   const precioInvalid = submitAttempted && parseNumber(formData.precio) === null
-  const marcaInvalid = submitAttempted && !Number(formData.marcaId)
   const casaInvalid =
     submitAttempted && !(Array.isArray(formData.casasIds) && formData.casasIds.length)
   const loadingMessage = lockModal ? 'Creando y vinculando producto...' : 'Creando producto...'
@@ -1883,63 +1808,6 @@ function CreateProducto({
                       />
                     </label>
 
-                    <label className="create-user__field create-user__field--required">
-                      <span>Marca</span>
-                      <div className={`create-user__dropdown${marcaInvalid ? ' create-user__dropdown--invalid' : ''}`} ref={marcaDropdownRef}>
-                        <button
-                          type="button"
-                          className="create-user__dropdown-trigger"
-                          onClick={() => {
-                            setShowMarcaDropdown((prev) => !prev)
-                            setShowCasaDropdown(false)
-                          }}
-                          disabled={loading}
-                        >
-                          <span>{marcaQuery.trim() ? marcaQuery : 'Selecciona una marca'}</span>
-                          <i className={`pi pi-chevron-${showMarcaDropdown ? 'up' : 'down'}`} />
-                        </button>
-
-                        {showMarcaDropdown && (
-                          <div className="create-user__dropdown-panel">
-                            <div className="create-user__dropdown-search">
-                              <i className="pi pi-search" />
-                              <input
-                                type="text"
-                                placeholder="Buscar marcas"
-                                value={marcaQuery}
-                                onChange={handleMarcaInputChange}
-                              />
-                            </div>
-
-                            <div className="create-user__dropdown-results">
-                              {!marcaQuery.trim() && <small className="muted">Escribe para buscar.</small>}
-                              {marcaQuery.trim() && !brands.length && <small className="muted">Sin resultados.</small>}
-                              {brands.slice(0, 40).map((brand) => (
-                                <button
-                                  key={brand.id}
-                                  type="button"
-                                  className="create-user__result-option"
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    handleMarcaSelect(brand)
-                                  }}
-                                  disabled={loading}
-                                >
-                                  <div className="create-user__result-info">
-                                    <strong>{brand.nombre}</strong>
-                                    <small>{brand.codigo ? `Código: ${brand.codigo}` : `ID: ${brand.id}`}</small>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      {marcaInvalid && <small className="create-user__field-error">Selecciona una marca.</small>}
-                    </label>
-
                     <label className="create-user__field">
                       <span>Código</span>
                       <input
@@ -1954,7 +1822,7 @@ function CreateProducto({
                         disabled={loading}
                       />
                       {!codigoChecking && !codigoError && (
-                        <small className="muted">Sugerencia: se autocompleta con el codigo de la marca o casa comercial.</small>
+                        <small className="muted">Sugerencia: se autocompleta con el codigo de la casa comercial.</small>
                       )}
                       {codigoChecking && <small className="muted">Validando codigo...</small>}
                       {!codigoChecking && codigoError && <small className="create-user__field-error">{codigoError}</small>}
@@ -1968,7 +1836,6 @@ function CreateProducto({
                           className="create-user__dropdown-trigger"
                           onClick={() => {
                             setShowCasaDropdown((prev) => !prev)
-                            setShowMarcaDropdown(false)
                           }}
                           disabled={loading}
                         >
@@ -2229,7 +2096,6 @@ function CreateProducto({
                             onClick={() => {
                               if (loading) return
                               setShowAlternoDropdown((prev) => !prev)
-                              setShowMarcaDropdown(false)
                               setShowCasaDropdown(false)
                             }}
                             disabled={loading}

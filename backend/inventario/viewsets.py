@@ -413,7 +413,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
     queryset = (
         Inventario.objects.select_related(
             "producto",
-            "producto__marca",
             "subdivision",
             "subdivision__division",
             "subdivision__division__tipo_division",
@@ -431,7 +430,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
         "producto__codigo",
         "producto__nombre",
         "producto__descripcion",
-        "producto__marca__nombre",
         "producto__casas_comerciales__nombre",
         "producto__oem_productos__oem__codigo",
         "subdivision__nombre",
@@ -443,7 +441,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
     ordering_fields = [
         "producto__codigo",
         "producto__nombre",
-        "producto__marca__nombre",
         "producto__pieza_original",
         "producto__costo_minimo",
         "producto__precio",
@@ -491,10 +488,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
         descripcion = (params.get("descripcion") or "").strip()
         if descripcion:
             product_queryset = product_queryset.filter(descripcion__icontains=descripcion)
-
-        marca = (params.get("marca") or "").strip()
-        if marca:
-            product_queryset = product_queryset.filter(marca__nombre__icontains=marca)
 
         casa_comercial = (params.get("casa_comercial") or "").strip()
         if casa_comercial:
@@ -550,7 +543,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
             Q(codigo__icontains=search_term)
             | Q(nombre__icontains=search_term)
             | Q(descripcion__icontains=search_term)
-            | Q(marca__nombre__icontains=search_term)
             | Q(casas_comerciales__nombre__icontains=search_term)
             | Q(oem_productos__oem__codigo__icontains=search_term)
         )
@@ -598,14 +590,12 @@ class InventarioViewSet(viewsets.ModelViewSet):
         ordering_aliases = {
             "producto__codigo": "codigo",
             "producto__nombre": "nombre",
-            "producto__marca__nombre": "marca_nombre",
             "producto__pieza_original": "pieza_original_num",
             "producto__costo_minimo": "costo_minimo",
             "producto__precio": "precio",
             "cantidad": "total_general",
             "codigo": "codigo",
             "nombre": "nombre",
-            "marca_nombre": "marca_nombre",
             "pieza_original_label": "pieza_original_label_text",
             "costo_minimo": "costo_minimo",
             "precio": "precio",
@@ -647,7 +637,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         products = (
             Producto.objects.filter(id__in=product_ids)
-            .select_related("marca")
             .prefetch_related("casas_comerciales", "oem_productos__oem")
         )
         product_meta = {}
@@ -666,7 +655,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "casas_comerciales_nombres": ", ".join(casas),
                 "casa_comercial_nombre": (casas[0] if casas else "") or "",
                 "oem_codes": ", ".join(oem_codes),
-                "marca_nombre": getattr(getattr(product, "marca", None), "nombre", "") or "",
             }
 
         serialized = []
@@ -682,9 +670,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "codigo": row.get("codigo") or "",
                 "nombre": row.get("nombre") or "",
                 "descripcion": row.get("descripcion") or "",
-                "marca_nombre": row.get("marca_nombre")
-                or meta.get("marca_nombre")
-                or "",
                 "pieza_original": piece_original,
                 "pieza_original_label": "Si" if piece_original else "No",
                 "casa_comercial_nombre": meta.get("casa_comercial_nombre") or "",
@@ -746,7 +731,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
             codigo=Max("codigo"),
             nombre=Max("nombre"),
             descripcion=Max("descripcion"),
-            marca_nombre=Max("marca__nombre"),
             pieza_original_num=Coalesce(
                 Max(
                     Case(
@@ -805,7 +789,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
         field_map = {
             "codigo": "codigo",
             "nombre": "nombre",
-            "marca_nombre": "marca_nombre",
             "pieza_original_label": "pieza_original_label_text",
             "costo_minimo": {"lookup": "costo_minimo", "type": "number"},
             "precio": {"lookup": "precio", "type": "number"},
@@ -881,10 +864,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
         if descripcion:
             queryset = queryset.filter(producto__descripcion__icontains=descripcion)
 
-        marca = (params.get("marca") or "").strip()
-        if marca:
-            queryset = queryset.filter(producto__marca__nombre__icontains=marca)
-
         casa_comercial = (params.get("casa_comercial") or "").strip()
         if casa_comercial:
             needs_distinct = True
@@ -947,7 +926,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
             {
                 "codigo": "producto__codigo",
                 "nombre": "producto__nombre",
-                "marca_nombre": "producto__marca__nombre",
                 "pieza_original_label": "pieza_original_label_text",
                 "casa_comercial_nombre": "producto__casas_comerciales__nombre",
                 "costo_minimo": {"lookup": "producto__costo_minimo", "type": "number"},

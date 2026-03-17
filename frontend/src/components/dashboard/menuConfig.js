@@ -9,7 +9,6 @@ import {
   Compass,
   Box,
   Truck,
-  Hexagon,
   Building,
   Hand,
   UsersRound,
@@ -46,7 +45,6 @@ export const MENU_STRUCTURE = [
     label: 'Proveedores',
     icon: Truck,
     children: [
-      { label: 'Marcas', icon: Hexagon, moduleKey: 'proveedores_marcas' },
       { label: 'Casas comerciales', icon: Building, moduleKey: 'proveedores_casas' },
     ],
   },

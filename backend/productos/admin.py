@@ -19,19 +19,16 @@ class ProductoAdmin(admin.ModelAdmin):
     list_display = (
         "codigo",
         "nombre",
-        "marca",
         "mostrar_casas_comerciales",
         "pieza_original",
     )
     list_filter = (
         "pieza_original",
-        "marca",
         ("casas_comerciales", admin.RelatedOnlyFieldListFilter),
     )
     search_fields = (
         "codigo",
         "nombre",
-        "marca__nombre",
         "casas_comerciales__nombre",
     )
     inlines = [OEMProductoInline, ProductoAlternoInline]

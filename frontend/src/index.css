@@ -13,7 +13,7 @@
 
   /* ================TABLES================== */
   --table-color: #F8F9FA;
-  --table-color-border: #f1f5f9;
+  --table-color-border: #c8d0d8;
   --table-color-hover: #00457050;
   --table-color-selected: #eef2ff;
   --table-color-selected-hover: #e0e7ff;
@@ -35,7 +35,7 @@
   --color-text-title-dark: #FFFFFF;
   --color-button-dark: #FFFFFF;
   --color-border: #BBBBBB;
-  --color-border-dark: #181818;
+  --color-border-dark: #3a3a3c;
 
   /* ================BOTONES================== */
   --color-primary: #004570;

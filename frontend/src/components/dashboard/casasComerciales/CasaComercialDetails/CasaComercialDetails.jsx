@@ -12,6 +12,7 @@ const VIEWPORT_PADDING = 12
 const emptyForm = {
   nombre: '',
   codigo: '',
+  tipo: 'local',
   descripcion: '',
   paisId: '',
   telefono: '',
@@ -41,7 +42,6 @@ function CasaComercialDetails({
   onDeleted,
   onDuplicated,
   onError,
-  allowCreate = true,
   allowEdit = true,
   allowDelete = true,
 }) {
@@ -55,7 +55,6 @@ function CasaComercialDetails({
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [duplicateLoading, setDuplicateLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [submitAttempted, setSubmitAttempted] = useState(false)
@@ -99,6 +98,7 @@ function CasaComercialDetails({
   const normalizeCasaComercial = (data) => ({
     nombre: data?.nombre ?? '',
     codigo: data?.codigo ?? '',
+    tipo: data?.tipo ?? 'local',
     descripcion: data?.descripcion ?? '',
     paisId: data?.pais?.id ?? '',
     telefono: data?.telefono ?? '',
@@ -291,6 +291,7 @@ function CasaComercialDetails({
     const payload = {
       nombre: formData.nombre.trim(),
       codigo: formData.codigo.trim(),
+      tipo: formData.tipo,
       descripcion: formData.descripcion.trim(),
       telefono: formData.telefono.trim(),
       correo: formData.correo.trim(),
@@ -361,56 +362,6 @@ function CasaComercialDetails({
       notifyError(err.message || 'Ocurrió un error al eliminar la casa comercial.')
     } finally {
       setDeleteLoading(false)
-    }
-  }
-
-  const handleDuplicateToMarca = async () => {
-    if (!allowCreate || duplicateLoading) return
-    setSubmitAttempted(true)
-    setDuplicateLoading(true)
-
-    const payload = {
-      nombre: formData.nombre.trim(),
-      codigo: formData.codigo.trim(),
-      descripcion: formData.descripcion.trim(),
-      telefono: formData.telefono.trim(),
-      correo: formData.correo.trim(),
-      pais_id: formData.paisId ? Number(formData.paisId) : null,
-    }
-
-    if (!payload.nombre) {
-      setDuplicateLoading(false)
-      notifyError('Define un nombre para la casa comercial.')
-      return
-    }
-
-    if (!payload.codigo) {
-      setDuplicateLoading(false)
-      notifyError('Define un codigo para la casa comercial.')
-      return
-    }
-
-    try {
-      const response = await authFetch(
-        `${API_URL}/marcas/listado/`,
-        {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        },
-        token
-      )
-
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        const detail = data?.detail || data?.nombre?.[0] || data?.codigo?.[0] || 'No se pudo duplicar a marca.'
-        throw new Error(detail)
-      }
-
-      onDuplicated?.('Marca creada a partir de esta casa comercial.')
-    } catch (err) {
-      notifyError(err.message || 'Ocurrió un error al duplicar la casa comercial.')
-    } finally {
-      setDuplicateLoading(false)
     }
   }
 
@@ -597,7 +548,6 @@ function CasaComercialDetails({
   }
 
   const editorDisabled = saving || loadingData || !isEditing
-  const canShowDuplicateAction = allowCreate && (isEditing || !allowEdit)
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
@@ -749,6 +699,19 @@ function CasaComercialDetails({
                 </label>
 
                 <label className="create-user__field">
+                  <span>Tipo</span>
+                  <select
+                    name="tipo"
+                    value={formData.tipo}
+                    onChange={handleChange}
+                    disabled={editorDisabled}
+                  >
+                    <option value="local">Local</option>
+                    <option value="importacion">Importación</option>
+                  </select>
+                </label>
+
+                <label className="create-user__field">
                   <span>Teléfono</span>
                   <input
                     name="telefono"
@@ -809,22 +772,12 @@ function CasaComercialDetails({
           </div>
 
           <div className="user-details__footer-right">
-            {canShowDuplicateAction && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--secondary"
-                onClick={handleDuplicateToMarca}
-                disabled={loadingData || saving || duplicateLoading}
-              >
-                {duplicateLoading ? 'Duplicando...' : 'Duplicar a marca'}
-              </button>
-            )}
             {isEditing && allowDelete && (
               <button
                 type="button"
                 className="create-user__action user-details__delete"
                 onClick={() => setShowDeleteDialog(true)}
-                disabled={saving || duplicateLoading}
+                disabled={saving}
               >
                 Eliminar
               </button>
@@ -834,7 +787,7 @@ function CasaComercialDetails({
                 type="button"
                 className="create-user__action create-user__action--primary"
                 onClick={handleSave}
-                disabled={saving || duplicateLoading}
+                disabled={saving}
               >
                 {saving ? 'Guardando...' : 'Guardar cambios'}
               </button>

@@ -1,10 +1,9 @@
-from django.db import migrations, models
 import django.db.models.deletion
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("marcas", "0003_add_codigo_and_fields"),
         ("solicitudes", "0002_rename_cliente_nombre_add_apellidos"),
     ]
 
@@ -21,10 +20,7 @@ class Migration(migrations.Migration):
                     "cliente",
                     models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="autos", to="solicitudes.cliente"),
                 ),
-                (
-                    "marca",
-                    models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="autos", to="marcas.marca"),
-                ),
+                ("marca", models.IntegerField(null=True, blank=True, db_column="marca_id")),
             ],
             options={
                 "verbose_name": "Auto",

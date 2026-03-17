@@ -556,9 +556,38 @@ function UsersTable({
   const [selectedUserId, setSelectedUserId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
 
+  const clickTimerRef = useRef(null)
+
   const handleRowClick = (event) => {
     const t = event?.originalEvent?.target
-    // OK. No abrir modal si hicieron click en el checkbox/columna de selección
+    if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
+
+    const rowData = event?.data
+    if (!rowData) return
+    const id = normId(rowData?.id)
+    if (!id) return
+
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = setTimeout(() => {
+      setSelectedUsers((prev) => {
+        const prevMap = new Map((prev || []).map((u) => [normId(u?.id), u]))
+        if (prevMap.has(id)) {
+          prevMap.delete(id)
+        } else {
+          prevMap.set(id, rowData)
+        }
+        return Array.from(prevMap.values())
+      })
+    }, 220)
+  }
+
+  const handleRowDoubleClick = (event) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+
+    const t = event?.originalEvent?.target
     if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
 
     const id = event?.data?.id
@@ -862,6 +891,7 @@ function UsersTable({
           resizableColumns
           columnResizeMode="fit"
           onRowClick={handleRowClick}
+          onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
           // OK. selección nativa
           selectionMode="multiple"

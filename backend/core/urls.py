@@ -12,7 +12,6 @@ from inventario.viewsets import (
 )
 from casa_comercial.viewsets import CasaComercialViewSet
 from configuracion.viewsets import ConfiguracionSistemaViewSet
-from marcas.viewsets import MarcaViewSet
 from productos.viewsets import (
     OEMProductoViewSet,
     OEMViewSet,
@@ -67,9 +66,6 @@ router.register(r"tipos/tipos-pago", TipoPagoViewSet, basename="tipos-tipos-pago
 
 # Casas comerciales
 router.register(r"casa-comercial/casas", CasaComercialViewSet, basename="casa-comercial-casas")
-# Marcas
-router.register(r"marcas/listado", MarcaViewSet, basename="marcas-listado")
-
 # Productos
 router.register(r"productos/listado", ProductoViewSet, basename="productos-listado")
 router.register(r"productos/oem", OEMViewSet, basename="productos-oem")
