@@ -8,7 +8,14 @@
       "Bash(python3 manage.py shell -c \":*)",
       "Bash(where py:*)",
       "Bash(py --version)",
-      "Bash(py manage.py shell -c \":*)"
+      "Bash(py manage.py shell -c \":*)",
+      "Bash(xargs grep:*)",
+      "Bash(xargs cat:*)",
+      "Bash(grep -r \"RegistroAuditoria\\\\|registrar_auditoria\" /c/Users/PC/Documents/GitHub/InventarioApp/backend --include=*.py)",
+      "Bash(xargs head:*)",
+      "Bash(python manage.py check)",
+      "Bash(py manage.py check)",
+      "Bash(npx vite:*)"
     ]
   }
 }

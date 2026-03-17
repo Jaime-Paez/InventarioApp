@@ -143,6 +143,26 @@
   min-width: 860px;
 }
 
+.inspection-admin__table--items th:last-child,
+.inspection-admin__table--items td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--table-color, #fff);
+  box-shadow: -2px 0 6px -2px rgba(0, 0, 0, 0.08);
+}
+
+.inspection-admin__table--items th:last-child {
+  background: #f2f5f8;
+}
+
+.dashboard-shell.dark .inspection-admin__table--items th:last-child {
+  background: color-mix(in srgb, var(--color-surface-dark) 88%, #ffffff 12%);
+}
+
+.dashboard-shell.dark .inspection-admin__table--items td:last-child {
+  background: var(--color-surface-dark);
+}
+
 .inspection-admin__table th,
 .inspection-admin__table td {
   border-bottom: 1px solid #d5dbe2;

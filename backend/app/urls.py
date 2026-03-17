@@ -1,7 +1,9 @@
 from django.urls import path
 from . import views
+from auditoria.views import AuditoriaListAPIView
 
 urlpatterns = [
+    path("auditoria/registros/", AuditoriaListAPIView.as_view(), name="auditoria-registros"),
     path("ping/", views.ping),
     path(
         "usuarios/preferencias/table-layouts/",

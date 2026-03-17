@@ -1,0 +1,22 @@
+.auditoria-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--badge-color, #6b7280);
+  background: color-mix(in srgb, var(--badge-color, #6b7280) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-color, #6b7280) 30%, transparent);
+  white-space: nowrap;
+}
+
+/* Column header centering — matches the rest of the tables */
+.users-datatable .p-datatable-thead > tr > th .p-column-header-content,
+.users-datatable [data-pc-section="headercell"] [data-pc-section="headercontent"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}

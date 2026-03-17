@@ -1700,7 +1700,7 @@ class RandomInspectionVerifyItemAPIView(APIView):
 
         with transaction.atomic():
             item = (
-                InspeccionAleatoriaItem.objects.select_for_update()
+                InspeccionAleatoriaItem.objects.select_for_update(of=("self",))
                 .select_related("inspeccion", "sucursal", "producto", "verificado_por")
                 .filter(pk=item_id)
                 .first()

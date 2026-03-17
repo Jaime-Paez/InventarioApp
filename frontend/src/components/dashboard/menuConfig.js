@@ -15,6 +15,7 @@ import {
   UsersRound,
   IdCard,
   ClipboardCheck,
+  ScrollText,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -53,6 +54,7 @@ export const MENU_STRUCTURE = [
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
   { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios', requiresAdmin: true },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
+  { label: 'Auditoria', icon: ScrollText, moduleKey: 'usuarios', requiresAdmin: true },
 ]
 
 const STANDALONE_LABEL_RULES = {

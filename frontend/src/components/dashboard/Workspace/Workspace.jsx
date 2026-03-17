@@ -3,6 +3,7 @@ import WorkspaceTabs from '../tabs/WorkspaceTabs/WorkspaceTabs'
 import QuickActions from '../QuickActions/QuickActions'
 import UsersTable from '../admin/UsersTable/UsersTable'
 import RandomInspectionAdminTable from '../admin/RandomInspectionAdminTable/RandomInspectionAdminTable'
+import AuditoriaTable from '../admin/AuditoriaTable/AuditoriaTable'
 import SucursalesTable from '../sucursales/SucursalesTable/SucursalesTable'
 import BodegasTable from '../bodegas/BodegasTable/BodegasTable'
 import MarcasTable from '../marcas/MarcasTable/MarcasTable'
@@ -48,6 +49,7 @@ const MOVIMIENTOS_SCOPE_BY_TAB = {
 const MODULE_KEY_BY_TAB = {
   Inventario: 'inventario',
   Administrar: 'usuarios',
+  Auditoria: 'usuarios',
   [INVENTORY_REVIEW_TAB]: 'usuarios',
   [INVENTORY_REVIEW_TAB_LEGACY]: 'usuarios',
   Sucursales: 'sucursales_sucursales',
@@ -136,6 +138,7 @@ function Workspace({
     [INCONVENIENTES_TAB]: TrasladosInconvenientesTable,
     [INCONVENIENTES_TAB_LEGACY]: TrasladosInconvenientesTable,
     Configuraciones: Configuracion,
+    Auditoria: AuditoriaTable,
   }
 
   const fetchMovementBranches = useCallback(
@@ -398,7 +401,7 @@ function Workspace({
       )
     }
 
-    if (tab === 'Configuraciones') {
+    if (tab === 'Configuraciones' || tab === 'Auditoria') {
       if (!isAdministrator) {
         return (
           <p className="workspace__subtitle">
