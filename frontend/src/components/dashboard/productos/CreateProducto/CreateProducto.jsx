@@ -1888,75 +1888,19 @@ function CreateProducto({
                       {casaInvalid && <small className="create-user__field-error">Selecciona una casa comercial.</small>}
                     </label>
 
-                    <label className="create-user__checkbox">
-                      <input
-                        name="pieza_original"
-                        type="checkbox"
-                        checked={Boolean(formData.pieza_original)}
-                        onChange={handleChange}
-                        disabled={loading}
-                      />
-                      <div>
-                        <span>Original</span>
-                        <p>Marcar cuando la pieza es original.</p>
-                      </div>
-                    </label>
-
-                    <label className="create-user__field create-user__field--full">
-                      <span>Descripción</span>
-                      <textarea
-                        name="descripcion"
-                        placeholder="Describe el producto, su uso, diferentes nombres o caracteristicas importantes."
-                        value={formData.descripcion}
-                        onChange={handleChange}
-                        required
-                        disabled={loading}
-                      />
-                    </label>
-                  </div>
-                </section>
-
-                <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <h4>Datos comerciales del producto</h4>
-                  </div>
-
-                  <div className="create-user__grid create-user__grid--two">
-                    {showCostField && (
-                      <label className="create-user__field">
-                        <span>Costo</span>
-                        <div className="create-user__money">
-                          <span>$</span>
-                          <input
-                            name="costo_minimo"
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="Costo al comprar"
-                            value={formData.costo_minimo}
-                            onChange={handleChange}
-                            disabled={loading}
-                          />
-                        </div>
-                      </label>
-                    )}
-
-                    <label className="create-user__field">
-                      <span>Precio</span>
-                      <div className={`create-user__money${precioInvalid ? ' create-user__money--invalid' : ''}`}>
-                        <span>$</span>
+                    <div className="create-user__pieza-original-wrapper">
+                      <span className="create-user__pieza-original-label">Original</span>
+                      <label className="create-user__pieza-original">
                         <input
-                          name="precio"
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="Precio al que se pretende vender"
-                          value={formData.precio}
+                          name="pieza_original"
+                          type="checkbox"
+                          checked={Boolean(formData.pieza_original)}
                           onChange={handleChange}
-                          required
                           disabled={loading}
                         />
-                      </div>
-                      {precioInvalid && <small className="create-user__field-error">Define un precio valido.</small>}
-                    </label>
+                        <span>Marcar cuando la pieza es original.</span>
+                      </label>
+                    </div>
                   </div>
                 </section>
 
@@ -1965,7 +1909,7 @@ function CreateProducto({
                     <h4>OEMs</h4>
                     <button
                       type="button"
-                      className="create-user__ghost create-user__location-action"
+                      className="create-user__ghost"
                       onClick={() => {
                         setOemError('')
                         setShowOemForm((prev) => {
@@ -2046,7 +1990,71 @@ function CreateProducto({
                       </div>
                     ))}
                   </div>
+                </section>
 
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <h4>Datos comerciales del producto</h4>
+                  </div>
+
+                  <div className="create-user__grid create-user__grid--two">
+                    {showCostField && (
+                      <label className="create-user__field">
+                        <span>Costo</span>
+                        <div className="create-user__money">
+                          <span>$</span>
+                          <input
+                            name="costo_minimo"
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="Costo al comprar"
+                            value={formData.costo_minimo}
+                            onChange={handleChange}
+                            disabled={loading}
+                          />
+                        </div>
+                      </label>
+                    )}
+
+                    <label className="create-user__field">
+                      <span>Precio</span>
+                      <div className={`create-user__money${precioInvalid ? ' create-user__money--invalid' : ''}`}>
+                        <span>$</span>
+                        <input
+                          name="precio"
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Precio al que se pretende vender"
+                          value={formData.precio}
+                          onChange={handleChange}
+                          required
+                          disabled={loading}
+                        />
+                      </div>
+                      {precioInvalid && <small className="create-user__field-error">Define un precio valido.</small>}
+                    </label>
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <h4>Descripción</h4>
+                    </div>
+                  </div>
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field create-user__field--full">
+                      <span>Descripción</span>
+                      <textarea
+                        name="descripcion"
+                        placeholder="Describe el producto, su uso, diferentes nombres o caracteristicas importantes."
+                        value={formData.descripcion}
+                        onChange={handleChange}
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
                 </section>
               </>
             )}
