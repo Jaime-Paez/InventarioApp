@@ -15,7 +15,8 @@
   display: grid;
   grid-template-columns: 200px 1fr;
   height: 100vh;
-  transition: background-color 0.4s ease, color 0.4s ease;
+  overflow: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease, grid-template-columns 0.3s ease;
   transform: translateX(0);
   position: relative;
 }
@@ -147,9 +148,15 @@
   border-color: var(--color-border-dark);
 }
 
+@media (max-width: 1440px) {
+  .dashboard-shell {
+    grid-template-columns: 185px 1fr;
+  }
+}
+
 @media (max-width: 1040px) {
   .dashboard-shell {
-    grid-template-columns: 240px 1fr;
+    grid-template-columns: 185px 1fr;
   }
 }
 

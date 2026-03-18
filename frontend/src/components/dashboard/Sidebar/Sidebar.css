@@ -392,7 +392,7 @@
   height: 35px;
   padding: 0 0.9rem;
   border-radius: 14px;
-  border: 1px solid currentColor;
+  border: 1px solid rgb(24 24 24 / 38%);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -419,6 +419,69 @@
 
 .sidebar__action:hover {
   background: var(--sidebar-color-hover);
+}
+
+@media (max-height: 820px) {
+  .sidebar {
+    padding: 10px 14px 14px;
+    gap: 0.6rem;
+  }
+
+  .sidebar__brand-logo {
+    height: 32px;
+  }
+
+  .sidebar__partner-logo {
+    height: 40px;
+  }
+
+  .sidebar__section {
+    margin-bottom: 0.4rem;
+    font-size: 9px;
+  }
+
+  .sidebar__nav ul {
+    gap: 0.15rem;
+  }
+
+  .sidebar__link {
+    height: 30px;
+    padding: 0 0.75rem;
+  }
+
+  .sidebar__sublink {
+    height: 26px;
+    padding: 0 0.7rem;
+  }
+
+  .sidebar__actions {
+    gap: 0.2rem;
+  }
+
+  .sidebar__action {
+    height: 30px;
+    padding: 0 0.75rem;
+  }
+
+  .sidebar__footer {
+    gap: 0.35rem;
+  }
+
+  .sidebar__avatar {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+  }
+
+  .sidebar__nav {
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+  }
+
+  .sidebar__nav::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
