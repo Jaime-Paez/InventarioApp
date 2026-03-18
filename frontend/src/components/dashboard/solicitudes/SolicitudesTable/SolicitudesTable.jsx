@@ -28,7 +28,7 @@ const SOLICITUD_FILTER_FIELDS = [
   'fecha',
   'cliente_nombre',
   'cedula_ruc',
-  'placa',
+  'chasis',
   'sucursal_nombre',
   'producto_solicitado_nombre',
   'producto_solicitado_descripcion',
@@ -41,7 +41,7 @@ const SOLICITUD_FILTER_DEFAULT_MODES = {
   fecha: FilterMatchMode.CONTAINS,
   cliente_nombre: FilterMatchMode.CONTAINS,
   cedula_ruc: FilterMatchMode.STARTS_WITH,
-  placa: FilterMatchMode.CONTAINS,
+  chasis: FilterMatchMode.CONTAINS,
   sucursal_nombre: FilterMatchMode.CONTAINS,
   producto_solicitado_nombre: FilterMatchMode.CONTAINS,
   producto_solicitado_descripcion: FilterMatchMode.CONTAINS,
@@ -54,7 +54,7 @@ const SOLICITUD_ORDERING_MAP = {
   fecha: 'fecha',
   cliente_nombre: 'cliente_nombre_text',
   cedula_ruc: 'cliente__cedula_ruc',
-  placa: 'placa',
+  chasis: 'chasis',
   sucursal_nombre: 'sucursal__nombre',
   producto_solicitado_nombre: 'producto_referencia_text',
   producto_solicitado_descripcion: 'producto_solicitado_descripcion_text',
@@ -159,7 +159,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           item?.cliente__cedula_ruc ||
           '-'
 
-        const placa = String(item?.placa || '').trim() || '-'
+        const placa = String(item?.chasis || '').trim() || '-'
 
         const sucursalNombre =
           item?.sucursal_nombre ||
@@ -398,7 +398,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       fecha: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       cliente_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       cedula_ruc: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      placa: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      chasis: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       sucursal_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       producto_solicitado_nombre: {
         operator: FilterOperator.AND,
@@ -681,7 +681,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       { nombrevar: 'fecha', header: 'Fecha', filterPlaceholder: 'Buscar por fecha' },
       { nombrevar: 'cliente_nombre', header: 'Cliente', filterPlaceholder: 'Buscar por cliente' },
       { nombrevar: 'cedula_ruc', header: 'Cedula/RUC', filterPlaceholder: 'Buscar por cedula/RUC' },
-      { nombrevar: 'placa', header: 'Placa', filterPlaceholder: 'Buscar por placa' },
+      { nombrevar: 'chasis', header: 'Chasis', filterPlaceholder: 'Buscar por chasis' },
       { nombrevar: 'sucursal_nombre', header: 'Sucursal', filterPlaceholder: 'Buscar por sucursal' },
       {
         nombrevar: 'producto_solicitado_nombre',
@@ -1380,7 +1380,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
             'fecha',
             'cliente_nombre',
             'cedula_ruc',
-            'placa',
+            'chasis',
             'sucursal_nombre',
             'producto_solicitado_nombre',
             'producto_solicitado_descripcion',

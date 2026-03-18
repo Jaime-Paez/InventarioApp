@@ -14,8 +14,8 @@ import {
   writeRemindersToStorage,
 } from '../../common/reminders/remindersStorage'
 
-const MIN_WIDTH = 860
-const MIN_HEIGHT = 620
+const MIN_WIDTH = 720
+const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
 
 const initialCliente = {
@@ -29,6 +29,7 @@ const initialCliente = {
 
 const initialProductoDraft = {
   productoId: '',
+  referencia: '',
   codigo: '',
   nombre: '',
   oems: '',
@@ -874,19 +875,23 @@ function CreateSolicitud({
   const handleProductoSelect = useCallback((producto) => {
     if (!producto) return
 
+    const referencia = String(producto?.referencia || '').trim()
     const codigo = String(producto?.codigo || '').trim().toUpperCase()
     const nombre = String(producto?.nombre || '').trim()
     const oems = extractProductoOems(producto)
+    const casas = Array.isArray(producto?.casas_comerciales) ? producto.casas_comerciales : []
+    const firstCasa = casas[0] || null
 
     setSelectedDraftProducto(producto)
     setProductoDraft((prev) => ({
       ...prev,
       productoId: String(producto.id),
+      referencia,
       codigo,
       nombre,
       oems: oems.join(', '),
-      casaComercialId: '',
-      casaComercialNombre: '',
+      casaComercialId: firstCasa ? String(firstCasa.id) : '',
+      casaComercialNombre: firstCasa ? String(firstCasa.nombre || '').trim() : '',
       cantidad: prev.cantidad || '1',
     }))
     setShowCodigoDropdown(false)
@@ -1084,7 +1089,8 @@ function CreateSolicitud({
     let hasCasaComercialId = Number.isFinite(casaComercialIdRaw) && casaComercialIdRaw > 0
     let hasProductoId = Number.isFinite(productoIdRaw) && productoIdRaw > 0
 
-    let codigo = String(productoDraft.codigo || '').trim().toUpperCase()
+    const referencia = String(productoDraft.referencia || '').trim()
+    let codigo = String(productoDraft.codigo || '').trim().toUpperCase() || referencia.toUpperCase()
     let nombre = String(productoDraft.nombre || '').trim()
     let oemList = draftOemList
     const comentario = String(productoDraft.comentario || '').trim()
@@ -1094,10 +1100,10 @@ function CreateSolicitud({
       return
     }
 
-    if (!hasProductoId && (codigo || oemList.length)) {
+    if (!hasProductoId && (referencia || codigo || oemList.length)) {
       try {
         const matchedProducto = await resolveSingleExistingProduct({
-          codigoInput: codigo,
+          codigoInput: referencia || codigo,
           oemInput: productoDraft.oems,
         })
         if (matchedProducto) {
@@ -1173,6 +1179,7 @@ function CreateSolicitud({
       uid: `sol-row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       tipo: hasProductoId ? 'existente' : 'nuevo',
       productoId: hasProductoId ? productoIdRaw : null,
+      referencia,
       codigo,
       nombre,
       casaComercialId: hasCasaComercialId ? casaComercialIdRaw : null,
@@ -1284,7 +1291,7 @@ function CreateSolicitud({
     const payload = {
       sucursal_id: Number(sucursalId),
       descripcion_general: String(descripcionGeneral || '').trim(),
-      placa: normalizePlaca(placa).trim(),
+      chasis: normalizePlaca(placa).trim(),
       productos: productos.map((item) => {
         const base = {
           cantidad: Number(item.cantidad),
@@ -1300,7 +1307,8 @@ function CreateSolicitud({
 
         const newProductPayload = {
           ...base,
-          codigo: String(item.codigo || '').trim(),
+          codigo: String(item.codigo || item.referencia || '').trim(),
+          referencia: String(item.referencia || '').trim(),
           nombre: String(item.nombre || '').trim(),
           oems: Array.isArray(item.oems) ? item.oems : parseOemInput(item.oems),
           descripcion: '',
@@ -1428,7 +1436,7 @@ function CreateSolicitud({
 
   const showClientHint = Boolean(selectedCliente?.id)
   const draftCantidadRaw = Number(productoDraft.cantidad)
-  const productoCodigoInvalid = productoAttempted && !String(productoDraft.codigo || '').trim()
+  const productoCodigoInvalid = productoAttempted && !String(productoDraft.referencia || productoDraft.codigo || '').trim()
   const productoNombreInvalid = productoAttempted && !String(productoDraft.nombre || '').trim()
   const productoCantidadInvalid = productoAttempted && (!Number.isFinite(draftCantidadRaw) || draftCantidadRaw <= 0)
   const sucursalInvalid = submitAttempted && !sucursalId
@@ -1465,7 +1473,7 @@ function CreateSolicitud({
           </div>
         </header>
 
-        <form className="create-user__form create-user__form--create" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
+        <form className="create-user__form create-user__form--create create-solicitud__form" noValidate onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')} onSubmit={handleSubmit}>
           <div className="create-user__tabs" role="tablist" aria-label="Secciones de solicitud">
             <button
               type="button"
@@ -1494,7 +1502,7 @@ function CreateSolicitud({
                     </div>
                   </div>
 
-                  <div className="create-user__grid create-user__grid--two">
+                  <div className="create-user__grid create-user__grid--three">
                     <label className="create-user__field">
                       <span>Sucursal</span>
                       <select
@@ -1519,10 +1527,10 @@ function CreateSolicitud({
                     </label>
 
                     <label className="create-user__field">
-                      <span>Placa</span>
+                      <span>Chasis</span>
                       <input
                         type="text"
-                        placeholder="Placa (opcional)"
+                        placeholder="Chasis (opcional)"
                         value={placa}
                         onChange={(event) => setPlaca(normalizePlaca(event.target.value))}
                         disabled={loading}
@@ -1543,7 +1551,8 @@ function CreateSolicitud({
                     className={`create-user__locations-table create-solicitud__products-table${productosInvalid ? ' create-solicitud__products-table--invalid' : ''}`}
                   >
                     <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Codigo</span>
+                      <span>Referencia</span>
+                      <span>Código</span>
                       <span>Nombre</span>
                       <span>OEM</span>
                       <span>Casa comercial</span>
@@ -1554,12 +1563,24 @@ function CreateSolicitud({
 
                     <div className="create-user__locations-row create-user__locations-row--form">
                       <span>
+                        <input
+                          name="referencia"
+                          type="text"
+                          placeholder="Referencia"
+                          value={productoDraft.referencia}
+                          onChange={handleProductoDraftChange}
+                          disabled={loading}
+                          autoComplete="off"
+                        />
+                      </span>
+
+                      <span>
                         <div className="create-solicitud__inline-dropdown" ref={codigoDropdownRef}>
                           <input
                             className={productoCodigoInvalid ? 'create-solicitud__input--invalid' : ''}
                             name="codigo"
                             type="text"
-                            placeholder="Codigo"
+                            placeholder="Código"
                             value={productoDraft.codigo}
                             onChange={handleProductoDraftChange}
                             onFocus={() => {
@@ -1572,7 +1593,7 @@ function CreateSolicitud({
                           {showCodigoDropdown && (
                             <div className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
                               <div className="create-solicitud__inline-results">
-                                {codigoLoading && <small className="muted">Buscando por codigo...</small>}
+                                {codigoLoading && <small className="muted">Buscando...</small>}
                                 {!codigoLoading && String(productoDraft.codigo || '').trim().length < 2 && (
                                   <small className="muted">Escribe al menos 2 caracteres.</small>
                                 )}
@@ -1580,7 +1601,7 @@ function CreateSolicitud({
                                   String(productoDraft.codigo || '').trim().length >= 2 &&
                                   !codigoOptions.length && (
                                     <small className="muted">
-                                      Sin coincidencias. Puedes usar este codigo nuevo.
+                                      Sin coincidencias. Puedes agregar como producto nuevo.
                                     </small>
                                   )}
                                 {codigoOptions.length > 0 && (
@@ -1809,9 +1830,10 @@ function CreateSolicitud({
                     {productos.map((item) => (
                       <div key={item.uid} className="create-user__locations-row">
                         <span>
-                          {item.codigo || '-'}
+                          {item.referencia || '-'}
                           {item.tipo === 'existente' && <small className="create-solicitud__chip">Catalogo</small>}
                         </span>
+                        <span>{item.codigo || '-'}</span>
                         <span>{item.nombre || '-'}</span>
                         <span>{item.oems?.length ? item.oems.join(', ') : '-'}</span>
                         <span>{item.casaComercialNombre || '-'}</span>

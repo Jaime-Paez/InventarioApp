@@ -21,7 +21,7 @@ const emptyForm = {
   tabla: '',
   fecha: '',
   sucursalId: '',
-  placa: '',
+  chasis: '',
   descripcionGeneral: '',
   comentario: '',
   cantidad: '1',
@@ -104,7 +104,7 @@ const buildFormData = (solicitud) => {
     tabla,
     fecha: normalizeText(solicitud?.fecha),
     sucursalId: String(solicitud?.sucursal_data?.id || solicitud?.sucursal_id || ''),
-    placa: String(solicitud?.placa || ''),
+    chasis: String(solicitud?.chasis || ''),
     descripcionGeneral: String(solicitud?.descripcion_general || ''),
     comentario: String(solicitud?.comentario || ''),
     cantidad: String(solicitud?.cantidad || '1'),
@@ -1072,7 +1072,7 @@ function SolicitudDetails({
     if (!isEditing || saving || !solicitudId) return
 
     const payload = {
-      placa: normalizeText(formData.placa),
+      chasis: normalizeText(formData.chasis),
       descripcion_general: normalizeText(formData.descripcionGeneral),
     }
 
@@ -1575,10 +1575,10 @@ function SolicitudDetails({
                       />
                     </label>
                     <label className="create-user__field">
-                      <span>Placa</span>
+                      <span>Chasis</span>
                       <input
-                        name="placa"
-                        value={formData.placa}
+                        name="chasis"
+                        value={formData.chasis}
                         onChange={handleFormFieldChange}
                         disabled={editorDisabled}
                       />

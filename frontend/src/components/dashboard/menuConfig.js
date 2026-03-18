@@ -14,6 +14,7 @@ import {
   IdCard,
   ClipboardCheck,
   ScrollText,
+  PackagePlus,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -41,7 +42,13 @@ export const MENU_STRUCTURE = [
     ],
   },
   { label: 'Casas comerciales', icon: Building, moduleKey: 'proveedores_casas' },
-  { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
+  {
+    label: 'Importaciones',
+    icon: PackagePlus,
+    children: [
+      { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
+    ],
+  },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
   { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios', requiresAdmin: true },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },

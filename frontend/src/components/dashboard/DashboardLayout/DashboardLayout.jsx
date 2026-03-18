@@ -154,7 +154,6 @@ function DashboardLayout({
           onClick={() => setIsSidebarOpen(true)}
         >
           <PanelLeftOpen />
-          Abrir panel
         </button>
       )}
     </div>

@@ -130,12 +130,13 @@
   bottom: 22px;
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.75rem 1rem;
-  border-radius: 14px;
-  border: none;
-  background: var(--color-primary);
-  color: var(--color-button-primary);
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgb(24 24 24 / 38%);
+  background: transparent;
+  color: var(--sidebar-color-text);
   cursor: pointer;
   z-index: 10;
 }
@@ -145,7 +146,9 @@
 }
 
 .dashboard-shell.dark .sidebar__reopen {
-  border-color: var(--color-border-dark);
+  border-color: var(--sidebar-color-border);
+  color: var(--sidebar-color-text);
+  background: var(--color-surface-dark);
 }
 
 @media (max-width: 1440px) {
@@ -170,11 +173,10 @@
   }
 
   .sidebar__reopen {
-    left: 16px;
+    left: 20px;
     top: auto;
-    bottom: 16px;
-    padding: 0.6rem 0.85rem;
-    border-radius: 12px;
+    bottom: 40px;
+    background: var(--sidebar-backgorund-color);
   }
 
   .sidebar__backdrop {

@@ -159,7 +159,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "codigo",
             "descripcion_general",
             "comentario",
-            "placa",
+            "chasis",
             "cliente__nombres",
             "cliente__apellidos",
             "cliente__cedula_ruc",
@@ -185,7 +185,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         "descripcion_general",
         "producto_conseguido_text",
         "cliente_nombre_text",
-        "placa",
+        "chasis",
     ]
 
     def destroy(self, request, *args, **kwargs):
@@ -288,7 +288,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 "producto_solicitado_nombre": "producto_referencia_text",
                 "producto_solicitado_descripcion": "producto_solicitado_descripcion_text",
                 "descripcion_general": "descripcion_general",
-                "placa": "placa",
+                "chasis": "chasis",
                 "producto_conseguido": "producto_conseguido_text",
                 "cantidad": {"lookup": "cantidad", "type": "number"},
             },
@@ -471,7 +471,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
         fecha = timezone.localdate()
         descripcion_general = str(payload.get("descripcion_general") or "").strip()
-        placa = str(payload.get("placa") or "").strip()
+        chasis = str(payload.get("chasis") or "").strip()
 
         cliente, cliente_error = self._resolve_cliente(payload)
         if cliente_error:
@@ -639,7 +639,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         fecha=fecha,
                         descripcion_general=descripcion_general,
                         comentario=item.get("comentario", ""),
-                        placa=placa,
+                        chasis=chasis,
                         sucursal=sucursal,
                         cliente=cliente,
                         producto=item["producto"],
@@ -669,7 +669,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         fecha=fecha,
                         descripcion_general=descripcion_general,
                         comentario=item.get("comentario", ""),
-                        placa=placa,
+                        chasis=chasis,
                         sucursal=sucursal,
                         cliente=cliente,
                         producto_solicitado=producto_solicitado,
@@ -846,7 +846,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             return
 
         sync_sucursal = "sucursal_id" in payload
-        sync_placa = "placa" in payload
+        sync_chasis = "chasis" in payload
         sync_descripcion_general = "descripcion_general" in payload
         sync_cliente = any(
             key in payload
@@ -861,7 +861,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             )
         )
 
-        if not any((sync_sucursal, sync_placa, sync_descripcion_general, sync_cliente)):
+        if not any((sync_sucursal, sync_chasis, sync_descripcion_general, sync_cliente)):
             return
 
         siblings = (
@@ -879,9 +879,9 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 sibling.codigo = instance.codigo
                 update_fields.append("codigo")
 
-            if sync_placa and sibling.placa != instance.placa:
-                sibling.placa = instance.placa
-                update_fields.append("placa")
+            if sync_chasis and sibling.chasis != instance.chasis:
+                sibling.chasis = instance.chasis
+                update_fields.append("chasis")
 
             if (
                 sync_descripcion_general

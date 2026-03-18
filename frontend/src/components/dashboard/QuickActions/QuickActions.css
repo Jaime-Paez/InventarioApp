@@ -981,6 +981,36 @@
   box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.65);
 }
 
+.quick-actions__mobile-count {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .quick-actions__pending-shipments {
+    display: none;
+  }
+
+  .quick-actions__mobile-count {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    transform: translateX(4px);
+    min-width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.58rem;
+    font-weight: 700;
+    padding: 0 3px;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-surface) 75%, transparent);
+  }
+}
+
 .quick-actions__urgent-shield {
   position: fixed;
   z-index: 1300;

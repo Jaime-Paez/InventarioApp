@@ -614,6 +614,10 @@ function QuickActions({
     [reminders, currentUserIds, suppressAdminAlerts]
   )
 
+  const mobileShipmentCount = canReceiveTransferRequest
+    ? pendingShipments.length + inTransitShipments.length
+    : 0
+
   const pendingSpecialDecisionReminders = useMemo(
     () =>
       reminders
@@ -3252,6 +3256,11 @@ function QuickActions({
             onFocus={() => showAndMove(1)}
           >
             <Bell />
+            {mobileShipmentCount > 0 && (
+              <span className="quick-actions__mobile-count" aria-hidden="true">
+                {mobileShipmentCount > 9 ? '9+' : mobileShipmentCount}
+              </span>
+            )}
             {hasPendingReminder && (
               <span
                 className="quick-actions__pending-dot"

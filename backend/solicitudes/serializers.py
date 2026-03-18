@@ -314,7 +314,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "fecha",
             "descripcion_general",
             "comentario",
-            "placa",
+            "chasis",
             "sucursal",
             "sucursal_id",
             "cliente",
