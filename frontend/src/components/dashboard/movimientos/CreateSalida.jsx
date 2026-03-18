@@ -2560,9 +2560,6 @@ function CreateSalida({
                                 {!hasSelectedSucursal && !productLoading && (
                                   <small className="muted">Selecciona una sucursal para buscar productos.</small>
                                 )}
-                                {!productLoading && hasSelectedSucursal && !productQuery.trim() && (
-                                  <small className="muted">Escribe para buscar.</small>
-                                )}
                                 {!productLoading && productQuery.trim() && !productOptions.length && (
                                   <small className="muted">Sin resultados.</small>
                                 )}
@@ -3004,5 +3001,4 @@ function CreateSalida({
 }
 
 export default CreateSalida
-
 

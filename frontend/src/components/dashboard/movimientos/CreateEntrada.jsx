@@ -305,6 +305,7 @@ function CreateEntrada({
 
   const [branches, setBranches] = useState([])
   const [providerBranches, setProviderBranches] = useState([])
+  const [catalogsLoading, setCatalogsLoading] = useState(false)
   const [tipoMovimientos, setTipoMovimientos] = useState(() => preloadedTipoMovimientos)
   const [subTipos, setSubTipos] = useState(() => preloadedSubTipos)
   const [estados, setEstados] = useState([])
@@ -993,6 +994,7 @@ function CreateEntrada({
 
   const fetchCatalogs = useCallback(async () => {
     if (!token) return
+    setCatalogsLoading(true)
     try {
       const [
         branchesRes,
@@ -1058,6 +1060,8 @@ function CreateEntrada({
       }
     } catch (err) {
       notifyError(err?.message || 'Ocurrio un error al cargar los catalogos.')
+    } finally {
+      setCatalogsLoading(false)
     }
   }, [notifyError, token])
 
@@ -1435,6 +1439,12 @@ function CreateEntrada({
     fetchCatalogs()
     fetchReminderUsers()
   }, [fetchCatalogs, fetchReminderUsers, normalizedPrefilledSucursalId, open])
+
+  useEffect(() => {
+    if (!open) {
+      setCatalogsLoading(false)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) {
@@ -2814,6 +2824,12 @@ function CreateEntrada({
       style={overlayStyle}
     >
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
+        {catalogsLoading && (
+          <div className="create-user__modal-loading">
+            <div className="spinner" />
+            <small className="muted">Cargando opciones...</small>
+          </div>
+        )}
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
             <h3>{isTraslado ? 'Nueva solicitud de traslado' : 'Nueva entrada'}</h3>
