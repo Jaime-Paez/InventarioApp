@@ -503,7 +503,7 @@ function CreateSolicitud({
           setCodigoLoading(false)
         }
       }
-    }, 320)
+    }, 550)
 
     return () => {
       if (codigoSearchTimerRef.current) {
@@ -546,7 +546,7 @@ function CreateSolicitud({
           setOemLoading(false)
         }
       }
-    }, 320)
+    }, 550)
 
     return () => {
       if (oemSearchTimerRef.current) {
@@ -1583,35 +1583,31 @@ function CreateSolicitud({
                                       Sin coincidencias. Puedes usar este codigo nuevo.
                                     </small>
                                   )}
+                                {codigoOptions.length > 0 && (
+                                  <div className="create-solicitud__results-header">
+                                    <span>Código</span>
+                                    <span>Nombre</span>
+                                    <span>Disponible</span>
+                                  </div>
+                                )}
                                 {codigoOptions.map((producto) => {
                                   const isSelected =
                                     String(selectedDraftProducto?.id || '') === String(producto.id)
                                   const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
                                   const nombre = String(producto?.nombre || '').trim()
-                                  const marca = String(producto?.marca?.nombre || producto?.marca || '').trim()
-                                  const oems = extractProductoOems(producto)
+                                  const stock = Number(producto?.total_stock ?? 0)
 
                                   return (
                                     <button
                                       key={`codigo-opt-${producto.id}`}
                                       type="button"
-                                      className="create-user__result-option"
+                                      className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
                                       onMouseDown={(event) => event.preventDefault()}
                                       onClick={() => handleProductoSelect(producto)}
                                     >
-                                      <div className="create-user__result-info">
-                                        <strong>{codigo}</strong>
-                                        <small>{nombre || '-'}</small>
-                                        <small>
-                                          {marca ? `Marca: ${marca}` : 'Sin marca'} |{' '}
-                                          {oems.length
-                                            ? `OEM: ${oems.slice(0, 4).join(', ')}${oems.length > 4 ? '...' : ''}`
-                                            : 'Sin OEM'}
-                                        </small>
-                                      </div>
-                                      {isSelected && (
-                                        <span className="create-user__result-tag is-selected">Seleccionado</span>
-                                      )}
+                                      <span className="result-codigo">{codigo}</span>
+                                      <span className="result-nombre">{nombre || '-'}</span>
+                                      <span className="result-stock">{stock}</span>
                                     </button>
                                   )
                                 })}
@@ -1662,34 +1658,30 @@ function CreateSolicitud({
                                       Sin coincidencias. Puedes escribir un OEM nuevo.
                                     </small>
                                   )}
+                                {oemOptions.length > 0 && (
+                                  <div className="create-solicitud__results-header">
+                                    <span>Código</span>
+                                    <span>Nombre</span>
+                                    <span>Disponible</span>
+                                  </div>
+                                )}
                                 {oemOptions.map((producto) => {
                                   const isSelected =
                                     String(selectedDraftProducto?.id || '') === String(producto.id)
-                                  const oems = extractProductoOems(producto)
                                   const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
                                   const nombre = String(producto?.nombre || '').trim()
-                                  const marca = String(producto?.marca?.nombre || producto?.marca || '').trim()
+                                  const stock = Number(producto?.total_stock ?? 0)
                                   return (
                                     <button
                                       key={`oem-opt-${producto.id}`}
                                       type="button"
-                                      className="create-user__result-option"
+                                      className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
                                       onMouseDown={(event) => event.preventDefault()}
                                       onClick={() => handleProductoSelect(producto)}
                                     >
-                                      <div className="create-user__result-info">
-                                        <strong>{codigo}</strong>
-                                        <small>{nombre || '-'}</small>
-                                        <small>
-                                          {marca ? `Marca: ${marca}` : 'Sin marca'} |{' '}
-                                          {oems.length
-                                            ? `OEM: ${oems.slice(0, 3).join(', ')}${oems.length > 3 ? '...' : ''}`
-                                            : 'Sin OEM'}
-                                        </small>
-                                      </div>
-                                      {isSelected && (
-                                        <span className="create-user__result-tag is-selected">Seleccionado</span>
-                                      )}
+                                      <span className="result-codigo">{codigo}</span>
+                                      <span className="result-nombre">{nombre || '-'}</span>
+                                      <span className="result-stock">{stock}</span>
                                     </button>
                                   )
                                 })}

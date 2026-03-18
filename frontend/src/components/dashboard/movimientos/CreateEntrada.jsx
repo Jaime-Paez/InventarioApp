@@ -795,12 +795,9 @@ function CreateEntrada({
       if (!producto) return ''
       const codigo = String(producto?.codigo || '').trim()
       const nombre = String(producto?.nombre || '').trim()
-      const baseLabel = [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
-      if (!showProveedorStockInfo) return baseLabel
-      const available = Number(stockByProduct[String(producto?.id)] ?? 0)
-      return `${baseLabel} (Disp: ${Number.isFinite(available) ? available : 0})`
+      return [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
     },
-    [showProveedorStockInfo, stockByProduct]
+    []
   )
 
   const searchProducts = useCallback(
@@ -1614,7 +1611,7 @@ function CreateEntrada({
     }
     const handle = setTimeout(() => {
       searchProducts(term)
-    }, 300)
+    }, 550)
     return () => clearTimeout(handle)
   }, [open, productQuery, searchProducts, showProductDropdown])
 
@@ -3155,6 +3152,11 @@ function CreateEntrada({
                                 ? formatProductoOptionLabel(selectedDraftProduct)
                                 : 'Selecciona un producto'}
                             </span>
+                            {selectedDraftProduct && showProveedorStockInfo && (
+                              <span className="create-salida__trigger-stock">
+                                {Math.max(0, Math.trunc(Number(stockByProduct[String(selectedDraftProduct.id)] ?? 0)))}
+                              </span>
+                            )}
                             <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
                           </button>
 
@@ -3208,6 +3210,13 @@ function CreateEntrada({
                                 {!productLoading && productQuery.trim() && !productOptions.length && (
                                   <small className="muted">Sin resultados.</small>
                                 )}
+                                {productOptions.length > 0 && (
+                                  <div className="create-salida__results-header">
+                                    <span>Código</span>
+                                    <span>Nombre</span>
+                                    <span>{showProveedorStockInfo ? proveedorBranchName || 'Disp.' : 'Disp.'}</span>
+                                  </div>
+                                )}
                                 {productOptions.map((producto) => {
                                   const normalizedProductId = String(producto.id || '').trim()
                                   const isSelected =
@@ -3216,11 +3225,16 @@ function CreateEntrada({
                                   const stockEnSucursalProveedora = Number(
                                     stockByProduct[String(producto.id)] ?? 0
                                   )
+                                  const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
+                                  const nombre = String(producto?.nombre || '').trim()
+                                  const dispLabel = showProveedorStockInfo
+                                    ? String(Math.max(0, Math.trunc(stockEnSucursalProveedora)))
+                                    : '-'
                                   return (
                                     <button
                                       key={producto.id}
                                       type="button"
-                                      className="create-user__result-option"
+                                      className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
                                       onMouseDown={(event) => event.preventDefault()}
                                       onClick={(event) => {
                                         event.preventDefault()
@@ -3230,22 +3244,9 @@ function CreateEntrada({
                                       }}
                                       disabled={isAlreadyAdded}
                                     >
-                                      <div className="create-user__result-info">
-                                        <strong>{formatProductoOptionLabel(producto)}</strong>
-                                        <small>
-                                          {showProveedorStockInfo
-                                            ? `Disponible en ${proveedorBranchName || 'sucursal proveedora'}: ${Math.max(
-                                                0,
-                                                Math.trunc(stockEnSucursalProveedora)
-                                              )}`
-                                            : `ID: ${producto.id}`}
-                                        </small>
-                                      </div>
-                                      {isAlreadyAdded ? (
-                                        <span className="create-user__result-tag">Ya agregado</span>
-                                      ) : (
-                                        isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>
-                                      )}
+                                      <span className="result-codigo">{codigo}</span>
+                                      <span className="result-nombre">{nombre || '-'}</span>
+                                      <span className="result-stock">{dispLabel}</span>
                                     </button>
                                   )
                                 })}

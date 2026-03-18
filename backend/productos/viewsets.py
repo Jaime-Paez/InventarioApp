@@ -1,7 +1,8 @@
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
-from django.db.models import Case, CharField, DecimalField, ExpressionWrapper, F, Value, When
+from django.db.models import Case, CharField, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.db.models.deletion import ProtectedError
 from django.utils.dateparse import parse_date
 from rest_framework import filters, status, viewsets
@@ -19,6 +20,8 @@ from usuarios.permissions import (
     ProductosModulePermission,
 )
 from usuarios.sucursal_scope import get_allowed_sucursal_ids
+
+from inventario.models import Inventario
 
 from .models import OEM, OEMProducto, Producto, ProductoAlterno
 from .serializers import (
@@ -85,6 +88,12 @@ class ProductoViewSet(viewsets.ModelViewSet):
         iva_rate = ConfiguracionSistema.get_solo().iva_rate
         factor = Decimal("1") + Decimal(str(iva_rate or 0))
 
+        total_stock_subq = (
+            Inventario.objects.filter(producto=OuterRef("pk"))
+            .values("producto")
+            .annotate(total=Sum("cantidad"))
+            .values("total")[:1]
+        )
         queryset = queryset.annotate(
             pieza_original_label_text=Case(
                 When(pieza_original=True, then=Value("Si")),
@@ -94,6 +103,10 @@ class ProductoViewSet(viewsets.ModelViewSet):
             precio_con_iva_backend=ExpressionWrapper(
                 F("precio") * Value(factor),
                 output_field=DecimalField(max_digits=16, decimal_places=4),
+            ),
+            total_stock=Coalesce(
+                Subquery(total_stock_subq, output_field=IntegerField()),
+                Value(0),
             ),
         )
 

@@ -313,6 +313,10 @@ class ProductoSerializer(serializers.ModelSerializer):
     )
     oem_productos = OEMProductoSerializer(many=True, read_only=True)
     alternativas = serializers.SerializerMethodField()
+    total_stock = serializers.SerializerMethodField()
+
+    def get_total_stock(self, obj):
+        return int(getattr(obj, "total_stock", None) or 0)
 
     class Meta:
         model = Producto
@@ -325,6 +329,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             "pieza_original",
             "costo_minimo",
             "precio",
+            "total_stock",
             "casas_comerciales",
             "casas_comerciales_ids",
             "oem_productos",

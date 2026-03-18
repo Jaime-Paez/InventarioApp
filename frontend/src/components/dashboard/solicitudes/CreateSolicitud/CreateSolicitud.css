@@ -145,36 +145,75 @@
 .create-solicitud__inline-results {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   max-height: 280px;
   overflow: auto;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-surface);
-  padding: 6px;
+  padding: 4px;
 }
 
-.create-solicitud__inline-results .create-user__result-option {
-  align-items: flex-start;
-  padding: 8px 10px;
+.create-solicitud__results-header {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.65fr) 1fr minmax(68px, auto);
+  gap: 8px;
+  padding: 4px 10px 6px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 2px;
 }
 
-.create-solicitud__inline-results .create-user__result-info {
-  gap: 4px;
+.create-solicitud__results-header span:last-child {
+  text-align: right;
 }
 
-.create-solicitud__inline-results .create-user__result-info strong {
-  font-size: var(--font-size-base);
-  line-height: 1.2;
+.create-solicitud__result-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(72px, 0.65fr) 1fr minmax(68px, auto);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-size: var(--font-size-sm);
+  transition: background 0.15s ease;
+}
+
+.create-solicitud__result-row:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.create-solicitud__result-row.is-selected {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.create-solicitud__result-row .result-codigo {
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.create-solicitud__inline-results .create-user__result-info small {
-  line-height: 1.25;
-  white-space: normal;
-  word-break: break-word;
+.create-solicitud__result-row .result-nombre {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+
+.create-solicitud__result-row .result-stock {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-weight: 500;
 }
 
 .create-solicitud__inline-panel .create-user__dropdown-search {
@@ -260,6 +299,25 @@
 .dashboard-shell.dark .create-solicitud__inline-results {
   background: var(--color-surface-darker);
   border-color: var(--color-border);
+  color: var(--color-button-dark);
+}
+
+.dashboard-shell.dark .create-solicitud__results-header {
+  color: var(--color-button-dark);
+  opacity: 0.6;
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-solicitud__result-row {
+  color: var(--color-button-dark);
+}
+
+.dashboard-shell.dark .create-solicitud__result-row:hover {
+  background: color-mix(in srgb, var(--color-primary-dark, var(--color-primary)) 12%, transparent);
+}
+
+.dashboard-shell.dark .create-solicitud__result-row.is-selected {
+  background: color-mix(in srgb, var(--color-primary-dark, var(--color-primary)) 14%, transparent);
 }
 
 .create-solicitud__chip {

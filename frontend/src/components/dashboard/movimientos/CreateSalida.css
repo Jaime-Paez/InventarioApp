@@ -292,6 +292,111 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-error-border-dark) 36%, transparent);
 }
 
+.create-salida__trigger-stock {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.dashboard-shell.dark .create-salida__trigger-stock {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: var(--color-button-dark);
+}
+
+.create-salida__results-header {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.65fr) 1fr minmax(68px, auto);
+  gap: 8px;
+  padding: 4px 10px 6px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 2px;
+}
+
+.create-salida__results-header span:last-child {
+  text-align: right;
+}
+
+.create-salida__result-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(72px, 0.65fr) 1fr minmax(68px, auto);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-size: var(--font-size-sm);
+  transition: background 0.15s ease;
+}
+
+.create-salida__result-row:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.create-salida__result-row.is-selected {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.create-salida__result-row.is-added,
+.create-salida__result-row:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.create-salida__result-row .result-codigo {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.create-salida__result-row .result-nombre {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+
+.create-salida__result-row .result-stock {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.dashboard-shell.dark .create-salida__results-header {
+  color: var(--color-button-dark);
+  opacity: 0.6;
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-salida__result-row {
+  color: var(--color-button-dark);
+}
+
+.dashboard-shell.dark .create-salida__result-row:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary-dark, var(--color-primary)) 12%, transparent);
+}
+
+.dashboard-shell.dark .create-salida__result-row.is-selected {
+  background: color-mix(in srgb, var(--color-primary-dark, var(--color-primary)) 14%, transparent);
+}
+
 @keyframes create-salida-reveal {
   from {
     opacity: 0;
