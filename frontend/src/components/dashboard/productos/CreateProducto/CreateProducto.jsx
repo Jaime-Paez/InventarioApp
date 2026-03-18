@@ -12,6 +12,7 @@ const initialForm = {
   codigo: '',
   nombre: '',
   descripcion: '',
+  referencia: '',
   pieza_original: false,
   costo_minimo: '',
   precio: '',
@@ -530,6 +531,7 @@ function CreateProducto({
       codigo: nextCodigo,
       nombre: nextNombre,
       descripcion: nextDescripcion,
+      referencia: String(nextInitialData.referencia || '').trim(),
     })
     setCasaSearch('')
     setLoading(false)
@@ -1410,6 +1412,7 @@ function CreateProducto({
       codigo: toUpperProductCode(formData.codigo).trim(),
       nombre: formData.nombre.trim(),
       descripcion: formData.descripcion.trim(),
+      referencia: formData.referencia.trim(),
       pieza_original: Boolean(formData.pieza_original),
       costo_minimo: parseNumber(formData.costo_minimo),
       precio: parseNumber(formData.precio),
@@ -1826,6 +1829,18 @@ function CreateProducto({
                       )}
                       {codigoChecking && <small className="muted">Validando codigo...</small>}
                       {!codigoChecking && codigoError && <small className="create-user__field-error">{codigoError}</small>}
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Referencia</span>
+                      <input
+                        name="referencia"
+                        type="text"
+                        placeholder="Referencia del producto (ej: REF-001)"
+                        value={formData.referencia}
+                        onChange={handleChange}
+                        disabled={loading}
+                      />
                     </label>
 
                     <label className="create-user__field create-user__field--required">

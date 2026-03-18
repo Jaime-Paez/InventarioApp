@@ -18,6 +18,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from core.search_utils import FuzzyTokenSearchFilter, apply_token_search, get_search_tokens
 from core.table_filters import apply_column_filters, parse_column_filters
 from productos.models import Producto
 from usuarios.models import RolPermiso
@@ -425,11 +426,12 @@ class InventarioViewSet(viewsets.ModelViewSet):
     )
     serializer_class = InventarioSerializer
     permission_classes = [IsAuthenticated, InventarioReadProductosWritePermission]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [FuzzyTokenSearchFilter, filters.OrderingFilter]
     search_fields = [
         "producto__codigo",
         "producto__nombre",
         "producto__descripcion",
+        "producto__referencia",
         "producto__casas_comerciales__nombre",
         "producto__oem_productos__oem__codigo",
         "subdivision__nombre",
@@ -535,37 +537,60 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 {"casa_comercial_nombre": "casas_comerciales__nombre"},
             )
 
+        oem_filter = (column_filters or {}).get("oem_codes")
+        if oem_filter:
+            product_queryset = apply_column_filters(
+                product_queryset,
+                {"oem_codes": oem_filter},
+                {"oem_codes": "oem_productos__oem__codigo"},
+            )
+
+        referencia_filter = (column_filters or {}).get("referencia")
+        if referencia_filter:
+            product_queryset = apply_column_filters(
+                product_queryset,
+                {"referencia": referencia_filter},
+                {"referencia": "referencia"},
+            )
+
         search_term = (self.request.query_params.get("search") or "").strip()
         if not search_term:
             return product_queryset.distinct()
 
-        product_query = (
-            Q(codigo__icontains=search_term)
-            | Q(nombre__icontains=search_term)
-            | Q(descripcion__icontains=search_term)
-            | Q(casas_comerciales__nombre__icontains=search_term)
-            | Q(oem_productos__oem__codigo__icontains=search_term)
-        )
-        if allowed_branch_ids:
-            location_query = (
-                Q(
-                    inventarios__subdivision__division__bodega__sucursal_id__in=allowed_branch_ids
-                )
-                & (
-                    Q(inventarios__subdivision__nombre__icontains=search_term)
-                    | Q(inventarios__subdivision__division__nombre__icontains=search_term)
-                    | Q(
-                        inventarios__subdivision__division__bodega__nombre__icontains=search_term
-                    )
-                    | Q(
-                        inventarios__subdivision__division__bodega__sucursal__nombre__icontains=search_term
-                    )
-                    | Q(inventarios__referencia__icontains=search_term)
-                )
-            )
-            product_query |= location_query
+        tokens = get_search_tokens(search_term)
+        if not tokens:
+            return product_queryset.distinct()
 
-        return product_queryset.filter(product_query).distinct()
+        for token in tokens:
+            product_query = (
+                Q(codigo__icontains=token)
+                | Q(nombre__icontains=token)
+                | Q(descripcion__icontains=token)
+                | Q(referencia__icontains=token)
+                | Q(casas_comerciales__nombre__icontains=token)
+                | Q(oem_productos__oem__codigo__icontains=token)
+            )
+            if allowed_branch_ids:
+                location_query = (
+                    Q(
+                        inventarios__subdivision__division__bodega__sucursal_id__in=allowed_branch_ids
+                    )
+                    & (
+                        Q(inventarios__subdivision__nombre__icontains=token)
+                        | Q(inventarios__subdivision__division__nombre__icontains=token)
+                        | Q(
+                            inventarios__subdivision__division__bodega__nombre__icontains=token
+                        )
+                        | Q(
+                            inventarios__subdivision__division__bodega__sucursal__nombre__icontains=token
+                        )
+                        | Q(inventarios__referencia__icontains=token)
+                    )
+                )
+                product_query |= location_query
+            product_queryset = product_queryset.filter(product_query)
+
+        return product_queryset.distinct()
 
     def _apply_total_range_filters(self, queryset):
         params = self.request.query_params
@@ -670,6 +695,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "codigo": row.get("codigo") or "",
                 "nombre": row.get("nombre") or "",
                 "descripcion": row.get("descripcion") or "",
+                "referencia": row.get("referencia") or "",
                 "pieza_original": piece_original,
                 "pieza_original_label": "Si" if piece_original else "No",
                 "casa_comercial_nombre": meta.get("casa_comercial_nombre") or "",
@@ -731,6 +757,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             codigo=Max("codigo"),
             nombre=Max("nombre"),
             descripcion=Max("descripcion"),
+            referencia=Max("referencia"),
             pieza_original_num=Coalesce(
                 Max(
                     Case(
@@ -785,6 +812,8 @@ class InventarioViewSet(viewsets.ModelViewSet):
         aggregated_queryset = self._apply_total_range_filters(aggregated_queryset)
         filtered_column_filters = dict(column_filters)
         filtered_column_filters.pop("casa_comercial_nombre", None)
+        filtered_column_filters.pop("oem_codes", None)
+        filtered_column_filters.pop("referencia", None)
 
         field_map = {
             "codigo": "codigo",

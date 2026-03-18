@@ -11,6 +11,7 @@ class Producto(models.Model):
     codigo = models.CharField(max_length=80, unique=True)
     nombre = models.CharField(max_length=200)
     descripcion = models.TextField(blank=True)
+    referencia = models.CharField(max_length=200, blank=True)
     pieza_original = models.BooleanField(default=False)
     costo_minimo = models.DecimalField(
         max_digits=10,

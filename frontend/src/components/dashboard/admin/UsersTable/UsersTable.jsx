@@ -63,6 +63,8 @@ function UsersTable({
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isQuickSearchLoading, setIsQuickSearchLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [sortField, setSortField] = useState(null)
+  const [sortOrder, setSortOrder] = useState(null)
 
   const fetchUsers = useCallback(async (searchTerm = '', options = {}) => {
     const withOverlay = options?.withOverlay !== false
@@ -137,9 +139,9 @@ function UsersTable({
     []
   )
 
-  const initFilters = () => {
+  const initFilters = (preserveSearch = false) => {
     setFilters({
-      global: { value: null, matchMode: FilterMatchMode.CONTAINS },
+      global: { value: preserveSearch ? (globalFilterValue || null) : null, matchMode: FilterMatchMode.CONTAINS },
 
       codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
@@ -149,7 +151,7 @@ function UsersTable({
 
       activo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
     })
-    setGlobalFilterValue('')
+    if (!preserveSearch) setGlobalFilterValue('')
   }
 
   const USERS_TABLE_STATE_KEY = 'usuarios-table-state-v2'
@@ -167,14 +169,24 @@ function UsersTable({
     initFilters()
   }, [])
 
+  const handleSortChange = (event) => {
+    const order = Number(event?.sortOrder)
+    const normalizedOrder = order === 1 || order === -1 ? order : null
+    const field = normalizedOrder ? (event?.sortField || null) : null
+    setSortField(field)
+    setSortOrder(normalizedOrder)
+  }
+
   const clearFilter = () => {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
     setIsQuickSearchLoading(false)
-    initFilters()
+    setSortField(null)
+    setSortOrder(null)
+    initFilters(true)
     setIsRefreshing(true)
-    fetchUsers('')
+    fetchUsers(globalFilterValue)
   }
   const handleGlobalFilterChange = (event) => {
     const value = event.target.value
@@ -880,12 +892,13 @@ function UsersTable({
           rows={25}
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
+          sortField={sortField || undefined}
+          sortOrder={sortOrder || 0}
+          onSort={handleSortChange}
           filters={filters}
           onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['codigo', 'nombre', 'nombres', 'apellidos', 'correo', 'telefono', 'cargo', 'activo']}
-          stateStorage="session"
-          stateKey={USERS_TABLE_STATE_KEY}
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns

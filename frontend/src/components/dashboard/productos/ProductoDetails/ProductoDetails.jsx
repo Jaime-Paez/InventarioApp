@@ -217,6 +217,7 @@ function ProductoDetails({
     codigo: data?.codigo ?? '',
     nombre: data?.nombre ?? '',
     descripcion: data?.descripcion ?? '',
+    referencia: data?.referencia ?? '',
     pieza_original: Boolean(data?.pieza_original),
     costo_minimo: formatMoneyFromValue(data?.costo_minimo),
     precio: formatMoneyFromValue(data?.precio),
@@ -902,6 +903,7 @@ function ProductoDetails({
       codigo: formData.codigo.trim(),
       nombre: formData.nombre.trim(),
       descripcion: formData.descripcion.trim(),
+      referencia: formData.referencia.trim(),
       pieza_original: Boolean(formData.pieza_original),
       costo_minimo: parseNumber(formData.costo_minimo),
       precio: parseNumber(formData.precio),
@@ -1392,6 +1394,18 @@ function ProductoDetails({
                         value={formData.codigo}
                         onChange={handleChange}
                         required
+                        disabled={editorDisabled}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Referencia</span>
+                      <input
+                        name="referencia"
+                        type="text"
+                        placeholder="Referencia del producto"
+                        value={formData.referencia}
+                        onChange={handleChange}
                         disabled={editorDisabled}
                       />
                     </label>

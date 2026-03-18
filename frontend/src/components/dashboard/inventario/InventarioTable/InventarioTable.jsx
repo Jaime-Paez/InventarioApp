@@ -14,7 +14,7 @@ import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
-import { getModuleActions } from '../../menuConfig'
+import { getModuleActions, moduleHasAnyAction } from '../../menuConfig'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -65,6 +65,8 @@ const INVENTARIO_FILTER_FIELDS = [
   'codigo',
   'nombre',
   'pieza_original_label',
+  'referencia',
+  'oem_codes',
   'costo_minimo',
   'precio',
   'precio_con_iva',
@@ -75,6 +77,8 @@ const INVENTARIO_FILTER_DEFAULT_MODES = {
   codigo: FilterMatchMode.STARTS_WITH,
   nombre: FilterMatchMode.STARTS_WITH,
   pieza_original_label: FilterMatchMode.STARTS_WITH,
+  referencia: FilterMatchMode.STARTS_WITH,
+  oem_codes: FilterMatchMode.STARTS_WITH,
   costo_minimo: FilterMatchMode.EQUALS,
   precio: FilterMatchMode.EQUALS,
   precio_con_iva: FilterMatchMode.EQUALS,
@@ -140,6 +144,14 @@ function InventarioTable({ token, user, permissionIndex }) {
   )
   const canEditProductDetails = Boolean(productModuleActions?.puede_actualizar)
   const canDeleteProductDetails = Boolean(productModuleActions?.puede_eliminar)
+  const isAdminByRole = Boolean(
+    user?.is_superuser ||
+      user?.is_staff ||
+      user?.es_administrador ||
+      String(user?.rol || '').trim().toLowerCase() === 'administrador'
+  )
+  const isAdminByUsersPermissions = moduleHasAnyAction('usuarios', permissionIndex)
+  const canSeeCost = isAdminByRole || isAdminByUsersPermissions
 
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
@@ -255,9 +267,10 @@ function InventarioTable({ token, user, permissionIndex }) {
       }
       setError(null)
       try {
+        const hasExplicitSort = Object.prototype.hasOwnProperty.call(options || {}, 'tableSortField')
         const tableFilters = options?.tableFilters ?? filters
-        const tableSortField = options?.tableSortField ?? sortField
-        const tableSortOrder = options?.tableSortOrder ?? sortOrder
+        const tableSortField = hasExplicitSort ? options.tableSortField : sortField
+        const tableSortOrder = hasExplicitSort ? options.tableSortOrder : sortOrder
         const globalSearchValue = Object.prototype.hasOwnProperty.call(options || {}, 'globalSearchValue')
           ? options?.globalSearchValue
           : globalFilterValue
@@ -558,6 +571,8 @@ function InventarioTable({ token, user, permissionIndex }) {
       nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       pieza_original_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       casa_comercial_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      referencia: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
+      oem_codes: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       costo_minimo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
       precio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
       precio_con_iva: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
@@ -594,9 +609,12 @@ function InventarioTable({ token, user, permissionIndex }) {
       clearTimeout(globalSearchDebounceRef.current)
     }
     setIsGlobalSearchPending(false)
-    const nextFilters = initFilters()
+    const nextFilters = {
+      ...initFilters(),
+      global: { value: globalFilterValue || null, matchMode: FilterMatchMode.CONTAINS },
+    }
+    setFilters(nextFilters)
     resetSearch()
-    setGlobalFilterValue('')
     const defaultApplied = buildDefaultAppliedCriteria()
     lastSearchRef.current = defaultApplied
     setSortField(null)
@@ -604,7 +622,7 @@ function InventarioTable({ token, user, permissionIndex }) {
     setPageFirst(0)
     setIsRefreshing(true)
     await fetchData(defaultApplied, 1, pageSize, {
-      globalSearchValue: '',
+      globalSearchValue: globalFilterValue,
       tableSortField: null,
       tableSortOrder: null,
       tableFilters: nextFilters,
@@ -696,12 +714,14 @@ function InventarioTable({ token, user, permissionIndex }) {
   const columnsData = useMemo(
     () => [
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
-      { nombrevar: 'nombre', header: 'Producto', filterPlaceholder: 'Buscar por producto' },
-      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Activo/Inactivo' },
-      { nombrevar: 'casa_comercial_nombre', header: 'Casa comercial', filterPlaceholder: 'Buscar por casa comercial' },
-      { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
+      { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
+      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
-      { nombrevar: 'precio_con_iva', header: 'Precio con IVA', filterPlaceholder: 'Buscar por precio con IVA' },
+      { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
+      { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
+      { nombrevar: 'referencia', header: 'Referencia', filterPlaceholder: 'Buscar por referencia' },
+      { nombrevar: 'oem_codes', header: 'OEM', filterPlaceholder: 'Buscar por OEM' },
+      { nombrevar: 'casa_comercial_nombre', header: 'Casa comercial', filterPlaceholder: 'Buscar por casa comercial' },
       { nombrevar: 'total_general', header: 'Total', filterPlaceholder: 'Filtrar por total' },
       ...branches.map((branch) => ({
         nombrevar: `sucursal_${branch.id}`,
@@ -718,7 +738,14 @@ function InventarioTable({ token, user, permissionIndex }) {
     return Array.from(new Set([...baseFields, ...extraFields]))
   }, [columnsData])
 
-  const [selectedColumns, setSelectedColumns] = useState(columnsData)
+  const visibleColumnsData = useMemo(
+    () => (canSeeCost ? columnsData : columnsData.filter((column) => column.nombrevar !== 'costo_minimo')),
+    [canSeeCost, columnsData]
+  )
+
+  const [selectedColumns, setSelectedColumns] = useState(() =>
+    visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label')
+  )
   const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
   useEffect(() => {
@@ -748,7 +775,7 @@ function InventarioTable({ token, user, permissionIndex }) {
       try {
         setSelectedColumns(JSON.parse(stored))
       } catch {
-        setSelectedColumns(columnsData)
+        setSelectedColumns(visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label'))
       }
     }
     return () => {
@@ -758,15 +785,17 @@ function InventarioTable({ token, user, permissionIndex }) {
 
   useEffect(() => {
     setSelectedColumns((prev) => {
-      if (!prev || !prev.length) return columnsData
+      if (!prev || !prev.length)
+        return visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label')
       const prevKeys = new Set(prev.map((c) => c.nombrevar))
-      const next = columnsData.filter((col) => prevKeys.has(col.nombrevar))
-      columnsData.forEach((col) => {
-        if (!prevKeys.has(col.nombrevar)) next.push(col)
+      const next = visibleColumnsData.filter((col) => prevKeys.has(col.nombrevar))
+      visibleColumnsData.forEach((col) => {
+        // Never auto-add pieza_original_label — it defaults to hidden
+        if (!prevKeys.has(col.nombrevar) && col.nombrevar !== 'pieza_original_label') next.push(col)
       })
       return next
     })
-  }, [columnsData])
+  }, [visibleColumnsData])
 
   const handleCheckboxChangeColumn = (column) => {
     if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
@@ -935,23 +964,43 @@ function InventarioTable({ token, user, permissionIndex }) {
     )
   }
 
-  const priceBodyTemplate = (rowData, field) => {
-    if (field === 'precio_con_iva' && ivaLoading) {
-      return (
-        <span className="cell-tooltip" data-pr-tooltip="...">
-          ...
-        </span>
-      )
-    }
-    const value =
-      field === 'precio_con_iva'
-        ? rowData?.precio_con_iva
-        : field === 'costo_minimo'
-          ? rowData?.costo_minimo
-          : rowData?.precio
-    const text = formatCurrency(value)
+  const codigoBodyTemplate = (rowData) => {
+    const code = rowData?.codigo ?? '-'
+    return (
+      <span className="cell-tooltip" data-pr-tooltip={code}>
+        {code}
+      </span>
+    )
+  }
+
+  const piezaOriginalBodyTemplate = (rowData) => {
+    const isOriginal = Boolean(rowData?.pieza_original)
+    return (
+      <span style={{ display: 'flex', justifyContent: 'center' }}>
+        <i
+          className={`pi pi-${isOriginal ? 'check-circle' : 'times-circle'}`}
+          style={{ color: isOriginal ? '#22c55e' : '#9ca3af' }}
+        />
+      </span>
+    )
+  }
+
+  const numericBodyTemplate = (rowData, field) => {
+    const value = Number(rowData?.[field])
+    if (!Number.isFinite(value)) return <span className="cell-tooltip">-</span>
+    const text = value.toFixed(2)
     return (
       <span className="cell-tooltip" data-pr-tooltip={text}>
+        {text}
+      </span>
+    )
+  }
+
+  const casaComercialBodyTemplate = (rowData) => {
+    const text = rowData?.casa_comercial_nombre ?? rowData?.casas_comerciales_nombres ?? '-'
+    const tooltip = text === '-' ? 'Sin casa comercial asociada' : text
+    return (
+      <span className="cell-tooltip" data-pr-tooltip={tooltip}>
         {text}
       </span>
     )
@@ -1289,6 +1338,7 @@ function InventarioTable({ token, user, permissionIndex }) {
           {selectedColumns.map((column) => {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
+            let enableFilter = true
             let filterMatchMode = FilterMatchMode.CONTAINS
             let showFilterMatchModes = true
             let showFilterOperator = true
@@ -1296,23 +1346,42 @@ function InventarioTable({ token, user, permissionIndex }) {
 
             switch (column.nombrevar) {
               case 'codigo':
+                bodyTemplate = (rowData) => codigoBodyTemplate(rowData)
+                filterMatchMode = FilterMatchMode.STARTS_WITH
+                break
               case 'nombre':
-              case 'casa_comercial_nombre':
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
+                break
+              case 'pieza_original_label':
+                bodyTemplate = (rowData) => piezaOriginalBodyTemplate(rowData)
+                className = 'column-max-min-width--small'
+                enableFilter = false
                 break
               case 'precio':
               case 'precio_con_iva':
               case 'costo_minimo':
-                bodyTemplate = (rowData) => priceBodyTemplate(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.EQUALS
-                showFilterMatchModes = false
+                bodyTemplate = (rowData) => {
+                  if (column.nombrevar === 'precio_con_iva' && ivaLoading) {
+                    return (
+                      <span className="cell-tooltip" data-pr-tooltip="...">
+                        ...
+                      </span>
+                    )
+                  }
+                  return numericBodyTemplate(rowData, column.nombrevar)
+                }
                 className = 'column-max-min-width--small'
+                enableFilter = false
                 break
-              case 'pieza_original_label':
-                bodyTemplate = (rowData) => cellWithTooltip(rowData, 'pieza_original_label')
+              case 'referencia':
+              case 'oem_codes':
+                bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
-                className = 'column-max-min-width--small'
+                break
+              case 'casa_comercial_nombre':
+                bodyTemplate = (rowData) => casaComercialBodyTemplate(rowData)
+                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'total_general':
                 bodyTemplate = quantityBody(column.nombrevar)
@@ -1339,15 +1408,15 @@ function InventarioTable({ token, user, permissionIndex }) {
                 sortable
                 reorderable
                 frozen={column.nombrevar === 'codigo'}
-                filter
+                filter={enableFilter}
                 filterField={column.nombrevar}
                 filterPlaceholder={column.filterPlaceholder}
                 filterMatchMode={filterMatchMode}
-                showFilterMenuOptions
-                showFilterMatchModes={showFilterMatchModes}
-                showFilterOperator={showFilterOperator}
-                filterApply={filterApplyTemplate}
-                filterClear={filterClearTemplate}
+                showFilterMenuOptions={enableFilter}
+                showFilterMatchModes={enableFilter && showFilterMatchModes}
+                showFilterOperator={enableFilter && showFilterOperator}
+                filterApply={enableFilter ? filterApplyTemplate : undefined}
+                filterClear={enableFilter ? filterClearTemplate : undefined}
                 filterElement={filterElement}
                 className={className}
               />
@@ -1360,7 +1429,7 @@ function InventarioTable({ token, user, permissionIndex }) {
             <strong>Campos</strong>
           </div>
 
-          {columnsData.map((col) => (
+          {visibleColumnsData.map((col) => (
             <div
               key={col.nombrevar}
               className="p-field-checkbox"
@@ -1401,6 +1470,7 @@ function InventarioTable({ token, user, permissionIndex }) {
         allowEdit={canEditProductDetails}
         allowDelete={canDeleteProductDetails}
         allowComment={Boolean(canEditProductDetails)}
+        showCostField={canSeeCost}
         inventoryContext={{
           branches,
           bodegas,

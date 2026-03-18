@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from configuracion.models import ConfiguracionSistema
+from core.search_utils import FuzzyTokenSearchFilter
 from core.table_filters import apply_column_filters, parse_column_filters
 from usuarios.models import RolPermiso
 from usuarios.permissions import (
@@ -39,11 +40,12 @@ class ProductoViewSet(viewsets.ModelViewSet):
     )
     serializer_class = ProductoSerializer
     permission_classes = [IsAuthenticated, ProductosDependentReadPermission]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [FuzzyTokenSearchFilter, filters.OrderingFilter]
     search_fields = [
         "codigo",
         "nombre",
         "descripcion",
+        "referencia",
         "casas_comerciales__nombre",
         "oem_productos__oem__codigo",
     ]
@@ -151,6 +153,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 "costo_minimo": {"lookup": "costo_minimo", "type": "number"},
                 "precio": {"lookup": "precio", "type": "number"},
                 "precio_con_iva": {"lookup": "precio_con_iva_backend", "type": "number"},
+                "referencia": "referencia",
+                "oem_codes": "oem_productos__oem__codigo",
                 "casa_comercial_nombre": "casas_comerciales__nombre",
             },
         )

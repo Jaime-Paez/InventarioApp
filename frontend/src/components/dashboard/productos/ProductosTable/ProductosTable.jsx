@@ -21,7 +21,7 @@ import {
   buildPrimeOrdering,
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
-import { moduleHasAllActions, moduleHasAnyAction } from '../../menuConfig'
+import { moduleHasAnyAction } from '../../menuConfig'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -29,11 +29,15 @@ const DEFAULT_IVA_RATE = 0.15
 const PRODUCT_FILTER_FIELDS = [
   'codigo',
   'nombre',
+  'referencia',
+  'oem_codes',
   'casa_comercial_nombre',
 ]
 const PRODUCT_FILTER_DEFAULT_MODES = {
   codigo: FilterMatchMode.STARTS_WITH,
   nombre: FilterMatchMode.STARTS_WITH,
+  referencia: FilterMatchMode.STARTS_WITH,
+  oem_codes: FilterMatchMode.STARTS_WITH,
   casa_comercial_nombre: FilterMatchMode.STARTS_WITH,
 }
 const PRODUCT_ORDERING_MAP = {
@@ -71,13 +75,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       String(user?.rol || '').trim().toLowerCase() === 'administrador'
   )
   const isAdminByUsersPermissions = moduleHasAnyAction('usuarios', permissionIndex)
-  const hasFullProductPermissions = moduleHasAllActions('productos', permissionIndex)
-  const canSeeCost =
-    isAdminByRole ||
-    isAdminByUsersPermissions ||
-    hasFullProductPermissions ||
-    Boolean(canCreate) ||
-    Boolean(canEdit)
+  const canSeeCost = isAdminByRole || isAdminByUsersPermissions
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>
@@ -195,9 +193,10 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       }
       setError(null)
       try {
+        const hasExplicitSort = Object.prototype.hasOwnProperty.call(options || {}, 'tableSortField')
         const tableFilters = options?.tableFilters ?? filters
-        const tableSortField = options?.tableSortField ?? sortField
-        const tableSortOrder = options?.tableSortOrder ?? sortOrder
+        const tableSortField = hasExplicitSort ? options.tableSortField : sortField
+        const tableSortOrder = hasExplicitSort ? options.tableSortOrder : sortOrder
         const globalSearchValue = Object.prototype.hasOwnProperty.call(options || {}, 'globalSearchValue')
           ? options?.globalSearchValue
           : globalFilterValue
@@ -365,7 +364,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
 
   // ---------------- Filters ----------------
 
-  const initFilters = () => {
+  const initFilters = (preserveSearch = false) => {
     const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
       codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
@@ -376,8 +375,8 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       precio_con_iva: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
       casa_comercial_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
     }
+    if (!preserveSearch) setGlobalFilterValue('')
     setFilters(nextFilters)
-    setGlobalFilterValue('')
     return nextFilters
   }
 
@@ -433,7 +432,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       clearTimeout(globalSearchDebounceRef.current)
     }
     setIsGlobalSearchPending(false)
-    const nextFilters = initFilters()
+    const nextFilters = initFilters(true)
     setSortField(null)
     setSortOrder(null)
     if (!lastSearchRef.current) return
@@ -443,7 +442,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       tableFilters: nextFilters,
       tableSortField: null,
       tableSortOrder: null,
-      globalSearchValue: '',
+      globalSearchValue: globalFilterValue,
     })
   }
 
@@ -682,6 +681,8 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
       { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
+      { nombrevar: 'referencia', header: 'Referencia', filterPlaceholder: 'Buscar por referencia' },
+      { nombrevar: 'oem_codes', header: 'OEM', filterPlaceholder: 'Buscar por OEM' },
       { nombrevar: 'casa_comercial_nombre', header: 'Casa comercial', filterPlaceholder: 'Buscar por casa comercial' },
     ],
     []
@@ -691,7 +692,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     [canSeeCost, columnsData]
   )
 
-  const [selectedColumns, setSelectedColumns] = useState(visibleColumnsData)
+  const [selectedColumns, setSelectedColumns] = useState(() =>
+    visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label')
+  )
   const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
 
@@ -714,7 +717,11 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       })
       const availableFields = new Set(visibleColumnsData.map((column) => column.nombrevar))
       const visibleColumns = migrated.filter((column) => availableFields.has(column?.nombrevar))
-      setSelectedColumns(visibleColumns.length ? visibleColumns : visibleColumnsData)
+      setSelectedColumns(
+        visibleColumns.length
+          ? visibleColumns
+          : visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label')
+      )
     }
     return () => {
       localStorage.setItem('productos-table-columns', JSON.stringify(selectedColumnsRef.current))
@@ -1549,6 +1556,11 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                 }
                 className = 'column-max-min-width--small'
                 enableFilter = false
+                break
+              case 'referencia':
+              case 'oem_codes':
+                bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'casa_comercial_nombre':
                 bodyTemplate = (rowData) => casaComercialBodyTemplate(rowData)
