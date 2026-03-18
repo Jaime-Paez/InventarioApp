@@ -644,19 +644,25 @@ function CreateEntrada({
   }, [isTraslado, reminderUsers, selectedReminderTargetBranchId])
 
   const adminReminderRecipients = useMemo(() => {
-    return reminderBranchUsers
+    if (!isTraslado) return []
+    return reminderUsers
       .filter((userItem) => userItem.isAdmin)
       .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
       .filter(Boolean)
       .filter(
-      (recipient, index, list) =>
-        list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
-    )
-  }, [reminderBranchUsers])
+        (recipient, index, list) =>
+          list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+      )
+  }, [isTraslado, reminderUsers])
 
   const adminReminderRecipientIds = useMemo(
     () => new Set(adminReminderRecipients.map((recipient) => normalizeId(recipient?.id)).filter(Boolean)),
     [adminReminderRecipients]
+  )
+
+  const reminderUsersById = useMemo(
+    () => new Map(reminderUsers.map((userItem) => [normalizeId(userItem?.id), userItem])),
+    [reminderUsers]
   )
 
   const reminderBranchUsersById = useMemo(
@@ -671,7 +677,7 @@ function CreateEntrada({
         .map((recipient) => {
           const recipientId = normalizeId(recipient?.id)
           if (!recipientId) return null
-          const matchedUser = reminderBranchUsersById.get(recipientId)
+          const matchedUser = reminderUsersById.get(recipientId)
           const fallbackEmail = recipientId === currentCreatorId ? currentCreatorEmail : ''
           return {
             id: recipientId,
@@ -680,7 +686,7 @@ function CreateEntrada({
           }
         })
         .filter(Boolean),
-    [adminReminderRecipients, currentCreatorEmail, currentCreatorId, reminderBranchUsersById]
+    [adminReminderRecipients, currentCreatorEmail, currentCreatorId, reminderUsersById]
   )
 
   const selectableReminderUsers = useMemo(
@@ -1118,7 +1124,7 @@ function CreateEntrada({
           id: userId,
           name: formatCurrentUserName(item),
           email: String(item?.correo || item?.email || '').trim(),
-          isAdmin: hasUsersModuleAccess(item?.permisos_resumen),
+          isAdmin: Boolean(item?.es_administrador),
           moduleScopes: normalizeModuleScopes(item?.sucursales_por_modulo),
           moduleScopeActions: normalizeModuleScopeActions(item?.sucursales_por_modulo),
         })

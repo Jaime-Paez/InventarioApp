@@ -249,6 +249,15 @@
   border-color: var(--color-primary-dark);
 }
 
+.dashboard-shell.dark .create-salida__reminder-block {
+  background: var(--color-surface-dark);
+  border-color: var(--color-border-dark);
+}
+
+.dashboard-shell.dark .create-salida__reminder-block h5 {
+  color: var(--color-text-dark);
+}
+
 .dashboard-shell.dark .create-salida__reminder-chip {
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
@@ -256,8 +265,8 @@
 }
 
 .dashboard-shell.dark .create-salida__reminder-rule {
-  border-color: color-mix(in srgb, var(--color-primary-dark) 58%, var(--color-border));
-  background: color-mix(in srgb, var(--color-primary-dark) 24%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-primary-dark) 58%, var(--color-border-dark));
+  background: color-mix(in srgb, var(--color-primary-dark) 24%, var(--color-surface-dark));
   color: var(--color-text-dark);
 }
 
