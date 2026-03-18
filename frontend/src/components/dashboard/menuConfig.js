@@ -8,7 +8,6 @@ import {
   Map as MapIcon,
   Compass,
   Box,
-  Truck,
   Building,
   Hand,
   UsersRound,
@@ -41,13 +40,7 @@ export const MENU_STRUCTURE = [
       { label: 'Bodegas', icon: Box, moduleKey: 'sucursales_bodegas' },
     ],
   },
-  {
-    label: 'Proveedores',
-    icon: Truck,
-    children: [
-      { label: 'Casas comerciales', icon: Building, moduleKey: 'proveedores_casas' },
-    ],
-  },
+  { label: 'Casas comerciales', icon: Building, moduleKey: 'proveedores_casas' },
   { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
   { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios', requiresAdmin: true },
