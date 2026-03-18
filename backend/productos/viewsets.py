@@ -114,6 +114,10 @@ class ProductoViewSet(viewsets.ModelViewSet):
         if codigo:
             queryset = queryset.filter(codigo__icontains=codigo)
 
+        referencia = (params.get("referencia") or "").strip()
+        if referencia:
+            queryset = queryset.filter(referencia__icontains=referencia)
+
         nombre = (params.get("nombre") or "").strip()
         if nombre:
             queryset = queryset.filter(nombre__icontains=nombre)

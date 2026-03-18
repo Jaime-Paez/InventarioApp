@@ -9,6 +9,7 @@ import '../UsersTable/UsersTable.css'
 import './AuditoriaTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
 
 const ACCION_COLORS = {
   creacion: '#22c55e',
@@ -47,6 +48,7 @@ const columnsData = [
 function AuditoriaTable({ token }) {
   const toast = useRef(null)
   const opRef = useRef(null)
+  const [tableResetKey, setTableResetKey] = useState(0)
   const selectedColumnsRef = useRef(columnsData)
 
   const [records, setRecords] = useState([])
@@ -179,6 +181,16 @@ function AuditoriaTable({ token }) {
     setFilters(emptyFilters())
     setPage(1)
     setFirst(0)
+  }
+
+  const handleResetTable = () => {
+    localStorage.removeItem('auditoria-table-columns')
+    localStorage.removeItem('auditoria-table-state')
+    setSelectedColumns(columnsData)
+    handleClearAll()
+    setTableResetKey((k) => k + 1)
+    clearTableLayouts(['auditoria-table-columns', 'auditoria-table-state'], token)
+    opRef.current?.hide()
   }
 
   // ---- modal drag/resize ----
@@ -413,8 +425,11 @@ function AuditoriaTable({ token }) {
           onPage={handlePage}
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
+          key={tableResetKey}
           resizableColumns
           columnResizeMode="fit"
+          stateStorage="local"
+          stateKey="auditoria-table-state"
         >
           {selectedColumns.map((col) => (
             <Column
@@ -432,6 +447,9 @@ function AuditoriaTable({ token }) {
         <OverlayPanel ref={opRef} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
+            <button className="rounded-icon-btn" type="button" onClick={handleResetTable} title="Restablecer tabla" style={{ width: 28, height: 28 }}>
+              <i className="pi pi-refresh" />
+            </button>
           </div>
           {columnsData.map((col, idx) => (
             <div key={idx} className="p-field-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>

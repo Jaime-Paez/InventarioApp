@@ -134,7 +134,7 @@
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  border: 1px solid rgb(24 24 24 / 38%);
+  border: 1px solid var(--sidebar-color-border);
   background: transparent;
   color: var(--sidebar-color-text);
   cursor: pointer;
@@ -173,9 +173,9 @@
   }
 
   .sidebar__reopen {
-    left: 20px;
+    left: 17px;
     top: auto;
-    bottom: 40px;
+    bottom: 30px;
     background: var(--sidebar-backgorund-color);
   }
 

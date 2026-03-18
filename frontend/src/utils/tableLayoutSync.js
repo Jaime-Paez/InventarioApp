@@ -143,6 +143,27 @@ const pushUserTableLayouts = async (snapshot, token) => {
   }
 }
 
+export const clearTableLayouts = async (keys, token) => {
+  const effectiveToken = resolveAuthToken(token)
+  if (!effectiveToken) return
+
+  const layouts = {}
+  keys.forEach((key) => {
+    layouts[`local:${key}`] = null
+    layouts[`session:${key}`] = null
+  })
+
+  try {
+    await authFetch(
+      TABLE_LAYOUTS_ENDPOINT,
+      { method: 'PUT', body: JSON.stringify({ layouts }) },
+      effectiveToken
+    )
+  } catch {
+    // Ignore transient errors — local clear already happened.
+  }
+}
+
 export const startTableLayoutSync = ({ token }) => {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return () => {}

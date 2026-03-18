@@ -138,9 +138,7 @@ const createInitialFilters = () => ({
 })
 
 const selectionColStyle = {
-  width: '40px',
-  minWidth: '40px',
-  maxWidth: '40px',
+  textAlign: 'center',
   padding: 0,
 }
 
@@ -155,8 +153,8 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
   const columnsData = useMemo(
     () => [
       { nombrevar: 'solicitud_no_documento', header: 'Documento', filterPlaceholder: 'Buscar por documento' },
-      { nombrevar: 'producto_codigo', header: 'Codigo', filterPlaceholder: 'Buscar por codigo' },
-      { nombrevar: 'producto_nombre', header: 'Producto', filterPlaceholder: 'Buscar por producto' },
+      { nombrevar: 'producto_nombre', header: 'Nombre', filterPlaceholder: 'Buscar por producto' },
+      { nombrevar: 'producto_codigo', header: 'Código', filterPlaceholder: 'Buscar por codigo' },
       { nombrevar: 'cantidad_faltante', header: 'Faltante', filterPlaceholder: 'Buscar por faltante' },
       { nombrevar: 'sucursal_proveedora', header: 'Sucursal proveedora', filterPlaceholder: 'Buscar por proveedora' },
       { nombrevar: 'sucursal_solicitante', header: 'Sucursal destino', filterPlaceholder: 'Buscar por destino' },
@@ -1336,7 +1334,6 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
           size="small"
           scrollable
           scrollHeight="flex"
-          frozenWidth="40px"
           paginator
           rows={25}
           rowsPerPageOptions={[5, 10, 25, 50]}
@@ -1346,8 +1343,8 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
           onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : [])}
           globalFilterFields={[
             'solicitud_no_documento',
-            'producto_codigo',
             'producto_nombre',
+            'producto_codigo',
             'cantidad_faltante',
             'sucursal_proveedora',
             'sucursal_solicitante',
@@ -1373,10 +1370,13 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
             if (!isCheckboxSelection(event)) return
             setSelectedRows(event.value || [])
           }}
+          resizableColumns
+          columnResizeMode="fit"
+          stateStorage="local"
+          stateKey="traslados-inconvenientes-table-state"
         >
           <Column
             selectionMode="multiple"
-            frozen
             headerClassName="row-selection-column"
             bodyClassName="row-selection-column"
             style={selectionColStyle}

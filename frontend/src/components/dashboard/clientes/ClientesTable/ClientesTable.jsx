@@ -14,6 +14,7 @@ import '../../admin/UsersTable/UsersTable.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -58,6 +59,7 @@ const isCheckboxSelection = (event) => {
 function ClientesTable({ token, onSelect, user, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
@@ -339,6 +341,16 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
       tableSortField: null,
       tableSortOrder: null,
     })
+  }
+
+  const handleResetTable = () => {
+    localStorage.removeItem('clientes-table-columns')
+    localStorage.removeItem('clientes-table-state')
+    setSelectedColumns(columnsData)
+    clearFilter()
+    setTableResetKey((k) => k + 1)
+    clearTableLayouts(['clientes-table-columns', 'clientes-table-state'], token)
+    opColumns.current?.hide()
   }
 
   const initialSearchCriteria = {
@@ -1159,6 +1171,9 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
           onColReorder={handleOrderChange}
           resizableColumns
           columnResizeMode="fit"
+          key={tableResetKey}
+          stateStorage="local"
+          stateKey="clientes-table-state"
           onRowClick={handleRowClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
           selectionMode="multiple"
@@ -1262,6 +1277,9 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
+            <button className="rounded-icon-btn" type="button" onClick={handleResetTable} title="Restablecer tabla" style={{ width: 28, height: 28 }}>
+              <i className="pi pi-refresh" />
+            </button>
           </div>
 
           {columnsData.map((col) => (

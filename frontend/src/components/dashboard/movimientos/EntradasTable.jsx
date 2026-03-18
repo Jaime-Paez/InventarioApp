@@ -15,6 +15,7 @@ import '../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../common/useModalAnimation'
 import { REMINDERS_TRANSFER_NOTIFICATION_EVENT } from '../common/reminders/remindersStorage'
 import { API_URL, authFetch } from '../../../utils/api'
+import { clearTableLayouts } from '../../../utils/tableLayoutSync'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -160,6 +161,7 @@ function EntradasTable({
 }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const [tableResetKey, setTableResetKey] = useState(0)
   const preloadEntradaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
   const fetchSeqRef = useRef(0)
@@ -623,6 +625,16 @@ function EntradasTable({
       tableSortOrder: null,
       globalSearchValue: '',
     })
+  }
+
+  const handleResetTable = () => {
+    localStorage.removeItem('entradas-table-columns')
+    localStorage.removeItem('entradas-table-state')
+    setSelectedColumns(columnsData)
+    clearFilter()
+    setTableResetKey((k) => k + 1)
+    clearTableLayouts(['entradas-table-columns', 'entradas-table-state'], token)
+    opColumns.current?.hide()
   }
 
   const handleGlobalFilterChange = (event) => {
@@ -1150,6 +1162,9 @@ function EntradasTable({
           onColReorder={handleOrderChange}
           resizableColumns
           columnResizeMode="fit"
+          key={tableResetKey}
+          stateStorage="local"
+          stateKey="entradas-table-state"
           filters={filters}
           onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
@@ -1230,6 +1245,9 @@ function EntradasTable({
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
+            <button className="rounded-icon-btn" type="button" onClick={handleResetTable} title="Restablecer tabla" style={{ width: 28, height: 28 }}>
+              <i className="pi pi-refresh" />
+            </button>
           </div>
 
           {columnsData.map((col) => (

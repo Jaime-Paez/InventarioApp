@@ -15,6 +15,7 @@ import '../../admin/UsersTable/UsersTable.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (v) => (v == null ? null : String(v))
@@ -29,6 +30,7 @@ const isCheckboxSelection = (event) => {
 function SucursalesTable({ token, onSelect, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
@@ -144,6 +146,18 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
     setIsRefreshing(true)
     fetchBranches('')
   }
+
+  const handleResetTable = () => {
+    localStorage.removeItem('sucursales-table-columns')
+    localStorage.removeItem('sucursales-table-state')
+    sessionStorage.removeItem('sucursales-table-state')
+    setSelectedColumns(columnsData)
+    clearFilter()
+    setTableResetKey((k) => k + 1)
+    clearTableLayouts(['sucursales-table-columns', 'sucursales-table-state'], token)
+    opColumns.current?.hide()
+  }
+
   const handleGlobalFilterChange = (event) => {
     const value = event.target.value
     setGlobalFilterValue(value)
@@ -767,7 +781,8 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
           onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'direccion', 'latitud', 'longitud']}
-          stateStorage="session"
+          key={tableResetKey}
+          stateStorage="local"
           stateKey="sucursales-table-state"
           reorderableColumns
           onColReorder={handleOrderChange}
@@ -846,6 +861,9 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
+            <button className="rounded-icon-btn" type="button" onClick={handleResetTable} title="Restablecer tabla" style={{ width: 28, height: 28 }}>
+              <i className="pi pi-refresh" />
+            </button>
           </div>
 
           {columnsData.map((col) => (

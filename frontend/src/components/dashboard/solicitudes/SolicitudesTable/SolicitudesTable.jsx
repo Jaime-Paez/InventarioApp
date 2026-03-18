@@ -14,6 +14,7 @@ import '../../admin/UsersTable/UsersTable.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -78,6 +79,7 @@ const isCheckboxSelection = (event) => {
 function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '' }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
@@ -476,6 +478,16 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       tableSortField: null,
       tableSortOrder: null,
     })
+  }
+
+  const handleResetTable = () => {
+    localStorage.removeItem('solicitudes-table-columns')
+    localStorage.removeItem('solicitudes-table-state')
+    setSelectedColumns(columnsData)
+    clearFilter()
+    setTableResetKey((k) => k + 1)
+    clearTableLayouts(['solicitudes-table-columns', 'solicitudes-table-state'], token)
+    opColumns.current?.hide()
   }
 
   const initialSearchCriteria = {
@@ -1392,6 +1404,9 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           onColReorder={handleOrderChange}
           resizableColumns
           columnResizeMode="fit"
+          key={tableResetKey}
+          stateStorage="local"
+          stateKey="solicitudes-table-state"
           onRowClick={handleRowClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
           selectionMode="multiple"
@@ -1491,6 +1506,9 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
+            <button className="rounded-icon-btn" type="button" onClick={handleResetTable} title="Restablecer tabla" style={{ width: 28, height: 28 }}>
+              <i className="pi pi-refresh" />
+            </button>
           </div>
 
           {columnsData.map((col) => (

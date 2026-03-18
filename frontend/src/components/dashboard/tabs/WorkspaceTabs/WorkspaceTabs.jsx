@@ -85,13 +85,31 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
     const element = listRef.current
     if (!element) return
 
-    const scrollAmount = Math.max(element.clientWidth * 0.85, 160)
-    const nextPosition =
-      direction === 'left'
-        ? Math.max(0, element.scrollLeft - scrollAmount)
-        : element.scrollLeft + scrollAmount
+    const tabs = Array.from(element.querySelectorAll('.workspace__tab'))
+    if (!tabs.length) return
 
-    element.scrollTo({ left: nextPosition, behavior: 'smooth' })
+    const containerRect = element.getBoundingClientRect()
+    const THRESHOLD = 4
+    let newScrollLeft
+
+    if (direction === 'right') {
+      // First tab at least partially outside the right edge
+      const target = tabs.find(
+        (tab) => tab.getBoundingClientRect().right > containerRect.right - THRESHOLD
+      )
+      if (!target) return
+      newScrollLeft = element.scrollLeft + (target.getBoundingClientRect().left - containerRect.left)
+    } else {
+      // Last tab at least partially outside the left edge
+      const leftHidden = tabs.filter(
+        (tab) => tab.getBoundingClientRect().left < containerRect.left + THRESHOLD
+      )
+      if (!leftHidden.length) return
+      const target = leftHidden[leftHidden.length - 1]
+      newScrollLeft = element.scrollLeft + (target.getBoundingClientRect().left - containerRect.left)
+    }
+
+    element.scrollTo({ left: Math.max(0, newScrollLeft), behavior: 'smooth' })
   }
 
   const handleWheel = (event) => {

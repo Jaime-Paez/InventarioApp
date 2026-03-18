@@ -293,3 +293,15 @@
     grid-template-columns: 1fr;
   }
 }
+
+.transfer-issues-page .users-datatable th.row-selection-column,
+.transfer-issues-page .users-datatable td.row-selection-column {
+  width: auto !important;
+  min-width: unset !important;
+  max-width: none !important;
+  padding: 0 8px !important;
+}
+
+.transfer-issues-page .users-datatable .row-selection-column .p-checkbox {
+  margin: 0;
+}

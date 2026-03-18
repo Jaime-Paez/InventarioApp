@@ -176,6 +176,9 @@ function CreateSolicitud({
   const [productoDraft, setProductoDraft] = useState(initialProductoDraft)
   const [selectedDraftProducto, setSelectedDraftProducto] = useState(null)
   const [productos, setProductos] = useState([])
+  const [showReferenciaDropdown, setShowReferenciaDropdown] = useState(false)
+  const [referenciaOptions, setReferenciaOptions] = useState([])
+  const [referenciaLoading, setReferenciaLoading] = useState(false)
   const [showCodigoDropdown, setShowCodigoDropdown] = useState(false)
   const [codigoOptions, setCodigoOptions] = useState([])
   const [codigoLoading, setCodigoLoading] = useState(false)
@@ -201,10 +204,13 @@ function CreateSolicitud({
 
   const modalRef = useRef(null)
   const clienteDropdownRef = useRef(null)
+  const referenciaDropdownRef = useRef(null)
   const codigoDropdownRef = useRef(null)
   const oemDropdownRef = useRef(null)
   const casaComercialDropdownRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
+  const referenciaSearchTimerRef = useRef(null)
+  const referenciaSearchSeqRef = useRef(0)
   const codigoSearchTimerRef = useRef(null)
   const codigoSearchSeqRef = useRef(0)
   const oemSearchTimerRef = useRef(null)
@@ -267,6 +273,9 @@ function CreateSolicitud({
     setProductoDraft(initialProductoDraft)
     setSelectedDraftProducto(null)
     setProductos([])
+    setShowReferenciaDropdown(false)
+    setReferenciaOptions([])
+    setReferenciaLoading(false)
     setShowCodigoDropdown(false)
     setCodigoOptions([])
     setCodigoLoading(false)
@@ -292,6 +301,10 @@ function CreateSolicitud({
     if (clienteSearchTimerRef.current) {
       clearTimeout(clienteSearchTimerRef.current)
       clienteSearchTimerRef.current = null
+    }
+    if (referenciaSearchTimerRef.current) {
+      clearTimeout(referenciaSearchTimerRef.current)
+      referenciaSearchTimerRef.current = null
     }
     if (codigoSearchTimerRef.current) {
       clearTimeout(codigoSearchTimerRef.current)
@@ -420,6 +433,7 @@ function CreateSolicitud({
   useEffect(
     () => () => {
       if (clienteSearchTimerRef.current) clearTimeout(clienteSearchTimerRef.current)
+      if (referenciaSearchTimerRef.current) clearTimeout(referenciaSearchTimerRef.current)
       if (codigoSearchTimerRef.current) clearTimeout(codigoSearchTimerRef.current)
       if (oemSearchTimerRef.current) clearTimeout(oemSearchTimerRef.current)
       if (casaComercialSearchTimerRef.current) clearTimeout(casaComercialSearchTimerRef.current)
@@ -469,6 +483,50 @@ function CreateSolicitud({
     const parts = raw.split(',')
     return String(parts[parts.length - 1] || '').trim()
   }, [productoDraft.oems])
+
+  useEffect(() => {
+    if (!open || !showReferenciaDropdown) return
+    const term = String(productoDraft.referencia || '').trim()
+    if (!term || term.length < 2 || !token) {
+      setReferenciaOptions([])
+      setReferenciaLoading(false)
+      return
+    }
+
+    if (referenciaSearchTimerRef.current) clearTimeout(referenciaSearchTimerRef.current)
+
+    setReferenciaLoading(true)
+    referenciaSearchTimerRef.current = setTimeout(async () => {
+      const requestId = referenciaSearchSeqRef.current + 1
+      referenciaSearchSeqRef.current = requestId
+
+      try {
+        const response = await authFetch(
+          `${API_URL}/productos/listado/?referencia=${encodeURIComponent(term)}&page_size=5`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar productos.')
+        const data = await response.json()
+        if (requestId !== referenciaSearchSeqRef.current) return
+        setReferenciaOptions(parseApiList(data))
+      } catch {
+        if (requestId !== referenciaSearchSeqRef.current) return
+        setReferenciaOptions([])
+      } finally {
+        if (requestId === referenciaSearchSeqRef.current) {
+          setReferenciaLoading(false)
+        }
+      }
+    }, 550)
+
+    return () => {
+      if (referenciaSearchTimerRef.current) {
+        clearTimeout(referenciaSearchTimerRef.current)
+        referenciaSearchTimerRef.current = null
+      }
+    }
+  }, [open, showReferenciaDropdown, token, productoDraft.referencia])
 
   useEffect(() => {
     if (!open || !showCodigoDropdown) return
@@ -628,6 +686,11 @@ function CreateSolicitud({
           setShowClienteDropdown(false)
         }
       }
+      if (showReferenciaDropdown) {
+        if (!referenciaDropdownRef.current || !referenciaDropdownRef.current.contains(event.target)) {
+          setShowReferenciaDropdown(false)
+        }
+      }
       if (showCodigoDropdown) {
         if (!codigoDropdownRef.current || !codigoDropdownRef.current.contains(event.target)) {
           setShowCodigoDropdown(false)
@@ -646,7 +709,7 @@ function CreateSolicitud({
     }
     window.addEventListener('mousedown', handleClickOutside)
     return () => window.removeEventListener('mousedown', handleClickOutside)
-  }, [showCasaComercialDropdown, showClienteDropdown, showCodigoDropdown, showOemDropdown])
+  }, [showCasaComercialDropdown, showClienteDropdown, showCodigoDropdown, showOemDropdown, showReferenciaDropdown])
 
   useEffect(() => {
     const handleMouseMove = (event) => {
@@ -847,7 +910,13 @@ function CreateSolicitud({
     const { name, value } = event.target
     const normalizedValue = name === 'codigo' ? String(value || '').toUpperCase() : value
     const shouldDetachSelectedProduct =
-      selectedDraftProducto && ['codigo', 'nombre', 'oems'].includes(name)
+      selectedDraftProducto && ['referencia', 'codigo', 'nombre', 'oems'].includes(name)
+
+    if (name === 'referencia') {
+      const shouldShow = String(normalizedValue || '').trim().length >= 1
+      setShowReferenciaDropdown(shouldShow)
+      if (!shouldShow) setReferenciaOptions([])
+    }
 
     if (name === 'codigo') {
       const shouldShow = String(normalizedValue || '').trim().length >= 1
@@ -894,10 +963,12 @@ function CreateSolicitud({
       casaComercialNombre: firstCasa ? String(firstCasa.nombre || '').trim() : '',
       cantidad: prev.cantidad || '1',
     }))
+    setShowReferenciaDropdown(false)
     setShowCodigoDropdown(false)
     setShowOemDropdown(false)
     setShowCasaComercialDropdown(false)
     setCasaComercialSearchTerm('')
+    setReferenciaOptions([])
     setCodigoOptions([])
     setOemOptions([])
     setCasaComercialOptions([])
@@ -1193,9 +1264,11 @@ function CreateSolicitud({
     setProductoDraft(initialProductoDraft)
     setSelectedDraftProducto(null)
     setProductoAttempted(false)
+    setShowReferenciaDropdown(false)
     setShowCodigoDropdown(false)
     setShowOemDropdown(false)
     setShowCasaComercialDropdown(false)
+    setReferenciaOptions([])
     setCodigoOptions([])
     setOemOptions([])
     setCasaComercialOptions([])
@@ -1563,15 +1636,65 @@ function CreateSolicitud({
 
                     <div className="create-user__locations-row create-user__locations-row--form">
                       <span>
-                        <input
-                          name="referencia"
-                          type="text"
-                          placeholder="Referencia"
-                          value={productoDraft.referencia}
-                          onChange={handleProductoDraftChange}
-                          disabled={loading}
-                          autoComplete="off"
-                        />
+                        <div className="create-solicitud__inline-dropdown" ref={referenciaDropdownRef}>
+                          <input
+                            name="referencia"
+                            type="text"
+                            placeholder="Referencia"
+                            value={productoDraft.referencia}
+                            onChange={handleProductoDraftChange}
+                            onFocus={() => {
+                              const hasTerm = String(productoDraft.referencia || '').trim().length >= 1
+                              setShowReferenciaDropdown(hasTerm)
+                            }}
+                            disabled={loading}
+                            autoComplete="off"
+                          />
+                          {showReferenciaDropdown && (
+                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
+                              <div className="create-solicitud__inline-results">
+                                {referenciaLoading && <small className="muted">Buscando...</small>}
+                                {!referenciaLoading && String(productoDraft.referencia || '').trim().length < 2 && (
+                                  <small className="muted">Escribe al menos 2 caracteres.</small>
+                                )}
+                                {!referenciaLoading &&
+                                  String(productoDraft.referencia || '').trim().length >= 2 &&
+                                  !referenciaOptions.length && (
+                                    <small className="muted">
+                                      Sin coincidencias. Puedes agregar como producto nuevo.
+                                    </small>
+                                  )}
+                                {referenciaOptions.length > 0 && (
+                                  <div className="create-solicitud__results-header">
+                                    <span>Código</span>
+                                    <span>Nombre</span>
+                                    <span>Disponible</span>
+                                  </div>
+                                )}
+                                {referenciaOptions.map((producto) => {
+                                  const isSelected =
+                                    String(selectedDraftProducto?.id || '') === String(producto.id)
+                                  const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
+                                  const nombre = String(producto?.nombre || '').trim()
+                                  const stock = Number(producto?.total_stock ?? 0)
+                                  return (
+                                    <button
+                                      key={`ref-opt-${producto.id}`}
+                                      type="button"
+                                      className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => handleProductoSelect(producto)}
+                                    >
+                                      <span className="result-codigo">{codigo}</span>
+                                      <span className="result-nombre">{nombre || '-'}</span>
+                                      <span className="result-stock">{stock}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </span>
 
                       <span>

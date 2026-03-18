@@ -14,6 +14,7 @@ import './SalidasTable.css'
 import '../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
+import { clearTableLayouts } from '../../../utils/tableLayoutSync'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -160,6 +161,7 @@ function SalidasTable({
 }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const [tableResetKey, setTableResetKey] = useState(0)
   const preloadSalidaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
   const fetchSeqRef = useRef(0)
@@ -646,6 +648,16 @@ function SalidasTable({
       tableSortOrder: null,
       globalSearchValue: '',
     })
+  }
+
+  const handleResetTable = () => {
+    localStorage.removeItem('salidas-table-columns')
+    localStorage.removeItem('salidas-table-state')
+    setSelectedColumns(columnsData)
+    clearFilter()
+    setTableResetKey((k) => k + 1)
+    clearTableLayouts(['salidas-table-columns', 'salidas-table-state'], token)
+    opColumns.current?.hide()
   }
 
   const handleGlobalFilterChange = (event) => {
@@ -1135,6 +1147,9 @@ function SalidasTable({
           onColReorder={handleOrderChange}
           resizableColumns
           columnResizeMode="fit"
+          key={tableResetKey}
+          stateStorage="local"
+          stateKey="salidas-table-state"
           filters={filters}
           onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
@@ -1205,6 +1220,9 @@ function SalidasTable({
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
+            <button className="rounded-icon-btn" type="button" onClick={handleResetTable} title="Restablecer tabla" style={{ width: 28, height: 28 }}>
+              <i className="pi pi-refresh" />
+            </button>
           </div>
 
           {columnsData.map((col) => (
