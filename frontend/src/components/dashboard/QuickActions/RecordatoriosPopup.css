@@ -351,6 +351,7 @@
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__button {
   border-color: #36414c;
   background: #1f2328;
+  color: var(--color-text-title-dark);
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__button--primary {
@@ -1024,6 +1025,12 @@
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-card {
   border-color: #36414c;
   background: #1f2328;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-head h4,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-head p {
+  color: var(--color-text-title-dark);
 }
 
 .recordatorios-popup__decision-head {
@@ -1089,6 +1096,7 @@
 .recordatorios-popup__decision-description {
   display: grid;
   gap: 4px;
+  color: inherit;
 }
 
 .recordatorios-popup__decision-description > span {
@@ -1111,6 +1119,29 @@
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-description p {
   border-color: #36414c;
   background: #242a31;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-description > span {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-grid label span,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-grid label strong,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-grid label em,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-grid label p {
+  color: var(--color-text-title-dark);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-grid label strong {
+  color: var(--color-text-title-dark);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-grid label span,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-grid label strong,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-grid label em,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-grid label p {
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .recordatorios-popup__decision-table-wrap {
@@ -1134,6 +1165,21 @@
 
 .recordatorios-popup__decision-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table th,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table td {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table th {
+  background: #242b32;
+  border-bottom-color: #2f353d;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table-wrap {
+  border-color: #313943;
+  background: #171b21;
 }
 
 .recordatorios-popup__decision-actions {
@@ -1161,18 +1207,18 @@
 }
 
 .recordatorios-popup__decision-button--accept {
-  background: var(--color-success-text);
-  border-color: color-mix(in srgb, var(--color-success-text) 78%, black 22%);
+  background: #22c55e;
+  border-color: #16a34a;
   color: #fff;
 }
 
 .recordatorios-popup__decision-button--accept:hover {
-  background: color-mix(in srgb, var(--color-success-text) 88%, #fff 12%);
+  background: #16a34a;
 }
 
 .recordatorios-popup__decision-button--reject {
-  background: var(--color-error-text);
-  border-color: color-mix(in srgb, var(--color-error-text) 80%, black 20%);
+  background: #ef4444;
+  border-color: #b91c1c;
   color: #fff;
 }
 
@@ -1181,23 +1227,23 @@
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--accept {
-  background: var(--color-success-text-dark);
-  border-color: color-mix(in srgb, var(--color-success-text-dark) 78%, black 22%);
+  background: #22c55e;
+  border-color: #15803d;
   color: #fff;
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--accept:hover {
-  background: color-mix(in srgb, var(--color-success-text-dark) 90%, #fff 10%);
+  background: #15803d;
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--reject {
-  background: var(--color-error-text-dark);
-  border-color: color-mix(in srgb, var(--color-error-text-dark) 80%, black 20%);
+  background: #dc2626;
+  border-color: #991b1b;
   color: #fff;
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--reject:hover {
-  background: color-mix(in srgb, var(--color-error-text-dark) 90%, #fff 10%);
+  background: #b91c1c;
 }
 
 .recordatorios-popup__decision-close-link {
@@ -1213,6 +1259,10 @@
 
 .recordatorios-popup__decision-close-link:hover {
   color: color-mix(in srgb, currentColor 90%, transparent);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-close-link {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .recordatorios-popup__reject-overlay {

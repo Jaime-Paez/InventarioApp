@@ -33,12 +33,18 @@
   padding: 12px;
 }
 
+.dashboard-shell.dark .inventario-map-popup,
+.app-shell.theme-dark .inventario-map-popup {
+  background: rgba(2, 6, 23, 0.75);
+}
+
 .inventario-map-popup__dialog {
   width: min(96vw, 1700px);
   height: min(95vh, 1100px);
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-surface);
+  color: var(--color-text-primary);
   box-shadow: 0 20px 44px rgba(15, 23, 42, 0.3);
   display: flex;
   flex-direction: column;
@@ -59,11 +65,19 @@
   font-size: 1rem;
 }
 
+.dashboard-shell.dark .inventario-map-popup__title h4 {
+  color: rgba(255, 255, 255, 0.92);
+}
+
 .inventario-map-popup__title p {
   margin: 4px 0 0;
   font-size: var(--font-size-sm);
   color: var(--color-text-primary);
   opacity: 0.82;
+}
+
+.dashboard-shell.dark .inventario-map-popup__title p {
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .inventario-map-popup__close {
@@ -77,6 +91,12 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.dashboard-shell.dark .inventario-map-popup__close {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+  border-color: var(--color-border);
 }
 
 .inventario-map-popup__close:hover {
@@ -184,25 +204,74 @@
   border-color: var(--color-border);
 }
 
+.dashboard-shell.dark .inventario-map-popup {
+  background: rgba(2, 6, 23, 0.8);
+}
+
+.dashboard-shell.dark .inventario-map-popup__dialog,
+.dashboard-shell.dark .inventario-map-popup__body,
+.dashboard-shell.dark .inventario-map-preview__plan-wrapper--popup,
+.app-shell.theme-dark .inventario-map-popup__dialog,
+.app-shell.theme-dark .inventario-map-popup__body,
+.app-shell.theme-dark .inventario-map-preview__plan-wrapper--popup {
+  background: var(--color-surface-darker);
+}
+
+.dashboard-shell.dark .inventario-map-popup__body {
+  background: var(--color-surface-darker);
+}
+
+.dashboard-shell.dark .inventario-map-popup__title h4,
+.dashboard-shell.dark .inventario-map-popup__title p {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.dashboard-shell.dark .inventario-map-popup__title strong {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.dashboard-shell.dark .inventario-map-preview__plan {
+  background-color: color-mix(in srgb, var(--color-surface-darker) 90%, transparent);
+  border-color: var(--color-border);
+}
+
 .dashboard-shell.dark .inventario-map-popup__header {
   border-bottom-color: var(--color-border);
 }
 
 .dashboard-shell.dark .inventario-map-popup__title p,
 .dashboard-shell.dark .inventario-map-preview__hint,
-.dashboard-shell.dark .inventario-map-preview__location {
+.dashboard-shell.dark .inventario-map-preview__location,
+.app-shell.theme-dark .inventario-map-popup__title p,
+.app-shell.theme-dark .inventario-map-preview__hint,
+.app-shell.theme-dark .inventario-map-preview__location {
   color: var(--color-text-dark);
 }
 
-.dashboard-shell.dark .inventario-map-popup__close {
+.dashboard-shell.dark .inventario-map-popup__close,
+.app-shell.theme-dark .inventario-map-popup__close {
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
   border-color: var(--color-border);
 }
 
-.dashboard-shell.dark .inventario-map-popup__close:hover {
+.dashboard-shell.dark .inventario-map-popup__close:hover,
+.app-shell.theme-dark .inventario-map-popup__close:hover {
   background: color-mix(in srgb, var(--color-primary-dark) 24%, var(--color-surface-darker));
 }
+
+.dashboard-shell.dark .inventario-map-preview__location,
+.app-shell.theme-dark .inventario-map-preview__location {
+  color: rgba(255, 255, 255, 0.92);
+  border-color: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--color-border) 10%, rgba(255, 255, 255, 0.08));
+}
+
+.dashboard-shell.dark .inventario-map-preview__location--active,
+.app-shell.theme-dark .inventario-map-preview__location--active {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #dc2626 45%, transparent);
+}
+
 
 @media (max-width: 760px) {
   .inventario-map-popup__dialog {

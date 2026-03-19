@@ -46,6 +46,11 @@ const normalizeLocation = (location, index) => ({
   alto: toPositive(location?.alto),
 })
 
+const getPortalHost = () => {
+  if (typeof document === 'undefined') return null
+  return document.querySelector('.dashboard-shell') || document.querySelector('.app-shell') || document.body
+}
+
 const resolvePlanSize = (bodega, locations) => {
   const width = toPositive(bodega?.ancho_metros)
   const height = toPositive(bodega?.alto_metros)
@@ -72,6 +77,11 @@ const buildTypeColors = (locations) => {
 
 function BodegaLocationPreview({ bodega, divisionName, subdivisionName }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [portalRoot, setPortalRoot] = useState(null)
+  useEffect(() => {
+    if (portalRoot) return
+    setPortalRoot(getPortalHost())
+  }, [portalRoot])
   const normalizedDivisionName = useMemo(() => normalizeKey(divisionName), [divisionName])
   const locations = useMemo(() => {
     const raw = Array.isArray(bodega?.ubicaciones) ? bodega.ubicaciones : []
@@ -109,7 +119,7 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName }) {
     }
   }, [isOpen])
 
-  const popup = isOpen && typeof document !== 'undefined'
+  const popup = isOpen && portalRoot
     ? createPortal(
       <div
         className="inventario-map-popup"
@@ -191,7 +201,7 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName }) {
           </div>
         </div>
       </div>,
-      document.body
+      portalRoot
     )
     : null
 

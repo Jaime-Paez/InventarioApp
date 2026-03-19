@@ -963,6 +963,84 @@
   opacity: 0.62;
 }
 
+.quick-actions.dark .quick-actions__inspection-overlay {
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.quick-actions.dark .quick-actions__inspection-dialog {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-dark);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.5);
+}
+
+.quick-actions.dark .quick-actions__inspection-head {
+  border-bottom-color: var(--color-border-dark);
+}
+
+.quick-actions.dark .quick-actions__inspection-head h4,
+.quick-actions.dark .quick-actions__inspection-head p {
+  color: var(--color-text-title-dark);
+}
+
+.quick-actions.dark .quick-actions__inspection-close {
+  border-color: var(--color-border-dark);
+  background: var(--color-surface-dark);
+  color: var(--color-text-dark);
+}
+
+.quick-actions.dark .quick-actions__inspection-body {
+  background: transparent;
+}
+
+.quick-actions.dark .quick-actions__inspection-list {
+  gap: 12px;
+}
+
+.quick-actions.dark .quick-actions__inspection-item {
+  border-color: var(--color-border-dark);
+  background: color-mix(in srgb, var(--color-primary-dark) 6%, var(--table-color-dark));
+}
+
+.quick-actions.dark .quick-actions__inspection-item-head span,
+.quick-actions.dark .quick-actions__inspection-item-expected,
+.quick-actions.dark .quick-actions__inspection-verify-state {
+  color: var(--color-text-dark);
+}
+
+.quick-actions.dark .quick-actions__inspection-grid select,
+.quick-actions.dark .quick-actions__inspection-grid input,
+.quick-actions.dark .quick-actions__inspection-note textarea {
+  background: var(--color-surface-dark);
+  color: var(--color-text-dark);
+  border-color: var(--color-border-dark);
+}
+
+.quick-actions.dark .quick-actions__inspection-note textarea {
+  background: var(--color-surface-dark);
+}
+
+.quick-actions.dark .quick-actions__inspection-error {
+  border-color: rgba(239, 68, 68, 0.9);
+  background: rgba(248, 113, 113, 0.12);
+  color: #fecaca;
+}
+
+.quick-actions.dark .quick-actions__inspection-actions {
+  border-top-color: var(--color-border-dark);
+}
+
+.quick-actions.dark .quick-actions__inspection-btn {
+  border-color: var(--color-border-dark);
+  background: var(--color-surface-dark);
+  color: var(--color-text-dark);
+}
+
+.quick-actions.dark .quick-actions__inspection-btn--primary {
+  background: color-mix(in srgb, var(--color-primary-dark) 18%, var(--color-surface-dark));
+  border-color: color-mix(in srgb, var(--color-primary-dark) 52%, var(--color-border-dark));
+}
+
 .quick-actions__pending-dot {
   position: absolute;
   top: 3px;

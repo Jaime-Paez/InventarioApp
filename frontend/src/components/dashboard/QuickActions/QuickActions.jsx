@@ -1217,7 +1217,10 @@ function QuickActions({
     }
     void clockTick
     const viewportWidth = window.innerWidth
-    const maxCanvas = Math.max(window.innerWidth, window.innerHeight) * 1.35
+    const viewportHeight = window.innerHeight
+    const maxCanvasBase = Math.max(viewportWidth, viewportHeight) * 1.35
+    const viewportLimit = Math.max(viewportWidth * 1.3, viewportHeight * 1.1)
+    const maxCanvas = Math.min(maxCanvasBase, viewportLimit)
     const isMobileViewport = window.innerWidth <= 900
     const stackOffset = isMobileViewport
       ? URGENT_SHIELD_STACK_OFFSET_MOBILE
@@ -1312,9 +1315,11 @@ function QuickActions({
     const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
     const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight
     const isMobileViewport = viewportWidth <= 900
+    const isCompactDesktop = !isMobileViewport && viewportWidth <= 1400
     const mobileScale = isMobileViewport
       ? Math.max(0.7, Math.min(1, viewportWidth / 420))
       : 1
+    const compactDesktopScale = isCompactDesktop ? Math.min(1, viewportWidth / 1440) : 1
 
     const shieldCenterX = shieldLeft + shieldSize / 2
     const shieldCenterY = shieldTop + shieldSize / 2
@@ -1327,18 +1332,21 @@ function QuickActions({
     const radius = shieldSize / 2
     const usableRadius = Math.max(1, radius - edgePadding)
 
-    const minFont = isMobileViewport ? 10 : 12
-    const maxFont = isMobileViewport ? Math.round(34 * mobileScale) : 64
+    const minFont = isMobileViewport ? 8 : isCompactDesktop ? 9 : 11
+    const desktopMaxFont = 52
+    const maxFont = isMobileViewport
+      ? Math.round(28 * mobileScale * compactDesktopScale)
+      : Math.round(desktopMaxFont * compactDesktopScale)
     let fontSize = Math.round(minFont + (maxFont - minFont) * progress)
 
     const minWidth = isMobileViewport
-      ? Math.max(120, Math.round(viewportWidth * 0.34))
-      : 240
+      ? Math.max(100, Math.round(viewportWidth * 0.28))
+      : Math.max(180, Math.round(viewportWidth * 0.2))
     const maxWidth = isMobileViewport
-      ? Math.min(420, Math.round(viewportWidth * 0.78))
-      : Math.min(980, viewportWidth - edgePadding * 2)
-    const absoluteMinWidth = isMobileViewport ? 120 : 180
-    const shieldInset = isMobileViewport ? 30 : 16
+      ? Math.min(360, Math.round(viewportWidth * 0.7))
+      : Math.min(840, viewportWidth - edgePadding * 2)
+    const absoluteMinWidth = isMobileViewport ? 100 : 150
+    const shieldInset = isMobileViewport ? 24 : 14
     let width = Math.round(minWidth + (maxWidth - minWidth) * progress)
     width = Math.max(
       absoluteMinWidth,
@@ -1408,8 +1416,13 @@ function QuickActions({
     maxTCircle = clamp01(maxTCircle)
 
     const travel = clamp01(Math.min(progress, maxTViewport, maxTCircle))
+    const verticalBias = isMobileViewport
+      ? Math.round(shieldSize * 0.12)
+      : isCompactDesktop
+        ? Math.round(shieldSize * 0.08)
+        : Math.round(shieldSize * 0.04)
     const centerX = shieldCenterX + vectorX * travel
-    const centerY = shieldCenterY + vectorY * travel
+    const centerY = shieldCenterY + vectorY * travel + verticalBias
     const localLeft = centerX - shieldLeft
     const localTop = centerY - shieldTop
 

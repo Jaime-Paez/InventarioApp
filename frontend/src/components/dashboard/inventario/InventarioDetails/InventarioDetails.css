@@ -95,6 +95,30 @@
   opacity: 0.7;
 }
 
+.dashboard-shell.dark .inventario-details__body .create-user__locations-table {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .inventario-details__body .create-user__locations-row {
+  color: var(--color-text-dark);
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .inventario-details__body .create-user__locations-row--head {
+  background: color-mix(in srgb, var(--color-border) 25%, var(--color-surface-darker));
+  color: var(--color-button-primary);
+}
+
+.dashboard-shell.dark .inventario-details__body .create-user__locations-row span {
+  color: inherit;
+}
+
+.dashboard-shell.dark .inventario-details__body .create-user__locations-row--empty {
+  color: var(--color-text-dark);
+  opacity: 0.7;
+}
+
 @media (max-width: 900px) {
   .inventario-details__modal {
     min-width: 0;
