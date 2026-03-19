@@ -184,6 +184,11 @@
   height: 6px;
 }
 
+.dashboard-shell.dark .sidebar__bullet,
+.dashboard-shell.dark .sidebar__bullet--small {
+  background: var(--color-primary-dark);
+}
+
 .sidebar__chevron {
   margin-left: auto;
   width: 16px;
