@@ -102,6 +102,8 @@
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease,
     transform 0.2s ease;
   font-size: var(--font-size-base);
+  position: relative;
+  box-sizing: border-box;
 }
 
 .sidebar__link,
@@ -127,9 +129,31 @@
 
 .sidebar__link.active {
   border-color: transparent;
-  background: transparent;
-  color: var(--sidebar-color-text);
+  background: var(--color-primary);
+  color: #fff;
   transform: none;
+}
+
+.sidebar__link.active::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary) 70%, rgba(255, 255, 255, 0.15));
+  pointer-events: none;
+  opacity: 0.7;
+  z-index: -1;
+}
+
+.dashboard-shell.dark .sidebar__link.active {
+  background: var(--color-primary-dark);
+}
+
+.dashboard-shell.dark .sidebar__link.active::after {
+  background: color-mix(in srgb, var(--color-primary-dark) 55%, rgba(0, 0, 0, 0.25));
+}
+.dashboard-shell.light .sidebar__link.active::after {
+  background: color-mix(in srgb, var(--color-primary) 55%, rgba(255, 255, 255, 0.75));
 }
 
 .sidebar__link:focus-visible,
@@ -220,6 +244,8 @@
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
   font-size: var(--font-size-base);
+  position: relative;
+  box-sizing: border-box;
 }
 
 .sidebar__link.open + .sidebar__submenu .sidebar__sublink,
@@ -238,8 +264,35 @@
 
 .sidebar__sublink.active {
   border-color: transparent;
-  background: transparent;
-  color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.sidebar__link.open + .sidebar__submenu .sidebar__sublink.active,
+.sidebar__submenu.open .sidebar__sublink.active {
+  color: #fff;
+}
+
+.sidebar__sublink.active::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-primary) 55%, rgba(255, 255, 255, 0.2));
+  pointer-events: none;
+  opacity: 0.7;
+  z-index: -1;
+}
+
+
+.dashboard-shell.dark .sidebar__sublink.active {
+  background: var(--color-primary-dark);
+}
+.dashboard-shell.dark .sidebar__sublink.active::after {
+  background: color-mix(in srgb, var(--color-primary-dark) 40%, rgba(0, 0, 0, 0.25));
+}
+.dashboard-shell.light .sidebar__sublink.active::after {
+  background: color-mix(in srgb, var(--color-primary) 35%, rgba(255, 255, 255, 0.7));
 }
 
 .sidebar__sublink:focus-visible,

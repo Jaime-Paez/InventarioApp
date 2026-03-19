@@ -175,7 +175,8 @@
 
 .dashboard-shell.dark .search-input-container {
   background: var(--table-color-search-dark);
-  border-color: var(--color-border);
+  border-color: color-mix(in srgb, #ffffff 45%, var(--color-border-dark));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffffff 35%, transparent);
 }
 
 .search-input {
@@ -197,12 +198,12 @@
 }
 
 .dashboard-shell.dark .search-input {
-  color: var(--color-text-dark);
+  color: #fff;
 }
 
 .dashboard-shell.dark .search-input::placeholder,
 .dashboard-shell.dark .search-input-icon {
-  color: var(--color-border);
+  color: color-mix(in srgb, #ffffff 80%, rgba(255, 255, 255, 0.5));
 }
 
 .rounded-icon-btn {
