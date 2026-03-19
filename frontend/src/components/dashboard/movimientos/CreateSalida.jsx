@@ -276,6 +276,8 @@ function CreateSalida({
   const [transferCancelReason, setTransferCancelReason] = useState('')
   const [transferCancelReasonError, setTransferCancelReasonError] = useState('')
   const [transferCancelSubmitting, setTransferCancelSubmitting] = useState(false)
+  const [isTransferWithoutRequest, setIsTransferWithoutRequest] = useState(false)
+  const [documentLoading, setDocumentLoading] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -293,6 +295,7 @@ function CreateSalida({
   const modalPositionRef = useRef(modalPosition)
   const modalRestoreRef = useRef(null)
   const appliedPrefillRequestKeyRef = useRef('')
+  const documentRequestSeqRef = useRef(0)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const getViewportMetrics = useCallback((compactMode = false) => {
@@ -370,6 +373,64 @@ function CreateSalida({
   const destinationBranches = useMemo(() => {
     return branches.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
   }, [branches, selectedSucursalId])
+
+  const fetchNextDocumentNumber = useCallback(async () => {
+    if (!token || !isTraslado || !salidaTipoId) return
+    const sucursalId = String(formData.sucursalId || '').trim()
+    const subTipoId = String(formData.subTipoId || '').trim()
+    if (!sucursalId || !subTipoId) return
+    const requestKey = Date.now()
+    documentRequestSeqRef.current = requestKey
+    setDocumentLoading(true)
+    try {
+      const params = new URLSearchParams({
+        tipo_movimiento_id: String(salidaTipoId),
+        sub_tipo_movimiento_id: subTipoId,
+        sucursal_id: sucursalId,
+      })
+      const objetivoId = String(formData.sucursalObjetivoId || '').trim()
+      if (objetivoId) {
+        params.set("sucursal_objetivo_id", objetivoId)
+      }
+      const endpoint = `${API_URL}/movimientos/movimiento_inventario/next-document-number/?${params.toString()}`
+      const response = await authFetch(endpoint, {}, token)
+      const data = await response.json().catch(() => ({}))
+      if (documentRequestSeqRef.current !== requestKey) return
+      if (!response.ok) {
+        const detail =
+          String(data?.detail || "No se pudo generar el número de traslado.").trim()
+        notifyError(detail)
+        return
+      }
+      const nextDoc = String(data?.no_documento || "").trim()
+      if (nextDoc) {
+        setFormData((prev) => ({ ...prev, no_documento: nextDoc }))
+      }
+    } catch (error) {
+      if (documentRequestSeqRef.current !== requestKey) return
+      notifyError(error?.message || "No se pudo generar el número de traslado.")
+    } finally {
+      if (documentRequestSeqRef.current === requestKey) {
+        setDocumentLoading(false)
+      }
+    }
+  }, [
+    formData.sucursalId,
+    formData.sucursalObjetivoId,
+    formData.subTipoId,
+    isTraslado,
+    notifyError,
+    salidaTipoId,
+    token,
+  ])
+
+  useEffect(() => {
+    if (!open || !isTraslado) return
+    if (!String(formData.sucursalId || '').trim() || !String(formData.sucursalObjetivoId || '').trim()) {
+      return
+    }
+    void fetchNextDocumentNumber()
+  }, [fetchNextDocumentNumber, open, formData.sucursalId, formData.sucursalObjetivoId, isTraslado])
 
   const devolucionEstadoOptions = useMemo(
     () => {
@@ -598,6 +659,8 @@ function CreateSalida({
     solicitudRequesterBranchId,
     transferTargetBranchLabel,
   ])
+  const isManualTransferMode = isTraslado && isTransferWithoutRequest
+  const transferRequiresRequest = isTraslado && !isTransferWithoutRequest
   const prefillTransferRequestKey = String(prefillTransferRequest?.requestKey || '').trim()
   const prefillTransferSolicitudId = String(prefillTransferRequest?.solicitudId || '').trim()
   const appendTransferCancellationReminder = useCallback(
@@ -948,6 +1011,18 @@ function CreateSalida({
   }, [formData.subTipoId, isDevolucion, isTraslado, isVenta])
 
   useEffect(() => {
+    if (!isTraslado && isTransferWithoutRequest) {
+      setIsTransferWithoutRequest(false)
+    }
+  }, [isTraslado, isTransferWithoutRequest])
+
+  useEffect(() => {
+    if (formData.solicitudTrasladoId && isTransferWithoutRequest) {
+      setIsTransferWithoutRequest(false)
+    }
+  }, [formData.solicitudTrasladoId, isTransferWithoutRequest])
+
+  useEffect(() => {
     if (!formData.subTipoId) {
       setClienteMode(CLIENT_MODE_EXISTING)
       setActiveTab('general')
@@ -1146,6 +1221,7 @@ function CreateSalida({
     setTransferCancelReason('')
     setTransferCancelReasonError('')
     setTransferCancelSubmitting(false)
+    setIsTransferWithoutRequest(false)
     setIsMaximized(false)
     setIsResizingModal(false)
     modalRestoreRef.current = null
@@ -1378,10 +1454,12 @@ function CreateSalida({
       setDetails([])
       setDetailDraft(initialDetail)
       setDetailError('')
-      setFormData((prev) => {
-        if (!prev.sucursalObjetivoId) return prev
-        return { ...prev, sucursalObjetivoId: '' }
-      })
+      if (transferRequiresRequest) {
+        setFormData((prev) => {
+          if (!prev.sucursalObjetivoId) return prev
+          return { ...prev, sucursalObjetivoId: '' }
+        })
+      }
       return
     }
 
@@ -1452,6 +1530,7 @@ function CreateSalida({
     defaultEstadoProductoId,
     estadosProducto,
     formData.solicitudTrasladoId,
+    isManualTransferMode,
     isTraslado,
     open,
     productos,
@@ -1459,6 +1538,7 @@ function CreateSalida({
     selectedSolicitudTraslado,
     transferSourceBranchLabel,
     transferTargetBranchLabel,
+    transferRequiresRequest,
   ])
 
   useLayoutEffect(() => {
@@ -1642,6 +1722,17 @@ function CreateSalida({
     setIsMaximized(true)
   }
 
+  const handleToggleTransferWithoutRequest = useCallback(
+    (value) => {
+      setError('')
+      setIsTransferWithoutRequest(value)
+      if (value) {
+        setFormData((prev) => ({ ...prev, solicitudTrasladoId: '' }))
+      }
+    },
+    [setError, setFormData, setIsTransferWithoutRequest]
+  )
+
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
     const nextValue = type === 'checkbox' ? checked : value
@@ -1770,7 +1861,7 @@ function CreateSalida({
 
   const handleAddDetail = () => {
     setDetailError('')
-    if (isTraslado) {
+    if (transferRequiresRequest) {
       setDetailError('Los productos del traslado se cargan desde la solicitud seleccionada.')
       return
     }
@@ -1843,7 +1934,7 @@ function CreateSalida({
   }
 
   const handleRemoveDetail = (uid) => {
-    if (isTraslado) return
+    if (transferRequiresRequest) return
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
   }
 
@@ -1859,6 +1950,7 @@ function CreateSalida({
   const submitSalida = async ({ skipTransferConfirmation = false } = {}) => {
     setError('')
     const estadoMovimientoId = String(formData.estadoId || resolvedEstadoMovimientoId || '').trim()
+    const solicitudIdValue = String(formData.solicitudTrasladoId || '').trim()
 
     if (!salidaTipoId) {
       notifyError('No se encontro el tipo de movimiento de salida.')
@@ -1875,12 +1967,12 @@ function CreateSalida({
       return false
     }
 
-    if (isTraslado && !formData.solicitudTrasladoId) {
+    if (transferRequiresRequest && !solicitudIdValue) {
       notifyError('Selecciona una solicitud de traslado aceptada.')
       return false
     }
 
-    if (isTraslado && !selectedSolicitudTraslado) {
+    if (transferRequiresRequest && !selectedSolicitudTraslado) {
       notifyError('La solicitud seleccionada ya no esta disponible. Recarga e intenta de nuevo.')
       return false
     }
@@ -2010,7 +2102,8 @@ function CreateSalida({
         sucursal_id: Number(formData.sucursalId),
         tipo_movimiento_id: Number(salidaTipoId),
         sub_tipo_movimiento_id: Number(formData.subTipoId),
-        solicitud_traslado_id: isTraslado ? Number(formData.solicitudTrasladoId) : null,
+        solicitud_traslado_id:
+          transferRequiresRequest && solicitudIdValue ? Number(solicitudIdValue) : null,
         descripcion: buildDescripcion(ventaClienteLabel),
         funcional: isDevolucion ? Boolean(formData.funcional) : true,
         sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
@@ -2050,7 +2143,7 @@ function CreateSalida({
         throw new Error(detail)
       }
 
-      if (isTraslado) {
+      if (transferRequiresRequest && (selectedSolicitudTraslado || data?.solicitud)) {
         appendTransferShipmentReminder(data?.solicitud || selectedSolicitudTraslado)
       }
 
@@ -2305,32 +2398,54 @@ function CreateSalida({
                     </label>
 
                     {isTraslado && (
-                      <label className="create-user__field">
-                        <span>Solicitud de traslado</span>
-                        <select
-                          name="solicitudTrasladoId"
-                          value={formData.solicitudTrasladoId}
-                          onChange={handleChange}
-                          disabled={loading || !formData.sucursalId || solicitudesTrasladoLoading}
-                          required
-                        >
-                          <option value="">
-                            {!formData.sucursalId
-                              ? 'Selecciona una sucursal'
-                              : (solicitudesTrasladoLoading
-                                  ? 'Cargando solicitudes...'
-                                  : 'Selecciona una solicitud aceptada')}
-                          </option>
-                          {solicitudesTraslado.map((solicitud) => (
-                            <option key={solicitud.id} value={solicitud.id}>
-                              {`${solicitud.no_documento || `SOL-${solicitud.id}`} - ${solicitud.sucursal_solicitante || 'Sucursal solicitante'}`}
+                      <>
+                        <label className="create-user__field">
+                          <span>Solicitud de traslado</span>
+                          <select
+                            name="solicitudTrasladoId"
+                            value={formData.solicitudTrasladoId}
+                            onChange={handleChange}
+                            disabled={
+                              loading ||
+                              !formData.sucursalId ||
+                              solicitudesTrasladoLoading ||
+                              isTransferWithoutRequest
+                            }
+                            required={!isTransferWithoutRequest}
+                          >
+                            <option value="">
+                              {!formData.sucursalId
+                                ? 'Selecciona una sucursal'
+                                : (solicitudesTrasladoLoading
+                                    ? 'Cargando solicitudes...'
+                                    : 'Selecciona una solicitud aceptada')}
                             </option>
-                          ))}
-                        </select>
-                        {formData.sucursalId && !solicitudesTrasladoLoading && !solicitudesTraslado.length && (
-                          <small className="create-user__field-error">No hay solicitudes aceptadas para esta sucursal.</small>
-                        )}
-                      </label>
+                            {solicitudesTraslado.map((solicitud) => (
+                              <option key={solicitud.id} value={solicitud.id}>
+                                {`${solicitud.no_documento || `SOL-${solicitud.id}`} - ${solicitud.sucursal_solicitante || 'Sucursal solicitante'}`}
+                              </option>
+                            ))}
+                          </select>
+                          {transferRequiresRequest && formData.sucursalId && !solicitudesTrasladoLoading && !solicitudesTraslado.length && (
+                            <small className="create-user__field-error">No hay solicitudes aceptadas para esta sucursal.</small>
+                          )}
+                        </label>
+                        <div className="create-user__field create-salida__manual-toggle">
+                          <label className="create-salida__manual-toggle-label" htmlFor="create-salida-manual-toggle">
+                            <input
+                              id="create-salida-manual-toggle"
+                              type="checkbox"
+                              checked={isTransferWithoutRequest}
+                              onChange={(event) => handleToggleTransferWithoutRequest(event.target.checked)}
+                              disabled={loading}
+                            />
+                            <span>Crear esta salida sin solicitud de traslado aceptada</span>
+                          </label>
+                          <small className="muted">
+                            Activa esta opción para armar la salida de forma manual cuando no haya una solicitud vigente.
+                          </small>
+                        </div>
+                      </>
                     )}
 
                     {requiresSucursalObjetivo && (
@@ -2340,7 +2455,7 @@ function CreateSalida({
                           name="sucursalObjetivoId"
                           value={formData.sucursalObjetivoId}
                           onChange={handleChange}
-                          disabled={loading || isTraslado}
+                          disabled={loading || transferRequiresRequest}
                           required={requiresSucursalObjetivo}
                         >
                           <option value="">Selecciona una sucursal</option>
@@ -2354,13 +2469,21 @@ function CreateSalida({
                     )}
 
                     <label className="create-user__field">
-                      <span>{documentLabel}</span>
+                      <span>
+                        {documentLabel}
+                        {isTraslado && documentLoading && (
+                          <small className="muted" style={{ marginLeft: 8 }}>
+                            Generando número...
+                          </small>
+                        )}
+                      </span>
                       <input
                         name="no_documento"
                         type="text"
                         value={formData.no_documento}
                         onChange={handleChange}
                         disabled={loading}
+                        readOnly={isTraslado}
                         required
                       />
                       {documentStatus === DOCUMENT_STATUS.duplicate && (
@@ -2459,7 +2582,7 @@ function CreateSalida({
                             ref={productDropdownTriggerRef}
                             disabled={
                               loading ||
-                              isTraslado ||
+                              transferRequiresRequest ||
                               !hasSelectedSucursal ||
                               (requiresStockValidation && stockLoading)
                             }
@@ -2467,7 +2590,7 @@ function CreateSalida({
                               !hasSelectedSucursal
                                 ? 'Selecciona una sucursal primero.'
                                 : (
-                                  isTraslado
+                                  transferRequiresRequest
                                     ? 'Selecciona una solicitud de traslado.'
                                     : (
                                       requiresStockValidation && stockLoading
@@ -2479,7 +2602,7 @@ function CreateSalida({
                             onClick={() => {
                               if (
                                 !hasSelectedSucursal ||
-                                isTraslado ||
+                                transferRequiresRequest ||
                                 (requiresStockValidation && stockLoading)
                               ) {
                                 return
@@ -2525,7 +2648,7 @@ function CreateSalida({
                                     !hasSelectedSucursal
                                       ? 'Selecciona una sucursal primero'
                                       : (
-                                        isTraslado
+                                        transferRequiresRequest
                                           ? 'Selecciona una solicitud de traslado'
                                           : (
                                             requiresStockValidation && stockLoading
@@ -2538,7 +2661,7 @@ function CreateSalida({
                                   onChange={(event) => setProductQuery(event.target.value)}
                                   autoFocus
                                   disabled={
-                                    isTraslado ||
+                                    transferRequiresRequest ||
                                     !hasSelectedSucursal ||
                                     (requiresStockValidation && stockLoading)
                                   }
@@ -2613,7 +2736,7 @@ function CreateSalida({
                           step="1"
                           value={detailDraft.cantidad}
                           onChange={handleDetailChange}
-                          disabled={loading || isTraslado || (requiresStockValidation && stockLoading)}
+                          disabled={loading || transferRequiresRequest || (requiresStockValidation && stockLoading)}
                         />
                       </span>
                       <span>
@@ -2624,7 +2747,7 @@ function CreateSalida({
                           min="0"
                           value={detailDraft.valor}
                           readOnly
-                          disabled={loading || isTraslado || (requiresStockValidation && stockLoading)}
+                          disabled={loading || transferRequiresRequest || (requiresStockValidation && stockLoading)}
                         />
                       </span>
                       <span>
@@ -2635,7 +2758,7 @@ function CreateSalida({
                           type="button"
                           className="create-user__ghost"
                           onClick={handleAddDetail}
-                          disabled={loading || isTraslado || (requiresStockValidation && stockLoading)}
+                          disabled={loading || transferRequiresRequest || (requiresStockValidation && stockLoading)}
                         >
                           Agregar
                         </button>
@@ -2656,7 +2779,12 @@ function CreateSalida({
                         <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
-                          <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={loading || isTraslado}>
+                          <button
+                            type="button"
+                            className="create-user__locations-remove"
+                            onClick={() => handleRemoveDetail(detail.uid)}
+                            disabled={loading || transferRequiresRequest}
+                          >
                             x
                           </button>
                         </span>
@@ -3001,4 +3129,3 @@ function CreateSalida({
 }
 
 export default CreateSalida
-

@@ -196,6 +196,7 @@ function QuickActions({
   const receiveLocationDropdownRefs = useRef({})
   const audioContextRef = useRef(null)
   const notificationAudioRef = useRef(null)
+  const didPlayLoginToneRef = useRef(false)
   const didInitUrgentSnapshotRef = useRef(false)
   const seenUrgentReminderIdsRef = useRef(new Set())
   const didInitPendingShipmentUrgentSnapshotRef = useRef(false)
@@ -283,6 +284,7 @@ function QuickActions({
     )
     return Boolean(entradasPermission?.puede_crear || entradasPermission?.puede_actualizar)
   }, [user])
+  const canViewInTransitShipments = isAdministrator && canReceiveTransferRequest
 
   const showErrorToast = useCallback((message) => {
     if (!message) return
@@ -362,7 +364,7 @@ function QuickActions({
   }, [canDecideTransferRequest, showErrorToast, token])
 
   const fetchInTransitTransferShipments = useCallback(async ({ silent = false } = {}) => {
-    if (!token || !canReceiveTransferRequest) {
+    if (!token || !canViewInTransitShipments) {
       setInTransitShipments([])
       return []
     }
@@ -609,12 +611,17 @@ function QuickActions({
     [playNotificationTone, pushSystemTransferNotification, suppressAdminAlerts]
   )
 
-  const hasPendingReminder = useMemo(
-    () => !suppressAdminAlerts && reminders.some((reminder) => isReminderPendingForCurrentUser(reminder, currentUserIds)),
-    [reminders, currentUserIds, suppressAdminAlerts]
+  const pendingRemindersForCurrentUser = useMemo(
+    () => reminders.filter((reminder) => isReminderPendingForCurrentUser(reminder, currentUserIds)),
+    [reminders, currentUserIds]
   )
 
-  const mobileShipmentCount = canReceiveTransferRequest
+  const hasPendingReminder = useMemo(
+    () => !suppressAdminAlerts && pendingRemindersForCurrentUser.length > 0,
+    [pendingRemindersForCurrentUser, suppressAdminAlerts]
+  )
+
+  const mobileShipmentCount = canViewInTransitShipments
     ? pendingShipments.length + inTransitShipments.length
     : 0
 
@@ -727,7 +734,7 @@ function QuickActions({
   }, [canDecideTransferRequest, fetchPendingTransferShipments, token])
 
   useEffect(() => {
-    if (!canReceiveTransferRequest || !token) {
+    if (!canViewInTransitShipments || !token) {
       setInTransitShipments([])
       setInTransitShipmentsLoading(false)
       setIsInTransitShipmentsOpen(false)
@@ -735,7 +742,7 @@ function QuickActions({
       return
     }
     void fetchInTransitTransferShipments()
-  }, [canReceiveTransferRequest, fetchInTransitTransferShipments, token])
+  }, [canViewInTransitShipments, fetchInTransitTransferShipments, token])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -760,10 +767,10 @@ function QuickActions({
   }, [canDecideTransferRequest, fetchPendingTransferShipments, isTransferSendModalOpen, token])
 
   useEffect(() => {
-    if (!token || !canReceiveTransferRequest) return
+    if (!token || !canViewInTransitShipments) return
     if (isReceiveShipmentModalOpen) return
     void fetchInTransitTransferShipments({ silent: true })
-  }, [canReceiveTransferRequest, fetchInTransitTransferShipments, isReceiveShipmentModalOpen, token])
+  }, [canViewInTransitShipments, fetchInTransitTransferShipments, isReceiveShipmentModalOpen, token])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -800,7 +807,7 @@ function QuickActions({
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
-    if (!token || !canReceiveTransferRequest) return undefined
+    if (!token || !canViewInTransitShipments) return undefined
 
     let cancelled = false
 
@@ -829,7 +836,7 @@ function QuickActions({
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)
     }
-  }, [canReceiveTransferRequest, fetchInTransitTransferShipments, token])
+  }, [canViewInTransitShipments, fetchInTransitTransferShipments, token])
 
   useEffect(() => {
     if (hasPendingShipments) return
@@ -1754,6 +1761,18 @@ function QuickActions({
   }, [token])
 
   useEffect(() => {
+    didPlayLoginToneRef.current = false
+  }, [token, currentPrimaryUserId])
+
+  useEffect(() => {
+    if (!token) return
+    if (!pendingRemindersForCurrentUser.length) return
+    if (didPlayLoginToneRef.current) return
+    didPlayLoginToneRef.current = true
+    playNotificationTone({ forceForAdmin: true })
+  }, [token, currentPrimaryUserId, pendingRemindersForCurrentUser.length, playNotificationTone])
+
+  useEffect(() => {
     if (typeof window === 'undefined' || !urgentShieldStyles.length || isReminderModalOpen) return undefined
     const syncLayout = () => setClockTick(Date.now())
 
@@ -2268,7 +2287,7 @@ function QuickActions({
   }
 
   const toggleInTransitShipmentsPanel = async () => {
-    if (!canReceiveTransferRequest) return
+    if (!canViewInTransitShipments) return
     if (isInTransitShipmentsOpen) {
       setIsInTransitShipmentsOpen(false)
       return
@@ -3046,7 +3065,7 @@ function QuickActions({
         </button>
       ))}
       <div className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}>
-        {canReceiveTransferRequest && hasInTransitShipments && (
+        {canViewInTransitShipments && hasInTransitShipments && (
           <div
             ref={inTransitShipmentsRef}
             className={`quick-actions__pending-shipments quick-actions__in-transit${isInTransitShipmentsOpen ? ' is-open' : ''}`}
@@ -4022,4 +4041,3 @@ function QuickActions({
 }
 
 export default QuickActions
-

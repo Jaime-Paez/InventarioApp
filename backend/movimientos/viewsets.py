@@ -204,6 +204,54 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
         return payload
 
+    @action(detail=False, methods=['get'], url_path='next-document-number')
+    def next_document_number(self, request):
+        tipo_movimiento_id = request.query_params.get("tipo_movimiento_id")
+        sub_tipo_movimiento_id = request.query_params.get("sub_tipo_movimiento_id")
+        sucursal_id = request.query_params.get("sucursal_id")
+        sucursal_objetivo_id = request.query_params.get("sucursal_objetivo_id")
+
+        if not tipo_movimiento_id:
+            return Response({"detail": "tipo_movimiento_id es obligatorio."}, status=status.HTTP_400_BAD_REQUEST)
+        if not sub_tipo_movimiento_id:
+            return Response({"detail": "sub_tipo_movimiento_id es obligatorio."}, status=status.HTTP_400_BAD_REQUEST)
+        if not sucursal_id:
+            return Response({"detail": "sucursal_id es obligatorio."}, status=status.HTTP_400_BAD_REQUEST)
+
+        tipo_movimiento = TipoMovimiento.objects.filter(id=tipo_movimiento_id).first()
+        sub_tipo_movimiento = SubTipoMovimiento.objects.filter(id=sub_tipo_movimiento_id).first()
+        sucursal = Sucursal.objects.filter(id=sucursal_id).first()
+        sucursal_objetivo = (
+            Sucursal.objects.filter(id=sucursal_objetivo_id).first()
+            if sucursal_objetivo_id
+            else None
+        )
+
+        if not tipo_movimiento or not sub_tipo_movimiento or not sucursal:
+            return Response(
+                {"detail": "No se encontraron los datos necesarios para generar el documento."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        subtipo_key = resolve_subtipo_key(sub_tipo_movimiento)
+        if not subtipo_key:
+            return Response(
+                {"detail": "No se pudo resolver el tipo de submovimiento."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            document_number = generate_entry_document_number(
+                tipo_movimiento,
+                subtipo_key,
+                sucursal,
+                sucursal_objetivo,
+            )
+        except drf_serializers.ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"no_documento": document_number})
+
     def _resolve_tabla_ordering_tokens(self):
         raw = (self.request.query_params.get("ordering") or "").strip()
         if not raw:

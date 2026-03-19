@@ -65,6 +65,25 @@
   min-width: 180px;
 }
 
+.create-salida__manual-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.create-salida__manual-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.create-salida__manual-toggle-label input {
+  width: 18px;
+  height: 18px;
+}
+
 .create-salida__cliente-mode-btn.is-active {
   background: var(--color-primary);
   border-color: var(--color-primary);
