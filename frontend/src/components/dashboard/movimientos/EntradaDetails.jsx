@@ -351,12 +351,27 @@ function EntradaDetails({
   useEffect(() => {
     if (open) return
     setShowDeleteConfirm(false)
-    setDeleteInventoryAction('reverse')
+    setDeleteInventoryAction(isPendingSolicitudEntry ? 'keep' : 'reverse')
   }, [open])
 
-  const hasPreviewData = Boolean(previewData?.es_solicitud_traslado)
-  const isReadOnlyMode = Boolean(readOnly || hasPreviewData)
-  const lineItemsReadOnly = true
+  const linkedSolicitudId = String(
+    previewData?.solicitud_traslado_id ||
+      previewData?.solicitudTrasladoId ||
+      previewData?.id ||
+      previewData?.solicitud_id ||
+      formData.solicitudTrasladoId ||
+      formData.solicitud_traslado?.id ||
+      ''
+  ).trim()
+  const hasPreviewData = Boolean(previewData?.es_solicitud_traslado || linkedSolicitudId)
+  const previewNormalizedEstadoName = normalizeValue(previewData?.estado_nombre || previewData?.estado || '')
+  const normalizedSolicitudStateName = normalizeValue(
+    previewData?.estado_nombre ||
+      previewData?.estado ||
+      formData.estadoNombre ||
+      ''
+  )
+  const isPreviewPendingSolicitud = hasPreviewData && normalizedSolicitudStateName.includes('pend')
 
   const entradaTipoId = useMemo(() => {
     const entrada = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('ent'))
@@ -389,6 +404,13 @@ function EntradaDetails({
   const isAlwaysReceivedEntrada = isDevolucion || isCompraEntrada
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'Codigo de solicitud' : 'Codigo de entrada'
+  const stockBranchId = useMemo(() => {
+    if (isTraslado) {
+      return String(formData.sucursalObjetivoId || '').trim()
+    }
+    return String(formData.sucursalId || '').trim()
+  }, [formData.sucursalId, formData.sucursalObjetivoId, isTraslado])
+  const showProveedorStockInfo = isTraslado && Boolean(stockBranchId)
 
   const devolucionEstadoOptions = useMemo(
     () =>
@@ -398,7 +420,11 @@ function EntradaDetails({
 
   const trasladoEstadoOptions = useMemo(() => {
     const allowed = new Set(['enviado', 'recibido', 'parcialmente recibido'])
-    return estados.filter((estado) => allowed.has(normalizeValue(estado?.nombre)))
+    return estados.filter((estado) => {
+      const normalized = normalizeValue(estado?.nombre)
+      if (allowed.has(normalized)) return true
+      return normalized.includes('solicitud')
+    })
   }, [estados])
 
   const ventaEstadoOptions = useMemo(() => {
@@ -428,6 +454,34 @@ function EntradaDetails({
     trasladoEstadoOptions,
     ventaEstadoOptions,
   ])
+
+  const estadoCategoryIds = useMemo(() => {
+    const pending = new Set()
+    const sent = new Set()
+    const accepted = new Set()
+    const rejected = new Set()
+    estados.forEach((estado) => {
+      const id = String(estado?.id || '').trim()
+      if (!id) return
+      const normalized = normalizeValue(estado?.nombre)
+      if (normalized.includes('rechaz')) {
+        rejected.add(id)
+        return
+      }
+      if (normalized.includes('acept')) {
+        accepted.add(id)
+        return
+      }
+      if (normalized.includes('pendient')) {
+        pending.add(id)
+        return
+      }
+      if (normalized.includes('envi')) {
+        sent.add(id)
+      }
+    })
+    return { pending, sent, accepted, rejected }
+  }, [estados])
 
   const defaultEstadoMovimientoId = useMemo(() => {
     if (!estadoOptions.length) return ''
@@ -464,6 +518,45 @@ function EntradaDetails({
     )
     return String(preferred?.id ?? estadosProducto[0].id)
   }, [estadosProducto])
+
+  const selectedEstadoName =
+    estados.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
+    estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
+    formData.estadoNombre ||
+    ''
+  const normalizedSelectedEstadoName = normalizeValue(selectedEstadoName)
+  const resolvedEstadoId = String(formData.estadoId || '').trim()
+  const estadoMatchesPending =
+    estadoCategoryIds.pending.has(resolvedEstadoId) ||
+    normalizedSelectedEstadoName.includes('pendient')
+  const estadoMatchesRejected =
+    estadoCategoryIds.rejected.has(resolvedEstadoId) ||
+    normalizedSelectedEstadoName.includes('rechaz') ||
+    normalizedSelectedEstadoName.includes('cancel')
+  const estadoMatchesAccepted =
+    estadoCategoryIds.accepted.has(resolvedEstadoId) ||
+    normalizedSelectedEstadoName.includes('acept') ||
+    normalizedSelectedEstadoName.includes('aprob')
+  const estadoMatchesSent =
+    estadoCategoryIds.sent.has(resolvedEstadoId) ||
+    (normalizedSelectedEstadoName.includes('envi') &&
+      !estadoMatchesPending &&
+      !estadoMatchesRejected &&
+      !estadoMatchesAccepted)
+  const isSentSolicitud = isTraslado && estadoMatchesSent
+  const isPendingSolicitudRibbon = isTraslado && estadoMatchesPending
+  const isRejectedSolicitudRibbon = isTraslado && estadoMatchesRejected
+  const isAcceptedSolicitudRibbon = isTraslado && estadoMatchesAccepted
+  const isSentSolicitudRibbon = isSentSolicitud
+  const isReadOnlyMode = Boolean(
+    readOnly ||
+      (hasPreviewData && !isPreviewPendingSolicitud) ||
+      isSentSolicitud
+  )
+  const effectiveAllowEdit = (allowEdit || isPreviewPendingSolicitud) && !isSentSolicitud
+  const lineItemsReadOnly = Boolean(isReadOnlyMode || !isEditing)
+  const showDetailActions = !isReadOnlyMode && !lineItemsReadOnly
+  const isPendingSolicitudEntry = hasPreviewData && isPreviewPendingSolicitud
 
   const ivaRateValue = useMemo(() => {
     const parsed = parseNumber(formData.iva_rate)
@@ -507,6 +600,29 @@ function EntradaDetails({
   const ivaPercent = (ivaRateValue * 100).toFixed(2).replace(/\.00$/, '')
   const descuentoPercentLabel = descuentoPercent.toFixed(2).replace(/\.00$/, '')
 
+  const getProductReservedQuantity = useCallback(
+    (productId) => {
+      const normalizedId = String(productId ?? '').trim()
+      if (!normalizedId) return 0
+      return details.reduce((acc, detail) => {
+        if (String(detail.productoId) !== normalizedId) return acc
+        const qty = parseIntValue(detail.cantidad)
+        return acc + (Number.isFinite(qty) ? qty : 0)
+      }, 0)
+    },
+    [details]
+  )
+
+  const getProductStockAllowance = useCallback(
+    (productId) => {
+      const normalizedId = String(productId ?? '').trim()
+      if (!normalizedId) return 0
+      const base = Number(stockByProduct[normalizedId] ?? 0)
+      return Number.isFinite(base) ? Math.max(0, base) : 0
+    },
+    [stockByProduct]
+  )
+
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
@@ -519,19 +635,19 @@ function EntradaDetails({
       const nombre = String(producto?.nombre || '').trim()
       const baseLabel = [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
       if (!isTraslado) return baseLabel
-      const available = Number(stockByProduct[String(producto?.id)] ?? 0)
+      const available = getProductStockAllowance(String(producto?.id))
       return `${baseLabel} (Disp: ${Number.isFinite(available) ? available : 0})`
     },
-    [isTraslado, stockByProduct]
+    [isTraslado, getProductStockAllowance]
   )
 
   const searchProducts = useCallback(
     async (query) => {
       const term = String(query ?? '').trim()
-      if (!term || !token || (isTraslado && !formData.sucursalId)) {
-        setProductOptions([])
-        return
-      }
+    if (!term || !token || (isTraslado && !stockBranchId)) {
+      setProductOptions([])
+      return
+    }
 
       setProductLoading(true)
       try {
@@ -545,7 +661,7 @@ function EntradaDetails({
         const payload = await response.json()
         let list = parseApiList(payload)
         if (isTraslado) {
-          list = list.filter((producto) => Number(stockByProduct[String(producto?.id)] ?? 0) > 0)
+          list = list.filter((producto) => getProductStockAllowance(String(producto?.id)) > 0)
         }
 
         setProductOptions(list)
@@ -555,7 +671,7 @@ function EntradaDetails({
         setProductLoading(false)
       }
     },
-    [formData.sucursalId, isTraslado, stockByProduct, token]
+    [stockBranchId, isTraslado, getProductStockAllowance, token]
   )
 
   const searchClientes = useCallback(
@@ -587,13 +703,13 @@ function EntradaDetails({
   )
 
   useEffect(() => {
-    if (!open || !formData.subTipoId || !defaultEstadoMovimientoId) return
+    if (hasPreviewData || !open || !formData.subTipoId || !defaultEstadoMovimientoId) return
     setFormData((prev) => {
       const currentStateValid = estadoOptions.some((estado) => String(estado.id) === String(prev.estadoId))
       if (prev.estadoId && currentStateValid) return prev
       return { ...prev, estadoId: defaultEstadoMovimientoId }
     })
-  }, [defaultEstadoMovimientoId, estadoOptions, formData.subTipoId, open])
+  }, [defaultEstadoMovimientoId, estadoOptions, formData.subTipoId, open, hasPreviewData])
 
   useEffect(() => {
     if (!formData.subTipoId) return
@@ -750,6 +866,16 @@ function EntradaDetails({
     }
   }, [])
 
+const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw, branchNameRaw) => {
+  const branchId = String(branchIdRaw || '').trim()
+  if (!branchId || existingBranchIds.has(branchId)) return
+  resolvedBranches.push({
+    id: branchId,
+    nombre: String(branchNameRaw || '').trim() || `Sucursal ${branchId}`,
+  })
+  existingBranchIds.add(branchId)
+}
+
   const hydrateFromPreviewData = useCallback((preview) => {
     const requestId = String(preview?.solicitud_traslado_id || '').trim()
     const noDocumento = String(preview?.no_documento || '').trim()
@@ -784,15 +910,6 @@ function EntradaDetails({
       }
     })
 
-    setBranches([
-      { id: solicitanteId, nombre: solicitanteNombre },
-      { id: proveedoraId, nombre: proveedoraNombre },
-    ])
-    setTipoMovimientos([])
-    setSubTipos([{ id: 'solicitud-traslado', nombre: subTipoNombre }])
-    setEstados([{ id: 'solicitud-pendiente', nombre: estadoNombre }])
-    setProductos([])
-    setEstadosProducto([])
     setStockByProduct({})
     setTransferSolicitudId(requestId)
 
@@ -800,7 +917,13 @@ function EntradaDetails({
       sucursalId: solicitanteId,
       subTipoId: 'solicitud-traslado',
       subTipoNombre,
-      estadoId: 'solicitud-pendiente',
+      estadoId: String(
+        preview?.estado_movimiento_id ||
+          preview?.estado_movimiento?.id ||
+          preview?.estado_id ||
+          preview?.estado?.id ||
+          ''
+      ).trim(),
       estadoNombre,
       fecha,
       no_documento: noDocumento,
@@ -832,11 +955,8 @@ function EntradaDetails({
     setIsEditing(false)
   }, [])
 
-  const loadData = useCallback(async () => {
-    if (!token || !entradaId) return
-    setLoadingData(true)
-    setError('')
-    try {
+  const fetchCatalogData = useCallback(
+    async () => {
       const [
         branchesRes,
         tiposRes,
@@ -844,7 +964,6 @@ function EntradaDetails({
         estadosRes,
         productosRes,
         estadosProductoRes,
-        salidaRes,
       ] = await Promise.all([
         authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token),
         authFetch(`${API_URL}/tipos/tipos-movimiento/`, {}, token),
@@ -852,7 +971,6 @@ function EntradaDetails({
         authFetch(`${API_URL}/tipos/estados-movimiento/`, {}, token),
         authFetch(`${API_URL}/productos/listado/`, {}, token),
         authFetch(`${API_URL}/tipos/estados-producto/`, {}, token),
-        authFetch(`${API_URL}/movimientos/movimiento_inventario/${entradaId}/`, {}, token),
       ])
 
       if (!branchesRes.ok) throw new Error('No se pudieron cargar las sucursales.')
@@ -861,7 +979,6 @@ function EntradaDetails({
       if (!estadosRes.ok) throw new Error('No se pudieron cargar los estados de movimiento.')
       if (!productosRes.ok) throw new Error('No se pudieron cargar los productos.')
       if (!estadosProductoRes.ok) throw new Error('No se pudieron cargar los estados de producto.')
-      if (!salidaRes.ok) throw new Error('No se pudo cargar la entrada.')
 
       const [
         branchesData,
@@ -870,7 +987,6 @@ function EntradaDetails({
         estadosData,
         productosData,
         estadosProductoData,
-        salidaData,
       ] = await Promise.all([
         branchesRes.json(),
         tiposRes.json(),
@@ -878,38 +994,57 @@ function EntradaDetails({
         estadosRes.json(),
         productosRes.json(),
         estadosProductoRes.json(),
-        salidaRes.json(),
       ])
 
-      const branchesList = parseApiList(branchesData)
+      return {
+        branchesList: parseApiList(branchesData),
+        tiposList: parseApiList(tiposData),
+        subTiposList: parseApiList(subTiposData),
+        estadosList: parseApiList(estadosData),
+        productosList: parseApiList(productosData),
+        estadosProductoList: parseApiList(estadosProductoData),
+      }
+    },
+    [token]
+  )
+
+  const loadData = useCallback(async () => {
+    if (!token || !entradaId) return
+    setLoadingData(true)
+    setError('')
+    try {
+      const catalogs = await fetchCatalogData()
+      const salidaRes = await authFetch(`${API_URL}/movimientos/movimiento_inventario/${entradaId}/`, {}, token)
+      if (!salidaRes.ok) throw new Error('No se pudo cargar la entrada.')
+      const salidaData = await salidaRes.json()
+
+      const {
+        branchesList,
+        tiposList,
+        subTiposList,
+        estadosList,
+        productosList,
+        estadosProductoList,
+      } = catalogs
+
       const linkedSolicitud = salidaData?.solicitud_traslado || null
       setTransferSolicitudId(String(linkedSolicitud?.id || '').trim())
       const resolvedBranches = [...branchesList]
       const existingBranchIds = new Set(
         resolvedBranches.map((branch) => String(branch?.id || '').trim()).filter(Boolean)
       )
-      const appendBranchIfMissing = (branchIdRaw, branchNameRaw) => {
-        const branchId = String(branchIdRaw || '').trim()
-        if (!branchId || existingBranchIds.has(branchId)) return
-        resolvedBranches.push({
-          id: branchId,
-          nombre: String(branchNameRaw || '').trim() || `Sucursal ${branchId}`,
-        })
-        existingBranchIds.add(branchId)
-      }
       appendBranchIfMissing(
+        resolvedBranches,
+        existingBranchIds,
         linkedSolicitud?.sucursal_solicitante_id,
         salidaData?.sucursal
       )
       appendBranchIfMissing(
+        resolvedBranches,
+        existingBranchIds,
         linkedSolicitud?.sucursal_proveedora_id,
         salidaData?.sucursal_objetivo || salidaData?.sucursal_proveedora
       )
-      const tiposList = parseApiList(tiposData)
-      const subTiposList = parseApiList(subTiposData)
-      const estadosList = parseApiList(estadosData)
-      const productosList = parseApiList(productosData)
-      const estadosProductoList = parseApiList(estadosProductoData)
 
       setBranches(resolvedBranches)
       setTipoMovimientos(tiposList)
@@ -943,7 +1078,7 @@ function EntradaDetails({
     } finally {
       setLoadingData(false)
     }
-  }, [buildFormData, notifyError, entradaId, token])
+  }, [buildFormData, fetchCatalogData, notifyError, entradaId, token])
 
   const fetchStockByBranch = useCallback(
     async (sucursalId) => {
@@ -1007,18 +1142,58 @@ function EntradaDetails({
     setStockByProduct({})
     setTransferSolicitudId('')
     setOriginalData(null)
-    setIsEditing(false)
+    setIsEditing(effectiveAllowEdit && !isReadOnlyMode)
     setIsMaximized(false)
     setIsResizingModal(false)
     modalRestoreRef.current = null
     setError('')
     if (hasPreviewData) {
-      hydrateFromPreviewData(previewData)
-      setLoadingData(false)
+      setLoadingData(true)
+      fetchCatalogData()
+        .then((catalogs) => {
+          const {
+            branchesList,
+            tiposList,
+            subTiposList,
+            estadosList,
+            productosList,
+            estadosProductoList,
+          } = catalogs
+          const resolvedBranches = [...branchesList]
+          const existingBranchIds = new Set(
+            resolvedBranches.map((branch) => String(branch?.id || '').trim()).filter(Boolean)
+          )
+          appendBranchIfMissing(
+            resolvedBranches,
+            existingBranchIds,
+            previewData?.sucursal_solicitante_id,
+            previewData?.sucursal_nombre
+          )
+          appendBranchIfMissing(
+            resolvedBranches,
+            existingBranchIds,
+            previewData?.sucursal_proveedora_id,
+            previewData?.sucursal_objetivo_nombre || previewData?.sucursal_proveedora
+          )
+
+          setBranches(resolvedBranches)
+          setTipoMovimientos(tiposList)
+          setSubTipos(subTiposList)
+          setEstados(estadosList)
+          setProductos(productosList)
+          setEstadosProducto(estadosProductoList)
+          hydrateFromPreviewData(previewData)
+        })
+        .catch((err) => {
+          notifyError(err?.message || 'No se pudieron cargar los catalogos de entrada.')
+        })
+        .finally(() => {
+          setLoadingData(false)
+        })
       return
     }
     loadData()
-  }, [open, loadData, hasPreviewData, hydrateFromPreviewData, previewData])
+  }, [open, loadData, hasPreviewData, hydrateFromPreviewData, previewData, fetchCatalogData, notifyError])
 
   useEffect(
     () => () => {
@@ -1041,9 +1216,9 @@ function EntradaDetails({
   }, [isEditing, isReadOnlyMode])
 
   useEffect(() => {
-    if (allowEdit || !isEditing) return
+    if (effectiveAllowEdit || !isEditing) return
     setIsEditing(false)
-  }, [allowEdit, isEditing])
+  }, [effectiveAllowEdit, isEditing])
 
   const updateProductDropdownPlacement = useCallback(() => {
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
@@ -1221,12 +1396,12 @@ function EntradaDetails({
   }, [open, showProductDropdown, updateProductDropdownPlacement])
 
   useEffect(() => {
-    if (!open || !isTraslado || !formData.sucursalId) {
+    if (!open || !isTraslado || !stockBranchId) {
       setStockByProduct({})
       return
     }
-    fetchStockByBranch(formData.sucursalId)
-  }, [fetchStockByBranch, formData.sucursalId, isTraslado, open])
+    fetchStockByBranch(stockBranchId)
+  }, [fetchStockByBranch, isTraslado, open, stockBranchId])
 
   useLayoutEffect(() => {
     if (!open || isMaximized) return
@@ -1510,8 +1685,8 @@ function EntradaDetails({
     const producto = productos.find((item) => String(item.id) === productoId)
     const valor = parseNumber(resolveProductPrice(producto))
 
-    if (isTraslado && !formData.sucursalId) {
-      setDetailError('Selecciona primero la sucursal para cargar disponibilidad.')
+    if (isTraslado && !stockBranchId) {
+      setDetailError('Selecciona primero la sucursal proveedora para cargar disponibilidad.')
       return
     }
     if (!productoId) {
@@ -1535,7 +1710,7 @@ function EntradaDetails({
       }, 0)
       const remaining = Math.max(available - alreadyUsed, 0)
       if (cantidad > remaining) {
-        setDetailError(`Cantidad excede disponible en sucursal seleccionada. Disponible: ${remaining}.`)
+        setDetailError(`Cantidad excede disponible en la sucursal proveedora seleccionada. Disponible: ${remaining}.`)
         return
       }
     }
@@ -1568,6 +1743,61 @@ function EntradaDetails({
     setProductOptions([])
   }
 
+  const handleUpdateDetailQuantity = useCallback(
+    (detailId, rawValue) => {
+      if (!isEditing || lineItemsReadOnly) return
+      const detail = details.find((item) => item.uid === detailId)
+      if (!detail) return
+      const trimmedValue = String(rawValue || '').trim()
+      if (!trimmedValue) {
+        setDetailError('')
+        setDetails((prev) =>
+          prev.map((item) =>
+            item.uid !== detailId
+              ? item
+              : {
+                  ...item,
+                  cantidad: '',
+                }
+          )
+        )
+        return
+      }
+      const cantidad = parseIntValue(trimmedValue)
+      if (!Number.isFinite(cantidad) || cantidad <= 0) {
+        setDetailError('Ingresa una cantidad valida.')
+        return
+      }
+      if (isTraslado) {
+        const productId = String(detail.productoId)
+        const currentQty = parseIntValue(detail.cantidad) ?? 0
+        const totalReserved = getProductReservedQuantity(productId)
+        const others = Math.max(totalReserved - currentQty, 0)
+        const actualStock = getProductStockAllowance(productId)
+        const remaining = Math.max(actualStock - others, 0)
+        if (cantidad > remaining) {
+          setDetailError(
+            `Cantidad excede disponible en la sucursal proveedora seleccionada. Disponible: ${remaining}.`
+          )
+          return
+        }
+      }
+      setDetailError('')
+      setDetails((prev) =>
+        prev.map((item) => {
+          if (item.uid !== detailId) return item
+          const valor = Number.isFinite(Number(item.valor)) ? Number(item.valor) : 0
+          return {
+            ...item,
+            cantidad,
+            valor_total: cantidad * valor,
+          }
+        })
+      )
+    },
+    [details, getProductReservedQuantity, getProductStockAllowance, isEditing, isTraslado, lineItemsReadOnly]
+  )
+
   const handleRemoveDetail = (uid) => {
     if (!isEditing || lineItemsReadOnly) return
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
@@ -1596,9 +1826,17 @@ function EntradaDetails({
     setSelectedCliente(null)
     setError('')
     setShowDeleteConfirm(false)
-    setDeleteInventoryAction('reverse')
+    setDeleteInventoryAction(isPendingSolicitudEntry ? 'keep' : 'reverse')
     setIsEditing(false)
   }
+
+  const handleEditToggleClick = useCallback(() => {
+    if (isEditing) {
+      handleCancelEdit()
+      return
+    }
+    setIsEditing(true)
+  }, [handleCancelEdit, isEditing])
 
   const buildDescripcion = (clienteLabel = '') => {
     const descripcionBase = String(formData.descripcion || '').trim()
@@ -1608,6 +1846,86 @@ function EntradaDetails({
     if (!descripcionBase) return `Cliente: ${cliente}`
     return `Cliente: ${cliente}\n${descripcionBase}`
   }
+
+  const handleUpdatePendingSolicitud = useCallback(
+    async (ventaClienteLabel) => {
+      if (!token || !transferSolicitudId) {
+        notifyError('No se encontró la solicitud de traslado.')
+        return false
+      }
+
+      setSaving(true)
+      try {
+        const detallesPayload = details.map((detail) => {
+          const cantidad = parseIntValue(detail.cantidad)
+          const valor = parseNumber(detail.valor)
+          return {
+            producto_id: Number(detail.productoId),
+            cantidad: Number.isFinite(cantidad) ? cantidad : 0,
+            valor: Number.isFinite(valor) ? valor : 0,
+          }
+        })
+        const payload = {
+          sucursal_solicitante_id: Number(formData.sucursalId),
+          sucursal_proveedora_id: Number(formData.sucursalObjetivoId),
+          fecha: formData.fecha,
+          descripcion: buildDescripcion(ventaClienteLabel),
+          funcional: Boolean(formData.funcional),
+          detalles: detallesPayload,
+        }
+
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${transferSolicitudId}/`,
+          {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          },
+          token
+        )
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          const detail = data?.detail || 'No se pudo actualizar la solicitud de traslado.'
+          throw new Error(detail)
+        }
+
+        const updatedForm = { ...formData, cliente: ventaClienteLabel }
+        setFormData(updatedForm)
+        const nextOriginal = {
+          form: { ...updatedForm },
+          clienteForm: { ...clienteForm },
+          detalles: details.map((detail) => ({ ...detail })),
+        }
+        setOriginalData(nextOriginal)
+        setClienteQuery(String(updatedForm.cliente || ''))
+        setShowClienteDropdown(false)
+        setClienteOptions([])
+        setClienteLoading(false)
+        setDetailDraft(initialDetail)
+        setDetailError('')
+        setIsEditing(false)
+        onUpdated?.(data)
+        return true
+      } catch (err) {
+        notifyError(err?.message || 'No se pudo actualizar la solicitud de traslado.')
+        return false
+      } finally {
+        setSaving(false)
+      }
+    },
+    [
+      buildDescripcion,
+      clienteForm,
+      details,
+      formData,
+      initialDetail,
+      notifyError,
+      onUpdated,
+      parseIntValue,
+      parseNumber,
+      token,
+      transferSolicitudId,
+    ]
+  )
 
   const handleSave = async () => {
     if (!allowEdit) return
@@ -1632,26 +1950,6 @@ function EntradaDetails({
 
     if (requiresSucursalObjetivo && !formData.sucursalObjetivoId) {
       notifyError('Selecciona la sucursal destino.')
-      return
-    }
-
-    if (!formData.estadoId) {
-      notifyError('Selecciona el estado del movimiento.')
-      return
-    }
-
-    if (!formData.fecha) {
-      notifyError('No se pudo resolver la fecha del movimiento.')
-      return
-    }
-
-    if (!String(formData.no_documento || '').trim()) {
-      notifyError('No se pudo resolver el codigo de la entrada.')
-      return
-    }
-
-    if (isDevolucion && !String(formData.factura_referencia || '').trim()) {
-      notifyError('Ingresa la factura de venta para la devolucion.')
       return
     }
 
@@ -1686,6 +1984,35 @@ function EntradaDetails({
 
     if (!detailsHaveRequiredData) {
       notifyError('Hay productos con datos incompletos.')
+      return
+    }
+
+    if (!entradaId) {
+      if (isPendingSolicitudEntry && transferSolicitudId) {
+        await handleUpdatePendingSolicitud(ventaClienteLabel)
+        return
+      }
+      notifyError('La solicitud aún no genera una entrada; no se puede guardar aquí.')
+      return
+    }
+
+    if (!formData.estadoId) {
+      notifyError('Selecciona el estado del movimiento.')
+      return
+    }
+
+    if (!formData.fecha) {
+      notifyError('No se pudo resolver la fecha del movimiento.')
+      return
+    }
+
+    if (!String(formData.no_documento || '').trim()) {
+      notifyError('No se pudo resolver el codigo de la entrada.')
+      return
+    }
+
+    if (isDevolucion && !String(formData.factura_referencia || '').trim()) {
+      notifyError('Ingresa la factura de venta para la devolucion.')
       return
     }
 
@@ -1735,6 +2062,21 @@ function EntradaDetails({
       payload.iva_rate = ivaRate
     }
 
+    if (!entradaId) {
+      notifyError('No se encontró la entrada a actualizar.')
+      return
+    }
+
+    const hasInvalidDetail = details.some((detail) => {
+      const raw = String(detail.cantidad ?? '').trim()
+      const qty = parseIntValue(raw)
+      return !raw || !Number.isFinite(qty) || qty <= 0
+    })
+    if (hasInvalidDetail) {
+      setDetailError('Ingresa una cantidad válida en cada producto.')
+      return
+    }
+
     setSaving(true)
     try {
       const response = await authFetch(
@@ -1777,7 +2119,7 @@ function EntradaDetails({
     if (!allowDelete) return
     if (isReadOnlyMode) return
     if (!isEditing || deleteLoading) return
-    setDeleteInventoryAction('reverse')
+    setDeleteInventoryAction(isPendingSolicitudEntry ? 'keep' : 'reverse')
     setShowDeleteConfirm(true)
   }
 
@@ -1793,15 +2135,31 @@ function EntradaDetails({
     if (!isEditing || deleteLoading) return
     setDeleteLoading(true)
 
+    if (!isPendingSolicitudEntry && !entradaId) {
+      notifyError('No se encontró la entrada para eliminar.')
+      setDeleteLoading(false)
+      return
+    }
+
     try {
-      const actionParam = deleteInventoryAction === 'keep' ? 'keep' : 'reverse'
-      const response = await authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/${entradaId}/?inventory_action=${encodeURIComponent(
-          actionParam
-        )}`,
-        { method: 'DELETE' },
-        token
-      )
+      const targetRequestId = transferSolicitudId
+      let response
+      if (isPendingSolicitudEntry && targetRequestId) {
+        response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${targetRequestId}/`,
+          { method: 'DELETE' },
+          token
+        )
+      } else {
+        const resolvedDeleteAction = deleteInventoryAction === 'keep' ? 'keep' : 'reverse'
+        response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/${entradaId}/?inventory_action=${encodeURIComponent(
+            resolvedDeleteAction
+          )}`,
+          { method: 'DELETE' },
+          token
+        )
+      }
 
       if (!response.ok && response.status !== 204) {
         const data = await response.json().catch(() => ({}))
@@ -1833,23 +2191,6 @@ function EntradaDetails({
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
-  const selectedEstadoName =
-    estados.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
-    estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
-    formData.estadoNombre ||
-    ''
-  const normalizedSelectedEstadoName = normalizeValue(selectedEstadoName)
-  const isPendingSolicitudRibbon =
-    hasPreviewData && normalizedSelectedEstadoName.includes('pend')
-  const isRejectedSolicitudRibbon =
-    hasPreviewData &&
-    (normalizedSelectedEstadoName.includes('rechaz') || normalizedSelectedEstadoName.includes('cancel'))
-  const isAcceptedSolicitudRibbon =
-    hasPreviewData &&
-    (normalizedSelectedEstadoName.includes('acept') || normalizedSelectedEstadoName.includes('aprob'))
-  const isSentSolicitudRibbon =
-    isTraslado &&
-    normalizedSelectedEstadoName.includes('envi')
   const showSolicitudRibbon =
     isPendingSolicitudRibbon ||
     isRejectedSolicitudRibbon ||
@@ -1881,6 +2222,13 @@ function EntradaDetails({
     isRejectedSolicitudRibbon &&
     typeof onCreateNewTransferFromRejected === 'function'
   )
+  const productosTableClassName = [
+    'create-user__locations-table',
+    'create-salida__products-table',
+    showDetailActions ? 'create-salida__products-table--with-actions' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
   const modalClassName = [
     'create-user__modal',
     'create-salida__modal',
@@ -1980,15 +2328,13 @@ function EntradaDetails({
                 Datos del cliente
               </button>
             )}
-            {!isReadOnlyMode && (
-              <button
-                type="button"
-                className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
-                onClick={() => setActiveTab('recordatorios')}
-              >
-                Recordatorios
-              </button>
-            )}
+            <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('recordatorios')}
+            >
+              Recordatorios
+            </button>
           </div>
           {isRejectedSolicitudRibbon && activeTab === 'general' && (
             <div className="entrada-details__rejection-reason" role="note" aria-live="polite">
@@ -2067,62 +2413,6 @@ function EntradaDetails({
                       />
                     </label>
 
-                    {isAlwaysReceivedEntrada && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <input type="text" value={selectedEstadoName} readOnly disabled />
-                      </label>
-                    )}
-
-                    {isTraslado && isReadOnlyMode && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <input type="text" value={selectedEstadoName} readOnly disabled />
-                      </label>
-                    )}
-
-                    {isTraslado && !isReadOnlyMode && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={editorDisabled}>
-                          <option value="">Selecciona un estado</option>
-                          {trasladoEstadoOptions.map((estado) => (
-                            <option key={estado.id} value={estado.id}>
-                              {estado.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={editorDisabled}>
-                          <option value="">Selecciona un estado</option>
-                          {ventaEstadoOptions.map((estado) => (
-                            <option key={estado.id} value={estado.id}>
-                              {estado.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-
-                    {!isAlwaysReceivedEntrada && !isTraslado && !isVenta && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={editorDisabled}>
-                          <option value="">Selecciona un estado</option>
-                          {(estadoOptions.length ? estadoOptions : estados).map((estado) => (
-                            <option key={estado.id} value={estado.id}>
-                              {estado.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-
                     {isVenta && (
                       <label className="create-user__field">
                         <span>Descuento (%)</span>
@@ -2194,14 +2484,14 @@ function EntradaDetails({
                     </div>
                   </div>
 
-                  <div className="create-user__locations-table create-salida__products-table">
+                  <div className={productosTableClassName}>
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Codigo</span>
                       <span>Nombre</span>
                       <span>Cantidad</span>
                       <span>Precio</span>
                       <span>Precio total</span>
-                      <span>Acciones</span>
+                      {showDetailActions && <span>Acciones</span>}
                     </div>
 
                     {!isReadOnlyMode && !lineItemsReadOnly && (
@@ -2212,7 +2502,7 @@ function EntradaDetails({
                               type="button"
                               className="create-user__dropdown-trigger"
                               ref={productDropdownTriggerRef}
-                              disabled={editorDisabled || (isTraslado && (!formData.sucursalId || stockLoading))}
+                              disabled={editorDisabled || (isTraslado && (!stockBranchId || stockLoading))}
                               onClick={() => {
                                 const isOpening = !showProductDropdown
                                 if (isOpening) {
@@ -2298,7 +2588,7 @@ function EntradaDetails({
                           <input
                             name="cantidad"
                             type="number"
-                            min="1"
+                            min="0"
                             step="1"
                             value={detailDraft.cantidad}
                             onChange={handleDetailChange}
@@ -2333,24 +2623,61 @@ function EntradaDetails({
                       </div>
                     )}
 
-                    {details.map((detail) => (
-                      <div key={detail.uid} className="create-user__locations-row">
-                        <span>{detail.productoCodigo || '-'}</span>
-                        <span>{detail.productoNombre || '-'}</span>
-                        <span>{detail.cantidad}</span>
-                        <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
-                        <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
-                        <span className="create-user__locations-cell create-user__locations-cell--action">
-                          {!isReadOnlyMode && !lineItemsReadOnly ? (
-                            <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={editorDisabled}>
-                              x
-                            </button>
-                          ) : (
-                            <span>-</span>
+                    {details.map((detail) => {
+                        const productId = String(detail.productoId || detail.producto_id || '').trim()
+                        const currentQty = parseIntValue(detail.cantidad) ?? 0
+                        const reservedQty = getProductReservedQuantity(productId)
+                        const others = Math.max(reservedQty - currentQty, 0)
+                        const allowance = getProductStockAllowance(productId)
+                        const remaining = Math.max(allowance - others, 0)
+                        const stockLabel = showProveedorStockInfo
+                          ? Math.max(0, Math.trunc(allowance))
+                          : null
+                        const isUnavailable = isTraslado && remaining <= 0
+
+                        return (
+                          <div key={detail.uid} className="create-user__locations-row">
+                            <span>
+                              {detail.productoCodigo || '-'}
+                              {isUnavailable && (
+                                <small className="create-salida__detail-unavailable">
+                                  Producto no disponible
+                                </small>
+                              )}
+                              {stockLabel !== null && (
+                                <small className="create-salida__row-stock">
+                                  {stockLabel}
+                                </small>
+                              )}
+                            </span>
+                          <span>{detail.productoNombre || '-'}</span>
+                          <span>
+                            {!isReadOnlyMode && !lineItemsReadOnly ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  value={detail.cantidad ?? ''}
+                                  onChange={(event) => handleUpdateDetailQuantity(detail.uid, event.target.value)}
+                                  disabled={editorDisabled}
+                                  max={remaining || undefined}
+                                />
+                            ) : (
+                              detail.cantidad
+                            )}
+                          </span>
+                          <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
+                          <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
+                          {showDetailActions && (
+                            <span className="create-user__locations-cell create-user__locations-cell--action">
+                              <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={editorDisabled}>
+                                x
+                              </button>
+                            </span>
                           )}
-                        </span>
-                      </div>
-                    ))}
+                        </div>
+                      )
+                    })}
 
                     <div className="create-user__locations-row create-salida__totals-row">
                       <span className="create-salida__totals-label">Subtotal</span>
@@ -2512,7 +2839,7 @@ function EntradaDetails({
                   </section>
                 )}
 
-                {!isReadOnlyMode && activeTab === 'recordatorios' && (
+                {activeTab === 'recordatorios' && (
                   <EntityRemindersTab
                     token={token}
                     currentUser={currentUser}
@@ -2520,7 +2847,7 @@ function EntradaDetails({
                     entityId={entradaId}
                     isOpen={open}
                     entityLabel={modalTitle}
-                    canCreateReminder={allowEdit && isEditing}
+                    canCreateReminder={allowEdit && isEditing && !isReadOnlyMode}
                     transferSolicitudId={transferSolicitudId}
                     onError={notifyError}
                   />
@@ -2538,13 +2865,13 @@ function EntradaDetails({
               >
                 {isReadOnlyMode && !isEditing ? 'Cerrar' : 'Cancelar'}
               </button>
-              {!isReadOnlyMode && allowEdit && (
-                <button
-                  type="button"
-                  className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-                  onClick={() => setIsEditing((prev) => !prev)}
-                  disabled={loadingData || saving || deleteLoading}
-                >
+              {!isReadOnlyMode && effectiveAllowEdit && (
+                  <button
+                    type="button"
+                    className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
+                    onClick={handleEditToggleClick}
+                    disabled={loadingData || saving || deleteLoading}
+                  >
                   <span className="user-details__toggle-icon" aria-hidden="true">
                     {isEditing ? <Eye size={14} /> : <Pencil size={14} />}
                   </span>
@@ -2601,39 +2928,43 @@ function EntradaDetails({
               <p>
                 Se eliminara la entrada <strong>{String(formData.no_documento || '').trim() || `#${entradaId}`}</strong>.
               </p>
-              <p className="create-salida__confirm-warning">
-                Elige como quieres manejar el inventario asociado a esta entrada.
-              </p>
-              <fieldset className="entrada-details__delete-confirm-options">
-                <label className="entrada-details__delete-confirm-option">
-                  <input
-                    type="radio"
-                    name="entry-delete-inventory-action"
-                    value="keep"
-                    checked={deleteInventoryAction === 'keep'}
-                    onChange={() => setDeleteInventoryAction('keep')}
-                    disabled={deleteLoading}
-                  />
-                  <span>
-                    <strong>Mantener inventario actual</strong>
-                    <small>Elimina el documento sin restar cantidades del inventario.</small>
-                  </span>
-                </label>
-                <label className="entrada-details__delete-confirm-option">
-                  <input
-                    type="radio"
-                    name="entry-delete-inventory-action"
-                    value="reverse"
-                    checked={deleteInventoryAction === 'reverse'}
-                    onChange={() => setDeleteInventoryAction('reverse')}
-                    disabled={deleteLoading}
-                  />
-                  <span>
-                    <strong>Restar inventario ingresado</strong>
-                    <small>Revierte las cantidades que esta entrada sumo al inventario.</small>
-                  </span>
-                </label>
-              </fieldset>
+               <p className="create-salida__confirm-warning">
+                 {isPendingSolicitudEntry
+                   ? 'Esta solicitud pendiente no movió inventario; al eliminarla no se ajustará el stock.'
+                   : 'Elige cómo quieres manejar el inventario asociado a esta entrada.'}
+               </p>
+               {!isPendingSolicitudEntry && (
+                 <fieldset className="entrada-details__delete-confirm-options">
+                   <label className="entrada-details__delete-confirm-option">
+                     <input
+                       type="radio"
+                       name="entry-delete-inventory-action"
+                       value="keep"
+                       checked={deleteInventoryAction === 'keep'}
+                       onChange={() => setDeleteInventoryAction('keep')}
+                       disabled={deleteLoading}
+                     />
+                     <span>
+                       <strong>Mantener inventario actual</strong>
+                       <small>Elimina el documento sin restar cantidades del inventario.</small>
+                     </span>
+                   </label>
+                   <label className="entrada-details__delete-confirm-option">
+                     <input
+                       type="radio"
+                       name="entry-delete-inventory-action"
+                       value="reverse"
+                       checked={deleteInventoryAction === 'reverse'}
+                       onChange={() => setDeleteInventoryAction('reverse')}
+                       disabled={deleteLoading}
+                     />
+                     <span>
+                       <strong>Restar inventario ingresado</strong>
+                       <small>Revierte las cantidades que esta entrada sumó al inventario.</small>
+                     </span>
+                   </label>
+                 </fieldset>
+               )}
               <div className="create-salida__confirm-actions">
                 <button
                   type="button"

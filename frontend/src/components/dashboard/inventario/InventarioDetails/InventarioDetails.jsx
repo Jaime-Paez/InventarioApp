@@ -4,6 +4,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import './InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { emitRemindersSync } from '../../common/reminders/remindersStorage'
 import useModalAnimation from '../../common/useModalAnimation'
 import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 import ProductoRatingTab from '../../productos/ProductoRatingTab/ProductoRatingTab'
@@ -275,6 +276,15 @@ function InventarioDetails({
       if (failed) {
         const detail = await failed.json().catch(() => ({}))
         throw new Error(detail?.detail || 'No se pudieron guardar los cambios.')
+      }
+
+      const payloads = await Promise.all(
+        responses.map((response) =>
+          response.ok ? response.clone().json().catch(() => ({})) : Promise.resolve(null)
+        )
+      )
+      if (payloads.some((payload) => Boolean(payload?.reminders_sync_required))) {
+        emitRemindersSync()
       }
 
       onSaved?.()

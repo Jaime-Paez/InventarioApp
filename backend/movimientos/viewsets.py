@@ -15,9 +15,11 @@ from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
 from app.models import ReminderState
+from app.views import _purge_reminders_for_context, _normalize_reminder_list
 from inventario.models import Inventario, SubDivision, Sucursal
 from solicitudes.models import Cliente
 
+from tipos.models import SubTipoMovimiento, TipoMovimiento
 from usuarios.models import RolPermiso, UsuarioModuloSucursal, UsuarioSucursal
 from usuarios.permissions import MovimientoInventarioModulePermission
 from usuarios.sucursal_scope import (
@@ -41,6 +43,16 @@ from .serializers import (
     resolve_subtipo_key,
 )
 from .stock_availability import get_available_transfer_quantities_by_product
+from .transfer_helpers import (
+    build_sale_stock_change_extra_reason,
+    cancel_pending_transfer_requests,
+    REMINDERS_SYNC_FLAG,
+)
+
+ALLOWED_STOCK_MODULES = {
+    RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+    RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+}
 
 
 class MovimientoInventarioViewSet(viewsets.ModelViewSet):
@@ -675,6 +687,61 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         nombre = str(getattr(sub_tipo, "nombre", "") or "").strip().lower()
         return "trasl" in nombre
 
+    def _is_sale_movement(self, movement):
+        tipo_nombre = str(getattr(movement.tipo_movimiento, "nombre", "") or "").strip().lower()
+        subtipo_nombre = str(getattr(movement.sub_tipo_movimiento, "nombre", "") or "").strip().lower()
+        return tipo_nombre.startswith("sal") and "vent" in subtipo_nombre
+
+    def _auto_reject_pending_transfers_due_to_sale(self, movement):
+        if not self._is_sale_movement(movement):
+            return False
+
+        branch_id = getattr(movement, "sucursal_id", None)
+        if not branch_id:
+            return False
+
+        detalles = list(movement.detalles.select_related("producto").all())
+        product_ids = {
+            int(getattr(detail.producto, "id", getattr(detail, "producto_id", None)) or 0)
+            for detail in detalles
+        }
+        product_ids = {pid for pid in product_ids if pid > 0}
+        if not product_ids:
+            return False
+
+        reference = str(getattr(movement, "no_documento", "") or "").strip() or None
+        extra_reason = build_sale_stock_change_extra_reason(reference)
+
+        return cancel_pending_transfer_requests(
+            branch_id=branch_id,
+            product_ids=product_ids,
+            actor_user=self.request.user,
+            extra_reason=extra_reason,
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        response_data = dict(serializer.data)
+        if serializer.context.get(REMINDERS_SYNC_FLAG):
+            response_data[REMINDERS_SYNC_FLAG] = True
+        return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        if getattr(instance, "_prefetched_objects_cache", None):
+            instance._prefetched_objects_cache = {}
+        response_data = dict(serializer.data)
+        if serializer.context.get(REMINDERS_SYNC_FLAG):
+            response_data[REMINDERS_SYNC_FLAG] = True
+        return Response(response_data)
+
     def perform_create(self, serializer):
         module_keys = self._resolve_target_modules()
         sucursal = serializer.validated_data.get("sucursal")
@@ -699,7 +766,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 field_label="sucursal objetivo",
                 action_key="puede_crear",
             )
-        serializer.save()
+        movement = serializer.save()
+        reminder_added = False
+        if solicitud_traslado:
+            reminder_added = self._append_transfer_shipment_reminder(
+                solicitud=solicitud_traslado,
+                actor_user=self.request.user,
+            )
+        if reminder_added:
+            serializer.context[REMINDERS_SYNC_FLAG] = True
+        self._auto_reject_pending_transfers_due_to_sale(movement)
 
     def perform_update(self, serializer):
         module_keys = self._resolve_target_modules()
@@ -976,6 +1052,153 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 append_unique(candidate)
 
         return recipients
+
+    def _find_transfer_context_reminder(self, reminders, *, solicitud_id):
+        solicitud_token = str(int(solicitud_id or 0))
+        if not solicitud_token:
+            return None
+        for reminder in (reminders if isinstance(reminders, list) else []):
+            if not isinstance(reminder, dict):
+                continue
+            context = reminder.get("context")
+            if not isinstance(context, dict):
+                continue
+            context_type = self._normalize_reminder_context_type(context.get("type"))
+            context_id = str(context.get("id") or "").strip()
+            if context_type != "solicitud_traslado" or context_id != solicitud_token:
+                continue
+            return reminder
+        return None
+
+    def _normalize_reminder_context_type(self, value):
+        normalized = str(value or "").strip().lower()
+        if not normalized:
+            return ""
+        return normalized.replace(" ", "_").replace("-", "_")
+
+    def _get_transfer_decision_reminder_recipient_ids(self, solicitud_id):
+        solicitud_token = str(solicitud_id or "").strip()
+        if not solicitud_token:
+            return set()
+        store = ReminderState.get_global()
+        payload = store.payload if isinstance(store.payload, list) else []
+        recipients = set()
+        for reminder in payload:
+            if not isinstance(reminder, dict):
+                continue
+            context = reminder.get("context")
+            if not isinstance(context, dict):
+                continue
+            context_type = self._normalize_reminder_context_type(context.get("type"))
+            context_id = str(context.get("id") or "").strip()
+            if context_type != "solicitud_traslado" or context_id != solicitud_token:
+                continue
+            kind = str(reminder.get("kind") or "").strip().lower()
+            if kind != "solicitud_traslado_decision":
+                continue
+            for recipient in reminder.get("recipients") or []:
+                if not isinstance(recipient, dict):
+                    continue
+                recipient_id = str(
+                    recipient.get("id")
+                    or recipient.get("usuario_id")
+                    or recipient.get("user_id")
+                    or ""
+                ).strip()
+                if not recipient_id:
+                    continue
+                recipients.add(recipient_id)
+        return recipients
+
+    def _append_transfer_shipment_reminder(
+        self,
+        *,
+        solicitud,
+        actor_user,
+    ):
+        if solicitud is None:
+            return False
+
+        solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+        if solicitud_id <= 0:
+            return False
+
+        transfer_doc = str(getattr(solicitud, "no_documento", "") or "").strip()
+        transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{solicitud_id}"
+        context_label = f"Solicitud de traslado {transfer_reference}"
+
+        now = timezone.localtime(timezone.now())
+        creator = self._normalize_reminder_recipient(actor_user) or {"id": "system", "name": "Sistema"}
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            existing_payload = store.payload if isinstance(store.payload, list) else []
+            normalized = _normalize_reminder_list(existing_payload)
+
+            context_reminder = self._find_transfer_context_reminder(
+                normalized,
+                solicitud_id=solicitud_id,
+            )
+            if context_reminder is not None:
+                normalized = [
+                    reminder_row
+                    for reminder_row in normalized
+                    if reminder_row.get("id") != context_reminder.get("id")
+                ]
+
+            provider_recipients = self._resolve_transfer_provider_recipients(
+                solicitud.sucursal_proveedora_id,
+                exclude_user_ids=[creator.get("id")] if creator.get("id") else None,
+            )
+            recipients = []
+            seen_recipient_ids = set()
+
+            def append_unique(candidate):
+                normalized_candidate = self._normalize_reminder_recipient(candidate)
+                if normalized_candidate is None:
+                    return
+                candidate_id = str(normalized_candidate.get("id") or "").strip()
+                if not candidate_id or candidate_id in seen_recipient_ids:
+                    return
+                seen_recipient_ids.add(candidate_id)
+                recipients.append(normalized_candidate)
+
+            for candidate in provider_recipients:
+                append_unique(candidate)
+            append_unique(creator)
+
+            if not recipients:
+                return False
+
+            description = f"Su solicitud de traslado {transfer_reference} fue enviada y está en traslado."
+            reminder = {
+                "id": str(uuid4()),
+                "date": now.strftime("%Y-%m-%d"),
+                "time": now.strftime("%H:%M"),
+                "description": description,
+                "creator": creator,
+                "recipients": recipients,
+                "context": {
+                    "type": "solicitud_traslado",
+                    "id": str(solicitud_id),
+                    "label": context_label,
+                },
+                "kind": "recordatorio_general",
+                "createdAt": timezone.now().isoformat(),
+                "decision": {
+                    "status": "enviado",
+                    "reason": "",
+                    "by": creator,
+                    "at": timezone.now().isoformat(),
+                },
+                "completedBy": [],
+            }
+
+            merged = [reminder, *normalized]
+            store.payload = _normalize_reminder_list(merged)
+            store.save(update_fields=["payload", "updated_at"])
+
+        return True
 
     def _append_transfer_reception_reminder(
         self,
@@ -1257,6 +1480,79 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
     @action(
         detail=False,
+        methods=["get", "put", "delete"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)",
+    )
+    def actualizar_solicitud_traslado(self, request, solicitud_id=None):
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if request.method.upper() == "GET":
+            ensure_sucursal_allowed_for_modules(
+                request.user,
+                [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+                solicitud.sucursal_proveedora_id,
+                field_label="sucursal proveedora",
+                action_key="puede_leer",
+            )
+            serializer = SolicitudTrasladoSerializer(instance=solicitud)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+            solicitud.sucursal_solicitante_id,
+            field_label="sucursal solicitante",
+            action_key="puede_actualizar",
+        )
+
+        if solicitud.estado != SolicitudTraslado.Estados.PENDIENTE:
+            return Response(
+                {
+                    "detail": (
+                        "Solo se pueden editar solicitudes pendientes de traslado."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        solicitud_token = str(solicitud.id or "")
+        if request.method.upper() == "DELETE":
+            ensure_sucursal_allowed_for_modules(
+                request.user,
+                [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+                solicitud.sucursal_solicitante_id,
+                field_label="sucursal solicitante",
+                action_key="puede_eliminar",
+            )
+            if solicitud.estado != SolicitudTraslado.Estados.PENDIENTE:
+                return Response(
+                    {"detail": "Solo se pueden eliminar solicitudes de traslado pendientes."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            entrada_movimiento = getattr(solicitud, "movimiento_entrada", None)
+            salida_movimiento = getattr(solicitud, "movimiento_salida", None)
+            with transaction.atomic():
+                if salida_movimiento is not None:
+                    salida_movimiento.delete()
+                if entrada_movimiento is not None:
+                    entrada_movimiento.delete()
+                solicitud.delete()
+            _purge_reminders_for_context("solicitud_traslado", solicitud_token)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = SolicitudTrasladoSerializer(instance=solicitud, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = serializer.save()
+        output = SolicitudTrasladoSerializer(instance=updated)
+        return Response(output.data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
         methods=["get"],
         url_path="sucursales-traslado-proveedoras",
     )
@@ -1336,6 +1632,19 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             action_key=("puede_crear", "puede_actualizar"),
         )
 
+        allowed_recipient_ids = self._get_transfer_decision_reminder_recipient_ids(solicitud.id)
+        if allowed_recipient_ids:
+            current_user_id = str(getattr(request.user, "id", "") or "").strip()
+            if not current_user_id or current_user_id not in allowed_recipient_ids:
+                return Response(
+                    {
+                        "detail": (
+                            "Solo el usuario asignado al recordatorio puede resolver esta solicitud."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         if solicitud.estado != SolicitudTraslado.Estados.PENDIENTE:
             return Response(
                 {
@@ -1401,27 +1710,56 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         exclude_solicitud_id=solicitud_locked.id,
                     )
 
-                    for detalle in detalles:
-                        product_id = int(getattr(detalle, "producto_id", 0) or 0)
-                        if product_id <= 0:
-                            continue
-                        required = int(getattr(detalle, "cantidad", 0) or 0)
-                        available = int(available_by_product.get(product_id, 0) or 0)
-                        if required <= available:
-                            continue
+                shortage = None
+                for detalle in detalles:
+                    product_id = int(getattr(detalle, "producto_id", 0) or 0)
+                    if product_id <= 0:
+                        continue
+                    required = int(getattr(detalle, "cantidad", 0) or 0)
+                    available = int(available_by_product.get(product_id, 0) or 0)
+                    if required <= available:
+                        continue
 
-                        producto = getattr(detalle, "producto", None)
-                        codigo = str(getattr(producto, "codigo", "") or "").strip()
-                        label = codigo or f"ID {product_id}"
-                        return Response(
-                            {
-                                "detail": (
-                                    f"No se puede aceptar la solicitud. "
-                                    f"Stock disponible para '{label}': {available}."
-                                )
-                            },
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
+                    producto = getattr(detalle, "producto", None)
+                    codigo = str(getattr(producto, "codigo", "") or "").strip()
+                    label = codigo or f"ID {product_id}"
+                    shortage = {
+                        "producto_label": label,
+                        "available": available,
+                        "required": required,
+                    }
+                    break
+
+                if shortage:
+                    motivo_rechazo = "Cantidades cambiaron y no se puede hacer este traslado."
+                    solicitud_locked.estado = SolicitudTraslado.Estados.CANCELADA
+                    solicitud_locked.motivo_rechazo = motivo_rechazo
+                    solicitud_locked.rechazada_por = request.user
+                    solicitud_locked.rechazada_en = timezone.now()
+                    solicitud_locked.save(
+                        update_fields=[
+                            "estado",
+                            "motivo_rechazo",
+                            "rechazada_por",
+                            "rechazada_en",
+                            "updated_at",
+                        ]
+                    )
+
+                    output = SolicitudTrasladoSerializer(instance=solicitud_locked)
+                    detail_text = (
+                        f"No se pudo aceptar la solicitud porque el stock cambió "
+                        f"para '{shortage['producto_label']}'. Disponible: {shortage['available']}."
+                    )
+                    return Response(
+                        {
+                            "detail": detail_text,
+                            "decision": "rechazada",
+                            "solicitud": output.data,
+                            "motivo_rechazo": motivo_rechazo,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
 
                 solicitud_locked.estado = SolicitudTraslado.Estados.APROBADA
                 solicitud_locked.motivo_rechazo = ""
@@ -2514,22 +2852,28 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         sucursal_id = int(sucursal_id_raw)
         modulo = (request.query_params.get("modulo") or "").strip()
-        allowed_modules = {
-            RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
-            RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
-        }
-        target_module = (
-            modulo
-            if modulo in allowed_modules
-            else RolPermiso.Modulos.MOVIMIENTOS_SALIDAS
-        )
-        ensure_sucursal_allowed_for_modules(
-            request.user,
-            [target_module],
-            sucursal_id,
-            field_label="sucursal",
-            action_key="puede_leer",
-        )
+        if modulo == RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS:
+            permission_checker = MovimientoInventarioModulePermission()
+            module_permissions = permission_checker._get_permission_index(request).get(
+                RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS, {}
+            )
+            if not module_permissions.get("puede_leer"):
+                return Response(
+                    {"detail": "No tienes acceso a la sucursal seleccionada para este modulo."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        else:
+            if modulo and modulo in ALLOWED_STOCK_MODULES:
+                target_modules = [modulo]
+            else:
+                target_modules = list(ALLOWED_STOCK_MODULES)
+            ensure_sucursal_allowed_for_modules(
+                request.user,
+                target_modules,
+                sucursal_id,
+                field_label="sucursal",
+                action_key="puede_leer",
+            )
 
         rows = (
             Inventario.objects.filter(
@@ -2545,6 +2889,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         available_by_product = get_available_transfer_quantities_by_product(
             sucursal_id=sucursal_id,
             product_ids=product_ids,
+            include_reserved=False,
         )
 
         payload = []

@@ -2331,23 +2331,27 @@ function CreateEntrada({
           setFormData((prev) => ({ ...prev, cliente: ventaClienteLabel }))
         }
 
-        const response = await authFetch(
-          `${API_URL}/movimientos/movimiento_inventario/`,
-          {
-            method: 'POST',
-            body: JSON.stringify(payload),
-          },
-          token
-        )
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        },
+        token
+      )
 
-        const data = await response.json().catch(() => ({}))
-        if (!response.ok) {
-          const detail = resolveApiErrorMessage(data, 'No se pudo crear la entrada.')
-          throw new Error(detail)
-        }
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = resolveApiErrorMessage(data, 'No se pudo crear la entrada.')
+        throw new Error(detail)
+      }
 
-        onCreated?.(data)
-        return true
+      if (data?.reminders_sync_required) {
+        emitRemindersSync()
+      }
+
+      onCreated?.(data)
+      return true
       } catch (err) {
         notifyError(err.message || 'Ocurrio un error al crear la entrada.')
         return false
@@ -3021,13 +3025,6 @@ function CreateEntrada({
                       )}
                     </label>
 
-                    {isTraslado && (
-                      <label className="create-user__field">
-                        <span>Estado de solicitud</span>
-                        <input type="text" value="Pendiente" readOnly disabled />
-                      </label>
-                    )}
-
                     {!isTraslado && !isEstadoEditable && (
                       <label className="create-user__field">
                         <span>Estado del movimiento</span>
@@ -3123,7 +3120,7 @@ function CreateEntrada({
                     </div>
                   </div>
 
-                  <div className="create-user__locations-table create-salida__products-table">
+                  <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions">
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Codigo</span>
                       <span>Nombre</span>
@@ -3230,7 +3227,7 @@ function CreateEntrada({
                                   <div className="create-salida__results-header">
                                     <span>Código</span>
                                     <span>Nombre</span>
-                                    <span>{showProveedorStockInfo ? proveedorBranchName || 'Disp.' : 'Disp.'}</span>
+                                    <span>Cantidad</span>
                                   </div>
                                 )}
                                 {productOptions.map((producto) => {
@@ -3324,20 +3321,36 @@ function CreateEntrada({
                       </div>
                     )}
 
-                    {details.map((detail) => (
-                      <div key={detail.uid} className="create-user__locations-row">
-                        <span>{detail.productoCodigo || '-'}</span>
-                        <span>{detail.productoNombre || '-'}</span>
-                        <span>{detail.cantidad}</span>
-                        <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
-                        <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
-                        <span className="create-user__locations-cell create-user__locations-cell--action">
-                          <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={loading}>
-                            x
-                          </button>
-                        </span>
-                      </div>
-                    ))}
+                    {details.map((detail) => {
+                      const stockAvailable = Number(
+                        stockByProduct[String(detail.productoId || detail.producto_id || '')] ?? 0
+                      )
+                      const stockLabel = showProveedorStockInfo
+                        ? Math.max(0, Math.trunc(stockAvailable))
+                        : null
+
+                      return (
+                        <div key={detail.uid} className="create-user__locations-row">
+                          <span>
+                            {detail.productoCodigo || '-'}
+                            {stockLabel !== null && (
+                              <small className="create-salida__row-stock">
+                                {String(stockLabel)}
+                              </small>
+                            )}
+                          </span>
+                          <span>{detail.productoNombre || '-'}</span>
+                          <span>{detail.cantidad}</span>
+                          <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
+                          <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
+                          <span className="create-user__locations-cell create-user__locations-cell--action">
+                            <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={loading}>
+                              x
+                            </button>
+                          </span>
+                        </div>
+                      )
+                    })}
 
                     <div className="create-user__locations-row create-salida__totals-row">
                       <span className="create-salida__totals-label">Subtotal</span>

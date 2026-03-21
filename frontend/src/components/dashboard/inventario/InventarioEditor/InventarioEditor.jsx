@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../InventarioDetails/InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { emitRemindersSync } from '../../common/reminders/remindersStorage'
 import BodegaLocationPreview from './BodegaLocationPreview'
 
 const parseNumber = (value) => {
@@ -349,9 +350,12 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   )
 
   const editorDisabled = disabled || saving
-  const createLocationUid = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const createLocationUid = useCallback(
+    () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    []
+  )
 
-  useEffect(() => {
+  const resetEditorState = useCallback(() => {
     const nextLocations = inventarioEntries
       .map((entry) => {
         const subdivisionId = entry?.subdivisionId ?? entry?.subdivision?.id
@@ -402,7 +406,19 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     setLocationBodegaDebouncedQuery('')
     setLocationDivisionDebouncedQuery('')
     setLocationSubdivisionDebouncedQuery('')
-  }, [inventarioEntries, subdivisionById, bodegaById, branchById, divisionById, productId])
+  }, [
+    inventarioEntries,
+    subdivisionById,
+    bodegaById,
+    branchById,
+    divisionById,
+    createLocationUid,
+    productId,
+  ])
+
+  useEffect(() => {
+    resetEditorState()
+  }, [resetEditorState])
 
   const handleLocationSelect = (field, value) => {
     setLocationError('')
@@ -753,6 +769,15 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         throw new Error(detailText || 'No se pudieron guardar los cambios.')
       }
 
+      const payloads = await Promise.all(
+        responses.map((response) =>
+          response.ok ? response.clone().json().catch(() => ({})) : Promise.resolve(null)
+        )
+      )
+      if (payloads.some((payload) => Boolean(payload?.reminders_sync_required))) {
+        emitRemindersSync()
+      }
+
       onSaved?.()
       return true
     } catch (err) {
@@ -766,6 +791,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
   useImperativeHandle(ref, () => ({
     save: saveChanges,
+    reset: resetEditorState,
   }))
 
   if (!branches.length) {

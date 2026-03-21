@@ -9,6 +9,7 @@ import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
+import { clearTableLayouts } from '../../../utils/tableLayoutSync'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import useModalAnimation from '../common/useModalAnimation'
 import '../admin/CreateUsuario/CreateUsuario.css'
@@ -145,6 +146,7 @@ const selectionColStyle = {
 function TrasladosInconvenientesTable({ token, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const [tableResetKey, setTableResetKey] = useState(0)
   const quickSearchInputRef = useRef(null)
 
   const canRead = moduleActions?.puede_leer ?? true
@@ -800,6 +802,16 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
     setGlobalFilterValue('')
   }, [])
 
+  const handleResetTable = () => {
+    localStorage.removeItem('traslados-inconvenientes-columns')
+    localStorage.removeItem('traslados-inconvenientes-table-state')
+    setSelectedColumns(columnsData)
+    clearFilter()
+    setTableResetKey((k) => k + 1)
+    clearTableLayouts(['traslados-inconvenientes-columns', 'traslados-inconvenientes-table-state'], token)
+    opColumns.current?.hide()
+  }
+
   const refreshData = useCallback(() => {
     void fetchRows({ withOverlay: false })
   }, [fetchRows])
@@ -1324,6 +1336,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
         )}
 
         <DataTable
+          key={tableResetKey}
           value={rows}
           dataKey="row_key"
           header={header}
@@ -1422,6 +1435,9 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
+            <button className="rounded-icon-btn" type="button" onClick={handleResetTable} title="Restablecer tabla" style={{ width: 28, height: 28 }}>
+              <i className="pi pi-refresh" />
+            </button>
           </div>
           {columnsData.map((column) => (
             <div

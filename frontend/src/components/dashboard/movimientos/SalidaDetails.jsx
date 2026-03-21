@@ -433,6 +433,61 @@ function SalidaDetails({
     return String(preferred?.id ?? estadosProducto[0].id)
   }, [estadosProducto])
 
+  const estadoCategoryIds = useMemo(() => {
+    const pending = new Set()
+    const sent = new Set()
+    const accepted = new Set()
+    const rejected = new Set()
+    estados.forEach((estado) => {
+      const id = String(estado?.id || '').trim()
+      if (!id) return
+      const normalized = normalizeValue(estado?.nombre)
+      if (normalized.includes('rechaz')) {
+        rejected.add(id)
+        return
+      }
+      if (normalized.includes('acept')) {
+        accepted.add(id)
+        return
+      }
+      if (normalized.includes('pendient')) {
+        pending.add(id)
+        return
+      }
+      if (normalized.includes('envi')) {
+        sent.add(id)
+      }
+    })
+    return { pending, sent, accepted, rejected }
+  }, [estados])
+
+  const selectedEstadoName =
+    estados.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
+    estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
+    formData.estadoNombre ||
+    ''
+  const normalizedSelectedEstadoName = normalizeValue(selectedEstadoName)
+  const resolvedEstadoId = String(formData.estadoId || '').trim()
+  const estadoMatchesPending =
+    estadoCategoryIds.pending.has(resolvedEstadoId) ||
+    normalizedSelectedEstadoName.includes('pendient')
+  const estadoMatchesRejected =
+    estadoCategoryIds.rejected.has(resolvedEstadoId) ||
+    normalizedSelectedEstadoName.includes('rechaz') ||
+    normalizedSelectedEstadoName.includes('cancel')
+  const estadoMatchesAccepted =
+    estadoCategoryIds.accepted.has(resolvedEstadoId) ||
+    normalizedSelectedEstadoName.includes('acept') ||
+    normalizedSelectedEstadoName.includes('aprob')
+  const estadoMatchesSent =
+    estadoCategoryIds.sent.has(resolvedEstadoId) ||
+    (normalizedSelectedEstadoName.includes('envi') &&
+      !estadoMatchesPending &&
+      !estadoMatchesRejected &&
+      !estadoMatchesAccepted)
+  const isSentSolicitud = isTraslado && estadoMatchesSent
+  const isReadOnlyMode = isSentSolicitud
+
   const ivaRateValue = useMemo(() => {
     const parsed = parseNumber(formData.iva_rate)
     if (parsed === null || parsed < 0) return DEFAULT_IVA_RATE
@@ -940,6 +995,11 @@ function SalidaDetails({
       setLoadingData(true)
     }
   }, [open])
+
+  useEffect(() => {
+    if (!isReadOnlyMode || !isEditing) return
+    setIsEditing(false)
+  }, [isEditing, isReadOnlyMode])
 
   useEffect(() => {
     if (allowEdit || !isEditing) return
@@ -1721,7 +1781,7 @@ function SalidaDetails({
 
   if (!shouldRender) return null
 
-  const editorDisabled = !isEditing || saving || loadingData
+  const editorDisabled = !isEditing || saving || loadingData || isReadOnlyMode
   const immutableFieldDisabled = editorDisabled || restrictedEditMode
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
@@ -1733,13 +1793,7 @@ function SalidaDetails({
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
-  const selectedEstadoName =
-    estados.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
-    estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre ||
-    formData.estadoNombre ||
-    ''
-  const normalizedSelectedEstadoName = normalizeValue(selectedEstadoName)
-  const isSentTransferRibbon = isTraslado && normalizedSelectedEstadoName.includes('envi')
+  const isSentTransferRibbon = isSentSolicitud
   const modalClassName = [
     'create-user__modal',
     'create-salida__modal',
@@ -2360,7 +2414,7 @@ function SalidaDetails({
               >
                 Cancelar
               </button>
-              {allowEdit && (
+              {allowEdit && !isReadOnlyMode && (
                 <button
                   type="button"
                   className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}

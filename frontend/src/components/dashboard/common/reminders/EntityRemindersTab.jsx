@@ -220,23 +220,33 @@ function EntityRemindersTab({
   const creatorRecipientId = currentPrimaryUserId || extractUserId(currentUser)
   const creatorRecipientName = currentUserName || formatCurrentUserName(currentUser)
 
-  const reminderContext = useMemo(() => {
-    const type = normalizeId(entityType)
-    const id = normalizeId(entityId)
-    if (!type || !id) return null
-
-    return {
-      type,
-      id,
-      label: String(entityLabel || '').trim(),
-    }
-  }, [entityType, entityId, entityLabel])
-  const contextName = String(entityLabel || '').trim()
-
   const normalizedTransferSolicitudId = useMemo(
     () => normalizeId(transferSolicitudId),
     [transferSolicitudId]
   )
+
+  const reminderContext = useMemo(() => {
+    const type = normalizeId(entityType)
+    const id = normalizeId(entityId)
+    if (type && id) {
+      return {
+        type,
+        id,
+        label: String(entityLabel || '').trim(),
+      }
+    }
+
+    if (normalizedTransferSolicitudId) {
+      return {
+        type: 'solicitud_traslado',
+        id: normalizedTransferSolicitudId,
+        label: String(entityLabel || '').trim() || 'Solicitud de traslado',
+      }
+    }
+
+    return null
+  }, [entityType, entityId, entityLabel, normalizedTransferSolicitudId])
+  const contextName = String(entityLabel || '').trim()
 
   useEffect(() => {
     if (!usersError) return

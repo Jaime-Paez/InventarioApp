@@ -239,6 +239,18 @@ const writeRemindersToLocalCache = (reminders) => {
   return normalized
 }
 
+const areRemindersEqual = (first, second) => {
+  if (!Array.isArray(first) && !Array.isArray(second)) return true
+  if (!Array.isArray(first) || !Array.isArray(second)) return false
+  if (first.length !== second.length) return false
+  for (let i = 0; i < first.length; i += 1) {
+    if (JSON.stringify(first[i]) !== JSON.stringify(second[i])) {
+      return false
+    }
+  }
+  return true
+}
+
 let pendingServerSnapshot = null
 let isServerSyncInFlight = false
 
@@ -314,8 +326,11 @@ export const fetchRemindersFromBackend = async (token) => {
         ? payload
         : []
     const normalized = backendReminders.map(sanitizeReminder).filter(Boolean)
+    const existing = readRemindersFromStorage()
     const cached = writeRemindersToLocalCache(normalized)
-    emitRemindersSync()
+    if (!areRemindersEqual(existing, normalized)) {
+      emitRemindersSync()
+    }
     return cached
   } catch {
     return readRemindersFromStorage()

@@ -284,7 +284,7 @@ function QuickActions({
     )
     return Boolean(entradasPermission?.puede_crear || entradasPermission?.puede_actualizar)
   }, [user])
-  const canViewInTransitShipments = isAdministrator && canReceiveTransferRequest
+  const canViewInTransitShipments = canReceiveTransferRequest
 
   const showErrorToast = useCallback((message) => {
     if (!message) return
@@ -3234,9 +3234,14 @@ function QuickActions({
                             Destino: {solicitante}
                           </span>
                           <span className="quick-actions__pending-shipments-item-meta">
-                            {isOpening
-                              ? 'Abriendo...'
-                              : (fecha ? `Fecha: ${fecha}` : 'Abrir en salidas')}
+                            {isOpening ? (
+                              <span className="quick-actions__pending-shipments-loading" aria-live="polite">
+                                <Loader2 size={14} className="quick-actions__pending-shipments-loading-icon" />
+                                <span>Generando número...</span>
+                              </span>
+                            ) : (
+                              (fecha ? `Fecha: ${fecha}` : 'Abrir en salidas')
+                            )}
                           </span>
                         </button>
                       )

@@ -201,21 +201,6 @@
   background-image: none;
 }
 
-/* Fix: clamp checkbox/frozen column width for Inventario table */
-.inventario-datatable .p-datatable-frozen-view {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  flex: 0 0 40px !important;
-}
-
-.inventario-datatable .p-datatable-frozen-view table,
-.inventario-datatable .p-datatable-frozen-view colgroup col {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-}
-
 .inventario-datatable th.row-selection-column,
 .inventario-datatable td.row-selection-column {
   width: 40px !important;
@@ -229,21 +214,51 @@
   margin: 0 !important;
 }
 
+.row-selection-column--header {
+  padding: 0 !important;
+}
+
+.codigo-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.codigo-column-header__label {
+  font-weight: 700;
+}
+
+.codigo-column-header-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.codigo-column-header-btn:hover {
+  border-color: var(--color-primary);
+}
+
+.codigo-column-header-btn--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-button-primary);
+}
+
+.dashboard-shell.dark .codigo-column-header-btn,
+.dashboard-shell.dark .codigo-column-header-btn:hover {
+  border-color: color-mix(in srgb, #ffffff 65%, var(--color-border));
+  color: #fff;
+}
+
 @media (max-width: 900px) {
-  .inventario-datatable .p-datatable-frozen-view {
-    width: 36px !important;
-    min-width: 36px !important;
-    max-width: 36px !important;
-    flex: 0 0 36px !important;
-  }
-
-  .inventario-datatable .p-datatable-frozen-view table,
-  .inventario-datatable .p-datatable-frozen-view colgroup col {
-    width: 36px !important;
-    min-width: 36px !important;
-    max-width: 36px !important;
-  }
-
   .inventario-datatable th.row-selection-column,
   .inventario-datatable td.row-selection-column {
     width: 36px !important;

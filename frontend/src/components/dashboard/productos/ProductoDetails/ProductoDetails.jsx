@@ -1058,6 +1058,7 @@ function ProductoDetails({
     setAlternoError('')
     setShowCasaDropdown(false)
     setSubmitAttempted(false)
+    inventarioEditorRef.current?.reset?.()
     setIsEditing(false)
   }
 

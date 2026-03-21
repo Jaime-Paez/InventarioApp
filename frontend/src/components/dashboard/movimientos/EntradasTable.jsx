@@ -13,7 +13,10 @@ import EntradaDetails from './EntradaDetails'
 import './EntradasTable.css'
 import '../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../common/useModalAnimation'
-import { REMINDERS_TRANSFER_NOTIFICATION_EVENT } from '../common/reminders/remindersStorage'
+import {
+  REMINDERS_SYNC_EVENT,
+  REMINDERS_TRANSFER_NOTIFICATION_EVENT,
+} from '../common/reminders/remindersStorage'
 import { API_URL, authFetch } from '../../../utils/api'
 import { clearTableLayouts } from '../../../utils/tableLayoutSync'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
@@ -30,6 +33,18 @@ const normalizeValue = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+const formatEstadoForTable = (value) => {
+  const rawValue = String(value ?? '').trim()
+  if (!rawValue) return '-'
+  const normalized = normalizeValue(rawValue)
+  if (normalized.includes('solicitud') && normalized.includes('pend')) {
+    return 'Pendiente'
+  }
+  if (normalized.includes('solicitud') && normalized.includes('acept')) {
+    return 'Aceptada'
+  }
+  return rawValue
+}
 const parseCurrency = (value) => {
   const number = Number(value)
   return Number.isFinite(number) ? `$${number.toFixed(2)}` : '-'
@@ -271,7 +286,7 @@ function EntradasTable({
           ...row,
           sucursal_nombre: row?.sucursal_nombre || row?.sucursal || '-',
           sub_tipo_nombre: row?.sub_tipo_nombre || row?.sub_tipo_movimiento || '-',
-          estado_nombre: row?.estado_nombre || row?.estado_movimiento || '-',
+          estado_nombre: formatEstadoForTable(row?.estado_nombre || row?.estado_movimiento),
           sucursal_objetivo_nombre: row?.sucursal_objetivo_nombre || row?.sucursal_objetivo || '-',
           funcional_label: row?.funcional_label || (row?.funcional ? 'Si' : 'No'),
           total,
@@ -583,16 +598,18 @@ function EntradasTable({
       })
     }
 
-    const handleTransferReminderNotification = () => {
+    const handleReminderNotification = () => {
       runNotificationRefresh()
     }
 
-    window.addEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleTransferReminderNotification)
+    window.addEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleReminderNotification)
+    window.addEventListener(REMINDERS_SYNC_EVENT, handleReminderNotification)
 
     return () => {
       notificationRefreshInFlightRef.current = false
       pendingNotificationRefreshRef.current = false
-      window.removeEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleTransferReminderNotification)
+      window.removeEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleReminderNotification)
+      window.removeEventListener(REMINDERS_SYNC_EVENT, handleReminderNotification)
     }
   }, [isTabActive, normalizedCreateBranchId, token])
 
@@ -1285,7 +1302,16 @@ function EntradasTable({
         open={showDetailsModal}
         entradaId={selectedId}
         previewData={selectedSolicitudPreview}
-        readOnly={Boolean(selectedSolicitudPreview)}
+        readOnly={
+          Boolean(selectedSolicitudPreview) &&
+          !(
+            String((selectedSolicitudPreview?.estado_nombre || selectedSolicitudPreview?.estado || ''))
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .toLowerCase()
+              .includes('pend')
+          )
+        }
         onClose={() => {
           setShowDetailsModal(false)
           setSelectedSolicitudPreview(null)
@@ -1495,4 +1521,3 @@ function EntradasTable({
 }
 
 export default EntradasTable
-

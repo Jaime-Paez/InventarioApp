@@ -71,6 +71,11 @@
   color: var(--color-text-secondary);
 }
 
+.dashboard-shell.dark .create-user__modal-loading {
+  background: color-mix(in srgb, var(--color-surface-dark), rgba(13, 17, 23, 0.85));
+  color: var(--color-text-dark);
+}
+
 @keyframes create-user-overlay-in {
   from {
     opacity: 0;
@@ -1430,6 +1435,10 @@
   color: var(--color-text-primary);
   opacity: 0.65;
 }
+.dashboard-shell.dark .create-user__locations-row--empty {
+  color: var(--color-text-title-dark);
+  opacity: 0.8;
+}
 .create-user__locations-row--form select,
 .create-user__locations-row--form input {
   width: 100%;
@@ -1442,6 +1451,31 @@
   background: #fff;
   min-height: 28px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.create-user__locations-row span input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  min-height: 28px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.create-user__locations-row span input:focus {
+  outline: none;
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 25%, transparent);
+}
+
+.dashboard-shell.dark .create-user__locations-row span input {
+  background: var(--color-surface-darker);
+  color: #fff;
+  border-color: var(--color-border-dark);
 }
 
 .create-user__locations-row--form {

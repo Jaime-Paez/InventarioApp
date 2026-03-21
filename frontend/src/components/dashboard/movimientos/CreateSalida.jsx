@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
+import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
 import {
@@ -364,6 +365,11 @@ function CreateSalida({
   const selectedSucursalId = String(formData.sucursalId || '').trim()
   const hasSelectedSucursal = Boolean(selectedSucursalId)
   const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
+  const prefillTransferRequestKey = String(prefillTransferRequest?.requestKey || '').trim()
+  const prefillTransferSolicitudId = String(prefillTransferRequest?.solicitudId || '').trim()
+  const prefillTransferRequestSucursalId = String(prefillTransferRequest?.sucursalProveedoraId || '').trim()
+  const isPrefilledTransfer = Boolean(prefillTransferRequestKey && prefillTransferSolicitudId)
+  const effectivePrefilledSucursalId = normalizedPrefilledSucursalId || prefillTransferRequestSucursalId
   const selectedSucursalName = useMemo(() => {
     const branch = branches.find(
       (item) => String(item?.id || '').trim() === selectedSucursalId
@@ -661,8 +667,6 @@ function CreateSalida({
   ])
   const isManualTransferMode = isTraslado && isTransferWithoutRequest
   const transferRequiresRequest = isTraslado && !isTransferWithoutRequest
-  const prefillTransferRequestKey = String(prefillTransferRequest?.requestKey || '').trim()
-  const prefillTransferSolicitudId = String(prefillTransferRequest?.solicitudId || '').trim()
   const appendTransferCancellationReminder = useCallback(
     (solicitud, motivo) => {
       const solicitudId = String(
@@ -1115,11 +1119,13 @@ function CreateSalida({
       }
       setStockLoading(true)
       try {
-        const response = await authFetch(
-          `${API_URL}/movimientos/movimiento_inventario/stock-sucursal/?sucursal_id=${encodeURIComponent(sucursalId)}`,
-          {},
-          token
-        )
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/stock-sucursal-global/?sucursal_id=${encodeURIComponent(
+          sucursalId
+        )}`,
+        {},
+        token
+      )
         if (!response.ok) {
           throw new Error('No se pudo cargar el inventario de la sucursal seleccionada.')
         }
@@ -1275,12 +1281,12 @@ function CreateSalida({
 
   useEffect(() => {
     if (!open) return
-    if (!normalizedPrefilledSucursalId) return
+    if (!effectivePrefilledSucursalId) return
     setFormData((prev) => {
       if (String(prev.sucursalId || '').trim()) return prev
-      return { ...prev, sucursalId: normalizedPrefilledSucursalId }
+      return { ...prev, sucursalId: effectivePrefilledSucursalId }
     })
-  }, [normalizedPrefilledSucursalId, open])
+  }, [effectivePrefilledSucursalId, open])
 
   useEffect(
     () => () => {
@@ -2143,6 +2149,10 @@ function CreateSalida({
         throw new Error(detail)
       }
 
+      if (data?.reminders_sync_required) {
+        emitRemindersSync()
+      }
+
       if (transferRequiresRequest && (selectedSolicitudTraslado || data?.solicitud)) {
         appendTransferShipmentReminder(data?.solicitud || selectedSolicitudTraslado)
       }
@@ -2344,202 +2354,270 @@ function CreateSalida({
 
               <div className="create-user__content create-salida__content">
               <div className="create-user__body">
+                {isTraslado && documentLoading && (
+                  <div className="create-salida__loading-overlay" aria-live="polite">
+                    <div className="create-salida__loading-content">
+                      <Loader2 size={18} className="create-salida__loading-icon" />
+                      <span>Preparando la información...</span>
+                    </div>
+                  </div>
+                )}
                 {(activeTab === 'general' || !isVenta) && (
                   <>
                     <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Datos</p>
-                      <h4>Informacion general</h4>
-                    </div>
-                  </div>
-
-                  <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
-                      <span>Tipo de salida</span>
-                      <select
-                        name="subTipoId"
-                        value={formData.subTipoId}
-                        onChange={handleChange}
-                        disabled={loading}
-                        required
-                        className={`create-salida__tipo-select${!formData.subTipoId ? ' is-placeholder' : ''}`}
-                      >
-                        <option value="">Selecciona un tipo</option>
-                        {subTiposSalida.map((subTipo) => (
-                          <option key={subTipo.id} value={subTipo.id}>
-                            {subTipo.nombre}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Fecha</span>
-                      <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>{isTraslado ? 'Sucursal proveedora (enviadora)' : 'Sucursal'}</span>
-                      <select
-                        name="sucursalId"
-                        value={formData.sucursalId}
-                        onChange={handleChange}
-                        disabled={loading || isSucursalPrincipalLocked}
-                        required
-                      >
-                        <option value="">Selecciona una sucursal</option>
-                        {branches.map((branch) => (
-                          <option key={branch.id} value={branch.id}>
-                            {branch.nombre || `Sucursal ${branch.id}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    {isTraslado && (
+                  <div
+                    className={`create-user__grid create-user__grid--two${
+                      isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
+                    }`}
+                  >
+                    {isPrefilledTransfer ? (
                       <>
                         <label className="create-user__field">
-                          <span>Solicitud de traslado</span>
-                          <select
-                            name="solicitudTrasladoId"
-                            value={formData.solicitudTrasladoId}
+                          <span>{documentLabel}</span>
+                          <input
+                            name="no_documento"
+                            type="text"
+                            value={formData.no_documento}
                             onChange={handleChange}
-                            disabled={
-                              loading ||
-                              !formData.sucursalId ||
-                              solicitudesTrasladoLoading ||
-                              isTransferWithoutRequest
-                            }
-                            required={!isTransferWithoutRequest}
+                            disabled={loading || isTraslado}
+                            readOnly
+                            required
+                          />
+                          {documentStatus === DOCUMENT_STATUS.duplicate && (
+                            <small className="create-user__field-error">No se puede usar dos iguales.</small>
+                          )}
+                        </label>
+                        <label className="create-user__field">
+                          <span>Fecha</span>
+                          <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
+                        </label>
+                        <label className="create-user__field">
+                          <span>Sucursal proveedora (enviadora)</span>
+                          <select
+                            name="sucursalId"
+                            value={formData.sucursalId}
+                            onChange={handleChange}
+                            disabled={loading || isSucursalPrincipalLocked || isPrefilledTransfer}
+                            required
                           >
-                            <option value="">
-                              {!formData.sucursalId
-                                ? 'Selecciona una sucursal'
-                                : (solicitudesTrasladoLoading
-                                    ? 'Cargando solicitudes...'
-                                    : 'Selecciona una solicitud aceptada')}
-                            </option>
-                            {solicitudesTraslado.map((solicitud) => (
-                              <option key={solicitud.id} value={solicitud.id}>
-                                {`${solicitud.no_documento || `SOL-${solicitud.id}`} - ${solicitud.sucursal_solicitante || 'Sucursal solicitante'}`}
+                            <option value="">Selecciona una sucursal</option>
+                            {branches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>
+                                {branch.nombre || `Sucursal ${branch.id}`}
                               </option>
                             ))}
                           </select>
-                          {transferRequiresRequest && formData.sucursalId && !solicitudesTrasladoLoading && !solicitudesTraslado.length && (
-                            <small className="create-user__field-error">No hay solicitudes aceptadas para esta sucursal.</small>
+                        </label>
+                        {requiresSucursalObjetivo && (
+                          <label className="create-user__field">
+                            <span>Sucursal solicitante (destino)</span>
+                            <select
+                              name="sucursalObjetivoId"
+                              value={formData.sucursalObjetivoId}
+                              onChange={handleChange}
+                              disabled={loading || transferRequiresRequest || isPrefilledTransfer}
+                              required={requiresSucursalObjetivo}
+                            >
+                              <option value="">Selecciona una sucursal</option>
+                              {transferDestinationBranches.map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.nombre || `Sucursal ${branch.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        <input type="hidden" name="solicitudTrasladoId" value={formData.solicitudTrasladoId} />
+                      </>
+                    ) : (
+                      <>
+                        <label className="create-user__field">
+                          <span>Tipo de salida</span>
+                          <select
+                            name="subTipoId"
+                            value={formData.subTipoId}
+                            onChange={handleChange}
+                            disabled={loading}
+                            required
+                            className={`create-salida__tipo-select${!formData.subTipoId ? ' is-placeholder' : ''}`}
+                          >
+                            <option value="">Selecciona un tipo</option>
+                            {subTiposSalida.map((subTipo) => (
+                              <option key={subTipo.id} value={subTipo.id}>
+                                {subTipo.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="create-user__field">
+                          <span>Fecha</span>
+                          <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
+                        </label>
+
+                        <label className="create-user__field">
+                          <span>{isTraslado ? 'Sucursal proveedora (enviadora)' : 'Sucursal'}</span>
+                          <select
+                            name="sucursalId"
+                            value={formData.sucursalId}
+                            onChange={handleChange}
+                            disabled={loading || isSucursalPrincipalLocked}
+                            required
+                          >
+                            <option value="">Selecciona una sucursal</option>
+                            {branches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>
+                                {branch.nombre || `Sucursal ${branch.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        {isTraslado && (
+                          <>
+                            <label className="create-user__field">
+                              <span>Solicitud de traslado</span>
+                              <select
+                                name="solicitudTrasladoId"
+                                value={formData.solicitudTrasladoId}
+                                onChange={handleChange}
+                                disabled={
+                                  loading ||
+                                  !formData.sucursalId ||
+                                  solicitudesTrasladoLoading ||
+                                  isTransferWithoutRequest
+                                }
+                                required={!isTransferWithoutRequest}
+                              >
+                                <option value="">
+                                  {!formData.sucursalId
+                                    ? 'Selecciona una sucursal'
+                                    : solicitudesTrasladoLoading
+                                      ? 'Cargando solicitudes...'
+                                      : 'Selecciona una solicitud aceptada'}
+                                </option>
+                                {solicitudesTraslado.map((solicitud) => (
+                                  <option key={solicitud.id} value={solicitud.id}>
+                                    {`${solicitud.no_documento || `SOL-${solicitud.id}`} - ${solicitud.sucursal_solicitante || 'Sucursal solicitante'}`}
+                                  </option>
+                                ))}
+                              </select>
+                              {transferRequiresRequest && formData.sucursalId && !solicitudesTrasladoLoading && !solicitudesTraslado.length && (
+                                <small className="create-user__field-error">No hay solicitudes aceptadas para esta sucursal.</small>
+                              )}
+                            </label>
+                            <div className="create-user__field create-salida__manual-toggle">
+                              <label className="create-salida__manual-toggle-label" htmlFor="create-salida-manual-toggle">
+                                <input
+                                  id="create-salida-manual-toggle"
+                                  type="checkbox"
+                                  checked={isTransferWithoutRequest}
+                                  onChange={(event) => handleToggleTransferWithoutRequest(event.target.checked)}
+                                  disabled={loading}
+                                />
+                                <span>Crear esta salida sin solicitud de traslado aceptada</span>
+                              </label>
+                              <small className="muted">
+                                Activa esta opción para armar la salida de forma manual cuando no haya una solicitud vigente.
+                              </small>
+                            </div>
+                          </>
+                        )}
+
+                        {requiresSucursalObjetivo && (
+                          <label className="create-user__field">
+                            <span>{isTraslado ? 'Sucursal solicitante (destino)' : 'Sucursal destino'}</span>
+                            <select
+                              name="sucursalObjetivoId"
+                              value={formData.sucursalObjetivoId}
+                              onChange={handleChange}
+                              disabled={loading || transferRequiresRequest}
+                              required={requiresSucursalObjetivo}
+                            >
+                              <option value="">Selecciona una sucursal</option>
+                              {transferDestinationBranches.map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.nombre || `Sucursal ${branch.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+
+                        <label className="create-user__field">
+                          <span>
+                            {documentLabel}
+                            {isTraslado && documentLoading && (
+                              <small className="muted" style={{ marginLeft: 8 }}>
+                                Generando número...
+                              </small>
+                            )}
+                          </span>
+                          <input
+                            name="no_documento"
+                            type="text"
+                            value={formData.no_documento}
+                            onChange={handleChange}
+                            disabled={loading || isTraslado}
+                            readOnly
+                            required
+                          />
+                          {documentStatus === DOCUMENT_STATUS.duplicate && (
+                            <small className="create-user__field-error">No se puede usar dos iguales.</small>
                           )}
                         </label>
-                        <div className="create-user__field create-salida__manual-toggle">
-                          <label className="create-salida__manual-toggle-label" htmlFor="create-salida-manual-toggle">
+
+                        <label className="create-user__field">
+                          <span>Estado del movimiento</span>
+                          <input
+                            type="text"
+                            value={
+                              isTraslado
+                                ? transferDraftStateLabel
+                                : (estadoReadOnlyOptions.find(
+                                    (estado) =>
+                                      String(estado.id) ===
+                                      String(formData.estadoId || resolvedEstadoMovimientoId)
+                                  )?.nombre || '')
+                            }
+                            readOnly
+                            disabled
+                          />
+                        </label>
+
+                        {isVenta && (
+                          <label className="create-user__field">
+                            <span>Descuento (%)</span>
                             <input
-                              id="create-salida-manual-toggle"
-                              type="checkbox"
-                              checked={isTransferWithoutRequest}
-                              onChange={(event) => handleToggleTransferWithoutRequest(event.target.checked)}
+                              name="descuento"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              value={formData.descuento}
+                              onChange={handleChange}
                               disabled={loading}
                             />
-                            <span>Crear esta salida sin solicitud de traslado aceptada</span>
                           </label>
-                          <small className="muted">
-                            Activa esta opción para armar la salida de forma manual cuando no haya una solicitud vigente.
-                          </small>
-                        </div>
-                      </>
-                    )}
-
-                    {requiresSucursalObjetivo && (
-                      <label className="create-user__field">
-                        <span>{isTraslado ? 'Sucursal solicitante (destino)' : 'Sucursal destino'}</span>
-                        <select
-                          name="sucursalObjetivoId"
-                          value={formData.sucursalObjetivoId}
-                          onChange={handleChange}
-                          disabled={loading || transferRequiresRequest}
-                          required={requiresSucursalObjetivo}
-                        >
-                          <option value="">Selecciona una sucursal</option>
-                          {transferDestinationBranches.map((branch) => (
-                            <option key={branch.id} value={branch.id}>
-                              {branch.nombre || `Sucursal ${branch.id}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-
-                    <label className="create-user__field">
-                      <span>
-                        {documentLabel}
-                        {isTraslado && documentLoading && (
-                          <small className="muted" style={{ marginLeft: 8 }}>
-                            Generando número...
-                          </small>
                         )}
-                      </span>
-                      <input
-                        name="no_documento"
-                        type="text"
-                        value={formData.no_documento}
-                        onChange={handleChange}
-                        disabled={loading}
-                        readOnly={isTraslado}
-                        required
-                      />
-                      {documentStatus === DOCUMENT_STATUS.duplicate && (
-                        <small className="create-user__field-error">No se puede usar dos iguales.</small>
-                      )}
-                    </label>
 
-                    <label className="create-user__field">
-                      <span>Estado del movimiento</span>
-                      <input
-                        type="text"
-                        value={
-                          isTraslado
-                            ? transferDraftStateLabel
-                            : (estadoReadOnlyOptions.find(
-                                (estado) =>
-                                  String(estado.id) ===
-                                  String(formData.estadoId || resolvedEstadoMovimientoId)
-                              )?.nombre || '')
-                        }
-                        readOnly
-                        disabled
-                      />
-                    </label>
-
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Descuento (%)</span>
-                        <input
-                          name="descuento"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={formData.descuento}
-                          onChange={handleChange}
-                          disabled={loading}
-                        />
-                      </label>
-                    )}
-
-                    {isDevolucion && (
-                      <label className="create-user__field">
-                        <span>Funcional</span>
-                        <select
-                          name="funcional"
-                          value={formData.funcional ? 'true' : 'false'}
-                          onChange={(event) =>
-                            setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                          }
-                          disabled={loading}
-                        >
-                          <option value="true">Si</option>
-                          <option value="false">No</option>
-                        </select>
-                      </label>
+                        {isDevolucion && (
+                          <label className="create-user__field">
+                            <span>Funcional</span>
+                            <select
+                              name="funcional"
+                              value={formData.funcional ? 'true' : 'false'}
+                              onChange={(event) =>
+                                setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
+                              }
+                              disabled={loading}
+                            >
+                              <option value="true">Si</option>
+                              <option value="false">No</option>
+                            </select>
+                          </label>
+                        )}
+                      </>
                     )}
 
                     <label className="create-user__field create-user__field--full">
@@ -2564,16 +2642,16 @@ function CreateSalida({
                   </div>
 
                   <div className="create-user__locations-table create-salida__products-table">
-                    <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Codigo</span>
-                      <span>Nombre</span>
-                      <span>Cantidad</span>
-                      <span>Precio</span>
-                      <span>Precio total</span>
-                      <span>Acciones</span>
-                    </div>
+                      <div className="create-user__locations-row create-user__locations-row--head">
+                        <span>Codigo</span>
+                        <span>Nombre</span>
+                        <span>Cantidad</span>
+                        <span>Precio</span>
+                        <span>Precio total</span>
+                      </div>
 
-                    <div className="create-user__locations-row create-user__locations-row--form">
+                    {!isPrefilledTransfer && (
+                      <div className="create-user__locations-row create-user__locations-row--form">
                       <span className="create-salida__product-picker">
                         <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
                           <button
@@ -2690,7 +2768,7 @@ function CreateSalida({
                                   <div className="create-salida__results-header">
                                     <span>Código</span>
                                     <span>Nombre</span>
-                                    <span>Disponible</span>
+                                    <span>Cantidad</span>
                                   </div>
                                 )}
                                 {productOptions.map((producto) => {
@@ -2753,17 +2831,8 @@ function CreateSalida({
                       <span>
                         <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
                       </span>
-                      <span className="create-user__locations-cell create-user__locations-cell--action">
-                        <button
-                          type="button"
-                          className="create-user__ghost"
-                          onClick={handleAddDetail}
-                          disabled={loading || transferRequiresRequest || (requiresStockValidation && stockLoading)}
-                        >
-                          Agregar
-                        </button>
-                      </span>
-                    </div>
+                      </div>
+                    )}
 
                     {!details.length && (
                       <div className="create-user__locations-row create-user__locations-row--empty">
@@ -2778,16 +2847,6 @@ function CreateSalida({
                         <span>{detail.cantidad}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
-                        <span className="create-user__locations-cell create-user__locations-cell--action">
-                          <button
-                            type="button"
-                            className="create-user__locations-remove"
-                            onClick={() => handleRemoveDetail(detail.uid)}
-                            disabled={loading || transferRequiresRequest}
-                          >
-                            x
-                          </button>
-                        </span>
                       </div>
                     ))}
 

@@ -22,6 +22,7 @@ import {
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
 import { moduleHasAnyAction } from '../../menuConfig'
+import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -65,6 +66,7 @@ const isCheckboxSelection = (event) => {
 function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
@@ -444,6 +446,16 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       tableSortOrder: null,
       globalSearchValue: globalFilterValue,
     })
+  }
+
+  const handleResetTable = () => {
+    localStorage.removeItem('productos-table-columns')
+    localStorage.removeItem('productos-table-state')
+    setSelectedColumns(visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label'))
+    clearFilter()
+    setTableResetKey((k) => k + 1)
+    clearTableLayouts(['productos-table-columns', 'productos-table-state'], token)
+    opColumns.current?.hide()
   }
 
   const initialSearchCriteria = {
@@ -1429,10 +1441,13 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         )}
 
         <DataTable
+          key={tableResetKey}
           value={products}
           dataKey="id"
           header={header}
           className={`users-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
+          stateStorage="local"
+          stateKey="productos-table-state"
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
@@ -1598,6 +1613,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
+            <button className="rounded-icon-btn" type="button" onClick={handleResetTable} title="Restablecer tabla" style={{ width: 28, height: 28 }}>
+              <i className="pi pi-refresh" />
+            </button>
           </div>
 
           {visibleColumnsData.map((col) => (

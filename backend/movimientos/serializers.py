@@ -25,6 +25,7 @@ from .models import (
     SolicitudTrasladoDetalle,
 )
 from .stock_availability import get_available_transfer_quantities_by_product
+from .transfer_helpers import cancel_pending_transfer_requests, REMINDERS_SYNC_FLAG
 
 
 def normalize_name(value):
@@ -164,8 +165,8 @@ def generate_entry_document_number(
 def generate_transfer_request_document_number(sucursal_solicitante, sucursal_proveedora):
     base = build_entry_document_base(
         subtipo_key="traslado",
-        sucursal=sucursal_solicitante,
-        sucursal_objetivo=sucursal_proveedora,
+        sucursal=sucursal_proveedora,
+        sucursal_objetivo=sucursal_solicitante,
     )
     return _next_incremental_document_number(
         model=SolicitudTraslado,
@@ -446,6 +447,18 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             for detalle in detalles_data:
                 SolicitudTrasladoDetalle.objects.create(solicitud=solicitud, **detalle)
         return solicitud
+
+    def update(self, instance, validated_data):
+        detalles_data = validated_data.pop("detalles", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        with transaction.atomic():
+            instance.save()
+            if detalles_data is not None:
+                instance.detalles.all().delete()
+                for detalle in detalles_data:
+                    SolicitudTrasladoDetalle.objects.create(solicitud=instance, **detalle)
+        return instance
 
     @staticmethod
     def _get_available_stock_in_branch(sucursal_id, producto_id, exclude_solicitud_id=None):
@@ -934,12 +947,18 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
     def _create_transfer_entry_from_salida(self, salida, detalles_data, solicitud_traslado):
         tipo_entrada, subtipo_traslado = self._resolve_transfer_entry_subtipo()
-        document_number = generate_entry_document_number(
-            tipo_movimiento=tipo_entrada,
-            subtipo_key="traslado",
-            sucursal=solicitud_traslado.sucursal_solicitante,
-            sucursal_objetivo=solicitud_traslado.sucursal_proveedora,
-        )
+        solicitud_document_number = str(
+            getattr(solicitud_traslado, "no_documento", "") or ""
+        ).strip()
+        if not solicitud_document_number:
+            raise serializers.ValidationError(
+                {
+                    "solicitud_traslado_id": (
+                        "La solicitud de traslado debe tener un numero de documento para generar la entrada."
+                    )
+                }
+            )
+        document_number = solicitud_document_number
         descripcion_salida = str(salida.descripcion or "").strip()
         descripcion_base = f"Entrada automatica por traslado solicitado #{solicitud_traslado.no_documento}"
         descripcion = (
@@ -1100,6 +1119,20 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             and subtipo_key == "traslado"
             and solicitud_traslado is not None
         )
+
+        if is_transfer_approval:
+            solicitud_document_number = str(
+                getattr(solicitud_traslado, "no_documento", "") or ""
+            ).strip()
+            if not solicitud_document_number:
+                raise serializers.ValidationError(
+                    {
+                        "solicitud_traslado_id": (
+                            "La solicitud de traslado debe tener un numero de documento para generar la salida."
+                        )
+                    }
+                )
+            validated_data["no_documento"] = solicitud_document_number
 
         if tipo_name.startswith("ent"):
             validated_data["no_documento"] = generate_entry_document_number(
@@ -1268,6 +1301,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         if not quantities:
             return
 
+        stock_reductions = defaultdict(set)
         factor = -1 if reverse else 1
 
         if tipo_name.startswith("ent"):
@@ -1277,62 +1311,146 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             )
             if should_add_on_entry:
                 for producto_id, cantidad in quantities.items():
+                    delta = cantidad * factor
                     self._adjust_stock(
                         sucursal=getattr(movimiento, "sucursal", None),
                         producto_id=producto_id,
-                        delta=(cantidad * factor),
+                        delta=delta,
                     )
+                    self._track_stock_reduction(
+                        stock_reductions,
+                        getattr(movimiento, "sucursal", None),
+                        producto_id,
+                        delta,
+                    )
+                self._reject_pending_transfers_due_to_stock_changes(stock_reductions)
                 return
 
         if subtipo_key == "venta" and tipo_name.startswith("sal"):
             if estado_name != "vendido":
                 return
             for producto_id, cantidad in quantities.items():
+                delta = -cantidad * factor
                 self._adjust_stock(
                     sucursal=getattr(movimiento, "sucursal", None),
                     producto_id=producto_id,
-                    delta=(-cantidad * factor),
+                    delta=delta,
                 )
+                self._track_stock_reduction(
+                    stock_reductions,
+                    getattr(movimiento, "sucursal", None),
+                    producto_id,
+                    delta,
+                )
+            self._reject_pending_transfers_due_to_stock_changes(stock_reductions)
             return
 
         if subtipo_key == "devolucion" and tipo_name.startswith("sal"):
             if estado_name != "devuelto":
                 return
             for producto_id, cantidad in quantities.items():
+                delta = -cantidad * factor
                 self._adjust_stock(
                     sucursal=getattr(movimiento, "sucursal", None),
                     producto_id=producto_id,
-                    delta=(-cantidad * factor),
+                    delta=delta,
                 )
+                self._track_stock_reduction(
+                    stock_reductions,
+                    getattr(movimiento, "sucursal", None),
+                    producto_id,
+                    delta,
+                )
+            self._reject_pending_transfers_due_to_stock_changes(stock_reductions)
             return
 
         if subtipo_key != "traslado":
+            self._reject_pending_transfers_due_to_stock_changes(stock_reductions)
             return
 
         should_mark_received = estado_name in {"recibido", "parcialmente recibido"}
 
         if tipo_name.startswith("sal"):
             for producto_id, cantidad in quantities.items():
+                delta = -cantidad * factor
                 self._adjust_stock(
                     sucursal=getattr(movimiento, "sucursal", None),
                     producto_id=producto_id,
-                    delta=(-cantidad * factor),
+                    delta=delta,
+                )
+                self._track_stock_reduction(
+                    stock_reductions,
+                    getattr(movimiento, "sucursal", None),
+                    producto_id,
+                    delta,
                 )
                 if should_mark_received:
+                    entry_delta = cantidad * factor
                     self._adjust_stock(
                         sucursal=getattr(movimiento, "sucursal_objetivo", None),
                         producto_id=producto_id,
-                        delta=(cantidad * factor),
+                        delta=entry_delta,
                     )
+                    self._track_stock_reduction(
+                        stock_reductions,
+                        getattr(movimiento, "sucursal_objetivo", None),
+                        producto_id,
+                        entry_delta,
+                    )
+            self._reject_pending_transfers_due_to_stock_changes(stock_reductions)
             return
 
         if tipo_name.startswith("ent") and should_mark_received:
             for producto_id, cantidad in quantities.items():
+                delta = cantidad * factor
                 self._adjust_stock(
                     sucursal=getattr(movimiento, "sucursal", None),
                     producto_id=producto_id,
-                    delta=(cantidad * factor),
+                    delta=delta,
                 )
+                self._track_stock_reduction(
+                    stock_reductions,
+                    getattr(movimiento, "sucursal", None),
+                    producto_id,
+                    delta,
+                )
+
+        self._reject_pending_transfers_due_to_stock_changes(stock_reductions)
+
+    def _track_stock_reduction(self, stock_reductions, sucursal, producto_id, delta):
+        if delta >= 0:
+            return
+
+        sucursal_id = int(getattr(sucursal, "id", 0) or 0)
+        if sucursal_id <= 0 or producto_id <= 0:
+            return
+
+        stock_reductions[sucursal_id].add(int(producto_id))
+
+    def _reject_pending_transfers_due_to_stock_changes(self, stock_changes):
+        if not stock_changes:
+            return
+
+        request_user = None
+        request_obj = self.context.get("request")
+        if request_obj is not None:
+            request_user = getattr(request_obj, "user", None)
+
+        changed = False
+        for sucursal_id, product_ids in stock_changes.items():
+            if sucursal_id <= 0 or not product_ids:
+                continue
+
+            triggered = cancel_pending_transfer_requests(
+                branch_id=sucursal_id,
+                product_ids=product_ids,
+                actor_user=request_user,
+            )
+            if triggered:
+                changed = True
+
+        if changed:
+            self.context[REMINDERS_SYNC_FLAG] = True
 
     def _replace_detalles(self, movimiento, detalles_data):
         for detalle in detalles_data:

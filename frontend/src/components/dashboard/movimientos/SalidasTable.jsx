@@ -30,6 +30,15 @@ const normalizeValue = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+const formatEstadoForTable = (value) => {
+  const rawValue = String(value ?? '').trim()
+  if (!rawValue) return '-'
+  const normalized = normalizeValue(rawValue)
+  if (normalized.includes('solicitud') && normalized.includes('pend')) {
+    return 'Pendiente'
+  }
+  return rawValue
+}
 const parseCurrency = (value) => {
   const number = Number(value)
   return Number.isFinite(number) ? `$${number.toFixed(2)}` : '-'
@@ -273,7 +282,7 @@ function SalidasTable({
           ...row,
           sucursal_nombre: row?.sucursal_nombre || row?.sucursal || '-',
           sub_tipo_nombre: row?.sub_tipo_nombre || row?.sub_tipo_movimiento || '-',
-          estado_nombre: row?.estado_nombre || row?.estado_movimiento || '-',
+          estado_nombre: formatEstadoForTable(row?.estado_nombre || row?.estado_movimiento),
           sucursal_objetivo_nombre: row?.sucursal_objetivo_nombre || row?.sucursal_objetivo || '-',
           funcional_label: row?.funcional_label || (row?.funcional ? 'Si' : 'No'),
           total,

@@ -5,6 +5,59 @@
   will-change: width, height;
 }
 
+.create-user__body {
+  position: relative;
+}
+
+.create-salida__loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  pointer-events: auto;
+}
+
+.create-salida__loading-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-surface) 80%, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 0.95rem;
+  box-shadow: var(--shadow-panel);
+}
+
+.create-salida__loading-icon {
+  animation: create-salida-spin 0.9s linear infinite;
+}
+
+.dashboard-shell.dark .create-salida__loading-overlay {
+  background: rgba(2, 6, 23, 0.85);
+}
+
+.dashboard-shell.dark .create-salida__loading-content {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
+}
+
+@keyframes create-salida-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .create-salida__modal--resizing {
   transition: none;
   will-change: auto;
@@ -330,6 +383,47 @@
   color: var(--color-button-dark);
 }
 
+.create-salida__row-stock {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs, 0.65rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.dashboard-shell.dark .create-salida__row-stock {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.create-salida__detail-unavailable {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-error) 6%, var(--color-border));
+  color: var(--color-error);
+  font-size: var(--font-size-xs, 0.6rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .create-salida__results-header {
   display: grid;
   grid-template-columns: minmax(72px, 0.65fr) 1fr minmax(68px, auto);
@@ -436,8 +530,28 @@
 }
 
 .create-salida__products-table .create-user__locations-row {
-  grid-template-columns: minmax(92px, 0.9fr) minmax(140px, 1.7fr) minmax(72px, 0.7fr) minmax(96px, 0.8fr) minmax(108px, 0.9fr) 74px;
+  grid-template-columns:
+    minmax(72px, 0.8fr)
+    minmax(120px, 1.7fr)
+    minmax(56px, 0.75fr)
+    minmax(72px, 1fr)
+    minmax(84px, 1fr);
   min-width: 0;
+}
+
+.create-salida__products-table--with-actions .create-user__locations-row {
+  grid-template-columns:
+    minmax(72px, 0.8fr)
+    minmax(120px, 1.5fr)
+    minmax(56px, 0.6fr)
+    minmax(72px, 0.8fr)
+    minmax(84px, 0.9fr)
+    minmax(84px, 0.8fr);
+  min-width: 0;
+}
+
+.create-salida__products-table .create-user__locations-row--head span {
+  text-align: center;
 }
 
 .create-salida__products-table .create-user__locations-row > span {
@@ -450,6 +564,40 @@
   white-space: nowrap;
 }
 
+.create-user__locations-table {
+  overflow-x: visible;
+  overflow-y: visible;
+}
+
+.create-salida__products-table--with-actions {
+  overflow-x: visible;
+}
+
+@media (max-width: 960px) {
+  .create-salida__products-table .create-user__locations-row {
+    grid-template-columns:
+      minmax(62px, 0.7fr)
+      minmax(110px, 1.45fr)
+      minmax(50px, 0.6fr)
+      minmax(64px, 0.8fr)
+      minmax(70px, 0.8fr);
+  }
+
+  .create-salida__products-table--with-actions .create-user__locations-row {
+    grid-template-columns:
+      minmax(62px, 0.7fr)
+      minmax(110px, 1.3fr)
+      minmax(50px, 0.55fr)
+      minmax(64px, 0.7fr)
+      minmax(70px, 0.75fr)
+      minmax(74px, 0.7fr);
+  }
+
+  .create-salida__products-table .create-user__locations-row--head span {
+    font-size: 0.75rem;
+  }
+}
+
 .create-salida__products-table .create-user__locations-row--empty {
   grid-template-columns: 1fr;
   min-width: 0;
@@ -460,16 +608,28 @@
   min-width: 0;
 }
 
+.create-salida__products-table .create-user__locations-row--form {
+  position: relative;
+  overflow: visible;
+}
+
 .create-salida__product-dropdown .create-user__dropdown-trigger > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.create-salida__product-dropdown {
+  position: relative;
+  z-index: 40;
+}
+
 .create-salida__product-dropdown .create-user__dropdown-panel {
   min-width: 0;
-  width: min(420px, 100vw);
-  max-width: min(440px, calc(100vw - 32px));
+  width: min(550px, calc(100vw - 32px));
+  max-width: min(550px, calc(100vw - 32px));
+  right: auto;
+  z-index: 60;
   box-shadow: var(--shadow-panel);
   padding: 8px;
 }
@@ -483,11 +643,16 @@
   max-height: 200px;
   min-height: 0;
   overflow-y: auto;
+  min-width: 0;
+  width: 100%;
 }
 
 .create-salida__product-dropdown .create-salida__results-header,
 .create-salida__product-dropdown .create-salida__result-row {
-  grid-template-columns: minmax(90px, 0.8fr) minmax(140px, 1.6fr) minmax(80px, auto);
+  grid-template-columns:
+    minmax(120px, 1fr)
+    minmax(200px, 2fr)
+    minmax(90px, 1fr);
 }
 
 .create-salida__product-dropdown .create-salida__result-row .result-nombre {
@@ -556,13 +721,11 @@
 }
 
 .create-salida__totals-label {
-  grid-column: 1 / span 4;
   text-align: right;
   font-weight: 700;
 }
 
 .create-salida__totals-value {
-  grid-column: 5;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -572,7 +735,31 @@
 }
 
 .create-salida__totals-spacer {
+}
+
+.create-salida__products-table--with-actions .create-salida__totals-label {
+  grid-column: 1 / span 4;
+}
+
+.create-salida__products-table--with-actions .create-salida__totals-value {
+  grid-column: 5;
+}
+
+.create-salida__products-table--with-actions .create-salida__totals-spacer {
   grid-column: 6;
+  display: block;
+}
+
+.create-salida__products-table:not(.create-salida__products-table--with-actions) .create-salida__totals-label {
+  grid-column: 1 / span 3;
+}
+
+.create-salida__products-table:not(.create-salida__products-table--with-actions) .create-salida__totals-value {
+  grid-column: 4 / span 2;
+}
+
+.create-salida__products-table:not(.create-salida__products-table--with-actions) .create-salida__totals-spacer {
+  display: none;
 }
 
 .create-salida__input--invalid {
@@ -913,6 +1100,10 @@
   }
 
   .create-salida__products-table .create-user__locations-row {
+    grid-template-columns: minmax(82px, 0.85fr) minmax(120px, 1.45fr) minmax(68px, 0.65fr) minmax(88px, 0.78fr) minmax(96px, 0.85fr);
+  }
+
+  .create-salida__products-table--with-actions .create-user__locations-row {
     grid-template-columns: minmax(82px, 0.85fr) minmax(120px, 1.45fr) minmax(68px, 0.65fr) minmax(88px, 0.78fr) minmax(96px, 0.85fr) 66px;
   }
 }
@@ -928,8 +1119,12 @@
   }
 
   .create-salida__products-table {
-    overflow-x: auto;
+    overflow-x: visible;
     overflow-y: visible;
+  }
+
+  .create-salida__products-table--with-actions {
+    overflow-x: auto;
   }
 
   .create-salida__reminder-table {

@@ -101,16 +101,20 @@ def get_available_transfer_quantities_by_product(
     sucursal_id,
     product_ids=None,
     exclude_solicitud_id=None,
+    *,
+    include_reserved=True,
 ):
     stock_map = get_branch_stock_quantities_by_product(
         sucursal_id=sucursal_id,
         product_ids=product_ids,
     )
-    reserved_map = get_reserved_transfer_quantities_by_product(
-        sucursal_id=sucursal_id,
-        product_ids=product_ids,
-        exclude_solicitud_id=exclude_solicitud_id,
-    )
+    reserved_map = {}
+    if include_reserved:
+        reserved_map = get_reserved_transfer_quantities_by_product(
+            sucursal_id=sucursal_id,
+            product_ids=product_ids,
+            exclude_solicitud_id=exclude_solicitud_id,
+        )
 
     keys = set(stock_map.keys()) | set(reserved_map.keys())
     return {

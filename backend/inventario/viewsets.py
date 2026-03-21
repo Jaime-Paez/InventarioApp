@@ -44,6 +44,11 @@ from .serializers import (
     SubDivisionSerializer,
     SucursalSerializer,
 )
+from movimientos.transfer_helpers import (
+    build_sale_stock_change_extra_reason,
+    cancel_pending_transfer_requests,
+    REMINDERS_SYNC_FLAG,
+)
 
 
 LOCATION_CATALOG_SCOPED_READ_MODULE_KEYS = (
@@ -409,7 +414,6 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
             )
         return super().destroy(request, *args, **kwargs)
 
-
 class InventarioViewSet(viewsets.ModelViewSet):
     queryset = (
         Inventario.objects.select_related(
@@ -452,6 +456,41 @@ class InventarioViewSet(viewsets.ModelViewSet):
         "subdivision__division__bodega__nombre",
         "subdivision__division__bodega__sucursal__nombre",
     ]
+
+    def _resolve_inventory_branch_id(self, instance):
+        subdivision = getattr(instance, "subdivision", None)
+        division = getattr(subdivision, "division", None)
+        bodega = getattr(division, "bodega", None)
+        sucursal = getattr(bodega, "sucursal", None)
+        return getattr(sucursal, "id", None)
+
+    def _cancel_pending_transfers_due_to_inventory_change(self, instance):
+        branch_id = self._resolve_inventory_branch_id(instance)
+        product_id = getattr(instance, "producto_id", None)
+        if not branch_id or not product_id:
+            return False
+        reference = str(getattr(instance, "referencia", "") or "").strip() or None
+        extra_reason = build_sale_stock_change_extra_reason(reference)
+        return cancel_pending_transfer_requests(
+            branch_id=branch_id,
+            product_ids=[product_id],
+            actor_user=self.request.user,
+            extra_reason=extra_reason,
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        self.perform_update(serializer)
+        response_data = dict(serializer.data)
+
+        if self._cancel_pending_transfers_due_to_inventory_change(serializer.instance):
+            response_data[REMINDERS_SYNC_FLAG] = True
+
+        return Response(response_data)
 
     def _parse_producto_ids_param(self):
         producto_ids_raw = (self.request.query_params.get("producto_ids") or "").strip()
@@ -713,6 +752,21 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         return serialized
 
+    def _serialize_branch_list_for_table(self, branches):
+        result = []
+        for branch in branches:
+            branch_id = int(branch.id or 0)
+            if branch_id <= 0:
+                continue
+            result.append(
+                {
+                    "id": branch_id,
+                    "nombre": str(branch.nombre or "").strip(),
+                    "direccion": str(branch.direccion or "").strip(),
+                }
+            )
+        return result
+
     @action(detail=False, methods=["get"], url_path="sucursales-tabla")
     def sucursales_tabla(self, request, *args, **kwargs):
         branches = (
@@ -837,13 +891,22 @@ class InventarioViewSet(viewsets.ModelViewSet):
             *self._resolve_table_ordering(branches)
         )
 
+        branch_metadata = self._serialize_branch_list_for_table(branches)
+
         page = self.paginate_queryset(aggregated_queryset)
         if page is not None:
             serialized = self._serialize_inventory_table_rows(page, branches)
-            return self.get_paginated_response(serialized)
+            response = self.get_paginated_response(serialized)
+            response.data["branches"] = branch_metadata
+            return response
 
         serialized = self._serialize_inventory_table_rows(aggregated_queryset, branches)
-        return Response(serialized)
+        payload = {
+            "results": serialized,
+            "count": len(serialized),
+            "branches": branch_metadata,
+        }
+        return Response(payload)
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -996,4 +1059,3 @@ class InventarioViewSet(viewsets.ModelViewSet):
             action_key="puede_actualizar",
         )
         serializer.save()
-

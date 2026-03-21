@@ -444,7 +444,7 @@
 .recordatorios-popup__timeline-week {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .recordatorios-popup__timeline-day {
@@ -452,15 +452,16 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-surface) 92%, transparent);
   color: inherit;
-  min-height: 84px;
-  padding: 8px 8px 10px;
+  min-height: 72px;
+  padding: 6px 6px 8px;
   display: grid;
   align-content: start;
   justify-items: start;
-  gap: 4px;
+  gap: 2px;
   text-align: left;
   cursor: pointer;
   position: relative;
+  line-height: 1.2;
 }
 
 .recordatorios-popup__timeline-day::after {
@@ -484,14 +485,14 @@
 }
 
 .recordatorios-popup__timeline-day-name {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 .recordatorios-popup__timeline-day-date {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -583,13 +584,13 @@
 
 .recordatorios-popup__timeline-day-header h5 {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   text-transform: capitalize;
 }
 
 .recordatorios-popup__timeline-day-header p {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: color-mix(in srgb, currentColor 72%, transparent);
 }
 
@@ -603,7 +604,7 @@
   padding: 10px;
   display: grid;
   align-content: start;
-  gap: 9px;
+  gap: 12px;
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-list {

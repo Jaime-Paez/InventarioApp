@@ -54,6 +54,35 @@ def _normalize_context_type(value):
     return re.sub(r"[\s-]+", "_", normalized)
 
 
+def _purge_reminders_for_context(context_type, context_id):
+    normalized_type = _normalize_context_type(context_type)
+    normalized_id = _normalize_id(context_id)
+    if not normalized_type or not normalized_id:
+        return False
+
+    with transaction.atomic():
+        store = ReminderState.get_global(for_update=True)
+        current = _normalize_reminder_list(store.payload)
+        filtered = []
+        changed = False
+        for reminder in current:
+            context = reminder.get("context")
+            if not isinstance(context, dict):
+                filtered.append(reminder)
+                continue
+            if (
+                _normalize_context_type(context.get("type")) == normalized_type
+                and _normalize_id(context.get("id")) == normalized_id
+            ):
+                changed = True
+                continue
+            filtered.append(reminder)
+        if changed:
+            store.payload = filtered
+            store.save(update_fields=["payload", "updated_at"])
+        return changed
+
+
 def _get_permission_index_for_user(user):
     if user is None or not getattr(user, "is_authenticated", False):
         return {}

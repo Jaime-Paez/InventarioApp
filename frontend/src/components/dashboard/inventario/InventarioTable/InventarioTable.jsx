@@ -21,8 +21,19 @@ import {
   buildPrimeOrdering,
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
+import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
+const parseBranchMetadata = (payload) => {
+  if (!Array.isArray(payload)) return []
+  return payload
+    .map((item) => ({
+      id: Number(item?.id) || 0,
+      nombre: String(item?.nombre || '').trim(),
+      direccion: String(item?.direccion || '').trim(),
+    }))
+    .filter((branch) => branch.id > 0)
+}
 const DEFAULT_IVA_RATE = 0.15
 const normId = (value) => (value == null ? null : String(value))
 
@@ -116,6 +127,7 @@ function InventarioTable({ token, user, permissionIndex }) {
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
+  const [isCodigoColumnFrozen, setIsCodigoColumnFrozen] = useState(false)
   const searchModalRef = useRef(null)
   const searchDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const searchResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
@@ -137,6 +149,7 @@ function InventarioTable({ token, user, permissionIndex }) {
   const [ivaRate, setIvaRate] = useState(DEFAULT_IVA_RATE)
   const [ivaLoading, setIvaLoading] = useState(false)
   const opColumns = useRef(null)
+  const [tableResetKey, setTableResetKey] = useState(0)
   const didInitialSearchRef = useRef(false)
   const productModuleActions = useMemo(
     () => getModuleActions('productos', permissionIndex),
@@ -234,20 +247,13 @@ function InventarioTable({ token, user, permissionIndex }) {
   const fetchLookupData = useCallback(async () => {
     if (!token) return
     try {
-      const [branchesRes, bodegasRes, subdivisionsRes] = await Promise.all([
-        authFetch(`${API_URL}/inventario/inventario/sucursales-tabla/`, {}, token),
+      const [bodegasRes, subdivisionsRes] = await Promise.all([
         authFetch(`${API_URL}/inventario/bodegas/?page_size=500&modulo=inventario`, {}, token),
         authFetch(`${API_URL}/inventario/subdivisiones/?page_size=500&modulo=inventario`, {}, token),
       ])
-      if (!branchesRes.ok) throw new Error('No se pudieron cargar las sucursales.')
       if (!bodegasRes.ok) throw new Error('No se pudieron cargar las bodegas.')
       if (!subdivisionsRes.ok) throw new Error('No se pudieron cargar las subdivisiones.')
-      const [branchesData, bodegasData, subdivisionsData] = await Promise.all([
-        branchesRes.json(),
-        bodegasRes.json(),
-        subdivisionsRes.json(),
-      ])
-      setBranches(parseApiList(branchesData))
+      const [bodegasData, subdivisionsData] = await Promise.all([bodegasRes.json(), subdivisionsRes.json()])
       setBodegas(parseApiList(bodegasData))
       setSubdivisions(parseApiList(subdivisionsData))
     } catch (err) {
@@ -285,6 +291,14 @@ function InventarioTable({ token, user, permissionIndex }) {
         const response = await authFetch(url, {}, token)
         if (!response.ok) throw new Error('No se pudo cargar el inventario.')
         const data = await response.json()
+        if (
+          data &&
+          typeof data === 'object' &&
+          !Array.isArray(data) &&
+          Object.prototype.hasOwnProperty.call(data, 'branches')
+        ) {
+          setBranches(parseBranchMetadata(data.branches))
+        }
         const count = Array.isArray(data) ? data.length : Number(data?.count ?? 0)
         const list = parseApiList(data)
 
@@ -627,6 +641,16 @@ function InventarioTable({ token, user, permissionIndex }) {
       tableSortOrder: null,
       tableFilters: nextFilters,
     })
+  }
+
+  const handleResetTable = () => {
+    localStorage.removeItem('inventario-table-columns')
+    localStorage.removeItem('inventario-table-state')
+    setSelectedColumns(visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label'))
+    clearFilter()
+    setTableResetKey((k) => k + 1)
+    clearTableLayouts(['inventario-table-columns', 'inventario-table-state'], token)
+    opColumns.current?.hide()
   }
 
   function handleGlobalFilterChange(event) {
@@ -1057,6 +1081,10 @@ function InventarioTable({ token, user, permissionIndex }) {
   const dataLength = totalRecords ?? 0
   const emptyMessage = 'No se encontraron registros'
 
+  const toggleCodigoColumnFrozen = useCallback(() => {
+    setIsCodigoColumnFrozen((prev) => !prev)
+  }, [])
+
   const header = (
     <div className="users-header">
       <div className="users-header__left">
@@ -1280,16 +1308,19 @@ function InventarioTable({ token, user, permissionIndex }) {
         )}
 
         <DataTable
+          key={tableResetKey}
           value={filteredRows}
           dataKey="id"
           header={header}
           className={`users-datatable inventario-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}${isGlobalSearchPending ? ' inventario-datatable--pending' : ''}`}
+          stateStorage="local"
+          stateKey="inventario-table-state"
           tableStyle={{ width: '100%' }}
           showGridlines
           size="small"
           scrollable
           scrollHeight="flex"
-          frozenWidth="190px"
+          frozenWidth={isCodigoColumnFrozen ? 240 : undefined}
           lazy
           paginator
           first={pageFirst}
@@ -1324,8 +1355,8 @@ function InventarioTable({ token, user, permissionIndex }) {
         >
           <Column
             selectionMode="multiple"
-            frozen
-            headerClassName="row-selection-column"
+            frozen={isCodigoColumnFrozen}
+            headerClassName="row-selection-column row-selection-column--header"
             bodyClassName="row-selection-column"
             style={selectionColStyle}
             headerStyle={selectionColStyle}
@@ -1343,11 +1374,31 @@ function InventarioTable({ token, user, permissionIndex }) {
             let showFilterMatchModes = true
             let showFilterOperator = true
             let filterElement = undefined
+            const isCodigoColumn = column.nombrevar === 'codigo'
+            let columnHeader = column.header
 
             switch (column.nombrevar) {
               case 'codigo':
                 bodyTemplate = (rowData) => codigoBodyTemplate(rowData)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
+                columnHeader = (
+                  <div className="codigo-column-header">
+                    <span className="codigo-column-header__label">{column.header}</span>
+                    <button
+                      type="button"
+                      className={`codigo-column-header-btn${
+                        isCodigoColumnFrozen ? ' codigo-column-header-btn--active' : ''
+                      }`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        toggleCodigoColumnFrozen()
+                      }}
+                      title={isCodigoColumnFrozen ? 'Desanclar columna de código' : 'Anclar columna de código'}
+                    >
+                      <i className="pi pi-thumbtack" />
+                    </button>
+                  </div>
+                )
                 break
               case 'nombre':
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
@@ -1399,15 +1450,17 @@ function InventarioTable({ token, user, permissionIndex }) {
                 break
             }
 
+            const columnClassNames = [className]
+            if (isCodigoColumn) columnClassNames.push('column-codigo-column')
+
             return (
               <Column
                 key={column.nombrevar}
                 field={column.nombrevar}
-                header={column.header}
+                header={columnHeader}
                 body={bodyTemplate}
                 sortable
                 reorderable
-                frozen={column.nombrevar === 'codigo'}
                 filter={enableFilter}
                 filterField={column.nombrevar}
                 filterPlaceholder={column.filterPlaceholder}
@@ -1418,7 +1471,10 @@ function InventarioTable({ token, user, permissionIndex }) {
                 filterApply={enableFilter ? filterApplyTemplate : undefined}
                 filterClear={enableFilter ? filterClearTemplate : undefined}
                 filterElement={filterElement}
-                className={className}
+                className={columnClassNames.join(' ')}
+                headerClassName={isCodigoColumn ? 'column-codigo-header' : undefined}
+                style={isCodigoColumn ? { width: '200px', minWidth: '200px', maxWidth: '200px' } : undefined}
+                frozen={isCodigoColumn && isCodigoColumnFrozen}
               />
             )
           })}
@@ -1427,6 +1483,9 @@ function InventarioTable({ token, user, permissionIndex }) {
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
+            <button className="rounded-icon-btn" type="button" onClick={handleResetTable} title="Restablecer tabla" style={{ width: 28, height: 28 }}>
+              <i className="pi pi-refresh" />
+            </button>
           </div>
 
           {visibleColumnsData.map((col) => (
