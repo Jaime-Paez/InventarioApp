@@ -76,6 +76,17 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
+const preventHeaderSort = (e) => {
+  if (
+    e.target.closest('th.p-sortable-column') &&
+    !e.target.closest('.p-sortable-column-icon') &&
+    !e.target.closest('.p-column-filter-menu-button') &&
+    !e.target.closest('.p-column-resizer')
+  ) {
+    e.stopPropagation()
+  }
+}
+
 function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '' }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
@@ -847,8 +858,37 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   // ---------------- Row click -> detalles ----------------
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const clickTimerRef = useRef(null)
 
   const handleRowClick = (event) => {
+    const target = event?.originalEvent?.target
+    if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
+
+    const rowData = event?.data
+    if (!rowData) return
+    const id = normId(rowData?.id)
+    if (!id) return
+
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null
+      setSelectedRows((prev) => {
+        const prevMap = new Map((prev || []).map((r) => [normId(r?.id), r]))
+        if (prevMap.has(id)) {
+          prevMap.delete(id)
+        } else {
+          prevMap.set(id, rowData)
+        }
+        return Array.from(prevMap.values())
+      })
+    }, 220)
+  }
+
+  const handleRowDoubleClick = (event) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
     const target = event?.originalEvent?.target
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
 
@@ -1407,7 +1447,9 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           key={tableResetKey}
           stateStorage="local"
           stateKey="solicitudes-table-state"
+          pt={{ root: { onClickCapture: preventHeaderSort } }}
           onRowClick={handleRowClick}
+          onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
           selectionMode="multiple"
           selection={selectedRows}
@@ -1450,6 +1492,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
             bodyStyle={selectionColStyle}
             exportable={false}
             reorderable={false}
+            resizable={false}
           />
 
           {selectedColumns.map((column, index) => {
@@ -1498,6 +1541,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
                 filterClear={filterClearTemplate}
                 filterElement={filterElement}
                 className={className}
+                style={{ minWidth: '90px' }}
               />
             )
           })}

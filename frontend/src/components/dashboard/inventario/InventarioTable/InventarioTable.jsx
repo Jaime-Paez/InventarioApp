@@ -107,6 +107,17 @@ const INVENTARIO_ORDERING_MAP = {
   total_general: 'total_general',
 }
 
+const preventHeaderSort = (e) => {
+  if (
+    e.target.closest('th.p-sortable-column') &&
+    !e.target.closest('.p-sortable-column-icon') &&
+    !e.target.closest('.p-column-filter-menu-button') &&
+    !e.target.closest('.p-column-resizer')
+  ) {
+    e.stopPropagation()
+  }
+}
+
 function InventarioTable({ token, user, permissionIndex }) {
   const toast = useRef(null)
   const [loading, setLoading] = useState(false)
@@ -1315,6 +1326,7 @@ function InventarioTable({ token, user, permissionIndex }) {
           className={`users-datatable inventario-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}${isGlobalSearchPending ? ' inventario-datatable--pending' : ''}`}
           stateStorage="local"
           stateKey="inventario-table-state"
+          pt={{ root: { onClickCapture: preventHeaderSort } }}
           tableStyle={{ width: '100%' }}
           showGridlines
           size="small"
@@ -1473,7 +1485,7 @@ function InventarioTable({ token, user, permissionIndex }) {
                 filterElement={filterElement}
                 className={columnClassNames.join(' ')}
                 headerClassName={isCodigoColumn ? 'column-codigo-header' : undefined}
-                style={isCodigoColumn ? { width: '200px', minWidth: '200px', maxWidth: '200px' } : undefined}
+                style={isCodigoColumn ? { width: '200px', minWidth: '200px', maxWidth: '200px' } : { minWidth: '90px' }}
                 frozen={isCodigoColumn && isCodigoColumnFrozen}
               />
             )

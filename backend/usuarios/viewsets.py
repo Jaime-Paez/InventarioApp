@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Q
 from inventario.models import Sucursal
@@ -9,6 +10,8 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from auditoria.models import RegistroAuditoria
 
 from .models import Rol, RolPermiso, UsuarioSucursal
 from .permissions import UsuariosModulePermission
@@ -124,10 +127,25 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             or username == "administrador@mail.com"
         )
 
+    @staticmethod
+    def _usuario_tiene_registros_auditoria(instance):
+        content_type = ContentType.objects.get_for_model(instance)
+        return RegistroAuditoria.objects.filter(
+            Q(usuario=instance)
+            | Q(
+                content_type=content_type,
+                object_id=str(instance.pk),
+            ),
+        ).exists()
+
     @transaction.atomic
     def perform_destroy(self, instance):
         if self._is_protected_admin_user(instance):
             raise PermissionDenied("No se puede eliminar el usuario Administrador.")
+        if self._usuario_tiene_registros_auditoria(instance):
+            raise PermissionDenied(
+                "No se puede eliminar un usuario que tenga registros en auditoría."
+            )
         email = instance.email
         instance.delete()
         remove_personalized_role_for_email(email)

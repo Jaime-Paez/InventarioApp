@@ -548,12 +548,15 @@ function EntradaDetails({
   const isRejectedSolicitudRibbon = isTraslado && estadoMatchesRejected
   const isAcceptedSolicitudRibbon = isTraslado && estadoMatchesAccepted
   const isSentSolicitudRibbon = isSentSolicitud
+  const canEditTrasladoState = !isTraslado || estadoMatchesPending
   const isReadOnlyMode = Boolean(
     readOnly ||
       (hasPreviewData && !isPreviewPendingSolicitud) ||
-      isSentSolicitud
+      isSentSolicitud ||
+      (isTraslado && !estadoMatchesPending)
   )
-  const effectiveAllowEdit = (allowEdit || isPreviewPendingSolicitud) && !isSentSolicitud
+  const effectiveAllowEdit =
+    canEditTrasladoState && (allowEdit || isPreviewPendingSolicitud) && !isSentSolicitud
   const lineItemsReadOnly = Boolean(isReadOnlyMode || !isEditing)
   const showDetailActions = !isReadOnlyMode && !lineItemsReadOnly
   const isPendingSolicitudEntry = hasPreviewData && isPreviewPendingSolicitud

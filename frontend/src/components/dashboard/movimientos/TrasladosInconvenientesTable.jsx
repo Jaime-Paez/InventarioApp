@@ -143,11 +143,25 @@ const selectionColStyle = {
   padding: 0,
 }
 
+const preventHeaderSort = (e) => {
+  if (
+    e.target.closest('th.p-sortable-column') &&
+    !e.target.closest('.p-sortable-column-icon') &&
+    !e.target.closest('.p-column-filter-menu-button') &&
+    !e.target.closest('.p-column-resizer')
+  ) {
+    e.stopPropagation()
+  }
+}
+
 function TrasladosInconvenientesTable({ token, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const [tableResetKey, setTableResetKey] = useState(0)
   const quickSearchInputRef = useRef(null)
+  const clickTimerRef = useRef(null)
+  const pendingClickRowRef = useRef(null)
+  const pendingClickCountRef = useRef(0)
 
   const canRead = moduleActions?.puede_leer ?? true
   const canUpdate = moduleActions?.puede_actualizar ?? true
@@ -648,6 +662,28 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
     [resetResolverState]
   )
 
+  const ensureRowSelected = useCallback((rowData) => {
+    if (!rowData) return
+    const id = normalizeId(rowData?.id)
+    if (!id) return
+    setSelectedRows((prev) => {
+      const map = new Map((prev || []).map((row) => [normalizeId(row?.id), row]))
+      map.set(id, rowData)
+      return Array.from(map.values())
+    })
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current)
+        clickTimerRef.current = null
+      }
+      pendingClickCountRef.current = 0
+      pendingClickRowRef.current = null
+    }
+  }, [])
+
   const closeDetails = useCallback(() => {
     if (resolverSubmitting) return
     modalDrag.current.active = false
@@ -857,6 +893,52 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
 
   const handleRowClick = useCallback(
     (event) => {
+      const target = event?.originalEvent?.target
+      if (
+        target?.closest?.('.p-checkbox') ||
+        target?.closest?.('.row-selection-column')
+      ) {
+        return
+      }
+
+    const rowData = event?.data
+    if (!rowData) return
+    const id = normalizeId(rowData?.id)
+    if (!id) return
+    const isSameRow = pendingClickRowRef.current === id
+    pendingClickRowRef.current = id
+    pendingClickCountRef.current = isSameRow ? pendingClickCountRef.current + 1 : 1
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current)
+    }
+    clickTimerRef.current = setTimeout(() => {
+      const clickCount = pendingClickCountRef.current
+      pendingClickCountRef.current = 0
+      pendingClickRowRef.current = null
+      clickTimerRef.current = null
+      if (clickCount > 1) return
+      setSelectedRows((prev) => {
+        const prevMap = new Map((prev || []).map((row) => [normalizeId(row?.id), row]))
+        if (prevMap.has(id)) {
+          prevMap.delete(id)
+        } else {
+          prevMap.set(id, rowData)
+        }
+        return Array.from(prevMap.values())
+      })
+    }, 220)
+    },
+    []
+  )
+
+  const handleRowDoubleClick = useCallback(
+    (event) => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current)
+        clickTimerRef.current = null
+      }
+      pendingClickCountRef.current = 0
+      pendingClickRowRef.current = null
       const target = event?.originalEvent?.target
       if (
         target?.closest?.('.p-checkbox') ||
@@ -1366,6 +1448,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
             'created_at_label',
           ]}
           onRowClick={handleRowClick}
+          onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => {
             const classes = []
             if (selectedRowIds.has(normalizeId(rowData?.id))) {
@@ -1387,6 +1470,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
           columnResizeMode="fit"
           stateStorage="local"
           stateKey="traslados-inconvenientes-table-state"
+          pt={{ root: { onClickCapture: preventHeaderSort } }}
         >
           <Column
             selectionMode="multiple"
@@ -1397,6 +1481,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
             bodyStyle={selectionColStyle}
             exportable={false}
             reorderable={false}
+            resizable={false}
           />
 
           {selectedColumns.map((column) => {
@@ -1426,6 +1511,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
                 filterPlaceholder={column.filterPlaceholder}
                 className={className}
                 headerClassName={className}
+                style={{ minWidth: '90px' }}
               />
             )
           })}

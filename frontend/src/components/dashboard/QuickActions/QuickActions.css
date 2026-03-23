@@ -284,6 +284,19 @@
   opacity: 0.8;
 }
 
+.quick-actions__receive-dialog.dark .quick-actions__receive-item-head span,
+.quick-actions__receive-dialog.dark .quick-actions__receive-item-expected {
+  color: var(--color-text-title-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-grid label span {
+  color: var(--color-text-title-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-item-expected strong {
+  color: var(--color-text-title-dark);
+}
+
 /* -------------------------------------------------------
    BOTONES (tamaño EXACTO como tú lo tenías)
 ------------------------------------------------------- */

@@ -828,6 +828,11 @@
   color: color-mix(in srgb, currentColor 86%, transparent);
 }
 
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__history-item p,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__history-item p > span {
+  color: var(--color-text-dark);
+}
+
 .recordatorios-popup__history-item p > span {
   font-weight: 600;
 }

@@ -63,6 +63,17 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
+const preventHeaderSort = (e) => {
+  if (
+    e.target.closest('th.p-sortable-column') &&
+    !e.target.closest('.p-sortable-column-icon') &&
+    !e.target.closest('.p-column-filter-menu-button') &&
+    !e.target.closest('.p-column-resizer')
+  ) {
+    e.stopPropagation()
+  }
+}
+
 function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
@@ -1448,6 +1459,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
           className={`users-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
           stateStorage="local"
           stateKey="productos-table-state"
+          pt={{ root: { onClickCapture: preventHeaderSort } }}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
@@ -1530,6 +1542,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
             bodyStyle={selectionColStyle}
             exportable={false}
             reorderable={false}
+            resizable={false}
           />
 
           {selectedColumns.map((column, index) => {
@@ -1605,6 +1618,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                 filterClear={enableFilter ? filterClearTemplate : undefined}
                 filterElement={filterElement}
                 className={className}
+                style={{ minWidth: '90px' }}
               />
             )
           })}

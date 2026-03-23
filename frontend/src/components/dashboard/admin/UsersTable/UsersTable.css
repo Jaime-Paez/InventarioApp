@@ -560,14 +560,22 @@
   border-color: var(--color-primary-strong);
 }
 
+/* Sort only on icon click — default cursor on header, pointer only on sort icon */
+.users-datatable th.p-sortable-column {
+  cursor: default !important;
+}
+.users-datatable th.p-sortable-column .p-sortable-column-icon {
+  cursor: pointer !important;
+}
+
 /* Column widths */
 .column-max-min-width {
-  min-width: 40px;
+  min-width: 80px;
   max-width: 260px;
 }
 
 .column-max-min-width--small {
-  min-width: 40px;
+  min-width: 80px;
   text-align: center;
 }
 

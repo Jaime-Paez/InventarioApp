@@ -3622,14 +3622,14 @@ function QuickActions({
 
       {isReceiveShipmentModalOpen && (
         <div
-          className="quick-actions__receive-overlay"
+          className={`quick-actions__receive-overlay ${darkMode ? 'dark' : 'light'}`}
           onMouseDown={() => {
             if (receiveShipmentSubmitting) return
             closeReceiveShipmentModal()
           }}
         >
           <div
-            className="quick-actions__receive-dialog"
+            className={`quick-actions__receive-dialog ${darkMode ? 'dark' : 'light'}`}
             onMouseDown={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"

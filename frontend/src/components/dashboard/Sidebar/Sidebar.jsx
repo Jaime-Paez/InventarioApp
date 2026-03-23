@@ -80,10 +80,9 @@ function Sidebar({
             const isGroup = Boolean(item.children)
             const childActive =
               isGroup &&
-              item.label !== 'Sucursales' &&
               item.children?.some((child) => child.label === activeItem)
             const isOpenGroup = isGroup && openGroups[item.label]
-            const isActive = activeItem === item.label
+            const isActive = !isGroup && activeItem === item.label
             const hasOpenTab = openTabSet.has(item.label)
             const hasOpenChild =
               isGroup && item.children?.some((child) => openTabSet.has(child.label))

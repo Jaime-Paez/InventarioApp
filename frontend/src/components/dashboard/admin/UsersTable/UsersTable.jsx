@@ -33,6 +33,17 @@ const isCheckboxSelection = (event) => {
   )
 }
 
+const preventHeaderSort = (e) => {
+  if (
+    e.target.closest('th.p-sortable-column') &&
+    !e.target.closest('.p-sortable-column-icon') &&
+    !e.target.closest('.p-column-filter-menu-button') &&
+    !e.target.closest('.p-column-resizer')
+  ) {
+    e.stopPropagation()
+  }
+}
+
 function UsersTable({
   token,
   onSelect,
@@ -919,6 +930,7 @@ function UsersTable({
           key={tableResetKey}
           stateStorage="local"
           stateKey="usuarios-table-state"
+          pt={{ root: { onClickCapture: preventHeaderSort } }}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
@@ -944,6 +956,7 @@ function UsersTable({
             bodyStyle={selectionColStyle}
             exportable={false}
             reorderable={false}
+            resizable={false}
           />
 
           {selectedColumns.map((column, index) => {
@@ -993,6 +1006,7 @@ function UsersTable({
                 filterElement={filterElement}
                 showFilterMatchModes={showFilterMatchModes}
                 showFilterOperator={showFilterOperator}
+                style={{ minWidth: '90px' }}
               />
             )
           })}

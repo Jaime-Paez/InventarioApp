@@ -165,6 +165,17 @@ const isCheckboxSelection = (event) => {
   )
 }
 
+const preventHeaderSort = (e) => {
+  if (
+    e.target.closest('th.p-sortable-column') &&
+    !e.target.closest('.p-sortable-column-icon') &&
+    !e.target.closest('.p-column-filter-menu-button') &&
+    !e.target.closest('.p-column-resizer')
+  ) {
+    e.stopPropagation()
+  }
+}
+
 function EntradasTable({
   token,
   user,
@@ -188,6 +199,9 @@ function EntradasTable({
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
+  const clickTimerRef = useRef(null)
+  const pendingClickRowRef = useRef(null)
+  const pendingClickCountRef = useRef(0)
 
   const [movimientos, setMovimientos] = useState([])
   const [totalRecords, setTotalRecords] = useState(0)
@@ -787,23 +801,71 @@ function EntradasTable({
     return 'column-max-min-width'
   }
 
+  const selectRowFromData = useCallback((rowData) => {
+    if (!rowData) return
+    if (rowData?.es_solicitud_traslado) {
+      setSelectedSolicitudPreview(rowData)
+      setSelectedId(null)
+      return
+    }
+    setSelectedSolicitudPreview(null)
+    setSelectedId(rowData?.id ?? null)
+  }, [])
+
   const handleRowClick = (event) => {
     const target = event?.originalEvent?.target
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
 
-    if (event?.data?.es_solicitud_traslado) {
-      setSelectedSolicitudPreview(event?.data || null)
-      setSelectedId(null)
-      setShowDetailsModal(true)
-      return
-    }
+    const rowData = event?.data
+    if (!rowData) return
+    const id = normId(rowData?.id)
+    if (!id) return
+    const isSameRow = pendingClickRowRef.current === id
+    pendingClickRowRef.current = id
+    pendingClickCountRef.current = isSameRow ? pendingClickCountRef.current + 1 : 1
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = setTimeout(() => {
+      const clickCount = pendingClickCountRef.current
+      pendingClickCountRef.current = 0
+      pendingClickRowRef.current = null
+      clickTimerRef.current = null
+      if (clickCount > 1) return
+      setSelectedRows((prev) => {
+        const prevMap = new Map((prev || []).map((row) => [normId(row?.id), row]))
+        if (prevMap.has(id)) {
+          prevMap.delete(id)
+        } else {
+          prevMap.set(id, rowData)
+        }
+        return Array.from(prevMap.values())
+      })
+    }, 220)
+  }
 
-    setSelectedSolicitudPreview(null)
-    const id = event?.data?.id
-    if (id == null) return
-    setSelectedId(id)
+  const handleRowDoubleClick = (event) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+    pendingClickCountRef.current = 0
+    pendingClickRowRef.current = null
+    const target = event?.originalEvent?.target
+    if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
+    const rowData = event?.data
+    if (!rowData) return
+    selectRowFromData(rowData)
     setShowDetailsModal(true)
   }
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current)
+      }
+      pendingClickCountRef.current = 0
+      pendingClickRowRef.current = null
+    }
+  }, [])
 
   const handleCreated = (createdPayload) => {
     setCreatePrefillTransferRequest(null)
@@ -1182,6 +1244,7 @@ function EntradasTable({
           key={tableResetKey}
           stateStorage="local"
           stateKey="entradas-table-state"
+          pt={{ root: { onClickCapture: preventHeaderSort } }}
           filters={filters}
           onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
@@ -1196,6 +1259,7 @@ function EntradasTable({
             'funcional_label',
           ]}
           onRowClick={handleRowClick}
+          onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => {
             const classes = []
             const normalizedEstado = normalizeValue(rowData?.estado_nombre)
@@ -1236,6 +1300,7 @@ function EntradasTable({
             bodyStyle={selectionColStyle}
             exportable={false}
             reorderable={false}
+            resizable={false}
           />
 
           {selectedColumns.map((column) => {
@@ -1254,6 +1319,7 @@ function EntradasTable({
                 filter
                 filterPlaceholder={column.filterPlaceholder}
                 className={columnClassName(field)}
+                style={{ minWidth: '90px' }}
               />
             )
           })}

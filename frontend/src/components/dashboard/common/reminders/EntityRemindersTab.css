@@ -215,9 +215,98 @@
   padding: 12px;
 }
 
+.dashboard-shell.dark .entity-reminders__pane--list {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-dark);
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__pane--form {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__form {
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__form textarea {
+  background: color-mix(in srgb, var(--table-color-dark) 80%, #000 20%);
+  border-color: var(--color-border-dark);
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__form textarea::placeholder {
+  color: color-mix(in srgb, var(--color-text-title-dark) 42%, transparent);
+}
+
+.dashboard-shell.dark .entity-reminders__recipient-list {
+  border-color: var(--color-border-dark);
+  background: color-mix(in srgb, var(--table-color-dark) 80%, #000 20%);
+}
+
+.dashboard-shell.dark .entity-reminders__recipient-item + .entity-reminders__recipient-item {
+  border-top-color: var(--color-border-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__recipient-item strong {
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__recipients-head h5,
+.dashboard-shell.dark .entity-reminders__helper {
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__recipient-item small {
+  color: color-mix(in srgb, var(--color-text-title-dark) 68%, transparent);
+}
+
+.dashboard-shell.dark .entity-reminders__form input[type='date']::-webkit-calendar-picker-indicator,
+.dashboard-shell.dark .entity-reminders__form input[type='time']::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
+.dashboard-shell.dark .entity-reminders__recipient-item input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  border: 2px solid #6b6b72;
+  border-radius: 2px;
+  background: #2e2e31;
+  cursor: pointer;
+  position: relative;
+  margin-top: 1px;
+}
+
+.dashboard-shell.dark .entity-reminders__recipient-item input[type='checkbox']:checked {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__recipient-item input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0px;
+  width: 5px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+
 .entity-reminders__transfer-history {
   padding: 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history {
+  border-bottom-color: var(--color-border-dark);
 }
 
 .entity-reminders__transfer-head {
@@ -238,6 +327,12 @@
   color: color-mix(in srgb, currentColor 68%, transparent);
 }
 
+.dashboard-shell.dark .entity-reminders__transfer-head h5,
+.dashboard-shell.dark .entity-reminders__transfer-head span,
+.dashboard-shell.dark .entity-reminders__transfer-description {
+  color: var(--color-text-title-dark);
+}
+
 .entity-reminders__transfer-list {
   list-style: none;
   margin: 0;
@@ -252,6 +347,16 @@
   border-radius: 10px;
   padding: 8px 10px;
   background: color-mix(in srgb, var(--color-surface) 93%, transparent);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-item {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-dark);
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-meta {
+  color: var(--color-text-title-dark);
 }
 
 .entity-reminders__transfer-meta {
@@ -328,6 +433,12 @@
   text-overflow: ellipsis;
 }
 
+.dashboard-shell.dark .entity-reminders__table th,
+.dashboard-shell.dark .entity-reminders__table td {
+  border-color: var(--color-border-dark);
+  color: var(--color-text-title-dark);
+}
+
 .entity-reminders__table th:nth-child(1),
 .entity-reminders__table td:nth-child(1) {
   width: 18%;
@@ -371,6 +482,10 @@
   font-size: 11px;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+}
+
+.dashboard-shell.dark .entity-reminders__table th {
+  background: var(--table-color-dark);
 }
 
 .entity-reminders__table tbody tr:last-child td {
