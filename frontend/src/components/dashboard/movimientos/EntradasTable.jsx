@@ -19,6 +19,7 @@ import {
 } from '../common/reminders/remindersStorage'
 import { API_URL, authFetch } from '../../../utils/api'
 import { clearTableLayouts } from '../../../utils/tableLayoutSync'
+import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -169,8 +170,8 @@ const preventHeaderSort = (e) => {
   if (
     e.target.closest('th.p-sortable-column') &&
     !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-filter-menu-button') &&
-    !e.target.closest('.p-column-resizer')
+    !e.target.closest('.p-column-resizer') &&
+    !e.target.closest('button')
   ) {
     e.stopPropagation()
   }
@@ -187,6 +188,9 @@ function EntradasTable({
 }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const tableWrapperRef = useRef(null)
+  const _widthsClearedRef = useRef(null)
+  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('entradas-table-state') }
   const [tableResetKey, setTableResetKey] = useState(0)
   const preloadEntradaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
@@ -657,6 +661,10 @@ function EntradasTable({
       globalSearchValue: '',
     })
   }
+
+  const autoFitColumns = useCallback(() => {
+    autoFitTableColumns(tableWrapperRef.current, 'entradas-table-state')
+  }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('entradas-table-columns')
@@ -1154,6 +1162,15 @@ function EntradasTable({
           <i className="pi pi-filter-slash" />
         </button>
 
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={autoFitColumns}
+          title="Ajustar columnas"
+        >
+          <i className="pi pi-arrows-h" />
+        </button>
+
         <button className="rounded-icon-btn" type="button" onClick={(event) => opColumns.current?.toggle(event)} title="Campos">
           <i className="pi pi-sliders-h" />
         </button>
@@ -1198,7 +1215,7 @@ function EntradasTable({
         </div>
       </div>
 
-      <div className="users-table users-table--card">
+      <div className="users-table users-table--card" ref={tableWrapperRef}>
         {loading && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
@@ -1240,7 +1257,7 @@ function EntradasTable({
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
-          columnResizeMode="fit"
+          columnResizeMode="expand"
           key={tableResetKey}
           stateStorage="local"
           stateKey="entradas-table-state"
@@ -1319,7 +1336,7 @@ function EntradasTable({
                 filter
                 filterPlaceholder={column.filterPlaceholder}
                 className={columnClassName(field)}
-                style={{ minWidth: '90px' }}
+                style={{ minWidth: '32px' }}
               />
             )
           })}

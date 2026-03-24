@@ -10,6 +10,7 @@ import './AuditoriaTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
 
 const ACCION_COLORS = {
   creacion: '#22c55e',
@@ -48,6 +49,9 @@ const columnsData = [
 function AuditoriaTable({ token }) {
   const toast = useRef(null)
   const opRef = useRef(null)
+  const tableWrapperRef = useRef(null)
+  const _widthsClearedRef = useRef(null)
+  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('auditoria-table-state') }
   const [tableResetKey, setTableResetKey] = useState(0)
   const selectedColumnsRef = useRef(columnsData)
 
@@ -182,6 +186,10 @@ function AuditoriaTable({ token }) {
     setPage(1)
     setFirst(0)
   }
+
+  const autoFitColumns = useCallback(() => {
+    autoFitTableColumns(tableWrapperRef.current, 'auditoria-table-state')
+  }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('auditoria-table-columns')
@@ -365,6 +373,15 @@ function AuditoriaTable({ token }) {
         <button
           className="rounded-icon-btn"
           type="button"
+          onClick={autoFitColumns}
+          title="Ajustar columnas"
+        >
+          <i className="pi pi-arrows-h" />
+        </button>
+
+        <button
+          className="rounded-icon-btn"
+          type="button"
           onClick={(e) => opRef.current?.toggle(e)}
           title="Campos"
         >
@@ -392,7 +409,7 @@ function AuditoriaTable({ token }) {
         </div>
       </div>
 
-      <div className="users-table users-table--card">
+      <div className="users-table users-table--card" ref={tableWrapperRef}>
         {(loading || isRefreshing) && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />

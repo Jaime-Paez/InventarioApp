@@ -1,0 +1,264 @@
+.inventario-v2__actions {
+  flex-wrap: wrap;
+}
+
+.inventario-v2__branch-filter {
+  position: relative;
+}
+
+.inventario-v2__branch-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 6px 12px;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  min-height: 28px;
+}
+
+.inventario-v2__branch-trigger i {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.dashboard-shell.dark .inventario-v2__branch-trigger {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: var(--color-text-dark);
+}
+
+.inventario-v2__branch-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 220px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-panel);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 30;
+}
+
+.dashboard-shell.dark .inventario-v2__branch-menu {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.inventario-v2__branch-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+}
+
+.inventario-v2__branch-option:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.dashboard-shell.dark .inventario-v2__branch-option {
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inventario-v2__branch-option:hover {
+  background: color-mix(in srgb, var(--color-primary-dark) 16%, transparent);
+}
+
+.inventario-v2__branch-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary-dark);
+}
+
+.inventario-v2__branch-option--all {
+  font-weight: 700;
+}
+
+.inventario-v2__qty-col {
+  text-align: center;
+}
+
+.inventario-v2__quantity {
+  display: inline-flex;
+  min-width: 24px;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.inventario-v2__quantity--empty {
+  color: #dc2626;
+}
+
+.dashboard-shell.dark .inventario-v2__quantity {
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inventario-v2__quantity--empty {
+  color: #f87171;
+}
+
+.inventario-v2__row {
+  cursor: pointer;
+}
+
+.inventario-v2-datatable.inventario-v2-datatable--pending .p-datatable-scrollable-body {
+  position: relative;
+  pointer-events: none;
+}
+
+.inventario-v2-datatable.inventario-v2-datatable--pending .p-datatable-scrollable-body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--table-color) 86%, transparent);
+  z-index: 2;
+}
+
+.dashboard-shell.dark .inventario-v2-datatable.inventario-v2-datatable--pending .p-datatable-scrollable-body::before {
+  background: color-mix(in srgb, var(--table-color-dark) 86%, transparent);
+}
+
+.inventario-v2-datatable.inventario-v2-datatable--pending .p-datatable-scrollable-body::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  margin-left: -16px;
+  border-radius: 50%;
+  border: 3px solid var(--color-text-dark);
+  border-top-color: var(--color-primary);
+  animation: spin 0.9s linear infinite;
+  z-index: 3;
+}
+
+/* Fix: frozen columns (position:sticky) need an opaque background and z-index
+   so scrolling content cannot bleed through or appear on top.
+   PrimeReact 10 sets z-index:1 on th.p-frozen-column but NOT on td, and sets
+   "background: inherit" which picks up any semi-transparent row background. */
+.inventario-v2-datatable .p-datatable-tbody > tr > td.p-frozen-column {
+  z-index: 1;
+  background-color: var(--table-color);
+}
+
+.inventario-v2-datatable .p-datatable-thead > tr > th.p-frozen-column {
+  background-color: var(--table-color);
+}
+
+/* Hover: --table-color-hover is semi-transparent (#00457050).
+   background-color gives the solid base; background-image layers the tint on top. */
+.inventario-v2-datatable .p-datatable-tbody > tr:hover > td.p-frozen-column {
+  z-index: 1;
+  background-color: var(--table-color);
+  background-image: linear-gradient(var(--table-color-hover), var(--table-color-hover));
+}
+
+.inventario-v2-datatable .p-datatable-tbody > tr.p-highlight > td.p-frozen-column {
+  background-color: var(--table-color-selected);
+  background-image: none;
+}
+
+.inventario-v2-datatable .p-datatable-tbody > tr.p-highlight:hover > td.p-frozen-column {
+  background-color: var(--table-color-selected-hover);
+  background-image: none;
+}
+
+/* Dark mode — hover colors are already opaque so no layering trick needed */
+.dashboard-shell.dark .inventario-v2-datatable .p-frozen-column {
+  background-color: var(--table-color-dark);
+}
+
+.dashboard-shell.dark .inventario-v2-datatable .p-datatable-tbody > tr:hover > td.p-frozen-column {
+  background-color: var(--table-color-dark-hover);
+  background-image: none;
+}
+
+.dashboard-shell.dark .inventario-v2-datatable .p-datatable-tbody > tr.p-highlight > td.p-frozen-column {
+  background-color: var(--table-color-selected-dark);
+  background-image: none;
+}
+
+.dashboard-shell.dark .inventario-v2-datatable .p-datatable-tbody > tr.p-highlight:hover > td.p-frozen-column {
+  background-color: var(--table-color-selected-hover-dark);
+  background-image: none;
+}
+
+.inventario-v2-datatable th.row-selection-column,
+.inventario-v2-datatable td.row-selection-column {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 0 !important;
+  text-align: center;
+}
+
+.inventario-v2-datatable .row-selection-column .p-checkbox {
+  margin: 0 !important;
+}
+
+.codigo-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.codigo-column-header__label {
+  font-weight: 700;
+}
+
+.codigo-column-header-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.codigo-column-header-btn:hover {
+  border-color: var(--color-primary);
+}
+
+.codigo-column-header-btn--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-button-primary);
+}
+
+.dashboard-shell.dark .codigo-column-header-btn,
+.dashboard-shell.dark .codigo-column-header-btn:hover {
+  border-color: color-mix(in srgb, #ffffff 65%, var(--color-border));
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  .inventario-v2-datatable th.row-selection-column,
+  .inventario-v2-datatable td.row-selection-column {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+  }
+}

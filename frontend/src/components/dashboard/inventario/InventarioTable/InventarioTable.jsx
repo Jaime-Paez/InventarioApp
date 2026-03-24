@@ -22,6 +22,7 @@ import {
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const parseBranchMetadata = (payload) => {
@@ -111,8 +112,8 @@ const preventHeaderSort = (e) => {
   if (
     e.target.closest('th.p-sortable-column') &&
     !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-filter-menu-button') &&
-    !e.target.closest('.p-column-resizer')
+    !e.target.closest('.p-column-resizer') &&
+    !e.target.closest('button')
   ) {
     e.stopPropagation()
   }
@@ -160,6 +161,9 @@ function InventarioTable({ token, user, permissionIndex }) {
   const [ivaRate, setIvaRate] = useState(DEFAULT_IVA_RATE)
   const [ivaLoading, setIvaLoading] = useState(false)
   const opColumns = useRef(null)
+  const tableWrapperRef = useRef(null)
+  const _widthsClearedRef = useRef(null)
+  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('inventario-table-state') }
   const [tableResetKey, setTableResetKey] = useState(0)
   const didInitialSearchRef = useRef(false)
   const productModuleActions = useMemo(
@@ -654,6 +658,10 @@ function InventarioTable({ token, user, permissionIndex }) {
     })
   }
 
+  const autoFitColumns = useCallback(() => {
+    autoFitTableColumns(tableWrapperRef.current, 'inventario-table-state')
+  }, [])
+
   const handleResetTable = () => {
     localStorage.removeItem('inventario-table-columns')
     localStorage.removeItem('inventario-table-state')
@@ -1118,6 +1126,15 @@ function InventarioTable({ token, user, permissionIndex }) {
           <i className="pi pi-filter-slash" />
         </button>
 
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={autoFitColumns}
+          title="Ajustar columnas"
+        >
+          <i className="pi pi-arrows-h" />
+        </button>
+
         <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Campos">
           <i className="pi pi-sliders-h" />
         </button>
@@ -1302,7 +1319,7 @@ function InventarioTable({ token, user, permissionIndex }) {
         </div>
       </div>
 
-      <div className="users-table users-table--card">
+      <div className="users-table users-table--card" ref={tableWrapperRef}>
         {(loading || isRefreshing) && !isGlobalSearchPending && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
@@ -1332,7 +1349,7 @@ function InventarioTable({ token, user, permissionIndex }) {
           size="small"
           scrollable
           scrollHeight="flex"
-          frozenWidth={isCodigoColumnFrozen ? 240 : undefined}
+          frozenWidth={isCodigoColumnFrozen ? '240px' : '40px'}
           lazy
           paginator
           first={pageFirst}
@@ -1351,7 +1368,7 @@ function InventarioTable({ token, user, permissionIndex }) {
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
-          columnResizeMode="fit"
+          columnResizeMode="expand"
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) =>
@@ -1367,7 +1384,7 @@ function InventarioTable({ token, user, permissionIndex }) {
         >
           <Column
             selectionMode="multiple"
-            frozen={isCodigoColumnFrozen}
+            frozen
             headerClassName="row-selection-column row-selection-column--header"
             bodyClassName="row-selection-column"
             style={selectionColStyle}
@@ -1485,7 +1502,7 @@ function InventarioTable({ token, user, permissionIndex }) {
                 filterElement={filterElement}
                 className={columnClassNames.join(' ')}
                 headerClassName={isCodigoColumn ? 'column-codigo-header' : undefined}
-                style={isCodigoColumn ? { width: '200px', minWidth: '200px', maxWidth: '200px' } : { minWidth: '90px' }}
+                style={{ minWidth: '32px' }}
                 frozen={isCodigoColumn && isCodigoColumnFrozen}
               />
             )

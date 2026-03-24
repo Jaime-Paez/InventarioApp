@@ -16,6 +16,7 @@ import '../../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (v) => (v == null ? null : String(v))
@@ -31,8 +32,8 @@ const preventHeaderSort = (e) => {
   if (
     e.target.closest('th.p-sortable-column') &&
     !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-filter-menu-button') &&
-    !e.target.closest('.p-column-resizer')
+    !e.target.closest('.p-column-resizer') &&
+    !e.target.closest('button')
   ) {
     e.stopPropagation()
   }
@@ -41,6 +42,9 @@ const preventHeaderSort = (e) => {
 function SucursalesTable({ token, onSelect, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const tableWrapperRef = useRef(null)
+  const _widthsClearedRef = useRef(null)
+  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('sucursales-table-state') }
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -157,6 +161,10 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
     setIsRefreshing(true)
     fetchBranches('')
   }
+
+  const autoFitColumns = useCallback(() => {
+    autoFitTableColumns(tableWrapperRef.current, 'sucursales-table-state')
+  }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('sucursales-table-columns')
@@ -583,6 +591,15 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
           <i className="pi pi-filter-slash" />
         </button>
 
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={autoFitColumns}
+          title="Ajustar columnas"
+        >
+          <i className="pi pi-arrows-h" />
+        </button>
+
         <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Campos">
           <i className="pi pi-sliders-h" />
         </button>
@@ -767,7 +784,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
         </div>
       </div>
 
-      <div className="users-table users-table--card">
+      <div className="users-table users-table--card" ref={tableWrapperRef}>
         {!hasSearched ? (
           <div className="users-search-empty-state">
             <div className="users-search-empty-state__content">
@@ -828,7 +845,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
-          columnResizeMode="fit"
+          columnResizeMode="expand"
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
@@ -896,7 +913,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
                 filterClear={filterClearTemplate}
                 filterElement={filterElement}
                 className={className}
-                style={{ minWidth: '90px' }}
+                style={{ minWidth: '32px' }}
               />
             )
           })}

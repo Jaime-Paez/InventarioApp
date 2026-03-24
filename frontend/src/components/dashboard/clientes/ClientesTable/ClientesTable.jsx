@@ -15,6 +15,7 @@ import '../../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -60,8 +61,8 @@ const preventHeaderSort = (e) => {
   if (
     e.target.closest('th.p-sortable-column') &&
     !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-filter-menu-button') &&
-    !e.target.closest('.p-column-resizer')
+    !e.target.closest('.p-column-resizer') &&
+    !e.target.closest('button')
   ) {
     e.stopPropagation()
   }
@@ -70,6 +71,9 @@ const preventHeaderSort = (e) => {
 function ClientesTable({ token, onSelect, user, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const tableWrapperRef = useRef(null)
+  const _widthsClearedRef = useRef(null)
+  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('clientes-table-state') }
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -353,6 +357,10 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
       tableSortOrder: null,
     })
   }
+
+  const autoFitColumns = useCallback(() => {
+    autoFitTableColumns(tableWrapperRef.current, 'clientes-table-state')
+  }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('clientes-table-columns')
@@ -736,6 +744,15 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
 
         <button className="rounded-icon-btn" type="button" onClick={clearFilter} title="Limpiar filtros">
           <i className="pi pi-filter-slash" />
+        </button>
+
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={autoFitColumns}
+          title="Ajustar columnas"
+        >
+          <i className="pi pi-arrows-h" />
         </button>
 
         <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Campos">
@@ -1146,7 +1163,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
         </div>
       </div>
 
-      <div className="users-table users-table--card users-table--compact">
+      <div className="users-table users-table--card users-table--compact" ref={tableWrapperRef}>
         {!hasSearched ? (
           <div className="users-search-empty-state">
             <div className="users-search-empty-state__content">
@@ -1210,7 +1227,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
-          columnResizeMode="fit"
+          columnResizeMode="expand"
           key={tableResetKey}
           stateStorage="local"
           stateKey="clientes-table-state"
@@ -1312,7 +1329,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
                 filterClear={filterClearTemplate}
                 filterElement={filterElement}
                 className={className}
-                style={{ minWidth: '90px' }}
+                style={{ minWidth: '32px' }}
               />
             )
           })}

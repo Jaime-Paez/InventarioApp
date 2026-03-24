@@ -23,6 +23,7 @@ import {
 } from '../../../../utils/primeTableQuery'
 import { moduleHasAnyAction } from '../../menuConfig'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -67,8 +68,8 @@ const preventHeaderSort = (e) => {
   if (
     e.target.closest('th.p-sortable-column') &&
     !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-filter-menu-button') &&
-    !e.target.closest('.p-column-resizer')
+    !e.target.closest('.p-column-resizer') &&
+    !e.target.closest('button')
   ) {
     e.stopPropagation()
   }
@@ -77,6 +78,9 @@ const preventHeaderSort = (e) => {
 function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const tableWrapperRef = useRef(null)
+  const _widthsClearedRef = useRef(null)
+  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('productos-table-state') }
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -128,6 +132,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const [globalFilterValue, setGlobalFilterValue] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [isCodigoColumnFrozen, setIsCodigoColumnFrozen] = useState(false)
 
   const normalizeList = useCallback(
     (list) =>
@@ -459,6 +464,10 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     })
   }
 
+  const autoFitColumns = useCallback(() => {
+    autoFitTableColumns(tableWrapperRef.current, 'productos-table-state')
+  }, [])
+
   const handleResetTable = () => {
     localStorage.removeItem('productos-table-columns')
     localStorage.removeItem('productos-table-state')
@@ -769,6 +778,10 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     }
   }
 
+  const toggleCodigoColumnFrozen = useCallback(() => {
+    setIsCodigoColumnFrozen((prev) => !prev)
+  }, [])
+
   const handleOrderChange = (e) => {
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
@@ -983,6 +996,15 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
 
         <button className="rounded-icon-btn" type="button" onClick={clearFilter} title="Limpiar filtros">
           <i className="pi pi-filter-slash" />
+        </button>
+
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={autoFitColumns}
+          title="Ajustar columnas"
+        >
+          <i className="pi pi-arrows-h" />
         </button>
 
         <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Campos">
@@ -1417,7 +1439,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         </div>
       </div>
 
-      <div className="users-table users-table--card">
+      <div className="users-table users-table--card" ref={tableWrapperRef}>
         {!hasSearched ? (
           <div className="users-search-empty-state">
             <div className="users-search-empty-state__content">
@@ -1466,7 +1488,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
           size="small"
           scrollable
           scrollHeight="flex"
-          frozenWidth="190px"
+          frozenWidth={isCodigoColumnFrozen ? '190px' : '40px'}
           lazy
           paginator
           first={pageFirst}
@@ -1496,7 +1518,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
-          columnResizeMode="fit"
+          columnResizeMode="expand"
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
@@ -1554,11 +1576,29 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
             let showFilterMatchModes = true
             let showFilterOperator = true
             let filterElement = undefined
+            const isCodigoColumn = column.nombrevar === 'codigo'
+            let columnHeader = column.header
 
             switch (column.nombrevar) {
               case 'codigo':
                 bodyTemplate = (rowData) => codigoBodyTemplate(rowData)
                 filterMatchMode = FilterMatchMode.STARTS_WITH
+                columnHeader = (
+                  <div className="codigo-column-header">
+                    <span className="codigo-column-header__label">{column.header}</span>
+                    <button
+                      type="button"
+                      className={`codigo-column-header-btn${isCodigoColumnFrozen ? ' codigo-column-header-btn--active' : ''}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        toggleCodigoColumnFrozen()
+                      }}
+                      title={isCodigoColumnFrozen ? 'Desanclar columna de código' : 'Anclar columna de código'}
+                    >
+                      <i className="pi pi-thumbtack" />
+                    </button>
+                  </div>
+                )
                 break
               case 'nombre':
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
@@ -1603,11 +1643,11 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
               <Column
                 key={index}
                 field={column.nombrevar}
-                header={column.header}
+                header={columnHeader}
                 body={bodyTemplate}
                 sortable
                 reorderable
-                frozen={column.nombrevar === 'codigo'}
+                frozen={isCodigoColumn && isCodigoColumnFrozen}
                 filter={enableFilter}
                 filterPlaceholder={column.filterPlaceholder}
                 filterMatchMode={filterMatchMode}
@@ -1618,7 +1658,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                 filterClear={enableFilter ? filterClearTemplate : undefined}
                 filterElement={filterElement}
                 className={className}
-                style={{ minWidth: '90px' }}
+                style={{ minWidth: '32px' }}
               />
             )
           })}

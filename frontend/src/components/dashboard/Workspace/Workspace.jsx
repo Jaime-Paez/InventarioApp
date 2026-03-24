@@ -12,6 +12,7 @@ import ProductosTable from '../productos/ProductosTable/ProductosTable'
 import SolicitudesTable from '../solicitudes/SolicitudesTable/SolicitudesTable'
 import Configuracion from '../configuracion/Configuracion/Configuracion'
 import InventarioTable from '../inventario/InventarioTable/InventarioTable'
+import InventarioTableV2 from '../inventario/InventarioTableV2/InventarioTableV2'
 import EntradasTable from '../movimientos/EntradasTable'
 import SalidasTable from '../movimientos/SalidasTable'
 import TrasladosInconvenientesTable from '../movimientos/TrasladosInconvenientesTable'
@@ -47,6 +48,7 @@ const MOVIMIENTOS_SCOPE_BY_TAB = {
 }
 const MODULE_KEY_BY_TAB = {
   Inventario: 'inventario',
+  'Inventario V2': 'inventario',
   Administrar: 'usuarios',
   Auditoria: 'usuarios',
   [INVENTORY_REVIEW_TAB]: 'usuarios',
@@ -121,6 +123,7 @@ function Workspace({
 
   const tabComponentMap = {
     Inventario: InventarioTable,
+    'Inventario V2': InventarioTableV2,
     Administrar: UsersTable,
     [INVENTORY_REVIEW_TAB]: RandomInspectionAdminTable,
     [INVENTORY_REVIEW_TAB_LEGACY]: RandomInspectionAdminTable,

@@ -10,6 +10,7 @@ import { Button } from 'primereact/button'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { clearTableLayouts } from '../../../utils/tableLayoutSync'
+import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import useModalAnimation from '../common/useModalAnimation'
 import '../admin/CreateUsuario/CreateUsuario.css'
@@ -147,8 +148,8 @@ const preventHeaderSort = (e) => {
   if (
     e.target.closest('th.p-sortable-column') &&
     !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-filter-menu-button') &&
-    !e.target.closest('.p-column-resizer')
+    !e.target.closest('.p-column-resizer') &&
+    !e.target.closest('button')
   ) {
     e.stopPropagation()
   }
@@ -157,6 +158,9 @@ const preventHeaderSort = (e) => {
 function TrasladosInconvenientesTable({ token, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
+  const tableWrapperRef = useRef(null)
+  const _widthsClearedRef = useRef(null)
+  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('traslados-inconvenientes-table-state') }
   const [tableResetKey, setTableResetKey] = useState(0)
   const quickSearchInputRef = useRef(null)
   const clickTimerRef = useRef(null)
@@ -838,6 +842,10 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
     setGlobalFilterValue('')
   }, [])
 
+  const autoFitColumns = useCallback(() => {
+    autoFitTableColumns(tableWrapperRef.current, 'traslados-inconvenientes-table-state')
+  }, [])
+
   const handleResetTable = () => {
     localStorage.removeItem('traslados-inconvenientes-columns')
     localStorage.removeItem('traslados-inconvenientes-table-state')
@@ -1291,6 +1299,15 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
           <i className="pi pi-filter-slash" />
         </button>
 
+        <button
+          className="rounded-icon-btn"
+          type="button"
+          onClick={autoFitColumns}
+          title="Ajustar columnas"
+        >
+          <i className="pi pi-arrows-h" />
+        </button>
+
         <button className="rounded-icon-btn" type="button" onClick={(event) => opColumns.current?.toggle(event)} title="Campos">
           <i className="pi pi-sliders-h" />
         </button>
@@ -1401,7 +1418,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
         </div>
       </div>
 
-      <div className="users-table users-table--card">
+      <div className="users-table users-table--card" ref={tableWrapperRef}>
         {(loading || isRefreshing) && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
@@ -1467,7 +1484,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
             setSelectedRows(event.value || [])
           }}
           resizableColumns
-          columnResizeMode="fit"
+          columnResizeMode="expand"
           stateStorage="local"
           stateKey="traslados-inconvenientes-table-state"
           pt={{ root: { onClickCapture: preventHeaderSort } }}
@@ -1511,7 +1528,7 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
                 filterPlaceholder={column.filterPlaceholder}
                 className={className}
                 headerClassName={className}
-                style={{ minWidth: '90px' }}
+                style={{ minWidth: '32px' }}
               />
             )
           })}
