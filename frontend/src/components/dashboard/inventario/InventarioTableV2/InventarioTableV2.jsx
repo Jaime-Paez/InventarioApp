@@ -1626,7 +1626,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           size="small"
           scrollable
           scrollHeight="flex"
-          frozenWidth={isCodigoColumnFrozen ? '190px' : '40px'}
+          frozenWidth={isCodigoColumnFrozen ? '190px' : undefined}
           lazy
           paginator
           first={pageFirst}

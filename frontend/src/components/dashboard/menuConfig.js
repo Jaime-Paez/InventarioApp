@@ -19,7 +19,6 @@ import {
 
 export const MENU_STRUCTURE = [
   { label: 'Inventario', icon: Layers, moduleKey: 'inventario' },
-  { label: 'Inventario V2', icon: Layers, moduleKey: 'inventario' },
   {
     label: 'Movimientos',
     icon: ArrowRightLeft,
