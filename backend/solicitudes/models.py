@@ -138,7 +138,10 @@ class Solicitud(models.Model):
     fecha = models.DateField()
     descripcion_general = models.TextField(blank=True)
     comentario = models.TextField(blank=True)
-    chasis = models.CharField(max_length=20, blank=True, default="")
+    marca = models.CharField(max_length=120, blank=True, default="")
+    modelo = models.CharField(max_length=120, blank=True, default="")
+    motor = models.CharField(max_length=120, blank=True, default="")
+    anio = models.CharField(max_length=10, blank=True, default="")
     sucursal = models.ForeignKey(
         "inventario.Sucursal",
         on_delete=models.PROTECT,

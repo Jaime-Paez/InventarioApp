@@ -159,7 +159,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "codigo",
             "descripcion_general",
             "comentario",
-            "chasis",
+            "marca",
+            "modelo",
+            "motor",
+            "anio",
             "cliente__nombres",
             "cliente__apellidos",
             "cliente__cedula_ruc",
@@ -185,7 +188,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         "descripcion_general",
         "producto_conseguido_text",
         "cliente_nombre_text",
-        "chasis",
+        "marca",
+        "modelo",
+        "motor",
+        "anio",
     ]
 
     def destroy(self, request, *args, **kwargs):
@@ -288,7 +294,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 "producto_solicitado_nombre": "producto_referencia_text",
                 "producto_solicitado_descripcion": "producto_solicitado_descripcion_text",
                 "descripcion_general": "descripcion_general",
-                "chasis": "chasis",
+                "marca": "marca",
+                "modelo": "modelo",
+                "motor": "motor",
+                "anio": "anio",
                 "producto_conseguido": "producto_conseguido_text",
                 "cantidad": {"lookup": "cantidad", "type": "number"},
             },
@@ -471,7 +480,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
         fecha = timezone.localdate()
         descripcion_general = str(payload.get("descripcion_general") or "").strip()
-        chasis = str(payload.get("chasis") or "").strip()
+        marca = str(payload.get("marca") or "").strip()
+        modelo = str(payload.get("modelo") or "").strip()
+        motor = str(payload.get("motor") or "").strip()
+        anio = str(payload.get("anio") or "").strip()
 
         cliente, cliente_error = self._resolve_cliente(payload)
         if cliente_error:
@@ -639,7 +651,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         fecha=fecha,
                         descripcion_general=descripcion_general,
                         comentario=item.get("comentario", ""),
-                        chasis=chasis,
+                        marca=marca,
+                        modelo=modelo,
+                        motor=motor,
+                        anio=anio,
                         sucursal=sucursal,
                         cliente=cliente,
                         producto=item["producto"],
@@ -669,7 +684,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         fecha=fecha,
                         descripcion_general=descripcion_general,
                         comentario=item.get("comentario", ""),
-                        chasis=chasis,
+                        marca=marca,
+                        modelo=modelo,
+                        motor=motor,
+                        anio=anio,
                         sucursal=sucursal,
                         cliente=cliente,
                         producto_solicitado=producto_solicitado,
@@ -846,7 +864,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             return
 
         sync_sucursal = "sucursal_id" in payload
-        sync_chasis = "chasis" in payload
+        sync_auto = any(k in payload for k in ("marca", "modelo", "motor", "anio"))
         sync_descripcion_general = "descripcion_general" in payload
         sync_cliente = any(
             key in payload
@@ -861,7 +879,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             )
         )
 
-        if not any((sync_sucursal, sync_chasis, sync_descripcion_general, sync_cliente)):
+        if not any((sync_sucursal, sync_auto, sync_descripcion_general, sync_cliente)):
             return
 
         siblings = (
@@ -879,9 +897,11 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 sibling.codigo = instance.codigo
                 update_fields.append("codigo")
 
-            if sync_chasis and sibling.chasis != instance.chasis:
-                sibling.chasis = instance.chasis
-                update_fields.append("chasis")
+            if sync_auto:
+                for field in ("marca", "modelo", "motor", "anio"):
+                    if getattr(sibling, field) != getattr(instance, field):
+                        setattr(sibling, field, getattr(instance, field))
+                        update_fields.append(field)
 
             if (
                 sync_descripcion_general

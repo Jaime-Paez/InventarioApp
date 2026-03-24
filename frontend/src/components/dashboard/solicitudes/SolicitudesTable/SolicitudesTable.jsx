@@ -30,7 +30,10 @@ const SOLICITUD_FILTER_FIELDS = [
   'fecha',
   'cliente_nombre',
   'cedula_ruc',
-  'chasis',
+  'marca',
+  'modelo',
+  'motor',
+  'anio',
   'sucursal_nombre',
   'producto_solicitado_nombre',
   'producto_solicitado_descripcion',
@@ -43,7 +46,10 @@ const SOLICITUD_FILTER_DEFAULT_MODES = {
   fecha: FilterMatchMode.CONTAINS,
   cliente_nombre: FilterMatchMode.CONTAINS,
   cedula_ruc: FilterMatchMode.STARTS_WITH,
-  chasis: FilterMatchMode.CONTAINS,
+  marca: FilterMatchMode.CONTAINS,
+  modelo: FilterMatchMode.CONTAINS,
+  motor: FilterMatchMode.CONTAINS,
+  anio: FilterMatchMode.CONTAINS,
   sucursal_nombre: FilterMatchMode.CONTAINS,
   producto_solicitado_nombre: FilterMatchMode.CONTAINS,
   producto_solicitado_descripcion: FilterMatchMode.CONTAINS,
@@ -56,7 +62,10 @@ const SOLICITUD_ORDERING_MAP = {
   fecha: 'fecha',
   cliente_nombre: 'cliente_nombre_text',
   cedula_ruc: 'cliente__cedula_ruc',
-  chasis: 'chasis',
+  marca: 'marca',
+  modelo: 'modelo',
+  motor: 'motor',
+  anio: 'anio',
   sucursal_nombre: 'sucursal__nombre',
   producto_solicitado_nombre: 'producto_referencia_text',
   producto_solicitado_descripcion: 'producto_solicitado_descripcion_text',
@@ -176,7 +185,10 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           item?.cliente__cedula_ruc ||
           '-'
 
-        const placa = String(item?.chasis || '').trim() || '-'
+        const marca = String(item?.marca || '').trim() || '-'
+        const modelo = String(item?.modelo || '').trim() || '-'
+        const motor = String(item?.motor || '').trim() || '-'
+        const anio = String(item?.anio || '').trim() || '-'
 
         const sucursalNombre =
           item?.sucursal_nombre ||
@@ -212,7 +224,10 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           codigo: item?.codigo || '-',
           cliente_nombre: clienteNombre,
           cedula_ruc: cedulaRuc,
-          placa,
+          marca,
+          modelo,
+          motor,
+          anio,
           sucursal_nombre: sucursalNombre,
           producto_solicitado_nombre: productoSolicitadoNombre,
           producto_solicitado_descripcion: productoSolicitadoDescripcion,
@@ -415,7 +430,10 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       fecha: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       cliente_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       cedula_ruc: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      chasis: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      marca: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      modelo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      motor: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
+      anio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       sucursal_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
       producto_solicitado_nombre: {
         operator: FilterOperator.AND,
@@ -712,12 +730,15 @@ const handleResetTable = () => {
       { nombrevar: 'fecha', header: 'Fecha', filterPlaceholder: 'Buscar por fecha' },
       { nombrevar: 'cliente_nombre', header: 'Cliente', filterPlaceholder: 'Buscar por cliente' },
       { nombrevar: 'cedula_ruc', header: 'Cedula/RUC', filterPlaceholder: 'Buscar por cedula/RUC' },
-      { nombrevar: 'chasis', header: 'Chasis', filterPlaceholder: 'Buscar por chasis' },
+      { nombrevar: 'marca', header: 'Marca', filterPlaceholder: 'Buscar por marca' },
+      { nombrevar: 'modelo', header: 'Modelo', filterPlaceholder: 'Buscar por modelo' },
+      { nombrevar: 'motor', header: 'Motor', filterPlaceholder: 'Buscar por motor' },
+      { nombrevar: 'anio', header: 'Año', filterPlaceholder: 'Buscar por año' },
       { nombrevar: 'sucursal_nombre', header: 'Sucursal', filterPlaceholder: 'Buscar por sucursal' },
       {
         nombrevar: 'producto_solicitado_nombre',
-        header: 'Producto solicitado',
-        filterPlaceholder: 'Buscar por producto solicitado',
+        header: 'Productos',
+        filterPlaceholder: 'Buscar por productos',
       },
       {
         nombrevar: 'producto_solicitado_descripcion',
@@ -1449,7 +1470,10 @@ const handleResetTable = () => {
             'fecha',
             'cliente_nombre',
             'cedula_ruc',
-            'chasis',
+            'marca',
+            'modelo',
+            'motor',
+            'anio',
             'sucursal_nombre',
             'producto_solicitado_nombre',
             'producto_solicitado_descripcion',
@@ -1813,7 +1837,7 @@ const handleResetTable = () => {
                     </label>
 
                     <label className="create-user__field">
-                      <span>Producto solicitado</span>
+                      <span>Productos</span>
                       <input
                         name="producto"
                         type="text"

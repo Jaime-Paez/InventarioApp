@@ -108,7 +108,6 @@ const parseOemInput = (rawValue) => {
   return list
 }
 
-const normalizePlaca = (value) => String(value ?? '').toUpperCase()
 
 const extractProductoOems = (producto) => {
   const relaciones = Array.isArray(producto?.oem_productos) ? producto.oem_productos : []
@@ -168,7 +167,10 @@ function CreateSolicitud({
 
   const [sucursalId, setSucursalId] = useState('')
   const [fecha, setFecha] = useState(todayISO())
-  const [placa, setPlaca] = useState('')
+  const [marca, setMarca] = useState('')
+  const [modelo, setModelo] = useState('')
+  const [motor, setMotor] = useState('')
+  const [anio, setAnio] = useState('')
   const [descripcionGeneral, setDescripcionGeneral] = useState('')
   const [sucursales, setSucursales] = useState([])
   const [sucursalesLoading, setSucursalesLoading] = useState(false)
@@ -266,7 +268,10 @@ function CreateSolicitud({
 
     setSucursalId(normalizedPrefilledSucursalId)
     setFecha(todayISO())
-    setPlaca('')
+    setMarca('')
+    setModelo('')
+    setMotor('')
+    setAnio('')
     setDescripcionGeneral('')
     setActiveTab('productos')
 
@@ -1364,7 +1369,10 @@ function CreateSolicitud({
     const payload = {
       sucursal_id: Number(sucursalId),
       descripcion_general: String(descripcionGeneral || '').trim(),
-      chasis: normalizePlaca(placa).trim(),
+      marca: marca.trim(),
+      modelo: modelo.trim(),
+      motor: motor.trim(),
+      anio: anio.trim(),
       productos: productos.map((item) => {
         const base = {
           cantidad: Number(item.cantidad),
@@ -1600,12 +1608,42 @@ function CreateSolicitud({
                     </label>
 
                     <label className="create-user__field">
-                      <span>Chasis</span>
+                      <span>Marca</span>
                       <input
                         type="text"
-                        placeholder="Chasis (opcional)"
-                        value={placa}
-                        onChange={(event) => setPlaca(normalizePlaca(event.target.value))}
+                        placeholder="Marca (opcional)"
+                        value={marca}
+                        onChange={(event) => setMarca(event.target.value)}
+                        disabled={loading}
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Modelo</span>
+                      <input
+                        type="text"
+                        placeholder="Modelo (opcional)"
+                        value={modelo}
+                        onChange={(event) => setModelo(event.target.value)}
+                        disabled={loading}
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Motor</span>
+                      <input
+                        type="text"
+                        placeholder="Motor (opcional)"
+                        value={motor}
+                        onChange={(event) => setMotor(event.target.value)}
+                        disabled={loading}
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Año</span>
+                      <input
+                        type="text"
+                        placeholder="Año (opcional)"
+                        value={anio}
+                        onChange={(event) => setAnio(event.target.value)}
                         disabled={loading}
                       />
                     </label>
@@ -1624,11 +1662,11 @@ function CreateSolicitud({
                     className={`create-user__locations-table create-solicitud__products-table${productosInvalid ? ' create-solicitud__products-table--invalid' : ''}`}
                   >
                     <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Referencia</span>
-                      <span>Código</span>
-                      <span>Nombre</span>
                       <span>OEM</span>
+                      <span>Código</span>
                       <span>Casa comercial</span>
+                      <span>Referencia</span>
+                      <span>Descripción</span>
                       <span>Comentario</span>
                       <span>Cantidad</span>
                       <span>Acciones</span>
@@ -1636,42 +1674,42 @@ function CreateSolicitud({
 
                     <div className="create-user__locations-row create-user__locations-row--form">
                       <span>
-                        <div className="create-solicitud__inline-dropdown" ref={referenciaDropdownRef}>
+                        <div className="create-solicitud__inline-dropdown" ref={oemDropdownRef}>
                           <input
-                            name="referencia"
+                            name="oems"
                             type="text"
-                            placeholder="Referencia"
-                            value={productoDraft.referencia}
+                            placeholder="OEM1, OEM2"
+                            value={productoDraft.oems}
                             onChange={handleProductoDraftChange}
                             onFocus={() => {
-                              const hasTerm = String(productoDraft.referencia || '').trim().length >= 1
-                              setShowReferenciaDropdown(hasTerm)
+                              const hasTerm = String(oemSearchTerm || '').trim().length >= 1
+                              setShowOemDropdown(hasTerm)
                             }}
                             disabled={loading}
                             autoComplete="off"
                           />
-                          {showReferenciaDropdown && (
-                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
+                          {showOemDropdown && (
+                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--wide">
                               <div className="create-solicitud__inline-results">
-                                {referenciaLoading && <small className="muted">Buscando...</small>}
-                                {!referenciaLoading && String(productoDraft.referencia || '').trim().length < 2 && (
+                                {oemLoading && <small className="muted">Buscando por OEM...</small>}
+                                {!oemLoading && String(oemSearchTerm || '').trim().length < 2 && (
                                   <small className="muted">Escribe al menos 2 caracteres.</small>
                                 )}
-                                {!referenciaLoading &&
-                                  String(productoDraft.referencia || '').trim().length >= 2 &&
-                                  !referenciaOptions.length && (
+                                {!oemLoading &&
+                                  String(oemSearchTerm || '').trim().length >= 2 &&
+                                  !oemOptions.length && (
                                     <small className="muted">
-                                      Sin coincidencias. Puedes agregar como producto nuevo.
+                                      Sin coincidencias. Puedes escribir un OEM nuevo.
                                     </small>
                                   )}
-                                {referenciaOptions.length > 0 && (
+                                {oemOptions.length > 0 && (
                                   <div className="create-solicitud__results-header">
                                     <span>Código</span>
                                     <span>Nombre</span>
                                     <span>Disponible</span>
                                   </div>
                                 )}
-                                {referenciaOptions.map((producto) => {
+                                {oemOptions.map((producto) => {
                                   const isSelected =
                                     String(selectedDraftProducto?.id || '') === String(producto.id)
                                   const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
@@ -1679,7 +1717,7 @@ function CreateSolicitud({
                                   const stock = Number(producto?.total_stock ?? 0)
                                   return (
                                     <button
-                                      key={`ref-opt-${producto.id}`}
+                                      key={`oem-opt-${producto.id}`}
                                       type="button"
                                       className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
                                       onMouseDown={(event) => event.preventDefault()}
@@ -1744,80 +1782,6 @@ function CreateSolicitud({
                                   return (
                                     <button
                                       key={`codigo-opt-${producto.id}`}
-                                      type="button"
-                                      className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
-                                      onMouseDown={(event) => event.preventDefault()}
-                                      onClick={() => handleProductoSelect(producto)}
-                                    >
-                                      <span className="result-codigo">{codigo}</span>
-                                      <span className="result-nombre">{nombre || '-'}</span>
-                                      <span className="result-stock">{stock}</span>
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </span>
-
-                      <span>
-                        <input
-                          className={productoNombreInvalid ? 'create-solicitud__input--invalid' : ''}
-                          name="nombre"
-                          type="text"
-                          placeholder="Nombre del producto"
-                          value={productoDraft.nombre}
-                          onChange={handleProductoDraftChange}
-                          disabled={loading}
-                        />
-                      </span>
-
-                      <span>
-                        <div className="create-solicitud__inline-dropdown" ref={oemDropdownRef}>
-                          <input
-                            name="oems"
-                            type="text"
-                            placeholder="OEM1, OEM2"
-                            value={productoDraft.oems}
-                            onChange={handleProductoDraftChange}
-                            onFocus={() => {
-                              const hasTerm = String(oemSearchTerm || '').trim().length >= 1
-                              setShowOemDropdown(hasTerm)
-                            }}
-                            disabled={loading}
-                            autoComplete="off"
-                          />
-                          {showOemDropdown && (
-                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--wide create-solicitud__inline-panel--align-right">
-                              <div className="create-solicitud__inline-results">
-                                {oemLoading && <small className="muted">Buscando por OEM...</small>}
-                                {!oemLoading && String(oemSearchTerm || '').trim().length < 2 && (
-                                  <small className="muted">Escribe al menos 2 caracteres.</small>
-                                )}
-                                {!oemLoading &&
-                                  String(oemSearchTerm || '').trim().length >= 2 &&
-                                  !oemOptions.length && (
-                                    <small className="muted">
-                                      Sin coincidencias. Puedes escribir un OEM nuevo.
-                                    </small>
-                                  )}
-                                {oemOptions.length > 0 && (
-                                  <div className="create-solicitud__results-header">
-                                    <span>Código</span>
-                                    <span>Nombre</span>
-                                    <span>Disponible</span>
-                                  </div>
-                                )}
-                                {oemOptions.map((producto) => {
-                                  const isSelected =
-                                    String(selectedDraftProducto?.id || '') === String(producto.id)
-                                  const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
-                                  const nombre = String(producto?.nombre || '').trim()
-                                  const stock = Number(producto?.total_stock ?? 0)
-                                  return (
-                                    <button
-                                      key={`oem-opt-${producto.id}`}
                                       type="button"
                                       className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
                                       onMouseDown={(event) => event.preventDefault()}
@@ -1908,6 +1872,80 @@ function CreateSolicitud({
                       </span>
 
                       <span>
+                        <div className="create-solicitud__inline-dropdown" ref={referenciaDropdownRef}>
+                          <input
+                            name="referencia"
+                            type="text"
+                            placeholder="Referencia"
+                            value={productoDraft.referencia}
+                            onChange={handleProductoDraftChange}
+                            onFocus={() => {
+                              const hasTerm = String(productoDraft.referencia || '').trim().length >= 1
+                              setShowReferenciaDropdown(hasTerm)
+                            }}
+                            disabled={loading}
+                            autoComplete="off"
+                          />
+                          {showReferenciaDropdown && (
+                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
+                              <div className="create-solicitud__inline-results">
+                                {referenciaLoading && <small className="muted">Buscando...</small>}
+                                {!referenciaLoading && String(productoDraft.referencia || '').trim().length < 2 && (
+                                  <small className="muted">Escribe al menos 2 caracteres.</small>
+                                )}
+                                {!referenciaLoading &&
+                                  String(productoDraft.referencia || '').trim().length >= 2 &&
+                                  !referenciaOptions.length && (
+                                    <small className="muted">
+                                      Sin coincidencias. Puedes agregar como producto nuevo.
+                                    </small>
+                                  )}
+                                {referenciaOptions.length > 0 && (
+                                  <div className="create-solicitud__results-header">
+                                    <span>Código</span>
+                                    <span>Nombre</span>
+                                    <span>Disponible</span>
+                                  </div>
+                                )}
+                                {referenciaOptions.map((producto) => {
+                                  const isSelected =
+                                    String(selectedDraftProducto?.id || '') === String(producto.id)
+                                  const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
+                                  const nombre = String(producto?.nombre || '').trim()
+                                  const stock = Number(producto?.total_stock ?? 0)
+                                  return (
+                                    <button
+                                      key={`ref-opt-${producto.id}`}
+                                      type="button"
+                                      className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => handleProductoSelect(producto)}
+                                    >
+                                      <span className="result-codigo">{codigo}</span>
+                                      <span className="result-nombre">{nombre || '-'}</span>
+                                      <span className="result-stock">{stock}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </span>
+
+                      <span>
+                        <input
+                          className={productoNombreInvalid ? 'create-solicitud__input--invalid' : ''}
+                          name="nombre"
+                          type="text"
+                          placeholder="Descripción"
+                          value={productoDraft.nombre}
+                          onChange={handleProductoDraftChange}
+                          disabled={loading}
+                        />
+                      </span>
+
+                      <span>
                         <input
                           name="comentario"
                           type="text"
@@ -1952,14 +1990,14 @@ function CreateSolicitud({
 
                     {productos.map((item) => (
                       <div key={item.uid} className="create-user__locations-row">
+                        <span>{item.oems?.length ? item.oems.join(', ') : '-'}</span>
+                        <span>{item.codigo || '-'}</span>
+                        <span>{item.casaComercialNombre || '-'}</span>
                         <span>
                           {item.referencia || '-'}
                           {item.tipo === 'existente' && <small className="create-solicitud__chip">Catalogo</small>}
                         </span>
-                        <span>{item.codigo || '-'}</span>
                         <span>{item.nombre || '-'}</span>
-                        <span>{item.oems?.length ? item.oems.join(', ') : '-'}</span>
-                        <span>{item.casaComercialNombre || '-'}</span>
                         <span>{item.comentario || '-'}</span>
                         <span className="create-solicitud__quantity-cell">{item.cantidad}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">

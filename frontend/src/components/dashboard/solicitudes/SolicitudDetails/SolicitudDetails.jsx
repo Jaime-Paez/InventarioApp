@@ -21,7 +21,10 @@ const emptyForm = {
   tabla: '',
   fecha: '',
   sucursalId: '',
-  chasis: '',
+  marca: '',
+  modelo: '',
+  motor: '',
+  anio: '',
   descripcionGeneral: '',
   comentario: '',
   cantidad: '1',
@@ -104,7 +107,10 @@ const buildFormData = (solicitud) => {
     tabla,
     fecha: normalizeText(solicitud?.fecha),
     sucursalId: String(solicitud?.sucursal_data?.id || solicitud?.sucursal_id || ''),
-    chasis: String(solicitud?.chasis || ''),
+    marca: String(solicitud?.marca || ''),
+    modelo: String(solicitud?.modelo || ''),
+    motor: String(solicitud?.motor || ''),
+    anio: String(solicitud?.anio || ''),
     descripcionGeneral: String(solicitud?.descripcion_general || ''),
     comentario: String(solicitud?.comentario || ''),
     cantidad: String(solicitud?.cantidad || '1'),
@@ -1072,7 +1078,10 @@ function SolicitudDetails({
     if (!isEditing || saving || !solicitudId) return
 
     const payload = {
-      chasis: normalizeText(formData.chasis),
+      marca: normalizeText(formData.marca),
+      modelo: normalizeText(formData.modelo),
+      motor: normalizeText(formData.motor),
+      anio: normalizeText(formData.anio),
       descripcion_general: normalizeText(formData.descripcionGeneral),
     }
 
@@ -1575,10 +1584,37 @@ function SolicitudDetails({
                       />
                     </label>
                     <label className="create-user__field">
-                      <span>Chasis</span>
+                      <span>Marca</span>
                       <input
-                        name="chasis"
-                        value={formData.chasis}
+                        name="marca"
+                        value={formData.marca}
+                        onChange={handleFormFieldChange}
+                        disabled={editorDisabled}
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Modelo</span>
+                      <input
+                        name="modelo"
+                        value={formData.modelo}
+                        onChange={handleFormFieldChange}
+                        disabled={editorDisabled}
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Motor</span>
+                      <input
+                        name="motor"
+                        value={formData.motor}
+                        onChange={handleFormFieldChange}
+                        disabled={editorDisabled}
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Año</span>
+                      <input
+                        name="anio"
+                        value={formData.anio}
                         onChange={handleFormFieldChange}
                         disabled={editorDisabled}
                       />
