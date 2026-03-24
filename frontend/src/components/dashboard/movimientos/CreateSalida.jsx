@@ -380,6 +380,13 @@ function CreateSalida({
     return branches.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
   }, [branches, selectedSucursalId])
 
+  const selectedObjetivoBranchName = useMemo(() => {
+    const objetivoId = String(formData.sucursalObjetivoId || '').trim()
+    if (!objetivoId) return ''
+    const branch = branches.find((item) => String(item?.id || '').trim() === objetivoId)
+    return String(branch?.nombre || '').trim()
+  }, [branches, formData.sucursalObjetivoId])
+
   const fetchNextDocumentNumber = useCallback(async () => {
     if (!token || !isTraslado || !salidaTipoId) return
     const sucursalId = String(formData.sucursalId || '').trim()
@@ -610,7 +617,7 @@ function CreateSalida({
   const solicitudRequesterBranchName = String(
     selectedSolicitudTraslado?.sucursal_solicitante || ''
   ).trim()
-  const transferTargetBranchLabel = solicitudRequesterBranchName || 'sucursal solicitante'
+  const transferTargetBranchLabel = solicitudRequesterBranchName || selectedObjetivoBranchName || 'sucursal solicitante'
   const transferTargetBranchButtonLabel = useMemo(() => {
     const raw = String(transferTargetBranchLabel || '').trim()
     if (!raw) return 'sucursal solicitante'
@@ -1287,6 +1294,12 @@ function CreateSalida({
       return { ...prev, sucursalId: effectivePrefilledSucursalId }
     })
   }, [effectivePrefilledSucursalId, open])
+
+  useEffect(() => {
+    if (!open) return
+    if (isPrefilledTransfer) return
+    setIsTransferWithoutRequest(isTraslado)
+  }, [open, isPrefilledTransfer, isTraslado])
 
   useEffect(
     () => () => {
@@ -2473,60 +2486,9 @@ function CreateSalida({
                           </select>
                         </label>
 
-                        {isTraslado && (
-                          <>
-                            <label className="create-user__field">
-                              <span>Solicitud de traslado</span>
-                              <select
-                                name="solicitudTrasladoId"
-                                value={formData.solicitudTrasladoId}
-                                onChange={handleChange}
-                                disabled={
-                                  loading ||
-                                  !formData.sucursalId ||
-                                  solicitudesTrasladoLoading ||
-                                  isTransferWithoutRequest
-                                }
-                                required={!isTransferWithoutRequest}
-                              >
-                                <option value="">
-                                  {!formData.sucursalId
-                                    ? 'Selecciona una sucursal'
-                                    : solicitudesTrasladoLoading
-                                      ? 'Cargando solicitudes...'
-                                      : 'Selecciona una solicitud aceptada'}
-                                </option>
-                                {solicitudesTraslado.map((solicitud) => (
-                                  <option key={solicitud.id} value={solicitud.id}>
-                                    {`${solicitud.no_documento || `SOL-${solicitud.id}`} - ${solicitud.sucursal_solicitante || 'Sucursal solicitante'}`}
-                                  </option>
-                                ))}
-                              </select>
-                              {transferRequiresRequest && formData.sucursalId && !solicitudesTrasladoLoading && !solicitudesTraslado.length && (
-                                <small className="create-user__field-error">No hay solicitudes aceptadas para esta sucursal.</small>
-                              )}
-                            </label>
-                            <div className="create-user__field create-salida__manual-toggle">
-                              <label className="create-salida__manual-toggle-label" htmlFor="create-salida-manual-toggle">
-                                <input
-                                  id="create-salida-manual-toggle"
-                                  type="checkbox"
-                                  checked={isTransferWithoutRequest}
-                                  onChange={(event) => handleToggleTransferWithoutRequest(event.target.checked)}
-                                  disabled={loading}
-                                />
-                                <span>Crear esta salida sin solicitud de traslado aceptada</span>
-                              </label>
-                              <small className="muted">
-                                Activa esta opción para armar la salida de forma manual cuando no haya una solicitud vigente.
-                              </small>
-                            </div>
-                          </>
-                        )}
-
                         {requiresSucursalObjetivo && (
                           <label className="create-user__field">
-                            <span>{isTraslado ? 'Sucursal solicitante (destino)' : 'Sucursal destino'}</span>
+                            <span>Sucursal destino</span>
                             <select
                               name="sucursalObjetivoId"
                               value={formData.sucursalObjetivoId}
@@ -2544,7 +2506,7 @@ function CreateSalida({
                           </label>
                         )}
 
-                        <label className="create-user__field">
+                        <label className={`create-user__field${isTraslado ? ' create-user__field--full' : ''}`}>
                           <span>
                             {documentLabel}
                             {isTraslado && documentLoading && (
@@ -2567,23 +2529,21 @@ function CreateSalida({
                           )}
                         </label>
 
-                        <label className="create-user__field">
-                          <span>Estado del movimiento</span>
-                          <input
-                            type="text"
-                            value={
-                              isTraslado
-                                ? transferDraftStateLabel
-                                : (estadoReadOnlyOptions.find(
-                                    (estado) =>
-                                      String(estado.id) ===
-                                      String(formData.estadoId || resolvedEstadoMovimientoId)
-                                  )?.nombre || '')
-                            }
-                            readOnly
-                            disabled
-                          />
-                        </label>
+                        {!isTraslado && (
+                          <label className="create-user__field">
+                            <span>Estado del movimiento</span>
+                            <input
+                              type="text"
+                              value={estadoReadOnlyOptions.find(
+                                (estado) =>
+                                  String(estado.id) ===
+                                  String(formData.estadoId || resolvedEstadoMovimientoId)
+                              )?.nombre || ''}
+                              readOnly
+                              disabled
+                            />
+                          </label>
+                        )}
 
                         {isVenta && (
                           <label className="create-user__field">
