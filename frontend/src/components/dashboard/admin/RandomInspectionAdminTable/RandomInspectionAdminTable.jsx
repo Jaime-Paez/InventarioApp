@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Eye, Loader2, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
+import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
 import '../CreateUsuario/CreateUsuario.css'
@@ -50,13 +51,19 @@ const formatVerificationState = (value) => {
 const ASSIGNMENTS_MODAL_MIN_WIDTH = 720
 const ASSIGNMENTS_MODAL_MIN_HEIGHT = 520
 const ASSIGNMENTS_VIEWPORT_PADDING = 12
+const detectDarkTheme = () => {
+  if (typeof document === 'undefined') return false
+  return Boolean(
+    document.querySelector('.app-shell')?.classList.contains('theme-dark')
+    || document.querySelector('.dashboard-shell')?.classList.contains('dark')
+  )
+}
 
 function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const toast = useRef(null)
   const canRead = moduleActions?.puede_leer ?? true
   const canUpdate = moduleActions?.puede_actualizar ?? true
-  const isDarkTheme = typeof document !== 'undefined'
-    && document.querySelector('.app-shell')?.classList.contains('theme-dark')
+  const [isDarkTheme, setIsDarkTheme] = useState(detectDarkTheme)
 
   const [summaryRows, setSummaryRows] = useState([])
   const [summaryLoading, setSummaryLoading] = useState(false)
@@ -65,6 +72,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [itemsRows, setItemsRows] = useState([])
   const [itemsLoading, setItemsLoading] = useState(false)
   const [itemsFilter, setItemsFilter] = useState('pendiente')
+  const [itemsPage, setItemsPage] = useState(1)
+  const [itemsPageSize, setItemsPageSize] = useState(20)
+  const [itemsTotalCount, setItemsTotalCount] = useState(0)
 
   const [editingItem, setEditingItem] = useState(null)
   const [confirmedQty, setConfirmedQty] = useState('')
@@ -292,6 +302,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     const branchId = normalizeId(selectedBranchId)
     if (!token || !canRead || !branchId) {
       setItemsRows([])
+      setItemsTotalCount(0)
       return []
     }
 
@@ -300,7 +311,8 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       const endpoint = new URL(`${API_URL}/recordatorios/inspeccion-aleatoria/admin/items/`)
       endpoint.searchParams.set('sucursal_id', branchId)
       endpoint.searchParams.set('estado', itemsFilter)
-      endpoint.searchParams.set('limit', '300')
+      endpoint.searchParams.set('page', String(itemsPage))
+      endpoint.searchParams.set('page_size', String(itemsPageSize))
 
       const response = await authFetch(endpoint.toString(), {}, token)
       const payload = await response.json().catch(() => ({}))
@@ -308,16 +320,23 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         throw new Error(String(payload?.detail || '').trim() || 'No se pudieron cargar las diferencias.')
       }
       const rows = parseApiList(payload)
+      const nextPage = Number.parseInt(String(payload?.page || itemsPage), 10)
+      const nextCount = Number.parseInt(String(payload?.count || rows.length || 0), 10)
       setItemsRows(rows)
+      setItemsTotalCount(Number.isFinite(nextCount) ? nextCount : 0)
+      if (Number.isFinite(nextPage) && nextPage > 0 && nextPage !== itemsPage) {
+        setItemsPage(nextPage)
+      }
       return rows
     } catch (error) {
       setItemsRows([])
+      setItemsTotalCount(0)
       notifyError(error?.message || 'No se pudieron cargar las diferencias.')
       return []
     } finally {
       setItemsLoading(false)
     }
-  }, [canRead, itemsFilter, notifyError, selectedBranchId, token])
+  }, [canRead, itemsFilter, itemsPage, itemsPageSize, notifyError, selectedBranchId, token])
 
   useEffect(() => {
     void loadSummary()
@@ -326,6 +345,35 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   useEffect(() => {
     void loadItems()
   }, [loadItems])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+
+    const syncTheme = () => setIsDarkTheme(detectDarkTheme())
+    syncTheme()
+
+    const observedNodes = [
+      document.querySelector('.app-shell'),
+      document.querySelector('.dashboard-shell'),
+      document.body,
+    ].filter(Boolean)
+
+    if (!observedNodes.length) return undefined
+
+    const observer = new MutationObserver(() => {
+      syncTheme()
+    })
+
+    observedNodes.forEach((node) => {
+      observer.observe(node, { attributes: true, attributeFilter: ['class'] })
+    })
+
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    setItemsPage(1)
+  }, [selectedBranchId, itemsFilter])
 
   useEffect(() => {
     assignmentsSizeRef.current = assignmentsModalSize
@@ -417,6 +465,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const selectedBranch = useMemo(() => (
     summaryRows.find((row) => normalizeId(row?.sucursal_id) === normalizeId(selectedBranchId)) || null
   ), [selectedBranchId, summaryRows])
+
+  const itemsTotalPages = useMemo(() => {
+    if (itemsTotalCount <= 0 || itemsPageSize <= 0) return 1
+    return Math.max(1, Math.ceil(itemsTotalCount / itemsPageSize))
+  }, [itemsPageSize, itemsTotalCount])
 
   const filteredAssignmentRows = useMemo(() => {
     const search = String(assignmentSearch || '').trim().toLowerCase()
@@ -932,6 +985,23 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             </p>
           )}
         </div>
+
+        <Paginator
+          first={Math.max(0, (Math.min(itemsPage, itemsTotalPages) - 1) * itemsPageSize)}
+          rows={itemsPageSize}
+          totalRecords={itemsTotalCount}
+          rowsPerPageOptions={[10, 20, 50, 100]}
+          className="inspection-admin__paginator"
+          template="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
+          onPageChange={(event) => {
+            const nextRows = Number.parseInt(String(event.rows || itemsPageSize), 10)
+            const nextPage = Number.parseInt(String((event.page ?? 0) + 1), 10)
+            if (Number.isFinite(nextRows) && nextRows > 0 && nextRows !== itemsPageSize) {
+              setItemsPageSize(nextRows)
+            }
+            setItemsPage(Number.isFinite(nextPage) && nextPage > 0 ? nextPage : 1)
+          }}
+        />
       </div>
 
       {editingItem && (
@@ -1180,19 +1250,8 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                   <span>Cargando...</span>
                 </div>
               )}
-              <div className="create-user__tabs" role="tablist" aria-label="Secciones de configuracion">
-                <button
-                  type="button"
-                  className="create-user__tab create-user__tab--active"
-                  role="tab"
-                  aria-selected="true"
-                >
-                  Configuracion
-                </button>
-              </div>
-
-              <div className="create-user__body create-user__body--permissions">
-                <section className="create-user__section create-user__section--permissions">
+              <div className="create-user__body create-user__body--permissions inspection-admin__assignments-body">
+                <section className="create-user__section create-user__section--permissions inspection-admin__assignments-section">
                   <div className="create-user__section-header">
                     <div>
                       <h4>Parametros generales</h4>

@@ -2081,10 +2081,13 @@ class RandomInspectionAdminItemsAPIView(APIView):
             )
 
         estado = _normalize_text(request.query_params.get("estado")).lower() or "pendiente"
-        limit = _normalize_int(request.query_params.get("limit"), 200)
-        if limit <= 0:
-            limit = 200
-        limit = min(limit, 500)
+        page = _normalize_int(request.query_params.get("page"), 1)
+        if page <= 0:
+            page = 1
+        page_size = _normalize_int(request.query_params.get("page_size"), 20)
+        if page_size <= 0:
+            page_size = 20
+        page_size = min(page_size, 100)
 
         allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(request.user)
         if allowed_branch_ids is not None and sucursal_id not in allowed_branch_ids:
@@ -2102,7 +2105,7 @@ class RandomInspectionAdminItemsAPIView(APIView):
                 "verificado_por",
             )
             .filter(sucursal_id=sucursal_id)
-            .order_by("-revisado_en", "-id")
+            .order_by("-updated_at", "-revisado_en", "-id")
         )
 
         if estado == "pendiente":
@@ -2130,13 +2133,22 @@ class RandomInspectionAdminItemsAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        rows = list(queryset[:limit])
+        total_count = queryset.count()
+        total_pages = (
+            max(1, ((total_count - 1) // page_size) + 1) if total_count > 0 else 1
+        )
+        current_page = min(page, total_pages)
+        offset = (current_page - 1) * page_size
+        rows = list(queryset[offset : offset + page_size])
         serialized = [_serialize_random_inspection_admin_item(item) for item in rows]
 
         return Response(
             {
                 "results": serialized,
-                "count": len(serialized),
+                "count": int(total_count),
+                "page": int(current_page),
+                "page_size": int(page_size),
+                "total_pages": int(total_pages),
                 "sucursal_id": int(sucursal_id),
                 "estado": estado,
             },

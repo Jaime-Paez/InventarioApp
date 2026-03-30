@@ -251,6 +251,14 @@
   font-size: var(--font-size-base);
 }
 
+.inspection-admin__paginator.p-paginator {
+  border: none;
+  padding: 12px 10px;
+  display: flex;
+  justify-content: center;
+  background: transparent;
+}
+
 .inspection-admin__dialog-overlay {
   position: fixed;
   inset: 0;
@@ -372,6 +380,148 @@
   --scrollbar-border-color: var(--color-surface-dark);
 }
 
+.inspection-admin__reviewers-overlay--dark .create-user__modal {
+  background: var(--table-color-dark);
+  border-color: var(--color-border);
+  color: var(--color-button-primary);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__header {
+  background: var(--table-color-dark);
+  border-bottom-color: var(--color-border);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__header h3,
+.inspection-admin__reviewers-overlay--dark .create-user__section h4 {
+  color: var(--color-text-title-dark);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__header h3,
+.inspection-admin__reviewers-overlay--dark .create-user__tab--active,
+.inspection-admin__reviewers-overlay--dark .create-user__icon-button,
+.inspection-admin__reviewers-overlay--dark .create-user__action--primary {
+  background: var(--color-primary-dark);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__icon-button {
+  color: var(--color-button-primary);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__loading-overlay {
+  background: color-mix(in srgb, var(--table-color-dark) 95%, transparent);
+  color: var(--color-text-dark);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__tabs {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__tab {
+  color: var(--color-text-dark);
+  opacity: 0.75;
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__tab:not(.create-user__tab--active):hover {
+  background: color-mix(in srgb, var(--color-primary-dark) 20%, transparent);
+  opacity: 0.9;
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__hint,
+.inspection-admin__reviewers-overlay--dark .create-user__field span,
+.inspection-admin__reviewers-overlay--dark .create-user__field small {
+  color: var(--color-text-dark);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__hint,
+.inspection-admin__reviewers-overlay--dark .create-user__field span,
+.inspection-admin__reviewers-overlay--dark .create-user__field small {
+  opacity: 0.78;
+}
+
+.inspection-admin__reviewers-overlay--dark
+  .create-user__field:has(:is(input:not([type='checkbox']):not([type='radio']), select, textarea):required) > span::after,
+.inspection-admin__reviewers-overlay--dark
+  .create-user__field:has(:is(input:not([type='checkbox']):not([type='radio']), select, textarea):required) .create-user__field-label > span::after,
+.inspection-admin__reviewers-overlay--dark .create-user__field.create-user__field--required > span::after,
+.inspection-admin__reviewers-overlay--dark .create-user__field.create-user__field--required .create-user__field-label > span::after {
+  color: var(--color-error-text-dark);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__field input,
+.inspection-admin__reviewers-overlay--dark .create-user__field select,
+.inspection-admin__reviewers-overlay--dark .create-user__field textarea,
+.inspection-admin__reviewers-overlay--dark .create-user__money,
+.inspection-admin__reviewers-overlay--dark .create-user__dropdown-trigger {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: var(--color-button-primary);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__field input[type='time'] {
+  color-scheme: dark;
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__field input[type='time']::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.9;
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__field input::placeholder,
+.inspection-admin__reviewers-overlay--dark .create-user__field textarea::placeholder {
+  color: var(--color-text-dark);
+  opacity: 0.38;
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__field input:focus,
+.inspection-admin__reviewers-overlay--dark .create-user__field select:focus,
+.inspection-admin__reviewers-overlay--dark .create-user__field textarea:focus {
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 32%, transparent);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__footer {
+  background: var(--table-color-dark);
+  border-top-color: var(--color-border);
+}
+
+.inspection-admin__reviewers-overlay--dark .create-user__action--cancel {
+  color: var(--color-button-primary);
+}
+
+.inspection-admin__reviewers-overlay--dark .inspection-admin__reviewers-table-card,
+.inspection-admin__reviewers-overlay--dark .inspection-admin__table-wrap {
+  background: var(--color-surface-dark);
+  border-color: var(--color-border);
+}
+
+.inspection-admin__reviewers-overlay--dark .inspection-admin__table th {
+  background: color-mix(in srgb, var(--color-surface-dark) 88%, #ffffff 12%);
+  color: var(--color-text-dark);
+}
+
+.inspection-admin__reviewers-overlay--dark .inspection-admin__table td,
+.inspection-admin__reviewers-overlay--dark .inspection-admin__product-cell strong,
+.inspection-admin__reviewers-overlay--dark .inspection-admin__product-cell span,
+.inspection-admin__reviewers-overlay--dark .inspection-admin__product-cell__email,
+.inspection-admin__reviewers-overlay--dark .inspection-admin__product-cell__type,
+.inspection-admin__reviewers-overlay--dark .inspection-admin__loading {
+  color: var(--color-text-dark);
+}
+
+.inspection-admin__reviewers-overlay--dark .inspection-admin__table th,
+.inspection-admin__reviewers-overlay--dark .inspection-admin__table td {
+  border-color: color-mix(in srgb, var(--color-border-dark) 72%, transparent);
+}
+
+.inspection-admin__reviewers-overlay--dark .inspection-admin__empty-row td {
+  background: color-mix(in srgb, var(--color-surface-dark) 92%, #0f172a 8%);
+}
+
+.inspection-admin__reviewers-overlay--dark .inspection-admin__reviewers-table-card .inspection-admin__table th {
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--color-border-dark) 72%, transparent);
+}
+
 .inspection-admin__reviewers-overlay,
 .inspection-admin__reviewers-overlay * {
   scrollbar-width: thin;
@@ -404,12 +554,28 @@
   padding-bottom: 4px;
 }
 
+.inspection-admin__assignments-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.inspection-admin__assignments-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .inspection-admin__reviewers-search {
   width: min(360px, 100%);
 }
 
 .inspection-admin__reviewers-table-card {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   border: 1px solid var(--color-border, #d4dae2);
   border-radius: 14px;
@@ -427,6 +593,13 @@
 .inspection-admin__reviewers-table-card .inspection-admin__table td {
   white-space: normal;
   word-break: break-word;
+}
+
+.inspection-admin__reviewers-table-card .inspection-admin__table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 #d5dbe2;
 }
 
 .inspection-admin__reviewers-table-card .inspection-admin__table th:first-child,
@@ -468,6 +641,28 @@
   color: var(--color-button-primary, #fff);
 }
 
+.inspection-admin__reviewers-overlay--dark .inspection-admin__edit-toggle {
+  background: color-mix(in srgb, var(--color-surface-dark) 88%, #0f172a 12%);
+  border-color: color-mix(in srgb, var(--color-border-dark) 78%, transparent);
+  color: var(--color-text-dark);
+}
+
+.inspection-admin__reviewers-overlay--dark .inspection-admin__edit-toggle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-surface-dark) 76%, var(--color-primary-dark) 24%);
+}
+
+.inspection-admin__reviewers-overlay--dark .inspection-admin__edit-toggle--active {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark-strong, var(--color-primary-dark));
+  color: var(--color-button-primary);
+}
+
+.inspection-admin__reviewers-overlay--dark .inspection-admin__edit-toggle:disabled {
+  background: color-mix(in srgb, var(--color-surface-dark) 92%, #000 8%);
+  border-color: color-mix(in srgb, var(--color-border-dark) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text-dark) 50%, transparent);
+}
+
 .inspection-admin__toggle-icon {
   display: inline-flex;
   align-items: center;
@@ -494,7 +689,7 @@
 
 .inspection-admin__table-wrap--modal {
   flex: 1;
-  min-height: 0;
+  min-height: 260px;
   border: none;
   border-radius: 0;
   overflow-x: auto;
@@ -657,18 +852,141 @@
   border-color: var(--color-border);
 }
 
+.dashboard-shell.dark .inspection-admin__head h3,
+.dashboard-shell.dark .inspection-admin__block h4,
+.dashboard-shell.dark .inspection-admin__subhead h4 {
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .inspection-admin__head p,
+.dashboard-shell.dark .inspection-admin__loading,
+.dashboard-shell.dark .inspection-admin__empty,
+.dashboard-shell.dark .inspection-admin__product-cell span,
+.dashboard-shell.dark .inspection-admin__product-cell strong,
+.dashboard-shell.dark .inspection-admin__table td {
+  color: var(--color-text-dark);
+}
+
 .dashboard-shell.dark .inspection-admin__table th {
   background: color-mix(in srgb, var(--color-surface-dark) 88%, #ffffff 12%);
   color: var(--color-text-dark);
 }
 
+.dashboard-shell.dark .inspection-admin__table th,
 .dashboard-shell.dark .inspection-admin__table td,
-.dashboard-shell.dark .inspection-admin__block h4,
-.dashboard-shell.dark .inspection-admin__product-cell strong,
-.dashboard-shell.dark .inspection-admin__product-cell span,
-.dashboard-shell.dark .inspection-admin__loading,
-.dashboard-shell.dark .inspection-admin__empty,
-.dashboard-shell.dark .inspection-admin__head p {
+.dashboard-shell.dark .inspection-admin__dialog-head,
+.dashboard-shell.dark .inspection-admin__dialog-actions,
+.dashboard-shell.dark .inspection-admin__table th,
+.dashboard-shell.dark .inspection-admin__table td {
+  border-color: color-mix(in srgb, var(--color-border-dark) 72%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__summary-row:hover {
+  background: color-mix(in srgb, var(--color-primary-dark) 14%, var(--color-surface-dark));
+}
+
+.dashboard-shell.dark .inspection-admin__summary-row.is-selected {
+  background: color-mix(in srgb, var(--color-primary-dark) 22%, var(--color-surface-dark));
+}
+
+.dashboard-shell.dark .inspection-admin__empty-row td {
+  background: color-mix(in srgb, var(--color-surface-dark) 92%, #0f172a 8%);
+}
+
+.dashboard-shell.dark .inspection-admin__manage,
+.dashboard-shell.dark .inspection-admin__refresh,
+.dashboard-shell.dark .inspection-admin__btn--ghost,
+.dashboard-shell.dark .inspection-admin__dialog-close {
+  background: color-mix(in srgb, var(--color-surface-dark) 88%, #0f172a 12%);
+  border-color: color-mix(in srgb, var(--color-border-dark) 78%, transparent);
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inspection-admin__manage:hover,
+.dashboard-shell.dark .inspection-admin__refresh:hover,
+.dashboard-shell.dark .inspection-admin__btn--ghost:hover,
+.dashboard-shell.dark .inspection-admin__dialog-close:hover {
+  background: color-mix(in srgb, var(--color-surface-dark) 76%, var(--color-primary-dark) 24%);
+}
+
+.dashboard-shell.dark .inspection-admin__subhead select,
+.dashboard-shell.dark .inspection-admin__dialog-body input,
+.dashboard-shell.dark .inspection-admin__dialog-body textarea {
+  background: color-mix(in srgb, var(--color-surface-dark) 90%, #0f172a 10%);
+  border-color: color-mix(in srgb, var(--color-border-dark) 78%, transparent);
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inspection-admin__subhead select option {
+  background: var(--color-surface-dark);
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inspection-admin__dialog {
+  background: var(--color-surface-dark);
+  border-color: color-mix(in srgb, var(--color-border-dark) 78%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__dialog-head p,
+.dashboard-shell.dark .inspection-admin__dialog-body label span,
+.dashboard-shell.dark .inspection-admin__sendnow-label,
+.dashboard-shell.dark .inspection-admin__sendnow-branches-title,
+.dashboard-shell.dark .inspection-admin__sendnow-users li,
+.dashboard-shell.dark .inspection-admin__product-cell__email,
+.dashboard-shell.dark .inspection-admin__product-cell__type,
+.dashboard-shell.dark .inspection-admin__action-placeholder {
+  color: color-mix(in srgb, var(--color-text-dark) 82%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__sendnow-value,
+.dashboard-shell.dark .inspection-admin__sendnow-branch-name {
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .inspection-admin__dialog-body input:disabled,
+.dashboard-shell.dark .inspection-admin__dialog-body textarea:disabled {
+  background: color-mix(in srgb, var(--color-surface-dark) 82%, #000 18%);
+  color: color-mix(in srgb, var(--color-text-dark) 76%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__action {
+  background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary-dark) 52%, transparent);
+  color: var(--color-primary-dark-soft);
+}
+
+.dashboard-shell.dark .inspection-admin__action:hover {
+  background: color-mix(in srgb, var(--color-primary-dark) 26%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator {
+  color: var(--color-text-dark);
+  background: var(--table-color-dark);
+  border-top: 1px solid var(--color-border-dark);
+}
+
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-paginator-pages .p-paginator-page,
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-paginator-first,
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-paginator-prev,
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-paginator-next,
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-paginator-last,
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-dropdown,
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-dropdown .p-dropdown-label,
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-dropdown .p-dropdown-trigger {
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-dropdown {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border-dark);
+}
+
+.dashboard-shell.dark .inspection-admin__paginator.p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
+  background: var(--color-primary);
+  border-color: var(--color-primary-strong);
+}
+
+.dashboard-shell.dark .p-dropdown-panel:has(.p-dropdown-items-wrapper) .p-dropdown-items .p-dropdown-item {
   color: var(--color-text-dark);
 }
 
