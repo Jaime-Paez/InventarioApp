@@ -1422,7 +1422,6 @@ function CreateProducto({
     const hasMissingRequiredFields = Boolean(
       !payload.codigo ||
       !payload.nombre ||
-      !payload.descripcion ||
       !payload.casas_comerciales_ids.length ||
       payload.precio === null
     )
@@ -1798,7 +1797,7 @@ function CreateProducto({
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
+                    <label className="create-user__field create-user__field--required">
                       <span>Nombre</span>
                       <input
                         name="nombre"
@@ -1821,7 +1820,6 @@ function CreateProducto({
                         onChange={handleChange}
                         autoCapitalize="characters"
                         spellCheck={false}
-                        required
                         disabled={loading}
                       />
                       {!codigoChecking && !codigoError && (
@@ -2065,7 +2063,6 @@ function CreateProducto({
                         placeholder="Describe el producto, su uso, diferentes nombres o caracteristicas importantes."
                         value={formData.descripcion}
                         onChange={handleChange}
-                        required
                         disabled={loading}
                       />
                     </label>
@@ -2651,4 +2648,3 @@ function CreateProducto({
 }
 
 export default CreateProducto
-

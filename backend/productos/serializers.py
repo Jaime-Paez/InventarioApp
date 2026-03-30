@@ -348,12 +348,8 @@ class ProductoSerializer(serializers.ModelSerializer):
                 },
             },
             "descripcion": {
-                "required": True,
-                "allow_blank": False,
-                "error_messages": {
-                    "blank": "La descripcion del producto es obligatoria.",
-                    "required": "La descripcion del producto es obligatoria.",
-                },
+                "required": False,
+                "allow_blank": True,
             },
             "precio": {
                 "required": True,
@@ -382,12 +378,6 @@ class ProductoSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         errors = {}
-
-        descripcion = attrs.get("descripcion", serializers.empty)
-        if descripcion is serializers.empty and self.instance is not None:
-            descripcion = self.instance.descripcion
-        if not str(descripcion or "").strip():
-            errors["descripcion"] = ["La descripcion del producto es obligatoria."]
 
         precio = attrs.get("precio", serializers.empty)
         if precio is serializers.empty and self.instance is not None:

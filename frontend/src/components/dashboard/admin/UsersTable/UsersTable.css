@@ -491,6 +491,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  margin: 0 auto;
+  vertical-align: middle;
 }
 
 /* Gridlines dark */
@@ -681,27 +683,94 @@
 }
 
 /* ====== OverlayPanel (Columnas) en dark ====== */
-.table-options-list {
-  padding: 12px;
+.p-overlaypanel.table-options-list {
+  width: min(360px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.table-options-list .p-overlaypanel-content {
+  padding: 14px 16px;
+  max-height: min(68vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
 }
 
 .table-options-list strong {
   font-size: var(--font-size-md);
+  line-height: 1.2;
+}
+
+.table-options-list .p-field-checkbox {
+  margin: 0;
 }
 
 .table-options-list .p-field-checkbox label {
   font-size: var(--font-size-base);
+  line-height: 1.25;
+  word-break: break-word;
 }
 
-.dashboard-shell.dark .p-overlaypanel.table-options-list,
-.dashboard-shell.dark .p-overlaypanel {
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list {
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
   border: 1px solid var(--color-border-dark);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+}
+
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list .p-overlaypanel-content {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+}
+
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list strong,
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list .p-field-checkbox,
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list .p-field-checkbox label,
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list .p-checkbox + label,
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list .p-checkbox-label {
+  color: var(--color-text-dark) !important;
+}
+
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list:before {
+  border-bottom-color: var(--color-border-dark);
+}
+
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list:after {
+  border-bottom-color: var(--color-surface-darker);
+}
+
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypanel-flipped:before {
+  border-top-color: var(--color-border-dark);
+}
+
+body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypanel-flipped:after {
+  border-top-color: var(--color-surface-darker);
 }
 
 /* ====== Responsive ====== */
 @media (max-width: 900px) {
+  .p-overlaypanel.table-options-list {
+    width: min(320px, calc(100vw - 20px));
+    max-width: calc(100vw - 20px);
+  }
+
+  .table-options-list .p-overlaypanel-content {
+    padding: 12px 12px 14px;
+    max-height: min(62vh, 460px);
+  }
+
+  .table-options-list strong {
+    font-size: 1.05rem;
+  }
+
+  .table-options-list .p-field-checkbox label {
+    font-size: 0.96rem;
+  }
+
   .users-page__actions {
     width: 100%;
     justify-content: flex-start;
@@ -739,6 +808,20 @@
 }
 
 @media (max-width: 700px) {
+  .p-overlaypanel.table-options-list {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+  }
+
+  .table-options-list .p-overlaypanel-content {
+    padding: 10px 10px 12px;
+    max-height: min(58vh, 400px);
+  }
+
+  .table-options-list .p-field-checkbox label {
+    font-size: 0.92rem;
+  }
+
   .users-header {
     flex-direction: column;
     align-items: stretch;
@@ -763,37 +846,55 @@
 }
 
 /* =========================================================
-   ✅ FIX REAL: CLAVAR ANCHO DE LA COLUMNA DE CHECKBOXES
-   (scrollable + frozen renderiza en header/body separados)
+   Selection column: keep one source of truth for the checkbox
+   column and let PrimeReact handle the frozen layout itself.
    ========================================================= */
 
-/* NO uses display: flow; acá. Esto es lo normal en Prime. */
-.p-datatable .p-column-header-content {
+.users-datatable .p-datatable-thead > tr > th.p-selection-column,
+.users-datatable .p-datatable-tbody > tr > td.p-selection-column,
+.users-datatable .p-datatable-thead > tr > th.row-selection-column,
+.users-datatable .p-datatable-tbody > tr > td.row-selection-column,
+.row-selection-column {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 0 !important;
+  text-align: center;
+  vertical-align: middle;
+  overflow: hidden;
+}
+
+.users-datatable .p-datatable-thead > tr > th.p-selection-column > .p-column-header-content,
+.users-datatable .p-datatable-thead > tr > th.row-selection-column > .p-column-header-content,
+.users-datatable .p-datatable-thead > tr > th:has(> .p-column-header-content .p-checkbox) > .p-column-header-content {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
+  min-height: 100%;
+  line-height: 1;
 }
 
-/* Fuerza ancho en TH y TD de esa columna (con !important) */
-.users-datatable .p-datatable-thead > tr > th.row-selection-column,
-.users-datatable .p-datatable-tbody > tr > td.row-selection-column {
+.users-datatable .p-datatable-thead > tr > th:has(> .p-column-header-content .p-checkbox) {
   width: 40px !important;
   min-width: 40px !important;
   max-width: 40px !important;
-  padding: 0 !important; /* 🔥 este es el que usualmente infla */
+  padding: 0 !important;
   text-align: center;
+  vertical-align: middle;
 }
 
-/* Asegura que el frozen no invente ancho */
-.users-datatable .p-datatable-thead > tr > th.row-selection-column.p-frozen-column,
-.users-datatable .p-datatable-tbody > tr > td.row-selection-column.p-frozen-column {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
+.users-datatable .p-selection-column .p-checkbox,
+.users-datatable .row-selection-column .p-checkbox,
+.users-datatable .row-selection-click-block .p-checkbox,
+.users-datatable .p-datatable-thead > tr > th:has(> .p-column-header-content .p-checkbox) .p-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto !important;
+  vertical-align: middle;
 }
 
-/* Contenedor clickeable centrado (sin inline styles) */
 .row-selection-click-block {
   display: flex;
   align-items: center;
@@ -803,117 +904,20 @@
   user-select: none;
 }
 
-/* Por si el checkbox mete margin/padding extra */
-.users-datatable .row-selection-click-block .p-checkbox {
-  margin: 0 !important;
-}
-
-/* Si quieres aún más pequeño, cambia a 36px aquí y en JSX selectionColStyle */
-.row-selection-column {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-}
-
-
-/* ✅ Fijar ancho del área FROZEN (la parte izquierda) */
-.users-datatable .p-datatable-frozen-view,
-.users-datatable .p-datatable-frozen-view table,
-.users-datatable .p-datatable-frozen-view colgroup col {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-}
-
-/* ✅ Fijar ancho del TH/TD de la columna de selección */
-.users-datatable th.row-selection-column,
-.users-datatable td.row-selection-column {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  padding: 0 !important;
-  text-align: center;
-  overflow: hidden; /* clave para que no “empuje” */
-}
-
-/* Contenedor del checkbox centrado */
-.row-selection-click-block {
-  width: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Evita que el contenido del header se vuelva más ancho que la celda */
-.users-datatable th.row-selection-column .p-column-header-content {
-  width: 40px !important;
-  justify-content: center;
-}
-
-/* =========================================================
-   ✅ OVERRIDE EXACTO del rule que fija 240px (pr_id_55)
-   ========================================================= */
-
-[data-pc-name="datatable"][pr_id_55] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th:nth-child(1),
-[data-pc-name="datatable"][pr_id_55] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td:nth-child(1),
-[data-pc-name="datatable"][pr_id_55] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tfoot"] > tr > td:nth-child(1) {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  padding: 0 !important;
-}
-
-/* Por si el frozen-view está tomando ancho del primer col */
-[data-pc-name="datatable"][pr_id_55] .p-datatable-frozen-view,
-[data-pc-name="datatable"][pr_id_55] .p-datatable-frozen-view table {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-}
-
-/* ====== Override genérico (sin depender de pr_id_*) para evitar ancho inflado ====== */
-.users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th.row-selection-column,
-.users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td.row-selection-column,
-.users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th:nth-child(1),
-.users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td:nth-child(1) {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  padding: 0 !important;
-}
-
-.users-datatable .p-datatable-frozen-view,
-.users-datatable .p-datatable-frozen-view table,
-.users-datatable .p-datatable-frozen-view colgroup col {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-}
-
-.users-datatable .p-datatable-unfrozen-view {
-  margin-left: 40px !important;
-}
-
 @media (max-width: 900px) {
-  .users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th.row-selection-column,
-  .users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td.row-selection-column,
-  .users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="thead"] > tr > th:nth-child(1),
-  .users-datatable[data-pc-name="datatable"] > [data-pc-section="wrapper"] > [data-pc-section="table"] > [data-pc-section="tbody"] > tr > td:nth-child(1) {
+  .users-datatable .p-datatable-thead > tr > th.p-selection-column,
+  .users-datatable .p-datatable-tbody > tr > td.p-selection-column,
+  .users-datatable .p-datatable-thead > tr > th.row-selection-column,
+  .users-datatable .p-datatable-tbody > tr > td.row-selection-column,
+  .users-datatable .p-datatable-thead > tr > th:has(> .p-column-header-content .p-checkbox),
+  .row-selection-column {
     width: 36px !important;
     min-width: 36px !important;
     max-width: 36px !important;
   }
 
-  .users-datatable .p-datatable-frozen-view,
-  .users-datatable .p-datatable-frozen-view table,
-  .users-datatable .p-datatable-frozen-view colgroup col {
-    width: 36px !important;
-    min-width: 36px !important;
-    max-width: 36px !important;
-  }
-
-  .users-datatable .p-datatable-unfrozen-view {
-    margin-left: 36px !important;
+  .row-selection-click-block {
+    width: 36px;
   }
 }
 

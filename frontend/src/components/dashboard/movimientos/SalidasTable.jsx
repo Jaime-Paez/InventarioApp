@@ -57,11 +57,15 @@ const parseTotalValue = (row) => {
     return acc
   }, 0)
 }
+const formatSalidaSubTipoLabel = (value) => {
+  const nombre = String(value || '').trim()
+  return normalizeValue(nombre) === 'devolucion' ? 'Garantia' : nombre
+}
 
 const SUBTYPE_FILTERS = [
   { key: 'all', label: 'Todos' },
   { key: 'venta', label: 'Ventas' },
-  { key: 'devolucion', label: 'Devoluciones' },
+  { key: 'devolucion', label: 'Garantias' },
   { key: 'traslado', label: 'Traslados' },
 ]
 
@@ -299,7 +303,7 @@ function SalidasTable({
         return {
           ...row,
           sucursal_nombre: row?.sucursal_nombre || row?.sucursal || '-',
-          sub_tipo_nombre: row?.sub_tipo_nombre || row?.sub_tipo_movimiento || '-',
+          sub_tipo_nombre: formatSalidaSubTipoLabel(row?.sub_tipo_nombre || row?.sub_tipo_movimiento || '-'),
           estado_nombre: formatEstadoForTable(row?.estado_nombre || row?.estado_movimiento),
           sucursal_objetivo_nombre: row?.sucursal_objetivo_nombre || row?.sucursal_objetivo || '-',
           funcional_label: row?.funcional_label || (row?.funcional ? 'Si' : 'No'),
@@ -585,7 +589,7 @@ function SalidasTable({
   const emptyMessageByFilter = {
     all: hasSearchApplied ? 'No se encontraron salidas.' : 'No hay salidas registradas.',
     venta: hasSearchApplied ? 'No se encontraron ventas.' : 'No hay ventas registradas.',
-    devolucion: hasSearchApplied ? 'No se encontraron devoluciones.' : 'No hay devoluciones registradas.',
+    devolucion: hasSearchApplied ? 'No se encontraron garantias.' : 'No hay garantias registradas.',
     traslado: hasSearchApplied ? 'No se encontraron traslados.' : 'No hay traslados registrados.',
   }
   const emptyMessage = emptyMessageByFilter[subtypeFilter] || emptyMessageByFilter.all

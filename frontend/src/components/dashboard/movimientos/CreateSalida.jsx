@@ -64,6 +64,10 @@ const normalizeValue = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+const formatSalidaSubTipoLabel = (subTipo) => {
+  const nombre = typeof subTipo === 'string' ? subTipo : String(subTipo?.nombre || '').trim()
+  return normalizeValue(nombre) === 'devolucion' ? 'Garantia' : nombre
+}
 const matchesNormalizedStem = (value, stem) =>
   normalizeValue(value)
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -2336,7 +2340,7 @@ function CreateSalida({
                       <option value="">Selecciona un tipo</option>
                       {subTiposSalida.map((subTipo) => (
                         <option key={subTipo.id} value={subTipo.id}>
-                          {subTipo.nombre}
+                          {formatSalidaSubTipoLabel(subTipo)}
                         </option>
                       ))}
                     </select>
@@ -2393,7 +2397,7 @@ function CreateSalida({
                             value={formData.no_documento}
                             onChange={handleChange}
                             disabled={loading || isTraslado}
-                            readOnly
+                            readOnly={isTraslado}
                             required
                           />
                           {documentStatus === DOCUMENT_STATUS.duplicate && (
@@ -2457,7 +2461,7 @@ function CreateSalida({
                             <option value="">Selecciona un tipo</option>
                             {subTiposSalida.map((subTipo) => (
                               <option key={subTipo.id} value={subTipo.id}>
-                                {subTipo.nombre}
+                                {formatSalidaSubTipoLabel(subTipo)}
                               </option>
                             ))}
                           </select>
@@ -2521,7 +2525,7 @@ function CreateSalida({
                             value={formData.no_documento}
                             onChange={handleChange}
                             disabled={loading || isTraslado}
-                            readOnly
+                            readOnly={isTraslado}
                             required
                           />
                           {documentStatus === DOCUMENT_STATUS.duplicate && (
@@ -2601,13 +2605,14 @@ function CreateSalida({
                     </div>
                   </div>
 
-                  <div className="create-user__locations-table create-salida__products-table">
+                  <div className={`create-user__locations-table create-salida__products-table${!isPrefilledTransfer ? ' create-salida__products-table--with-actions' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Codigo</span>
                         <span>Nombre</span>
                         <span>Cantidad</span>
                         <span>Precio</span>
                         <span>Precio total</span>
+                        {!isPrefilledTransfer && <span>Acciones</span>}
                       </div>
 
                     {!isPrefilledTransfer && (
@@ -2791,6 +2796,16 @@ function CreateSalida({
                       <span>
                         <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
                       </span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleAddDetail}
+                          disabled={loading || transferRequiresRequest || (requiresStockValidation && stockLoading)}
+                        >
+                          Agregar
+                        </button>
+                      </span>
                       </div>
                     )}
 
@@ -2807,6 +2822,18 @@ function CreateSalida({
                         <span>{detail.cantidad}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
+                        {!isPrefilledTransfer && (
+                          <span className="create-user__locations-cell create-user__locations-cell--action">
+                            <button
+                              type="button"
+                              className="create-user__locations-remove"
+                              onClick={() => handleRemoveDetail(detail.uid)}
+                              disabled={loading || transferRequiresRequest}
+                            >
+                              x
+                            </button>
+                          </span>
+                        )}
                       </div>
                     ))}
 

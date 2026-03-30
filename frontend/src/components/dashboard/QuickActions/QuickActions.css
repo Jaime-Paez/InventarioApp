@@ -1064,13 +1064,13 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--color-primary);
+  background: #f94a15;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-surface) 75%, transparent);
   pointer-events: none;
 }
 
 .quick-actions.dark .quick-actions__pending-dot {
-  background: var(--color-primary-dark);
+  background: #f94a15;
   box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.65);
 }
 

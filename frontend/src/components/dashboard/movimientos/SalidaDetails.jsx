@@ -50,6 +50,10 @@ const normalizeValue = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+const formatSalidaSubTipoLabel = (subTipo) => {
+  const nombre = typeof subTipo === 'string' ? subTipo : String(subTipo?.nombre || '').trim()
+  return normalizeValue(nombre) === 'devolucion' ? 'Garantia' : nombre
+}
 
 const parseNumber = (value) => {
   const cleaned = String(value ?? '').replace(',', '.').trim()
@@ -1803,7 +1807,7 @@ function SalidaDetails({
   ]
     .filter(Boolean)
     .join(' ')
-  const headerTipo = selectedSubTipo?.nombre || formData.subTipoNombre || 'Tipo de salida'
+  const headerTipo = formatSalidaSubTipoLabel(selectedSubTipo?.nombre || formData.subTipoNombre || 'Tipo de salida')
   const headerDocumento = String(formData.no_documento || '').trim() || 'No. de salida'
   const modalTitle = `${headerTipo}: ${headerDocumento}`
 
@@ -1899,7 +1903,7 @@ function SalidaDetails({
                       <span>Tipo de salida</span>
                       <input
                         type="text"
-                        value={selectedSubTipo?.nombre || formData.subTipoNombre || ''}
+                        value={formatSalidaSubTipoLabel(selectedSubTipo?.nombre || formData.subTipoNombre || '')}
                         readOnly
                         disabled
                       />

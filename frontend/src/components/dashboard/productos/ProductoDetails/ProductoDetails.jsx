@@ -922,12 +922,6 @@ function ProductoDetails({
       return
     }
 
-    if (!payload.descripcion) {
-      setSaving(false)
-      notifyError('Define una descripcion para el producto.')
-      return
-    }
-
     if (!payload.casas_comerciales_ids.length) {
       setSaving(false)
       notifyError('Selecciona una casa comercial para el producto.')
@@ -1375,7 +1369,7 @@ function ProductoDetails({
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
+                    <label className="create-user__field create-user__field--required">
                       <span>Nombre</span>
                       <input
                         name="nombre"

@@ -39,11 +39,13 @@ import {
 const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
 const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
 const URGENT_SHIPMENT_MESSAGE = 'Tienes un envio pendiente por despachar.'
+const URGENT_REJECTED_TRANSFER_MESSAGE = 'Corrige tu solicitud de traslado rechazada.'
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
 const URGENT_DECISION_SHIELD_COLOR = '#0b4f79'
 const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
+const URGENT_REJECTED_TRANSFER_SHIELD_COLOR = '#f94a15'
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
 const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-state'
@@ -963,20 +965,6 @@ function QuickActions({
     [eligibleUrgentDecisionReminders]
   )
 
-  const urgentShieldTargets = useMemo(() => {
-    const merged = [...urgentDecisionTargets, ...pendingShipmentUrgentTargets]
-    return merged.sort((a, b) => {
-      const timeA = Number(a?.priorityTimestamp)
-      const timeB = Number(b?.priorityTimestamp)
-      if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) {
-        return timeA - timeB
-      }
-      if (Number.isFinite(timeA) && !Number.isFinite(timeB)) return -1
-      if (!Number.isFinite(timeA) && Number.isFinite(timeB)) return 1
-      return String(a?.id || '').localeCompare(String(b?.id || ''))
-    })
-  }, [pendingShipmentUrgentTargets, urgentDecisionTargets])
-
   useEffect(() => {
     const nextIds = new Set(
       eligibleUrgentDecisionReminders
@@ -1111,6 +1099,14 @@ function QuickActions({
     [currentUserIds, reminders]
   )
 
+  const pendingRejectedTransferCorrectionReminders = useMemo(
+    () =>
+      pendingTransferResponseReminders.filter(
+        (reminder) => getReminderDecisionStatus(reminder) === 'rechazada'
+      ),
+    [pendingTransferResponseReminders]
+  )
+
   useEffect(() => {
     const nextIds = new Set(
       pendingTransferResponseReminders
@@ -1149,6 +1145,47 @@ function QuickActions({
     playNotificationTone,
     pushSystemTransferNotification,
   ])
+
+  const urgentRejectedTransferTargets = useMemo(
+    () =>
+      !allowUrgentShield
+        ? []
+        : pendingRejectedTransferCorrectionReminders
+            .map((reminder) => {
+              const reminderId = normalizeId(reminder?.id)
+              if (!reminderId) return null
+
+              const date = String(reminder?.date || '').trim()
+              const time = String(reminder?.time || '').trim()
+              const dateTimeCandidate = date ? `${date}T${time || '00:00'}:00` : ''
+
+              return {
+                id: `rejected-transfer-${reminderId}`,
+                reminderId,
+                kind: 'rejected_transfer',
+                anchor: 'top_right',
+                message: URGENT_REJECTED_TRANSFER_MESSAGE,
+                priorityTimestamp: parseEntityTimestamp(reminder?.createdAt, dateTimeCandidate),
+                reminder,
+              }
+            })
+            .filter(Boolean),
+    [allowUrgentShield, pendingRejectedTransferCorrectionReminders]
+  )
+
+  const urgentShieldTargets = useMemo(() => {
+    const merged = [...urgentRejectedTransferTargets, ...urgentDecisionTargets, ...pendingShipmentUrgentTargets]
+    return merged.sort((a, b) => {
+      const timeA = Number(a?.priorityTimestamp)
+      const timeB = Number(b?.priorityTimestamp)
+      if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) {
+        return timeA - timeB
+      }
+      if (Number.isFinite(timeA) && !Number.isFinite(timeB)) return -1
+      if (!Number.isFinite(timeA) && Number.isFinite(timeB)) return 1
+      return String(a?.id || '').localeCompare(String(b?.id || ''))
+    })
+  }, [pendingShipmentUrgentTargets, urgentDecisionTargets, urgentRejectedTransferTargets])
 
   const urgentProgressById = useMemo(() => {
     const map = {}
@@ -1276,7 +1313,9 @@ function QuickActions({
             '--urgent-color':
               target?.kind === 'pending_shipment'
                 ? URGENT_SHIPMENT_SHIELD_COLOR
-                : URGENT_DECISION_SHIELD_COLOR,
+                : target?.kind === 'rejected_transfer'
+                  ? URGENT_REJECTED_TRANSFER_SHIELD_COLOR
+                  : URGENT_DECISION_SHIELD_COLOR,
             zIndex: String(Math.max(1200, 1299 - index)),
           },
         }
@@ -3067,7 +3106,9 @@ function QuickActions({
           aria-label={
             shield.kind === 'pending_shipment'
               ? 'Abrir envio pendiente de traslado'
-              : 'Resolver solicitud de traslado pendiente'
+              : shield.kind === 'rejected_transfer'
+                ? 'Corregir solicitud de traslado rechazada'
+                : 'Resolver solicitud de traslado pendiente'
           }
         >
           {shield.id === activeUrgentShield?.id && urgentMessageStyle && (

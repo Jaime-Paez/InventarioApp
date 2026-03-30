@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Plus, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, Plus, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
 import {
@@ -561,11 +561,6 @@ function RecordatoriosPopup({
     })
   }, [normalizedSelectedTimelineDate, remindersByDate])
 
-  const maxWeekDayCount = useMemo(
-    () => Math.max(1, ...timelineWeekDays.map((day) => day.count)),
-    [timelineWeekDays]
-  )
-
   const timelineWeekRangeLabel = useMemo(() => {
     const first = timelineWeekDays[0]?.dateKey
     const last = timelineWeekDays[timelineWeekDays.length - 1]?.dateKey
@@ -580,10 +575,6 @@ function RecordatoriosPopup({
 
   const shiftTimelineDay = useCallback((offset) => {
     setSelectedTimelineDate((current) => addDaysToDateKey(current, offset))
-  }, [])
-
-  const handleGoTodayTimeline = useCallback(() => {
-    setSelectedTimelineDate(getTodayDateKey())
   }, [])
 
   const closeDecisionPanel = useCallback(() => {
@@ -1487,7 +1478,6 @@ function RecordatoriosPopup({
         <header className="recordatorios-popup__header">
           <div>
             <h3>Recordatorios</h3>
-            <p>Crea y revisa recordatorios personales.</p>
           </div>
           <button type="button" className="recordatorios-popup__close" onClick={() => onClose?.()} aria-label="Cerrar recordatorios">
             <X />
@@ -1602,7 +1592,6 @@ function RecordatoriosPopup({
                       </button>
 
                       <div className="recordatorios-popup__timeline-title">
-                        <h5>Resumen semanal</h5>
                         <p>{timelineWeekRangeLabel}</p>
                       </div>
 
@@ -1619,7 +1608,6 @@ function RecordatoriosPopup({
                     <div className="recordatorios-popup__timeline-week" role="tablist" aria-label="Dias de la semana">
                       {timelineWeekDays.map((day) => {
                         const isSelected = day.dateKey === normalizedSelectedTimelineDate
-                        const density = day.count / maxWeekDayCount
                         return (
                           <button
                             key={day.dateKey}
@@ -1627,8 +1615,9 @@ function RecordatoriosPopup({
                             role="tab"
                             aria-selected={isSelected}
                             className={`recordatorios-popup__timeline-day${isSelected ? ' is-selected' : ''}`}
-                            style={{ '--recordatorios-density': String(density) }}
                             onClick={() => setSelectedTimelineDate(day.dateKey)}
+                            title={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
+                            aria-label={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
                           >
                             <span className="recordatorios-popup__timeline-day-name">{day.dayName}</span>
                             <span className="recordatorios-popup__timeline-day-date">{day.dayDate}</span>
@@ -1636,35 +1625,6 @@ function RecordatoriosPopup({
                           </button>
                         )
                       })}
-                    </div>
-
-                    <div className="recordatorios-popup__timeline-controls">
-                      <button
-                        type="button"
-                        className="recordatorios-popup__timeline-control"
-                        onClick={() => shiftTimelineDay(-1)}
-                      >
-                        <ChevronLeft />
-                        Dia anterior
-                      </button>
-
-                      <button
-                        type="button"
-                        className="recordatorios-popup__timeline-control recordatorios-popup__timeline-control--today"
-                        onClick={handleGoTodayTimeline}
-                      >
-                        <CalendarDays />
-                        Hoy
-                      </button>
-
-                      <button
-                        type="button"
-                        className="recordatorios-popup__timeline-control"
-                        onClick={() => shiftTimelineDay(1)}
-                      >
-                        Dia siguiente
-                        <ChevronRight />
-                      </button>
                     </div>
                   </section>
 
@@ -1808,6 +1768,13 @@ function RecordatoriosPopup({
                           ) &&
                           typeof onOpenRandomInspection === 'function'
                         )
+                        const isPendingInspectionAlert = (
+                          status.className === 'pending' &&
+                          (
+                            isRandomInspectionDailyReminder(reminder) ||
+                            isRandomInspectionVerifyReminder(reminder)
+                          )
+                        )
                         const isHighlightedReminder = (
                           Boolean(currentReminderId) &&
                           normalizeId(highlightedReminderId) === currentReminderId
@@ -1835,6 +1802,8 @@ function RecordatoriosPopup({
                               }
                             }}
                             className={`recordatorios-popup__timeline-item${
+                              isPendingInspectionAlert ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
+                            }${
                               isHighlightedReminder ? ' recordatorios-popup__timeline-item--highlighted' : ''
                             }`}
                           >
