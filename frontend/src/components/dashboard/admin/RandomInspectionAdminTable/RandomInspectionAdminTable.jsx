@@ -95,6 +95,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [sendNowLoading, setSendNowLoading] = useState(false)
   const [sendNowDialogLoading, setSendNowDialogLoading] = useState(false)
   const [sendNowParams, setSendNowParams] = useState({ cantidad_productos: '', hora_recordatorio: '' })
+  const [sendNowSelectedUserIds, setSendNowSelectedUserIds] = useState(new Set())
   const [assignmentsModalPosition, setAssignmentsModalPosition] = useState({ x: 0, y: 0 })
   const [assignmentsModalSize, setAssignmentsModalSize] = useState({
     width: ASSIGNMENTS_MODAL_MIN_WIDTH,
@@ -168,6 +169,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const sendNow = useCallback(async () => {
     if (!token) return
 
+    if (sendNowSelectedUserIds.size === 0) {
+      notifyError('Debes seleccionar al menos un revisor.')
+      return
+    }
+
     const hora = String(sendNowParams?.hora_recordatorio || '').trim()
     if (!hora) {
       notifyError('Debes seleccionar la hora del recordatorio.')
@@ -203,7 +209,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     try {
       const response = await authFetch(
         `${API_URL}/recordatorios/inspeccion-aleatoria/enviar-ahora/`,
-        { method: 'POST', body: JSON.stringify(sendNowParams) },
+        { method: 'POST', body: JSON.stringify({ ...sendNowParams, usuario_ids: [...sendNowSelectedUserIds] }) },
         token
       )
       const payload = await response.json().catch(() => ({}))
@@ -652,6 +658,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const saveAssignments = useCallback(async () => {
     if (!token || !canUpdate) return
 
+    if (!String(configData.hora_recordatorio || '').trim()) {
+      notifyError('La hora de envio del recordatorio es requerida.')
+      return
+    }
+
     const changes = []
     assignmentRows.forEach((row) => {
       const rowId = normalizeId(row?.id)
@@ -805,7 +816,14 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                   })
 
                   // Load data in parallel
-                  await Promise.all([loadAssignments(), loadConfig()])
+                  const [rows] = await Promise.all([loadAssignments(), loadConfig()])
+                  const allIds = new Set(
+                    (rows || [])
+                      .filter((r) => Array.isArray(r?.inspeccion_aleatoria_sucursales) && r.inspeccion_aleatoria_sucursales.length > 0)
+                      .map((r) => normalizeId(r?.id))
+                      .filter(Boolean)
+                  )
+                  setSendNowSelectedUserIds(allIds)
 
                   setShowSendNowDialog(true)
                 } catch (error) {
@@ -1159,23 +1177,89 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 <p className="inspection-admin__sendnow-empty">
                   No hay revisores asignados. Configura los revisores antes de enviar.
                 </p>
-              ) : (
-                <div className="inspection-admin__sendnow-branches">
-                  <p className="inspection-admin__sendnow-branches-title">Revisores que recibiran el recordatorio:</p>
-                  {sendNowSummary.map((branch) => (
-                    <div key={`sendnow-branch-${branch.id}`} className="inspection-admin__sendnow-branch">
-                      <span className="inspection-admin__sendnow-branch-name">{branch.nombre}</span>
-                      <ul className="inspection-admin__sendnow-users">
-                        {branch.reviewers.map((u) => (
-                          <li key={`sendnow-user-${normalizeId(u?.id)}`}>
-                            {String(u?.nombre_completo || u?.correo || `Usuario ${u?.id}`).trim()}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              )}
+              ) : (() => {
+                const allReviewerIds = sendNowSummary.flatMap((b) =>
+                  b.reviewers.map((u) => normalizeId(u?.id)).filter(Boolean)
+                )
+                const allChecked = allReviewerIds.length > 0 && allReviewerIds.every((id) => sendNowSelectedUserIds.has(id))
+                const someChecked = allReviewerIds.some((id) => sendNowSelectedUserIds.has(id))
+                return (
+                  <div className="inspection-admin__sendnow-table-wrap">
+                    <table className="inspection-admin__sendnow-table">
+                      <thead>
+                        <tr>
+                          <th>Sucursal</th>
+                          <th>Revisor</th>
+                          <th>
+                            <input
+                              type="checkbox"
+                              checked={allChecked}
+                              ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked }}
+                              onChange={() => {
+                                if (allChecked) {
+                                  setSendNowSelectedUserIds(new Set())
+                                } else {
+                                  setSendNowSelectedUserIds(new Set(allReviewerIds))
+                                }
+                              }}
+                              disabled={sendNowLoading || sendNowDialogLoading}
+                              title={allChecked ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                            />
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sendNowSummary.flatMap((branch) =>
+                          branch.reviewers.map((u, i) => {
+                            const uid = normalizeId(u?.id)
+                            return (
+                              <tr
+                                key={`sendnow-user-${uid}`}
+                                className={sendNowSelectedUserIds.has(uid) ? 'inspection-admin__sendnow-row--selected' : ''}
+                                onClick={() => {
+                                  if (sendNowLoading || sendNowDialogLoading) return
+                                  setSendNowSelectedUserIds((prev) => {
+                                    const next = new Set(prev)
+                                    if (next.has(uid)) next.delete(uid)
+                                    else next.add(uid)
+                                    return next
+                                  })
+                                }}
+                              >
+                                {i === 0 && (
+                                  <td rowSpan={branch.reviewers.length} className="inspection-admin__sendnow-td-branch">
+                                    {branch.nombre}
+                                  </td>
+                                )}
+                                <td>{String(u?.nombre_completo || u?.correo || `Usuario ${u?.id}`).trim()}</td>
+                                <td className="inspection-admin__sendnow-td-check">
+                                  <input
+                                    type="checkbox"
+                                    checked={sendNowSelectedUserIds.has(uid)}
+                                    onChange={() => {
+                                      setSendNowSelectedUserIds((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(uid)) next.delete(uid)
+                                        else next.add(uid)
+                                        return next
+                                      })
+                                    }}
+                                    disabled={sendNowLoading || sendNowDialogLoading}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </td>
+                              </tr>
+                            )
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                    <p className="inspection-admin__sendnow-count-footer">
+                      {sendNowSelectedUserIds.size} de {allReviewerIds.length} revisores seleccionados
+                    </p>
+                  </div>
+                )
+              })()}
             </div>
 
             <footer className="inspection-admin__dialog-actions">
@@ -1191,7 +1275,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 type="button"
                 className="inspection-admin__btn inspection-admin__btn--primary"
                 onClick={() => void sendNow()}
-                disabled={sendNowLoading || sendNowDialogLoading || sendNowSummary.length === 0}
+                disabled={sendNowLoading || sendNowDialogLoading || sendNowSummary.length === 0 || sendNowSelectedUserIds.size === 0}
               >
                 {sendNowLoading ? 'Enviando...' : 'Enviar ahora'}
               </button>

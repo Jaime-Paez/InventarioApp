@@ -486,7 +486,13 @@ export const isSpecialReminderResolved = (reminder) => {
 export const isReminderPendingForCurrentUser = (reminder, userIdSet) => {
   if (!isReminderForCurrentUser(reminder, userIdSet)) return false
   if (isReminderSeenByCurrentUser(reminder, userIdSet)) return false
-  if (isRandomInspectionReminder(reminder)) return true
+
+  // Inspections only appear once their scheduled time has arrived
+  if (isRandomInspectionReminder(reminder)) {
+    const timestamp = getReminderTimestamp(reminder)
+    if (!Number.isFinite(timestamp)) return true
+    return timestamp <= Date.now()
+  }
 
   const decisionStatus = getReminderDecisionStatus(reminder)
   const isTransferContext =
@@ -500,10 +506,8 @@ export const isReminderPendingForCurrentUser = (reminder, userIdSet) => {
   if (isSpecialReminderResolved(reminder)) return false
   if (isSpecialTransferDecisionReminder(reminder)) return true
 
-  const timestamp = getReminderTimestamp(reminder)
-  if (!Number.isFinite(timestamp)) return true
-
-  return timestamp >= Date.now()
+  // All other unseen reminders stay pending indefinitely — no expiry
+  return true
 }
 
 export const isReminderForContext = (reminder, context) => {
@@ -631,17 +635,6 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
       label: 'Visto',
       className: 'seen',
       canMarkSeen: false,
-    }
-  }
-
-  const timestamp = isSpecialReminder
-    ? getReminderDeadlineTimestamp(reminder)
-    : getReminderTimestamp(reminder)
-  if (Number.isFinite(timestamp) && timestamp < Date.now()) {
-    return {
-      label: isSpecialReminder ? 'Urgente' : 'Vencido',
-      className: 'expired',
-      canMarkSeen: !isSpecialReminder,
     }
   }
 

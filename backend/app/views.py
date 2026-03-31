@@ -834,7 +834,14 @@ def _ensure_daily_random_inspection_for_user(user, store):
         return None, False
 
     now_local = timezone.localtime()
-    if now_local.time() < dt_time(hour=RANDOM_INSPECTION_START_HOUR):
+
+    # Use hora_recordatorio from config if set, otherwise fall back to RANDOM_INSPECTION_START_HOUR
+    config = InspeccionAleatoriaConfiguracion.get_global()
+    hora_config = config.hora_recordatorio
+    if hora_config is None:
+        return None, False
+
+    if now_local.time() < hora_config:
         return None, False
 
     scheduled_date = now_local.date()
@@ -887,16 +894,19 @@ def _ensure_daily_random_inspection_for_user(user, store):
             )
         InspeccionAleatoriaItem.objects.bulk_create(items)
 
+    time_str = f"{hora_config.hour:02d}:{hora_config.minute:02d}"
     changed_payload = _upsert_random_inspection_reminder(
         store,
         inspection,
         user,
         mark_completed=inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA,
+        time_str=time_str,
     )
     return inspection, changed_payload
 
 
 def _serialize_random_inspection_item(item):
+    location_payload = getattr(item, "_inspection_location_payload", None) or {}
     return {
         "id": int(item.id),
         "sucursal_id": int(item.sucursal_id),
@@ -910,6 +920,8 @@ def _serialize_random_inspection_item(item):
         "producto_nombre": _normalize_text(
             getattr(getattr(item, "producto", None), "nombre", "")
         ),
+        "ubicacion_bodega": _normalize_text(location_payload.get("ubicacion_bodega")),
+        "ubicaciones_bodega": location_payload.get("ubicaciones_bodega", []) or [],
         "cantidad_esperada": int(item.cantidad_esperada or 0),
         "estado_revision": str(item.estado_revision or "").strip(),
         "cantidad_reportada": (
@@ -933,10 +945,97 @@ def _serialize_random_inspection_item(item):
     }
 
 
+def _attach_random_inspection_locations(items):
+    inspection_items = list(items or [])
+    if not inspection_items:
+        return inspection_items
+
+    target_keys = {
+        (int(item.sucursal_id), int(item.producto_id))
+        for item in inspection_items
+        if getattr(item, "sucursal_id", None) and getattr(item, "producto_id", None)
+    }
+    if not target_keys:
+        return inspection_items
+
+    branch_ids = sorted({branch_id for branch_id, _ in target_keys})
+    product_ids = sorted({product_id for _, product_id in target_keys})
+    rows = (
+        Inventario.objects.filter(
+            cantidad__gt=0,
+            producto_id__in=product_ids,
+            subdivision__division__bodega__sucursal_id__in=branch_ids,
+        )
+        .values(
+            "producto_id",
+            "subdivision__division__bodega__sucursal_id",
+            "subdivision__division__bodega__sucursal__nombre",
+            "subdivision__division__bodega__nombre",
+            "subdivision__division__nombre",
+            "subdivision__nombre",
+        )
+        .annotate(cantidad_total=Sum("cantidad"))
+        .order_by(
+            "subdivision__division__bodega__sucursal_id",
+            "producto_id",
+            "subdivision__division__bodega__nombre",
+            "subdivision__division__nombre",
+            "subdivision__nombre",
+        )
+    )
+
+    location_map = {}
+    for row in rows:
+        branch_id = _normalize_int(row.get("subdivision__division__bodega__sucursal_id"), 0)
+        product_id = _normalize_int(row.get("producto_id"), 0)
+        key = (branch_id, product_id)
+        if key not in target_keys:
+            continue
+
+        sucursal_nombre = _normalize_text(
+            row.get("subdivision__division__bodega__sucursal__nombre")
+        )
+        bodega_nombre = _normalize_text(row.get("subdivision__division__bodega__nombre"))
+        division_nombre = _normalize_text(row.get("subdivision__division__nombre"))
+        subdivision_nombre = _normalize_text(row.get("subdivision__nombre"))
+        cantidad_total = _normalize_int(row.get("cantidad_total"), 0)
+
+        parts = [part for part in [bodega_nombre, division_nombre, subdivision_nombre] if part]
+        if not parts:
+            continue
+
+        location_map.setdefault(key, []).append(
+            {
+                "sucursal_id": branch_id,
+                "producto_id": product_id,
+                "sucursal_nombre": sucursal_nombre,
+                "bodega_nombre": bodega_nombre,
+                "division_nombre": division_nombre,
+                "subdivision_nombre": subdivision_nombre,
+                "cantidad": cantidad_total,
+                "label": " / ".join(parts),
+            }
+        )
+
+    for item in inspection_items:
+        key = (int(item.sucursal_id), int(item.producto_id))
+        locations = location_map.get(key, [])
+        item._inspection_location_payload = {
+            "ubicacion_bodega": "\n".join(
+                f'{location["label"]} ({int(location["cantidad"])} uds)'
+                for location in locations
+            ),
+            "ubicaciones_bodega": locations,
+        }
+
+    return inspection_items
+
+
 def _serialize_random_inspection(inspection):
     inspection_items = list(
         inspection.items.select_related("sucursal", "producto", "verificado_por").all()
     )
+    inspection_items = _attach_random_inspection_locations(inspection_items)
     return {
         "id": int(inspection.id),
         "usuario_id": int(inspection.usuario_id),
@@ -1653,16 +1752,19 @@ class RandomInspectionRespondAPIView(APIView):
                 )
                 item.revisado_en = now
                 item.verificacion_estado = verificacion_estado
-                item.save(
-                    update_fields=[
-                        "estado_revision",
-                        "cantidad_reportada",
-                        "observacion",
-                        "revisado_en",
-                        "verificacion_estado",
-                        "updated_at",
-                    ]
-                )
+                item.updated_at = now
+
+            InspeccionAleatoriaItem.objects.bulk_update(
+                inspection_items,
+                [
+                    "estado_revision",
+                    "cantidad_reportada",
+                    "observacion",
+                    "revisado_en",
+                    "verificacion_estado",
+                    "updated_at",
+                ],
+            )
 
             inspection.estado = InspeccionAleatoriaDiaria.Estados.COMPLETADA
             inspection.total_items = len(inspection_items)
@@ -2185,21 +2287,23 @@ class RandomInspectionConfigAPIView(APIView):
         with transaction.atomic():
             config = InspeccionAleatoriaConfiguracion.get_global(for_update=True)
             hora_raw = _normalize_text(request.data.get("hora_recordatorio", ""))
-            if hora_raw:
-                parts = hora_raw.split(":")
-                try:
-                    hour = int(parts[0])
-                    minute = int(parts[1]) if len(parts) > 1 else 0
-                    if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                        raise ValueError()
-                    config.hora_recordatorio = dt_time(hour, minute)
-                except (ValueError, IndexError):
-                    return Response(
-                        {"detail": "Formato de hora invalido. Usa HH:MM."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            else:
-                config.hora_recordatorio = None
+            if not hora_raw:
+                return Response(
+                    {"detail": "La hora de envio del recordatorio es requerida."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            parts = hora_raw.split(":")
+            try:
+                hour = int(parts[0])
+                minute = int(parts[1]) if len(parts) > 1 else 0
+                if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                    raise ValueError()
+                config.hora_recordatorio = dt_time(hour, minute)
+            except (ValueError, IndexError):
+                return Response(
+                    {"detail": "Formato de hora invalido. Usa HH:MM."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             config.save(update_fields=["hora_recordatorio", "updated_at"])
 
             cantidad_raw = request.data.get("cantidad_productos")
@@ -2272,13 +2376,30 @@ class RandomInspectionSendNowAPIView(APIView):
 
         time_str = f"{h:02d}:{m:02d}"
 
-        enabled_prefs = (
-            UsuarioPreferencia.objects.filter(
-                inspeccion_aleatoria=True,
-                usuario__is_active=True,
-            )
-            .select_related("usuario")
-        )
+        usuario_ids_raw = request.data.get("usuario_ids")
+        if usuario_ids_raw is not None:
+            try:
+                usuario_ids = [int(uid) for uid in usuario_ids_raw]
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "usuario_ids debe ser una lista de IDs de usuario."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not usuario_ids:
+                return Response(
+                    {"detail": "Debes seleccionar al menos un revisor."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            usuario_ids = None
+
+        enabled_prefs = UsuarioPreferencia.objects.filter(
+            inspeccion_aleatoria=True,
+            usuario__is_active=True,
+        ).select_related("usuario")
+
+        if usuario_ids is not None:
+            enabled_prefs = enabled_prefs.filter(usuario_id__in=usuario_ids)
 
         # Global deduplication: (sucursal_id, producto_id) already assigned in this batch
         used_keys = set()

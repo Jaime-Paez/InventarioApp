@@ -22,6 +22,7 @@ import {
   formatCurrentUserName,
   getReminderDecisionStatus,
   getReminderDeadlineTimestamp,
+  getReminderTimestamp,
   isReminderCreatedByCurrentUser,
   isReminderForCurrentUser,
   isReminderPendingForCurrentUser,
@@ -59,6 +60,73 @@ const toPositiveInt = (value, fallback = 0) => {
   if (!Number.isFinite(parsed)) return fallback
   return Math.max(0, parsed)
 }
+const normalizeQuantityInputString = (value) => String(value ?? '').replace(/\D+/g, '').slice(0, 4)
+const normalizeIntegerInputString = (value) => {
+  const text = normalizeQuantityInputString(value)
+  if (!text) return ''
+  const parsed = Number.parseInt(text, 10)
+  if (!Number.isFinite(parsed)) return ''
+  return String(Math.max(0, parsed))
+}
+const formatSignedInteger = (value) => {
+  const normalized = toPositiveInt(Math.abs(Number(value) || 0), 0)
+  if (Number(value) > 0) return `+${normalized}`
+  if (Number(value) < 0) return `-${normalized}`
+  return '0'
+}
+const readProductInventoryEntries = (payload) => {
+  const inventoryContext = payload?.inventario_context ?? payload?.inventory_context
+  if (!inventoryContext || typeof inventoryContext !== 'object') return []
+  if (Array.isArray(inventoryContext?.inventario_entries)) return inventoryContext.inventario_entries
+  if (Array.isArray(inventoryContext?.inventarioEntries)) return inventoryContext.inventarioEntries
+  return []
+}
+const buildInspectionLocationsFromProductPayload = (payload, branchId) => {
+  const normalizedBranchId = normalizeId(branchId)
+  const entries = readProductInventoryEntries(payload)
+  if (!entries.length || !normalizedBranchId) return []
+
+  return entries.reduce((acc, entry) => {
+    const subdivision = entry?.subdivision
+    const division = subdivision?.division
+    const bodega = division?.bodega
+    const sucursalId = normalizeId(bodega?.sucursal?.id ?? bodega?.sucursal_id)
+    if (!sucursalId || sucursalId !== normalizedBranchId) return acc
+
+    const bodegaNombre = String(bodega?.nombre || '').trim()
+    const divisionNombre = String(division?.nombre || '').trim()
+    const subdivisionNombre = String(subdivision?.nombre || '').trim()
+    const cantidad = toPositiveInt(entry?.cantidad, 0)
+    const key = [bodegaNombre, divisionNombre, subdivisionNombre].join('::')
+    const existingIndex = acc.findIndex((location) => location.key === key)
+
+    if (existingIndex >= 0) {
+      acc[existingIndex] = {
+        ...acc[existingIndex],
+        cantidad: toPositiveInt(acc[existingIndex]?.cantidad, 0) + cantidad,
+      }
+      return acc
+    }
+
+    acc.push({
+      key,
+      sucursal_id: toPositiveInt(sucursalId, 0),
+      sucursal_nombre: String(bodega?.sucursal?.nombre || '').trim(),
+      bodega_nombre: bodegaNombre,
+      division_nombre: divisionNombre,
+      subdivision_nombre: subdivisionNombre,
+      cantidad,
+      label: [bodegaNombre, divisionNombre, subdivisionNombre].filter(Boolean).join(' / '),
+    })
+    return acc
+  }, [])
+}
+const buildInspectionLocationKey = (location) => [
+  normalizeId(location?.sucursal_id),
+  normalizeString(location?.bodega_nombre),
+  normalizeString(location?.division_nombre),
+  normalizeString(location?.subdivision_nombre),
+].join('::')
 const nowReminderDateTime = () => {
   const now = new Date()
   const pad = (value) => String(value).padStart(2, '0')
@@ -237,6 +305,8 @@ function QuickActions({
   const [activeRandomInspection, setActiveRandomInspection] = useState(null)
   const [randomInspectionDraftByItemId, setRandomInspectionDraftByItemId] = useState({})
   const [randomInspectionMode, setRandomInspectionMode] = useState('review')
+  const [randomInspectionStepIndex, setRandomInspectionStepIndex] = useState(0)
+  const [randomInspectionShowSummary, setRandomInspectionShowSummary] = useState(false)
   const [randomInspectionLoading, setRandomInspectionLoading] = useState(false)
   const [randomInspectionSubmitting, setRandomInspectionSubmitting] = useState(false)
   const [randomInspectionError, setRandomInspectionError] = useState('')
@@ -1009,8 +1079,7 @@ function QuickActions({
       reminders.filter(
         (reminder) =>
           isRandomInspectionReminder(reminder) &&
-          isReminderForCurrentUser(reminder, currentUserIds) &&
-          !isReminderSeenByCurrentUser(reminder, currentUserIds)
+          isReminderPendingForCurrentUser(reminder, currentUserIds)
       ),
     [currentUserIds, reminders]
   )
@@ -1027,7 +1096,7 @@ function QuickActions({
       didInitRandomInspectionSnapshotRef.current = true
       playInitialPendingToneIfNeeded(nextIds, {
         type: 'inspeccion_aleatoria_diaria',
-      })
+      }, { allowAdminTone: true })
       return
     }
 
@@ -1039,7 +1108,7 @@ function QuickActions({
     seenRandomInspectionReminderIdsRef.current = nextIds
 
     if (newReminderIds.length) {
-      playNotificationTone()
+      playNotificationTone({ forceForAdmin: true })
       void showSystemNotification({
         title: 'Tienes una inspección aleatoria pendiente',
         body: `Revisa ${newReminderIds.length} recordatorio(s) de inspección.`,
@@ -1476,6 +1545,7 @@ function QuickActions({
   }, [activeUrgentShield])
 
   const personalReminders = useMemo(() => {
+    const now = Date.now()
     const related = reminders.filter((reminder) => {
       if (!isReminderForCurrentUser(reminder, currentUserIds)) return false
 
@@ -1484,6 +1554,12 @@ function QuickActions({
         isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)
       ) {
         return false
+      }
+
+      // Inspections only appear in the list once their scheduled time has arrived
+      if (isRandomInspectionReminder(reminder) && !isReminderSeenByCurrentUser(reminder, currentUserIds)) {
+        const timestamp = getReminderTimestamp(reminder)
+        if (Number.isFinite(timestamp) && timestamp > now) return false
       }
 
       return true
@@ -1572,22 +1648,69 @@ function QuickActions({
       (Array.isArray(activeRandomInspection?.items) ? activeRandomInspection.items : []).map((item) => {
         const itemId = normalizeId(item?.id)
         const draft = randomInspectionDraftByItemId?.[itemId] || {}
-        const estadoRevision = String(draft?.estado_revision || '').trim().toLowerCase() === 'no_coincide'
-          ? 'no_coincide'
-          : 'coincide'
         const expectedQty = toPositiveInt(item?.cantidad_esperada, 0)
-        const reportedQty = toPositiveInt(
-          draft?.cantidad_reportada,
-          item?.cantidad_reportada == null
-            ? expectedQty
-            : toPositiveInt(item?.cantidad_reportada, expectedQty)
+        const locations = (Array.isArray(item?.ubicaciones_bodega) ? item.ubicaciones_bodega : [])
+          .map((location) => ({
+            ...location,
+            key: buildInspectionLocationKey(location),
+          }))
+          .filter((location) => Boolean(location.key))
+        const useLocationInputs = locations.length > 1
+        const baseReportInput = item?.cantidad_reportada == null
+          ? ''
+          : String(toPositiveInt(item?.cantidad_reportada, expectedQty))
+        const locationCountDraft = (
+          draft?.cantidad_reportada_por_ubicacion &&
+          typeof draft.cantidad_reportada_por_ubicacion === 'object'
         )
+          ? draft.cantidad_reportada_por_ubicacion
+          : {}
+        const locationInputs = useLocationInputs
+          ? locations.map((location) => {
+            const rawInput = Object.prototype.hasOwnProperty.call(locationCountDraft, location.key)
+              ? String(locationCountDraft?.[location.key] || '')
+              : ''
+            return {
+              ...location,
+              cantidad_contada_input: rawInput,
+              cantidad_contada: rawInput ? toPositiveInt(rawInput, 0) : null,
+            }
+          })
+          : []
+        const allLocationInputsAnswered = useLocationInputs
+          ? locationInputs.every((location) => String(location?.cantidad_contada_input || '').trim() !== '')
+          : false
+        const reportInput = useLocationInputs
+          ? (allLocationInputsAnswered
+            ? String(locationInputs.reduce((total, location) => total + toPositiveInt(location?.cantidad_contada, 0), 0))
+            : '')
+          : (
+            Object.prototype.hasOwnProperty.call(draft, 'cantidad_reportada_input')
+              ? String(draft?.cantidad_reportada_input || '')
+              : baseReportInput
+          )
+        const normalizedItemState = String(item?.estado_revision || '').trim().toLowerCase()
+        const isAnswered = useLocationInputs
+          ? allLocationInputsAnswered
+          : String(reportInput).trim() !== ''
+        const reportedQty = isAnswered ? toPositiveInt(reportInput, expectedQty) : null
+        let estadoRevision = 'pendiente'
+        if (normalizedItemState === 'coincide' || normalizedItemState === 'no_coincide') {
+          estadoRevision = normalizedItemState
+        } else if (reportedQty != null) {
+          estadoRevision = reportedQty === expectedQty ? 'coincide' : 'no_coincide'
+        }
         return {
           ...item,
           row_id: itemId,
           estado_revision: estadoRevision,
           cantidad_esperada: expectedQty,
           cantidad_reportada: reportedQty,
+          cantidad_reportada_input: reportInput,
+          cantidad_reportada_por_ubicacion: locationCountDraft,
+          ubicaciones_bodega: useLocationInputs ? locationInputs : locations,
+          requiere_conteo_por_ubicacion: useLocationInputs,
+          respondido: isAnswered,
           observacion: String(draft?.observacion || item?.observacion || '').trim(),
         }
       }),
@@ -1623,6 +1746,34 @@ function QuickActions({
         (row) => String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide'
       ).length,
     [randomInspectionRows]
+  )
+
+  const randomInspectionAnsweredCount = useMemo(
+    () =>
+      randomInspectionRows.filter((row) => row?.cantidad_reportada != null).length,
+    [randomInspectionRows]
+  )
+
+  const activeRandomInspectionStepIndex = useMemo(() => {
+    if (!randomInspectionRows.length) return 0
+    return Math.min(randomInspectionStepIndex, randomInspectionRows.length - 1)
+  }, [randomInspectionRows.length, randomInspectionStepIndex])
+
+  const activeRandomInspectionRow = useMemo(
+    () => randomInspectionRows[activeRandomInspectionStepIndex] || null,
+    [activeRandomInspectionStepIndex, randomInspectionRows]
+  )
+  const isRandomInspectionSummaryVisible = (
+    !isRandomInspectionVerifyMode &&
+    randomInspectionShowSummary
+  )
+  const randomInspectionMatchedCount = Math.max(
+    0,
+    randomInspectionAnsweredCount - randomInspectionMismatchCount
+  )
+  const randomInspectionAllAnswersReady = (
+    randomInspectionRows.length > 0 &&
+    randomInspectionAnsweredCount === randomInspectionRows.length
   )
 
   const receiveShipmentTotalMissing = useMemo(
@@ -1995,6 +2146,8 @@ function QuickActions({
     setActiveRandomInspection(null)
     setRandomInspectionDraftByItemId({})
     setRandomInspectionMode('review')
+    setRandomInspectionStepIndex(0)
+    setRandomInspectionShowSummary(false)
     setRandomInspectionError('')
     setRandomInspectionSubmitting(false)
     setRandomInspectionLoading(false)
@@ -2005,18 +2158,11 @@ function QuickActions({
     return rows.reduce((acc, item) => {
       const itemId = normalizeId(item?.id)
       if (!itemId) return acc
-      const expectedQty = toPositiveInt(item?.cantidad_esperada, 0)
-      const reportedQty = item?.cantidad_reportada == null
-        ? expectedQty
-        : toPositiveInt(item?.cantidad_reportada, expectedQty)
-      const normalizedState = String(item?.estado_revision || '').trim().toLowerCase()
-      const estadoRevision = normalizedState === 'no_coincide'
-        ? 'no_coincide'
-        : 'coincide'
       acc[itemId] = {
         id: itemId,
-        estado_revision: estadoRevision,
-        cantidad_reportada: reportedQty,
+        cantidad_reportada_input: item?.cantidad_reportada == null
+          ? ''
+          : String(toPositiveInt(item?.cantidad_reportada, 0)),
         observacion: String(item?.observacion || '').trim(),
       }
       return acc
@@ -2046,6 +2192,69 @@ function QuickActions({
     }, {})
   }, [])
 
+  const enrichRandomInspectionWithProductLocations = useCallback(
+    async (inspection) => {
+      const rows = Array.isArray(inspection?.items) ? inspection.items : []
+      if (!token || !rows.length) return inspection
+
+      const rowsMissingLocations = rows.filter((item) => {
+        const locations = Array.isArray(item?.ubicaciones_bodega) ? item.ubicaciones_bodega : []
+        return locations.length <= 0
+      })
+      if (!rowsMissingLocations.length) return inspection
+
+      const uniqueProductIds = Array.from(
+        new Set(
+          rowsMissingLocations
+            .map((item) => normalizeId(item?.producto_id))
+            .filter(Boolean)
+        )
+      )
+      if (!uniqueProductIds.length) return inspection
+
+      const productLocationMap = new Map()
+      await Promise.all(uniqueProductIds.map(async (productId) => {
+        const response = await authFetch(
+          `${API_URL}/productos/listado/${encodeURIComponent(productId)}/?include_inventory_context=1`,
+          {},
+          token
+        )
+        if (!response.ok) return
+        const payload = await response.json().catch(() => ({}))
+        productLocationMap.set(String(productId), payload)
+      }))
+
+      const nextItems = rows.map((item) => {
+        const currentLocations = Array.isArray(item?.ubicaciones_bodega) ? item.ubicaciones_bodega : []
+        if (currentLocations.length > 0) return item
+
+        const productPayload = productLocationMap.get(normalizeId(item?.producto_id))
+        const locations = buildInspectionLocationsFromProductPayload(productPayload, item?.sucursal_id)
+        if (!locations.length) return item
+
+        return {
+          ...item,
+          ubicaciones_bodega: locations.map((location) => ({
+            sucursal_id: location.sucursal_id,
+            sucursal_nombre: location.sucursal_nombre,
+            bodega_nombre: location.bodega_nombre,
+            division_nombre: location.division_nombre,
+            subdivision_nombre: location.subdivision_nombre,
+            cantidad: location.cantidad,
+            label: location.label,
+          })),
+          ubicacion_bodega: locations.map((location) => `${location.label} (${toPositiveInt(location?.cantidad, 0)} uds)`).join('\n'),
+        }
+      })
+
+      return {
+        ...inspection,
+        items: nextItems,
+      }
+    },
+    [token]
+  )
+
   const fetchRandomInspectionDetail = useCallback(
     async (inspectionId) => {
       const normalizedInspectionId = normalizeId(inspectionId)
@@ -2065,9 +2274,9 @@ function QuickActions({
       if (!inspection || typeof inspection !== 'object') {
         throw new Error('La inspecci\u00f3n aleatoria no tiene datos v\u00e1lidos.')
       }
-      return inspection
+      return enrichRandomInspectionWithProductLocations(inspection)
     },
-    [token]
+    [enrichRandomInspectionWithProductLocations, token]
   )
 
   const handleOpenRandomInspectionFromReminder = useCallback(
@@ -2089,6 +2298,8 @@ function QuickActions({
       setRandomInspectionError('')
       setRandomInspectionLoading(true)
       setRandomInspectionMode(isVerifyReminder ? 'verify' : 'review')
+      setRandomInspectionStepIndex(0)
+      setRandomInspectionShowSummary(false)
       setIsRandomInspectionModalOpen(true)
       try {
         const inspection = await fetchRandomInspectionDetail(inspectionId)
@@ -2734,7 +2945,7 @@ function QuickActions({
           ? 'no_coincide'
           : 'coincide'
       } else if (field === 'cantidad_reportada') {
-        next.cantidad_reportada = toPositiveInt(value, 0)
+        next.cantidad_reportada_input = normalizeIntegerInputString(value)
       } else if (field === 'observacion') {
         next.observacion = String(value || '')
       } else if (field === 'accion') {
@@ -2750,6 +2961,70 @@ function QuickActions({
       return {
         ...prev,
         [normalizedItemId]: next,
+      }
+    })
+  }, [])
+
+  const handleAdvanceRandomInspectionStep = useCallback(() => {
+    if (!randomInspectionRows.length) {
+      setRandomInspectionError('No hay productos para revisar en esta inspeccion.')
+      return
+    }
+
+    if (activeRandomInspectionRow?.cantidad_reportada == null) {
+      setRandomInspectionError(
+        activeRandomInspectionRow?.requiere_conteo_por_ubicacion
+          ? 'Completa la cantidad contada en cada ubicacion antes de continuar.'
+          : 'Ingresa la cantidad contada antes de continuar.'
+      )
+      return
+    }
+
+    setRandomInspectionError('')
+    if (activeRandomInspectionStepIndex >= randomInspectionRows.length - 1) {
+      setRandomInspectionShowSummary(true)
+      return
+    }
+    setRandomInspectionStepIndex((prev) => prev + 1)
+  }, [
+    activeRandomInspectionRow,
+    activeRandomInspectionStepIndex,
+    randomInspectionRows,
+  ])
+
+  const handleGoBackRandomInspectionStep = useCallback(() => {
+    setRandomInspectionError('')
+    if (isRandomInspectionSummaryVisible) {
+      setRandomInspectionShowSummary(false)
+      return
+    }
+    setRandomInspectionStepIndex((prev) => Math.max(0, prev - 1))
+  }, [isRandomInspectionSummaryVisible])
+
+  const handleRandomInspectionLocationCountChange = useCallback((itemId, locationKey, value) => {
+    const normalizedItemId = normalizeId(itemId)
+    const normalizedLocationKey = String(locationKey || '').trim()
+    if (!normalizedItemId || !normalizedLocationKey) return
+
+    setRandomInspectionDraftByItemId((prev) => {
+      const current = prev?.[normalizedItemId] || {}
+      const currentLocationCounts = (
+        current?.cantidad_reportada_por_ubicacion &&
+        typeof current.cantidad_reportada_por_ubicacion === 'object'
+      )
+        ? current.cantidad_reportada_por_ubicacion
+        : {}
+
+      return {
+        ...prev,
+        [normalizedItemId]: {
+          ...current,
+          id: normalizedItemId,
+          cantidad_reportada_por_ubicacion: {
+            ...currentLocationCounts,
+            [normalizedLocationKey]: normalizeQuantityInputString(value),
+          },
+        },
       }
     })
   }, [])
@@ -2779,18 +3054,24 @@ function QuickActions({
           return
         }
 
-        const estadoRevision = String(row?.estado_revision || '').trim().toLowerCase()
-        if (estadoRevision !== 'coincide' && estadoRevision !== 'no_coincide') {
-          setRandomInspectionError('Debes indicar si cada producto coincide o no coincide.')
+        if (row?.cantidad_reportada == null) {
+          setRandomInspectionError(
+            `Debes ingresar la cantidad contada para ${row?.producto_codigo || row?.producto_nombre || `item ${rowId}`}.`
+          )
           return
         }
+        const normalizedEstadoRevision = (
+          toPositiveInt(row?.cantidad_reportada, 0) === toPositiveInt(row?.cantidad_esperada, 0)
+            ? 'coincide'
+            : 'no_coincide'
+        )
 
         const payloadRow = {
           id: Number(rowId),
-          estado_revision: estadoRevision,
+          estado_revision: normalizedEstadoRevision,
           observacion: String(row?.observacion || '').trim(),
         }
-        if (estadoRevision === 'no_coincide') {
+        if (normalizedEstadoRevision === 'no_coincide') {
           payloadRow.cantidad_reportada = toPositiveInt(row?.cantidad_reportada, -1)
           if (payloadRow.cantidad_reportada < 0) {
             setRandomInspectionError(
@@ -3384,7 +3665,7 @@ function QuickActions({
 
       {isRandomInspectionModalOpen && (
         <div
-          className="quick-actions__inspection-overlay"
+          className={`quick-actions__inspection-overlay${darkMode ? ' dark' : ''}`}
           onMouseDown={() => {
             if (randomInspectionSubmitting) return
             closeRandomInspectionModal()
@@ -3531,78 +3812,210 @@ function QuickActions({
                     <p className="quick-actions__inspection-empty">No hay productos por revisar.</p>
                   )}
 
-                  {randomInspectionRows.map((row) => {
-                    const rowId = normalizeId(row?.row_id || row?.id)
-                    const isMismatch = String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide'
-                    return (
-                      <article key={`inspection-row-${rowId}`} className="quick-actions__inspection-item">
-                        <div className="quick-actions__inspection-item-head">
-                          <strong>
-                            {row?.producto_codigo ? `${row.producto_codigo} - ` : ''}
-                            {row?.producto_nombre || `Producto ${rowId}`}
-                          </strong>
-                          <span>{String(row?.sucursal_nombre || 'Sucursal').trim()}</span>
-                        </div>
-
-                        <div className="quick-actions__inspection-item-expected">
-                          Inventario esperado: <strong>{toPositiveInt(row?.cantidad_esperada, 0)}</strong>
-                        </div>
-
-                        <div className="quick-actions__inspection-grid">
-                          <label>
-                            <span>Resultado</span>
-                            <select
-                              value={String(row?.estado_revision || 'coincide')}
-                              onChange={(event) =>
-                                handleRandomInspectionDraftFieldChange(
-                                  rowId,
-                                  'estado_revision',
-                                  event.target.value
-                                )}
-                              disabled={randomInspectionSubmitting}
-                            >
-                              <option value="coincide">Si coincide con inventario</option>
-                              <option value="no_coincide">No coincide</option>
-                            </select>
-                          </label>
-
-                          <label>
-                            <span>Cantidad real</span>
-                            <input
-                              type="number"
-                              min={0}
-                              value={toPositiveInt(
-                                row?.cantidad_reportada,
-                                toPositiveInt(row?.cantidad_esperada, 0)
-                              )}
-                              onChange={(event) =>
-                                handleRandomInspectionDraftFieldChange(
-                                  rowId,
-                                  'cantidad_reportada',
-                                  event.target.value
-                                )}
-                              disabled={randomInspectionSubmitting || !isMismatch}
-                            />
-                          </label>
-                        </div>
-
-                        <label className="quick-actions__inspection-note">
-                          <span>Observacion (opcional)</span>
-                          <textarea
-                            rows={2}
-                            value={String(row?.observacion || '')}
-                            onChange={(event) =>
-                              handleRandomInspectionDraftFieldChange(
-                                rowId,
-                                'observacion',
-                                event.target.value
-                              )}
-                            disabled={randomInspectionSubmitting}
+                  {!!randomInspectionRows.length && !isRandomInspectionSummaryVisible && activeRandomInspectionRow && (
+                    <div className="quick-actions__inspection-quiz">
+                      <div className="quick-actions__inspection-progress" aria-hidden="true">
+                        <div className="quick-actions__inspection-progress-bar">
+                          <span
+                            style={{
+                              width: `${(randomInspectionAnsweredCount / Math.max(randomInspectionRows.length, 1)) * 100}%`,
+                            }}
                           />
-                        </label>
-                      </article>
-                    )
-                  })}
+                        </div>
+                      </div>
+
+                      <div className={activeRandomInspectionRow?.requiere_conteo_por_ubicacion ? 'quick-actions__inspection-stage-list' : undefined}>
+                        {(
+                          activeRandomInspectionRow?.requiere_conteo_por_ubicacion
+                            ? (Array.isArray(activeRandomInspectionRow?.ubicaciones_bodega)
+                              ? activeRandomInspectionRow.ubicaciones_bodega
+                              : [])
+                            : [null]
+                        ).map((location, index) => (
+                          <article
+                            key={
+                              activeRandomInspectionRow?.requiere_conteo_por_ubicacion
+                                ? `inspection-stage-location-${normalizeId(activeRandomInspectionRow?.row_id || activeRandomInspectionRow?.id)}-${index}`
+                                : `inspection-stage-single-${normalizeId(activeRandomInspectionRow?.row_id || activeRandomInspectionRow?.id)}`
+                            }
+                            className="quick-actions__inspection-stage"
+                          >
+                            <div className="quick-actions__inspection-stage-copy">
+                              <p className="quick-actions__inspection-stage-kicker">Codigo a revisar</p>
+                              <h5>
+                                {activeRandomInspectionRow?.producto_codigo || `Producto ${activeRandomInspectionRow?.row_id}`}
+                              </h5>
+                              {!!String(activeRandomInspectionRow?.producto_nombre || '').trim() && (
+                                <p className="quick-actions__inspection-stage-name">
+                                  {String(activeRandomInspectionRow?.producto_nombre || '').trim()}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="quick-actions__inspection-stage-meta quick-actions__inspection-stage-meta--split">
+                              <div className="quick-actions__inspection-stage-meta-block">
+                                <strong>{String(activeRandomInspectionRow?.sucursal_nombre || 'Sucursal').trim()}</strong>
+                              </div>
+
+                              <div className="quick-actions__inspection-stage-meta-block">
+                                {activeRandomInspectionRow?.requiere_conteo_por_ubicacion ? (
+                                  <div className="quick-actions__inspection-location-row">
+                                    <div>
+                                      <small>Bodega</small>
+                                      <strong>{String(location?.bodega_nombre || '-').trim()}</strong>
+                                    </div>
+                                    <div>
+                                      <small>Division</small>
+                                      <strong>{String(location?.division_nombre || '-').trim()}</strong>
+                                    </div>
+                                    <div>
+                                      <small>Subdivision</small>
+                                      <strong>{String(location?.subdivision_nombre || '-').trim()}</strong>
+                                    </div>
+                                  </div>
+                                ) : Array.isArray(activeRandomInspectionRow?.ubicaciones_bodega) && activeRandomInspectionRow.ubicaciones_bodega.length > 0 ? (
+                                  <div className="quick-actions__inspection-location-list">
+                                    {activeRandomInspectionRow.ubicaciones_bodega.map((location, index) => (
+                                      <div
+                                        key={`inspection-location-${normalizeId(activeRandomInspectionRow?.row_id || activeRandomInspectionRow?.id)}-${index}`}
+                                        className="quick-actions__inspection-location-row"
+                                      >
+                                        <div>
+                                          <small>Bodega</small>
+                                          <strong>{String(location?.bodega_nombre || '-').trim()}</strong>
+                                        </div>
+                                        <div>
+                                          <small>Division</small>
+                                          <strong>{String(location?.division_nombre || '-').trim()}</strong>
+                                        </div>
+                                        <div>
+                                          <small>Subdivision</small>
+                                          <strong>{String(location?.subdivision_nombre || '-').trim()}</strong>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <strong>
+                                    {String(activeRandomInspectionRow?.ubicacion_bodega || 'Ubicacion no disponible').trim()}
+                                  </strong>
+                                )}
+                              </div>
+                            </div>
+
+                            <label className="quick-actions__inspection-count-field">
+                              <span>Cantidad contada</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={activeRandomInspectionRow?.requiere_conteo_por_ubicacion
+                                  ? String(location?.cantidad_contada_input || '')
+                                  : String(activeRandomInspectionRow?.cantidad_reportada_input || '')}
+                                onChange={(event) => {
+                                  if (activeRandomInspectionRow?.requiere_conteo_por_ubicacion) {
+                                    handleRandomInspectionLocationCountChange(
+                                      activeRandomInspectionRow?.row_id || activeRandomInspectionRow?.id,
+                                      location?.key,
+                                      event.target.value
+                                    )
+                                    return
+                                  }
+
+                                  handleRandomInspectionDraftFieldChange(
+                                    activeRandomInspectionRow?.row_id || activeRandomInspectionRow?.id,
+                                    'cantidad_reportada',
+                                    normalizeQuantityInputString(event.target.value)
+                                  )
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key !== 'Enter') return
+                                  event.preventDefault()
+                                  handleAdvanceRandomInspectionStep()
+                                }}
+                                maxLength={4}
+                                placeholder="0"
+                                disabled={randomInspectionSubmitting}
+                                autoFocus={index === 0}
+                              />
+                            </label>
+
+                            <p className="quick-actions__inspection-stage-help">
+                              {activeRandomInspectionRow?.requiere_conteo_por_ubicacion
+                                ? 'Cuenta cada ubicacion por separado. El inventario esperado se mostrara al final.'
+                                : 'Cuenta primero y responde solo con la cantidad encontrada. El inventario esperado se mostrara al final.'}
+                            </p>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!!randomInspectionRows.length && isRandomInspectionSummaryVisible && (
+                    <div className="quick-actions__inspection-summary">
+                      <div className="quick-actions__inspection-summary-head">
+                        <div>
+                          <p className="quick-actions__inspection-stage-kicker">Resultado de la prueba</p>
+                          <h5>
+                            {randomInspectionMismatchCount > 0
+                              ? `Se encontraron ${randomInspectionMismatchCount} diferencia(s)`
+                              : 'Todo coincide con el inventario'}
+                          </h5>
+                          <p className="quick-actions__inspection-stage-help">
+                            Aqui ya puedes ver lo esperado frente a lo que realmente contaste.
+                          </p>
+                        </div>
+                        <div className="quick-actions__inspection-summary-stats">
+                          <span>
+                            Coinciden
+                            <strong>{randomInspectionMatchedCount}</strong>
+                          </span>
+                          <span>
+                            Diferencias
+                            <strong>{randomInspectionMismatchCount}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="quick-actions__inspection-list">
+                        {randomInspectionRows.map((row) => {
+                          const rowId = normalizeId(row?.row_id || row?.id)
+                          const expectedQty = toPositiveInt(row?.cantidad_esperada, 0)
+                          const countedQty = toPositiveInt(row?.cantidad_reportada, 0)
+                          const delta = countedQty - expectedQty
+                          const isMismatch = countedQty !== expectedQty
+                          return (
+                            <article key={`inspection-summary-${rowId}`} className="quick-actions__inspection-item">
+                              <div className="quick-actions__inspection-item-head">
+                                <strong>
+                                  {row?.producto_codigo ? `${row.producto_codigo} - ` : ''}
+                                  {row?.producto_nombre || `Producto ${rowId}`}
+                                </strong>
+                                <span>{String(row?.sucursal_nombre || 'Sucursal').trim()}</span>
+                              </div>
+
+                              <div className="quick-actions__inspection-summary-row">
+                                <div>
+                                  <small>Esperado</small>
+                                  <strong>{expectedQty}</strong>
+                                </div>
+                                <div>
+                                  <small>Contado</small>
+                                  <strong>{countedQty}</strong>
+                                </div>
+                                <div>
+                                  <small>Diferencia</small>
+                                  <strong>{formatSignedInteger(delta)}</strong>
+                                </div>
+                                <span className={`quick-actions__inspection-summary-badge${isMismatch ? ' is-mismatch' : ' is-match'}`}>
+                                  {isMismatch ? 'No coincide' : 'Coincide'}
+                                </span>
+                              </div>
+                            </article>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {randomInspectionError && (
@@ -3619,12 +4032,36 @@ function QuickActions({
               >
                 Cancelar
               </button>
+              {!isRandomInspectionVerifyMode && !isRandomInspectionSummaryVisible && randomInspectionRows.length > 1 && (
+                <button
+                  type="button"
+                  className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                  onClick={handleGoBackRandomInspectionStep}
+                  disabled={randomInspectionSubmitting || activeRandomInspectionStepIndex <= 0}
+                >
+                  Anterior
+                </button>
+              )}
+              {!isRandomInspectionVerifyMode && isRandomInspectionSummaryVisible && (
+                <button
+                  type="button"
+                  className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                  onClick={handleGoBackRandomInspectionStep}
+                  disabled={randomInspectionSubmitting}
+                >
+                  Volver a revisar
+                </button>
+              )}
               <button
                 type="button"
                 className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
                 onClick={() => {
                   if (isRandomInspectionVerifyMode) {
                     void handleVerifyRandomInspection()
+                    return
+                  }
+                  if (!isRandomInspectionSummaryVisible) {
+                    handleAdvanceRandomInspectionStep()
                     return
                   }
                   void handleSubmitRandomInspection()
@@ -3636,7 +4073,11 @@ function QuickActions({
                   (
                     isRandomInspectionVerifyMode
                       ? randomInspectionPendingVerificationCount <= 0
-                      : !randomInspectionRows.length
+                      : (
+                        !randomInspectionRows.length ||
+                        (!isRandomInspectionSummaryVisible && !activeRandomInspectionRow) ||
+                        (isRandomInspectionSummaryVisible && !randomInspectionAllAnswersReady)
+                      )
                   )
                 }
               >
@@ -3650,6 +4091,12 @@ function QuickActions({
                     )
                     : isRandomInspectionAlreadyCompleted
                       ? 'Inspeccion ya enviada'
+                    : !isRandomInspectionSummaryVisible
+                      ? (
+                        activeRandomInspectionStepIndex >= randomInspectionRows.length - 1
+                          ? 'Ver resultado'
+                          : 'Siguiente producto'
+                      )
                     : (
                       randomInspectionMismatchCount > 0
                         ? `Guardar inspecci\u00f3n (${randomInspectionMismatchCount} con diferencia)`

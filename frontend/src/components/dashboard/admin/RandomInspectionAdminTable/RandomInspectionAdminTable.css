@@ -277,6 +277,9 @@
   overflow: hidden;
   box-shadow: 0 18px 36px rgba(12, 25, 44, 0.22);
   position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 40px);
 }
 
 .inspection-admin__dialog--assignments {
@@ -319,6 +322,9 @@
   padding: 14px 16px;
   display: grid;
   gap: 10px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .inspection-admin__dialog-body--assignments {
@@ -759,16 +765,90 @@
   color: #1e1e1e;
 }
 
-.inspection-admin__sendnow-users {
-  margin: 0;
-  padding: 0 0 0 14px;
-  list-style: disc;
+.inspection-admin__sendnow-table-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
 }
 
-.inspection-admin__sendnow-users li {
+.inspection-admin__sendnow-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: var(--font-size-sm);
+}
+
+.inspection-admin__sendnow-table thead tr {
+  background: #f3f4f6;
+}
+
+.inspection-admin__sendnow-table th {
+  padding: 7px 10px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.inspection-admin__sendnow-table th:last-child,
+.inspection-admin__sendnow-table td:last-child {
+  text-align: center;
+  width: 44px;
+}
+
+.inspection-admin__sendnow-table td {
+  padding: 7px 10px;
   color: #374151;
-  line-height: 1.6;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+.inspection-admin__sendnow-td-branch {
+  font-weight: 600;
+  color: #1e1e1e !important;
+  vertical-align: top !important;
+  padding-top: 9px !important;
+  border-right: 1px solid #e5e7eb;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.inspection-admin__sendnow-td-check input[type='checkbox'] {
+  cursor: pointer;
+  accent-color: var(--color-primary, #2563eb);
+  width: 15px;
+  height: 15px;
+}
+
+.inspection-admin__sendnow-table thead th input[type='checkbox'] {
+  cursor: pointer;
+  accent-color: var(--color-primary, #2563eb);
+  width: 15px;
+  height: 15px;
+}
+
+.inspection-admin__sendnow-table tbody tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.inspection-admin__sendnow-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.inspection-admin__sendnow-row--selected {
+  background: #eff6ff !important;
+}
+
+.inspection-admin__sendnow-count-footer {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: right;
 }
 
 .inspection-admin__dialog-actions {
@@ -931,11 +1011,41 @@
 .dashboard-shell.dark .inspection-admin__dialog-body label span,
 .dashboard-shell.dark .inspection-admin__sendnow-label,
 .dashboard-shell.dark .inspection-admin__sendnow-branches-title,
-.dashboard-shell.dark .inspection-admin__sendnow-users li,
 .dashboard-shell.dark .inspection-admin__product-cell__email,
 .dashboard-shell.dark .inspection-admin__product-cell__type,
 .dashboard-shell.dark .inspection-admin__action-placeholder {
   color: color-mix(in srgb, var(--color-text-dark) 82%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__sendnow-table thead tr {
+  background: color-mix(in srgb, var(--color-surface-dark) 60%, #000);
+}
+
+.dashboard-shell.dark .inspection-admin__sendnow-table th {
+  color: color-mix(in srgb, var(--color-text-dark) 65%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-border-dark) 70%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__sendnow-table td {
+  color: color-mix(in srgb, var(--color-text-dark) 88%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-border-dark) 35%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__sendnow-td-branch {
+  color: var(--color-text-title-dark) !important;
+  border-right-color: color-mix(in srgb, var(--color-border-dark) 50%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__sendnow-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-surface-dark) 80%, #fff);
+}
+
+.dashboard-shell.dark .inspection-admin__sendnow-row--selected {
+  background: color-mix(in srgb, #2563eb 12%, transparent) !important;
+}
+
+.dashboard-shell.dark .inspection-admin__sendnow-count-footer {
+  color: color-mix(in srgb, var(--color-text-dark) 55%, transparent);
 }
 
 .dashboard-shell.dark .inspection-admin__sendnow-value,

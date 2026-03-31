@@ -27,10 +27,12 @@ from .serializers import (
 from .utils import (
     ADMIN_ONLY_MODULES,
     build_full_permissions,
+    build_permissions_summary,
     get_modulos_con_alcance_sucursal_options,
     get_permisos_efectivos,
     get_random_inspection_branch_ids,
     get_usuario_interno_por_correo,
+    normalize_random_inspection_branch_ids,
     remove_personalized_role_for_email,
     sync_random_inspection_branch_assignment,
     user_has_module_action,
@@ -172,19 +174,69 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             )
 
         queryset = queryset.order_by("is_active", "first_name", "last_name", "email")
-        payload = [
-            self._serialize_random_inspection_assignment(instance)
-            for instance in queryset
-        ]
+
+        # Evaluate queryset once — prefetches roles__permisos and preferencia_operativa
+        users = list(queryset)
+
+        # 1 query for branches (reused for validation and response)
+        branch_options = list(Sucursal.objects.order_by("nombre", "id").values("id", "nombre"))
+        valid_branch_ids = frozenset(b["id"] for b in branch_options)
+
+        # 1 query for all personalized roles (instead of 1 per user)
+        user_emails_lower = [str(u.email or "").strip().lower() for u in users if u.email]
+        role_names = [f"Permisos - {e}" for e in user_emails_lower]
+        personalized_role_map = {
+            str(r.nombre or "")[len("Permisos - "):].strip().lower(): r
+            for r in Rol.objects.filter(es_personalizado=True, nombre__in=role_names)
+            .prefetch_related("permisos")
+        }
+
+        payload = []
+        for instance in users:
+            email_key = str(instance.email or "").strip().lower()
+            personalized_role = personalized_role_map.get(email_key)
+
+            # Branch IDs — uses prefetched preferencia_operativa, no extra queries
+            preference = getattr(instance, "preferencia_operativa", None)
+            raw_ids = getattr(preference, "inspeccion_aleatoria_sucursales", []) or []
+            inspection_branch_ids = [
+                bid for bid in normalize_random_inspection_branch_ids(raw_ids)
+                if bid in valid_branch_ids
+            ]
+            if not inspection_branch_ids and preference is not None and getattr(preference, "inspeccion_aleatoria", False):
+                inspection_branch_ids = sorted(valid_branch_ids)
+
+            # Permissions — uses prefetched roles__permisos, no extra queries
+            if instance.is_staff or instance.is_superuser:
+                puede_ver = True
+            else:
+                extra_roles = [personalized_role] if personalized_role else []
+                permisos = build_permissions_summary(list(instance.roles.all()), extra_roles=extra_roles)
+                puede_ver = any(
+                    str(p.get("modulo") or "") == str(RolPermiso.Modulos.INVENTARIO)
+                    and (p.get("puede_leer") or p.get("puede_crear") or p.get("puede_actualizar") or p.get("puede_eliminar"))
+                    for p in permisos
+                )
+
+            payload.append({
+                "id": int(instance.id),
+                "nombres": str(instance.first_name or "").strip(),
+                "apellidos": str(instance.last_name or "").strip(),
+                "nombre_completo": self._format_display_name(instance),
+                "correo": str(instance.email or "").strip(),
+                "activo": bool(instance.is_active),
+                "es_administrador": bool(instance.is_staff or instance.is_superuser),
+                "inspeccion_aleatoria": bool(inspection_branch_ids),
+                "inspeccion_aleatoria_sucursales": inspection_branch_ids,
+                "puede_ver_inventario": puede_ver,
+            })
+
         payload.sort(
             key=lambda row: (
                 not bool(row.get("activo")),
                 str(row.get("nombre_completo") or "").lower(),
                 int(row.get("id") or 0),
             )
-        )
-        branch_options = list(
-            Sucursal.objects.order_by("nombre", "id").values("id", "nombre")
         )
         return Response({"results": payload, "sucursales": branch_options})
 
