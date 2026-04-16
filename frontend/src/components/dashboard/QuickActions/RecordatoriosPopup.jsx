@@ -292,8 +292,9 @@ const formatWeekRangeLabel = (startDate, endDate) => {
 const formatTimelineDayName = (dateKey) => {
   const parsed = parseDateKey(dateKey)
   if (!parsed) return '-'
-  const label = new Intl.DateTimeFormat('es-CO', { weekday: 'short' }).format(parsed)
-  return label.replace('.', '')
+  const label = new Intl.DateTimeFormat('es-CO', { weekday: 'long' }).format(parsed)
+  const clean = label.replace('.', '')
+  return clean.charAt(0).toUpperCase() + clean.slice(1)
 }
 
 const formatTimelineDayDate = (dateKey) => {
@@ -379,6 +380,7 @@ function RecordatoriosPopup({
   const [highlightedReminderId, setHighlightedReminderId] = useState('')
   const [pendingScrollReminderId, setPendingScrollReminderId] = useState('')
   const [transferLifecycleBySolicitudId, setTransferLifecycleBySolicitudId] = useState({})
+  const [activeDetailReminderId, setActiveDetailReminderId] = useState('')
   const transferLifecycleInFlightRef = useRef(new Set())
   const reminderItemRefs = useRef(new Map())
 
@@ -573,6 +575,36 @@ function RecordatoriosPopup({
     [normalizedSelectedTimelineDate]
   )
 
+  const activeDetailReminder = useMemo(() => {
+    const nId = normalizeId(activeDetailReminderId)
+    if (!nId) return null
+    return (Array.isArray(reminders) ? reminders : []).find((r) => normalizeId(r?.id) === nId) || null
+  }, [activeDetailReminderId, reminders])
+
+  const activeDetailReminderStatus = useMemo(() => {
+    if (!activeDetailReminder) return null
+    return buildReminderStatusForUser(activeDetailReminder, currentUserIdSet)
+  }, [activeDetailReminder, currentUserIdSet])
+
+  const activeDetailReminderDescription = useMemo(() => {
+    if (!activeDetailReminder) return '-'
+    const decisionStatus = getReminderDecisionStatus(activeDetailReminder)
+    const isTransferContext = normalizeReminderContextType(activeDetailReminder?.context?.type) === 'solicitud_traslado'
+    const isSpecial = isSpecialTransferDecisionReminder(activeDetailReminder)
+    if (isTransferContext && !isSpecial) {
+      return buildTransferResponseDescription(activeDetailReminder, decisionStatus)
+    }
+    return String(activeDetailReminder?.description || '').trim() || '-'
+  }, [activeDetailReminder])
+
+  const activeDetailReminderRecipientNames = useMemo(() => {
+    if (!activeDetailReminder) return 'Sin destinatarios'
+    return (Array.isArray(activeDetailReminder?.recipients) ? activeDetailReminder.recipients : [])
+      .map((r) => String(r?.name || '').trim())
+      .filter(Boolean)
+      .join(', ') || 'Sin destinatarios'
+  }, [activeDetailReminder])
+
   const shiftTimelineDay = useCallback((offset) => {
     setSelectedTimelineDate((current) => addDaysToDateKey(current, offset))
   }, [])
@@ -647,6 +679,7 @@ function RecordatoriosPopup({
       setHighlightedReminderId('')
       setPendingScrollReminderId('')
       setTransferLifecycleBySolicitudId({})
+      setActiveDetailReminderId('')
       transferLifecycleInFlightRef.current = new Set()
       reminderItemRefs.current = new Map()
       return
@@ -663,6 +696,7 @@ function RecordatoriosPopup({
     setOpeningTransferReminderId('')
     setHighlightedReminderId('')
     setPendingScrollReminderId('')
+    setActiveDetailReminderId('')
     closeDecisionPanel()
   }, [open, currentPrimaryUserId, closeDecisionPanel])
 
@@ -1619,8 +1653,10 @@ function RecordatoriosPopup({
                             title={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
                             aria-label={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
                           >
-                            <span className="recordatorios-popup__timeline-day-name">{day.dayName}</span>
-                            <span className="recordatorios-popup__timeline-day-date">{day.dayDate}</span>
+                            <span className="recordatorios-popup__timeline-day-label">
+                              <span className="recordatorios-popup__timeline-day-name">{day.dayName}</span>
+                              <span className="recordatorios-popup__timeline-day-date">{day.dayDate}</span>
+                            </span>
                             <span className="recordatorios-popup__timeline-day-count">{day.count} rec.</span>
                           </button>
                         )
@@ -1807,31 +1843,28 @@ function RecordatoriosPopup({
                               isHighlightedReminder ? ' recordatorios-popup__timeline-item--highlighted' : ''
                             }`}
                           >
-                            <div className="recordatorios-popup__timeline-item-head">
+                            <div
+                              className="recordatorios-popup__timeline-item-col recordatorios-popup__timeline-item-col--tema recordatorios-popup__timeline-item-col--clickable"
+                              onClick={() => setActiveDetailReminderId(String(reminder?.id || ''))}
+                            >
+                              <strong className="recordatorios-popup__timeline-item-context">{formatReminderContext(reminder)}</strong>
+                            </div>
+
+                            <div
+                              className="recordatorios-popup__timeline-item-col recordatorios-popup__timeline-item-col--details recordatorios-popup__timeline-item-col--clickable"
+                              onClick={() => setActiveDetailReminderId(String(reminder?.id || ''))}
+                            >
                               <p className="recordatorios-popup__timeline-item-time">{formatReminderTimeLabel(reminder)}</p>
+                              <p className="recordatorios-popup__timeline-item-description" title={timelineDescription}>
+                                {timelineDescription}
+                              </p>
+                            </div>
+
+                            <div className="recordatorios-popup__timeline-item-col recordatorios-popup__timeline-item-col--estado" onClick={(e) => e.stopPropagation()}>
                               <span className={`recordatorios-popup__status recordatorios-popup__status--${status.className}`}>
                                 {status.label}
                               </span>
-                            </div>
-
-                            <p className="recordatorios-popup__timeline-item-description" title={timelineDescription}>
-                              {timelineDescription}
-                            </p>
-
-                            <p className="recordatorios-popup__timeline-item-context">
-                              {formatReminderContext(reminder)}
-                            </p>
-
-                            <div className="recordatorios-popup__timeline-item-meta">
-                              <span>
-                                <strong>Creador:</strong> {reminder?.creator?.name || 'Usuario'}
-                              </span>
-                              <span>
-                                <strong>Dirigido a:</strong> {recipientNames || 'Sin destinatarios'}
-                              </span>
-                            </div>
-
-                            <div className="recordatorios-popup__timeline-item-actions">
+                              <div className="recordatorios-popup__timeline-item-actions">
                               {canResolveDecision ? (
                                 <button
                                   type="button"
@@ -1927,6 +1960,7 @@ function RecordatoriosPopup({
                               ) : (
                                 <span className="recordatorios-popup__action-placeholder">No aplica</span>
                               )}
+                            </div>
                             </div>
                           </article>
                         )
@@ -2104,6 +2138,69 @@ function RecordatoriosPopup({
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {activeDetailReminder && (
+          <div className="recordatorios-popup__detail-overlay" onMouseDown={() => setActiveDetailReminderId('')}>
+            <div className="recordatorios-popup__detail-card" onMouseDown={(e) => e.stopPropagation()}>
+              <header className="recordatorios-popup__detail-head">
+                <div>
+                  <h4>{formatReminderContext(activeDetailReminder)}</h4>
+                  <p>{formatTimelineFullDate(formatDateKey(activeDetailReminder?.date))}</p>
+                </div>
+                <button
+                  type="button"
+                  className="recordatorios-popup__close"
+                  onClick={() => setActiveDetailReminderId('')}
+                  aria-label="Cerrar detalle"
+                >
+                  <X />
+                </button>
+              </header>
+
+              <div className="recordatorios-popup__detail-body">
+                <div className="recordatorios-popup__detail-row">
+                  <span>Hora</span>
+                  <strong>{formatReminderTimeLabel(activeDetailReminder)}</strong>
+                </div>
+
+                <div className="recordatorios-popup__detail-row">
+                  <span>Estado</span>
+                  {activeDetailReminderStatus && (
+                    <span className={`recordatorios-popup__status recordatorios-popup__status--${activeDetailReminderStatus.className}`}>
+                      {activeDetailReminderStatus.label}
+                    </span>
+                  )}
+                </div>
+
+                <div className="recordatorios-popup__detail-description">
+                  <span>Descripcion</span>
+                  <p>{activeDetailReminderDescription}</p>
+                </div>
+
+                <div className="recordatorios-popup__detail-grid">
+                  <div className="recordatorios-popup__detail-row">
+                    <span>Creador</span>
+                    <strong>{activeDetailReminder?.creator?.name || 'Usuario'}</strong>
+                  </div>
+                  <div className="recordatorios-popup__detail-row">
+                    <span>Dirigido a</span>
+                    <strong>{activeDetailReminderRecipientNames}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <footer className="recordatorios-popup__detail-footer">
+                <button
+                  type="button"
+                  className="recordatorios-popup__decision-close-link"
+                  onClick={() => setActiveDetailReminderId('')}
+                >
+                  Cerrar
+                </button>
+              </footer>
             </div>
           </div>
         )}
