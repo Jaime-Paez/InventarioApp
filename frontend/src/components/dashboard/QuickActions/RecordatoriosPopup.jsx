@@ -4,19 +4,23 @@ import { ChevronLeft, ChevronRight, Loader2, Plus, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
 import {
+  buildTransferHistoryEntry,
   buildReminderStatusForUser,
   createReminderId,
   extractUserId,
   formatCurrentUserName,
   getReminderDecisionStatus,
+  getTransferReminderHistory,
   getTransferReceiptOutcome,
+  isReminderCreatedByCurrentUser,
   isRandomInspectionDailyReminder,
   isRandomInspectionVerifyReminder,
   isReminderForContext,
+  isTransferDecisionAllowedForUser,
   isSpecialTransferDecisionReminder,
   normalizeId,
-  reminderCompletedByIds,
   sanitizeRecipient,
+  upsertTransferReminder,
 } from '../common/reminders/remindersStorage'
 import './RecordatoriosPopup.css'
 
@@ -71,12 +75,45 @@ const buildTransferResponseDescription = (reminder, decisionStatus) => {
     return 'Su solicitud de traslado fue aceptada.'
   }
 
+  if (decisionStatus === 'cancelado') {
+    if (contextReference) return `Su solicitud de traslado ${contextReference} fue cancelada.`
+    return 'Su solicitud de traslado fue cancelada.'
+  }
+
   if (decisionStatus === 'enviado') {
     if (contextReference) return `Su solicitud de traslado ${contextReference} fue enviada y esta en traslado.`
     return 'Su solicitud de traslado fue enviada y esta en traslado.'
   }
 
   return String(reminder?.description || '').trim() || '-'
+}
+
+const mergeTransferHistoryForContext = (reminders, contextType, contextId) => {
+  const normalizedContextType = normalizeReminderContextType(contextType)
+  const normalizedContextId = normalizeId(contextId)
+  if (normalizedContextType !== 'solicitud_traslado' || !normalizedContextId) return []
+
+  const bySignature = new Map()
+  ;(Array.isArray(reminders) ? reminders : []).forEach((reminder) => {
+    if (normalizeReminderContextType(reminder?.context?.type) !== normalizedContextType) return
+    if (normalizeId(reminder?.context?.id) !== normalizedContextId) return
+
+    getTransferReminderHistory(reminder).forEach((entry) => {
+      const actorId = normalizeId(entry?.actor?.id)
+      const signature = [
+        String(entry?.stage || '').trim(),
+        String(entry?.at || '').trim(),
+        actorId,
+        String(entry?.description || '').trim(),
+      ].join('|')
+      if (!signature.replace(/\|/g, '')) return
+      bySignature.set(signature, entry)
+    })
+  })
+
+  return Array.from(bySignature.values()).sort((a, b) =>
+    String(a?.at || '').localeCompare(String(b?.at || ''))
+  )
 }
 
 const normalizeReminderContextType = (value) =>
@@ -112,17 +149,72 @@ const normalizeTransferProgressStage = (value) => {
   return 'pendiente'
 }
 
-const getTransferProgressStageLabel = (stage, receiptOutcome = '') => {
+const getTransferProgressStageLabel = (stage) => {
   const normalizedStage = normalizeTransferProgressStage(stage)
   if (normalizedStage === 'recibido') {
-    const normalizedOutcome = normalizeStateText(receiptOutcome)
-    if (normalizedOutcome === 'incompleto') return 'Llego incompleto'
-    if (normalizedOutcome === 'completo') return 'Llego completo'
-    return 'Recibido'
+    return 'Llego'
   }
   if (normalizedStage === 'enviado') return 'Enviado'
   if (normalizedStage === 'aceptada') return 'Aceptada'
   return 'Pendiente'
+}
+
+const getTransferHistoryStageLabel = (stage) => {
+  const normalized = normalizeStateText(stage)
+  if (normalized === 'pendiente') return 'Solicitud creada'
+  if (normalized === 'aceptada') return 'Solicitud aceptada'
+  if (normalized === 'rechazada') return 'Solicitud rechazada'
+  if (normalized === 'cancelado') return 'Solicitud cancelada'
+  if (normalized === 'enviado') return 'Envio registrado'
+  if (normalized === 'completo') return 'Recepcion completa'
+  if (normalized === 'incompleto') return 'Recepcion incompleta'
+  return String(stage || 'Evento').trim() || 'Evento'
+}
+
+const getTransferVisualDecisionStatus = ({
+  decisionStatus,
+  latestTransferStage,
+  receiptOutcome = '',
+}) => {
+  if (receiptOutcome === 'completo' || receiptOutcome === 'incompleto') {
+    return decisionStatus
+  }
+  const normalizedStage = normalizeTransferProgressStage(latestTransferStage)
+  if (normalizedStage === 'enviado') return 'enviado'
+  if (normalizedStage === 'aceptada') return 'aceptada'
+  return decisionStatus
+}
+
+const getTransferVisualStatus = (baseStatus, visualDecisionStatus) => {
+  if (visualDecisionStatus === 'enviado') {
+    return {
+      label: 'Enviado',
+      className: 'sent',
+      canMarkSeen: false,
+    }
+  }
+  if (visualDecisionStatus === 'aceptada') {
+    return {
+      label: 'Aceptada',
+      className: 'accepted',
+      canMarkSeen: false,
+    }
+  }
+  if (visualDecisionStatus === 'rechazada') {
+    return {
+      label: 'Rechazada',
+      className: 'rejected',
+      canMarkSeen: false,
+    }
+  }
+  if (visualDecisionStatus === 'cancelado') {
+    return {
+      label: 'Cancelado',
+      className: 'cancelled',
+      canMarkSeen: false,
+    }
+  }
+  return baseStatus
 }
 
 const extractTransferDocumentNumber = (value) => {
@@ -352,6 +444,7 @@ function RecordatoriosPopup({
   onFocusReminderHandled,
   onTransferDecisionAccepted,
   onOpenTransferRequestInEntradas,
+  onOpenTransferRequestInTransit,
   onOpenTransferRequestInSalidas,
   onOpenRandomInspection,
 }) {
@@ -583,19 +676,33 @@ function RecordatoriosPopup({
 
   const activeDetailReminderStatus = useMemo(() => {
     if (!activeDetailReminder) return null
-    return buildReminderStatusForUser(activeDetailReminder, currentUserIdSet)
-  }, [activeDetailReminder, currentUserIdSet])
+    const baseStatus = buildReminderStatusForUser(activeDetailReminder, currentUserIdSet)
+    const solicitudId = normalizeId(activeDetailReminder?.context?.id)
+    const transferLifecycle = solicitudId ? transferLifecycleBySolicitudId?.[solicitudId] || null : null
+    const visualDecisionStatus = getTransferVisualDecisionStatus({
+      decisionStatus: getReminderDecisionStatus(activeDetailReminder),
+      latestTransferStage: transferLifecycle?.stage || '',
+      receiptOutcome: getTransferReceiptOutcome(activeDetailReminder),
+    })
+    return getTransferVisualStatus(baseStatus, visualDecisionStatus)
+  }, [activeDetailReminder, currentUserIdSet, transferLifecycleBySolicitudId])
 
   const activeDetailReminderDescription = useMemo(() => {
     if (!activeDetailReminder) return '-'
-    const decisionStatus = getReminderDecisionStatus(activeDetailReminder)
+    const solicitudId = normalizeId(activeDetailReminder?.context?.id)
+    const transferLifecycle = solicitudId ? transferLifecycleBySolicitudId?.[solicitudId] || null : null
+    const decisionStatus = getTransferVisualDecisionStatus({
+      decisionStatus: getReminderDecisionStatus(activeDetailReminder),
+      latestTransferStage: transferLifecycle?.stage || '',
+      receiptOutcome: getTransferReceiptOutcome(activeDetailReminder),
+    })
     const isTransferContext = normalizeReminderContextType(activeDetailReminder?.context?.type) === 'solicitud_traslado'
     const isSpecial = isSpecialTransferDecisionReminder(activeDetailReminder)
     if (isTransferContext && !isSpecial) {
       return buildTransferResponseDescription(activeDetailReminder, decisionStatus)
     }
     return String(activeDetailReminder?.description || '').trim() || '-'
-  }, [activeDetailReminder])
+  }, [activeDetailReminder, transferLifecycleBySolicitudId])
 
   const activeDetailReminderRecipientNames = useMemo(() => {
     if (!activeDetailReminder) return 'Sin destinatarios'
@@ -604,6 +711,13 @@ function RecordatoriosPopup({
       .filter(Boolean)
       .join(', ') || 'Sin destinatarios'
   }, [activeDetailReminder])
+
+  const activeDetailTransferHistory = useMemo(() => {
+    if (!activeDetailReminder) return []
+    const contextType = normalizeReminderContextType(activeDetailReminder?.context?.type)
+    const contextId = normalizeId(activeDetailReminder?.context?.id)
+    return mergeTransferHistoryForContext(reminders, contextType, contextId)
+  }, [activeDetailReminder, reminders])
 
   const shiftTimelineDay = useCallback((offset) => {
     setSelectedTimelineDate((current) => addDaysToDateKey(current, offset))
@@ -965,75 +1079,66 @@ function RecordatoriosPopup({
       const resolutionDate = new Date().toISOString()
       const context = reminder?.context || null
       const rejectionReasonValue = String(rejectionReason || '').trim()
-
-      onApplyRemindersUpdate?.((prev) =>
-        (Array.isArray(prev) ? prev : []).map((item) => {
-          if (!isSpecialTransferDecisionReminder(item)) return item
-          if (!isReminderForContext(item, context)) return item
-
-          const completedBySet = new Set(reminderCompletedByIds(item))
-          ;(Array.isArray(item?.recipients) ? item.recipients : []).forEach((recipient) => {
-            const recipientId = normalizeId(recipient?.id)
-            if (recipientId) completedBySet.add(recipientId)
-          })
-
-          return {
-            ...item,
-            completedBy: Array.from(completedBySet),
-            decision: {
-              status: resolvedDecision,
-              reason: resolvedDecision === 'rechazada' ? rejectionReasonValue : '',
-              by: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
-              at: resolutionDate,
-            },
-          }
-        })
-      )
-
       const creatorRecipient = sanitizeRecipient(reminder?.creator)
-      if (creatorRecipient?.id) {
-        const nowParts = getNowDateParts()
-        const requesterLabel = String(reminder?.context?.label || `Solicitud de traslado #${solicitudId}`).trim()
-        const requesterReference = requesterLabel.replace(/^solicitud de traslado\s*/i, '').trim()
-        const fallbackReference = solicitudId ? `#${solicitudId}` : ''
-        const transferReference = requesterReference || fallbackReference
-        const responseDescription = resolvedDecision === 'rechazada'
-          ? (
-            transferReference
-              ? `Su solicitud de traslado ${transferReference} fue rechazada. Motivo: ${rejectionReasonValue}`
-              : `Su solicitud de traslado fue rechazada. Motivo: ${rejectionReasonValue}`
-          )
-          : (
-            transferReference
-              ? `Su solicitud de traslado ${transferReference} fue aceptada.`
-              : 'Su solicitud de traslado fue aceptada.'
-          )
+      const nowParts = getNowDateParts()
+      const requesterLabel = String(reminder?.context?.label || `Solicitud de traslado #${solicitudId}`).trim()
+      const requesterReference = requesterLabel.replace(/^solicitud de traslado\s*/i, '').trim()
+      const fallbackReference = solicitudId ? `#${solicitudId}` : ''
+      const transferReference = requesterReference || fallbackReference
+      const resolvedDescription = resolvedDecision === 'rechazada'
+        ? (
+          transferReference
+            ? `Su solicitud de traslado ${transferReference} fue rechazada. Motivo: ${rejectionReasonValue}`
+            : `Su solicitud de traslado fue rechazada. Motivo: ${rejectionReasonValue}`
+        )
+        : (
+          transferReference
+            ? `Su solicitud de traslado ${transferReference} fue aceptada.`
+            : 'Su solicitud de traslado fue aceptada.'
+        )
 
-        onApplyRemindersUpdate?.((prev) => [
-          {
-            id: createReminderId(),
-            date: nowParts.date,
-            time: nowParts.time,
-            description: responseDescription,
-            creator: {
-              id: creatorRecipientId,
-              name: creatorRecipientName,
-            },
-            recipients: [creatorRecipient],
-            context: reminder?.context || null,
-            kind: 'recordatorio_general',
-            createdAt: resolutionDate,
-            decision: {
-              status: resolvedDecision,
-              reason: resolvedDecision === 'rechazada' ? rejectionReasonValue : '',
-              by: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
-              at: resolutionDate,
-            },
-            completedBy: [],
+      onApplyRemindersUpdate?.((prev) => {
+        const currentList = Array.isArray(prev) ? prev : []
+        const currentReminder = currentList.find((item) => isReminderForContext(item, context)) || reminder
+
+        return upsertTransferReminder(currentList, {
+          id: normalizeId(currentReminder?.id) || createReminderId(),
+          date: nowParts.date,
+          time: nowParts.time,
+          description: resolvedDescription,
+          creator: currentReminder?.creator || {
+            id: creatorRecipientId,
+            name: creatorRecipientName,
           },
-          ...(Array.isArray(prev) ? prev : []),
-        ])
-      }
+          recipients: creatorRecipient?.id
+            ? [
+              ...(Array.isArray(currentReminder?.recipients) ? currentReminder.recipients : []),
+              creatorRecipient,
+            ]
+            : (Array.isArray(currentReminder?.recipients) ? currentReminder.recipients : []),
+          context: reminder?.context || null,
+          kind: 'recordatorio_general',
+          createdAt: currentReminder?.createdAt || resolutionDate,
+          decision: {
+            ...(currentReminder?.decision || {}),
+            status: resolvedDecision,
+            reason: resolvedDecision === 'rechazada' ? rejectionReasonValue : '',
+            by: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
+            at: resolutionDate,
+            assignedRecipients: currentReminder?.decision?.assignedRecipients || [],
+          },
+          transferHistory: [
+            ...getTransferReminderHistory(currentReminder),
+            buildTransferHistoryEntry({
+              stage: resolvedDecision,
+              description: resolvedDescription,
+              at: resolutionDate,
+              actor: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
+            }),
+          ],
+          completedBy: [],
+        })
+      })
 
       const responseSolicitud = data?.solicitud
       if (responseSolicitud) {
@@ -1208,7 +1313,6 @@ function RecordatoriosPopup({
     const remindersToResolve = selectedDayReminders.filter((reminder) => {
       const contextType = normalizeReminderContextType(reminder?.context?.type)
       if (contextType !== 'solicitud_traslado') return false
-      if (!isSpecialTransferDecisionReminder(reminder)) return false
       return getReminderDecisionStatus(reminder) === 'aceptada'
     })
 
@@ -1495,6 +1599,38 @@ function RecordatoriosPopup({
     [notifyError, onClose, onOpenRandomInspection]
   )
 
+  const handleOpenTransferInTransit = useCallback(
+    async (reminder) => {
+      if (typeof onOpenTransferRequestInTransit !== 'function') return false
+      const reminderId = normalizeId(reminder?.id) || normalizeId(reminder?.context?.id)
+      const solicitudId = normalizeId(reminder?.context?.id)
+      if (!solicitudId) {
+        notifyError('No se encontro el envio en camino asociado a este recordatorio.')
+        return false
+      }
+
+      if (reminderId) {
+        setOpeningTransferReminderId(reminderId)
+      }
+
+      try {
+        const opened = await onOpenTransferRequestInTransit(reminder)
+        if (!opened) {
+          notifyError('No se pudo abrir el envio en camino.')
+          return false
+        }
+        onClose?.()
+        return true
+      } catch (error) {
+        notifyError(error?.message || 'No se pudo abrir el envio en camino.')
+        return false
+      } finally {
+        setOpeningTransferReminderId('')
+      }
+    },
+    [notifyError, onClose, onOpenTransferRequestInTransit]
+  )
+
   if (!shouldRender || typeof document === 'undefined') return null
 
   return createPortal(
@@ -1610,71 +1746,72 @@ function RecordatoriosPopup({
                 </button>
               </div>
 
-              {!Array.isArray(reminders) || !reminders.length ? (
-                <p className="recordatorios-popup__empty-list">No hay recordatorios personales.</p>
-              ) : (
-                <>
-                  <section className="recordatorios-popup__timeline" aria-label="Linea de tiempo semanal">
-                    <div className="recordatorios-popup__timeline-head">
-                      <button
-                        type="button"
-                        className="recordatorios-popup__timeline-arrow"
-                        onClick={() => shiftTimelineDay(-7)}
-                        aria-label="Semana anterior"
-                      >
-                        <ChevronLeft />
-                      </button>
+              <>
+                <section className="recordatorios-popup__timeline" aria-label="Linea de tiempo semanal">
+                  <div className="recordatorios-popup__timeline-head">
+                    <button
+                      type="button"
+                      className="recordatorios-popup__timeline-arrow"
+                      onClick={() => shiftTimelineDay(-7)}
+                      aria-label="Semana anterior"
+                    >
+                      <ChevronLeft />
+                    </button>
 
-                      <div className="recordatorios-popup__timeline-title">
-                        <p>{timelineWeekRangeLabel}</p>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="recordatorios-popup__timeline-arrow"
-                        onClick={() => shiftTimelineDay(7)}
-                        aria-label="Semana siguiente"
-                      >
-                        <ChevronRight />
-                      </button>
+                    <div className="recordatorios-popup__timeline-title">
+                      <p>{timelineWeekRangeLabel}</p>
                     </div>
 
-                    <div className="recordatorios-popup__timeline-week" role="tablist" aria-label="Dias de la semana">
-                      {timelineWeekDays.map((day) => {
-                        const isSelected = day.dateKey === normalizedSelectedTimelineDate
-                        return (
-                          <button
-                            key={day.dateKey}
-                            type="button"
-                            role="tab"
-                            aria-selected={isSelected}
-                            className={`recordatorios-popup__timeline-day${isSelected ? ' is-selected' : ''}`}
-                            onClick={() => setSelectedTimelineDate(day.dateKey)}
-                            title={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
-                            aria-label={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
-                          >
-                            <span className="recordatorios-popup__timeline-day-label">
-                              <span className="recordatorios-popup__timeline-day-name">{day.dayName}</span>
-                              <span className="recordatorios-popup__timeline-day-date">{day.dayDate}</span>
-                            </span>
-                            <span className="recordatorios-popup__timeline-day-count">{day.count} rec.</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </section>
-
-                  <div className="recordatorios-popup__timeline-day-header">
-                    <h5>{selectedTimelineFullDateLabel}</h5>
-                    <p>{selectedDayReminders.length} recordatorio(s)</p>
+                    <button
+                      type="button"
+                      className="recordatorios-popup__timeline-arrow"
+                      onClick={() => shiftTimelineDay(7)}
+                      aria-label="Semana siguiente"
+                    >
+                      <ChevronRight />
+                    </button>
                   </div>
 
-                  <div className="recordatorios-popup__timeline-list">
-                    {!selectedDayReminders.length ? (
-                      <p className="recordatorios-popup__empty-list">No hay recordatorios para este dia.</p>
-                    ) : (
-                      selectedDayReminders.map((reminder) => {
-                        const status = buildReminderStatusForUser(reminder, currentUserIdSet)
+                  <div className="recordatorios-popup__timeline-week" role="tablist" aria-label="Dias de la semana">
+                    {timelineWeekDays.map((day) => {
+                      const isSelected = day.dateKey === normalizedSelectedTimelineDate
+                      return (
+                        <button
+                          key={day.dateKey}
+                          type="button"
+                          role="tab"
+                          aria-selected={isSelected}
+                          className={`recordatorios-popup__timeline-day${isSelected ? ' is-selected' : ''}`}
+                          onClick={() => setSelectedTimelineDate(day.dateKey)}
+                          title={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
+                          aria-label={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
+                        >
+                          <span className="recordatorios-popup__timeline-day-label">
+                            <span className="recordatorios-popup__timeline-day-name">{day.dayName}</span>
+                            <span className="recordatorios-popup__timeline-day-date">{day.dayDate}</span>
+                          </span>
+                          <span className="recordatorios-popup__timeline-day-count">{day.count} rec.</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                <div className="recordatorios-popup__timeline-day-header">
+                  <h5>{selectedTimelineFullDateLabel}</h5>
+                  <p>{selectedDayReminders.length} recordatorio(s)</p>
+                </div>
+
+                <div className="recordatorios-popup__timeline-list">
+                  {!selectedDayReminders.length ? (
+                    <p className="recordatorios-popup__empty-list">
+                      {!Array.isArray(reminders) || !reminders.length
+                        ? 'No hay recordatorios.'
+                        : 'No hay recordatorios para este dia.'}
+                    </p>
+                  ) : (
+                    selectedDayReminders.map((reminder) => {
+                        const baseStatus = buildReminderStatusForUser(reminder, currentUserIdSet)
                         const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
                         const decisionStatus = getReminderDecisionStatus(reminder)
                         const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
@@ -1683,24 +1820,6 @@ function RecordatoriosPopup({
                         const solicitudId = normalizeId(reminder?.context?.id)
                         const transferLifecycle = transferLifecycleBySolicitudId?.[solicitudId] || null
                         const transferLifecycleStage = String(transferLifecycle?.stage || '').trim()
-                        const isTransferLifecycleLoading = (
-                          isSpecialReminder &&
-                          isTransferContextReminder &&
-                          decisionStatus === 'aceptada' &&
-                          (!transferLifecycle || Boolean(transferLifecycle?.loading))
-                        )
-                        const canResolveDecision = (
-                          isSpecialReminder &&
-                          decisionStatus === 'pendiente' &&
-                          status.className !== 'info'
-                        )
-                        const canCreateSalidaFromReminder = (
-                          isSpecialReminder &&
-                          isTransferContextReminder &&
-                          decisionStatus === 'aceptada' &&
-                          transferLifecycleStage === 'aceptada' &&
-                          typeof onTransferDecisionAccepted === 'function'
-                        )
                         const latestTransferProgress = solicitudId
                           ? (transferLatestProgressBySolicitudId?.[solicitudId] || null)
                           : null
@@ -1719,16 +1838,71 @@ function RecordatoriosPopup({
                             ? latestTransferStageFromLifecycle
                             : latestTransferStageFromReminders
                         })()
+                        const visualDecisionStatus = getTransferVisualDecisionStatus({
+                          decisionStatus,
+                          latestTransferStage,
+                          receiptOutcome: transferReceiptOutcome,
+                        })
+                        const status = getTransferVisualStatus(baseStatus, visualDecisionStatus)
+                        const isTransferLifecycleLoading = (
+                          isTransferContextReminder &&
+                          decisionStatus === 'aceptada' &&
+                          (!transferLifecycle || Boolean(transferLifecycle?.loading))
+                        )
+                        const isReminderOwnedByCurrentUser = isReminderCreatedByCurrentUser(
+                          reminder,
+                          currentUserIdSet,
+                          currentUserName
+                        )
+                        const isRejectedByCurrentUser = (
+                          visualDecisionStatus === 'rechazada' &&
+                          currentUserIdSet.has(normalizeId(reminder?.decision?.by?.id))
+                        )
+                        const canResolveDecision = (
+                          isSpecialReminder &&
+                          decisionStatus === 'pendiente' &&
+                          status.className !== 'info' &&
+                          !isReminderOwnedByCurrentUser &&
+                          isTransferDecisionAllowedForUser(reminder, currentUserIdSet)
+                        )
+                        const canViewTransferRequest = (
+                          isTransferContextReminder &&
+                          typeof onOpenTransferRequestInEntradas === 'function' &&
+                          (
+                            visualDecisionStatus === 'pendiente' ||
+                            visualDecisionStatus === 'aceptada' ||
+                            (visualDecisionStatus === 'rechazada' && !isRejectedByCurrentUser) ||
+                            status.className === 'accepted' ||
+                            (status.className === 'rejected' && !isRejectedByCurrentUser) ||
+                            (isSpecialReminder && !isTransferDecisionAllowedForUser(reminder, currentUserIdSet))
+                          )
+                        )
+                        const canCreateSalidaFromReminder = (
+                          isTransferContextReminder &&
+                          visualDecisionStatus === 'aceptada' &&
+                          transferLifecycleStage === 'aceptada' &&
+                          !isReminderOwnedByCurrentUser &&
+                          isTransferDecisionAllowedForUser(reminder, currentUserIdSet) &&
+                          typeof onTransferDecisionAccepted === 'function'
+                        )
+                        const shouldShowCorrectionAction = (
+                          visualDecisionStatus === 'rechazada' &&
+                          isReminderOwnedByCurrentUser
+                        )
+                        const canOpenInTransitTransferFromReminder = (
+                          isTransferContextReminder &&
+                          visualDecisionStatus === 'enviado' &&
+                          isReminderOwnedByCurrentUser &&
+                          typeof onOpenTransferRequestInTransit === 'function'
+                        )
                         const latestTransferStageLabel = getTransferProgressStageLabel(
                           latestTransferStage,
                           latestTransferStage === 'recibido'
                             ? (latestTransferReceiptOutcome || transferReceiptOutcome)
                             : ''
                         )
-                        const reminderDescriptionNormalized = normalizeStateText(reminder?.description)
-                        const reminderIndicatesOwnShipment = reminderDescriptionNormalized.includes('su envio de traslado')
                         const latestProgressPreferredTarget = latestTransferStage === 'recibido'
-                          ? (reminderIndicatesOwnShipment || isSpecialReminder ? 'salidas' : 'entradas')
+                          ? (isReminderOwnedByCurrentUser ? 'entradas' : 'salidas')
                           : 'salidas'
                         const currentReminderId = normalizeId(reminder?.id)
                         const isLatestTransferProgressReminder = Boolean(
@@ -1748,17 +1922,6 @@ function RecordatoriosPopup({
                             typeof onOpenTransferRequestInSalidas === 'function' ||
                             typeof onOpenTransferRequestInEntradas === 'function'
                           )
-                        )
-                        const canOpenTransferInEntradas = (
-                          isTransferContextReminder &&
-                          !isSpecialReminder &&
-                          (
-                            decisionStatus === 'rechazada' ||
-                            decisionStatus === 'aceptada' ||
-                            status.className === 'rejected' ||
-                            status.className === 'accepted'
-                          ) &&
-                          typeof onOpenTransferRequestInEntradas === 'function'
                         )
                         const reminderTransferReference = (
                           extractTransferDocumentNumber(reminder?.context?.label || reminder?.description) ||
@@ -1785,8 +1948,8 @@ function RecordatoriosPopup({
                           ))
                         )
                         const shouldUseSentCopyOnTransferEntryAction = (
-                          decisionStatus === 'enviado' ||
-                          (decisionStatus === 'aceptada' && hasSentReminderForSameRequest)
+                          visualDecisionStatus === 'enviado' ||
+                          (visualDecisionStatus === 'aceptada' && hasSentReminderForSameRequest)
                         )
                         const isOpeningTransfer = (
                           normalizeId(openingTransferReminderId) &&
@@ -1815,14 +1978,9 @@ function RecordatoriosPopup({
                           Boolean(currentReminderId) &&
                           normalizeId(highlightedReminderId) === currentReminderId
                         )
-                        const recipients = Array.isArray(reminder?.recipients) ? reminder.recipients : []
-                        const recipientNames = recipients
-                          .map((recipient) => String(recipient?.name || '').trim())
-                          .filter(Boolean)
-                          .join(', ')
                         const timelineDescription = (
                           isTransferContextReminder && !isSpecialReminder
-                            ? buildTransferResponseDescription(reminder, decisionStatus)
+                            ? buildTransferResponseDescription(reminder, visualDecisionStatus)
                             : String(reminder?.description || '').trim() || '-'
                         )
 
@@ -1838,6 +1996,16 @@ function RecordatoriosPopup({
                               }
                             }}
                             className={`recordatorios-popup__timeline-item${
+                              status.className === 'pending' ? ' recordatorios-popup__timeline-item--pending' : ''
+                            }${
+                              status.className === 'rejected' ? ' recordatorios-popup__timeline-item--rejected' : ''
+                            }${
+                              status.className === 'accepted' ? ' recordatorios-popup__timeline-item--accepted' : ''
+                            }${
+                              status.className === 'sent' ? ' recordatorios-popup__timeline-item--sent' : ''
+                            }${
+                              status.className === 'cancelled' ? ' recordatorios-popup__timeline-item--cancelled' : ''
+                            }${
                               isPendingInspectionAlert ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
                             }${
                               isHighlightedReminder ? ' recordatorios-popup__timeline-item--highlighted' : ''
@@ -1891,6 +2059,17 @@ function RecordatoriosPopup({
                                 >
                                   {isOpeningTransfer ? 'Abriendo...' : 'Crear salida'}
                                 </button>
+                              ) : canOpenInTransitTransferFromReminder ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => {
+                                    void handleOpenTransferInTransit(reminder)
+                                  }}
+                                  disabled={isOpeningTransfer}
+                                >
+                                  {isOpeningTransfer ? 'Abriendo...' : 'Abrir recepcion'}
+                                </button>
                               ) : canOpenLatestTransferProgress ? (
                                 <button
                                   type="button"
@@ -1915,7 +2094,7 @@ function RecordatoriosPopup({
                                         : `Ver ultimo avance (${latestTransferStageLabel})`
                                     )}
                                 </button>
-                              ) : canOpenTransferInEntradas ? (
+                              ) : canViewTransferRequest ? (
                                 <button
                                   type="button"
                                   className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
@@ -1927,7 +2106,7 @@ function RecordatoriosPopup({
                                     : (
                                       shouldUseSentCopyOnTransferEntryAction
                                         ? 'Solicitud ya enviada, ver envio pendiente'
-                                        : 'Ver en entradas'
+                                        : (shouldShowCorrectionAction ? 'Corregir solicitud' : 'Ver solicitud')
                                     )}
                                 </button>
                               ) : canOpenRandomInspectionAction ? (
@@ -1958,17 +2137,16 @@ function RecordatoriosPopup({
                               ) : isSpecialReminder ? (
                                 <span className="recordatorios-popup__action-placeholder">Decision registrada</span>
                               ) : (
-                                <span className="recordatorios-popup__action-placeholder">No aplica</span>
+                                null
                               )}
                             </div>
                             </div>
                           </article>
                         )
-                      })
-                    )}
-                  </div>
-                </>
-              )}
+                    })
+                  )}
+                </div>
+              </>
             </section>
           )}
         </div>
@@ -2180,6 +2358,35 @@ function RecordatoriosPopup({
                   <p>{activeDetailReminderDescription}</p>
                 </div>
 
+                {!!activeDetailTransferHistory.length && (
+                  <div className="recordatorios-popup__detail-history">
+                    <span>Historial del traslado</span>
+                    <ol className="recordatorios-popup__detail-history-list">
+                      {activeDetailTransferHistory.map((entry, index) => (
+                        <li
+                          key={`${String(entry?.stage || 'stage').trim()}-${String(entry?.at || index).trim()}`}
+                          className="recordatorios-popup__detail-history-item"
+                        >
+                          <div className="recordatorios-popup__detail-history-top">
+                            <strong>{String(entry?.label || '').trim() || getTransferHistoryStageLabel(entry?.stage)}</strong>
+                            <span>
+                              {Number.isFinite(Date.parse(String(entry?.at || '').trim()))
+                                ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.at))
+                                : '-'}
+                            </span>
+                          </div>
+                          {!!String(entry?.description || '').trim() && (
+                            <p>{String(entry.description).trim()}</p>
+                          )}
+                          {!!String(entry?.actor?.name || '').trim() && (
+                            <small>Por {String(entry.actor.name).trim()}</small>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
                 <div className="recordatorios-popup__detail-grid">
                   <div className="recordatorios-popup__detail-row">
                     <span>Creador</span>
@@ -2211,4 +2418,3 @@ function RecordatoriosPopup({
 }
 
 export default RecordatoriosPopup
-

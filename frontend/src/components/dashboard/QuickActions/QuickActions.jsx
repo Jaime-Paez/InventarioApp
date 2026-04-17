@@ -14,6 +14,7 @@ import {
   REMINDERS_SYNC_EVENT,
   RANDOM_INSPECTION_VERIFY_KIND,
   TRANSFER_RECEIPT_NOTIFICATION_KIND,
+  buildTransferHistoryEntry,
   buildUserIdSet,
   createReminderId,
   emitTransferReminderNotification,
@@ -23,17 +24,20 @@ import {
   getReminderDecisionStatus,
   getReminderDeadlineTimestamp,
   getReminderTimestamp,
+  getTransferReminderPendingSnapshotKey,
   isReminderCreatedByCurrentUser,
   isReminderForCurrentUser,
   isReminderPendingForCurrentUser,
   isReminderSeenByCurrentUser,
   isRandomInspectionReminder,
   isSpecialTransferDecisionReminder,
+  isTransferDecisionAllowedForUser,
   normalizeId,
   readRemindersFromStorage,
   reminderCompletedByIds,
   sanitizeRecipient,
   sortRemindersForCurrentUser,
+  upsertTransferReminder,
   writeRemindersToStorage,
 } from '../common/reminders/remindersStorage'
 
@@ -50,6 +54,7 @@ const URGENT_REJECTED_TRANSFER_SHIELD_COLOR = '#f94a15'
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
 const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-state'
+const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
 const RANDOM_INSPECTION_DETAIL_ENDPOINT = `${API_URL}/recordatorios/inspeccion-aleatoria`
 const RANDOM_INSPECTION_VERIFY_ITEM_ENDPOINT = `${API_URL}/recordatorios/inspeccion-aleatoria/items`
 
@@ -203,12 +208,6 @@ const isResolvedTransferResponseReminder = (reminder) => {
   return decisionStatus === 'aceptada' || decisionStatus === 'rechazada' || decisionStatus === 'enviado'
 }
 
-const shouldHideSelfResolvedTransferResponseReminder = (reminder) => {
-  if (!isResolvedTransferResponseReminder(reminder)) return false
-  const decisionStatus = getReminderDecisionStatus(reminder)
-  return decisionStatus === 'aceptada' || decisionStatus === 'rechazada'
-}
-
 const resolveUrgentDecisionProgress = (reminder, nowValue) => {
   const deadline = getReminderDeadlineTimestamp(reminder)
   const createdAt = parseEntityTimestamp(reminder?.createdAt)
@@ -315,6 +314,9 @@ function QuickActions({
     productId: '',
     field: '',
   })
+  const [editingRejectedTransferSolicitudIds, setEditingRejectedTransferSolicitudIds] = useState(
+    () => new Set()
+  )
   const [clockTick, setClockTick] = useState(() => Date.now())
   const [focusReminderId, setFocusReminderId] = useState('')
   const [urgentVisualProgressById, setUrgentVisualProgressById] = useState({})
@@ -477,7 +479,7 @@ function QuickActions({
       inTransitShipmentsPollInFlightRef.current = false
       if (!silent) setInTransitShipmentsLoading(false)
     }
-  }, [canReceiveTransferRequest, showErrorToast, token])
+  }, [canViewInTransitShipments, showErrorToast, token])
 
   const fetchPreferredReceiveSubdivisions = useCallback(
     async ({ sucursalSolicitanteId, productIds }) => {
@@ -972,9 +974,17 @@ function QuickActions({
     if (!allowVisualUrgentShield || !canDecideTransferRequest) return []
     return pendingSpecialDecisionReminders.filter((reminder) => {
       const contextType = normalizeReminderContextType(reminder?.context?.type)
-      return contextType === 'solicitud_traslado'
+      if (contextType !== 'solicitud_traslado') return false
+      if (isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)) return false
+      return isTransferDecisionAllowedForUser(reminder, currentUserIds)
     })
-  }, [allowVisualUrgentShield, canDecideTransferRequest, pendingSpecialDecisionReminders])
+  }, [
+    allowVisualUrgentShield,
+    canDecideTransferRequest,
+    currentUserIds,
+    currentUserName,
+    pendingSpecialDecisionReminders,
+  ])
 
   const pendingShipmentUrgentTargets = useMemo(() => {
     if (!allowVisualUrgentShield || !canDecideTransferRequest || !hasPendingShipments || isTransferSendModalOpen) return []
@@ -1037,16 +1047,19 @@ function QuickActions({
   )
 
   useEffect(() => {
-    const nextIds = new Set(
+    const nextPendingReminderIds = eligibleUrgentDecisionReminders
+      .map((reminder) => normalizeId(reminder?.id))
+      .filter(Boolean)
+    const nextSnapshotKeys = new Set(
       eligibleUrgentDecisionReminders
-        .map((reminder) => normalizeId(reminder?.id))
+        .map((reminder) => getTransferReminderPendingSnapshotKey(reminder))
         .filter(Boolean)
     )
 
     if (!didInitUrgentSnapshotRef.current) {
-      seenUrgentReminderIdsRef.current = nextIds
+      seenUrgentReminderIdsRef.current = nextSnapshotKeys
       didInitUrgentSnapshotRef.current = true
-      playInitialPendingToneIfNeeded(nextIds, {
+      playInitialPendingToneIfNeeded(nextPendingReminderIds, {
         type: 'solicitud_traslado_pendiente',
       })
       return
@@ -1054,10 +1067,12 @@ function QuickActions({
 
     const seenIds = seenUrgentReminderIdsRef.current
     const newReminderIds = []
-    nextIds.forEach((id) => {
-      if (!seenIds.has(id)) newReminderIds.push(id)
+    nextSnapshotKeys.forEach((snapshotKey) => {
+      if (seenIds.has(snapshotKey)) return
+      const reminderId = normalizeId(String(snapshotKey).split(':')[0])
+      if (reminderId) newReminderIds.push(reminderId)
     })
-    seenUrgentReminderIdsRef.current = nextIds
+    seenUrgentReminderIdsRef.current = nextSnapshotKeys
 
     if (newReminderIds.length) {
       playNotificationTone()
@@ -1172,10 +1187,34 @@ function QuickActions({
   const pendingRejectedTransferCorrectionReminders = useMemo(
     () =>
       pendingTransferResponseReminders.filter(
-        (reminder) => getReminderDecisionStatus(reminder) === 'rechazada'
+        (reminder) =>
+          getReminderDecisionStatus(reminder) === 'rechazada' &&
+          isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName) &&
+          !editingRejectedTransferSolicitudIds.has(normalizeId(reminder?.context?.id))
       ),
-    [pendingTransferResponseReminders]
+    [currentUserIds, currentUserName, editingRejectedTransferSolicitudIds, pendingTransferResponseReminders]
   )
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const handleRejectedTransferEditing = (event) => {
+      const solicitudId = normalizeId(event?.detail?.solicitudId)
+      if (!solicitudId) return
+
+      setEditingRejectedTransferSolicitudIds((prev) => {
+        const next = new Set(prev)
+        if (event?.detail?.active) next.add(solicitudId)
+        else next.delete(solicitudId)
+        return next
+      })
+    }
+
+    window.addEventListener(REJECTED_TRANSFER_EDITING_EVENT, handleRejectedTransferEditing)
+    return () => {
+      window.removeEventListener(REJECTED_TRANSFER_EDITING_EVENT, handleRejectedTransferEditing)
+    }
+  }, [])
 
   useEffect(() => {
     const nextIds = new Set(
@@ -1550,13 +1589,6 @@ function QuickActions({
     const related = reminders.filter((reminder) => {
       if (!isReminderForCurrentUser(reminder, currentUserIds)) return false
 
-      if (
-        shouldHideSelfResolvedTransferResponseReminder(reminder) &&
-        isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)
-      ) {
-        return false
-      }
-
       // Inspections only appear in the list once their scheduled time has arrived
       if (isRandomInspectionReminder(reminder) && !isReminderSeenByCurrentUser(reminder, currentUserIds)) {
         const timestamp = getReminderTimestamp(reminder)
@@ -1566,7 +1598,7 @@ function QuickActions({
       return true
     })
     return sortRemindersForCurrentUser(related, currentUserIds)
-  }, [reminders, currentUserIds, currentUserName])
+  }, [reminders, currentUserIds])
 
   const inTransitSubdivisionById = useMemo(
     () =>
@@ -2106,6 +2138,11 @@ function QuickActions({
           const next = (Array.isArray(prev) ? prev : []).map((reminder) => {
             if (!isResolvedTransferResponseReminder(reminder)) return reminder
             if (!isReminderForCurrentUser(reminder, currentUserIds)) return reminder
+            const isRejectedCorrectionReminder = (
+              getReminderDecisionStatus(reminder) === 'rechazada' &&
+              isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)
+            )
+            if (isRejectedCorrectionReminder) return reminder
 
             const completedBySet = new Set(reminderCompletedByIds(reminder))
             let reminderChanged = false
@@ -2131,7 +2168,7 @@ function QuickActions({
       setIsInTransitShipmentsOpen(false)
       setIsReminderModalOpen(true)
     },
-    [applyReminderUpdate, currentUserIdValues, currentUserIds]
+    [applyReminderUpdate, currentUserIdValues, currentUserIds, currentUserName]
   )
 
   const closeReminderModal = useCallback(() => {
@@ -2465,11 +2502,11 @@ function QuickActions({
       if (!solicitudId) return
 
       const existingReminders = readRemindersFromStorage()
-      const contextMatchesSolicitud = (reminder) =>
-        normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado' &&
-        normalizeId(reminder?.context?.id) === solicitudId
-      const relatedReminders = existingReminders.filter(contextMatchesSolicitud)
-
+      const currentTransferReminder = existingReminders.find(
+        (reminder) =>
+          normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado' &&
+          normalizeId(reminder?.context?.id) === solicitudId
+      ) || null
       const appendUniqueRecipient = (list, candidate) => {
         const normalized = sanitizeRecipient(candidate)
         if (!normalized?.id) return
@@ -2497,12 +2534,6 @@ function QuickActions({
 
       const reminderRecipients = []
       appendUniqueRecipient(reminderRecipients, currentActorRecipient)
-      relatedReminders.forEach((reminder) => {
-        appendUniqueRecipient(reminderRecipients, reminder?.creator)
-        ;(Array.isArray(reminder?.recipients) ? reminder.recipients : []).forEach((recipient) => {
-          appendUniqueRecipient(reminderRecipients, recipient)
-        })
-      })
 
       const providerRecipients = await resolveProviderReminderRecipients(
         shipment?.sucursal_proveedora_id
@@ -2515,7 +2546,6 @@ function QuickActions({
 
       const now = nowReminderDateTime()
       const requesterName = String(shipment?.sucursal_solicitante || '').trim() || 'Sucursal solicitante'
-      const providerName = String(shipment?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'
       const contextLabel = `Solicitud de traslado #${String(shipment?.no_documento || solicitudId).trim()}`
       const shortReference = contextLabel.replace(/^solicitud de traslado\s*/i, '').trim()
       const missingLines = (Array.isArray(items) ? items : [])
@@ -2529,26 +2559,39 @@ function QuickActions({
 
       const description = result === 'incompleto'
         ? `${shortReference} llego incompleto en ${requesterName}. Faltantes: ${missingLines.join('; ') || totalMissing}.`
-        : `${shortReference} llego completo en ${requesterName}. Recepcion confirmada para ${providerName}.`
+        : `${shortReference} llego completo en ${requesterName}.`
 
       const reminder = {
-        id: createReminderId(),
+        id: normalizeId(currentTransferReminder?.id) || createReminderId(),
         date: now.date,
         time: now.time,
         description,
-        creator: currentActorRecipient,
+        creator: currentTransferReminder?.creator || currentActorRecipient,
         recipients: reminderRecipients,
         context: {
           type: 'solicitud_traslado',
           id: solicitudId,
           label: contextLabel,
         },
-        kind: TRANSFER_RECEIPT_NOTIFICATION_KIND,
-        createdAt: now.iso,
+        kind: 'recordatorio_general',
+        createdAt: currentTransferReminder?.createdAt || now.iso,
+        decision: {
+          ...(currentTransferReminder?.decision || {}),
+          assignedRecipients: currentTransferReminder?.decision?.assignedRecipients || [],
+        },
+        transferHistory: [
+          ...((currentTransferReminder?.transferHistory) || []),
+          buildTransferHistoryEntry({
+            stage: result === 'incompleto' ? 'incompleto' : 'completo',
+            description,
+            at: now.iso,
+            actor: currentActorRecipient,
+          }),
+        ],
         completedBy: [],
       }
 
-      writeRemindersToStorage([reminder, ...existingReminders])
+      writeRemindersToStorage(upsertTransferReminder(existingReminders, reminder))
       emitRemindersSync()
     },
     [currentUserName, resolveProviderReminderRecipients, user]
@@ -2765,6 +2808,70 @@ function QuickActions({
       }
     },
     [fetchPreferredReceiveSubdivisions, showErrorToast, token]
+  )
+
+  const handleOpenInTransitShipmentFromReminder = useCallback(
+    async (reminder) => {
+      if (!token) return false
+
+      const solicitudId = normalizeId(reminder?.context?.id)
+      if (!solicitudId) {
+        showErrorToast('No se pudo identificar el envio en camino del recordatorio.')
+        return false
+      }
+
+      let availableShipments = Array.isArray(inTransitShipments) ? inTransitShipments : []
+      let targetShipment = availableShipments.find(
+        (shipment) => normalizeId(shipment?.id) === solicitudId
+      ) || null
+
+      if (!targetShipment) {
+        availableShipments = await fetchInTransitTransferShipments({ silent: true })
+        targetShipment = (Array.isArray(availableShipments) ? availableShipments : []).find(
+          (shipment) => normalizeId(shipment?.id) === solicitudId
+        ) || null
+      }
+
+      if (!targetShipment) {
+        const detail = await fetchTransferSolicitudDetail(solicitudId)
+        if (detail?.movimiento_entrada_id && Array.isArray(detail?.detalles) && detail.detalles.length) {
+          targetShipment = {
+            id: Number(solicitudId) || solicitudId,
+            no_documento: String(detail?.no_documento || '').trim(),
+            fecha: detail?.fecha || '',
+            sucursal_solicitante_id: toPositiveInt(detail?.sucursal_solicitante_id, 0),
+            sucursal_solicitante: String(detail?.sucursal_solicitante_nombre || '').trim(),
+            sucursal_proveedora_id: toPositiveInt(detail?.sucursal_proveedora_id, 0),
+            sucursal_proveedora: String(detail?.sucursal_proveedora_nombre || '').trim(),
+            movimiento_salida_id: toPositiveInt(detail?.movimiento_salida_id, 0),
+            movimiento_entrada_id: toPositiveInt(detail?.movimiento_entrada_id, 0),
+            descripcion: String(detail?.descripcion || '').trim(),
+            detalles: detail.detalles.map((row) => ({
+              producto_id: toPositiveInt(row?.producto_id, 0),
+              producto_codigo: String(row?.producto_codigo || '').trim(),
+              producto_nombre: String(row?.producto_nombre || '').trim(),
+              cantidad_enviada: toPositiveInt(row?.cantidad, 0),
+            })),
+          }
+        }
+      }
+
+      if (!targetShipment) {
+        showErrorToast('No se encontro el envio en camino asociado a este recordatorio.')
+        return false
+      }
+
+      await handleOpenInTransitShipment(targetShipment)
+      return true
+    },
+    [
+      fetchInTransitTransferShipments,
+      fetchTransferSolicitudDetail,
+      handleOpenInTransitShipment,
+      inTransitShipments,
+      showErrorToast,
+      token,
+    ]
   )
 
   const handleReceiveShipmentDraftFieldChange = useCallback((productId, field, value) => {
@@ -3276,7 +3383,10 @@ function QuickActions({
         }
 
         const backendReminderSent = Boolean(payload?.recordatorio_enviado)
-        if (!backendReminderSent) {
+        if (backendReminderSent) {
+          const remoteReminders = await fetchRemindersFromBackend(token)
+          setReminders(remoteReminders)
+        } else {
           await appendShipmentReceptionReminder({
             shipment: activeInTransitShipment,
             result: normalizedResult,
@@ -3611,6 +3721,7 @@ function QuickActions({
         onFocusReminderHandled={() => setFocusReminderId('')}
         onTransferDecisionAccepted={onTransferDecisionAccepted}
         onOpenTransferRequestInEntradas={onOpenTransferRequestInEntradas}
+        onOpenTransferRequestInTransit={handleOpenInTransitShipmentFromReminder}
         onOpenTransferRequestInSalidas={onOpenTransferRequestInSalidas}
         onOpenRandomInspection={handleOpenRandomInspectionFromReminder}
       />

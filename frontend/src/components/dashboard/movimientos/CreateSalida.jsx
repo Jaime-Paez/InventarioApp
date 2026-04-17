@@ -5,11 +5,14 @@ import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
 import {
+  buildTransferHistoryEntry,
   createReminderId,
   emitRemindersSync,
+  fetchRemindersFromBackend,
   normalizeId as normalizeReminderId,
   readRemindersFromStorage,
   sanitizeRecipient,
+  upsertTransferReminder,
   writeRemindersToStorage,
 } from '../common/reminders/remindersStorage'
 
@@ -58,6 +61,26 @@ const normalizeReminderContextType = (value) =>
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
+const normalizeModuleScopes = (rawScopes) => {
+  const scopes = {}
+  ;(Array.isArray(rawScopes) ? rawScopes : []).forEach((item) => {
+    const moduleKey = normalizeValue(item?.modulo)
+    if (!moduleKey) return
+    const ids = (Array.isArray(item?.sucursales_ids) ? item.sucursales_ids : [])
+      .map((branchId) => normalizeReminderId(branchId))
+      .filter(Boolean)
+    if (!ids.length) return
+    scopes[moduleKey] = ids
+  })
+  return scopes
+}
+const hasModuleBranchAccess = (userItem, moduleKey, branchId) => {
+  const normalizedModule = normalizeValue(moduleKey)
+  const normalizedBranchId = normalizeReminderId(branchId)
+  if (!normalizedModule || !normalizedBranchId) return false
+  const ids = userItem?.moduleScopes?.[normalizedModule]
+  return Array.isArray(ids) && ids.includes(normalizedBranchId)
+}
 const normalizeValue = (value) =>
   String(value ?? '')
     .normalize('NFD')
@@ -656,6 +679,88 @@ function CreateSalida({
       }
     )
   }, [currentUser])
+  const resolveProviderReminderRecipients = useCallback(
+    async (providerBranchId) => {
+      const normalizedProviderBranchId = normalizeReminderId(providerBranchId)
+      if (!token || !normalizedProviderBranchId) return []
+
+      try {
+        const rows = []
+        let url = `${API_URL}/usuarios/listado/destinatarios/?page_size=200`
+
+        while (url) {
+          const response = await authFetch(url, {}, token)
+          if (!response.ok) return []
+
+          const payload = await response.json().catch(() => ({}))
+          if (Array.isArray(payload)) {
+            rows.push(...payload)
+            url = null
+          } else {
+            rows.push(...parseApiList(payload))
+            url = payload?.next || null
+          }
+        }
+
+        const recipients = []
+        const seenIds = new Set()
+        rows.forEach((item) => {
+          const hasSalidaPermission = (Array.isArray(item?.permisos_resumen) ? item.permisos_resumen : []).some(
+            (permission) => {
+              if (normalizeValue(permission?.modulo) !== 'movimientos_salidas') return false
+              return Boolean(
+                permission?.puede_crear ||
+                permission?.puede_actualizar ||
+                permission?.puede_leer
+              )
+            }
+          )
+          if (!hasSalidaPermission) return
+
+          const recipient = sanitizeRecipient({
+            id:
+              item?.id ||
+              item?.usuario_id ||
+              item?.user_id ||
+              item?.usuarioInternoId ||
+              item?.usuario_interno_id,
+            name:
+              [
+                item?.nombres || item?.nombre || item?.first_name,
+                item?.apellidos || item?.apellido || item?.last_name,
+              ]
+                .filter(Boolean)
+                .join(' ')
+                .trim() || item?.username || item?.correo || 'Usuario',
+          })
+          if (!recipient?.id) return
+
+          const normalizedRecipientId = normalizeReminderId(recipient.id)
+          if (!normalizedRecipientId || seenIds.has(normalizedRecipientId)) return
+
+          const hasScopedAccess = hasModuleBranchAccess(
+            {
+              moduleScopes: normalizeModuleScopes(item?.sucursales_por_modulo),
+            },
+            'movimientos_salidas',
+            normalizedProviderBranchId
+          )
+          const hasAssignedBranch = (Array.isArray(item?.sucursales) ? item.sucursales : []).some(
+            (branch) => normalizeReminderId(branch?.id) === normalizedProviderBranchId
+          )
+          if (!hasScopedAccess && !hasAssignedBranch) return
+
+          seenIds.add(normalizedRecipientId)
+          recipients.push(recipient)
+        })
+
+        return recipients
+      } catch {
+        return []
+      }
+    },
+    [token]
+  )
   const transferDestinationBranches = useMemo(() => {
     if (!isTraslado) return destinationBranches
     if (!solicitudRequesterBranchId) return destinationBranches
@@ -720,11 +825,11 @@ function CreateSalida({
       const now = nowReminderDateTime()
 
       const reminder = {
-        id: createReminderId(),
+        id: normalizeReminderId(contextReminder?.id) || createReminderId(),
         date: now.date,
         time: now.time,
         description,
-        creator: currentActorRecipient,
+        creator: contextReminder?.creator || currentActorRecipient,
         recipients: [requesterRecipient],
         context: {
           type: 'solicitud_traslado',
@@ -732,17 +837,27 @@ function CreateSalida({
           label: contextLabel,
         },
         kind: 'recordatorio_general',
-        createdAt: now.iso,
+        createdAt: contextReminder?.createdAt || now.iso,
         decision: {
           status: 'rechazada',
           reason,
           by: currentActorRecipient,
           at: now.iso,
+          assignedRecipients: contextReminder?.decision?.assignedRecipients || [],
         },
+        transferHistory: [
+          ...((contextReminder?.transferHistory) || []),
+          buildTransferHistoryEntry({
+            stage: 'rechazada',
+            description,
+            at: now.iso,
+            actor: currentActorRecipient,
+          }),
+        ],
         completedBy: [],
       }
 
-      writeRemindersToStorage([reminder, ...existingReminders])
+      writeRemindersToStorage(upsertTransferReminder(existingReminders, reminder))
       emitRemindersSync()
     },
     [
@@ -754,7 +869,7 @@ function CreateSalida({
     ]
   )
   const appendTransferShipmentReminder = useCallback(
-    (solicitud) => {
+    async (solicitud) => {
       const solicitudId = String(
         solicitud?.id || formData.solicitudTrasladoId || prefillTransferSolicitudId || ''
       ).trim()
@@ -775,18 +890,7 @@ function CreateSalida({
         null
       )
 
-      let requesterRecipient = sanitizeRecipient(contextReminder?.creator)
-      if (!requesterRecipient?.id) {
-        requesterRecipient = (
-          (Array.isArray(contextReminder?.recipients) ? contextReminder.recipients : [])
-            .map((recipient) => sanitizeRecipient(recipient))
-            .filter(Boolean)
-            .find(
-              (recipient) =>
-                normalizeReminderId(recipient?.id) !== normalizeReminderId(currentActorRecipient?.id)
-            ) || null
-        )
-      }
+      const requesterRecipient = sanitizeRecipient(contextReminder?.creator)
 
       const appendUniqueRecipient = (list, candidate) => {
         const normalized = sanitizeRecipient(candidate)
@@ -798,12 +902,13 @@ function CreateSalida({
       }
 
       const reminderRecipients = []
-      appendUniqueRecipient(reminderRecipients, requesterRecipient)
-      appendUniqueRecipient(reminderRecipients, contextReminder?.creator)
-      ;(Array.isArray(contextReminder?.recipients) ? contextReminder.recipients : []).forEach((recipient) => {
+      const providerRecipients = await resolveProviderReminderRecipients(
+        solicitud?.sucursal_proveedora_id || formData.sucursalId
+      )
+      providerRecipients.forEach((recipient) => {
         appendUniqueRecipient(reminderRecipients, recipient)
       })
-      appendUniqueRecipient(reminderRecipients, currentActorRecipient)
+      appendUniqueRecipient(reminderRecipients, requesterRecipient)
 
       if (!reminderRecipients.length) {
         notifyError(
@@ -823,11 +928,11 @@ function CreateSalida({
       const now = nowReminderDateTime()
 
       const reminder = {
-        id: createReminderId(),
+        id: normalizeReminderId(contextReminder?.id) || createReminderId(),
         date: now.date,
         time: now.time,
         description,
-        creator: currentActorRecipient,
+        creator: contextReminder?.creator || currentActorRecipient,
         recipients: reminderRecipients,
         context: {
           type: 'solicitud_traslado',
@@ -835,24 +940,36 @@ function CreateSalida({
           label: contextLabel,
         },
         kind: 'recordatorio_general',
-        createdAt: now.iso,
+        createdAt: contextReminder?.createdAt || now.iso,
         decision: {
           status: 'enviado',
           reason: '',
           by: currentActorRecipient,
           at: now.iso,
+          assignedRecipients: contextReminder?.decision?.assignedRecipients || [],
         },
+        transferHistory: [
+          ...((contextReminder?.transferHistory) || []),
+          buildTransferHistoryEntry({
+            stage: 'enviado',
+            description,
+            at: now.iso,
+            actor: currentActorRecipient,
+          }),
+        ],
         completedBy: [],
       }
 
-      writeRemindersToStorage([reminder, ...existingReminders])
+      writeRemindersToStorage(upsertTransferReminder(existingReminders, reminder))
       emitRemindersSync()
     },
     [
       currentActorRecipient,
       formData.solicitudTrasladoId,
+      formData.sucursalId,
       notifyError,
       prefillTransferSolicitudId,
+      resolveProviderReminderRecipients,
       selectedSolicitudDoc,
     ]
   )
@@ -2166,12 +2283,14 @@ function CreateSalida({
         throw new Error(detail)
       }
 
-      if (data?.reminders_sync_required) {
-        emitRemindersSync()
-      }
-
       if (transferRequiresRequest && (selectedSolicitudTraslado || data?.solicitud)) {
-        appendTransferShipmentReminder(data?.solicitud || selectedSolicitudTraslado)
+        if (data?.reminders_sync_required) {
+          await fetchRemindersFromBackend(token)
+        } else {
+          await appendTransferShipmentReminder(data?.solicitud || selectedSolicitudTraslado)
+        }
+      } else if (data?.reminders_sync_required) {
+        await fetchRemindersFromBackend(token)
       }
 
       onCreated?.(data)

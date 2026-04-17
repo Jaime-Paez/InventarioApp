@@ -11,6 +11,7 @@ const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
+const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
 
 const emptyForm = {
   sucursalId: '',
@@ -265,8 +266,10 @@ function EntradaDetails({
   currentUser,
   allowEdit = true,
   allowDelete = true,
-  onCreateNewTransferFromRejected,
-  creatingTransferFromRejected = false,
+  onCancelTransfer,
+  cancellingTransfer = false,
+  onResubmitTransfer,
+  resubmittingTransfer = false,
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(null)
@@ -348,12 +351,6 @@ function EntradaDetails({
     notifyError(detailError)
   }, [detailError, notifyError])
 
-  useEffect(() => {
-    if (open) return
-    setShowDeleteConfirm(false)
-    setDeleteInventoryAction(isPendingSolicitudEntry ? 'keep' : 'reverse')
-  }, [open])
-
   const linkedSolicitudId = String(
     previewData?.solicitud_traslado_id ||
       previewData?.solicitudTrasladoId ||
@@ -364,7 +361,6 @@ function EntradaDetails({
       ''
   ).trim()
   const hasPreviewData = Boolean(previewData?.es_solicitud_traslado || linkedSolicitudId)
-  const previewNormalizedEstadoName = normalizeValue(previewData?.estado_nombre || previewData?.estado || '')
   const normalizedSolicitudStateName = normalizeValue(
     previewData?.estado_nombre ||
       previewData?.estado ||
@@ -372,6 +368,9 @@ function EntradaDetails({
       ''
   )
   const isPreviewPendingSolicitud = hasPreviewData && normalizedSolicitudStateName.includes('pend')
+  const isPreviewRejectedSolicitud =
+    hasPreviewData &&
+    (normalizedSolicitudStateName.includes('rechaz') || normalizedSolicitudStateName.includes('cancel'))
 
   const entradaTipoId = useMemo(() => {
     const entrada = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('ent'))
@@ -401,7 +400,6 @@ function EntradaDetails({
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
   const isCompraEntrada = selectedSubTipoName.includes('compra') || selectedSubTipoName.includes('import')
-  const isAlwaysReceivedEntrada = isDevolucion || isCompraEntrada
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'Codigo de solicitud' : 'Codigo de entrada'
   const stockBranchId = useMemo(() => {
@@ -548,18 +546,52 @@ function EntradaDetails({
   const isRejectedSolicitudRibbon = isTraslado && estadoMatchesRejected
   const isAcceptedSolicitudRibbon = isTraslado && estadoMatchesAccepted
   const isSentSolicitudRibbon = isSentSolicitud
-  const canEditTrasladoState = !isTraslado || estadoMatchesPending
+  const canEditTrasladoState = !isTraslado || estadoMatchesPending || estadoMatchesRejected
   const isReadOnlyMode = Boolean(
     readOnly ||
-      (hasPreviewData && !isPreviewPendingSolicitud) ||
       isSentSolicitud ||
-      (isTraslado && !estadoMatchesPending)
+      (isTraslado && !estadoMatchesPending && !estadoMatchesRejected)
   )
   const effectiveAllowEdit =
-    canEditTrasladoState && (allowEdit || isPreviewPendingSolicitud) && !isSentSolicitud
+    canEditTrasladoState &&
+    (allowEdit || isPreviewPendingSolicitud || isPreviewRejectedSolicitud) &&
+    !isSentSolicitud
+  const canStartEditingPreviewSolicitud = Boolean(
+    hasPreviewData &&
+    !readOnly &&
+    (isPreviewPendingSolicitud || isPreviewRejectedSolicitud) &&
+    (allowEdit || isPreviewPendingSolicitud || isPreviewRejectedSolicitud)
+  )
   const lineItemsReadOnly = Boolean(isReadOnlyMode || !isEditing)
   const showDetailActions = !isReadOnlyMode && !lineItemsReadOnly
   const isPendingSolicitudEntry = hasPreviewData && isPreviewPendingSolicitud
+
+  useEffect(() => {
+    if (open) return
+    setShowDeleteConfirm(false)
+    setDeleteInventoryAction(isPendingSolicitudEntry ? 'keep' : 'reverse')
+  }, [isPendingSolicitudEntry, open])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const solicitudId = String(transferSolicitudId || linkedSolicitudId || '').trim()
+    if (!solicitudId) return undefined
+
+    const active = Boolean(open && isRejectedSolicitudRibbon)
+    window.dispatchEvent(
+      new CustomEvent(REJECTED_TRANSFER_EDITING_EVENT, {
+        detail: { solicitudId, active },
+      })
+    )
+
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent(REJECTED_TRANSFER_EDITING_EVENT, {
+          detail: { solicitudId, active: false },
+        })
+      )
+    }
+  }, [isRejectedSolicitudRibbon, linkedSolicitudId, open, transferSolicitudId])
 
   const ivaRateValue = useMemo(() => {
     const parsed = parseNumber(formData.iva_rate)
@@ -886,8 +918,6 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     const descripcion = String(preview?.descripcion || '').trim()
     const estadoNombre = String(preview?.estado_nombre || '').trim() || 'Pendiente'
     const subTipoNombre = String(preview?.sub_tipo_nombre || '').trim() || 'Traslado (Solicitud)'
-    const solicitanteNombre = String(preview?.sucursal_nombre || '').trim() || '-'
-    const proveedoraNombre = String(preview?.sucursal_objetivo_nombre || '').trim() || '-'
 
     const solicitanteIdRaw = String(preview?.sucursal_solicitante_id || '').trim()
     const proveedoraIdRaw = String(preview?.sucursal_proveedora_id || '').trim()
@@ -1145,7 +1175,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     setStockByProduct({})
     setTransferSolicitudId('')
     setOriginalData(null)
-    setIsEditing(effectiveAllowEdit && !isReadOnlyMode)
+    setIsEditing(canStartEditingPreviewSolicitud)
     setIsMaximized(false)
     setIsResizingModal(false)
     modalRestoreRef.current = null
@@ -1196,7 +1226,16 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       return
     }
     loadData()
-  }, [open, loadData, hasPreviewData, hydrateFromPreviewData, previewData, fetchCatalogData, notifyError])
+  }, [
+    fetchCatalogData,
+    hasPreviewData,
+    hydrateFromPreviewData,
+    loadData,
+    notifyError,
+    open,
+    previewData,
+    canStartEditingPreviewSolicitud,
+  ])
 
   useEffect(
     () => () => {
@@ -1212,6 +1251,12 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       setLoadingData(true)
     }
   }, [open])
+
+  useEffect(() => {
+    if (!loadingData) return
+    setShowProductDropdown(false)
+    setShowClienteDropdown(false)
+  }, [loadingData])
 
   useEffect(() => {
     if (!isReadOnlyMode || !isEditing) return
@@ -1806,7 +1851,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
   }
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = useCallback(() => {
     if (!originalData) {
       setIsEditing(false)
       return
@@ -1831,7 +1876,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     setShowDeleteConfirm(false)
     setDeleteInventoryAction(isPendingSolicitudEntry ? 'keep' : 'reverse')
     setIsEditing(false)
-  }
+  }, [isPendingSolicitudEntry, originalData])
 
   const handleEditToggleClick = useCallback(() => {
     if (isEditing) {
@@ -1841,14 +1886,14 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     setIsEditing(true)
   }, [handleCancelEdit, isEditing])
 
-  const buildDescripcion = (clienteLabel = '') => {
+  const buildDescripcion = useCallback((clienteLabel = '') => {
     const descripcionBase = String(formData.descripcion || '').trim()
     if (!isVenta) return descripcionBase
     const cliente = String(clienteLabel || '').trim()
     if (!cliente) return descripcionBase
     if (!descripcionBase) return `Cliente: ${cliente}`
     return `Cliente: ${cliente}\n${descripcionBase}`
-  }
+  }, [formData.descripcion, isVenta])
 
   const handleUpdatePendingSolicitud = useCallback(
     async (ventaClienteLabel) => {
@@ -1920,11 +1965,8 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       clienteForm,
       details,
       formData,
-      initialDetail,
       notifyError,
       onUpdated,
-      parseIntValue,
-      parseNumber,
       token,
       transferSolicitudId,
     ]
@@ -1991,7 +2033,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     }
 
     if (!entradaId) {
-      if (isPendingSolicitudEntry && transferSolicitudId) {
+      if ((isPendingSolicitudEntry || isPreviewRejectedSolicitud) && transferSolicitudId) {
         await handleUpdatePendingSolicitud(ventaClienteLabel)
         return
       }
@@ -2220,10 +2262,15 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
   const resolvedSolicitudRejectionReason = (
     solicitudRejectionReason || 'Sin motivo de rechazo registrado.'
   )
-  const canCreateNewTransferFromRejected = Boolean(
+  const canCancelTransfer = Boolean(
     hasPreviewData &&
     isRejectedSolicitudRibbon &&
-    typeof onCreateNewTransferFromRejected === 'function'
+    typeof onCancelTransfer === 'function'
+  )
+  const canResubmitTransfer = Boolean(
+    hasPreviewData &&
+    isRejectedSolicitudRibbon &&
+    typeof onResubmitTransfer === 'function'
   )
   const productosTableClassName = [
     'create-user__locations-table',
@@ -2247,9 +2294,79 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     ? `Solicitud de traslado: ${headerDocumento}`
     : `${headerTipo}: ${headerDocumento}`
 
-  const handleCreateNewTransferFromRejected = () => {
-    if (!canCreateNewTransferFromRejected || creatingTransferFromRejected) return
-    onCreateNewTransferFromRejected?.(previewData)
+  const handleCancelTransfer = () => {
+    if (!canCancelTransfer || cancellingTransfer) return
+    onCancelTransfer?.(previewData)
+  }
+
+  const handleResubmitTransfer = () => {
+    if (!canResubmitTransfer || resubmittingTransfer) return
+    if (!formData.sucursalId) {
+      notifyError('Selecciona la sucursal.')
+      return
+    }
+
+    if (requiresSucursalObjetivo && !formData.sucursalObjetivoId) {
+      notifyError('Selecciona la sucursal destino.')
+      return
+    }
+
+    let ventaClienteLabel = String(formData.cliente || '').trim()
+    if (isVenta) {
+      if (selectedCliente?.id) {
+        ventaClienteLabel = formatClienteFieldValue(selectedCliente)
+      } else {
+        const clientePayload = normalizeClientePayload(clienteForm)
+        ventaClienteLabel = `${clientePayload.nombres} ${clientePayload.apellidos}`.trim()
+      }
+
+      if (!ventaClienteLabel) {
+        notifyError('Ingresa los datos del cliente para la venta.')
+        setActiveTab('cliente')
+        return
+      }
+    }
+
+    if (!details.length) {
+      notifyError('Agrega al menos un producto.')
+      return
+    }
+
+    const detailsHaveRequiredData = details.every((detail) => {
+      const hasProduct = Boolean(String(detail?.productoId || '').trim())
+      const hasState = Boolean(String(detail?.estadoProductoId || defaultEstadoProductoId || '').trim())
+      const qty = parseIntValue(detail?.cantidad)
+      const val = parseNumber(detail?.valor)
+      return hasProduct && hasState && Number.isFinite(qty) && qty > 0 && Number.isFinite(val) && val >= 0
+    })
+
+    if (!detailsHaveRequiredData) {
+      notifyError('Hay productos con datos incompletos.')
+      return
+    }
+
+    const detallesPayload = details.map((detail) => {
+      const cantidad = parseIntValue(detail.cantidad)
+      const valor = parseNumber(detail.valor)
+      return {
+        producto_id: Number(detail.productoId),
+        cantidad: Number.isFinite(cantidad) ? cantidad : 0,
+        valor: Number.isFinite(valor) ? valor : 0,
+      }
+    })
+
+    onResubmitTransfer?.({
+      ...(previewData || {}),
+      solicitud_traslado_id: transferSolicitudId || linkedSolicitudId,
+      reactivationDraft: {
+        sucursal_solicitante_id: Number(formData.sucursalId),
+        sucursal_proveedora_id: Number(formData.sucursalObjetivoId),
+        fecha: formData.fecha,
+        descripcion: buildDescripcion(ventaClienteLabel),
+        funcional: Boolean(formData.funcional),
+        detalles: detallesPayload,
+      },
+    })
   }
 
   return (
@@ -2881,21 +2998,20 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   <span>{isEditing ? 'Solo lectura' : 'Editar'}</span>
                 </button>
               )}
-              {canCreateNewTransferFromRejected && (
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--primary"
-                  onClick={handleCreateNewTransferFromRejected}
-                  disabled={loadingData || creatingTransferFromRejected}
-                >
-                  {creatingTransferFromRejected ? 'Preparando...' : 'Crear nueva solicitud basada en esta'}
-                </button>
-              )}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {isEditing && !isReadOnlyMode && (
                 <>
-                  {allowDelete && (
+                  {isRejectedSolicitudRibbon ? (
+                    <button
+                      type="button"
+                      className="create-user__action user-details__delete"
+                      onClick={handleCancelTransfer}
+                      disabled={loadingData || cancellingTransfer || resubmittingTransfer}
+                    >
+                      {cancellingTransfer ? 'Cancelando...' : 'Cancelar pedido'}
+                    </button>
+                  ) : allowDelete && (
                     <button
                       type="button"
                       className="create-user__action user-details__delete"
@@ -2905,7 +3021,16 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       {deleteLoading ? 'Eliminando...' : 'Eliminar'}
                     </button>
                   )}
-                  {allowEdit && (
+                  {isRejectedSolicitudRibbon ? (
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--primary"
+                      onClick={handleResubmitTransfer}
+                      disabled={loadingData || resubmittingTransfer || cancellingTransfer}
+                    >
+                      {resubmittingTransfer ? 'Reenviando...' : 'Volver a realizar la solicitud'}
+                    </button>
+                  ) : allowEdit && (
                     <button
                       type="button"
                       className="create-user__action create-user__action--primary"

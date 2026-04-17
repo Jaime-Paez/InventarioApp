@@ -4,13 +4,16 @@ import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
 import {
+  buildTransferHistoryEntry,
   createReminderId,
   emitRemindersSync,
   extractUserId,
+  fetchRemindersFromBackend,
   formatCurrentUserName,
   normalizeId,
   readRemindersFromStorage,
   sanitizeRecipient,
+  upsertTransferReminder,
   writeRemindersToStorage,
 } from '../common/reminders/remindersStorage'
 
@@ -2650,11 +2653,15 @@ function CreateEntrada({
 
       setLoading(true)
       try {
+        const reminderRecipientIds = selectedReminderRecipients
+          .map((recipient) => Number.parseInt(normalizeId(recipient?.id), 10))
+          .filter((recipientId) => Number.isFinite(recipientId) && recipientId > 0)
         const payload = {
           fecha: formData.fecha,
           descripcion: String(formData.descripcion || '').trim(),
           sucursal_solicitante_id: Number(formData.sucursalId),
           sucursal_proveedora_id: Number(formData.sucursalObjetivoId),
+          recordatorio_destinatario_ids: reminderRecipientIds,
           detalles: details.map((detail) => ({
             producto_id: Number(detail.productoId),
             cantidad: Number(detail.cantidad),
@@ -2706,38 +2713,53 @@ function CreateEntrada({
           }
           : null
 
-        const remindersToCreate = []
-        if (adminRecipients.length) {
-          remindersToCreate.push({
-            id: createReminderId(),
-            date: now.date,
-            time: now.time,
-            description: `${solicitudLabel}. Revisar gestion pendiente.`,
-            creator: {
-              id: creatorId,
-              name: creatorName,
-            },
-            recipients: adminRecipients,
-            context,
-            kind: 'recordatorio_general',
-            createdAt,
-            completedBy: [],
-          })
+        let reminderStoredByServer = false
+        if (solicitudId) {
+          try {
+            const remoteReminders = await fetchRemindersFromBackend(token)
+            reminderStoredByServer = remoteReminders.some((reminder) => {
+              const reminderContextType = normalizeId(reminder?.context?.type)
+              const reminderContextId = normalizeId(reminder?.context?.id)
+              return reminderContextType === 'solicitud_traslado' && reminderContextId === solicitudId
+            })
+            if (reminderStoredByServer) {
+              emitRemindersSync()
+            }
+          } catch {
+            reminderStoredByServer = false
+          }
         }
 
-        if (additionalRecipients.length) {
+        if (!reminderStoredByServer && (adminRecipients.length || additionalRecipients.length)) {
           const deadlineAt = new Date()
           deadlineAt.setHours(23, 59, 59, 999)
-          remindersToCreate.push({
+          const pendingDescription = additionalRecipients.length
+            ? `${solicitudLabel}. Revisar gestion pendiente. Usuarios asignados deben aceptar o rechazar hoy.`
+            : `${solicitudLabel}. Revisar gestion pendiente.`
+          const reminderRecipients = [
+            ...adminRecipients,
+            ...additionalRecipients,
+            {
+              id: creatorId,
+              name: creatorName,
+            },
+          ]
+            .filter(Boolean)
+            .filter(
+              (recipient, index, source) =>
+                source.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+            )
+
+          const transferReminder = {
             id: createReminderId(),
             date: now.date,
             time: now.time,
-            description: `${solicitudLabel}. Debes aceptar o rechazar hoy.`,
+            description: pendingDescription,
             creator: {
               id: creatorId,
               name: creatorName,
             },
-            recipients: additionalRecipients,
+            recipients: reminderRecipients,
             context,
             kind: 'solicitud_traslado_decision',
             deadlineAt: deadlineAt.toISOString(),
@@ -2746,21 +2768,30 @@ function CreateEntrada({
               reason: '',
               by: null,
               at: '',
+              assignedRecipients: additionalRecipients,
             },
+            transferHistory: [
+              buildTransferHistoryEntry({
+                stage: 'pendiente',
+                description: pendingDescription,
+                at: createdAt,
+                actor: {
+                  id: creatorId,
+                  name: creatorName,
+                },
+              }),
+            ],
             createdAt,
             completedBy: [],
-          })
-        }
-
-        if (remindersToCreate.length) {
+          }
           try {
             const existingReminders = readRemindersFromStorage()
-            writeRemindersToStorage([...remindersToCreate, ...existingReminders])
+            writeRemindersToStorage(upsertTransferReminder(existingReminders, transferReminder))
             emitRemindersSync()
           } catch {
             notifyError('La solicitud se creo, pero no se pudo generar el recordatorio obligatorio.')
           }
-        } else {
+        } else if (!reminderStoredByServer) {
           notifyError('La solicitud se creo, pero no se pudo generar el recordatorio obligatorio.')
         }
 

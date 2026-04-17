@@ -220,7 +220,8 @@ function EntradasTable({
   const [error, setError] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [createPrefillTransferRequest, setCreatePrefillTransferRequest] = useState(null)
-  const [creatingFromRejectedRequest, setCreatingFromRejectedRequest] = useState(false)
+  const [cancellingTransfer, setCancellingTransfer] = useState(false)
+  const [resubmittingTransfer, setResubmittingTransfer] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [selectedSolicitudPreview, setSelectedSolicitudPreview] = useState(null)
@@ -921,60 +922,97 @@ function EntradasTable({
     setShowCreateModal(true)
   }
 
-  const handleCreateFromRejectedSolicitud = useCallback(async (previewPayload) => {
-    if (!canCreate) {
-      toast.current?.show({
-        severity: 'warn',
-        summary: 'Sin permiso',
-        detail: 'No tienes permisos para crear solicitudes de traslado.',
-        life: 3200,
-      })
-      return
-    }
-
+  const handleCancelTransfer = useCallback(async (previewPayload) => {
     const preview = previewPayload && typeof previewPayload === 'object'
       ? previewPayload
       : selectedSolicitudPreview
-    if (!preview || !preview.es_solicitud_traslado) return
+    if (!preview) return
 
-    const estado = normalizeValue(preview?.estado_nombre || preview?.estado || '')
-    const isRejected = estado.includes('rechaz') || estado.includes('cancel')
-    if (!isRejected) return
+    const solicitudId = String(preview?.solicitud_traslado_id || preview?.id || '').trim()
+    if (!solicitudId) return
 
-    if (creatingFromRejectedRequest) return
-    setCreatingFromRejectedRequest(true)
+    if (cancellingTransfer) return
+    setCancellingTransfer(true)
 
     try {
-      await preloadEntradaCatalogs()
-      const requestKey = `${Date.now()}-${String(preview?.solicitud_traslado_id || preview?.id || '').trim()}`
-      setCreatePrefillTransferRequest({
-        requestKey,
-        previewData: preview,
-      })
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/cancelar-pedido/`,
+        { method: 'POST', body: JSON.stringify({ motivo: 'Pedido cancelado por el solicitante.' }) },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = String(data?.detail || 'No se pudo cancelar el pedido.')
+        throw new Error(detail)
+      }
+
       setShowDetailsModal(false)
       setSelectedSolicitudPreview(null)
       setSelectedId(null)
-      setShowCreateModal(true)
-    } catch {
-      // Si falla la precarga, el modal puede cargar catalogos internamente.
-      const requestKey = `${Date.now()}-${String(preview?.solicitud_traslado_id || preview?.id || '').trim()}`
-      setCreatePrefillTransferRequest({
-        requestKey,
-        previewData: preview,
+      void refreshData()
+    } catch (error) {
+      toast.current?.show({
+        severity: 'error',
+        summary: 'Error',
+        detail: error?.message || 'No se pudo cancelar el pedido.',
+        life: 3200,
       })
-      setShowDetailsModal(false)
-      setSelectedSolicitudPreview(null)
-      setSelectedId(null)
-      setShowCreateModal(true)
     } finally {
-      setCreatingFromRejectedRequest(false)
+      setCancellingTransfer(false)
     }
-  }, [
-    canCreate,
-    creatingFromRejectedRequest,
-    preloadEntradaCatalogs,
-    selectedSolicitudPreview,
-  ])
+  }, [cancellingTransfer, refreshData, selectedSolicitudPreview, token])
+
+  const handleResubmitTransfer = useCallback(async (previewPayload) => {
+    const preview = previewPayload && typeof previewPayload === 'object'
+      ? previewPayload
+      : selectedSolicitudPreview
+    if (!preview) return
+
+    const solicitudId = String(preview?.solicitud_traslado_id || preview?.id || '').trim()
+    if (!solicitudId) return
+
+    if (resubmittingTransfer) return
+    setResubmittingTransfer(true)
+
+    try {
+      const reactivationDraft = (
+        preview && typeof preview.reactivationDraft === 'object' && preview.reactivationDraft
+      ) ? preview.reactivationDraft : {}
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/reabrir/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(reactivationDraft),
+        },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = typeof data?.detail === 'string'
+          ? data.detail
+          : typeof data?.detalles === 'string'
+            ? data.detalles
+            : typeof data?.sucursal_proveedora_id === 'string'
+              ? data.sucursal_proveedora_id
+              : 'No se pudo reabrir la solicitud.'
+        throw new Error(detail)
+      }
+
+      setShowDetailsModal(false)
+      setSelectedSolicitudPreview(null)
+      setSelectedId(null)
+      void refreshData()
+    } catch (error) {
+      toast.current?.show({
+        severity: 'error',
+        summary: 'Error',
+        detail: error?.message || 'No se pudo reabrir la solicitud.',
+        life: 3500,
+      })
+    } finally {
+      setResubmittingTransfer(false)
+    }
+  }, [resubmittingTransfer, selectedSolicitudPreview, token, refreshData])
 
   useEffect(() => {
     const request = pendingTransferEntradaRequest
@@ -1392,7 +1430,7 @@ function EntradasTable({
               .normalize('NFD')
               .replace(/[\u0300-\u036f]/g, '')
               .toLowerCase()
-              .includes('pend')
+              .match(/pend|rechaz|cancel/)
           )
         }
         onClose={() => {
@@ -1406,8 +1444,10 @@ function EntradasTable({
         currentUser={user}
         allowEdit={canEdit}
         allowDelete={canDelete}
-        onCreateNewTransferFromRejected={canCreate ? handleCreateFromRejectedSolicitud : undefined}
-        creatingTransferFromRejected={creatingFromRejectedRequest}
+        onCancelTransfer={handleCancelTransfer}
+        cancellingTransfer={cancellingTransfer}
+        onResubmitTransfer={handleResubmitTransfer}
+        resubmittingTransfer={resubmittingTransfer}
       />
 
       {shouldRenderSearchModal && (

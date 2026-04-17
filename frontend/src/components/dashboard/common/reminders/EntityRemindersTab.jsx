@@ -14,6 +14,7 @@ import {
   formatReminderDateTime,
   getReminderDecisionStatus,
   getReminderTimestamp,
+  getTransferReminderHistory,
   getTransferReceiptOutcome,
   isReminderCreatedByCurrentUser,
   isReminderForContext,
@@ -301,11 +302,37 @@ function EntityRemindersTab({
           isReminderCreatedByCurrentUser(reminder, currentUserIdSet, currentUserName)
         )
       })
-      .map((reminder, index) => {
-        const stage = resolveTransferStageFromReminder(reminder)
-        if (!stage) return null
+      .flatMap((reminder, index) => {
+        const transferHistory = getTransferReminderHistory(reminder)
+        if (transferHistory.length) {
+          return transferHistory.map((entry, entryIndex) => {
+            const stage = resolveTransferStageFromReminder({
+              ...reminder,
+              transferHistory: [entry],
+              description: entry?.description || reminder?.description,
+            })
+            if (!stage) return null
 
-        return {
+            const timestamp = Date.parse(String(entry?.at || '').trim())
+            return {
+              id:
+                `${normalizeId(reminder?.id) || 'transfer'}-${String(entry?.stage || entryIndex).trim()}-${entryIndex}`,
+              stageKey: stage.key,
+              stageLabel: stage.label,
+              stageClassName: stage.className,
+              dateTime: Number.isFinite(timestamp)
+                ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp))
+                : formatReminderDateTime(reminder),
+              description: String(entry?.description || reminder?.description || '').trim() || '-',
+              sortTimestamp: Number.isFinite(timestamp) ? timestamp : resolveReminderSortTimestamp(reminder),
+            }
+          })
+        }
+
+        const stage = resolveTransferStageFromReminder(reminder)
+        if (!stage) return []
+
+        return [{
           id:
             normalizeId(reminder?.id) ||
             `${stage.key}-${String(reminder?.date || '').trim()}-${String(reminder?.time || '').trim()}-${index}`,
@@ -315,7 +342,7 @@ function EntityRemindersTab({
           dateTime: formatReminderDateTime(reminder),
           description: String(reminder?.description || '').trim() || '-',
           sortTimestamp: resolveReminderSortTimestamp(reminder),
-        }
+        }]
       })
       .filter(Boolean)
       .sort((a, b) => {
@@ -325,16 +352,7 @@ function EntityRemindersTab({
         return String(b?.id || '').localeCompare(String(a?.id || ''))
       })
 
-    const uniqueByStage = new Set()
-    const dedupedRows = []
-    rows.forEach((row) => {
-      const stageKey = String(row?.stageKey || '').trim()
-      if (!stageKey || uniqueByStage.has(stageKey)) return
-      uniqueByStage.add(stageKey)
-      dedupedRows.push(row)
-    })
-
-    return dedupedRows
+    return rows
   }, [allReminders, currentUserIdSet, currentUserName, normalizedTransferSolicitudId])
 
   const activeReminderDetail = useMemo(() => {
