@@ -15,7 +15,7 @@ from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
 from app.models import ReminderState
-from app.views import _purge_reminders_for_context, _normalize_reminder_list
+from app.views import _merge_reminder, _normalize_reminder_list, _purge_reminders_for_context
 from inventario.models import Inventario, SubDivision, Sucursal
 from solicitudes.models import Cliente
 
@@ -1004,6 +1004,58 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         return recipients
 
+    def _resolve_transfer_request_admin_recipients(
+        self,
+        *,
+        exclude_user_ids=None,
+    ):
+        excluded = {str(user_id).strip() for user_id in (exclude_user_ids or []) if str(user_id).strip()}
+        User = get_user_model()
+        recipients = []
+        seen_recipient_ids = set()
+
+        for candidate in User.objects.filter(is_active=True).filter(
+            Q(is_staff=True) | Q(is_superuser=True)
+        ).order_by("id"):
+            recipient = self._normalize_reminder_recipient(candidate)
+            recipient_id = str(recipient.get("id") if recipient else "").strip()
+            if not recipient_id or recipient_id in excluded or recipient_id in seen_recipient_ids:
+                continue
+            seen_recipient_ids.add(recipient_id)
+            recipients.append(recipient)
+
+        return recipients
+
+    def _resolve_transfer_selected_recipients(
+        self,
+        sucursal_proveedora_id,
+        selected_user_ids,
+        *,
+        exclude_user_ids=None,
+    ):
+        selected_ids = {
+            str(user_id).strip()
+            for user_id in (selected_user_ids or [])
+            if str(user_id).strip()
+        }
+        if not selected_ids:
+            return []
+
+        recipients = []
+        seen_recipient_ids = set()
+        for candidate in self._resolve_transfer_provider_recipients(
+            sucursal_proveedora_id,
+            exclude_user_ids=exclude_user_ids,
+        ):
+            recipient = self._normalize_reminder_recipient(candidate)
+            recipient_id = str(recipient.get("id") if recipient else "").strip()
+            if not recipient_id or recipient_id not in selected_ids or recipient_id in seen_recipient_ids:
+                continue
+            seen_recipient_ids.add(recipient_id)
+            recipients.append(recipient)
+
+        return recipients
+
     def _resolve_transfer_context_recipients_from_payload(
         self,
         payload,
@@ -1053,11 +1105,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         return recipients
 
-    def _find_transfer_context_reminder(self, reminders, *, solicitud_id):
+    def _resolve_transfer_request_creator_from_payload(self, payload, *, solicitud_id):
         solicitud_token = str(int(solicitud_id or 0))
         if not solicitud_token:
             return None
-        for reminder in (reminders if isinstance(reminders, list) else []):
+
+        fallback_creator = None
+        for reminder in payload if isinstance(payload, list) else []:
             if not isinstance(reminder, dict):
                 continue
             context = reminder.get("context")
@@ -1067,8 +1121,76 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             context_id = str(context.get("id") or "").strip()
             if context_type != "solicitud_traslado" or context_id != solicitud_token:
                 continue
-            return reminder
-        return None
+
+            creator = self._normalize_reminder_recipient(reminder.get("creator"))
+            if creator is None:
+                continue
+
+            kind = str(reminder.get("kind") or "").strip().lower()
+            if kind == "solicitud_traslado_decision":
+                return creator
+
+            decision = reminder.get("decision") if isinstance(reminder.get("decision"), dict) else {}
+            decision_status = self._normalize_state_name(decision.get("status"))
+            if fallback_creator is None or decision_status in {"", "pendiente"}:
+                fallback_creator = creator
+
+        return fallback_creator
+
+    def _build_transfer_history_entry(self, *, stage, description, actor, at=None):
+        timestamp = at or timezone.now().isoformat()
+        return {
+            "stage": str(stage or "").strip().lower(),
+            "description": str(description or "").strip(),
+            "at": timestamp,
+            "actor": self._normalize_reminder_recipient(actor),
+        }
+
+    def _upsert_transfer_context_reminder(
+        self,
+        normalized_payload,
+        *,
+        solicitud_id,
+        reminder,
+        preserve_identity=True,
+        preserve_created_at=True,
+    ):
+        solicitud_token = str(int(solicitud_id or 0))
+        if not solicitud_token:
+            return normalized_payload
+
+        matches = []
+        remainder = []
+        for item in normalized_payload if isinstance(normalized_payload, list) else []:
+            if not isinstance(item, dict):
+                continue
+            context = item.get("context") if isinstance(item.get("context"), dict) else {}
+            context_type = self._normalize_reminder_context_type(context.get("type"))
+            context_id = str(context.get("id") or "").strip()
+            if context_type == "solicitud_traslado" and context_id == solicitud_token:
+                matches.append(item)
+            else:
+                remainder.append(item)
+
+        base = None
+        if matches:
+            base = sorted(
+                matches,
+                key=lambda row: str(row.get("createdAt") or "").strip() or "9999",
+            )[0]
+
+        merged = dict(base or {})
+        for candidate in matches:
+            merged = _merge_reminder(merged, candidate) or merged
+        merged = _merge_reminder(merged, reminder) or reminder
+        if preserve_identity and base and str(base.get("id") or "").strip():
+            merged["id"] = str(base.get("id")).strip()
+        if preserve_created_at and base and str(base.get("createdAt") or "").strip():
+            merged["createdAt"] = str(base.get("createdAt")).strip()
+        if base and isinstance(base.get("creator"), dict):
+            merged["creator"] = base.get("creator")
+
+        return [merged, *remainder]
 
     def _normalize_reminder_context_type(self, value):
         normalized = str(value or "").strip().lower()
@@ -1096,7 +1218,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             kind = str(reminder.get("kind") or "").strip().lower()
             if kind != "solicitud_traslado_decision":
                 continue
-            for recipient in reminder.get("recipients") or []:
+            decision = reminder.get("decision") if isinstance(reminder.get("decision"), dict) else {}
+            decision_recipients = decision.get("assignedRecipients")
+            recipients_source = (
+                decision_recipients
+                if isinstance(decision_recipients, list) and decision_recipients
+                else reminder.get("recipients") or []
+            )
+            for recipient in recipients_source:
                 if not isinstance(recipient, dict):
                     continue
                 recipient_id = str(
@@ -1109,6 +1238,245 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     continue
                 recipients.add(recipient_id)
         return recipients
+
+    def _append_transfer_request_reminder(
+        self,
+        *,
+        solicitud,
+        actor_user,
+        selected_user_ids=None,
+    ):
+        if solicitud is None:
+            return False
+
+        solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+        if solicitud_id <= 0:
+            return False
+
+        transfer_doc = str(getattr(solicitud, "no_documento", "") or "").strip()
+        transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{solicitud_id}"
+        context_label = f"Solicitud de traslado {transfer_reference}"
+        actor_recipient = self._normalize_reminder_recipient(actor_user) or {
+            "id": "system",
+            "name": "Sistema",
+        }
+        admin_recipients = self._resolve_transfer_request_admin_recipients()
+        selected_recipients = self._resolve_transfer_selected_recipients(
+            solicitud.sucursal_proveedora_id,
+            selected_user_ids,
+        )
+
+        recipients = []
+        seen_recipient_ids = set()
+
+        def append_unique(candidate):
+            normalized_candidate = self._normalize_reminder_recipient(candidate)
+            if normalized_candidate is None:
+                return
+            candidate_id = str(normalized_candidate.get("id") or "").strip()
+            if not candidate_id or candidate_id in seen_recipient_ids:
+                return
+            seen_recipient_ids.add(candidate_id)
+            recipients.append(normalized_candidate)
+
+        for candidate in admin_recipients:
+            append_unique(candidate)
+        for candidate in selected_recipients:
+            append_unique(candidate)
+        append_unique(actor_recipient)
+
+        if not recipients:
+            return False
+
+        now = timezone.localtime(timezone.now())
+        deadline_at = now.replace(hour=23, minute=59, second=59, microsecond=999000)
+        description = (
+            f"Solicitud de traslado {transfer_reference}. Revisar gestion pendiente. "
+            "Usuarios asignados deben aceptar o rechazar hoy."
+            if selected_recipients
+            else f"Solicitud de traslado {transfer_reference}. Revisar gestion pendiente."
+        )
+        reminder = {
+            "id": str(uuid4()),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M"),
+            "description": description,
+            "creator": actor_recipient,
+            "recipients": recipients,
+            "context": {
+                "type": "solicitud_traslado",
+                "id": str(solicitud_id),
+                "label": context_label,
+            },
+            "kind": "solicitud_traslado_decision",
+            "deadlineAt": deadline_at.isoformat(),
+            "decision": {
+                "status": "pendiente",
+                "reason": "",
+                "by": None,
+                "at": "",
+                "assignedRecipients": selected_recipients,
+            },
+            "transferHistory": [
+                self._build_transfer_history_entry(
+                    stage="pendiente",
+                    description=description,
+                    actor=actor_recipient,
+                    at=timezone.now().isoformat(),
+                )
+            ],
+            "createdAt": timezone.now().isoformat(),
+            "completedBy": [],
+        }
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            existing_payload = store.payload if isinstance(store.payload, list) else []
+            merged = self._upsert_transfer_context_reminder(
+                _normalize_reminder_list(existing_payload),
+                solicitud_id=solicitud_id,
+                reminder=reminder,
+            )
+            store.payload = _normalize_reminder_list(merged)
+            store.save(update_fields=["payload", "updated_at"])
+
+        return True
+
+    def _append_transfer_decision_result_reminder(
+        self,
+        *,
+        solicitud,
+        actor_user,
+        decision_status,
+        rejection_reason="",
+    ):
+        if solicitud is None:
+            return False
+
+        solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+        if solicitud_id <= 0:
+            return False
+
+        normalized_status = self._normalize_state_name(decision_status)
+        if normalized_status not in {"aceptada", "rechazada", "cancelado"}:
+            return False
+
+        actor_recipient = self._normalize_reminder_recipient(actor_user) or {
+            "id": "system",
+            "name": "Sistema",
+        }
+        transfer_doc = str(getattr(solicitud, "no_documento", "") or "").strip()
+        transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{solicitud_id}"
+        context_label = f"Solicitud de traslado {transfer_reference}"
+        now = timezone.localtime(timezone.now())
+        resolved_at = timezone.now().isoformat()
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            existing_payload = store.payload if isinstance(store.payload, list) else []
+            normalized_payload = _normalize_reminder_list(existing_payload)
+            request_creator = self._resolve_transfer_request_creator_from_payload(
+                normalized_payload,
+                solicitud_id=solicitud_id,
+            )
+
+            current_context_reminder = None
+            for item in normalized_payload:
+                if not isinstance(item, dict):
+                    continue
+                context = item.get("context") if isinstance(item.get("context"), dict) else {}
+                context_type = self._normalize_reminder_context_type(context.get("type"))
+                context_id = str(context.get("id") or "").strip()
+                if context_type == "solicitud_traslado" and context_id == str(solicitud_id):
+                    current_context_reminder = item
+                    break
+
+            recipients = []
+            seen_recipient_ids = set()
+
+            def append_unique(candidate):
+                normalized_candidate = self._normalize_reminder_recipient(candidate)
+                if normalized_candidate is None:
+                    return
+                candidate_id = str(normalized_candidate.get("id") or "").strip()
+                if not candidate_id or candidate_id in seen_recipient_ids:
+                    return
+                seen_recipient_ids.add(candidate_id)
+                recipients.append(normalized_candidate)
+
+            for candidate in (
+                current_context_reminder.get("recipients", [])
+                if isinstance(current_context_reminder, dict)
+                else []
+            ):
+                append_unique(candidate)
+            append_unique(request_creator)
+
+            if not recipients:
+                return False
+
+            if normalized_status == "rechazada":
+                description = (
+                    f"Su solicitud de traslado {transfer_reference} fue rechazada. Motivo: {rejection_reason}"
+                    if rejection_reason
+                    else f"Su solicitud de traslado {transfer_reference} fue rechazada."
+                )
+            elif normalized_status == "cancelado":
+                description = (
+                    f"Su solicitud de traslado {transfer_reference} fue cancelada. {rejection_reason}"
+                    if rejection_reason
+                    else f"Su solicitud de traslado {transfer_reference} fue cancelada."
+                )
+            else:
+                description = f"Su solicitud de traslado {transfer_reference} fue aceptada."
+
+            assigned_recipients = []
+            if isinstance(current_context_reminder, dict):
+                decision = current_context_reminder.get("decision")
+                if isinstance(decision, dict) and isinstance(decision.get("assignedRecipients"), list):
+                    assigned_recipients = decision.get("assignedRecipients") or []
+
+            reminder = {
+                "id": str(uuid4()),
+                "date": now.strftime("%Y-%m-%d"),
+                "time": now.strftime("%H:%M"),
+                "description": description,
+                "creator": request_creator or actor_recipient,
+                "recipients": recipients,
+                "context": {
+                    "type": "solicitud_traslado",
+                    "id": str(solicitud_id),
+                    "label": context_label,
+                },
+                "kind": "recordatorio_general",
+                "createdAt": resolved_at,
+                "decision": {
+                    "status": normalized_status,
+                    "reason": rejection_reason if normalized_status in {"rechazada", "cancelado"} else "",
+                    "by": actor_recipient,
+                    "at": resolved_at,
+                    "assignedRecipients": assigned_recipients,
+                },
+                "transferHistory": [
+                    self._build_transfer_history_entry(
+                        stage=normalized_status,
+                        description=description,
+                        actor=actor_recipient,
+                        at=resolved_at,
+                    )
+                ],
+                "completedBy": [],
+            }
+
+            merged = self._upsert_transfer_context_reminder(
+                normalized_payload,
+                solicitud_id=solicitud_id,
+                reminder=reminder,
+            )
+            store.payload = _normalize_reminder_list(merged)
+            store.save(update_fields=["payload", "updated_at"])
+
+        return True
 
     def _append_transfer_shipment_reminder(
         self,
@@ -1134,21 +1502,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             store = ReminderState.get_global(for_update=True)
             existing_payload = store.payload if isinstance(store.payload, list) else []
             normalized = _normalize_reminder_list(existing_payload)
-
-            context_reminder = self._find_transfer_context_reminder(
+            request_creator = self._resolve_transfer_request_creator_from_payload(
                 normalized,
                 solicitud_id=solicitud_id,
             )
-            if context_reminder is not None:
-                normalized = [
-                    reminder_row
-                    for reminder_row in normalized
-                    if reminder_row.get("id") != context_reminder.get("id")
-                ]
 
             provider_recipients = self._resolve_transfer_provider_recipients(
                 solicitud.sucursal_proveedora_id,
-                exclude_user_ids=[creator.get("id")] if creator.get("id") else None,
             )
             recipients = []
             seen_recipient_ids = set()
@@ -1165,7 +1525,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
             for candidate in provider_recipients:
                 append_unique(candidate)
-            append_unique(creator)
+            append_unique(request_creator)
 
             if not recipients:
                 return False
@@ -1176,7 +1536,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 "date": now.strftime("%Y-%m-%d"),
                 "time": now.strftime("%H:%M"),
                 "description": description,
-                "creator": creator,
+                "creator": request_creator or creator,
                 "recipients": recipients,
                 "context": {
                     "type": "solicitud_traslado",
@@ -1190,11 +1550,24 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "reason": "",
                     "by": creator,
                     "at": timezone.now().isoformat(),
+                    "assignedRecipients": [],
                 },
+                "transferHistory": [
+                    self._build_transfer_history_entry(
+                        stage="enviado",
+                        description=description,
+                        actor=creator,
+                        at=timezone.now().isoformat(),
+                    )
+                ],
                 "completedBy": [],
             }
 
-            merged = [reminder, *normalized]
+            merged = self._upsert_transfer_context_reminder(
+                normalized,
+                solicitud_id=solicitud_id,
+                reminder=reminder,
+            )
             store.payload = _normalize_reminder_list(merged)
             store.save(update_fields=["payload", "updated_at"])
 
@@ -1282,28 +1655,31 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 "id": str(int(solicitud.id)),
                 "label": context_label,
             },
-            "kind": "solicitud_traslado_recepcion",
+            "kind": "recordatorio_general",
             "createdAt": timezone.now().isoformat(),
+            "transferHistory": [
+                self._build_transfer_history_entry(
+                    stage="incompleto" if normalized_resultado == "incompleto" else "completo",
+                    description=description,
+                    actor=actor_recipient,
+                    at=timezone.now().isoformat(),
+                )
+            ],
             "completedBy": [],
         }
 
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
             existing_payload = store.payload if isinstance(store.payload, list) else []
-            context_recipients = self._resolve_transfer_context_recipients_from_payload(
-                existing_payload,
-                solicitud_id=int(solicitud.id),
-            )
-
-            if context_recipients:
-                for row in context_recipients:
-                    append_unique_recipient(row)
-
             if not recipients:
                 return False
 
             reminder["recipients"] = recipients
-            store.payload = [reminder, *existing_payload]
+            store.payload = self._upsert_transfer_context_reminder(
+                _normalize_reminder_list(existing_payload),
+                solicitud_id=int(solicitud.id),
+                reminder=reminder,
+            )
             store.save(update_fields=["payload", "updated_at"])
 
         return True
@@ -1396,6 +1772,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         if request.method.lower() == "post":
             serializer = SolicitudTrasladoSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
+            reminder_recipient_ids = serializer.validated_data.get("recordatorio_destinatario_ids") or []
 
             sucursal_solicitante = serializer.validated_data.get("sucursal_solicitante")
             ensure_sucursal_allowed_for_modules(
@@ -1407,6 +1784,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
 
             solicitud = serializer.save()
+            self._append_transfer_request_reminder(
+                solicitud=solicitud,
+                actor_user=request.user,
+                selected_user_ids=reminder_recipient_ids,
+            )
             output = SolicitudTrasladoSerializer(instance=solicitud)
             return Response(output.data, status=status.HTTP_201_CREATED)
 
@@ -1510,11 +1892,26 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             action_key="puede_actualizar",
         )
 
-        if solicitud.estado != SolicitudTraslado.Estados.PENDIENTE:
+        if request.method.upper() != "DELETE" and solicitud.estado not in {
+            SolicitudTraslado.Estados.PENDIENTE,
+            SolicitudTraslado.Estados.CANCELADA,
+        }:
             return Response(
                 {
                     "detail": (
-                        "Solo se pueden editar solicitudes pendientes de traslado."
+                        "Solo se pueden editar solicitudes pendientes o rechazadas de traslado."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if request.method.upper() != "DELETE" and (
+            solicitud.movimiento_salida_id or solicitud.movimiento_entrada_id
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "La solicitud ya fue procesada y no puede modificarse."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1751,6 +2148,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         f"No se pudo aceptar la solicitud porque el stock cambió "
                         f"para '{shortage['producto_label']}'. Disponible: {shortage['available']}."
                     )
+                    self._append_transfer_decision_result_reminder(
+                        solicitud=solicitud_locked,
+                        actor_user=request.user,
+                        decision_status="rechazada",
+                        rejection_reason=motivo_rechazo,
+                    )
                     return Response(
                         {
                             "detail": detail_text,
@@ -1775,6 +2178,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     ]
                 )
 
+            self._append_transfer_decision_result_reminder(
+                solicitud=solicitud_locked,
+                actor_user=request.user,
+                decision_status="aceptada",
+            )
             output = SolicitudTrasladoSerializer(instance=solicitud_locked)
             return Response(
                 {
@@ -1812,6 +2220,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 ]
             )
 
+            self._append_transfer_decision_result_reminder(
+                solicitud=solicitud,
+                actor_user=request.user,
+                decision_status="rechazada",
+                rejection_reason=motivo,
+            )
             output = SolicitudTrasladoSerializer(instance=solicitud)
             return Response(
                 {
@@ -1889,6 +2303,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             ]
         )
 
+        self._append_transfer_decision_result_reminder(
+            solicitud=solicitud,
+            actor_user=request.user,
+            decision_status="rechazada",
+            rejection_reason=motivo,
+        )
+
         output = SolicitudTrasladoSerializer(instance=solicitud)
         return Response(
             {
@@ -1898,6 +2319,299 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK,
         )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/reabrir",
+    )
+    def reabrir_solicitud_traslado(self, request, solicitud_id=None):
+        """Reabre una solicitud rechazada/cancelada, volviendo al estado pendiente."""
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+            solicitud.sucursal_solicitante_id,
+            field_label="sucursal solicitante",
+            action_key="puede_actualizar",
+        )
+
+        if solicitud.estado != SolicitudTraslado.Estados.CANCELADA:
+            return Response(
+                {"detail": "Solo se pueden reabrir solicitudes rechazadas o canceladas."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if solicitud.movimiento_salida_id or solicitud.movimiento_entrada_id:
+            return Response(
+                {
+                    "detail": (
+                        "La solicitud ya fue procesada y no puede volver a realizarse."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload = request.data if isinstance(request.data, dict) else {}
+
+        with transaction.atomic():
+            solicitud_locked = (
+                SolicitudTraslado.objects.select_for_update(of=("self",))
+                .prefetch_related("detalles__producto")
+                .filter(pk=solicitud.id)
+                .first()
+            )
+            if solicitud_locked is None:
+                return Response(
+                    {"detail": "No se encontro la solicitud de traslado."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if solicitud_locked.estado != SolicitudTraslado.Estados.CANCELADA:
+                return Response(
+                    {"detail": "Solo se pueden reabrir solicitudes rechazadas o canceladas."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if payload:
+                serializer = SolicitudTrasladoSerializer(
+                    instance=solicitud_locked,
+                    data=payload,
+                    partial=True,
+                )
+                serializer.is_valid(raise_exception=True)
+                solicitud_locked = serializer.save()
+
+            solicitud_locked.estado = SolicitudTraslado.Estados.PENDIENTE
+            solicitud_locked.motivo_rechazo = ""
+            solicitud_locked.rechazada_por = None
+            solicitud_locked.rechazada_en = None
+            solicitud_locked.save(
+                update_fields=[
+                    "estado",
+                    "motivo_rechazo",
+                    "rechazada_por",
+                    "rechazada_en",
+                    "updated_at",
+                ]
+            )
+
+        self._append_reopen_transfer_reminder(solicitud=solicitud_locked, actor_user=request.user)
+
+        output = SolicitudTrasladoSerializer(instance=solicitud_locked)
+        return Response(
+            {
+                "detail": "Solicitud reabierta correctamente.",
+                "solicitud": output.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/cancelar-pedido",
+    )
+    def cancelar_pedido_solicitud_traslado(self, request, solicitud_id=None):
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+            solicitud.sucursal_solicitante_id,
+            field_label="sucursal solicitante",
+            action_key="puede_actualizar",
+        )
+
+        if solicitud.estado != SolicitudTraslado.Estados.CANCELADA:
+            return Response(
+                {
+                    "detail": (
+                        "Solo puedes cancelar pedidos que ya fueron rechazados o cancelados."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if solicitud.movimiento_salida_id or solicitud.movimiento_entrada_id:
+            return Response(
+                {
+                    "detail": (
+                        "La solicitud ya fue procesada y no puede cancelarse."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        motivo = str(request.data.get("motivo") or "").strip() or "Pedido cancelado por el solicitante."
+        solicitud.motivo_rechazo = motivo
+        solicitud.rechazada_por = request.user
+        solicitud.rechazada_en = timezone.now()
+        solicitud.save(
+            update_fields=[
+                "motivo_rechazo",
+                "rechazada_por",
+                "rechazada_en",
+                "updated_at",
+            ]
+        )
+
+        self._append_transfer_decision_result_reminder(
+            solicitud=solicitud,
+            actor_user=request.user,
+            decision_status="cancelado",
+            rejection_reason=motivo,
+        )
+
+        output = SolicitudTrasladoSerializer(instance=solicitud)
+        return Response(
+            {
+                "detail": "Pedido cancelado correctamente.",
+                "decision": "cancelado",
+                "solicitud": output.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def _append_reopen_transfer_reminder(self, *, solicitud, actor_user):
+        """Actualiza el recordatorio de traslado a estado pendiente al reabrir."""
+        if solicitud is None:
+            return False
+
+        solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+        if solicitud_id <= 0:
+            return False
+
+        actor_recipient = self._normalize_reminder_recipient(actor_user) or {
+            "id": "system",
+            "name": "Sistema",
+        }
+        transfer_doc = str(getattr(solicitud, "no_documento", "") or "").strip()
+        transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{solicitud_id}"
+        context_label = f"Solicitud de traslado {transfer_reference}"
+        now = timezone.localtime(timezone.now())
+        resolved_at = timezone.now().isoformat()
+        description = f"Solicitud de traslado {transfer_reference}. Revisar gestion pendiente."
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            existing_payload = store.payload if isinstance(store.payload, list) else []
+            normalized_payload = _normalize_reminder_list(existing_payload)
+
+            current_context_reminder = None
+            for item in normalized_payload:
+                if not isinstance(item, dict):
+                    continue
+                context = item.get("context") if isinstance(item.get("context"), dict) else {}
+                context_type = self._normalize_reminder_context_type(context.get("type"))
+                context_id = str(context.get("id") or "").strip()
+                if context_type == "solicitud_traslado" and context_id == str(solicitud_id):
+                    current_context_reminder = item
+                    break
+
+            request_creator = self._resolve_transfer_request_creator_from_payload(
+                normalized_payload,
+                solicitud_id=solicitud_id,
+            )
+
+            existing_assigned = []
+            if isinstance(current_context_reminder, dict):
+                decision = current_context_reminder.get("decision")
+                if isinstance(decision, dict) and isinstance(decision.get("assignedRecipients"), list):
+                    existing_assigned = decision.get("assignedRecipients") or []
+
+            recipients = []
+            seen_recipient_ids = set()
+
+            def append_unique(candidate):
+                normalized_candidate = self._normalize_reminder_recipient(candidate)
+                if normalized_candidate is None:
+                    return
+                candidate_id = str(normalized_candidate.get("id") or "").strip()
+                if not candidate_id or candidate_id in seen_recipient_ids:
+                    return
+                seen_recipient_ids.add(candidate_id)
+                recipients.append(normalized_candidate)
+
+            assigned_user_ids = [
+                str(candidate.get("id") or "").strip()
+                for candidate in existing_assigned
+                if isinstance(candidate, dict) and str(candidate.get("id") or "").strip()
+            ]
+
+            for candidate in self._resolve_transfer_request_admin_recipients():
+                append_unique(candidate)
+            for candidate in self._resolve_transfer_selected_recipients(
+                solicitud.sucursal_proveedora_id,
+                assigned_user_ids,
+            ):
+                append_unique(candidate)
+            if not assigned_user_ids:
+                for candidate in self._resolve_transfer_provider_recipients(
+                    solicitud.sucursal_proveedora_id,
+                ):
+                    append_unique(candidate)
+            append_unique(request_creator)
+            append_unique(actor_recipient)
+            if not recipients:
+                return False
+
+            deadline_at = now.replace(hour=23, minute=59, second=59, microsecond=999000)
+
+            reminder = {
+                "id": str(uuid4()),
+                "date": now.strftime("%Y-%m-%d"),
+                "time": now.strftime("%H:%M"),
+                "description": description,
+                "creator": request_creator or actor_recipient,
+                "recipients": recipients,
+                "context": {
+                    "type": "solicitud_traslado",
+                    "id": str(solicitud_id),
+                    "label": context_label,
+                },
+                "kind": "solicitud_traslado_decision",
+                "deadlineAt": deadline_at.isoformat(),
+                "decision": {
+                    "status": "pendiente",
+                    "reason": "",
+                    "by": None,
+                    "at": "",
+                    "assignedRecipients": existing_assigned,
+                },
+                "transferHistory": [
+                    self._build_transfer_history_entry(
+                        stage="pendiente",
+                        description=description,
+                        actor=actor_recipient,
+                        at=resolved_at,
+                    )
+                ],
+                "createdAt": resolved_at,
+                "completedBy": [],
+            }
+
+            merged = self._upsert_transfer_context_reminder(
+                normalized_payload,
+                solicitud_id=solicitud_id,
+                reminder=reminder,
+            )
+
+            store.payload = _normalize_reminder_list(merged)
+            store.save(update_fields=["payload", "updated_at"])
+
+        return True
 
     @action(detail=False, methods=["get"], url_path="envios-en-camino")
     def envios_en_camino(self, request):

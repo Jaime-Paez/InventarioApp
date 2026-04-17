@@ -278,6 +278,12 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
     movimiento_entrada_id = serializers.IntegerField(source="movimiento_entrada.id", read_only=True)
     estado_label = serializers.SerializerMethodField(read_only=True)
     rechazada_por_nombre = serializers.SerializerMethodField(read_only=True)
+    recordatorio_destinatario_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+    )
 
     class Meta:
         model = SolicitudTraslado
@@ -299,6 +305,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "rechazada_por_nombre",
             "rechazada_en",
             "detalles",
+            "recordatorio_destinatario_ids",
             "created_at",
             "updated_at",
         ]
@@ -438,6 +445,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         detalles_data = validated_data.pop("detalles", [])
+        validated_data.pop("recordatorio_destinatario_ids", None)
         validated_data["no_documento"] = generate_transfer_request_document_number(
             sucursal_solicitante=validated_data.get("sucursal_solicitante"),
             sucursal_proveedora=validated_data.get("sucursal_proveedora"),
@@ -450,6 +458,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         detalles_data = validated_data.pop("detalles", None)
+        validated_data.pop("recordatorio_destinatario_ids", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         with transaction.atomic():

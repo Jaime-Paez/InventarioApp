@@ -178,9 +178,37 @@ def _normalize_decision_status(value):
     normalized = _normalize_text(value).lower()
     if normalized in {"aceptada", "aprobada", "approved"}:
         return "aceptada"
+    if normalized in {
+        "enviado",
+        "enviada",
+        "en_traslado",
+        "en traslado",
+        "en_transito",
+        "sent",
+        "shipped",
+    }:
+        return "enviado"
     if normalized in {"rechazada", "rechazar", "rejected"}:
         return "rechazada"
     return "pendiente"
+
+
+def _sanitize_recipient_list(raw_list):
+    if not isinstance(raw_list, list):
+        return []
+
+    recipients = []
+    seen_recipient_ids = set()
+    for recipient_raw in raw_list:
+        recipient = _sanitize_recipient(recipient_raw)
+        if recipient is None:
+            continue
+        recipient_id = recipient["id"]
+        if recipient_id in seen_recipient_ids:
+            continue
+        seen_recipient_ids.add(recipient_id)
+        recipients.append(recipient)
+    return recipients
 
 
 def _sanitize_decision(raw):
@@ -192,7 +220,140 @@ def _sanitize_decision(raw):
         "reason": _normalize_text(source.get("reason") or source.get("motivo")),
         "by": _sanitize_recipient(source.get("by") or source.get("usuario")),
         "at": _parse_iso_timestamp(source.get("at") or source.get("fecha")),
+        "assignedRecipients": _sanitize_recipient_list(
+            source.get("assignedRecipients")
+            or source.get("assigned_recipients")
+            or source.get("recipients")
+            or []
+        ),
     }
+
+
+def _normalize_transfer_history_stage(value):
+    normalized = _normalize_text(value).lower()
+    if normalized in {"pendiente", "solicitud", "creada", "solicitada"}:
+        return "pendiente"
+    if normalized in {"aceptada", "aprobada", "approved"}:
+        return "aceptada"
+    if normalized in {"rechazada", "rechazar", "rejected", "cancelada", "cancelado"}:
+        return "rechazada"
+    if normalized in {
+        "enviado",
+        "enviada",
+        "en_traslado",
+        "en traslado",
+        "en_transito",
+        "sent",
+        "shipped",
+    }:
+        return "enviado"
+    if normalized in {"completo", "recibido_completo", "llego_completo"}:
+        return "completo"
+    if normalized in {"incompleto", "recibido_incompleto", "llego_incompleto"}:
+        return "incompleto"
+    return ""
+
+
+def _sanitize_transfer_history_entry(raw):
+    if not isinstance(raw, dict):
+        return None
+
+    stage = _normalize_transfer_history_stage(
+        raw.get("stage") or raw.get("status") or raw.get("key")
+    )
+    if not stage:
+        return None
+
+    at = _parse_iso_timestamp(raw.get("at") or raw.get("fecha"))
+    if not at:
+        at = _iso_now()
+
+    return {
+        "stage": stage,
+        "label": _normalize_text(raw.get("label")),
+        "description": _normalize_text(raw.get("description") or raw.get("descripcion")),
+        "at": at,
+        "actor": _sanitize_recipient(raw.get("actor") or raw.get("by") or raw.get("usuario")),
+    }
+
+
+def _infer_transfer_history_entry_from_reminder(reminder):
+    if not isinstance(reminder, dict):
+        return None
+
+    context = _sanitize_context(reminder.get("context"))
+    if context is None:
+        context = _sanitize_context(
+            {
+                "type": reminder.get("contextType"),
+                "id": reminder.get("contextId"),
+                "label": reminder.get("contextLabel"),
+            }
+        )
+    if _normalize_context_type(context.get("type")) != "solicitud_traslado":
+        return None
+
+    decision = _sanitize_decision(reminder.get("decision") or reminder.get("resolucion"))
+    decision_status = _normalize_decision_status(decision.get("status"))
+    description = _normalize_text(reminder.get("description") or reminder.get("descripcion"))
+    stage = ""
+
+    if "llego incompleto" in description:
+        stage = "incompleto"
+    elif "llego completo" in description:
+        stage = "completo"
+    elif decision_status in {"aceptada", "rechazada", "enviado"}:
+        stage = decision_status
+    elif _normalize_id(reminder.get("kind")) == "solicitud_traslado_decision":
+        stage = "pendiente"
+    elif "aceptada" in description:
+        stage = "aceptada"
+    elif "rechazada" in description:
+        stage = "rechazada"
+    elif "en traslado" in description or "fue enviada" in description:
+        stage = "enviado"
+    elif _normalize_context_type(context.get("type")) == "solicitud_traslado":
+        stage = "pendiente"
+
+    if not stage:
+        return None
+
+    timestamp = _parse_iso_timestamp(reminder.get("createdAt") or reminder.get("creado_en"))
+    if not timestamp:
+        date = _normalize_text(reminder.get("date") or reminder.get("fecha"))
+        time = _normalize_text(reminder.get("time") or reminder.get("hora"))
+        if date and time:
+            timestamp = _parse_iso_timestamp(f"{date}T{time}:00")
+    if not timestamp:
+        timestamp = _iso_now()
+
+    return {
+        "stage": stage,
+        "label": "",
+        "description": description,
+        "at": timestamp,
+        "actor": _sanitize_recipient(decision.get("by") or reminder.get("creator")),
+    }
+
+
+def _sanitize_transfer_history(raw_history, reminder=None):
+    entries = []
+    by_stage = {}
+
+    for item in raw_history if isinstance(raw_history, list) else []:
+        entry = _sanitize_transfer_history_entry(item)
+        if entry is None:
+            continue
+        by_stage[entry["stage"]] = entry
+
+    if not by_stage and reminder is not None:
+        legacy_entry = _infer_transfer_history_entry_from_reminder(reminder)
+        if legacy_entry is not None:
+            by_stage[legacy_entry["stage"]] = legacy_entry
+
+    entries = list(by_stage.values())
+    entries.sort(key=lambda row: _parse_iso_timestamp(row.get("at")) or "")
+    return entries
 
 
 def _sanitize_context(raw):
@@ -235,18 +396,7 @@ def _sanitize_reminder(raw):
     if not isinstance(recipients_source, list):
         recipients_source = []
 
-    recipients = []
-    seen_recipient_ids = set()
-    for recipient_raw in recipients_source:
-        recipient = _sanitize_recipient(recipient_raw)
-        if recipient is None:
-            continue
-        recipient_id = recipient["id"]
-        if recipient_id in seen_recipient_ids:
-            continue
-        seen_recipient_ids.add(recipient_id)
-        recipients.append(recipient)
-
+    recipients = _sanitize_recipient_list(recipients_source)
     if not recipients:
         return None
 
@@ -308,6 +458,10 @@ def _sanitize_reminder(raw):
         "kind": _normalize_id(raw.get("kind") or raw.get("tipo")),
         "deadlineAt": _parse_iso_timestamp(raw.get("deadlineAt") or raw.get("deadline_at")),
         "decision": _sanitize_decision(raw.get("decision") or raw.get("resolucion")),
+        "transferHistory": _sanitize_transfer_history(
+            raw.get("transferHistory") or raw.get("transfer_history") or raw.get("history"),
+            reminder=raw,
+        ),
         "createdAt": created_at,
         "completedBy": completed_by,
     }
@@ -394,9 +548,46 @@ def _merge_decision(existing_decision, incoming_decision):
         return existing
 
     if _is_resolved_decision(incoming_status):
+        incoming["assignedRecipients"] = _merge_recipients(
+            existing.get("assignedRecipients") or [],
+            incoming.get("assignedRecipients") or [],
+        )
         return incoming
 
-    return existing if _is_resolved_decision(existing_status) else incoming
+    merged = existing if _is_resolved_decision(existing_status) else incoming
+    merged["assignedRecipients"] = _merge_recipients(
+        existing.get("assignedRecipients") or [],
+        incoming.get("assignedRecipients") or [],
+    )
+    return merged
+
+
+def _merge_transfer_history(existing_history, incoming_history):
+    merged_by_signature = {}
+    for source in (existing_history, incoming_history):
+        for raw in source if isinstance(source, list) else []:
+            entry = _sanitize_transfer_history_entry(raw)
+            if entry is None:
+                continue
+            actor = entry.get("actor") if isinstance(entry.get("actor"), dict) else {}
+            signature = (
+                entry.get("stage") or "",
+                entry.get("at") or "",
+                _normalize_id(actor.get("id")),
+                _normalize_text(entry.get("description")),
+            )
+            merged_by_signature[signature] = entry
+
+    merged = list(merged_by_signature.values())
+    merged.sort(key=lambda row: _parse_iso_timestamp(row.get("at")) or "")
+    return merged
+
+
+def _latest_transfer_history_stage(history):
+    if not isinstance(history, list) or not history:
+        return ""
+    latest = history[-1] if history else {}
+    return _normalize_transfer_history_stage(latest.get("stage"))
 
 
 def _merge_reminder(existing_reminder, incoming_reminder):
@@ -432,6 +623,21 @@ def _merge_reminder(existing_reminder, incoming_reminder):
         existing.get("decision") or {},
         incoming.get("decision") or {},
     )
+    merged["transferHistory"] = _merge_transfer_history(
+        existing.get("transferHistory") or [],
+        incoming.get("transferHistory") or [],
+    )
+    previous_stage = _latest_transfer_history_stage(existing.get("transferHistory") or [])
+    incoming_stage = _latest_transfer_history_stage(incoming.get("transferHistory") or [])
+
+    if incoming_stage and incoming_stage != previous_stage:
+        merged["completedBy"] = list(incoming.get("completedBy") or [])
+        if incoming_stage == "pendiente":
+            merged["decision"] = _sanitize_decision(incoming.get("decision") or {})
+            merged["decision"]["assignedRecipients"] = _merge_recipients(
+                existing.get("decision", {}).get("assignedRecipients") or [],
+                incoming.get("decision", {}).get("assignedRecipients") or [],
+            )
 
     if not merged["recipients"]:
         return None
