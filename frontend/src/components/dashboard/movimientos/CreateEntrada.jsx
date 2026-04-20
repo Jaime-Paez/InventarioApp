@@ -2978,7 +2978,7 @@ function CreateEntrada({
                         name="subTipoId"
                         value={formData.subTipoId}
                         onChange={handleChange}
-                        disabled={loading}
+                        disabled
                         required
                         className={`create-salida__tipo-select${!formData.subTipoId ? ' is-placeholder' : ''}`}
                       >
