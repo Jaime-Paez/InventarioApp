@@ -131,6 +131,27 @@
   height: 14px;
 }
 
+.recordatorios-popup__header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recordatorios-popup__add-header {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  color: #fff;
+}
+
 .recordatorios-popup__form {
   display: flex;
   flex-direction: column;
@@ -462,12 +483,11 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-surface) 84%, var(--color-primary) 16%);
   color: inherit;
-  min-height: 44px;
-  padding: 4px 6px;
+  padding: 3px 4px;
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 2px;
+  gap: 1px;
   cursor: pointer;
   line-height: 1;
   text-align: center;
@@ -490,26 +510,26 @@
 .recordatorios-popup__timeline-day-label {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   justify-content: center;
   flex-wrap: wrap;
-  line-height: 1.2;
+  line-height: 1;
 }
 
 .recordatorios-popup__timeline-day-name {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
-  text-transform: capitalize;
+  text-transform: uppercase;
   opacity: 0.88;
 }
 
 .recordatorios-popup__timeline-day-date {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .recordatorios-popup__timeline-day-count {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.01em;
   white-space: nowrap;

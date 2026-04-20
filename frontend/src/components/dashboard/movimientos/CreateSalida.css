@@ -987,6 +987,16 @@
   color: #fecaca;
 }
 
+.dashboard-shell.dark .create-salida__confirm-field > span {
+  color: #94a3b8;
+}
+
+.dashboard-shell.dark .create-salida__confirm-field textarea {
+  background: var(--color-surface-darker);
+  color: #f1f5f9;
+  border-color: var(--color-border);
+}
+
 .entrada-details__modal--pending {
   position: relative;
 }

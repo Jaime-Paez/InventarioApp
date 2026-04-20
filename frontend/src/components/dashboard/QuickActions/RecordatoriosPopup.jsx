@@ -85,6 +85,11 @@ const buildTransferResponseDescription = (reminder, decisionStatus) => {
     return 'Su solicitud de traslado fue enviada y esta en traslado.'
   }
 
+  if (decisionStatus === 'recibido') {
+    if (contextReference) return `La solicitud de traslado ${contextReference} fue entregada y recibida.`
+    return 'La solicitud de traslado fue entregada y recibida.'
+  }
+
   return String(reminder?.description || '').trim() || '-'
 }
 
@@ -177,15 +182,23 @@ const getTransferVisualDecisionStatus = ({
   receiptOutcome = '',
 }) => {
   if (receiptOutcome === 'completo' || receiptOutcome === 'incompleto') {
-    return decisionStatus
+    return 'recibido'
   }
   const normalizedStage = normalizeTransferProgressStage(latestTransferStage)
+  if (normalizedStage === 'recibido') return 'recibido'
   if (normalizedStage === 'enviado') return 'enviado'
   if (normalizedStage === 'aceptada') return 'aceptada'
   return decisionStatus
 }
 
 const getTransferVisualStatus = (baseStatus, visualDecisionStatus) => {
+  if (visualDecisionStatus === 'recibido') {
+    return {
+      label: 'Recibida',
+      className: 'arrived',
+      canMarkSeen: false,
+    }
+  }
   if (visualDecisionStatus === 'enviado') {
     return {
       label: 'Enviado',
@@ -679,13 +692,27 @@ function RecordatoriosPopup({
     const baseStatus = buildReminderStatusForUser(activeDetailReminder, currentUserIdSet)
     const solicitudId = normalizeId(activeDetailReminder?.context?.id)
     const transferLifecycle = solicitudId ? transferLifecycleBySolicitudId?.[solicitudId] || null : null
+    const latestProgressFromReminders = solicitudId
+      ? transferLatestProgressBySolicitudId?.[solicitudId] || null
+      : null
+    const latestStageFromReminders = normalizeTransferProgressStage(latestProgressFromReminders?.stage || '')
+    const latestStageFromLifecycle = normalizeTransferProgressStage(transferLifecycle?.stage || '')
+    const latestStage = (() => {
+      const rRank = TRANSFER_PROGRESS_STAGE_RANK[latestStageFromReminders] ?? 0
+      const lRank = TRANSFER_PROGRESS_STAGE_RANK[latestStageFromLifecycle] ?? 0
+      return lRank > rRank ? latestStageFromLifecycle : latestStageFromReminders
+    })()
     const visualDecisionStatus = getTransferVisualDecisionStatus({
       decisionStatus: getReminderDecisionStatus(activeDetailReminder),
-      latestTransferStage: transferLifecycle?.stage || '',
+      latestTransferStage: latestStage,
       receiptOutcome: getTransferReceiptOutcome(activeDetailReminder),
     })
-    return getTransferVisualStatus(baseStatus, visualDecisionStatus)
-  }, [activeDetailReminder, currentUserIdSet, transferLifecycleBySolicitudId])
+    const vs = getTransferVisualStatus(baseStatus, visualDecisionStatus)
+    if (visualDecisionStatus === 'recibido' && !isReminderCreatedByCurrentUser(activeDetailReminder, currentUserIdSet, currentUserName)) {
+      return { ...vs, label: 'Entregada' }
+    }
+    return vs
+  }, [activeDetailReminder, currentUserIdSet, currentUserName, transferLifecycleBySolicitudId, transferLatestProgressBySolicitudId])
 
   const activeDetailReminderDescription = useMemo(() => {
     if (!activeDetailReminder) return '-'
@@ -1646,8 +1673,18 @@ function RecordatoriosPopup({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="recordatorios-popup__header">
-          <div>
+          <div className="recordatorios-popup__header-title">
             <h3>Recordatorios</h3>
+            {activeView !== 'create' && (
+              <button
+                type="button"
+                className="recordatorios-popup__button recordatorios-popup__button--primary recordatorios-popup__add-header"
+                onClick={handleOpenCreateView}
+                aria-label="Añadir recordatorio"
+              >
+                +
+              </button>
+            )}
           </div>
           <button type="button" className="recordatorios-popup__close" onClick={() => onClose?.()} aria-label="Cerrar recordatorios">
             <X />
@@ -1734,19 +1771,7 @@ function RecordatoriosPopup({
             </form>
           ) : (
             <section className="recordatorios-popup__history recordatorios-popup__history--fullscreen">
-              <div className="recordatorios-popup__section-head">
-                <h4>Recordatorios personales</h4>
-                <button
-                  type="button"
-                  className="recordatorios-popup__button recordatorios-popup__button--primary recordatorios-popup__add-trigger"
-                  onClick={handleOpenCreateView}
-                >
-                  <Plus />
-                  Anadir recordatorio
-                </button>
-              </div>
-
-              <>
+<>
                 <section className="recordatorios-popup__timeline" aria-label="Linea de tiempo semanal">
                   <div className="recordatorios-popup__timeline-head">
                     <button
@@ -1847,6 +1872,7 @@ function RecordatoriosPopup({
                         const isTransferLifecycleLoading = (
                           isTransferContextReminder &&
                           decisionStatus === 'aceptada' &&
+                          latestTransferStage !== 'recibido' &&
                           (!transferLifecycle || Boolean(transferLifecycle?.loading))
                         )
                         const isReminderOwnedByCurrentUser = isReminderCreatedByCurrentUser(
@@ -1854,6 +1880,9 @@ function RecordatoriosPopup({
                           currentUserIdSet,
                           currentUserName
                         )
+                        const displayStatus = (
+                          visualDecisionStatus === 'recibido' && !isReminderOwnedByCurrentUser
+                        ) ? { ...status, label: 'Entregada' } : status
                         const isRejectedByCurrentUser = (
                           visualDecisionStatus === 'rechazada' &&
                           currentUserIdSet.has(normalizeId(reminder?.decision?.by?.id))
@@ -1996,15 +2025,15 @@ function RecordatoriosPopup({
                               }
                             }}
                             className={`recordatorios-popup__timeline-item${
-                              status.className === 'pending' ? ' recordatorios-popup__timeline-item--pending' : ''
+                              displayStatus.className === 'pending' ? ' recordatorios-popup__timeline-item--pending' : ''
                             }${
-                              status.className === 'rejected' ? ' recordatorios-popup__timeline-item--rejected' : ''
+                              displayStatus.className === 'rejected' ? ' recordatorios-popup__timeline-item--rejected' : ''
                             }${
-                              status.className === 'accepted' ? ' recordatorios-popup__timeline-item--accepted' : ''
+                              displayStatus.className === 'accepted' ? ' recordatorios-popup__timeline-item--accepted' : ''
                             }${
-                              status.className === 'sent' ? ' recordatorios-popup__timeline-item--sent' : ''
+                              displayStatus.className === 'sent' ? ' recordatorios-popup__timeline-item--sent' : ''
                             }${
-                              status.className === 'cancelled' ? ' recordatorios-popup__timeline-item--cancelled' : ''
+                              displayStatus.className === 'cancelled' ? ' recordatorios-popup__timeline-item--cancelled' : ''
                             }${
                               isPendingInspectionAlert ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
                             }${
@@ -2029,8 +2058,8 @@ function RecordatoriosPopup({
                             </div>
 
                             <div className="recordatorios-popup__timeline-item-col recordatorios-popup__timeline-item-col--estado" onClick={(e) => e.stopPropagation()}>
-                              <span className={`recordatorios-popup__status recordatorios-popup__status--${status.className}`}>
-                                {status.label}
+                              <span className={`recordatorios-popup__status recordatorios-popup__status--${displayStatus.className}`}>
+                                {displayStatus.label}
                               </span>
                               <div className="recordatorios-popup__timeline-item-actions">
                               {canResolveDecision ? (

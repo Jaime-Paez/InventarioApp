@@ -302,6 +302,7 @@ function QuickActions({
   const [receiveShipmentSubmitting, setReceiveShipmentSubmitting] = useState(false)
   const [receiveShipmentError, setReceiveShipmentError] = useState('')
   const [receiveShipmentStepIndex, setReceiveShipmentStepIndex] = useState(0)
+  const [receiveShipmentShowSummary, setReceiveShipmentShowSummary] = useState(false)
   const [activeRandomInspection, setActiveRandomInspection] = useState(null)
   const [randomInspectionDraftByItemId, setRandomInspectionDraftByItemId] = useState({})
   const [randomInspectionMode, setRandomInspectionMode] = useState('review')
@@ -1659,7 +1660,7 @@ function QuickActions({
     () =>
       Object.values(receiveShipmentDraftByProductId || {}).map((row) => {
         const sentQty = toPositiveInt(row?.cantidad_enviada, 0)
-        const receivedQty = Math.min(sentQty, toPositiveInt(row?.cantidad_recibida, 0))
+        const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
         const missingQty = Math.max(0, sentQty - receivedQty)
         const selectedSubdivisionId = normalizeId(row?.location_draft_subdivision_id)
         const locations = selectedSubdivisionId && receivedQty > 0
@@ -2192,6 +2193,7 @@ function QuickActions({
     setReceiveShipmentError('')
     setReceiveShipmentSubmitting(false)
     setReceiveShipmentStepIndex(0)
+    setReceiveShipmentShowSummary(false)
   }, [])
 
   const closeRandomInspectionModal = useCallback(() => {
@@ -2884,8 +2886,7 @@ function QuickActions({
 
       const nextRow = { ...current }
       if (field === 'cantidad_recibida') {
-        const max = toPositiveInt(current?.cantidad_enviada, 0)
-        const parsed = Math.min(max, toPositiveInt(value, 0))
+        const parsed = toPositiveInt(value, 0)
         nextRow.cantidad_recibida = parsed
         const assigned = (Array.isArray(nextRow.ubicaciones) ? nextRow.ubicaciones : []).reduce(
           (total, row) => total + toPositiveInt(row?.cantidad, 0),
@@ -3309,7 +3310,7 @@ function QuickActions({
       for (const row of rows) {
         const productId = toPositiveInt(row?.producto_id, 0)
         const sentQty = toPositiveInt(row?.cantidad_enviada, 0)
-        const receivedQty = Math.min(sentQty, toPositiveInt(row?.cantidad_recibida, 0))
+        const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
         const missingQty = Math.max(0, sentQty - receivedQty)
         const locations = (Array.isArray(row?.ubicaciones) ? row.ubicaciones : [])
           .map((location) => ({
@@ -4206,7 +4207,51 @@ function QuickActions({
             </header>
 
             <div className="quick-actions__receive-body">
-              {inTransitSubdivisionsLoading ? (
+              {receiveShipmentShowSummary ? (
+                <div className="quick-actions__receive-summary">
+                  <p className="quick-actions__receive-summary-title">Resumen de recepción</p>
+                  <table className="quick-actions__receive-summary-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Enviado</th>
+                        <th>Recibido</th>
+                        <th>Diferencia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {receiveShipmentRows.map((row) => {
+                        const sent = toPositiveInt(row?.cantidad_enviada, 0)
+                        const received = toPositiveInt(row?.cantidad_recibida, 0)
+                        const diff = received - sent
+                        return (
+                          <tr
+                            key={`summary-row-${normalizeId(row?.producto_id)}`}
+                            className={diff < 0 ? 'quick-actions__receive-summary-row--missing' : diff > 0 ? 'quick-actions__receive-summary-row--extra' : ''}
+                          >
+                            <td>
+                              <strong>{row?.producto_codigo || `#${normalizeId(row?.producto_id)}`}</strong>
+                              {!!String(row?.producto_nombre || '').trim() && (
+                                <span>{String(row.producto_nombre).trim()}</span>
+                              )}
+                            </td>
+                            <td>{sent}</td>
+                            <td>{received}</td>
+                            <td className="quick-actions__receive-summary-diff">
+                              {diff === 0 ? <span className="quick-actions__receive-summary-ok">✓</span> : diff > 0 ? `+${diff}` : diff}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                  {receiveShipmentTotalMissing > 0 && (
+                    <p className="quick-actions__receive-summary-missing-note">
+                      Faltan <strong>{receiveShipmentTotalMissing}</strong> unidad(es) en total. Verifica las novedades ingresadas.
+                    </p>
+                  )}
+                </div>
+              ) : inTransitSubdivisionsLoading ? (
                 <p className="quick-actions__receive-loading">
                   <Loader2 size={14} />
                   Cargando bodegas, divisiones y subdivisiones...
@@ -4423,13 +4468,13 @@ function QuickActions({
                       </div>
 
                       <label className="quick-actions__receive-count-field">
-                        <span>Cantidad recibida</span>
+                        <span>Cantidad recibida <span className="quick-actions__receive-expected-hint">(esperada: {toPositiveInt(row?.cantidad_enviada, 0)})</span></span>
                         <input
                           type="text"
                           inputMode="numeric"
-                          maxLength={4}
+                          maxLength={6}
                           placeholder="0"
-                          value={receivedQty}
+                          value={receivedQty === 0 ? '' : receivedQty}
                           onChange={(event) =>
                             handleReceiveShipmentDraftFieldChange(
                               rowProductId,
@@ -4443,7 +4488,7 @@ function QuickActions({
                       </label>
 
                       <p className="quick-actions__receive-stage-help">
-                        Registra solo la cantidad que llego y la ubicacion donde se va a guardar.
+                        Registra la cantidad que llegó físicamente y la ubicación donde se va a guardar.
                       </p>
 
                       {missingQty > 0 && (
@@ -4478,42 +4523,65 @@ function QuickActions({
               >
                 Cancelar
               </button>
-              {activeReceiveShipmentStepIndex > 0 && (
-                <button
-                  type="button"
-                  className="quick-actions__receive-btn quick-actions__receive-btn--ghost"
-                  onClick={() => setReceiveShipmentStepIndex((i) => Math.max(0, i - 1))}
-                  disabled={receiveShipmentSubmitting}
-                >
-                  Anterior
-                </button>
-              )}
-              {activeReceiveShipmentStepIndex < receiveShipmentRows.length - 1 ? (
-                <button
-                  type="button"
-                  className="quick-actions__receive-btn quick-actions__receive-btn--primary"
-                  onClick={() => setReceiveShipmentStepIndex((i) => i + 1)}
-                  disabled={receiveShipmentSubmitting}
-                >
-                  Siguiente producto
-                </button>
+              {receiveShipmentShowSummary ? (
+                <>
+                  <button
+                    type="button"
+                    className="quick-actions__receive-btn quick-actions__receive-btn--ghost"
+                    onClick={() => setReceiveShipmentShowSummary(false)}
+                    disabled={receiveShipmentSubmitting}
+                  >
+                    Volver
+                  </button>
+                  <button
+                    type="button"
+                    className={`quick-actions__receive-btn ${
+                      receiveShipmentAutoResult === 'incompleto'
+                        ? 'quick-actions__receive-btn--danger'
+                        : 'quick-actions__receive-btn--success'
+                    }`}
+                    onClick={() => void handleSubmitShipmentReception()}
+                    disabled={receiveShipmentSubmitting}
+                  >
+                    {receiveShipmentSubmitting
+                      ? 'Guardando...'
+                      : receiveShipmentAutoResult === 'incompleto'
+                        ? 'Confirmar (pedido incompleto)'
+                        : 'Confirmar recepción'}
+                  </button>
+                </>
               ) : (
-                <button
-                  type="button"
-                  className={`quick-actions__receive-btn ${
-                    receiveShipmentAutoResult === 'incompleto'
-                      ? 'quick-actions__receive-btn--danger'
-                      : 'quick-actions__receive-btn--success'
-                  }`}
-                  onClick={() => void handleSubmitShipmentReception()}
-                  disabled={receiveShipmentSubmitting}
-                >
-                  {receiveShipmentSubmitting
-                    ? 'Guardando...'
-                    : receiveShipmentAutoResult === 'incompleto'
-                      ? 'Pedido llego incompleto'
-                      : 'Pedido llego sin problemas'}
-                </button>
+                <>
+                  {activeReceiveShipmentStepIndex > 0 && (
+                    <button
+                      type="button"
+                      className="quick-actions__receive-btn quick-actions__receive-btn--ghost"
+                      onClick={() => setReceiveShipmentStepIndex((i) => Math.max(0, i - 1))}
+                      disabled={receiveShipmentSubmitting}
+                    >
+                      Anterior
+                    </button>
+                  )}
+                  {activeReceiveShipmentStepIndex < receiveShipmentRows.length - 1 ? (
+                    <button
+                      type="button"
+                      className="quick-actions__receive-btn quick-actions__receive-btn--primary"
+                      onClick={() => setReceiveShipmentStepIndex((i) => i + 1)}
+                      disabled={receiveShipmentSubmitting}
+                    >
+                      Siguiente producto
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="quick-actions__receive-btn quick-actions__receive-btn--primary"
+                      onClick={() => setReceiveShipmentShowSummary(true)}
+                      disabled={receiveShipmentSubmitting}
+                    >
+                      Ver resumen
+                    </button>
+                  )}
+                </>
               )}
             </footer>
           </div>
