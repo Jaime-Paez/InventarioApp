@@ -125,6 +125,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "total": row.get("total_monto"),
                     "es_solicitud_traslado": False,
                     "solicitud_traslado_id": None,
+                    "_sort_created_at": (
+                        row.get("fecha").isoformat()
+                        if getattr(row.get("fecha"), "isoformat", None)
+                        else str(row.get("fecha") or "").strip()
+                    ),
                     "_sort_id": movement_id,
                 }
             )
@@ -211,6 +216,15 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "movimiento_entrada_id": getattr(
                         solicitud, "movimiento_entrada_id", None
                     ),
+                    "_sort_created_at": (
+                        getattr(solicitud, "created_at", None).isoformat()
+                        if getattr(getattr(solicitud, "created_at", None), "isoformat", None)
+                        else (
+                            getattr(solicitud, "fecha", None).isoformat()
+                            if getattr(getattr(solicitud, "fecha", None), "isoformat", None)
+                            else str(getattr(solicitud, "fecha", "") or "").strip()
+                        )
+                    ),
                     "_sort_id": solicitud_id,
                 }
             )
@@ -267,9 +281,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     def _resolve_tabla_ordering_tokens(self):
         raw = (self.request.query_params.get("ordering") or "").strip()
         if not raw:
-            return ["-fecha", "-id"]
+            return ["-_sort_created_at", "-fecha", "-id"]
         tokens = [token.strip() for token in raw.split(",") if token.strip()]
-        return tokens or ["-fecha", "-id"]
+        return tokens or ["-_sort_created_at", "-fecha", "-id"]
 
     def _normalize_table_sort_value(self, value, field):
         if field in {"total", "_sort_id"}:
@@ -288,6 +302,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
     def _sort_table_payload(self, rows):
         ordering_map = {
+            "_sort_created_at": "_sort_created_at",
             "id": "_sort_id",
             "no_documento": "no_documento",
             "fecha": "fecha",

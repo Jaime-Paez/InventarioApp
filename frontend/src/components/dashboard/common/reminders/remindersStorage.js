@@ -277,21 +277,36 @@ const inferLegacyTransferHistoryEntry = (reminder) => {
 }
 
 const sanitizeTransferHistory = (rawHistory, reminder) => {
-  const byStage = new Map()
+  const bySignature = new Map()
   ;(Array.isArray(rawHistory) ? rawHistory : []).forEach((entry) => {
     const normalized = sanitizeTransferHistoryEntry(entry)
     if (!normalized?.stage) return
-    byStage.set(normalized.stage, normalized)
+    const actorId = normalizeId(normalized?.actor?.id)
+    const signature = [
+      normalized.stage,
+      String(normalized?.at || '').trim(),
+      actorId,
+      normalizeComparableText(normalized?.description),
+    ].join('|')
+    if (!signature.replace(/\|/g, '')) return
+    bySignature.set(signature, normalized)
   })
 
-  if (!byStage.size) {
+  if (!bySignature.size) {
     const legacyEntry = inferLegacyTransferHistoryEntry(reminder)
     if (legacyEntry?.stage) {
-      byStage.set(legacyEntry.stage, legacyEntry)
+      const actorId = normalizeId(legacyEntry?.actor?.id)
+      const signature = [
+        legacyEntry.stage,
+        String(legacyEntry?.at || '').trim(),
+        actorId,
+        normalizeComparableText(legacyEntry?.description),
+      ].join('|')
+      bySignature.set(signature, legacyEntry)
     }
   }
 
-  return Array.from(byStage.values()).sort((a, b) =>
+  return Array.from(bySignature.values()).sort((a, b) =>
     String(a?.at || '').localeCompare(String(b?.at || ''))
   )
 }

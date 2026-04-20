@@ -375,7 +375,9 @@ function SalidasTable({
     }
 
     const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, SALIDAS_ORDERING_MAP)
-    params.set('ordering', ordering || '-fecha,-id')
+    if (ordering) {
+      params.set('ordering', ordering)
+    }
 
     return `${API_URL}/movimientos/movimiento_inventario/tabla/?${params.toString()}`
   }, [normalizedCreateBranchId])

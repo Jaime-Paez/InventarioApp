@@ -24,6 +24,8 @@ import {
 } from '../common/reminders/remindersStorage'
 import './RecordatoriosPopup.css'
 
+const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
+
 const getNowDateParts = () => {
   const now = new Date()
   return {
@@ -127,6 +129,21 @@ const normalizeReminderContextType = (value) =>
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
 
+const emitRejectedTransferEditingState = (solicitudId, active) => {
+  if (typeof window === 'undefined') return
+  const normalizedSolicitudId = normalizeId(solicitudId)
+  if (!normalizedSolicitudId) return
+
+  window.dispatchEvent(
+    new CustomEvent(REJECTED_TRANSFER_EDITING_EVENT, {
+      detail: {
+        solicitudId: normalizedSolicitudId,
+        active: Boolean(active),
+      },
+    })
+  )
+}
+
 const normalizeStateText = (value) =>
   String(value || '')
     .normalize('NFD')
@@ -170,10 +187,58 @@ const getTransferHistoryStageLabel = (stage) => {
   if (normalized === 'aceptada') return 'Solicitud aceptada'
   if (normalized === 'rechazada') return 'Solicitud rechazada'
   if (normalized === 'cancelado') return 'Solicitud cancelada'
-  if (normalized === 'enviado') return 'Envio registrado'
-  if (normalized === 'completo') return 'Recepcion completa'
-  if (normalized === 'incompleto') return 'Recepcion incompleta'
+  if (normalized === 'enviado') return 'Solicitud enviada'
+  if (normalized === 'recibido') return 'Solicitud recibida'
+  if (normalized === 'completo') return 'Solicitud recibida completa'
+  if (normalized === 'incompleto') return 'Solicitud recibida incompleta'
   return String(stage || 'Evento').trim() || 'Evento'
+}
+
+const getTransferHistoryTimelineStage = (stage) => {
+  const normalized = normalizeStateText(stage)
+  if (normalized === 'aceptada') return 'aceptada'
+  if (normalized === 'rechazada') return 'rechazada'
+  if (normalized === 'cancelado') return 'cancelado'
+  if (normalized === 'enviado') return 'enviado'
+  if (normalized === 'completo' || normalized === 'incompleto' || normalized === 'recibido') return 'recibido'
+  return 'pendiente'
+}
+
+const getTransferHistoryDisplayLabel = (entry, previousEntries = []) => {
+  const normalized = normalizeStateText(entry?.stage)
+  if (normalized === 'pendiente') {
+    const comesFromCorrection = previousEntries.some((previousEntry) => {
+      const previousStage = normalizeStateText(previousEntry?.stage)
+      return previousStage === 'rechazada' || previousStage === 'cancelado'
+    })
+
+    if (comesFromCorrection) return 'Solicitud corregida'
+  }
+
+  return String(entry?.label || '').trim() || getTransferHistoryStageLabel(entry?.stage)
+}
+
+const getTransferHistoryVisualStatus = (stage, customLabel = '') => {
+  const normalized = normalizeStateText(stage)
+  const label = String(customLabel || '').trim() || getTransferHistoryStageLabel(stage)
+
+  if (normalized === 'aceptada') {
+    return { label, className: 'accepted' }
+  }
+  if (normalized === 'rechazada') {
+    return { label, className: 'rejected' }
+  }
+  if (normalized === 'cancelado') {
+    return { label, className: 'cancelled' }
+  }
+  if (normalized === 'enviado') {
+    return { label, className: 'sent' }
+  }
+  if (normalized === 'completo' || normalized === 'incompleto' || normalized === 'recibido') {
+    return { label, className: 'arrived' }
+  }
+
+  return { label, className: 'pending' }
 }
 
 const getTransferVisualDecisionStatus = ({
@@ -743,7 +808,74 @@ function RecordatoriosPopup({
     if (!activeDetailReminder) return []
     const contextType = normalizeReminderContextType(activeDetailReminder?.context?.type)
     const contextId = normalizeId(activeDetailReminder?.context?.id)
-    return mergeTransferHistoryForContext(reminders, contextType, contextId)
+    const mergedHistory = mergeTransferHistoryForContext(reminders, contextType, contextId)
+    const hasInitialPendingEntry = mergedHistory.some((entry, index) => {
+      const stage = normalizeStateText(entry?.stage)
+      if (stage !== 'pendiente') return false
+      return !mergedHistory.slice(0, index).some((previousEntry) => {
+        const previousStage = normalizeStateText(previousEntry?.stage)
+        return previousStage === 'rechazada' || previousStage === 'cancelado'
+      })
+    })
+    const historyWithInitialCreation = !hasInitialPendingEntry && String(activeDetailReminder?.createdAt || '').trim()
+      ? [
+        {
+          stage: 'pendiente',
+          label: '',
+          description: '',
+          at: String(activeDetailReminder.createdAt).trim(),
+          actor: sanitizeRecipient(activeDetailReminder?.creator),
+        },
+        ...mergedHistory,
+      ].sort((a, b) => String(a?.at || '').localeCompare(String(b?.at || '')))
+      : mergedHistory
+    const labeledHistory = historyWithInitialCreation.map((entry, index) => ({
+      ...entry,
+      displayLabel: getTransferHistoryDisplayLabel(entry, historyWithInitialCreation.slice(0, index)),
+    }))
+
+    const latestBaseStageIndex = labeledHistory.reduce((maxIndex, entry) => {
+      const stage = getTransferHistoryTimelineStage(entry?.stage)
+      const indexByStage = {
+        pendiente: 0,
+        aceptada: 1,
+        enviado: 2,
+        recibido: 3,
+      }
+      const stageIndex = indexByStage[stage]
+      return Number.isInteger(stageIndex) && stageIndex > maxIndex ? stageIndex : maxIndex
+    }, -1)
+
+    const timelineItems = labeledHistory.map((entry, index) => {
+      const displayLabel = String(entry?.displayLabel || '').trim() || getTransferHistoryStageLabel(entry?.stage)
+      const historyStatus = getTransferHistoryVisualStatus(entry?.stage, displayLabel)
+
+      return {
+        id: `actual-${String(entry?.stage || 'stage').trim()}-${String(entry?.at || index).trim()}`,
+        label: historyStatus.label,
+        className: historyStatus.className,
+        actorName: String(entry?.actor?.name || '').trim(),
+        timestamp: String(entry?.at || '').trim(),
+        isPlaceholder: false,
+      }
+    })
+    const actualTimelineItems = [...timelineItems].reverse()
+
+    const upcomingBaseStages = ['pendiente', 'aceptada', 'enviado', 'recibido']
+      .slice(Math.max(latestBaseStageIndex + 1, 1))
+      .map((stage) => {
+        const historyStatus = getTransferHistoryVisualStatus(stage, getTransferHistoryStageLabel(stage))
+        return {
+          id: `upcoming-${stage}`,
+          label: historyStatus.label,
+          className: historyStatus.className,
+          actorName: '',
+          timestamp: '',
+          isPlaceholder: true,
+        }
+      })
+
+    return [...upcomingBaseStages.reverse(), ...actualTimelineItems]
   }, [activeDetailReminder, reminders])
 
   const shiftTimelineDay = useCallback((offset) => {
@@ -1452,6 +1584,10 @@ function RecordatoriosPopup({
       if (typeof onOpenTransferRequestInEntradas !== 'function') return false
       const solicitudId = normalizeId(reminder?.context?.id)
       const reminderId = normalizeId(reminder?.id) || solicitudId
+      const shouldHideRejectedIndicatorImmediately = (
+        getReminderDecisionStatus(reminder) === 'rechazada' &&
+        isReminderCreatedByCurrentUser(reminder, currentUserIdSet, currentUserName)
+      )
       if (!solicitudId) {
         if (!suppressError) {
           notifyError('No se encontro la solicitud asociada a este recordatorio.')
@@ -1459,6 +1595,11 @@ function RecordatoriosPopup({
         return false
       }
 
+      if (shouldHideRejectedIndicatorImmediately) {
+        emitRejectedTransferEditingState(solicitudId, true)
+      }
+
+      let keepRejectedTransferEditingActive = false
       setOpeningTransferReminderId(reminderId)
       try {
         const previewFromTable = await fetchTransferPreviewFromEntradaTable(reminder)
@@ -1490,6 +1631,7 @@ function RecordatoriosPopup({
         ).trim()
 
         if (movimientoEntradaId) {
+          keepRejectedTransferEditingActive = shouldHideRejectedIndicatorImmediately
           onOpenTransferRequestInEntradas({
             requestKey: `${Date.now()}-${solicitudId}`,
             solicitudId,
@@ -1506,6 +1648,7 @@ function RecordatoriosPopup({
           throw new Error('No se pudo abrir la solicitud en Entradas.')
         }
 
+        keepRejectedTransferEditingActive = shouldHideRejectedIndicatorImmediately
         onOpenTransferRequestInEntradas({
           requestKey: `${Date.now()}-${solicitudId}`,
           solicitudId,
@@ -1522,9 +1665,14 @@ function RecordatoriosPopup({
         return false
       } finally {
         setOpeningTransferReminderId('')
+        if (shouldHideRejectedIndicatorImmediately && !keepRejectedTransferEditingActive) {
+          emitRejectedTransferEditingState(solicitudId, false)
+        }
       }
     },
     [
+      currentUserIdSet,
+      currentUserName,
       fetchTransferSolicitudDetail,
       fetchTransferPreviewFromDetail,
       fetchTransferPreviewFromEntradaTable,
@@ -2391,27 +2539,33 @@ function RecordatoriosPopup({
                   <div className="recordatorios-popup__detail-history">
                     <span>Historial del traslado</span>
                     <ol className="recordatorios-popup__detail-history-list">
-                      {activeDetailTransferHistory.map((entry, index) => (
-                        <li
-                          key={`${String(entry?.stage || 'stage').trim()}-${String(entry?.at || index).trim()}`}
-                          className="recordatorios-popup__detail-history-item"
-                        >
-                          <div className="recordatorios-popup__detail-history-top">
-                            <strong>{String(entry?.label || '').trim() || getTransferHistoryStageLabel(entry?.stage)}</strong>
-                            <span>
-                              {Number.isFinite(Date.parse(String(entry?.at || '').trim()))
-                                ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.at))
-                                : '-'}
-                            </span>
-                          </div>
-                          {!!String(entry?.description || '').trim() && (
-                            <p>{String(entry.description).trim()}</p>
-                          )}
-                          {!!String(entry?.actor?.name || '').trim() && (
-                            <small>Por {String(entry.actor.name).trim()}</small>
-                          )}
-                        </li>
-                      ))}
+                      {activeDetailTransferHistory.map((entry, index) => {
+                        return (
+                          <li
+                            key={String(entry?.id || index)}
+                            className={`recordatorios-popup__detail-history-item recordatorios-popup__detail-history-item--${entry.className}${entry.isPlaceholder ? ' recordatorios-popup__detail-history-item--upcoming' : ''}`}
+                          >
+                            <span className="recordatorios-popup__detail-history-point" aria-hidden="true" />
+                            <div className="recordatorios-popup__detail-history-card">
+                              <div className="recordatorios-popup__detail-history-top">
+                                <span className={`recordatorios-popup__status recordatorios-popup__status--${entry.className}`}>
+                                  {entry.label}
+                                </span>
+                                {!!entry.timestamp && (
+                                  <span className="recordatorios-popup__detail-history-time">
+                                    {Number.isFinite(Date.parse(entry.timestamp))
+                                      ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.timestamp))
+                                      : '-'}
+                                  </span>
+                                )}
+                              </div>
+                              {!!entry.actorName && (
+                                <small>Por {entry.actorName}</small>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
                     </ol>
                   </div>
                 )}

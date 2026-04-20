@@ -577,7 +577,7 @@ function EntradaDetails({
     const solicitudId = String(transferSolicitudId || linkedSolicitudId || '').trim()
     if (!solicitudId) return undefined
 
-    const active = Boolean(open && isRejectedSolicitudRibbon)
+    const active = Boolean(open && (isRejectedSolicitudRibbon || isPreviewRejectedSolicitud))
     window.dispatchEvent(
       new CustomEvent(REJECTED_TRANSFER_EDITING_EVENT, {
         detail: { solicitudId, active },
@@ -591,7 +591,7 @@ function EntradaDetails({
         })
       )
     }
-  }, [isRejectedSolicitudRibbon, linkedSolicitudId, open, transferSolicitudId])
+  }, [isPreviewRejectedSolicitud, isRejectedSolicitudRibbon, linkedSolicitudId, open, transferSolicitudId])
 
   const ivaRateValue = useMemo(() => {
     const parsed = parseNumber(formData.iva_rate)
