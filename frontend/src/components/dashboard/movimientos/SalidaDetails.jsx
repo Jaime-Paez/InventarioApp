@@ -3,19 +3,10 @@ import { Eye, Pencil } from 'lucide-react'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
-import '../QuickActions/RecordatoriosPopup.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
-import {
-  fetchRemindersFromBackend,
-  getTransferReminderHistory,
-  normalizeId,
-  readRemindersFromStorage,
-  REMINDERS_SYNC_EVENT,
-  REMINDERS_TRANSFER_NOTIFICATION_EVENT,
-  sanitizeRecipient,
-} from '../common/reminders/remindersStorage'
+import { normalizeId } from '../common/reminders/remindersStorage'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -250,97 +241,6 @@ const resolveCatalogItemByLabel = (list, label) => {
 const findByName = (list, name) =>
   list.find((item) => normalizeValue(item?.nombre) === normalizeValue(name))
 
-const normalizeReminderContextType = (value) =>
-  String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, '_')
-
-const normalizeStateText = (value) =>
-  String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-
-const getTransferHistoryStageLabel = (stage) => {
-  const normalized = normalizeStateText(stage)
-  if (normalized === 'pendiente') return 'Solicitud creada'
-  if (normalized === 'aceptada') return 'Solicitud aceptada'
-  if (normalized === 'rechazada') return 'Solicitud rechazada'
-  if (normalized === 'cancelado') return 'Solicitud cancelada'
-  if (normalized === 'enviado') return 'Solicitud enviada'
-  if (normalized === 'recibido') return 'Solicitud recibida'
-  if (normalized === 'completo') return 'Solicitud recibida completa'
-  if (normalized === 'incompleto') return 'Solicitud recibida incompleta'
-  return String(stage || 'Evento').trim() || 'Evento'
-}
-
-const getTransferHistoryTimelineStage = (stage) => {
-  const normalized = normalizeStateText(stage)
-  if (normalized === 'aceptada') return 'aceptada'
-  if (normalized === 'rechazada') return 'rechazada'
-  if (normalized === 'cancelado') return 'cancelado'
-  if (normalized === 'enviado') return 'enviado'
-  if (normalized === 'completo' || normalized === 'incompleto' || normalized === 'recibido') return 'recibido'
-  return 'pendiente'
-}
-
-const getTransferHistoryDisplayLabel = (entry, previousEntries = []) => {
-  const normalized = normalizeStateText(entry?.stage)
-  if (normalized === 'pendiente') {
-    const comesFromCorrection = previousEntries.some((previousEntry) => {
-      const previousStage = normalizeStateText(previousEntry?.stage)
-      return previousStage === 'rechazada' || previousStage === 'cancelado'
-    })
-
-    if (comesFromCorrection) return 'Solicitud corregida'
-  }
-
-  return String(entry?.label || '').trim() || getTransferHistoryStageLabel(entry?.stage)
-}
-
-const getTransferHistoryVisualStatus = (stage, customLabel = '') => {
-  const normalized = normalizeStateText(stage)
-  const label = String(customLabel || '').trim() || getTransferHistoryStageLabel(stage)
-
-  if (normalized === 'aceptada') return { label, className: 'accepted' }
-  if (normalized === 'rechazada') return { label, className: 'rejected' }
-  if (normalized === 'cancelado') return { label, className: 'cancelled' }
-  if (normalized === 'enviado') return { label, className: 'sent' }
-  if (normalized === 'completo' || normalized === 'incompleto' || normalized === 'recibido') {
-    return { label, className: 'arrived' }
-  }
-  return { label, className: 'pending' }
-}
-
-const mergeTransferHistoryForContext = (reminders, contextId) => {
-  const normalizedContextId = normalizeId(contextId)
-  if (!normalizedContextId) return []
-
-  const bySignature = new Map()
-  ;(Array.isArray(reminders) ? reminders : []).forEach((reminder) => {
-    if (normalizeReminderContextType(reminder?.context?.type) !== 'solicitud_traslado') return
-    if (normalizeId(reminder?.context?.id) !== normalizedContextId) return
-
-    getTransferReminderHistory(reminder).forEach((entry) => {
-      const actorId = normalizeId(entry?.actor?.id)
-      const signature = [
-        String(entry?.stage || '').trim(),
-        String(entry?.at || '').trim(),
-        actorId,
-        String(entry?.description || '').trim(),
-      ].join('|')
-      if (!signature.replace(/\|/g, '')) return
-      bySignature.set(signature, entry)
-    })
-  })
-
-  return Array.from(bySignature.values()).sort((a, b) =>
-    String(a?.at || '').localeCompare(String(b?.at || ''))
-  )
-}
-
 const extractClienteFromDescripcion = (value) => {
   const raw = String(value ?? '')
   if (!raw) return { cliente: '', descripcion: '' }
@@ -404,8 +304,6 @@ function SalidaDetails({
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
   const [transferSolicitudId, setTransferSolicitudId] = useState('')
-  const [linkedTransferRequest, setLinkedTransferRequest] = useState(null)
-  const [transferReminders, setTransferReminders] = useState([])
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -594,97 +492,6 @@ function SalidaDetails({
       !estadoMatchesAccepted)
   const isSentSolicitud = isTraslado && estadoMatchesSent
   const isReadOnlyMode = isSentSolicitud
-
-  const transferTimelineItems = useMemo(() => {
-    const solicitudId = normalizeId(transferSolicitudId)
-    if (!solicitudId) return []
-
-    const matchingReminders = (Array.isArray(transferReminders) ? transferReminders : []).filter((reminder) =>
-      normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado' &&
-      normalizeId(reminder?.context?.id) === solicitudId
-    )
-
-    const mergedHistory = mergeTransferHistoryForContext(matchingReminders, solicitudId)
-    const oldestReminder = [...matchingReminders].sort((a, b) =>
-      String(a?.createdAt || '').localeCompare(String(b?.createdAt || ''))
-    )[0] || null
-    const fallbackCreatedAt = String(
-      oldestReminder?.createdAt ||
-      linkedTransferRequest?.created_at ||
-      ''
-    ).trim()
-    const fallbackCreator = sanitizeRecipient(oldestReminder?.creator)
-
-    const hasInitialPendingEntry = mergedHistory.some((entry, index) => {
-      const stage = normalizeStateText(entry?.stage)
-      if (stage !== 'pendiente') return false
-      return !mergedHistory.slice(0, index).some((previousEntry) => {
-        const previousStage = normalizeStateText(previousEntry?.stage)
-        return previousStage === 'rechazada' || previousStage === 'cancelado'
-      })
-    })
-
-    const historyWithInitialCreation = !hasInitialPendingEntry && fallbackCreatedAt
-      ? [
-        {
-          stage: 'pendiente',
-          label: '',
-          description: '',
-          at: fallbackCreatedAt,
-          actor: fallbackCreator,
-        },
-        ...mergedHistory,
-      ].sort((a, b) => String(a?.at || '').localeCompare(String(b?.at || '')))
-      : mergedHistory
-
-    const labeledHistory = historyWithInitialCreation.map((entry, index) => ({
-      ...entry,
-      displayLabel: getTransferHistoryDisplayLabel(entry, historyWithInitialCreation.slice(0, index)),
-    }))
-
-    const latestBaseStageIndex = labeledHistory.reduce((maxIndex, entry) => {
-      const stage = getTransferHistoryTimelineStage(entry?.stage)
-      const indexByStage = {
-        pendiente: 0,
-        aceptada: 1,
-        enviado: 2,
-        recibido: 3,
-      }
-      const stageIndex = indexByStage[stage]
-      return Number.isInteger(stageIndex) && stageIndex > maxIndex ? stageIndex : maxIndex
-    }, -1)
-
-    const timelineItems = labeledHistory.map((entry, index) => {
-      const displayLabel = String(entry?.displayLabel || '').trim() || getTransferHistoryStageLabel(entry?.stage)
-      const historyStatus = getTransferHistoryVisualStatus(entry?.stage, displayLabel)
-
-      return {
-        id: `actual-${String(entry?.stage || 'stage').trim()}-${String(entry?.at || index).trim()}`,
-        label: historyStatus.label,
-        className: historyStatus.className,
-        actorName: String(entry?.actor?.name || '').trim(),
-        timestamp: String(entry?.at || '').trim(),
-        isPlaceholder: false,
-      }
-    })
-
-    const actualTimelineItems = [...timelineItems].reverse()
-    const upcomingBaseStages = ['pendiente', 'aceptada', 'enviado', 'recibido']
-      .slice(Math.max(latestBaseStageIndex + 1, 1))
-      .map((stage) => {
-        const historyStatus = getTransferHistoryVisualStatus(stage, getTransferHistoryStageLabel(stage))
-        return {
-          id: `upcoming-${stage}`,
-          label: historyStatus.label,
-          className: historyStatus.className,
-          actorName: '',
-          timestamp: '',
-          isPlaceholder: true,
-        }
-      })
-
-    return [...upcomingBaseStages.reverse(), ...actualTimelineItems]
-  }, [linkedTransferRequest, transferReminders, transferSolicitudId])
 
   const ivaRateValue = useMemo(() => {
     const parsed = parseNumber(formData.iva_rate)
@@ -1077,8 +884,6 @@ function SalidaDetails({
       setProductos(productosList)
       setEstadosProducto(estadosProductoList)
       setTransferSolicitudId(String(linkedSolicitud?.id || '').trim())
-      setLinkedTransferRequest(linkedSolicitud)
-
       const normalized = buildFormData(salidaData, {
         branchesList: resolvedBranches,
         subTiposList,
@@ -1107,43 +912,6 @@ function SalidaDetails({
       setLoadingData(false)
     }
   }, [buildFormData, notifyError, salidaId, token])
-
-  useEffect(() => {
-    if (!open || !token || !normalizeId(transferSolicitudId)) {
-      setTransferReminders([])
-      return undefined
-    }
-
-    let cancelled = false
-
-    const hydrateFromBackend = async () => {
-      const reminders = await fetchRemindersFromBackend(token).catch(() => readRemindersFromStorage())
-      if (cancelled) return
-      setTransferReminders(Array.isArray(reminders) ? reminders : [])
-    }
-
-    const hydrateFromStorage = () => {
-      if (cancelled) return
-      const reminders = readRemindersFromStorage()
-      setTransferReminders(Array.isArray(reminders) ? reminders : [])
-    }
-
-    hydrateFromStorage()
-    void hydrateFromBackend()
-
-    const handleReminderSync = () => {
-      hydrateFromStorage()
-    }
-
-    window.addEventListener(REMINDERS_SYNC_EVENT, handleReminderSync)
-    window.addEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleReminderSync)
-
-    return () => {
-      cancelled = true
-      window.removeEventListener(REMINDERS_SYNC_EVENT, handleReminderSync)
-      window.removeEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleReminderSync)
-    }
-  }, [open, token, transferSolicitudId])
 
   const fetchStockByBranch = useCallback(
     async (sucursalId) => {
@@ -1206,8 +974,6 @@ function SalidaDetails({
     setClienteLoading(false)
     setStockByProduct({})
     setTransferSolicitudId('')
-    setLinkedTransferRequest(null)
-    setTransferReminders([])
     setOriginalData(null)
     setIsEditing(false)
     setShowDeleteConfirm(false)
@@ -2279,52 +2045,6 @@ function SalidaDetails({
                     </label>
                   </div>
                 </section>
-
-                {isTraslado && normalizeId(transferSolicitudId) && (
-                  <section className="create-user__section">
-                    <div className="create-user__section-header">
-                      <div>
-                        <p className="create-user__eyebrow">Historial</p>
-                        <h4>Solicitud de traslado</h4>
-                      </div>
-                    </div>
-
-                    {!transferTimelineItems.length ? (
-                      <p className="create-user__helper">No hay historial disponible para esta solicitud.</p>
-                    ) : (
-                      <div className="recordatorios-popup__detail-history">
-                        <span>Historial del traslado</span>
-                        <ol className="recordatorios-popup__detail-history-list">
-                          {transferTimelineItems.map((entry, index) => (
-                            <li
-                              key={String(entry?.id || index)}
-                              className={`recordatorios-popup__detail-history-item recordatorios-popup__detail-history-item--${entry.className}${entry.isPlaceholder ? ' recordatorios-popup__detail-history-item--upcoming' : ''}`}
-                            >
-                              <span className="recordatorios-popup__detail-history-point" aria-hidden="true" />
-                              <div className="recordatorios-popup__detail-history-card">
-                                <div className="recordatorios-popup__detail-history-top">
-                                  <span className={`recordatorios-popup__status recordatorios-popup__status--${entry.className}`}>
-                                    {entry.label}
-                                  </span>
-                                  {!!entry.timestamp && (
-                                    <span className="recordatorios-popup__detail-history-time">
-                                      {Number.isFinite(Date.parse(entry.timestamp))
-                                        ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.timestamp))
-                                        : '-'}
-                                    </span>
-                                  )}
-                                </div>
-                                {!!entry.actorName && (
-                                  <small>Por {entry.actorName}</small>
-                                )}
-                              </div>
-                            </li>
-                          ))}
-                        </ol>
-                      </div>
-                    )}
-                  </section>
-                )}
 
                 <section className="create-user__section">
                   <div className="create-user__section-header">

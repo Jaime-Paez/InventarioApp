@@ -15,7 +15,6 @@ import {
   getReminderDecisionStatus,
   getReminderTimestamp,
   getTransferReminderHistory,
-  getTransferReceiptOutcome,
   isReminderCreatedByCurrentUser,
   isReminderForContext,
   isReminderForCurrentUser,
@@ -25,12 +24,20 @@ import {
   reminderCompletedByIds,
   writeRemindersToStorage,
 } from './remindersStorage'
+import '../../QuickActions/RecordatoriosPopup.css'
 import './EntityRemindersTab.css'
 
 const normalizeReminderContextType = (value) =>
   normalizeId(value)
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
+
+const normalizeStateText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 
 const resolveReminderSortTimestamp = (reminder) => {
   const timestamp = getReminderTimestamp(reminder)
@@ -49,64 +56,82 @@ const sortRemindersNewestFirst = (rows) =>
     return String(b?.id || '').localeCompare(String(a?.id || ''))
   })
 
-const resolveTransferStageFromReminder = (reminder) => {
-  const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
-  if (transferReceiptOutcome === 'completo') {
-    return {
-      key: 'recepcion_completa',
-      label: 'Llego completo',
-      className: 'recepcion-completa',
-    }
+const getTransferHistoryStageLabel = (stage) => {
+  const normalized = normalizeStateText(stage)
+  if (normalized === 'pendiente') return 'Solicitud creada'
+  if (normalized === 'aceptada') return 'Solicitud aceptada'
+  if (normalized === 'rechazada') return 'Solicitud rechazada'
+  if (normalized === 'cancelado') return 'Solicitud cancelada'
+  if (normalized === 'enviado') return 'Solicitud enviada'
+  if (normalized === 'recibido') return 'Solicitud recibida'
+  if (normalized === 'completo') return 'Solicitud recibida completa'
+  if (normalized === 'incompleto') return 'Solicitud recibida incompleta'
+  return String(stage || 'Evento').trim() || 'Evento'
+}
+
+const getTransferHistoryTimelineStage = (stage) => {
+  const normalized = normalizeStateText(stage)
+  if (normalized === 'aceptada') return 'aceptada'
+  if (normalized === 'rechazada') return 'rechazada'
+  if (normalized === 'cancelado') return 'cancelado'
+  if (normalized === 'enviado') return 'enviado'
+  if (normalized === 'completo' || normalized === 'incompleto' || normalized === 'recibido') return 'recibido'
+  return 'pendiente'
+}
+
+const getTransferHistoryDisplayLabel = (entry, previousEntries = []) => {
+  const normalized = normalizeStateText(entry?.stage)
+  if (normalized === 'pendiente') {
+    const comesFromCorrection = previousEntries.some((previousEntry) => {
+      const previousStage = normalizeStateText(previousEntry?.stage)
+      return previousStage === 'rechazada' || previousStage === 'cancelado'
+    })
+
+    if (comesFromCorrection) return 'Solicitud corregida'
   }
 
-  if (transferReceiptOutcome === 'incompleto') {
-    return {
-      key: 'recepcion_incompleta',
-      label: 'Llego incompleto',
-      className: 'recepcion-incompleta',
-    }
-  }
+  return String(entry?.label || '').trim() || getTransferHistoryStageLabel(entry?.stage)
+}
 
-  if (isSpecialTransferDecisionReminder(reminder)) {
-    return {
-      key: 'solicitud',
-      label: 'Solicitud',
-      className: 'solicitud',
-    }
-  }
+const getTransferHistoryVisualStatus = (stage, customLabel = '') => {
+  const normalized = normalizeStateText(stage)
+  const label = String(customLabel || '').trim() || getTransferHistoryStageLabel(stage)
 
-  const decisionStatus = getReminderDecisionStatus(reminder)
-  if (decisionStatus === 'enviado') {
-    return {
-      key: 'envio',
-      label: 'Enviado',
-      className: 'envio',
-    }
+  if (normalized === 'aceptada') return { label, className: 'accepted' }
+  if (normalized === 'rechazada') return { label, className: 'rejected' }
+  if (normalized === 'cancelado') return { label, className: 'cancelled' }
+  if (normalized === 'enviado') return { label, className: 'sent' }
+  if (normalized === 'completo' || normalized === 'incompleto' || normalized === 'recibido') {
+    return { label, className: 'arrived' }
   }
-  if (decisionStatus === 'aceptada') {
-    return {
-      key: 'aceptacion',
-      label: 'Aceptada',
-      className: 'aceptacion',
-    }
-  }
-  if (decisionStatus === 'rechazada') {
-    return {
-      key: 'rechazo',
-      label: 'Rechazada',
-      className: 'rechazo',
-    }
-  }
+  return { label, className: 'pending' }
+}
 
-  if (decisionStatus === 'pendiente') {
-    return {
-      key: 'solicitud',
-      label: 'Solicitud',
-      className: 'solicitud',
-    }
-  }
+const mergeTransferHistoryForContext = (reminders, contextId) => {
+  const normalizedContextId = normalizeId(contextId)
+  if (!normalizedContextId) return []
 
-  return null
+  const bySignature = new Map()
+  ;(Array.isArray(reminders) ? reminders : []).forEach((reminder) => {
+    if (normalizeReminderContextType(reminder?.context?.type) !== 'solicitud_traslado') return
+    if (normalizeId(reminder?.context?.id) !== normalizedContextId) return
+
+    getTransferReminderHistory(reminder).forEach((entry) => {
+      const actorId = normalizeId(entry?.actor?.id)
+      const signature = [
+        String(entry?.stage || '').trim(),
+        String(entry?.at || '').trim(),
+        actorId,
+        String(entry?.description || '').trim(),
+      ].join('|')
+      if (!signature.replace(/\|/g, '')) return
+      bySignature.set(signature, entry)
+    })
+  })
+
+  return Array.from(bySignature.values()).sort((a, b) =>
+    String(a?.at || '').localeCompare(String(b?.at || ''))
+  )
 }
 
 const getNowDateParts = () => {
@@ -288,71 +313,96 @@ function EntityRemindersTab({
     return sortRemindersNewestFirst(filtered)
   }, [allReminders, currentUserIdSet, currentUserName, reminderContext])
 
-  const transferTimelineRows = useMemo(() => {
+  const transferTimelineItems = useMemo(() => {
     if (!normalizedTransferSolicitudId) return []
 
-    const rows = allReminders
-      .filter((reminder) => {
-        const contextType = normalizeReminderContextType(reminder?.context?.type)
-        if (contextType !== 'solicitud_traslado') return false
-        if (normalizeId(reminder?.context?.id) !== normalizedTransferSolicitudId) return false
+    const matchingReminders = allReminders.filter((reminder) => {
+      const contextType = normalizeReminderContextType(reminder?.context?.type)
+      if (contextType !== 'solicitud_traslado') return false
+      if (normalizeId(reminder?.context?.id) !== normalizedTransferSolicitudId) return false
 
-        return (
-          isReminderForCurrentUser(reminder, currentUserIdSet) ||
-          isReminderCreatedByCurrentUser(reminder, currentUserIdSet, currentUserName)
-        )
+      return (
+        isReminderForCurrentUser(reminder, currentUserIdSet) ||
+        isReminderCreatedByCurrentUser(reminder, currentUserIdSet, currentUserName)
+      )
+    })
+
+    const mergedHistory = mergeTransferHistoryForContext(matchingReminders, normalizedTransferSolicitudId)
+    const oldestReminder = [...matchingReminders].sort((a, b) =>
+      String(a?.createdAt || '').localeCompare(String(b?.createdAt || ''))
+    )[0] || null
+    const fallbackCreatedAt = String(oldestReminder?.createdAt || '').trim()
+    const fallbackCreator = oldestReminder?.creator || null
+
+    const hasInitialPendingEntry = mergedHistory.some((entry, index) => {
+      const stage = normalizeStateText(entry?.stage)
+      if (stage !== 'pendiente') return false
+      return !mergedHistory.slice(0, index).some((previousEntry) => {
+        const previousStage = normalizeStateText(previousEntry?.stage)
+        return previousStage === 'rechazada' || previousStage === 'cancelado'
       })
-      .flatMap((reminder, index) => {
-        const transferHistory = getTransferReminderHistory(reminder)
-        if (transferHistory.length) {
-          return transferHistory.map((entry, entryIndex) => {
-            const stage = resolveTransferStageFromReminder({
-              ...reminder,
-              transferHistory: [entry],
-              description: entry?.description || reminder?.description,
-            })
-            if (!stage) return null
+    })
 
-            const timestamp = Date.parse(String(entry?.at || '').trim())
-            return {
-              id:
-                `${normalizeId(reminder?.id) || 'transfer'}-${String(entry?.stage || entryIndex).trim()}-${entryIndex}`,
-              stageKey: stage.key,
-              stageLabel: stage.label,
-              stageClassName: stage.className,
-              dateTime: Number.isFinite(timestamp)
-                ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp))
-                : formatReminderDateTime(reminder),
-              description: String(entry?.description || reminder?.description || '').trim() || '-',
-              sortTimestamp: Number.isFinite(timestamp) ? timestamp : resolveReminderSortTimestamp(reminder),
-            }
-          })
+    const historyWithInitialCreation = !hasInitialPendingEntry && fallbackCreatedAt
+      ? [
+        {
+          stage: 'pendiente',
+          label: '',
+          description: '',
+          at: fallbackCreatedAt,
+          actor: fallbackCreator,
+        },
+        ...mergedHistory,
+      ].sort((a, b) => String(a?.at || '').localeCompare(String(b?.at || '')))
+      : mergedHistory
+
+    const labeledHistory = historyWithInitialCreation.map((entry, index) => ({
+      ...entry,
+      displayLabel: getTransferHistoryDisplayLabel(entry, historyWithInitialCreation.slice(0, index)),
+    }))
+
+    const latestBaseStageIndex = labeledHistory.reduce((maxIndex, entry) => {
+      const stage = getTransferHistoryTimelineStage(entry?.stage)
+      const indexByStage = {
+        pendiente: 0,
+        aceptada: 1,
+        enviado: 2,
+        recibido: 3,
+      }
+      const stageIndex = indexByStage[stage]
+      return Number.isInteger(stageIndex) && stageIndex > maxIndex ? stageIndex : maxIndex
+    }, -1)
+
+    const timelineItems = labeledHistory.map((entry, index) => {
+      const displayLabel = String(entry?.displayLabel || '').trim() || getTransferHistoryStageLabel(entry?.stage)
+      const historyStatus = getTransferHistoryVisualStatus(entry?.stage, displayLabel)
+
+      return {
+        id: `actual-${String(entry?.stage || 'stage').trim()}-${String(entry?.at || index).trim()}`,
+        label: historyStatus.label,
+        className: historyStatus.className,
+        actorName: String(entry?.actor?.name || '').trim(),
+        timestamp: String(entry?.at || '').trim(),
+        isPlaceholder: false,
+      }
+    })
+
+    const actualTimelineItems = [...timelineItems].reverse()
+    const upcomingBaseStages = ['pendiente', 'aceptada', 'enviado', 'recibido']
+      .slice(Math.max(latestBaseStageIndex + 1, 1))
+      .map((stage) => {
+        const historyStatus = getTransferHistoryVisualStatus(stage, getTransferHistoryStageLabel(stage))
+        return {
+          id: `upcoming-${stage}`,
+          label: historyStatus.label,
+          className: historyStatus.className,
+          actorName: '',
+          timestamp: '',
+          isPlaceholder: true,
         }
-
-        const stage = resolveTransferStageFromReminder(reminder)
-        if (!stage) return []
-
-        return [{
-          id:
-            normalizeId(reminder?.id) ||
-            `${stage.key}-${String(reminder?.date || '').trim()}-${String(reminder?.time || '').trim()}-${index}`,
-          stageKey: stage.key,
-          stageLabel: stage.label,
-          stageClassName: stage.className,
-          dateTime: formatReminderDateTime(reminder),
-          description: String(reminder?.description || '').trim() || '-',
-          sortTimestamp: resolveReminderSortTimestamp(reminder),
-        }]
-      })
-      .filter(Boolean)
-      .sort((a, b) => {
-        const timeA = Number(a?.sortTimestamp || 0)
-        const timeB = Number(b?.sortTimestamp || 0)
-        if (timeA !== timeB) return timeB - timeA
-        return String(b?.id || '').localeCompare(String(a?.id || ''))
       })
 
-    return rows
+    return [...upcomingBaseStages.reverse(), ...actualTimelineItems]
   }, [allReminders, currentUserIdSet, currentUserName, normalizedTransferSolicitudId])
 
   const activeReminderDetail = useMemo(() => {
@@ -793,29 +843,42 @@ function EntityRemindersTab({
             <div className="entity-reminders__transfer-history">
               <div className="entity-reminders__transfer-head">
                 <h5>Historial del traslado</h5>
-                <span>{transferTimelineRows.length} evento(s)</span>
               </div>
 
-              {!transferTimelineRows.length ? (
+              {!transferTimelineItems.length ? (
                 <p className="entity-reminders__empty">
                   Este traslado todavia no tiene hitos registrados.
                 </p>
               ) : (
-                <ol className="entity-reminders__transfer-list">
-                  {transferTimelineRows.map((row) => (
-                    <li key={row.id} className="entity-reminders__transfer-item">
-                      <div className="entity-reminders__transfer-meta">
-                        <span
-                          className={`entity-reminders__transfer-stage entity-reminders__transfer-stage--${row.stageClassName}`}
-                        >
-                          {row.stageLabel}
-                        </span>
-                        <span>{row.dateTime}</span>
-                      </div>
-                      <p className="entity-reminders__transfer-description">{row.description}</p>
-                    </li>
-                  ))}
-                </ol>
+                <div className="recordatorios-popup__detail-history">
+                  <ol className="recordatorios-popup__detail-history-list">
+                    {transferTimelineItems.map((entry, index) => (
+                      <li
+                        key={String(entry?.id || index)}
+                        className={`recordatorios-popup__detail-history-item recordatorios-popup__detail-history-item--${entry.className}${entry.isPlaceholder ? ' recordatorios-popup__detail-history-item--upcoming' : ''}`}
+                      >
+                        <span className="recordatorios-popup__detail-history-point" aria-hidden="true" />
+                        <div className="recordatorios-popup__detail-history-card">
+                          <div className="recordatorios-popup__detail-history-top">
+                            <span className={`recordatorios-popup__status recordatorios-popup__status--${entry.className}`}>
+                              {entry.label}
+                            </span>
+                            {!!entry.timestamp && (
+                              <span className="recordatorios-popup__detail-history-time">
+                                {Number.isFinite(Date.parse(entry.timestamp))
+                                  ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.timestamp))
+                                  : '-'}
+                              </span>
+                            )}
+                          </div>
+                          {!!entry.actorName && (
+                            <small>Por {entry.actorName}</small>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
               )}
             </div>
           )}

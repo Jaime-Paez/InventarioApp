@@ -268,6 +268,8 @@ function QuickActions({
   const didPlayLoginToneRef = useRef(false)
   const didInitUrgentSnapshotRef = useRef(false)
   const seenUrgentReminderIdsRef = useRef(new Set())
+  const didInitGeneralPendingSnapshotRef = useRef(false)
+  const seenGeneralPendingReminderIdsRef = useRef(new Set())
   const didInitPendingShipmentUrgentSnapshotRef = useRef(false)
   const seenPendingShipmentUrgentIdsRef = useRef(new Set())
   const didInitTransferResponseSnapshotRef = useRef(false)
@@ -627,7 +629,7 @@ function QuickActions({
       return
     }
     play()
-  }, [ensureAudioContext, suppressAdminAlerts])
+  }, [ensureAudioContext])
 
   const pushSystemTransferNotification = useCallback((notificationDetail) => {
     if (suppressAdminAlerts) return
@@ -693,8 +695,19 @@ function QuickActions({
   )
 
   const hasPendingReminder = useMemo(
-    () => !suppressAdminAlerts && pendingRemindersForCurrentUser.length > 0,
-    [pendingRemindersForCurrentUser, suppressAdminAlerts]
+    () => pendingRemindersForCurrentUser.length > 0,
+    [pendingRemindersForCurrentUser]
+  )
+
+  const generalPendingRemindersForCurrentUser = useMemo(
+    () =>
+      pendingRemindersForCurrentUser.filter((reminder) => {
+        if (isRandomInspectionReminder(reminder)) return false
+        if (isResolvedTransferResponseReminder(reminder)) return false
+        if (isSpecialTransferDecisionReminder(reminder)) return false
+        return true
+      }),
+    [pendingRemindersForCurrentUser]
   )
 
   const mobileShipmentCount = canViewInTransitShipments
@@ -732,7 +745,6 @@ function QuickActions({
   )
 
 	  useEffect(() => {
-    if (suppressAdminAlerts) return undefined
     if (typeof window === 'undefined') return undefined
 
     const unlockAudioAndNotifications = () => {
@@ -753,7 +765,7 @@ function QuickActions({
       window.removeEventListener('pointerdown', unlockAudioAndNotifications)
       window.removeEventListener('keydown', unlockAudioAndNotifications)
     }
-  }, [ensureAudioContext, suppressAdminAlerts])
+  }, [ensureAudioContext])
 
   useEffect(
     () => () => {
@@ -778,18 +790,19 @@ function QuickActions({
   )
 
   useEffect(() => {
-    if (suppressAdminAlerts) return
     if (typeof window === 'undefined') return
     const audio = new Audio(notificationAudioSrc)
     audio.preload = 'auto'
     audio.volume = 0.9
     notificationAudioRef.current = audio
-  }, [suppressAdminAlerts])
+  }, [])
 
   useEffect(() => {
     urgentVisualReminderIdsRef.current = new Set()
     seenUrgentReminderIdsRef.current = new Set()
     didInitUrgentSnapshotRef.current = false
+    seenGeneralPendingReminderIdsRef.current = new Set()
+    didInitGeneralPendingSnapshotRef.current = false
     seenPendingShipmentUrgentIdsRef.current = new Set()
     didInitPendingShipmentUrgentSnapshotRef.current = false
     seenTransferResponseReminderIdsRef.current = new Set()
@@ -1048,6 +1061,28 @@ function QuickActions({
   )
 
   useEffect(() => {
+    const nextIds = new Set(
+      generalPendingRemindersForCurrentUser
+        .map((reminder) => normalizeId(reminder?.id))
+        .filter(Boolean)
+    )
+
+    if (!didInitGeneralPendingSnapshotRef.current) {
+      seenGeneralPendingReminderIdsRef.current = nextIds
+      didInitGeneralPendingSnapshotRef.current = true
+      return
+    }
+
+    const seenIds = seenGeneralPendingReminderIdsRef.current
+    const hasNewReminder = Array.from(nextIds).some((id) => !seenIds.has(id))
+    seenGeneralPendingReminderIdsRef.current = nextIds
+
+    if (hasNewReminder) {
+      playNotificationTone({ forceForAdmin: true })
+    }
+  }, [generalPendingRemindersForCurrentUser, playNotificationTone])
+
+  useEffect(() => {
     const nextPendingReminderIds = eligibleUrgentDecisionReminders
       .map((reminder) => normalizeId(reminder?.id))
       .filter(Boolean)
@@ -1062,7 +1097,7 @@ function QuickActions({
       didInitUrgentSnapshotRef.current = true
       playInitialPendingToneIfNeeded(nextPendingReminderIds, {
         type: 'solicitud_traslado_pendiente',
-      })
+      }, { allowAdminTone: true })
       return
     }
 
@@ -1076,7 +1111,7 @@ function QuickActions({
     seenUrgentReminderIdsRef.current = nextSnapshotKeys
 
     if (newReminderIds.length) {
-      playNotificationTone()
+      playNotificationTone({ forceForAdmin: true })
       const notificationDetail = {
         type: 'solicitud_traslado_pendiente',
         reminderIds: newReminderIds,

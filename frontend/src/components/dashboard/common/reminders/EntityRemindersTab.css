@@ -333,6 +333,159 @@
   color: var(--color-text-title-dark);
 }
 
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history > span,
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-time,
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item small {
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-list::before {
+  background: #36414c;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-point {
+  border-color: #4b5563;
+  background: #1f252c;
+  box-shadow: 0 0 0 4px rgba(31, 37, 44, 0.92);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-point::before {
+  background: #1f252c;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-card {
+  border-color: #36414c;
+  background: #242a31;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__status--pending {
+  background: rgba(245, 158, 11, 0.22);
+  color: #fbbf24;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__status--accepted {
+  background: color-mix(in srgb, var(--color-success-text-dark) 18%, transparent);
+  color: var(--color-success-text-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__status--rejected {
+  background: color-mix(in srgb, var(--color-error-text-dark) 20%, transparent);
+  color: var(--color-error-text-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__status--cancelled {
+  background: color-mix(in srgb, #9ca3af 16%, transparent);
+  color: #9ca3af;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__status--sent {
+  background: color-mix(in srgb, var(--color-primary-dark) 20%, transparent);
+  color: var(--color-primary-dark-soft);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__status--arrived {
+  background: #20252b;
+  color: #d1d5db;
+  border-color: #3b4652;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--pending .recordatorios-popup__detail-history-card {
+  border-color: rgba(251, 191, 36, 0.34);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--pending .recordatorios-popup__detail-history-point {
+  border-color: rgba(251, 191, 36, 0.72);
+  color: #fbbf24;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--pending .recordatorios-popup__detail-history-point::before {
+  background: rgba(245, 158, 11, 0.26);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--accepted .recordatorios-popup__detail-history-card {
+  border-color: color-mix(in srgb, var(--color-success-text-dark) 36%, #36414c);
+  background: color-mix(in srgb, var(--color-success-text-dark) 12%, #242a31);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--accepted .recordatorios-popup__detail-history-point {
+  border-color: color-mix(in srgb, var(--color-success-text-dark) 62%, #111827);
+  color: var(--color-success-text-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--accepted .recordatorios-popup__detail-history-point::before {
+  background: color-mix(in srgb, var(--color-success-text-dark) 22%, #1f252c);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--rejected .recordatorios-popup__detail-history-card {
+  border-color: color-mix(in srgb, var(--color-error-text-dark) 34%, #36414c);
+  background: color-mix(in srgb, var(--color-error-text-dark) 12%, #242a31);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--rejected .recordatorios-popup__detail-history-point {
+  border-color: color-mix(in srgb, var(--color-error-text-dark) 60%, #111827);
+  color: var(--color-error-text-dark);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--rejected .recordatorios-popup__detail-history-point::before {
+  background: color-mix(in srgb, var(--color-error-text-dark) 22%, #1f252c);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--cancelled .recordatorios-popup__detail-history-card {
+  border-color: color-mix(in srgb, #9ca3af 28%, #36414c);
+  background: color-mix(in srgb, #9ca3af 8%, #242a31);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--cancelled .recordatorios-popup__detail-history-point {
+  border-color: color-mix(in srgb, #9ca3af 46%, #111827);
+  color: #d1d5db;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--cancelled .recordatorios-popup__detail-history-point::before {
+  background: color-mix(in srgb, #9ca3af 18%, #1f252c);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--sent .recordatorios-popup__detail-history-card {
+  border-color: color-mix(in srgb, var(--color-primary-dark-soft) 28%, #36414c);
+  background: color-mix(in srgb, var(--color-primary-dark) 10%, #242a31);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--sent .recordatorios-popup__detail-history-point {
+  border-color: color-mix(in srgb, var(--color-primary-dark-soft) 42%, #111827);
+  color: var(--color-primary-dark-soft);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--sent .recordatorios-popup__detail-history-point::before {
+  background: color-mix(in srgb, var(--color-primary-dark) 22%, #1f252c);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--arrived .recordatorios-popup__detail-history-card {
+  border-color: #4b5563;
+  background: #20252b;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--arrived .recordatorios-popup__detail-history-point {
+  border-color: #6b7280;
+  color: #111827;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--arrived .recordatorios-popup__detail-history-point::before {
+  background: #d1d5db;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--upcoming .recordatorios-popup__detail-history-card {
+  background: rgba(36, 42, 49, 0.7);
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--upcoming .recordatorios-popup__detail-history-point {
+  color: #4b5563;
+}
+
+.dashboard-shell.dark .entity-reminders__transfer-history .recordatorios-popup__detail-history-item--upcoming .recordatorios-popup__detail-history-point::before {
+  background: #1b2128;
+}
+
 .entity-reminders__transfer-list {
   list-style: none;
   margin: 0;
