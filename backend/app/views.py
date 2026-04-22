@@ -338,22 +338,81 @@ def _infer_transfer_history_entry_from_reminder(reminder):
 
 def _sanitize_transfer_history(raw_history, reminder=None):
     entries = []
-    by_stage = {}
+    by_signature = {}
 
     for item in raw_history if isinstance(raw_history, list) else []:
         entry = _sanitize_transfer_history_entry(item)
         if entry is None:
             continue
-        by_stage[entry["stage"]] = entry
+        actor = entry.get("actor") if isinstance(entry.get("actor"), dict) else {}
+        signature = (
+            entry.get("stage") or "",
+            entry.get("at") or "",
+            _normalize_id(actor.get("id")),
+            _normalize_text(entry.get("description")),
+        )
+        by_signature[signature] = entry
 
-    if not by_stage and reminder is not None:
+    if not by_signature and reminder is not None:
         legacy_entry = _infer_transfer_history_entry_from_reminder(reminder)
         if legacy_entry is not None:
-            by_stage[legacy_entry["stage"]] = legacy_entry
+            actor = (
+                legacy_entry.get("actor")
+                if isinstance(legacy_entry.get("actor"), dict)
+                else {}
+            )
+            signature = (
+                legacy_entry.get("stage") or "",
+                legacy_entry.get("at") or "",
+                _normalize_id(actor.get("id")),
+                _normalize_text(legacy_entry.get("description")),
+            )
+            by_signature[signature] = legacy_entry
 
-    entries = list(by_stage.values())
+    entries = list(by_signature.values())
     entries.sort(key=lambda row: _parse_iso_timestamp(row.get("at")) or "")
-    return entries
+    return _collapse_duplicate_transfer_history_entries(entries)
+
+
+def _collapse_duplicate_transfer_history_entries(entries):
+    collapsed = []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+
+        previous = collapsed[-1] if collapsed else None
+        if previous is None:
+            collapsed.append(entry)
+            continue
+
+        current_actor = entry.get("actor") if isinstance(entry.get("actor"), dict) else {}
+        previous_actor = (
+            previous.get("actor") if isinstance(previous.get("actor"), dict) else {}
+        )
+
+        same_stage = _normalize_transfer_history_stage(entry.get("stage")) == _normalize_transfer_history_stage(
+            previous.get("stage")
+        )
+        same_actor = _normalize_id(current_actor.get("id")) == _normalize_id(
+            previous_actor.get("id")
+        )
+        same_description = _normalize_text(entry.get("description")) == _normalize_text(
+            previous.get("description")
+        )
+
+        if same_stage and same_actor and same_description:
+            current_timestamp = _parse_iso_timestamp(entry.get("at"))
+            previous_timestamp = _parse_iso_timestamp(previous.get("at"))
+
+            if current_timestamp and previous_timestamp:
+                if str(current_timestamp)[:19] == str(previous_timestamp)[:19]:
+                    continue
+            elif str(entry.get("at") or "").strip() == str(previous.get("at") or "").strip():
+                continue
+
+        collapsed.append(entry)
+
+    return collapsed
 
 
 def _sanitize_context(raw):
@@ -580,7 +639,64 @@ def _merge_transfer_history(existing_history, incoming_history):
 
     merged = list(merged_by_signature.values())
     merged.sort(key=lambda row: _parse_iso_timestamp(row.get("at")) or "")
-    return merged
+    return _collapse_duplicate_transfer_history_entries(merged)
+
+
+def _hydrate_transfer_history_from_solicitudes(reminders):
+    normalized = _normalize_reminder_list(reminders)
+    solicitud_ids = set()
+
+    for reminder in normalized:
+        context = reminder.get("context") if isinstance(reminder.get("context"), dict) else {}
+        context_type = _normalize_context_type(context.get("type"))
+        context_id = _normalize_id(context.get("id"))
+        if context_type != "solicitud_traslado" or not context_id.isdigit():
+            continue
+        solicitud_ids.add(int(context_id))
+
+    if not solicitud_ids:
+        return normalized, False
+
+    from movimientos.models import SolicitudTraslado
+
+    persisted_history_by_id = {}
+    for solicitud_id, historial_transfer in (
+        SolicitudTraslado.objects.filter(id__in=sorted(solicitud_ids))
+        .values_list("id", "historial_transfer")
+    ):
+        persisted_history_by_id[str(int(solicitud_id))] = _sanitize_transfer_history(
+            historial_transfer
+        )
+
+    hydrated = []
+    changed = False
+    for reminder in normalized:
+        context = reminder.get("context") if isinstance(reminder.get("context"), dict) else {}
+        context_type = _normalize_context_type(context.get("type"))
+        context_id = _normalize_id(context.get("id"))
+        if context_type != "solicitud_traslado" or not context_id:
+            hydrated.append(reminder)
+            continue
+
+        persisted_history = persisted_history_by_id.get(context_id) or []
+        if not persisted_history:
+            hydrated.append(reminder)
+            continue
+
+        merged_history = _merge_transfer_history(
+            persisted_history,
+            reminder.get("transferHistory") or [],
+        )
+        if merged_history == (reminder.get("transferHistory") or []):
+            hydrated.append(reminder)
+            continue
+
+        updated_reminder = dict(reminder)
+        updated_reminder["transferHistory"] = merged_history
+        hydrated.append(updated_reminder)
+        changed = True
+
+    return hydrated, changed
 
 
 def _latest_transfer_history_stage(history):
@@ -1641,7 +1757,10 @@ class ReminderStateAPIView(APIView):
                 else []
             )
             reminders = _normalize_reminder_list(current_payload)
-            payload_changed = reminders != current_payload
+            reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(
+                reminders
+            )
+            payload_changed = reminders != current_payload or transfer_history_changed
             if payload_changed:
                 store.payload = reminders
 
@@ -1654,6 +1773,12 @@ class ReminderStateAPIView(APIView):
             if payload_changed:
                 store.save(update_fields=["payload", "updated_at"])
             reminders = _normalize_reminder_list(store.payload)
+            reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(
+                reminders
+            )
+            if transfer_history_changed:
+                store.payload = reminders
+                store.save(update_fields=["payload", "updated_at"])
 
         return Response(
             {
@@ -1672,10 +1797,12 @@ class ReminderStateAPIView(APIView):
             )
 
         incoming = _normalize_reminder_list(reminders_payload)
+        incoming, _ = _hydrate_transfer_history_from_solicitudes(incoming)
 
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
             existing = _normalize_reminder_list(store.payload)
+            existing, _ = _hydrate_transfer_history_from_solicitudes(existing)
             existing_by_id = {
                 _normalize_id(item.get("id")): item
                 for item in existing
@@ -1719,6 +1846,7 @@ class ReminderStateAPIView(APIView):
 
             merged = list(merged_by_id.values())
             merged.sort(key=_created_at_sort_key, reverse=True)
+            merged, _ = _hydrate_transfer_history_from_solicitudes(merged)
 
             store.payload = merged
             store.save(update_fields=["payload", "updated_at"])

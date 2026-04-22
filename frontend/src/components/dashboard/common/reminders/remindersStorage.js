@@ -306,8 +306,10 @@ const sanitizeTransferHistory = (rawHistory, reminder) => {
     }
   }
 
-  return Array.from(bySignature.values()).sort((a, b) =>
-    String(a?.at || '').localeCompare(String(b?.at || ''))
+  return collapseDuplicateTransferHistoryEntries(
+    Array.from(bySignature.values()).sort((a, b) =>
+      String(a?.at || '').localeCompare(String(b?.at || ''))
+    )
   )
 }
 
@@ -456,6 +458,11 @@ export const fetchRemindersFromBackend = async (token) => {
   const effectiveToken = resolveAuthToken(token)
   if (!effectiveToken) return readRemindersFromStorage()
 
+  const localSnapshot = readRemindersFromStorage()
+  if (pendingServerSnapshot || isServerSyncInFlight) {
+    return localSnapshot
+  }
+
   try {
     const response = await authFetch(REMINDERS_BACKEND_ENDPOINT, {}, effectiveToken)
     if (!response.ok) return readRemindersFromStorage()
@@ -468,6 +475,9 @@ export const fetchRemindersFromBackend = async (token) => {
         : []
     const normalized = backendReminders.map(sanitizeReminder).filter(Boolean)
     const existing = readRemindersFromStorage()
+    if (pendingServerSnapshot || isServerSyncInFlight) {
+      return existing
+    }
     const cached = writeRemindersToLocalCache(normalized)
     if (!areRemindersEqual(existing, normalized)) {
       emitRemindersSync()
@@ -660,6 +670,78 @@ export const getReminderDecisionStatus = (reminder) => {
   return inferTransferDecisionStatusFromDescription(reminder)
 }
 
+const collapseDuplicateTransferHistoryEntries = (entries) => {
+  const collapsed = []
+
+  const areTimestampsEquivalent = (firstValue, secondValue) => {
+    const firstTimestamp = Date.parse(String(firstValue || '').trim())
+    const secondTimestamp = Date.parse(String(secondValue || '').trim())
+
+    if (Number.isFinite(firstTimestamp) && Number.isFinite(secondTimestamp)) {
+      return Math.abs(firstTimestamp - secondTimestamp) <= 2000
+    }
+
+    return String(firstValue || '').trim() === String(secondValue || '').trim()
+  }
+
+  const areActorsEquivalent = (firstEntry, secondEntry) => {
+    const firstActorId = normalizeId(firstEntry?.actor?.id)
+    const secondActorId = normalizeId(secondEntry?.actor?.id)
+    if (!firstActorId || !secondActorId) return true
+    return firstActorId === secondActorId
+  }
+
+  const areDescriptionsEquivalent = (firstEntry, secondEntry) => {
+    const firstDescription = normalizeComparableText(firstEntry?.description)
+    const secondDescription = normalizeComparableText(secondEntry?.description)
+    if (!firstDescription || !secondDescription) return true
+    return firstDescription === secondDescription
+  }
+
+  const areEquivalentEntries = (firstEntry, secondEntry) => {
+    const sameStage = normalizeTransferHistoryStage(firstEntry?.stage) === normalizeTransferHistoryStage(secondEntry?.stage)
+    if (!sameStage) return false
+    if (!areTimestampsEquivalent(firstEntry?.at, secondEntry?.at)) return false
+    if (!areActorsEquivalent(firstEntry, secondEntry)) return false
+    if (!areDescriptionsEquivalent(firstEntry, secondEntry)) return false
+    return true
+  }
+
+  const pickPreferredEntry = (currentEntry, candidateEntry) => {
+    const currentDescription = String(currentEntry?.description || '').trim()
+    const candidateDescription = String(candidateEntry?.description || '').trim()
+    const currentLabel = String(currentEntry?.label || '').trim()
+    const candidateLabel = String(candidateEntry?.label || '').trim()
+    const candidateActorId = normalizeId(candidateEntry?.actor?.id)
+
+    return {
+      ...(currentEntry || {}),
+      ...(candidateEntry || {}),
+      description: candidateDescription || currentDescription,
+      label: candidateLabel || currentLabel,
+      actor: candidateActorId ? candidateEntry?.actor : currentEntry?.actor,
+      at: String(candidateEntry?.at || '').trim() || String(currentEntry?.at || '').trim(),
+    }
+  }
+
+  ;(Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const duplicateIndex = collapsed.findIndex((existingEntry) =>
+      areEquivalentEntries(existingEntry, entry)
+    )
+
+    if (duplicateIndex >= 0) {
+      collapsed[duplicateIndex] = pickPreferredEntry(collapsed[duplicateIndex], entry)
+      return
+    }
+
+    collapsed.push(entry)
+  })
+
+  return [...collapsed].sort((a, b) =>
+    String(a?.at || '').localeCompare(String(b?.at || ''))
+  )
+}
+
 const mergeTransferHistoryEntries = (...sources) => {
   const bySignature = new Map()
   sources.forEach((source) => {
@@ -672,8 +754,10 @@ const mergeTransferHistoryEntries = (...sources) => {
       bySignature.set(signature, normalized)
     })
   })
-  return Array.from(bySignature.values()).sort((a, b) =>
-    String(a?.at || '').localeCompare(String(b?.at || ''))
+  return collapseDuplicateTransferHistoryEntries(
+    Array.from(bySignature.values()).sort((a, b) =>
+      String(a?.at || '').localeCompare(String(b?.at || ''))
+    )
   )
 }
 

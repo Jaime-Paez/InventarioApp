@@ -9,6 +9,7 @@ import {
   createReminderId,
   emitRemindersSync,
   fetchRemindersFromBackend,
+  getTransferReminderHistory,
   normalizeId as normalizeReminderId,
   readRemindersFromStorage,
   sanitizeRecipient,
@@ -846,7 +847,7 @@ function CreateSalida({
           assignedRecipients: contextReminder?.decision?.assignedRecipients || [],
         },
         transferHistory: [
-          ...((contextReminder?.transferHistory) || []),
+          ...getTransferReminderHistory(contextReminder),
           buildTransferHistoryEntry({
             stage: 'rechazada',
             description,
@@ -949,7 +950,7 @@ function CreateSalida({
           assignedRecipients: contextReminder?.decision?.assignedRecipients || [],
         },
         transferHistory: [
-          ...((contextReminder?.transferHistory) || []),
+          ...getTransferReminderHistory(contextReminder),
           buildTransferHistoryEntry({
             stage: 'enviado',
             description,

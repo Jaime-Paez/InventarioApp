@@ -8,6 +8,7 @@ import {
   buildReminderStatusForUser,
   createReminderId,
   extractUserId,
+  fetchRemindersFromBackend,
   formatCurrentUserName,
   getReminderDecisionStatus,
   getTransferReminderHistory,
@@ -29,7 +30,7 @@ const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
 const getNowDateParts = () => {
   const now = new Date()
   return {
-    date: formatDateKey(now),
+    date: normalizeWorkingDateKey(formatDateKey(now)) || formatDateKey(now),
     time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
   }
 }
@@ -95,32 +96,161 @@ const buildTransferResponseDescription = (reminder, decisionStatus) => {
   return String(reminder?.description || '').trim() || '-'
 }
 
-const mergeTransferHistoryForContext = (reminders, contextType, contextId) => {
-  const normalizedContextType = normalizeReminderContextType(contextType)
-  const normalizedContextId = normalizeId(contextId)
-  if (normalizedContextType !== 'solicitud_traslado' || !normalizedContextId) return []
+const normalizeTransferHistoryDescription = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 
+const normalizeTransferHistoryTimestamp = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  const parsed = Date.parse(raw)
+  if (!Number.isFinite(parsed)) return raw
+  return new Date(parsed).toISOString()
+}
+
+const areTransferHistoryTimestampsEquivalent = (firstValue, secondValue) => {
+  const firstTimestamp = Date.parse(normalizeTransferHistoryTimestamp(firstValue))
+  const secondTimestamp = Date.parse(normalizeTransferHistoryTimestamp(secondValue))
+
+  if (Number.isFinite(firstTimestamp) && Number.isFinite(secondTimestamp)) {
+    return Math.abs(firstTimestamp - secondTimestamp) <= 2000
+  }
+
+  return normalizeTransferHistoryTimestamp(firstValue) === normalizeTransferHistoryTimestamp(secondValue)
+}
+
+const areTransferHistoryActorsEquivalent = (firstEntry, secondEntry) => {
+  const firstActorId = normalizeId(firstEntry?.actor?.id)
+  const secondActorId = normalizeId(secondEntry?.actor?.id)
+  if (!firstActorId || !secondActorId) return true
+  return firstActorId === secondActorId
+}
+
+const areTransferHistoryDescriptionsEquivalent = (firstEntry, secondEntry) => {
+  const firstDescription = normalizeTransferHistoryDescription(firstEntry?.description)
+  const secondDescription = normalizeTransferHistoryDescription(secondEntry?.description)
+  if (!firstDescription || !secondDescription) return true
+  return firstDescription === secondDescription
+}
+
+const areTransferHistoryEntriesEquivalent = (firstEntry, secondEntry, { ignoreDescription = false } = {}) => {
+  const sameStage = normalizeStateText(firstEntry?.stage) === normalizeStateText(secondEntry?.stage)
+  if (!sameStage) return false
+  if (!areTransferHistoryTimestampsEquivalent(firstEntry?.at, secondEntry?.at)) return false
+  if (!areTransferHistoryActorsEquivalent(firstEntry, secondEntry)) return false
+  if (!ignoreDescription && !areTransferHistoryDescriptionsEquivalent(firstEntry, secondEntry)) return false
+  return true
+}
+
+const pickPreferredTransferHistoryEntry = (currentEntry, candidateEntry) => {
+  const currentDescription = String(currentEntry?.description || '').trim()
+  const candidateDescription = String(candidateEntry?.description || '').trim()
+  const currentLabel = String(currentEntry?.label || '').trim()
+  const candidateLabel = String(candidateEntry?.label || '').trim()
+  const candidateActorId = normalizeId(candidateEntry?.actor?.id)
+  const currentTimestamp = normalizeTransferHistoryTimestamp(currentEntry?.at)
+  const candidateTimestamp = normalizeTransferHistoryTimestamp(candidateEntry?.at)
+
+  return {
+    ...(currentEntry || {}),
+    ...(candidateEntry || {}),
+    description: candidateDescription || currentDescription,
+    label: candidateLabel || currentLabel,
+    actor: candidateActorId ? candidateEntry?.actor : currentEntry?.actor,
+    at: candidateTimestamp || currentTimestamp,
+  }
+}
+
+const hasEquivalentTransferHistoryEntry = (entries, candidateEntry, options = {}) =>
+  (Array.isArray(entries) ? entries : []).some((entry) =>
+    areTransferHistoryEntriesEquivalent(entry, candidateEntry, options)
+  )
+
+const collapseTransferHistoryDuplicates = (entries) => {
+  const collapsed = []
+
+  ;(Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const duplicateIndex = collapsed.findIndex((existingEntry) =>
+      areTransferHistoryEntriesEquivalent(existingEntry, entry)
+    )
+
+    if (duplicateIndex >= 0) {
+      collapsed[duplicateIndex] = pickPreferredTransferHistoryEntry(collapsed[duplicateIndex], entry)
+      return
+    }
+
+    collapsed.push(entry)
+  })
+
+  return [...collapsed].sort((a, b) =>
+    String(a?.at || '').localeCompare(String(b?.at || ''))
+  )
+}
+
+const mergeTransferHistoryEntriesBySignature = (...sources) => {
   const bySignature = new Map()
-  ;(Array.isArray(reminders) ? reminders : []).forEach((reminder) => {
-    if (normalizeReminderContextType(reminder?.context?.type) !== normalizedContextType) return
-    if (normalizeId(reminder?.context?.id) !== normalizedContextId) return
 
-    getTransferReminderHistory(reminder).forEach((entry) => {
+  sources.forEach((source) => {
+    ;(Array.isArray(source) ? source : []).forEach((entry) => {
       const actorId = normalizeId(entry?.actor?.id)
       const signature = [
         String(entry?.stage || '').trim(),
-        String(entry?.at || '').trim(),
+        normalizeTransferHistoryTimestamp(entry?.at),
         actorId,
-        String(entry?.description || '').trim(),
+        normalizeTransferHistoryDescription(entry?.description),
       ].join('|')
       if (!signature.replace(/\|/g, '')) return
       bySignature.set(signature, entry)
     })
   })
 
-  return Array.from(bySignature.values()).sort((a, b) =>
-    String(a?.at || '').localeCompare(String(b?.at || ''))
+  return collapseTransferHistoryDuplicates(
+    Array.from(bySignature.values()).sort((a, b) =>
+      String(a?.at || '').localeCompare(String(b?.at || ''))
+    )
   )
+}
+
+const getReminderRawTransferHistory = (reminder) => (
+  Array.isArray(reminder?.transferHistory)
+    ? reminder.transferHistory
+    : Array.isArray(reminder?.history)
+      ? reminder.history
+      : []
+)
+
+const mergeTransferHistoryForContext = (reminders, contextType, contextId) => {
+  const normalizedContextType = normalizeReminderContextType(contextType)
+  const normalizedContextId = normalizeId(contextId)
+  if (normalizedContextType !== 'solicitud_traslado' || !normalizedContextId) return []
+
+  const explicitHistories = []
+  const fallbackHistories = []
+  ;(Array.isArray(reminders) ? reminders : []).forEach((reminder) => {
+    if (normalizeReminderContextType(reminder?.context?.type) !== normalizedContextType) return
+    if (normalizeId(reminder?.context?.id) !== normalizedContextId) return
+
+    const rawHistory = getReminderRawTransferHistory(reminder)
+    if (rawHistory.length) {
+      explicitHistories.push(getTransferReminderHistory({
+        ...reminder,
+        transferHistory: rawHistory,
+      }))
+      return
+    }
+
+    fallbackHistories.push(getTransferReminderHistory(reminder))
+  })
+
+  if (explicitHistories.length) {
+    return mergeTransferHistoryEntriesBySignature(...explicitHistories)
+  }
+
+  return mergeTransferHistoryEntriesBySignature(...fallbackHistories)
 }
 
 const normalizeReminderContextType = (value) =>
@@ -194,16 +324,6 @@ const getTransferHistoryStageLabel = (stage) => {
   return String(stage || 'Evento').trim() || 'Evento'
 }
 
-const getTransferHistoryTimelineStage = (stage) => {
-  const normalized = normalizeStateText(stage)
-  if (normalized === 'aceptada') return 'aceptada'
-  if (normalized === 'rechazada') return 'rechazada'
-  if (normalized === 'cancelado') return 'cancelado'
-  if (normalized === 'enviado') return 'enviado'
-  if (normalized === 'completo' || normalized === 'incompleto' || normalized === 'recibido') return 'recibido'
-  return 'pendiente'
-}
-
 const getTransferHistoryDisplayLabel = (entry, previousEntries = []) => {
   const normalized = normalizeStateText(entry?.stage)
   if (normalized === 'pendiente') {
@@ -239,6 +359,39 @@ const getTransferHistoryVisualStatus = (stage, customLabel = '') => {
   }
 
   return { label, className: 'pending' }
+}
+
+const extractTransferHistoryRejectionReason = (entry) => {
+  const normalizedStage = normalizeStateText(entry?.stage)
+  if (normalizedStage !== 'rechazada') return ''
+
+  const explicitReason = String(entry?.reason || entry?.motivo || '').trim()
+  if (explicitReason) return explicitReason
+
+  const description = String(entry?.description || '').trim()
+  if (!description) return ''
+
+  const reasonMatch = description.match(/motivo:\s*(.+)$/i)
+  return String(reasonMatch?.[1] || '').trim()
+}
+
+const buildInferredDecisionHistoryEntry = (reminder) => {
+  const decisionStatus = normalizeStateText(reminder?.decision?.status)
+  if (!['aceptada', 'rechazada', 'cancelado'].includes(decisionStatus)) return null
+ 
+  const at = normalizeTransferHistoryTimestamp(reminder?.decision?.at)
+  if (!at) return null
+
+  const actor = sanitizeRecipient(reminder?.decision?.by)
+  const description = buildTransferResponseDescription(reminder, decisionStatus)
+
+  return {
+    stage: decisionStatus,
+    label: '',
+    description,
+    at,
+    actor,
+  }
 }
 
 const getTransferVisualDecisionStatus = ({
@@ -432,7 +585,23 @@ const formatDateKey = (value) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+const isSundayDateKey = (value) => {
+  const parsed = parseDateKey(value)
+  return Boolean(parsed && parsed.getDay() === 0)
+}
+
+const normalizeWorkingDateKey = (value) => {
+  const parsed = parseDateKey(value)
+  if (!parsed || Number.isNaN(parsed.getTime())) return ''
+  if (parsed.getDay() !== 0) return formatDateKey(parsed)
+
+  const shifted = new Date(parsed)
+  shifted.setDate(shifted.getDate() + 1)
+  return formatDateKey(shifted)
+}
+
 const getTodayDateKey = () => formatDateKey(new Date())
+const getTodayWorkingDateKey = () => normalizeWorkingDateKey(getTodayDateKey()) || getTodayDateKey()
 
 const addDaysToDateKey = (value, delta) => {
   const parsed = parseDateKey(value) || new Date()
@@ -545,14 +714,17 @@ function RecordatoriosPopup({
   const [rejectionReason, setRejectionReason] = useState('')
   const [isRejectReasonModalOpen, setIsRejectReasonModalOpen] = useState(false)
   const [rejectReasonError, setRejectReasonError] = useState('')
-  const [selectedTimelineDate, setSelectedTimelineDate] = useState(() => getTodayDateKey())
+  const [selectedTimelineDate, setSelectedTimelineDate] = useState(() => getTodayWorkingDateKey())
   const [openingTransferReminderId, setOpeningTransferReminderId] = useState('')
   const [openingInspectionReminderId, setOpeningInspectionReminderId] = useState('')
   const [highlightedReminderId, setHighlightedReminderId] = useState('')
   const [pendingScrollReminderId, setPendingScrollReminderId] = useState('')
   const [transferLifecycleBySolicitudId, setTransferLifecycleBySolicitudId] = useState({})
   const [activeDetailReminderId, setActiveDetailReminderId] = useState('')
+  const [activeDetailSolicitud, setActiveDetailSolicitud] = useState(null)
+  const [activeDetailSolicitudLoading, setActiveDetailSolicitudLoading] = useState(false)
   const transferLifecycleInFlightRef = useRef(new Set())
+  const activeDetailSolicitudCacheRef = useRef(new Map())
   const reminderItemRefs = useRef(new Map())
 
   const notifyError = useCallback(
@@ -585,7 +757,7 @@ function RecordatoriosPopup({
   }, [activeDecisionReminderId, reminders])
 
   const normalizedSelectedTimelineDate = useMemo(
-    () => formatDateKey(selectedTimelineDate) || getTodayDateKey(),
+    () => normalizeWorkingDateKey(selectedTimelineDate) || getTodayWorkingDateKey(),
     [selectedTimelineDate]
   )
 
@@ -720,7 +892,7 @@ function RecordatoriosPopup({
   const timelineWeekDays = useMemo(() => {
     const start = getWeekStartDate(normalizedSelectedTimelineDate)
 
-    return Array.from({ length: 7 }, (_, offset) => {
+    return Array.from({ length: 6 }, (_, offset) => {
       const date = new Date(start)
       date.setDate(start.getDate() + offset)
       const dateKey = formatDateKey(date)
@@ -749,8 +921,36 @@ function RecordatoriosPopup({
   const activeDetailReminder = useMemo(() => {
     const nId = normalizeId(activeDetailReminderId)
     if (!nId) return null
-    return (Array.isArray(reminders) ? reminders : []).find((r) => normalizeId(r?.id) === nId) || null
+    const source = Array.isArray(reminders) ? reminders : []
+    const selectedReminder = source.find((r) => normalizeId(r?.id) === nId) || null
+    if (!selectedReminder) return null
+
+    const contextType = normalizeReminderContextType(selectedReminder?.context?.type)
+    const contextId = normalizeId(selectedReminder?.context?.id)
+    if (contextType !== 'solicitud_traslado' || !contextId) return selectedReminder
+
+    const matchingReminders = source.filter((reminder) =>
+      normalizeReminderContextType(reminder?.context?.type) === contextType &&
+      normalizeId(reminder?.context?.id) === contextId
+    )
+    if (matchingReminders.length <= 1) return selectedReminder
+
+    const mergedReminders = matchingReminders.reduce(
+      (currentList, reminder) => upsertTransferReminder(currentList, reminder),
+      []
+    )
+    return mergedReminders[0] || selectedReminder
   }, [activeDetailReminderId, reminders])
+
+  const activeDetailIsTransferContext = useMemo(
+    () => normalizeReminderContextType(activeDetailReminder?.context?.type) === 'solicitud_traslado',
+    [activeDetailReminder]
+  )
+
+  const activeDetailSolicitudId = useMemo(
+    () => normalizeId(activeDetailReminder?.context?.id),
+    [activeDetailReminder]
+  )
 
   const activeDetailReminderStatus = useMemo(() => {
     if (!activeDetailReminder) return null
@@ -808,78 +1008,98 @@ function RecordatoriosPopup({
     if (!activeDetailReminder) return []
     const contextType = normalizeReminderContextType(activeDetailReminder?.context?.type)
     const contextId = normalizeId(activeDetailReminder?.context?.id)
-    const mergedHistory = mergeTransferHistoryForContext(reminders, contextType, contextId)
-    const hasInitialPendingEntry = mergedHistory.some((entry, index) => {
-      const stage = normalizeStateText(entry?.stage)
-      if (stage !== 'pendiente') return false
-      return !mergedHistory.slice(0, index).some((previousEntry) => {
-        const previousStage = normalizeStateText(previousEntry?.stage)
-        return previousStage === 'rechazada' || previousStage === 'cancelado'
-      })
+    const reminderHistory = mergeTransferHistoryForContext(reminders, contextType, contextId)
+    const hasCachedBackendHistory = Array.isArray(activeDetailSolicitud?.historial_transfer) && activeDetailSolicitud.historial_transfer.length > 0
+    if (activeDetailIsTransferContext && activeDetailSolicitudLoading && !hasCachedBackendHistory && !reminderHistory.length) {
+      return []
+    }
+    const backendHistory = getTransferReminderHistory({
+      transferHistory: Array.isArray(activeDetailSolicitud?.historial_transfer)
+        ? activeDetailSolicitud.historial_transfer
+        : [],
+      context: activeDetailReminder?.context || null,
+      description: activeDetailReminder?.description || '',
+      decision: activeDetailReminder?.decision || {},
+      creator: activeDetailReminder?.creator || null,
+      createdAt: activeDetailReminder?.createdAt || '',
+      date: activeDetailReminder?.date || '',
+      time: activeDetailReminder?.time || '',
     })
-    const historyWithInitialCreation = !hasInitialPendingEntry && String(activeDetailReminder?.createdAt || '').trim()
+    const supplementalReminderHistory = backendHistory.length
+      ? reminderHistory.filter((entry) => !hasEquivalentTransferHistoryEntry(backendHistory, entry))
+      : reminderHistory
+    const mergedHistory = mergeTransferHistoryEntriesBySignature(
+      backendHistory,
+      supplementalReminderHistory
+    )
+    const inferredDecisionEntry = mergedHistory.length
+      ? null
+      : buildInferredDecisionHistoryEntry(activeDetailReminder)
+    const historyWithDecisionEntry = (() => {
+      if (!inferredDecisionEntry) return mergedHistory
+
+      if (hasEquivalentTransferHistoryEntry(mergedHistory, inferredDecisionEntry)) return mergedHistory
+
+      return collapseTransferHistoryDuplicates([...mergedHistory, inferredDecisionEntry]).sort((a, b) =>
+        String(a?.at || '').localeCompare(String(b?.at || ''))
+      )
+    })()
+    const initialCreationEntry = String(activeDetailReminder?.createdAt || '').trim()
+      ? {
+        stage: 'pendiente',
+        label: '',
+        description: '',
+        at: String(activeDetailReminder.createdAt).trim(),
+        actor: sanitizeRecipient(activeDetailReminder?.creator),
+      }
+      : null
+    const hasInitialCreationEntry = initialCreationEntry
+      ? hasEquivalentTransferHistoryEntry(historyWithDecisionEntry, initialCreationEntry, {
+        ignoreDescription: true,
+      })
+      : true
+    const historyWithInitialCreation = !hasInitialCreationEntry && initialCreationEntry
       ? [
-        {
-          stage: 'pendiente',
-          label: '',
-          description: '',
-          at: String(activeDetailReminder.createdAt).trim(),
-          actor: sanitizeRecipient(activeDetailReminder?.creator),
-        },
-        ...mergedHistory,
+        initialCreationEntry,
+        ...historyWithDecisionEntry,
       ].sort((a, b) => String(a?.at || '').localeCompare(String(b?.at || '')))
-      : mergedHistory
+      : historyWithDecisionEntry
     const labeledHistory = historyWithInitialCreation.map((entry, index) => ({
       ...entry,
       displayLabel: getTransferHistoryDisplayLabel(entry, historyWithInitialCreation.slice(0, index)),
     }))
 
-    const latestBaseStageIndex = labeledHistory.reduce((maxIndex, entry) => {
-      const stage = getTransferHistoryTimelineStage(entry?.stage)
-      const indexByStage = {
-        pendiente: 0,
-        aceptada: 1,
-        enviado: 2,
-        recibido: 3,
-      }
-      const stageIndex = indexByStage[stage]
-      return Number.isInteger(stageIndex) && stageIndex > maxIndex ? stageIndex : maxIndex
-    }, -1)
-
     const timelineItems = labeledHistory.map((entry, index) => {
       const displayLabel = String(entry?.displayLabel || '').trim() || getTransferHistoryStageLabel(entry?.stage)
       const historyStatus = getTransferHistoryVisualStatus(entry?.stage, displayLabel)
+      const rejectionReason = extractTransferHistoryRejectionReason(entry)
 
       return {
         id: `actual-${String(entry?.stage || 'stage').trim()}-${String(entry?.at || index).trim()}`,
         label: historyStatus.label,
         className: historyStatus.className,
         actorName: String(entry?.actor?.name || '').trim(),
+        detailText: rejectionReason ? `Motivo: ${rejectionReason}` : '',
         timestamp: String(entry?.at || '').trim(),
         isPlaceholder: false,
       }
     })
-    const actualTimelineItems = [...timelineItems].reverse()
 
-    const upcomingBaseStages = ['pendiente', 'aceptada', 'enviado', 'recibido']
-      .slice(Math.max(latestBaseStageIndex + 1, 1))
-      .map((stage) => {
-        const historyStatus = getTransferHistoryVisualStatus(stage, getTransferHistoryStageLabel(stage))
-        return {
-          id: `upcoming-${stage}`,
-          label: historyStatus.label,
-          className: historyStatus.className,
-          actorName: '',
-          timestamp: '',
-          isPlaceholder: true,
-        }
-      })
-
-    return [...upcomingBaseStages.reverse(), ...actualTimelineItems]
-  }, [activeDetailReminder, reminders])
+    return [...timelineItems].reverse()
+  }, [activeDetailIsTransferContext, activeDetailReminder, activeDetailSolicitud, activeDetailSolicitudLoading, reminders])
 
   const shiftTimelineDay = useCallback((offset) => {
-    setSelectedTimelineDate((current) => addDaysToDateKey(current, offset))
+    setSelectedTimelineDate((current) => normalizeWorkingDateKey(addDaysToDateKey(current, offset)))
+  }, [])
+
+  const handleDateChange = useCallback((event) => {
+    const nextDate = String(event?.target?.value || '').trim()
+    if (!nextDate) {
+      setDate('')
+      return
+    }
+
+    setDate(normalizeWorkingDateKey(nextDate) || nextDate)
   }, [])
 
   const closeDecisionPanel = useCallback(() => {
@@ -953,6 +1173,9 @@ function RecordatoriosPopup({
       setPendingScrollReminderId('')
       setTransferLifecycleBySolicitudId({})
       setActiveDetailReminderId('')
+      setActiveDetailSolicitud(null)
+      setActiveDetailSolicitudLoading(false)
+      activeDetailSolicitudCacheRef.current = new Map()
       transferLifecycleInFlightRef.current = new Set()
       reminderItemRefs.current = new Map()
       return
@@ -970,6 +1193,8 @@ function RecordatoriosPopup({
     setHighlightedReminderId('')
     setPendingScrollReminderId('')
     setActiveDetailReminderId('')
+    setActiveDetailSolicitud(null)
+    setActiveDetailSolicitudLoading(false)
     closeDecisionPanel()
   }, [open, currentPrimaryUserId, closeDecisionPanel])
 
@@ -1102,7 +1327,7 @@ function RecordatoriosPopup({
     )
     const reminderDateKey = formatDateKey(reminder?.date)
     if (reminderDateKey) {
-      setSelectedTimelineDate(reminderDateKey)
+      setSelectedTimelineDate(normalizeWorkingDateKey(reminderDateKey) || reminderDateKey)
     }
     if (reminder && isSpecialTransferDecisionReminder(reminder)) {
       setActiveView('list')
@@ -1128,6 +1353,11 @@ function RecordatoriosPopup({
 
     if (!date || !time) {
       setSubmitError('Debes completar fecha y hora.')
+      return
+    }
+
+    if (isSundayDateKey(date)) {
+      setSubmitError('Los recordatorios no se pueden programar en domingo.')
       return
     }
 
@@ -1256,48 +1486,53 @@ function RecordatoriosPopup({
             : 'Su solicitud de traslado fue aceptada.'
         )
 
-      onApplyRemindersUpdate?.((prev) => {
-        const currentList = Array.isArray(prev) ? prev : []
-        const currentReminder = currentList.find((item) => isReminderForContext(item, context)) || reminder
+      if (token) {
+        const remoteReminders = await fetchRemindersFromBackend(token)
+        onApplyRemindersUpdate?.(remoteReminders)
+      } else {
+        onApplyRemindersUpdate?.((prev) => {
+          const currentList = Array.isArray(prev) ? prev : []
+          const currentReminder = currentList.find((item) => isReminderForContext(item, context)) || reminder
 
-        return upsertTransferReminder(currentList, {
-          id: normalizeId(currentReminder?.id) || createReminderId(),
-          date: nowParts.date,
-          time: nowParts.time,
-          description: resolvedDescription,
-          creator: currentReminder?.creator || {
-            id: creatorRecipientId,
-            name: creatorRecipientName,
-          },
-          recipients: creatorRecipient?.id
-            ? [
-              ...(Array.isArray(currentReminder?.recipients) ? currentReminder.recipients : []),
-              creatorRecipient,
-            ]
-            : (Array.isArray(currentReminder?.recipients) ? currentReminder.recipients : []),
-          context: reminder?.context || null,
-          kind: 'recordatorio_general',
-          createdAt: currentReminder?.createdAt || resolutionDate,
-          decision: {
-            ...(currentReminder?.decision || {}),
-            status: resolvedDecision,
-            reason: resolvedDecision === 'rechazada' ? rejectionReasonValue : '',
-            by: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
-            at: resolutionDate,
-            assignedRecipients: currentReminder?.decision?.assignedRecipients || [],
-          },
-          transferHistory: [
-            ...getTransferReminderHistory(currentReminder),
-            buildTransferHistoryEntry({
-              stage: resolvedDecision,
-              description: resolvedDescription,
+          return upsertTransferReminder(currentList, {
+            id: normalizeId(currentReminder?.id) || createReminderId(),
+            date: nowParts.date,
+            time: nowParts.time,
+            description: resolvedDescription,
+            creator: currentReminder?.creator || {
+              id: creatorRecipientId,
+              name: creatorRecipientName,
+            },
+            recipients: creatorRecipient?.id
+              ? [
+                ...(Array.isArray(currentReminder?.recipients) ? currentReminder.recipients : []),
+                creatorRecipient,
+              ]
+              : (Array.isArray(currentReminder?.recipients) ? currentReminder.recipients : []),
+            context: reminder?.context || null,
+            kind: 'recordatorio_general',
+            createdAt: currentReminder?.createdAt || resolutionDate,
+            decision: {
+              ...(currentReminder?.decision || {}),
+              status: resolvedDecision,
+              reason: resolvedDecision === 'rechazada' ? rejectionReasonValue : '',
+              by: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
               at: resolutionDate,
-              actor: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
-            }),
-          ],
-          completedBy: [],
+              assignedRecipients: currentReminder?.decision?.assignedRecipients || [],
+            },
+            transferHistory: [
+              ...getTransferReminderHistory(currentReminder),
+              buildTransferHistoryEntry({
+                stage: resolvedDecision,
+                description: resolvedDescription,
+                at: resolutionDate,
+                actor: sanitizeRecipient({ id: creatorRecipientId, name: creatorRecipientName }),
+              }),
+            ],
+            completedBy: [],
+          })
         })
-      })
+      }
 
       const responseSolicitud = data?.solicitud
       if (responseSolicitud) {
@@ -1465,6 +1700,51 @@ function RecordatoriosPopup({
     },
     [fetchTransferSolicitudDetail]
   )
+
+  useEffect(() => {
+    let cancelled = false
+    const solicitudId = activeDetailSolicitudId
+    const isTransferContext = activeDetailIsTransferContext
+
+    if (!open || !token || !isTransferContext || !solicitudId) {
+      setActiveDetailSolicitud(null)
+      setActiveDetailSolicitudLoading(false)
+      return undefined
+    }
+
+    const cachedDetail = activeDetailSolicitudCacheRef.current.get(solicitudId) || null
+    if (cachedDetail) {
+      setActiveDetailSolicitud((previous) => {
+        if (normalizeId(previous?.id) === solicitudId) return previous || cachedDetail
+        return cachedDetail
+      })
+      setActiveDetailSolicitudLoading(false)
+      return undefined
+    }
+
+    setActiveDetailSolicitudLoading(true)
+    void (async () => {
+      try {
+        const detail = await fetchTransferSolicitudDetail(solicitudId)
+        if (!cancelled) {
+          if (detail) {
+            activeDetailSolicitudCacheRef.current.set(solicitudId, detail)
+          }
+          setActiveDetailSolicitud(detail || null)
+          setActiveDetailSolicitudLoading(false)
+        }
+      } catch {
+        if (!cancelled) {
+          setActiveDetailSolicitud(null)
+          setActiveDetailSolicitudLoading(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeDetailIsTransferContext, activeDetailSolicitudId, fetchTransferSolicitudDetail, open, token])
 
   useEffect(() => {
     if (!open || !token) return
@@ -1855,7 +2135,8 @@ function RecordatoriosPopup({
               <div className="recordatorios-popup__grid">
                 <label className="recordatorios-popup__field">
                   <span>Fecha</span>
-                  <input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
+                  <input type="date" value={date} onChange={handleDateChange} required />
+                  <small className="recordatorios-popup__helper">No se programan recordatorios los domingos.</small>
                 </label>
 
                 <label className="recordatorios-popup__field">
@@ -2535,7 +2816,17 @@ function RecordatoriosPopup({
                   <p>{activeDetailReminderDescription}</p>
                 </div>
 
-                {!!activeDetailTransferHistory.length && (
+                {activeDetailIsTransferContext && activeDetailSolicitudLoading && (
+                  <div className="recordatorios-popup__detail-history">
+                    <span>Historial del traslado</span>
+                    <div className="recordatorios-popup__loading">
+                      <Loader2 />
+                      <small>Cargando historial...</small>
+                    </div>
+                  </div>
+                )}
+
+                {!activeDetailSolicitudLoading && !!activeDetailTransferHistory.length && (
                   <div className="recordatorios-popup__detail-history">
                     <span>Historial del traslado</span>
                     <ol className="recordatorios-popup__detail-history-list">
@@ -2561,6 +2852,9 @@ function RecordatoriosPopup({
                               </div>
                               {!!entry.actorName && (
                                 <small>Por {entry.actorName}</small>
+                              )}
+                              {!!entry.detailText && (
+                                <p className="recordatorios-popup__detail-history-reason">{entry.detailText}</p>
                               )}
                             </div>
                           </li>

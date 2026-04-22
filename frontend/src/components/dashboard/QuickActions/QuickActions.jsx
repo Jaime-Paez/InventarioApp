@@ -24,6 +24,8 @@ import {
   getReminderDecisionStatus,
   getReminderDeadlineTimestamp,
   getReminderTimestamp,
+  getLatestTransferHistoryEntry,
+  getTransferReminderHistory,
   getTransferReminderPendingSnapshotKey,
   isReminderCreatedByCurrentUser,
   isReminderForCurrentUser,
@@ -60,6 +62,26 @@ const RANDOM_INSPECTION_VERIFY_ITEM_ENDPOINT = `${API_URL}/recordatorios/inspecc
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
+const isSundayReminderDate = (value) => {
+  const raw = String(value || '').trim()
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return false
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const parsed = new Date(year, month - 1, day)
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return false
+  }
+
+  return parsed.getDay() === 0
+}
 const toPositiveInt = (value, fallback = 0) => {
   const parsed = Number.parseInt(String(value ?? ''), 10)
   if (!Number.isFinite(parsed)) return fallback
@@ -210,19 +232,36 @@ const isResolvedTransferResponseReminder = (reminder) => {
 
 const resolveUrgentDecisionProgress = (reminder, nowValue) => {
   const deadline = getReminderDeadlineTimestamp(reminder)
-  const createdAt = parseEntityTimestamp(reminder?.createdAt)
+  const stateStartedAt = resolveReminderStateTimestamp(reminder)
   const now = Number(nowValue || Date.now())
 
-  if (!Number.isFinite(createdAt)) {
+  if (!Number.isFinite(stateStartedAt)) {
     if (!Number.isFinite(deadline)) return 0
     return now >= deadline ? 1 : 0
   }
 
-  const elapsed = Math.max(0, now - createdAt)
-  const deadlineWindow = Number.isFinite(deadline) ? Math.max(1, deadline - createdAt) : Number.POSITIVE_INFINITY
+  const elapsed = Math.max(0, now - stateStartedAt)
+  const deadlineWindow = Number.isFinite(deadline)
+    ? Math.max(1, deadline - stateStartedAt)
+    : Number.POSITIVE_INFINITY
   const growthWindow = Math.min(URGENT_SHIELD_NEAR_FULL_MS, deadlineWindow)
   const ratio = elapsed / growthWindow
   return clamp01(ratio)
+}
+
+const resolveReminderStateTimestamp = (reminder) => {
+  const latestHistoryAt = getLatestTransferHistoryEntry(reminder)?.at
+  const decisionAt = String(reminder?.decision?.at || '').trim()
+  const date = String(reminder?.date || '').trim()
+  const time = String(reminder?.time || '').trim()
+  const dateTimeCandidate = date ? `${date}T${time || '00:00'}:00` : ''
+
+  return parseEntityTimestamp(
+    latestHistoryAt,
+    decisionAt,
+    dateTimeCandidate,
+    reminder?.createdAt
+  )
 }
 
 const resolveUrgentShipmentProgress = (shipment, nowValue) => {
@@ -723,8 +762,8 @@ function QuickActions({
             isReminderPendingForCurrentUser(reminder, currentUserIds)
         )
         .sort((a, b) => {
-          const createdAtA = parseEntityTimestamp(a?.createdAt)
-          const createdAtB = parseEntityTimestamp(b?.createdAt)
+          const createdAtA = resolveReminderStateTimestamp(a)
+          const createdAtB = resolveReminderStateTimestamp(b)
           if (Number.isFinite(createdAtA) && Number.isFinite(createdAtB) && createdAtA !== createdAtB) {
             return createdAtA - createdAtB
           }
@@ -1052,7 +1091,7 @@ function QuickActions({
             kind: 'decision',
             anchor: 'top_right',
             message: URGENT_DECISION_MESSAGE,
-            priorityTimestamp: parseEntityTimestamp(reminder?.createdAt, dateTimeCandidate),
+            priorityTimestamp: resolveReminderStateTimestamp(reminder) || parseEntityTimestamp(dateTimeCandidate),
             reminder,
           }
         })
@@ -1310,7 +1349,7 @@ function QuickActions({
                 kind: 'rejected_transfer',
                 anchor: 'top_right',
                 message: URGENT_REJECTED_TRANSFER_MESSAGE,
-                priorityTimestamp: parseEntityTimestamp(reminder?.createdAt, dateTimeCandidate),
+                priorityTimestamp: resolveReminderStateTimestamp(reminder) || parseEntityTimestamp(dateTimeCandidate),
                 reminder,
               }
             })
@@ -2110,6 +2149,11 @@ function QuickActions({
       return false
     }
 
+    if (isSundayReminderDate(normalizedDate)) {
+      showErrorToast('Los recordatorios no se pueden programar en domingo.')
+      return false
+    }
+
     const contextType = normalizeId(context?.type)
     const contextId = normalizeId(context?.id)
     const normalizedContext =
@@ -2617,7 +2661,7 @@ function QuickActions({
           assignedRecipients: currentTransferReminder?.decision?.assignedRecipients || [],
         },
         transferHistory: [
-          ...((currentTransferReminder?.transferHistory) || []),
+          ...getTransferReminderHistory(currentTransferReminder),
           buildTransferHistoryEntry({
             stage: result === 'incompleto' ? 'incompleto' : 'completo',
             description,

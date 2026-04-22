@@ -474,7 +474,8 @@
 
 .recordatorios-popup__timeline-week {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 3px;
 }
 
@@ -1885,6 +1886,9 @@
   grid-template-columns: 22px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
+  animation: none;
+  transition: none;
+  transform: none;
 }
 
 .recordatorios-popup__detail-history-point {
@@ -1897,6 +1901,9 @@
   background: var(--color-surface);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-surface) 92%, transparent);
   overflow: hidden;
+  animation: none;
+  transition: none;
+  transform: none;
 }
 
 .recordatorios-popup__detail-history-point::before {
@@ -1930,6 +1937,9 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  animation: none;
+  transition: none;
+  transform: none;
 }
 
 .recordatorios-popup__detail-history-item--pending .recordatorios-popup__detail-history-card {
@@ -2166,9 +2176,20 @@
   line-height: 1.4;
 }
 
+.recordatorios-popup__detail-history-top .recordatorios-popup__status {
+  animation: none;
+  transition: none;
+  transform: none;
+}
+
 .recordatorios-popup__detail-history-time,
 .recordatorios-popup__detail-history-item small {
   color: color-mix(in srgb, currentColor 66%, transparent);
+}
+
+.recordatorios-popup__detail-history-reason {
+  color: color-mix(in srgb, currentColor 88%, transparent);
+  font-weight: 600;
 }
 
 .recordatorios-popup__detail-footer {

@@ -15,7 +15,13 @@ from rest_framework.response import Response
 
 from core.table_filters import apply_column_filters, parse_column_filters
 from app.models import ReminderState
-from app.views import _merge_reminder, _normalize_reminder_list, _purge_reminders_for_context
+from app.views import (
+    _merge_reminder,
+    _merge_transfer_history,
+    _normalize_reminder_list,
+    _purge_reminders_for_context,
+    _sanitize_transfer_history,
+)
 from inventario.models import Inventario, SubDivision, Sucursal
 from solicitudes.models import Cliente
 
@@ -1161,6 +1167,73 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "actor": self._normalize_reminder_recipient(actor),
         }
 
+    def _get_transfer_context_history_from_payload(self, normalized_payload, *, solicitud_id):
+        solicitud_token = str(int(solicitud_id or 0))
+        if not solicitud_token:
+            return []
+
+        merged_history = []
+        for reminder in normalized_payload if isinstance(normalized_payload, list) else []:
+            if not isinstance(reminder, dict):
+                continue
+            context = reminder.get("context") if isinstance(reminder.get("context"), dict) else {}
+            context_type = self._normalize_reminder_context_type(context.get("type"))
+            context_id = str(context.get("id") or "").strip()
+            if context_type != "solicitud_traslado" or context_id != solicitud_token:
+                continue
+            merged_history = _merge_transfer_history(
+                merged_history,
+                reminder.get("transferHistory") or [],
+            )
+
+        return merged_history
+
+    def _get_solicitud_transfer_history(self, solicitud, *, seed_history=None):
+        persisted_history = getattr(solicitud, "historial_transfer", None)
+        sanitized_persisted = (
+            _sanitize_transfer_history(persisted_history) if isinstance(persisted_history, list) else []
+        )
+        sanitized_seed = (
+            _sanitize_transfer_history(seed_history) if isinstance(seed_history, list) else []
+        )
+        return _merge_transfer_history(sanitized_seed, sanitized_persisted)
+
+    def _save_solicitud_transfer_history(self, solicitud, history):
+        sanitized_history = _sanitize_transfer_history(history)
+        current_history = getattr(solicitud, "historial_transfer", None)
+        sanitized_current = (
+            _sanitize_transfer_history(current_history) if isinstance(current_history, list) else []
+        )
+        if isinstance(current_history, list) and sanitized_current == sanitized_history:
+            return sanitized_history
+
+        solicitud.historial_transfer = sanitized_history
+        solicitud.save(update_fields=["historial_transfer", "updated_at"])
+        return sanitized_history
+
+    def _append_solicitud_transfer_history_event(
+        self,
+        *,
+        solicitud,
+        stage,
+        description,
+        actor,
+        at=None,
+        seed_history=None,
+    ):
+        history_entry = self._build_transfer_history_entry(
+            stage=stage,
+            description=description,
+            actor=actor,
+            at=at,
+        )
+        current_history = self._get_solicitud_transfer_history(
+            solicitud,
+            seed_history=seed_history,
+        )
+        merged_history = _merge_transfer_history(current_history, [history_entry])
+        return self._save_solicitud_transfer_history(solicitud, merged_history)
+
     def _upsert_transfer_context_reminder(
         self,
         normalized_payload,
@@ -1300,10 +1373,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             append_unique(candidate)
         append_unique(actor_recipient)
 
-        if not recipients:
-            return False
-
         now = timezone.localtime(timezone.now())
+        created_at = timezone.now().isoformat()
         deadline_at = now.replace(hour=23, minute=59, second=59, microsecond=999000)
         description = (
             f"Solicitud de traslado {transfer_reference}. Revisar gestion pendiente. "
@@ -1311,40 +1382,43 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             if selected_recipients
             else f"Solicitud de traslado {transfer_reference}. Revisar gestion pendiente."
         )
-        reminder = {
-            "id": str(uuid4()),
-            "date": now.strftime("%Y-%m-%d"),
-            "time": now.strftime("%H:%M"),
-            "description": description,
-            "creator": actor_recipient,
-            "recipients": recipients,
-            "context": {
-                "type": "solicitud_traslado",
-                "id": str(solicitud_id),
-                "label": context_label,
-            },
-            "kind": "solicitud_traslado_decision",
-            "deadlineAt": deadline_at.isoformat(),
-            "decision": {
-                "status": "pendiente",
-                "reason": "",
-                "by": None,
-                "at": "",
-                "assignedRecipients": selected_recipients,
-            },
-            "transferHistory": [
-                self._build_transfer_history_entry(
-                    stage="pendiente",
-                    description=description,
-                    actor=actor_recipient,
-                    at=timezone.now().isoformat(),
-                )
-            ],
-            "createdAt": timezone.now().isoformat(),
-            "completedBy": [],
-        }
 
         with transaction.atomic():
+            full_history = self._append_solicitud_transfer_history_event(
+                solicitud=solicitud,
+                stage="pendiente",
+                description=description,
+                actor=actor_recipient,
+                at=created_at,
+            )
+            if not recipients:
+                return False
+
+            reminder = {
+                "id": str(uuid4()),
+                "date": now.strftime("%Y-%m-%d"),
+                "time": now.strftime("%H:%M"),
+                "description": description,
+                "creator": actor_recipient,
+                "recipients": recipients,
+                "context": {
+                    "type": "solicitud_traslado",
+                    "id": str(solicitud_id),
+                    "label": context_label,
+                },
+                "kind": "solicitud_traslado_decision",
+                "deadlineAt": deadline_at.isoformat(),
+                "decision": {
+                    "status": "pendiente",
+                    "reason": "",
+                    "by": None,
+                    "at": "",
+                    "assignedRecipients": selected_recipients,
+                },
+                "transferHistory": full_history,
+                "createdAt": created_at,
+                "completedBy": [],
+            }
             store = ReminderState.get_global(for_update=True)
             existing_payload = store.payload if isinstance(store.payload, list) else []
             merged = self._upsert_transfer_context_reminder(
@@ -1406,6 +1480,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     current_context_reminder = item
                     break
 
+            seed_history = self._get_transfer_context_history_from_payload(
+                normalized_payload,
+                solicitud_id=solicitud_id,
+            )
+
             recipients = []
             seen_recipient_ids = set()
 
@@ -1426,9 +1505,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             ):
                 append_unique(candidate)
             append_unique(request_creator)
-
-            if not recipients:
-                return False
 
             if normalized_status == "rechazada":
                 description = (
@@ -1451,6 +1527,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 if isinstance(decision, dict) and isinstance(decision.get("assignedRecipients"), list):
                     assigned_recipients = decision.get("assignedRecipients") or []
 
+            full_history = self._append_solicitud_transfer_history_event(
+                solicitud=solicitud,
+                stage=normalized_status,
+                description=description,
+                actor=actor_recipient,
+                at=resolved_at,
+                seed_history=seed_history,
+            )
+            if not recipients:
+                return False
+
             reminder = {
                 "id": str(uuid4()),
                 "date": now.strftime("%Y-%m-%d"),
@@ -1472,14 +1559,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "at": resolved_at,
                     "assignedRecipients": assigned_recipients,
                 },
-                "transferHistory": [
-                    self._build_transfer_history_entry(
-                        stage=normalized_status,
-                        description=description,
-                        actor=actor_recipient,
-                        at=resolved_at,
-                    )
-                ],
+                "transferHistory": full_history,
                 "completedBy": [],
             }
 
@@ -1521,6 +1601,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 normalized,
                 solicitud_id=solicitud_id,
             )
+            seed_history = self._get_transfer_context_history_from_payload(
+                normalized,
+                solicitud_id=solicitud_id,
+            )
 
             provider_recipients = self._resolve_transfer_provider_recipients(
                 solicitud.sucursal_proveedora_id,
@@ -1542,10 +1626,19 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 append_unique(candidate)
             append_unique(request_creator)
 
+            description = f"Su solicitud de traslado {transfer_reference} fue enviada y está en traslado."
+            created_at = timezone.now().isoformat()
+            full_history = self._append_solicitud_transfer_history_event(
+                solicitud=solicitud,
+                stage="enviado",
+                description=description,
+                actor=creator,
+                at=created_at,
+                seed_history=seed_history,
+            )
             if not recipients:
                 return False
 
-            description = f"Su solicitud de traslado {transfer_reference} fue enviada y está en traslado."
             reminder = {
                 "id": str(uuid4()),
                 "date": now.strftime("%Y-%m-%d"),
@@ -1559,22 +1652,15 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "label": context_label,
                 },
                 "kind": "recordatorio_general",
-                "createdAt": timezone.now().isoformat(),
+                "createdAt": created_at,
                 "decision": {
                     "status": "enviado",
                     "reason": "",
                     "by": creator,
-                    "at": timezone.now().isoformat(),
+                    "at": created_at,
                     "assignedRecipients": [],
                 },
-                "transferHistory": [
-                    self._build_transfer_history_entry(
-                        stage="enviado",
-                        description=description,
-                        actor=creator,
-                        at=timezone.now().isoformat(),
-                    )
-                ],
+                "transferHistory": full_history,
                 "completedBy": [],
             }
 
@@ -1658,40 +1744,46 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
 
         now = timezone.localtime(timezone.now())
-        reminder = {
-            "id": str(uuid4()),
-            "date": now.strftime("%Y-%m-%d"),
-            "time": now.strftime("%H:%M"),
-            "description": description,
-            "creator": actor_recipient,
-            "recipients": recipients,
-            "context": {
-                "type": "solicitud_traslado",
-                "id": str(int(solicitud.id)),
-                "label": context_label,
-            },
-            "kind": "recordatorio_general",
-            "createdAt": timezone.now().isoformat(),
-            "transferHistory": [
-                self._build_transfer_history_entry(
-                    stage="incompleto" if normalized_resultado == "incompleto" else "completo",
-                    description=description,
-                    actor=actor_recipient,
-                    at=timezone.now().isoformat(),
-                )
-            ],
-            "completedBy": [],
-        }
+        created_at = timezone.now().isoformat()
 
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
             existing_payload = store.payload if isinstance(store.payload, list) else []
+            normalized_payload = _normalize_reminder_list(existing_payload)
+            seed_history = self._get_transfer_context_history_from_payload(
+                normalized_payload,
+                solicitud_id=int(solicitud.id),
+            )
+            full_history = self._append_solicitud_transfer_history_event(
+                solicitud=solicitud,
+                stage="incompleto" if normalized_resultado == "incompleto" else "completo",
+                description=description,
+                actor=actor_recipient,
+                at=created_at,
+                seed_history=seed_history,
+            )
             if not recipients:
                 return False
 
-            reminder["recipients"] = recipients
+            reminder = {
+                "id": str(uuid4()),
+                "date": now.strftime("%Y-%m-%d"),
+                "time": now.strftime("%H:%M"),
+                "description": description,
+                "creator": actor_recipient,
+                "recipients": recipients,
+                "context": {
+                    "type": "solicitud_traslado",
+                    "id": str(int(solicitud.id)),
+                    "label": context_label,
+                },
+                "kind": "recordatorio_general",
+                "createdAt": created_at,
+                "transferHistory": full_history,
+                "completedBy": [],
+            }
             store.payload = self._upsert_transfer_context_reminder(
-                _normalize_reminder_list(existing_payload),
+                normalized_payload,
                 solicitud_id=int(solicitud.id),
                 reminder=reminder,
             )
@@ -2523,6 +2615,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             store = ReminderState.get_global(for_update=True)
             existing_payload = store.payload if isinstance(store.payload, list) else []
             normalized_payload = _normalize_reminder_list(existing_payload)
+            seed_history = self._get_transfer_context_history_from_payload(
+                normalized_payload,
+                solicitud_id=solicitud_id,
+            )
 
             current_context_reminder = None
             for item in normalized_payload:
@@ -2579,10 +2675,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     append_unique(candidate)
             append_unique(request_creator)
             append_unique(actor_recipient)
+            deadline_at = now.replace(hour=23, minute=59, second=59, microsecond=999000)
+            full_history = self._append_solicitud_transfer_history_event(
+                solicitud=solicitud,
+                stage="pendiente",
+                description=description,
+                actor=actor_recipient,
+                at=resolved_at,
+                seed_history=seed_history,
+            )
             if not recipients:
                 return False
-
-            deadline_at = now.replace(hour=23, minute=59, second=59, microsecond=999000)
 
             reminder = {
                 "id": str(uuid4()),
@@ -2605,14 +2708,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "at": "",
                     "assignedRecipients": existing_assigned,
                 },
-                "transferHistory": [
-                    self._build_transfer_history_entry(
-                        stage="pendiente",
-                        description=description,
-                        actor=actor_recipient,
-                        at=resolved_at,
-                    )
-                ],
+                "transferHistory": full_history,
                 "createdAt": resolved_at,
                 "completedBy": [],
             }
