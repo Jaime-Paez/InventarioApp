@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
+import { ColumnGroup } from 'primereact/columngroup'
 import { Toast } from 'primereact/toast'
 import { Tooltip } from 'primereact/tooltip'
 import { OverlayPanel } from 'primereact/overlaypanel'
 import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
+import { Row } from 'primereact/row'
 
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
@@ -29,6 +31,12 @@ import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/a
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
 const DEFAULT_IVA_RATE = 0.15
+const INVENTARIO_TABLE_COLUMNS_STORAGE_KEY = 'inventario-v2-table-columns-v2'
+const INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY = 'inventario-v2-table-columns-branch-v2'
+const INVENTARIO_TABLE_LAYOUT_STATE_KEY = 'inventario-v2-table-state-v3'
+const INVENTARIO_TABLE_FILTER_STATE_KEY = 'inventario-v2-table-state'
+const LOCATION_HOVER_CARD_WIDTH = 320
+const LOCATION_HOVER_CARD_MARGIN = 12
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 
@@ -99,8 +107,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
+  const locationHoverHideTimeoutRef = useRef(null)
   const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('inventario-v2-table-state') }
+  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths(INVENTARIO_TABLE_LAYOUT_STATE_KEY) }
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -153,6 +162,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [isCodigoColumnFrozen, setIsCodigoColumnFrozen] = useState(false)
+  const [locationHoverCard, setLocationHoverCard] = useState(null)
 
   // Branch state
   const [branches, setBranches] = useState([])
@@ -476,7 +486,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
 
   useEffect(() => {
     try {
-      const savedState = sessionStorage.getItem('inventario-v2-table-state')
+      const savedState = sessionStorage.getItem(INVENTARIO_TABLE_FILTER_STATE_KEY)
       if (savedState) {
         const parsed = JSON.parse(savedState)
         if (parsed?.filters) {
@@ -485,9 +495,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             nextFilters.casa_comercial_nombre = nextFilters.casas_comerciales_count
           }
           delete nextFilters.casas_comerciales_count
+          nextFilters.global = { value: null, matchMode: FilterMatchMode.CONTAINS }
           setFilters(nextFilters)
-          const restoredGlobal = String(parsed?.globalFilterValue ?? getPrimeGlobalFilterValue(nextFilters) ?? '')
-          setGlobalFilterValue(restoredGlobal)
+          setGlobalFilterValue('')
           const nextSortField = parsed?.sortField || null
           const parsedSortOrder = Number(parsed?.sortOrder)
           const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
@@ -498,7 +508,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       }
     } catch {
       try {
-        sessionStorage.removeItem('inventario-v2-table-state')
+        sessionStorage.removeItem(INVENTARIO_TABLE_FILTER_STATE_KEY)
       } catch {
         // no-op
       }
@@ -508,18 +518,22 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
 
   useEffect(() => {
     if (!filters) return
-    const payload = JSON.stringify({ filters, sortField, sortOrder, globalFilterValue })
+    const persistedFilters = {
+      ...filters,
+      global: { value: null, matchMode: FilterMatchMode.CONTAINS },
+    }
+    const payload = JSON.stringify({ filters: persistedFilters, sortField, sortOrder })
     try {
-      sessionStorage.setItem('inventario-v2-table-state', payload)
+      sessionStorage.setItem(INVENTARIO_TABLE_FILTER_STATE_KEY, payload)
     } catch {
       try {
-        sessionStorage.removeItem('inventario-v2-table-state')
-        sessionStorage.setItem('inventario-v2-table-state', payload)
+        sessionStorage.removeItem(INVENTARIO_TABLE_FILTER_STATE_KEY)
+        sessionStorage.setItem(INVENTARIO_TABLE_FILTER_STATE_KEY, payload)
       } catch {
         // no-op
       }
     }
-  }, [filters, sortField, sortOrder, globalFilterValue])
+  }, [filters, sortField, sortOrder])
 
   const clearFilter = async () => {
     if (globalSearchDebounceRef.current) {
@@ -541,16 +555,32 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'inventario-v2-table-state')
+    autoFitTableColumns(tableWrapperRef.current, INVENTARIO_TABLE_LAYOUT_STATE_KEY)
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('inventario-v2-table-columns')
+    localStorage.removeItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY)
+    localStorage.removeItem('inventario-v2-table-columns-branch-v1')
+    localStorage.removeItem(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY)
+    localStorage.removeItem('inventario-v2-table-state-v2')
     localStorage.removeItem('inventario-v2-table-state')
+    localStorage.removeItem(INVENTARIO_TABLE_LAYOUT_STATE_KEY)
     setSelectedColumns(visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label'))
+    setSelectedBranchColumns(branchColumnsData.map((column) => column.nombrevar))
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['inventario-v2-table-columns', 'inventario-v2-table-state'], token)
+    clearTableLayouts(
+      [
+        'inventario-v2-table-columns',
+        INVENTARIO_TABLE_COLUMNS_STORAGE_KEY,
+        INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY,
+        'inventario-v2-table-state',
+        'inventario-v2-table-state-v2',
+        INVENTARIO_TABLE_LAYOUT_STATE_KEY,
+      ],
+      token
+    )
     opColumns.current?.hide()
   }
 
@@ -771,6 +801,78 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     []
   )
 
+  const clearLocationHoverHideTimer = useCallback(() => {
+    if (!locationHoverHideTimeoutRef.current) return
+    clearTimeout(locationHoverHideTimeoutRef.current)
+    locationHoverHideTimeoutRef.current = null
+  }, [])
+
+  const hideLocationHoverCard = useCallback(() => {
+    clearLocationHoverHideTimer()
+    setLocationHoverCard(null)
+  }, [clearLocationHoverHideTimer])
+
+  const scheduleHideLocationHoverCard = useCallback(() => {
+    clearLocationHoverHideTimer()
+    locationHoverHideTimeoutRef.current = setTimeout(() => {
+      locationHoverHideTimeoutRef.current = null
+      setLocationHoverCard(null)
+    }, 120)
+  }, [clearLocationHoverHideTimer])
+
+  const showLocationHoverCard = useCallback(
+    (event, locationPayload) => {
+      const extraLocations = Array.isArray(locationPayload?.ubicaciones_adicionales)
+        ? locationPayload.ubicaciones_adicionales
+        : []
+      if (!extraLocations.length) {
+        hideLocationHoverCard()
+        return
+      }
+
+      clearLocationHoverHideTimer()
+      const rect = event?.currentTarget?.getBoundingClientRect?.()
+      if (!rect) return
+
+      let left = rect.right + 10
+      if (left + LOCATION_HOVER_CARD_WIDTH > window.innerWidth - LOCATION_HOVER_CARD_MARGIN) {
+        left = Math.max(
+          LOCATION_HOVER_CARD_MARGIN,
+          rect.left - LOCATION_HOVER_CARD_WIDTH - 10
+        )
+      }
+
+      const maxTop = Math.max(window.innerHeight - 260, LOCATION_HOVER_CARD_MARGIN)
+      const top = Math.min(
+        Math.max(rect.top - 8, LOCATION_HOVER_CARD_MARGIN),
+        maxTop
+      )
+
+      setLocationHoverCard({
+        left,
+        top,
+        ubicaciones: extraLocations,
+      })
+    },
+    [clearLocationHoverHideTimer, hideLocationHoverCard]
+  )
+
+  useEffect(
+    () => () => {
+      clearLocationHoverHideTimer()
+    },
+    [clearLocationHoverHideTimer]
+  )
+
+  useEffect(() => {
+    const handleScroll = () => {
+      hideLocationHoverCard()
+    }
+
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [hideLocationHoverCard])
+
   // ---------------- quantityBody helper ----------------
   const quantityBody = useCallback((rowData, field) => {
     const qty = rowData?.[field]
@@ -782,6 +884,209 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       </span>
     )
   }, [])
+
+  const locationBody = useCallback(
+    (rowData, branch) => {
+      const locationPayload = rowData?.[`ubicacion_sucursal_${branch.id}`]
+      const principalLabel = String(
+        locationPayload?.ubicacion_principal || locationPayload?.principal?.ubicacion || ''
+      ).trim()
+      const principalBodega = String(locationPayload?.principal?.bodega_nombre || '').trim()
+      const extraLocations = Array.isArray(locationPayload?.ubicaciones_adicionales)
+        ? locationPayload.ubicaciones_adicionales
+        : []
+      const tooltip = [principalBodega, principalLabel].filter(Boolean).join(' / ')
+
+      if (!principalLabel) {
+        return (
+          <span className="cell-tooltip" style={{ color: '#9ca3af' }}>
+            -
+          </span>
+        )
+      }
+
+      return (
+        <div className="inventario-v2__location-cell">
+          <span
+            className="cell-tooltip inventario-v2__location-main"
+            data-pr-tooltip={tooltip || principalLabel}
+          >
+            {principalLabel}
+          </span>
+
+          {extraLocations.length > 0 ? (
+            <button
+              type="button"
+              className="inventario-v2__location-eye"
+              aria-label={`Ver otras ubicaciones en ${branch.nombre}`}
+              title="Ver otras ubicaciones"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+              onMouseEnter={(event) => showLocationHoverCard(event, locationPayload)}
+              onMouseLeave={scheduleHideLocationHoverCard}
+              onFocus={(event) => showLocationHoverCard(event, locationPayload)}
+              onBlur={scheduleHideLocationHoverCard}
+            >
+              <i className="pi pi-eye" />
+            </button>
+          ) : null}
+        </div>
+      )
+    },
+    [scheduleHideLocationHoverCard, showLocationHoverCard]
+  )
+
+  function resolveSelectedColumnConfig(column) {
+      let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+      let className = 'column-max-min-width'
+      const isCodigoColumn = column.nombrevar === 'codigo'
+      let columnHeader = column.header
+
+      switch (column.nombrevar) {
+        case 'codigo':
+          bodyTemplate = (rowData) => codigoBodyTemplate(rowData)
+          columnHeader = (
+            <div className="codigo-column-header">
+              <span className="codigo-column-header__label">{column.header}</span>
+              <button
+                type="button"
+                className={`codigo-column-header-btn${isCodigoColumnFrozen ? ' codigo-column-header-btn--active' : ''}`}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  toggleCodigoColumnFrozen()
+                }}
+                title={isCodigoColumnFrozen ? 'Desanclar columna de código' : 'Anclar columna de código'}
+              >
+                <i className="pi pi-thumbtack" />
+              </button>
+            </div>
+          )
+          break
+        case 'nombre':
+          bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+          break
+        case 'pieza_original_label':
+          bodyTemplate = (rowData) => piezaOriginalBodyTemplate(rowData)
+          className = 'column-max-min-width--small'
+          break
+        case 'precio':
+        case 'precio_con_iva':
+        case 'costo_minimo':
+          bodyTemplate = (rowData) => {
+            if (column.nombrevar === 'precio_con_iva' && ivaLoading) {
+              return (
+                <span className="cell-tooltip" data-pr-tooltip="...">
+                  ...
+                </span>
+              )
+            }
+            return numericBodyTemplate(rowData, column.nombrevar)
+          }
+          className = 'column-max-min-width--small'
+          break
+        default:
+          bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+          break
+      }
+
+      return {
+        bodyTemplate,
+        className,
+        isCodigoColumn,
+        columnHeader,
+      }
+  }
+
+  function renderHeaderColumnGroup() {
+    if (!branches.length) return null
+
+    return (
+      <ColumnGroup>
+        <Row className="inventario-v2__header-row inventario-v2__header-row--top">
+          <Column
+            selectionMode="multiple"
+            frozen
+            rowSpan={2}
+            headerClassName="row-selection-column inventario-v2__header-span"
+            style={selectionColStyle}
+            headerStyle={selectionColStyle}
+            exportable={false}
+            reorderable={false}
+            resizable={false}
+          />
+
+          {selectedColumns.map((column) => {
+            const { className, isCodigoColumn, columnHeader } = resolveSelectedColumnConfig(column)
+            return (
+              <Column
+                key={`header_static_${column.nombrevar}`}
+                field={column.nombrevar}
+                header={columnHeader}
+                sortable
+                reorderable
+                frozen={isCodigoColumn && isCodigoColumnFrozen}
+                rowSpan={2}
+                className={`${className} inventario-v2__header-span`}
+                style={{ minWidth: '32px' }}
+              />
+            )
+          })}
+
+          {branches.map((branch) => (
+            <Column
+              key={`header_branch_group_${branch.id}`}
+              header={branch.nombre}
+              colSpan={2}
+              reorderable={false}
+              resizable={false}
+              className="inventario-v2__branch-group-header"
+            />
+          ))}
+
+          <Column
+            key="header_total_group"
+            field="total_general"
+            header="Total"
+            sortable
+            reorderable={false}
+            rowSpan={2}
+            className="column-max-min-width--small inventario-v2__header-span"
+            style={{ minWidth: '32px' }}
+          />
+        </Row>
+
+        <Row className="inventario-v2__header-row inventario-v2__header-row--sub">
+          {branches.reduce((items, branch) => {
+            items.push(
+              <Column
+                key={`header_branch_qty_${branch.id}`}
+                field={`sucursal_${branch.id}`}
+                header="Cantidad"
+                sortable
+                reorderable={false}
+                className="column-max-min-width--small inventario-v2__branch-subheader"
+                style={{ minWidth: '32px' }}
+              />
+            )
+            items.push(
+              <Column
+                key={`header_branch_location_${branch.id}`}
+                field={`ubicacion_sucursal_${branch.id}`}
+                header="Ubicacion"
+                reorderable={false}
+                className="column-max-min-width inventario-v2__location-col inventario-v2__branch-subheader"
+                style={{ width: '180px' }}
+              />
+            )
+            return items
+          }, [])}
+        </Row>
+      </ColumnGroup>
+    )
+  }
 
   // ---------------- Columns ----------------
   const columnsData = useMemo(
@@ -802,10 +1107,25 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     () => (canSeeCost ? columnsData : columnsData.filter((column) => column.nombrevar !== 'costo_minimo')),
     [canSeeCost, columnsData]
   )
+  const branchColumnsData = useMemo(
+    () =>
+      branches.flatMap((branch) => [
+        {
+          nombrevar: `sucursal_${branch.id}`,
+          header: `Cantidad ${branch.nombre}`,
+        },
+        {
+          nombrevar: `ubicacion_sucursal_${branch.id}`,
+          header: `Ubicacion ${branch.nombre}`,
+        },
+      ]),
+    [branches]
+  )
 
   const [selectedColumns, setSelectedColumns] = useState(() =>
     visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label')
   )
+  const [selectedBranchColumns, setSelectedBranchColumns] = useState([])
   const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
 
@@ -814,7 +1134,30 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   }, [selectedColumns])
 
   useEffect(() => {
-    const stored = localStorage.getItem('inventario-v2-table-columns')
+    if (!branchColumnsData.length) {
+      setSelectedBranchColumns([])
+      return
+    }
+
+    const defaultBranchColumns = branchColumnsData.map((column) => column.nombrevar)
+    setSelectedBranchColumns((prev) => {
+      const prevFields = new Set(Array.isArray(prev) ? prev : [])
+      const nextSelectedBranchColumns = defaultBranchColumns.filter((field) => prevFields.has(field))
+      return nextSelectedBranchColumns.length ? nextSelectedBranchColumns : defaultBranchColumns
+    })
+  }, [branchColumnsData])
+
+  useEffect(() => {
+    localStorage.removeItem('inventario-v2-table-columns-branch-v1')
+    localStorage.removeItem(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY)
+    void clearTableLayouts(
+      ['inventario-v2-table-columns-branch-v1', INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY],
+      token
+    )
+  }, [token])
+
+  useEffect(() => {
+    const stored = localStorage.getItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY)
     if (stored) {
       const parsed = JSON.parse(stored)
       const migrated = (Array.isArray(parsed) ? parsed : []).map((col) => {
@@ -835,7 +1178,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       )
     }
     return () => {
-      localStorage.setItem('inventario-v2-table-columns', JSON.stringify(selectedColumnsRef.current))
+      localStorage.setItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(selectedColumnsRef.current))
     }
   }, [visibleColumnsData])
 
@@ -856,6 +1199,27 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       setSelectedColumns([...selectedColumns, column])
     }
   }
+
+  const handleCheckboxChangeBranchColumn = useCallback(
+    (column) => {
+      const field = column?.nombrevar
+      if (!field) return
+
+      setSelectedBranchColumns((prev) => {
+        const nextFields = new Set(Array.isArray(prev) ? prev : [])
+        if (nextFields.has(field)) {
+          nextFields.delete(field)
+        } else {
+          nextFields.add(field)
+        }
+
+        return branchColumnsData
+          .map((item) => item.nombrevar)
+          .filter((nombrevar) => nextFields.has(nombrevar))
+      })
+    },
+    [branchColumnsData]
+  )
 
   const toggleCodigoColumnFrozen = useCallback(() => {
     setIsCodigoColumnFrozen((prev) => !prev)
@@ -1225,6 +1589,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     })
   }, [visibleColumnsData])
 
+  const selectedBranchColumnFields = useMemo(
+    () => new Set(selectedBranchColumns),
+    [selectedBranchColumns]
+  )
+
   useEffect(() => {
     const handleWindowResize = () => {
       if (!showSearchModal) return
@@ -1565,7 +1934,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           header={header}
           className={`users-datatable inventario-v2-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}${isGlobalSearchPending ? ' inventario-v2-datatable--pending' : ''}`}
           stateStorage="local"
-          stateKey="inventario-v2-table-state"
+          stateKey={INVENTARIO_TABLE_LAYOUT_STATE_KEY}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
@@ -1640,10 +2009,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           />
 
           {selectedColumns.map((column, index) => {
-            let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-            let className = 'column-max-min-width'
-            const isCodigoColumn = column.nombrevar === 'codigo'
-            let columnHeader = column.header
+            let { bodyTemplate, className, isCodigoColumn, columnHeader } = resolveSelectedColumnConfig(column)
 
             switch (column.nombrevar) {
               case 'codigo':
@@ -1707,28 +2073,87 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             )
           })}
 
-          {branches.map((branch) => (
-            <Column
-              key={`branch_${branch.id}`}
-              field={`sucursal_${branch.id}`}
-              header={branch.nombre}
-              sortable
-              className="column-max-min-width--small"
-              style={{ minWidth: '32px' }}
-              body={(rowData) => quantityBody(rowData, `sucursal_${branch.id}`)}
-            />
-          ))}
+          {branches.reduce((columns, branch) => {
+            const quantityField = `sucursal_${branch.id}`
+            const locationField = `ubicacion_sucursal_${branch.id}`
+
+            if (selectedBranchColumnFields.has(quantityField)) {
+              columns.push(
+                <Column
+                  key={`branch_${branch.id}`}
+                  field={quantityField}
+                  header={branch.nombre}
+                  sortable
+                  reorderable
+                  className="column-max-min-width--small"
+                  style={{ minWidth: '32px' }}
+                  body={(rowData) => quantityBody(rowData, quantityField)}
+                />
+              )
+            }
+
+            if (selectedBranchColumnFields.has(locationField)) {
+              columns.push(
+                <Column
+                  key={`branch_location_${branch.id}`}
+                  field={locationField}
+                  header={`Ubicacion ${branch.nombre}`}
+                  reorderable
+                  className="column-max-min-width inventario-v2__location-col"
+                  style={{ width: '180px' }}
+                  body={(rowData) => locationBody(rowData, branch)}
+                />
+              )
+            }
+            return columns
+          }, [])}
 
           <Column
             key="total_general"
             field="total_general"
             header="Total"
             sortable
+            reorderable
             className="column-max-min-width--small"
             style={{ minWidth: '32px' }}
             body={(rowData) => quantityBody(rowData, 'total_general')}
           />
         </DataTable>
+
+        {Array.isArray(locationHoverCard?.ubicaciones) && locationHoverCard.ubicaciones.length > 0 && (
+          <div
+            className="inventario-v2__location-hover-card"
+            role="tooltip"
+            style={{
+              top: locationHoverCard.top,
+              left: locationHoverCard.left,
+            }}
+            onMouseEnter={clearLocationHoverHideTimer}
+            onMouseLeave={scheduleHideLocationHoverCard}
+          >
+            <div className="inventario-v2__location-hover-title">Otras ubicaciones</div>
+            <table className="inventario-v2__location-hover-table">
+              <thead>
+                <tr>
+                  <th>Bodega</th>
+                  <th>Ubicacion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locationHoverCard.ubicaciones.map((location, index) => (
+                  <tr key={`location-hover-row-${index}`}>
+                    <td title={String(location?.bodega_nombre || '-').trim()}>
+                      {String(location?.bodega_nombre || '-').trim()}
+                    </td>
+                    <td title={String(location?.ubicacion || '-').trim()}>
+                      {String(location?.ubicacion || '-').trim()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
@@ -1750,6 +2175,27 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
               <label htmlFor={col.nombrevar}>{col.header}</label>
             </div>
           ))}
+
+          {branchColumnsData.length > 0 && (
+            <>
+              <div style={{ marginTop: 12, marginBottom: 4, fontSize: '0.82rem', fontWeight: 800, color: '#6b7280' }}>
+                Inventario por sucursal
+              </div>
+
+              {branchColumnsData.map((col) => (
+                <div key={col.nombrevar} className="p-field-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+                  <Checkbox
+                    inputId={col.nombrevar}
+                    name="branch-column"
+                    value={col.nombrevar}
+                    onChange={() => handleCheckboxChangeBranchColumn(col)}
+                    checked={selectedBranchColumnFields.has(col.nombrevar)}
+                  />
+                  <label htmlFor={col.nombrevar}>{col.header}</label>
+                </div>
+              ))}
+            </>
+          )}
         </OverlayPanel>
           </>
         )}

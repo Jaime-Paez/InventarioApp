@@ -1,3 +1,4 @@
+from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 
 from django.db.models.deletion import ProtectedError
@@ -691,6 +692,124 @@ class InventarioViewSet(viewsets.ModelViewSet):
             resolved.append("producto_id")
         return resolved
 
+    @staticmethod
+    def _build_table_location_label(division_name, subdivision_name):
+        division = str(division_name or "").strip()
+        subdivision = str(subdivision_name or "").strip()
+        if division and subdivision:
+            return f"{division}:{subdivision}"
+        return division or subdivision or "-"
+
+    def _build_branch_location_payloads(self, product_ids, branch_ids):
+        normalized_product_ids = sorted(
+            {
+                int(product_id)
+                for product_id in product_ids
+                if int(product_id or 0) > 0
+            }
+        )
+        normalized_branch_ids = sorted(
+            {int(branch_id) for branch_id in branch_ids if int(branch_id or 0) > 0}
+        )
+        if not normalized_product_ids or not normalized_branch_ids:
+            return {}
+
+        aggregated_locations = (
+            Inventario.objects.filter(
+                producto_id__in=normalized_product_ids,
+                cantidad__gt=0,
+                subdivision__division__bodega__sucursal_id__in=normalized_branch_ids,
+            )
+            .values(
+                "producto_id",
+                "subdivision__division__bodega__sucursal_id",
+                "subdivision__division__bodega_id",
+                "subdivision__division__bodega__nombre",
+                "subdivision__division_id",
+                "subdivision__division__nombre",
+                "subdivision_id",
+                "subdivision__nombre",
+            )
+            .annotate(
+                cantidad_total=Coalesce(
+                    Sum("cantidad"),
+                    Value(0),
+                    output_field=IntegerField(),
+                )
+            )
+        )
+
+        locations_by_product_branch = defaultdict(list)
+        for row in aggregated_locations:
+            product_id = int(row.get("producto_id") or 0)
+            branch_id = int(row.get("subdivision__division__bodega__sucursal_id") or 0)
+            cantidad_total = int(row.get("cantidad_total") or 0)
+            if product_id <= 0 or branch_id <= 0 or cantidad_total <= 0:
+                continue
+
+            bodega_nombre = str(
+                row.get("subdivision__division__bodega__nombre") or ""
+            ).strip()
+            division_nombre = str(
+                row.get("subdivision__division__nombre") or ""
+            ).strip()
+            subdivision_nombre = str(row.get("subdivision__nombre") or "").strip()
+            locations_by_product_branch[(product_id, branch_id)].append(
+                {
+                    "bodega_id": int(row.get("subdivision__division__bodega_id") or 0),
+                    "bodega_nombre": bodega_nombre,
+                    "division_id": int(row.get("subdivision__division_id") or 0),
+                    "division_nombre": division_nombre,
+                    "subdivision_id": int(row.get("subdivision_id") or 0),
+                    "subdivision_nombre": subdivision_nombre,
+                    "cantidad": cantidad_total,
+                    "ubicacion": self._build_table_location_label(
+                        division_nombre,
+                        subdivision_nombre,
+                    ),
+                }
+            )
+
+        payload_by_product = {}
+        for (product_id, branch_id), locations in locations_by_product_branch.items():
+            ordered_locations = sorted(
+                locations,
+                key=lambda item: (
+                    -int(item.get("cantidad") or 0),
+                    str(item.get("bodega_nombre") or "").lower(),
+                    str(item.get("division_nombre") or "").lower(),
+                    str(item.get("subdivision_nombre") or "").lower(),
+                    int(item.get("bodega_id") or 0),
+                    int(item.get("division_id") or 0),
+                    int(item.get("subdivision_id") or 0),
+                ),
+            )
+            principal = ordered_locations[0]
+            principal_payload = {
+                "bodega_nombre": principal.get("bodega_nombre") or "",
+                "ubicacion": principal.get("ubicacion") or "-",
+                "division_nombre": principal.get("division_nombre") or "",
+                "subdivision_nombre": principal.get("subdivision_nombre") or "",
+            }
+            additional_locations = [
+                {
+                    "bodega_nombre": location.get("bodega_nombre") or "",
+                    "ubicacion": location.get("ubicacion") or "-",
+                    "division_nombre": location.get("division_nombre") or "",
+                    "subdivision_nombre": location.get("subdivision_nombre") or "",
+                }
+                for location in ordered_locations[1:]
+            ]
+            product_payload = payload_by_product.setdefault(product_id, {})
+            product_payload[branch_id] = {
+                "principal": principal_payload,
+                "ubicacion_principal": principal_payload["ubicacion"],
+                "ubicaciones_adicionales": additional_locations,
+                "total_ubicaciones": len(ordered_locations),
+            }
+
+        return payload_by_product
+
     def _serialize_inventory_table_rows(self, rows, branches):
         rows_list = list(rows)
         product_ids = []
@@ -698,6 +817,11 @@ class InventarioViewSet(viewsets.ModelViewSet):
             product_id = int(row.get("producto_id") or 0)
             if product_id > 0:
                 product_ids.append(product_id)
+
+        branch_location_payloads = self._build_branch_location_payloads(
+            product_ids,
+            [int(branch.id or 0) for branch in branches],
+        )
 
         products = (
             Producto.objects.filter(id__in=product_ids)
@@ -745,9 +869,12 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "oem_codes": meta.get("oem_codes") or "",
                 "creado_en": row.get("creado_en"),
             }
+            branch_locations = branch_location_payloads.get(product_id, {})
             for branch in branches:
                 field_name = f"sucursal_{branch.id}"
                 item[field_name] = int(row.get(field_name) or 0)
+                location_field_name = f"ubicacion_sucursal_{branch.id}"
+                item[location_field_name] = branch_locations.get(int(branch.id))
             serialized.append(item)
 
         return serialized
