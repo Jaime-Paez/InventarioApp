@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -93,17 +93,6 @@ const isCheckboxSelection = (event) => {
   if (!target) return true
   if (target.type === 'checkbox') return true
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
-}
-
-const preventHeaderSort = (e) => {
-  if (
-    e.target.closest('th.p-sortable-column') &&
-    !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-resizer') &&
-    !e.target.closest('button')
-  ) {
-    e.stopPropagation()
-  }
 }
 
 function InventarioTableV2({ token, onSelect, user, moduleActions, permissionIndex }) {
@@ -479,25 +468,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const initFilters = useCallback((preserveSearch = false) => {
     const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-      codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      pieza_original_label: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      costo_minimo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      precio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      precio_con_iva: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      casa_comercial_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      total_general: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
     }
-    branches.forEach((branch) => {
-      nextFilters[`sucursal_${branch.id}`] = {
-        operator: FilterOperator.AND,
-        constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }],
-      }
-    })
     if (!preserveSearch) setGlobalFilterValue('')
     setFilters(nextFilters)
     return nextFilters
-  }, [branches])
+  }, [])
 
   useEffect(() => {
     try {
@@ -727,17 +702,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     })
   }, [fetchProducts, filters, pageSize, sortField, sortOrder])
 
-  const filterClearTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
-      <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
-
-  const filterApplyTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterApplyCallback}>
-      <i className="pi pi-check" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
 
   // ---------------- Row selection (Prime) ----------------
   const [selectedRows, setSelectedRows] = useState([])
@@ -1308,23 +1272,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     setIsSearchMaximized(true)
   }
 
-  const handleFilterChange = async (event) => {
-    const rawFilters = event?.filters || {}
-    const nextFilters = {
-      ...rawFilters,
-      global: { value: globalFilterValue || null, matchMode: FilterMatchMode.CONTAINS },
-    }
-    setFilters(nextFilters)
-    setPageFirst(0)
-    if (!lastSearchRef.current) return
-    setIsRefreshing(true)
-    await fetchProducts(lastSearchRef.current, 1, pageSize, {
-      tableFilters: nextFilters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
-      globalSearchValue: globalFilterValue,
-    })
-  }
 
   function handleGlobalFilterChange(event) {
     const value = event.target.value
@@ -1619,7 +1566,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           className={`users-datatable inventario-v2-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}${isGlobalSearchPending ? ' inventario-v2-datatable--pending' : ''}`}
           stateStorage="local"
           stateKey="inventario-v2-table-state"
-          pt={{ root: { onClickCapture: preventHeaderSort } }}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
@@ -1639,7 +1585,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           sortOrder={sortOrder || 0}
           onSort={handleSortChange}
           filters={filters}
-          onFilter={handleFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={globalFilterFields}
           reorderableColumns
@@ -1697,19 +1642,12 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           {selectedColumns.map((column, index) => {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
-            let enableFilter = true
-
-            let filterMatchMode = FilterMatchMode.CONTAINS
-            let showFilterMatchModes = true
-            let showFilterOperator = true
-            let filterElement = undefined
             const isCodigoColumn = column.nombrevar === 'codigo'
             let columnHeader = column.header
 
             switch (column.nombrevar) {
               case 'codigo':
                 bodyTemplate = (rowData) => codigoBodyTemplate(rowData)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 columnHeader = (
                   <div className="codigo-column-header">
                     <span className="codigo-column-header__label">{column.header}</span>
@@ -1729,12 +1667,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 break
               case 'nombre':
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'pieza_original_label':
                 bodyTemplate = (rowData) => piezaOriginalBodyTemplate(rowData)
                 className = 'column-max-min-width--small'
-                enableFilter = false
                 break
               case 'precio':
               case 'precio_con_iva':
@@ -1750,16 +1686,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                   return numericBodyTemplate(rowData, column.nombrevar)
                 }
                 className = 'column-max-min-width--small'
-                enableFilter = false
-                break
-              case 'referencia':
-              case 'oem_codes':
-                bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
-                break
-              case 'casa_comercial_nombre':
-                bodyTemplate = (rowData) => casaComercialBodyTemplate(rowData)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
@@ -1775,15 +1701,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 sortable
                 reorderable
                 frozen={isCodigoColumn && isCodigoColumnFrozen}
-                filter={enableFilter}
-                filterPlaceholder={column.filterPlaceholder}
-                filterMatchMode={filterMatchMode}
-                showFilterMenuOptions={enableFilter}
-                showFilterMatchModes={enableFilter && showFilterMatchModes}
-                showFilterOperator={enableFilter && showFilterOperator}
-                filterApply={enableFilter ? filterApplyTemplate : undefined}
-                filterClear={enableFilter ? filterClearTemplate : undefined}
-                filterElement={filterElement}
                 className={className}
                 style={{ minWidth: '32px' }}
               />
@@ -1796,15 +1713,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
               field={`sucursal_${branch.id}`}
               header={branch.nombre}
               sortable
-              filter
-              filterMatchMode={FilterMatchMode.EQUALS}
-              showFilterMatchModes={false}
-              showFilterOperator={false}
               className="column-max-min-width--small"
               style={{ minWidth: '32px' }}
               body={(rowData) => quantityBody(rowData, `sucursal_${branch.id}`)}
-              filterApply={filterApplyTemplate}
-              filterClear={filterClearTemplate}
             />
           ))}
 
@@ -1813,15 +1724,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             field="total_general"
             header="Total"
             sortable
-            filter
-            filterMatchMode={FilterMatchMode.EQUALS}
-            showFilterMatchModes={false}
-            showFilterOperator={false}
             className="column-max-min-width--small"
             style={{ minWidth: '32px' }}
             body={(rowData) => quantityBody(rowData, 'total_general')}
-            filterApply={filterApplyTemplate}
-            filterClear={filterClearTemplate}
           />
         </DataTable>
 

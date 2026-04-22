@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -50,17 +50,6 @@ const isCheckboxSelection = (event) => {
   if (!target) return true
   if (target.type === 'checkbox') return true
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
-}
-
-const preventHeaderSort = (e) => {
-  if (
-    e.target.closest('th.p-sortable-column') &&
-    !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-resizer') &&
-    !e.target.closest('button')
-  ) {
-    e.stopPropagation()
-  }
 }
 
 function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex }) {
@@ -290,13 +279,6 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   const initFilters = () => {
     const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-      nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      tipo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      pais_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      descripcion: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
     }
     setFilters(nextFilters)
     setGlobalFilterValue('')
@@ -387,17 +369,6 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
     })
   }, [fetchCompanies, filters, pageSize, sortField, sortOrder])
 
-  const filterClearTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
-      <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
-
-  const filterApplyTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterApplyCallback}>
-      <i className="pi pi-check" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
 
   // ---------------- Row selection (Prime) ----------------
   const [selectedRows, setSelectedRows] = useState([])
@@ -893,19 +864,6 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
     setIsSearchMaximized(true)
   }
 
-  const handleFilterChange = async (event) => {
-    const nextFilters = event?.filters || {}
-    setFilters(nextFilters)
-    setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
-    setPageFirst(0)
-    if (!lastSearchRef.current) return
-    setIsRefreshing(true)
-    await fetchCompanies(lastSearchRef.current, 1, pageSize, {
-      tableFilters: nextFilters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
-    })
-  }
 
   async function handleGlobalFilterChange(event) {
     const value = event.target.value
@@ -1037,7 +995,6 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
           sortOrder={sortOrder || 0}
           onSort={handleSortChange}
           filters={filters}
-          onFilter={handleFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'codigo', 'pais_nombre', 'telefono', 'correo', 'descripcion']}
           reorderableColumns
@@ -1047,7 +1004,6 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
           key={tableResetKey}
           stateStorage="local"
           stateKey="casas-comerciales-table-state"
-          pt={{ root: { onClickCapture: preventHeaderSort } }}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
@@ -1087,22 +1043,11 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
 
           {selectedColumns.map((column, index) => {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-            let className = 'column-max-min-width'
-
-            let filterMatchMode = FilterMatchMode.CONTAINS
-            let showFilterMatchModes = true
-            let showFilterOperator = true
-            let filterElement = undefined
+            const className = 'column-max-min-width'
 
             switch (column.nombrevar) {
               case 'nombre':
                 bodyTemplate = (rowData) => nombreBodyTemplate(rowData)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
-                break
-              case 'codigo':
-              case 'pais_nombre':
-                bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
@@ -1117,15 +1062,6 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
                 body={bodyTemplate}
                 sortable
                 reorderable
-                filter
-                filterPlaceholder={column.filterPlaceholder}
-                filterMatchMode={filterMatchMode}
-                showFilterMenuOptions
-                showFilterMatchModes={showFilterMatchModes}
-                showFilterOperator={showFilterOperator}
-                filterApply={filterApplyTemplate}
-                filterClear={filterClearTemplate}
-                filterElement={filterElement}
                 className={className}
                 style={{ minWidth: '32px' }}
               />

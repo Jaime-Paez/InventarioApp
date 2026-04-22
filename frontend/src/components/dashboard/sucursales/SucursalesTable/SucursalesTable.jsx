@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -7,7 +7,6 @@ import { Tooltip } from 'primereact/tooltip'
 import { OverlayPanel } from 'primereact/overlaypanel'
 import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
-import { Dropdown } from 'primereact/dropdown'
 
 import CreateSucursal from '../CreateSucursal/CreateSucursal'
 import SucursalDetails from '../SucursalDetails/SucursalDetails'
@@ -28,16 +27,6 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
-const preventHeaderSort = (e) => {
-  if (
-    e.target.closest('th.p-sortable-column') &&
-    !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-resizer') &&
-    !e.target.closest('button')
-  ) {
-    e.stopPropagation()
-  }
-}
 
 function SucursalesTable({ token, onSelect, moduleActions }) {
   const toast = useRef(null)
@@ -133,9 +122,6 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   const initFilters = () => {
     setFilters({
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-
-      nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      direccion: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
     })
     setGlobalFilterValue('')
   }
@@ -191,11 +177,6 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchBranches(value)
     }, 500)
-  }
-  const handleTableFilterChange = (event) => {
-    const nextFilters = event?.filters || {}
-    setFilters(nextFilters)
-    setGlobalFilterValue(nextFilters?.global?.value || '')
   }
 
   const initialSearchCriteria = {
@@ -278,17 +259,6 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
     setBranches(applySearchFilters(source, lastSearchRef.current))
   }
 
-  const filterClearTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
-      <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
-
-  const filterApplyTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterApplyCallback}>
-      <i className="pi pi-check" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
 
   // ---------------- Row selection (Prime) ----------------
   const [selectedRows, setSelectedRows] = useState([])
@@ -835,13 +805,11 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
           filters={filters}
-          onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'direccion', 'latitud', 'longitud']}
           key={tableResetKey}
           stateStorage="local"
           stateKey="sucursales-table-state"
-          pt={{ root: { onClickCapture: preventHeaderSort } }}
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
@@ -874,20 +842,13 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
 
-            let filterMatchMode = FilterMatchMode.CONTAINS
-            let showFilterMatchModes = true
-            let showFilterOperator = true
-            let filterElement = undefined
-
             switch (column.nombrevar) {
               case 'nombre':
                 bodyTemplate = (rowData) => nombreBodyTemplate(rowData)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'latitud':
               case 'longitud':
                 bodyTemplate = (rowData) => coordBodyTemplate(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 className = 'column-max-min-width--small'
                 break
               default:
@@ -903,15 +864,6 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
                 body={bodyTemplate}
                 sortable
                 reorderable
-                filter
-                filterPlaceholder={column.filterPlaceholder}
-                filterMatchMode={filterMatchMode}
-                showFilterMenuOptions
-                showFilterMatchModes={showFilterMatchModes}
-                showFilterOperator={showFilterOperator}
-                filterApply={filterApplyTemplate}
-                filterClear={filterClearTemplate}
-                filterElement={filterElement}
                 className={className}
                 style={{ minWidth: '32px' }}
               />

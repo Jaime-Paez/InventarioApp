@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -84,17 +84,6 @@ const isCheckboxSelection = (event) => {
   if (!target) return true
   if (target.type === 'checkbox') return true
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
-}
-
-const preventHeaderSort = (e) => {
-  if (
-    e.target.closest('th.p-sortable-column') &&
-    !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-resizer') &&
-    !e.target.closest('button')
-  ) {
-    e.stopPropagation()
-  }
 }
 
 function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '' }) {
@@ -426,29 +415,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const initFilters = () => {
     const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-      codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      fecha: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      cliente_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      cedula_ruc: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      marca: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      modelo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      motor: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      anio: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      sucursal_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      producto_solicitado_nombre: {
-        operator: FilterOperator.AND,
-        constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-      },
-      producto_solicitado_descripcion: {
-        operator: FilterOperator.AND,
-        constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-      },
-      descripcion_general: {
-        operator: FilterOperator.AND,
-        constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-      },
-      producto_conseguido: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      cantidad: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
     }
     setFilters(nextFilters)
     setGlobalFilterValue('')
@@ -643,17 +609,6 @@ const handleResetTable = () => {
     sortOrder,
   ])
 
-  const filterClearTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
-      <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
-
-  const filterApplyTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterApplyCallback}>
-      <i className="pi pi-check" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
 
   // ---------------- Row selection (Prime) ----------------
   const [selectedRows, setSelectedRows] = useState([])
@@ -1162,19 +1117,6 @@ const handleResetTable = () => {
     setIsSearchMaximized(true)
   }
 
-  const handleFilterChange = async (event) => {
-    const nextFilters = event?.filters || {}
-    setFilters(nextFilters)
-    setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
-    setPageFirst(0)
-    if (!lastSearchRef.current) return
-    setIsRefreshing(true)
-    await fetchClients(lastSearchRef.current, 1, pageSize, {
-      tableFilters: nextFilters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
-    })
-  }
 
   async function handleGlobalFilterChange(event) {
     const value = event.target.value
@@ -1464,7 +1406,6 @@ const handleResetTable = () => {
           sortOrder={sortOrder || 0}
           onSort={handleSortChange}
           filters={filters}
-          onFilter={handleFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={[
             'fecha',
@@ -1488,7 +1429,6 @@ const handleResetTable = () => {
           key={tableResetKey}
           stateStorage="local"
           stateKey="solicitudes-table-state"
-          pt={{ root: { onClickCapture: preventHeaderSort } }}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
@@ -1540,23 +1480,15 @@ const handleResetTable = () => {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
 
-            let filterMatchMode = FilterMatchMode.CONTAINS
-            let showFilterMatchModes = true
-            let showFilterOperator = true
-            let filterElement = undefined
-
             switch (column.nombrevar) {
               case 'cliente_nombre':
                 bodyTemplate = (rowData) => clienteBodyTemplate(rowData)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'cantidad':
                 bodyTemplate = (rowData) => numericBodyTemplate(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.EQUALS
                 className = 'column-max-min-width--small'
                 break
               case 'cedula_ruc':
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 className = 'column-max-min-width--small'
                 break
               default:
@@ -1572,15 +1504,6 @@ const handleResetTable = () => {
                 body={bodyTemplate}
                 sortable
                 reorderable
-                filter
-                filterPlaceholder={column.filterPlaceholder}
-                filterMatchMode={filterMatchMode}
-                showFilterMenuOptions
-                showFilterMatchModes={showFilterMatchModes}
-                showFilterOperator={showFilterOperator}
-                filterApply={filterApplyTemplate}
-                filterClear={filterClearTemplate}
-                filterElement={filterElement}
                 className={className}
                 style={{ minWidth: '32px' }}
               />

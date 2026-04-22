@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -107,38 +107,6 @@ const ENTRADAS_ORDERING_MAP = {
 
 const createInitialFilters = () => ({
   global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-  no_documento: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  fecha: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  sucursal_nombre: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  sub_tipo_nombre: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  estado_nombre: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  sucursal_objetivo_nombre: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  total: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }],
-  },
-  funcional_label: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
 })
 
 const initialSearchCriteria = {
@@ -166,16 +134,6 @@ const isCheckboxSelection = (event) => {
   )
 }
 
-const preventHeaderSort = (e) => {
-  if (
-    e.target.closest('th.p-sortable-column') &&
-    !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-resizer') &&
-    !e.target.closest('button')
-  ) {
-    e.stopPropagation()
-  }
-}
 
 function EntradasTable({
   token,
@@ -700,23 +658,6 @@ function EntradasTable({
     }, 450)
   }
 
-  const handleTableFilterChange = (event) => {
-    const nextFilters = event?.filters || createInitialFilters()
-    const nextGlobalValue = nextFilters?.global?.value || ''
-    setFilters(nextFilters)
-    setGlobalFilterValue(nextGlobalValue)
-
-    if (globalSearchDebounceRef.current) {
-      clearTimeout(globalSearchDebounceRef.current)
-      globalSearchDebounceRef.current = null
-    }
-
-    refreshData({
-      page: 1,
-      tableFilters: nextFilters,
-      globalSearchValue: nextGlobalValue,
-    })
-  }
 
   const handlePageChange = (event) => {
     const nextRows = Number(event?.rows) || pageSize
@@ -1301,9 +1242,7 @@ function EntradasTable({
           key={tableResetKey}
           stateStorage="local"
           stateKey="entradas-table-state"
-          pt={{ root: { onClickCapture: preventHeaderSort } }}
           filters={filters}
-          onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={[
             'no_documento',
@@ -1373,8 +1312,6 @@ function EntradasTable({
                 body={bodyTemplate}
                 sortable
                 reorderable
-                filter
-                filterPlaceholder={column.filterPlaceholder}
                 className={columnClassName(field)}
                 style={{ minWidth: '32px' }}
               />

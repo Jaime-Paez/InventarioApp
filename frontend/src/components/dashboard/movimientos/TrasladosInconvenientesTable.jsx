@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -101,58 +101,11 @@ const formatHistorialAccion = (value) => {
 
 const createInitialFilters = () => ({
   global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-  solicitud_no_documento: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  producto_codigo: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  producto_nombre: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  cantidad_faltante: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }],
-  },
-  sucursal_proveedora: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  sucursal_solicitante: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  estado_label: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  resolucion_label: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
-  created_at_label: {
-    operator: FilterOperator.AND,
-    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }],
-  },
 })
 
 const selectionColStyle = {
   textAlign: 'center',
   padding: 0,
-}
-
-const preventHeaderSort = (e) => {
-  if (
-    e.target.closest('th.p-sortable-column') &&
-    !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-resizer') &&
-    !e.target.closest('button')
-  ) {
-    e.stopPropagation()
-  }
 }
 
 function TrasladosInconvenientesTable({ token, moduleActions }) {
@@ -869,11 +822,6 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
     }))
   }, [])
 
-  const handleTableFilterChange = useCallback((event) => {
-    const next = event?.filters || {}
-    setFilters(next)
-    setGlobalFilterValue(String(next?.global?.value || ''))
-  }, [])
 
   const handleStatusFilterChange = useCallback((nextFilter) => {
     setStatusFilter(String(nextFilter || 'all'))
@@ -1451,7 +1399,6 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
           filters={filters}
-          onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : [])}
           globalFilterFields={[
             'solicitud_no_documento',
@@ -1487,7 +1434,6 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
           columnResizeMode="expand"
           stateStorage="local"
           stateKey="traslados-inconvenientes-table-state"
-          pt={{ root: { onClickCapture: preventHeaderSort } }}
         >
           <Column
             selectionMode="multiple"
@@ -1524,8 +1470,6 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
                 header={column.header}
                 body={bodyTemplate}
                 sortable
-                filter
-                filterPlaceholder={column.filterPlaceholder}
                 className={className}
                 headerClassName={className}
                 style={{ minWidth: '32px' }}

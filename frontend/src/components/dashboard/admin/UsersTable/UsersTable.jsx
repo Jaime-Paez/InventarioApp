@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -7,7 +7,6 @@ import { Tooltip } from 'primereact/tooltip'
 import { OverlayPanel } from 'primereact/overlaypanel'
 import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
-import { Dropdown } from 'primereact/dropdown'
 
 import CreateUsuario from '../CreateUsuario/CreateUsuario'
 import UsersDetails from '../UsersDetails/UsersDetails'
@@ -34,16 +33,6 @@ const isCheckboxSelection = (event) => {
   )
 }
 
-const preventHeaderSort = (e) => {
-  if (
-    e.target.closest('th.p-sortable-column') &&
-    !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-resizer') &&
-    !e.target.closest('button')
-  ) {
-    e.stopPropagation()
-  }
-}
 
 function UsersTable({
   token,
@@ -159,14 +148,6 @@ function UsersTable({
   const initFilters = (preserveSearch = false) => {
     setFilters({
       global: { value: preserveSearch ? (globalFilterValue || null) : null, matchMode: FilterMatchMode.CONTAINS },
-
-      codigo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      cargo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-
-      activo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.EQUALS }] },
     })
     if (!preserveSearch) setGlobalFilterValue('')
   }
@@ -235,11 +216,6 @@ function UsersTable({
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchUsers(value, { withOverlay: false })
     }, 500)
-  }
-  const handleTableFilterChange = (event) => {
-    const nextFilters = event?.filters || {}
-    setFilters(nextFilters)
-    setGlobalFilterValue(nextFilters?.global?.value || '')
   }
 
   const initialSearchCriteria = {
@@ -328,17 +304,6 @@ function UsersTable({
     setUsers(applySearchFilters(source, lastSearchRef.current))
   }
 
-  const filterClearTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
-      <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
-
-  const filterApplyTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterApplyCallback}>
-      <i className="pi pi-check" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
 
   // =========================================================
   // OK. Row selection (Prime nativo) + persistencia por IDs
@@ -577,24 +542,6 @@ function UsersTable({
     )
   }
 
-  const activoFilterElement = (options) => {
-    const items = [
-      { label: 'Todos', value: null },
-      { label: 'Activo', value: true },
-      { label: 'Inactivo', value: false },
-    ]
-
-    return (
-      <Dropdown
-        value={options.value}
-        options={items}
-        onChange={(e) => options.filterCallback(e.value, options.index)}
-        placeholder="Selecciona"
-        className="p-column-filter"
-        style={{ width: '100%' }}
-      />
-    )
-  }
 
   // ---------------- Row click -> detalles ----------------
   const [selectedUserId, setSelectedUserId] = useState(null)
@@ -937,7 +884,6 @@ function UsersTable({
           sortOrder={sortOrder || 0}
           onSort={handleSortChange}
           filters={filters}
-          onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['codigo', 'nombre', 'nombres', 'apellidos', 'correo', 'telefono', 'cargo', 'activo']}
           reorderableColumns
@@ -947,7 +893,6 @@ function UsersTable({
           key={tableResetKey}
           stateStorage="local"
           stateKey="usuarios-table-state"
-          pt={{ root: { onClickCapture: preventHeaderSort } }}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
@@ -980,11 +925,6 @@ function UsersTable({
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
 
-            let filterMatchMode = undefined
-            let filterElement = undefined
-            let showFilterMatchModes = true
-            let showFilterOperator = true
-
             switch (column.nombrevar) {
               case 'codigo':
                 bodyTemplate = (rowData) => codigoBodyTemplate(rowData)
@@ -995,10 +935,6 @@ function UsersTable({
               case 'activo':
                 bodyTemplate = (rowData) => activoBodyTemplate(rowData)
                 className = 'column-max-min-width--small'
-                filterMatchMode = FilterMatchMode.EQUALS
-                filterElement = (options) => activoFilterElement(options)
-                showFilterMatchModes = false
-                showFilterOperator = false
                 break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
@@ -1012,17 +948,8 @@ function UsersTable({
                 header={column.header}
                 body={bodyTemplate}
                 sortable
-                filter
-                filterField={column.nombrevar}
-                filterPlaceholder={column.filterPlaceholder}
-                filterClear={filterClearTemplate}
-                filterApply={filterApplyTemplate}
                 className={className}
                 headerClassName={className}
-                filterMatchMode={filterMatchMode}
-                filterElement={filterElement}
-                showFilterMatchModes={showFilterMatchModes}
-                showFilterOperator={showFilterOperator}
                 style={{ minWidth: '32px' }}
               />
             )

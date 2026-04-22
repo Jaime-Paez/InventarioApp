@@ -562,12 +562,12 @@
   border-color: var(--color-primary-strong);
 }
 
-/* Sort only on icon click — default cursor on header, pointer only on sort icon */
+/* Sort on header title click — hide sort icon */
 .users-datatable th.p-sortable-column {
-  cursor: default !important;
+  cursor: pointer !important;
 }
 .users-datatable th.p-sortable-column .p-sortable-column-icon {
-  cursor: pointer !important;
+  display: none !important;
 }
 
 /* Column header title truncation — shows "Co..." when column is too narrow */

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -57,16 +57,7 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
-const preventHeaderSort = (e) => {
-  if (
-    e.target.closest('th.p-sortable-column') &&
-    !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-resizer') &&
-    !e.target.closest('button')
-  ) {
-    e.stopPropagation()
-  }
-}
+
 
 function ClientesTable({ token, onSelect, user, moduleActions }) {
   const toast = useRef(null)
@@ -287,13 +278,6 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   const initFilters = () => {
     const nextFilters = {
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-      nombres: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      apellidos: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      cedula_ruc: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      autos_count: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      correo: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      telefono: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
-      direccion: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }] },
     }
     setFilters(nextFilters)
     setGlobalFilterValue('')
@@ -443,17 +427,6 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
     })
   }, [fetchClients, filters, pageSize, sortField, sortOrder])
 
-  const filterClearTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
-      <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
-
-  const filterApplyTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterApplyCallback}>
-      <i className="pi pi-check" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
 
   // ---------------- Row selection (Prime) ----------------
   const [selectedRows, setSelectedRows] = useState([])
@@ -923,19 +896,6 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
     setIsSearchMaximized(true)
   }
 
-  const handleFilterChange = async (event) => {
-    const nextFilters = event?.filters || {}
-    setFilters(nextFilters)
-    setGlobalFilterValue(getPrimeGlobalFilterValue(nextFilters))
-    setPageFirst(0)
-    if (!lastSearchRef.current) return
-    setIsRefreshing(true)
-    await fetchClients(lastSearchRef.current, 1, pageSize, {
-      tableFilters: nextFilters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
-    })
-  }
 
   async function handleGlobalFilterChange(event) {
     const value = event.target.value
@@ -1221,7 +1181,6 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
           sortOrder={sortOrder || 0}
           onSort={handleSortChange}
           filters={filters}
-          onFilter={handleFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombres', 'apellidos', 'cedula_ruc', 'autos_count', 'correo', 'telefono', 'direccion']}
           reorderableColumns
@@ -1231,7 +1190,6 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
           key={tableResetKey}
           stateStorage="local"
           stateKey="clientes-table-state"
-          pt={{ root: { onClickCapture: preventHeaderSort } }}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
@@ -1283,27 +1241,18 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
 
-            let filterMatchMode = FilterMatchMode.CONTAINS
-            let showFilterMatchModes = true
-            let showFilterOperator = true
-            let filterElement = undefined
-
             switch (column.nombrevar) {
               case 'nombres':
                 bodyTemplate = (rowData) => nombresBodyTemplate(rowData)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'apellidos':
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'autos_count':
                 bodyTemplate = (rowData) => numericBodyTemplate(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 className = 'column-max-min-width--small'
                 break
               case 'cedula_ruc':
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 className = 'column-max-min-width--small'
                 break
               default:
@@ -1319,15 +1268,6 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
                 body={bodyTemplate}
                 sortable
                 reorderable
-                filter
-                filterPlaceholder={column.filterPlaceholder}
-                filterMatchMode={filterMatchMode}
-                showFilterMenuOptions
-                showFilterMatchModes={showFilterMatchModes}
-                showFilterOperator={showFilterOperator}
-                filterApply={filterApplyTemplate}
-                filterClear={filterClearTemplate}
-                filterElement={filterElement}
                 className={className}
                 style={{ minWidth: '32px' }}
               />

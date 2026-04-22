@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { FilterMatchMode, FilterOperator } from 'primereact/api'
+import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -27,16 +27,7 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
-const preventHeaderSort = (e) => {
-  if (
-    e.target.closest('th.p-sortable-column') &&
-    !e.target.closest('.p-sortable-column-icon') &&
-    !e.target.closest('.p-column-resizer') &&
-    !e.target.closest('button')
-  ) {
-    e.stopPropagation()
-  }
-}
+
 
 function BodegasTable({ token, onSelect, moduleActions }) {
   const toast = useRef(null)
@@ -141,9 +132,6 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   const initFilters = () => {
     setFilters({
       global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-
-      nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
-      sucursal_nombre: { operator: FilterOperator.AND, constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }] },
     })
     setGlobalFilterValue('')
   }
@@ -199,11 +187,6 @@ function BodegasTable({ token, onSelect, moduleActions }) {
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchWarehouses(value)
     }, 500)
-  }
-  const handleTableFilterChange = (event) => {
-    const nextFilters = event?.filters || {}
-    setFilters(nextFilters)
-    setGlobalFilterValue(nextFilters?.global?.value || '')
   }
 
   const initialSearchCriteria = {
@@ -288,17 +271,6 @@ function BodegasTable({ token, onSelect, moduleActions }) {
     setWarehouses(applySearchFilters(source, lastSearchRef.current))
   }
 
-  const filterClearTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterClearCallback}>
-      <i className="pi pi-times" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
-
-  const filterApplyTemplate = (options) => (
-    <Button className="rounded-icon-btn" type="button" onClick={options.filterApplyCallback}>
-      <i className="pi pi-check" style={{ fontSize: '0.8rem', margin: 0 }} />
-    </Button>
-  )
 
   // ---------------- Row selection (Prime) ----------------
   const [selectedRows, setSelectedRows] = useState([])
@@ -840,13 +812,11 @@ function BodegasTable({ token, onSelect, moduleActions }) {
           rowsPerPageOptions={[5, 10, 25, 50]}
           removableSort
           filters={filters}
-          onFilter={handleTableFilterChange}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'sucursal_nombre', 'ancho_metros', 'alto_metros', 'ubicaciones_count']}
           key={tableResetKey}
           stateStorage="local"
           stateKey="bodegas-table-state"
-          pt={{ root: { onClickCapture: preventHeaderSort } }}
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
@@ -879,21 +849,14 @@ function BodegasTable({ token, onSelect, moduleActions }) {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
 
-            let filterMatchMode = FilterMatchMode.CONTAINS
-            let showFilterMatchModes = true
-            let showFilterOperator = true
-            let filterElement = undefined
-
             switch (column.nombrevar) {
               case 'nombre':
                 bodyTemplate = (rowData) => nombreBodyTemplate(rowData)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 break
               case 'ancho_metros':
               case 'alto_metros':
               case 'ubicaciones_count':
                 bodyTemplate = (rowData) => numericBodyTemplate(rowData, column.nombrevar)
-                filterMatchMode = FilterMatchMode.STARTS_WITH
                 className = 'column-max-min-width--small'
                 break
               default:
@@ -909,15 +872,6 @@ function BodegasTable({ token, onSelect, moduleActions }) {
                 body={bodyTemplate}
                 sortable
                 reorderable
-                filter
-                filterPlaceholder={column.filterPlaceholder}
-                filterMatchMode={filterMatchMode}
-                showFilterMenuOptions
-                showFilterMatchModes={showFilterMatchModes}
-                showFilterOperator={showFilterOperator}
-                filterApply={filterApplyTemplate}
-                filterClear={filterClearTemplate}
-                filterElement={filterElement}
                 className={className}
                 style={{ minWidth: '32px' }}
               />
