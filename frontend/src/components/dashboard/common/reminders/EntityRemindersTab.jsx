@@ -107,6 +107,20 @@ const getTransferHistoryVisualStatus = (stage, customLabel = '') => {
   return { label, className: 'pending' }
 }
 
+const extractTransferHistoryRejectionReason = (entry) => {
+  const normalizedStage = normalizeStateText(entry?.stage)
+  if (normalizedStage !== 'rechazada') return ''
+
+  const explicitReason = String(entry?.reason || entry?.motivo || '').trim()
+  if (explicitReason) return explicitReason
+
+  const description = String(entry?.description || '').trim()
+  if (!description) return ''
+
+  const reasonMatch = description.match(/motivo:\s*(.+)$/i)
+  return String(reasonMatch?.[1] || '').trim()
+}
+
 const mergeTransferHistoryForContext = (reminders, contextId) => {
   const normalizedContextId = normalizeId(contextId)
   if (!normalizedContextId) return []
@@ -162,6 +176,20 @@ const formatDecisionStatusLabel = (value) => {
   if (normalized === 'rechazada') return 'Rechazada'
   if (normalized === 'enviado') return 'Enviado'
   return 'Pendiente'
+}
+
+const extractReminderDecisionReason = (reminder) => {
+  const decisionStatus = getReminderDecisionStatus(reminder)
+  if (decisionStatus !== 'rechazada') return ''
+
+  const explicitReason = String(reminder?.decision?.reason || reminder?.decision?.motivo || '').trim()
+  if (explicitReason) return explicitReason
+
+  const description = String(reminder?.description || '').trim()
+  if (!description) return ''
+
+  const reasonMatch = description.match(/motivo:\s*(.+)$/i)
+  return String(reasonMatch?.[1] || '').trim()
 }
 
 const formatReminderContextTypeLabel = (value) => {
@@ -376,12 +404,14 @@ function EntityRemindersTab({
     const timelineItems = labeledHistory.map((entry, index) => {
       const displayLabel = String(entry?.displayLabel || '').trim() || getTransferHistoryStageLabel(entry?.stage)
       const historyStatus = getTransferHistoryVisualStatus(entry?.stage, displayLabel)
+      const rejectionReason = extractTransferHistoryRejectionReason(entry)
 
       return {
         id: `actual-${String(entry?.stage || 'stage').trim()}-${String(entry?.at || index).trim()}`,
         label: historyStatus.label,
         className: historyStatus.className,
         actorName: String(entry?.actor?.name || '').trim(),
+        detailText: rejectionReason ? `Motivo: ${rejectionReason}` : '',
         timestamp: String(entry?.at || '').trim(),
         isPlaceholder: false,
       }
@@ -421,6 +451,11 @@ function EntityRemindersTab({
   const activeReminderDecisionStatus = useMemo(() => {
     if (!activeReminderDetail) return ''
     return getReminderDecisionStatus(activeReminderDetail)
+  }, [activeReminderDetail])
+
+  const activeReminderDecisionReason = useMemo(() => {
+    if (!activeReminderDetail) return ''
+    return extractReminderDecisionReason(activeReminderDetail)
   }, [activeReminderDetail])
 
   const activeReminderRecipientsLabel = useMemo(() => {
@@ -874,6 +909,9 @@ function EntityRemindersTab({
                           {!!entry.actorName && (
                             <small>Por {entry.actorName}</small>
                           )}
+                          {!!entry.detailText && (
+                            <p className="recordatorios-popup__detail-history-reason">{entry.detailText}</p>
+                          )}
                         </div>
                       </li>
                     ))}
@@ -1046,11 +1084,11 @@ function EntityRemindersTab({
                 </div>
               )}
 
-              {showDetailDecision && String(activeReminderDetail?.decision?.reason || '').trim() && (
+              {showDetailDecision && activeReminderDecisionReason && (
                 <section className="entity-reminders__detail-section">
                   <h6>Motivo</h6>
                   <p className="entity-reminders__detail-description">
-                    {String(activeReminderDetail?.decision?.reason || '').trim()}
+                    {activeReminderDecisionReason}
                   </p>
                 </section>
               )}
