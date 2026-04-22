@@ -17,6 +17,7 @@ import {
   isRandomInspectionDailyReminder,
   isRandomInspectionVerifyReminder,
   isReminderForContext,
+  isTransferIssueReminder,
   isTransferDecisionAllowedForUser,
   isSpecialTransferDecisionReminder,
   normalizeId,
@@ -694,6 +695,7 @@ function RecordatoriosPopup({
   onOpenTransferRequestInTransit,
   onOpenTransferRequestInSalidas,
   onOpenRandomInspection,
+  onOpenTransferIssuesSection,
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const [users, setUsers] = useState([])
@@ -2082,6 +2084,32 @@ function RecordatoriosPopup({
     [notifyError, onClose, onOpenTransferRequestInTransit]
   )
 
+  const handleOpenTransferIssueResolution = useCallback(
+    async (reminder) => {
+      if (typeof onOpenTransferIssuesSection !== 'function') return false
+      const reminderId = normalizeId(reminder?.id) || normalizeId(reminder?.context?.id)
+      if (reminderId) {
+        setOpeningTransferReminderId(reminderId)
+      }
+
+      try {
+        const opened = await onOpenTransferIssuesSection(reminder)
+        if (!opened) {
+          notifyError('No se pudo abrir la seccion de inconvenientes.')
+          return false
+        }
+        onClose?.()
+        return true
+      } catch (error) {
+        notifyError(error?.message || 'No se pudo abrir la seccion de inconvenientes.')
+        return false
+      } finally {
+        setOpeningTransferReminderId('')
+      }
+    },
+    [notifyError, onClose, onOpenTransferIssuesSection]
+  )
+
   if (!shouldRender || typeof document === 'undefined') return null
 
   return createPortal(
@@ -2263,6 +2291,7 @@ function RecordatoriosPopup({
                     selectedDayReminders.map((reminder) => {
                         const baseStatus = buildReminderStatusForUser(reminder, currentUserIdSet)
                         const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
+                        const isTransferIssue = isTransferIssueReminder(reminder)
                         const decisionStatus = getReminderDecisionStatus(reminder)
                         const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
                         const isTransferContextReminder =
@@ -2420,6 +2449,11 @@ function RecordatoriosPopup({
                             isRandomInspectionVerifyReminder(reminder)
                           ) &&
                           typeof onOpenRandomInspection === 'function'
+                        )
+                        const canOpenTransferIssueAction = (
+                          isTransferIssue &&
+                          displayStatus.label === 'Pendiente' &&
+                          typeof onOpenTransferIssuesSection === 'function'
                         )
                         const isPendingInspectionAlert = (
                           status.className === 'pending' &&
@@ -2579,6 +2613,17 @@ function RecordatoriosPopup({
                                         ? 'Ir a revision por sucursal'
                                         : 'Realizar inspeccion'
                                     )}
+                                </button>
+                              ) : canOpenTransferIssueAction ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => {
+                                    void handleOpenTransferIssueResolution(reminder)
+                                  }}
+                                  disabled={isOpeningTransfer}
+                                >
+                                  {isOpeningTransfer ? 'Abriendo...' : 'Resolver inconveniente'}
                                 </button>
                               ) : status.canMarkSeen ? (
                                 <button
@@ -2873,6 +2918,20 @@ function RecordatoriosPopup({
               </div>
 
               <footer className="recordatorios-popup__detail-footer">
+                {isTransferIssueReminder(activeDetailReminder) && activeDetailReminderStatus?.label === 'Pendiente' && (
+                  <button
+                    type="button"
+                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                    onClick={() => {
+                      void handleOpenTransferIssueResolution(activeDetailReminder)
+                    }}
+                    disabled={normalizeId(openingTransferReminderId) === normalizeId(activeDetailReminder?.id)}
+                  >
+                    {normalizeId(openingTransferReminderId) === normalizeId(activeDetailReminder?.id)
+                      ? 'Abriendo...'
+                      : 'Resolver inconveniente'}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="recordatorios-popup__decision-close-link"

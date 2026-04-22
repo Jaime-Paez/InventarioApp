@@ -390,6 +390,7 @@ function QuickActions({
   onOpenTransferRequestInEntradas,
   onOpenTransferRequestInSalidas,
   onOpenInventoryReviewSection,
+  onOpenTransferIssuesSection,
   allowUrgentShield = true,
 }) {
   const wrapRef = useRef(null)
@@ -3910,6 +3911,7 @@ function QuickActions({
         onOpenTransferRequestInTransit={handleOpenInTransitShipmentFromReminder}
         onOpenTransferRequestInSalidas={onOpenTransferRequestInSalidas}
         onOpenRandomInspection={handleOpenRandomInspectionFromReminder}
+        onOpenTransferIssuesSection={onOpenTransferIssuesSection}
       />
 
       {isRandomInspectionModalOpen && (

@@ -60,6 +60,8 @@ ALLOWED_STOCK_MODULES = {
     RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
     RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
 }
+TRANSFER_ISSUE_REMINDER_KIND = "solicitud_traslado_inconveniente"
+TRANSFER_ISSUE_REMINDER_CONTEXT_TYPE = "traslado_inconveniente"
 
 
 class MovimientoInventarioViewSet(viewsets.ModelViewSet):
@@ -1281,6 +1283,61 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         return [merged, *remainder]
 
+    def _upsert_transfer_issue_context_reminder(
+        self,
+        normalized_payload,
+        *,
+        solicitud_id,
+        reminder,
+        preserve_identity=True,
+        preserve_created_at=True,
+        preserve_display_timestamp=True,
+    ):
+        solicitud_token = str(int(solicitud_id or 0))
+        if not solicitud_token:
+            return normalized_payload
+
+        matches = []
+        remainder = []
+        for item in normalized_payload if isinstance(normalized_payload, list) else []:
+            if not isinstance(item, dict):
+                continue
+            context = item.get("context") if isinstance(item.get("context"), dict) else {}
+            context_type = self._normalize_reminder_context_type(context.get("type"))
+            context_id = str(context.get("id") or "").strip()
+            if (
+                context_type == TRANSFER_ISSUE_REMINDER_CONTEXT_TYPE
+                and context_id == solicitud_token
+            ):
+                matches.append(item)
+            else:
+                remainder.append(item)
+
+        base = None
+        if matches:
+            base = sorted(
+                matches,
+                key=lambda row: str(row.get("createdAt") or "").strip() or "9999",
+            )[0]
+
+        merged = dict(base or {})
+        for candidate in matches:
+            merged = _merge_reminder(merged, candidate) or merged
+        merged = _merge_reminder(merged, reminder) or reminder
+        if preserve_identity and base and str(base.get("id") or "").strip():
+            merged["id"] = str(base.get("id")).strip()
+        if preserve_created_at and base and str(base.get("createdAt") or "").strip():
+            merged["createdAt"] = str(base.get("createdAt")).strip()
+        if base and isinstance(base.get("creator"), dict):
+            merged["creator"] = base.get("creator")
+        if preserve_display_timestamp and base:
+            if str(base.get("date") or "").strip():
+                merged["date"] = str(base.get("date")).strip()
+            if str(base.get("time") or "").strip():
+                merged["time"] = str(base.get("time")).strip()
+
+        return [merged, *remainder]
+
     def _normalize_reminder_context_type(self, value):
         normalized = str(value or "").strip().lower()
         if not normalized:
@@ -1788,6 +1845,140 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 solicitud_id=int(solicitud.id),
                 reminder=reminder,
             )
+            store.save(update_fields=["payload", "updated_at"])
+
+        return True
+
+    def _sync_transfer_inconvenience_reminder(
+        self,
+        *,
+        solicitud,
+        actor_user,
+    ):
+        if solicitud is None:
+            return False
+
+        solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+        if solicitud_id <= 0:
+            return False
+
+        inconvenientes = list(
+            TrasladoInconveniente.objects.select_related("producto")
+            .filter(solicitud_id=solicitud_id)
+            .order_by("id")
+        )
+        if not inconvenientes:
+            return False
+
+        recipients = self._resolve_transfer_request_admin_recipients()
+        if not recipients:
+            return False
+
+        actor_recipient = self._normalize_reminder_recipient(actor_user) or {
+            "id": "system",
+            "name": "Sistema",
+        }
+        transfer_doc = str(getattr(solicitud, "no_documento", "") or "").strip()
+        transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{solicitud_id}"
+        requester_name = str(
+            getattr(getattr(solicitud, "sucursal_solicitante", None), "nombre", "") or ""
+        ).strip() or "sucursal destino"
+        context_label = f"Inconveniente de traslado {transfer_reference}"
+
+        pending_state = str(TrasladoInconveniente.Estados.PENDIENTE).strip().lower()
+        pending_issues = [
+            issue
+            for issue in inconvenientes
+            if str(getattr(issue, "estado", "") or "").strip().lower()
+            == pending_state
+        ]
+        active_issues = pending_issues or inconvenientes
+
+        summary_lines = []
+        max_summary_items = 3
+        for issue in active_issues[:max_summary_items]:
+            product_name = str(
+                getattr(getattr(issue, "producto", None), "nombre", "")
+                or getattr(getattr(issue, "producto", None), "codigo", "")
+                or getattr(issue, "producto_id", "")
+            ).strip() or "Producto"
+            missing_qty = int(getattr(issue, "cantidad_faltante", 0) or 0)
+            issue_reason = str(getattr(issue, "motivo", "") or "").strip()
+            detail = f"{product_name}: faltan {missing_qty}"
+            if issue_reason:
+                detail = f"{detail} ({issue_reason})"
+            summary_lines.append(detail)
+
+        summary = "; ".join(summary_lines)
+        extra_count = max(0, len(active_issues) - len(summary_lines))
+        if summary and extra_count > 0:
+            summary = f"{summary}; y {extra_count} mas"
+
+        all_resolved = not pending_issues
+        if all_resolved:
+            resolved_count = len(inconvenientes)
+            if resolved_count == 1:
+                description = (
+                    f"El inconveniente del traslado {transfer_reference} ya fue resuelto."
+                )
+            else:
+                description = (
+                    f"Los {resolved_count} inconvenientes del traslado {transfer_reference} "
+                    "ya fueron resueltos."
+                )
+        else:
+            pending_count = len(pending_issues)
+            count_label = (
+                "1 inconveniente pendiente"
+                if pending_count == 1
+                else f"{pending_count} inconvenientes pendientes"
+            )
+            description = (
+                f"El traslado {transfer_reference} llego con inconvenientes en {requester_name}. "
+                f"Hay {count_label} por resolver."
+            )
+
+        if summary:
+            description = f"{description} Detalle: {summary}."
+
+        now = timezone.localtime(timezone.now())
+        created_at = timezone.now().isoformat()
+        completed_by = (
+            [
+                str(recipient.get("id") or "").strip()
+                for recipient in recipients
+                if str(recipient.get("id") or "").strip()
+            ]
+            if all_resolved
+            else []
+        )
+
+        reminder = {
+            "id": str(uuid4()),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M"),
+            "description": description,
+            "creator": actor_recipient,
+            "recipients": recipients,
+            "context": {
+                "type": TRANSFER_ISSUE_REMINDER_CONTEXT_TYPE,
+                "id": str(solicitud_id),
+                "label": context_label,
+            },
+            "kind": TRANSFER_ISSUE_REMINDER_KIND,
+            "createdAt": created_at,
+            "completedBy": completed_by,
+        }
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            existing_payload = store.payload if isinstance(store.payload, list) else []
+            merged = self._upsert_transfer_issue_context_reminder(
+                _normalize_reminder_list(existing_payload),
+                solicitud_id=solicitud_id,
+                reminder=reminder,
+            )
+            store.payload = _normalize_reminder_list(merged)
             store.save(update_fields=["payload", "updated_at"])
 
         return True
@@ -3230,6 +3421,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         except Exception:
             reminder_sent = False
 
+        inconvenience_reminder_sent = False
+        if total_faltante > 0:
+            try:
+                inconvenience_reminder_sent = self._sync_transfer_inconvenience_reminder(
+                    solicitud=solicitud_locked,
+                    actor_user=request.user,
+                )
+            except Exception:
+                inconvenience_reminder_sent = False
+
         return Response(
             {
                 "detail": (
@@ -3242,6 +3443,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 "solicitud": solicitud_output,
                 "inconvenientes": inconvenientes_payload,
                 "recordatorio_enviado": bool(reminder_sent),
+                "recordatorio_inconveniente_enviado": bool(inconvenience_reminder_sent),
             },
             status=status.HTTP_200_OK,
         )
@@ -3512,6 +3714,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 .filter(pk=inconveniente_locked.id)
                 .first()
             )
+
+        try:
+            self._sync_transfer_inconvenience_reminder(
+                solicitud=getattr(inconveniente_out, "solicitud", None) or inconveniente.solicitud,
+                actor_user=request.user,
+            )
+        except Exception:
+            pass
 
         return Response(
             {

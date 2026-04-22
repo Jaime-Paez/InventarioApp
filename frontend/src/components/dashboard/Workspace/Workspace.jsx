@@ -317,6 +317,16 @@ function Workspace({
     return true
   }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
 
+  const handleOpenTransferIssuesSection = useCallback(() => {
+    if (!labelHasAccess(INCONVENIENTES_TAB, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) {
+      if (!labelHasAccess(INCONVENIENTES_TAB_LEGACY, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return false
+      onSelectTab?.(INCONVENIENTES_TAB_LEGACY)
+      return true
+    }
+    onSelectTab?.(INCONVENIENTES_TAB)
+    return true
+  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
+
   const handleTransferEntradaRequestHandled = useCallback(() => {
     setPendingTransferEntradaRequest(null)
   }, [])
@@ -497,10 +507,11 @@ function Workspace({
           user={user}
           allowUrgentShield={allowUrgentShield}
           onTransferDecisionAccepted={handleTransferDecisionAccepted}
-        onOpenTransferRequestInEntradas={handleOpenTransferRequestInEntradas}
-        onOpenTransferRequestInSalidas={handleOpenTransferRequestInSalidas}
-        onOpenInventoryReviewSection={handleOpenInventoryReviewSection}
-      />
+          onOpenTransferRequestInEntradas={handleOpenTransferRequestInEntradas}
+          onOpenTransferRequestInSalidas={handleOpenTransferRequestInSalidas}
+          onOpenInventoryReviewSection={handleOpenInventoryReviewSection}
+          onOpenTransferIssuesSection={handleOpenTransferIssuesSection}
+        />
       </div>
 
       {showWelcome && (

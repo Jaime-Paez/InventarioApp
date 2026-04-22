@@ -5,6 +5,7 @@ export const REMINDERS_SYNC_EVENT = 'inventario-reminders-sync'
 export const REMINDERS_TRANSFER_NOTIFICATION_EVENT = 'inventario-reminders-transfer-notification'
 export const SPECIAL_TRANSFER_DECISION_KIND = 'solicitud_traslado_decision'
 export const TRANSFER_RECEIPT_NOTIFICATION_KIND = 'solicitud_traslado_recepcion'
+export const TRANSFER_ISSUE_NOTIFICATION_KIND = 'solicitud_traslado_inconveniente'
 export const RANDOM_INSPECTION_KIND = 'inspeccion_aleatoria_diaria'
 export const RANDOM_INSPECTION_VERIFY_KIND = 'inspeccion_aleatoria_verificacion'
 export const RANDOM_INSPECTION_CONTEXT_TYPE = 'inspeccion_aleatoria'
@@ -622,6 +623,9 @@ export const getTransferReceiptOutcome = (reminder) => {
 export const isTransferReceiptNotificationReminder = (reminder) =>
   Boolean(getTransferReceiptOutcome(reminder))
 
+export const isTransferIssueReminder = (reminder) =>
+  normalizeId(reminder?.kind) === TRANSFER_ISSUE_NOTIFICATION_KIND
+
 const inferTransferDecisionStatusFromDescription = (reminder) => {
   const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
   if (contextType !== 'solicitud_traslado') return 'pendiente'
@@ -916,6 +920,7 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
   const isForCurrentUser = recipientIds.some((id) => userIdSet.has(id))
   const seenByCurrentUser = reminderCompletedByIds(reminder).some((id) => userIdSet.has(id))
   const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
+  const isTransferIssue = isTransferIssueReminder(reminder)
   const isRandomInspectionDaily = isRandomInspectionDailyReminder(reminder)
   const isRandomInspectionVerify = isRandomInspectionVerifyReminder(reminder)
   const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
@@ -927,6 +932,21 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
     return {
       label: 'Informativo',
       className: 'info',
+      canMarkSeen: false,
+    }
+  }
+
+  if (isTransferIssue) {
+    if (seenByCurrentUser) {
+      return {
+        label: 'Cumplido',
+        className: 'arrived',
+        canMarkSeen: false,
+      }
+    }
+    return {
+      label: 'Pendiente',
+      className: 'rejected',
       canMarkSeen: false,
     }
   }
