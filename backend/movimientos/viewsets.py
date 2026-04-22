@@ -10,6 +10,7 @@ from django.utils.dateparse import parse_date
 from django.utils import timezone
 from rest_framework import filters, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -1981,13 +1982,22 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
 
         if request.method.upper() == "GET":
-            ensure_sucursal_allowed_for_modules(
-                request.user,
-                [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
-                solicitud.sucursal_proveedora_id,
-                field_label="sucursal proveedora",
-                action_key="puede_leer",
-            )
+            try:
+                ensure_sucursal_allowed_for_modules(
+                    request.user,
+                    [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+                    solicitud.sucursal_proveedora_id,
+                    field_label="sucursal proveedora",
+                    action_key="puede_leer",
+                )
+            except PermissionDenied:
+                ensure_sucursal_allowed_for_modules(
+                    request.user,
+                    [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+                    solicitud.sucursal_solicitante_id,
+                    field_label="sucursal solicitante",
+                    action_key="puede_leer",
+                )
             serializer = SolicitudTrasladoSerializer(instance=solicitud)
             return Response(serializer.data, status=status.HTTP_200_OK)
 
