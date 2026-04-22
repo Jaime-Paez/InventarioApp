@@ -179,6 +179,114 @@ const parseEntityTimestamp = (...values) => {
   return Number.NaN
 }
 
+const normalizeTransferHistoryStage = (value) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (!normalized) return ''
+  if (normalized === 'aceptada' || normalized === 'aprobada' || normalized === 'approved') {
+    return 'aceptada'
+  }
+  if (
+    normalized === 'enviado' ||
+    normalized === 'enviada' ||
+    normalized === 'en_transito' ||
+    normalized === 'en_traslado' ||
+    normalized === 'en traslado' ||
+    normalized === 'shipped' ||
+    normalized === 'sent'
+  ) {
+    return 'enviado'
+  }
+  if (normalized === 'rechazada' || normalized === 'rechazar' || normalized === 'rejected') {
+    return 'rechazada'
+  }
+  if (normalized === 'pendiente' || normalized === 'creada' || normalized === 'solicitud') {
+    return 'pendiente'
+  }
+  if (normalized === 'completo' || normalized === 'recibido_completo' || normalized === 'llego_completo') {
+    return 'completo'
+  }
+  if (normalized === 'incompleto' || normalized === 'recibido_incompleto' || normalized === 'llego_incompleto') {
+    return 'incompleto'
+  }
+  if (normalized === 'cancelado' || normalized === 'cancelada') {
+    return 'cancelado'
+  }
+  return ''
+}
+
+const getEntityTransferHistoryEntries = (entity) => {
+  const rawHistory = Array.isArray(entity?.historial_transfer)
+    ? entity.historial_transfer
+    : Array.isArray(entity?.transferHistory)
+      ? entity.transferHistory
+      : Array.isArray(entity?.history)
+        ? entity.history
+        : []
+
+  return rawHistory
+    .map((entry) => {
+      const stage = normalizeTransferHistoryStage(entry?.stage || entry?.status || entry?.key)
+      const at = String(entry?.at || entry?.fecha || '').trim()
+      if (!stage) return null
+      return { stage, at }
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a?.at || '').localeCompare(String(b?.at || '')))
+}
+
+const getLatestEntityTransferHistoryEntry = (entity, allowedStages = []) => {
+  const normalizedAllowedStages = (Array.isArray(allowedStages) ? allowedStages : [])
+    .map(normalizeTransferHistoryStage)
+    .filter(Boolean)
+  const entries = getEntityTransferHistoryEntries(entity)
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]
+    if (!normalizedAllowedStages.length || normalizedAllowedStages.includes(entry.stage)) {
+      return entry
+    }
+  }
+
+  return null
+}
+
+const getReminderUrgentSnapshotKey = (reminder, prefix = '') => {
+  const snapshotKey = getTransferReminderPendingSnapshotKey(reminder)
+  const reminderId = normalizeId(reminder?.id)
+  const baseKey = snapshotKey || reminderId
+  if (!baseKey) return ''
+  return prefix ? `${prefix}-${baseKey}` : baseKey
+}
+
+const resolvePendingShipmentStateTimestamp = (shipment) => {
+  const latestRelevantEntry = getLatestEntityTransferHistoryEntry(shipment, ['aceptada', 'enviado'])
+  return parseEntityTimestamp(
+    latestRelevantEntry?.at,
+    shipment?.updated_at,
+    shipment?.created_at,
+    shipment?.createdAt,
+    shipment?.fecha
+  )
+}
+
+const getPendingShipmentUrgentSnapshotKey = (shipment) => {
+  const solicitudId = normalizeId(shipment?.id)
+  if (!solicitudId) return ''
+
+  const latestRelevantEntry = getLatestEntityTransferHistoryEntry(shipment, ['aceptada', 'enviado'])
+  const snapshotStage = latestRelevantEntry?.stage || 'aprobada'
+  const snapshotAt = String(
+    latestRelevantEntry?.at ||
+      shipment?.updated_at ||
+      shipment?.created_at ||
+      shipment?.createdAt ||
+      shipment?.fecha ||
+      ''
+  ).trim()
+
+  return ['pending-shipment', solicitudId, snapshotStage, snapshotAt].join(':')
+}
+
 const normalizeSearchText = (value) =>
   String(value ?? '')
     .normalize('NFD')
@@ -265,12 +373,7 @@ const resolveReminderStateTimestamp = (reminder) => {
 }
 
 const resolveUrgentShipmentProgress = (shipment, nowValue) => {
-  const createdAt = parseEntityTimestamp(
-    shipment?.created_at,
-    shipment?.createdAt,
-    shipment?.updated_at,
-    shipment?.fecha
-  )
+  const createdAt = resolvePendingShipmentStateTimestamp(shipment)
   const now = Number(nowValue || Date.now())
 
   if (!Number.isFinite(createdAt)) return 0
@@ -1046,17 +1149,14 @@ function QuickActions({
       .map((solicitud) => {
         const solicitudId = normalizeId(solicitud?.id)
         if (!solicitudId) return null
+        const snapshotKey = getPendingShipmentUrgentSnapshotKey(solicitud)
 
         return {
-          id: `pending-shipment-${solicitudId}`,
+          id: snapshotKey || `pending-shipment-${solicitudId}`,
           kind: 'pending_shipment',
           anchor: 'pending_shipments',
           message: URGENT_SHIPMENT_MESSAGE,
-          priorityTimestamp: parseEntityTimestamp(
-            solicitud?.created_at,
-            solicitud?.createdAt,
-            solicitud?.fecha
-          ),
+          priorityTimestamp: resolvePendingShipmentStateTimestamp(solicitud),
           solicitudId,
           solicitud,
         }
@@ -1084,9 +1184,10 @@ function QuickActions({
           const date = String(reminder?.date || '').trim()
           const time = String(reminder?.time || '').trim()
           const dateTimeCandidate = date ? `${date}T${time || '00:00'}:00` : ''
+          const targetId = getReminderUrgentSnapshotKey(reminder, 'decision')
 
           return {
-            id: reminderId,
+            id: targetId || reminderId,
             reminderId,
             kind: 'decision',
             anchor: 'top_right',
@@ -1292,27 +1393,31 @@ function QuickActions({
   }, [])
 
   useEffect(() => {
-    const nextIds = new Set(
-      pendingTransferResponseReminders
-        .map((reminder) => normalizeId(reminder?.id))
-        .filter(Boolean)
-    )
+    const responseSnapshots = pendingTransferResponseReminders
+      .map((reminder) => ({
+        reminderId: normalizeId(reminder?.id),
+        snapshotKey: getTransferReminderPendingSnapshotKey(reminder) || normalizeId(reminder?.id),
+      }))
+      .filter((item) => item.reminderId && item.snapshotKey)
+    const nextReminderIds = responseSnapshots.map((item) => item.reminderId)
+    const nextIds = new Set(responseSnapshots.map((item) => item.snapshotKey))
 
 	    if (!didInitTransferResponseSnapshotRef.current) {
 	      seenTransferResponseReminderIdsRef.current = nextIds
 	      didInitTransferResponseSnapshotRef.current = true
-	      playInitialPendingToneIfNeeded(nextIds, {
+	      playInitialPendingToneIfNeeded(nextReminderIds, {
 	        type: 'solicitud_traslado_resuelta',
 	      }, { allowAdminTone: true })
 	      return
 	    }
 
     const seenIds = seenTransferResponseReminderIdsRef.current
-    const newReminderIds = []
-    nextIds.forEach((id) => {
-      if (!seenIds.has(id)) newReminderIds.push(id)
+    const nextReminderIdsSet = new Set()
+    responseSnapshots.forEach(({ reminderId, snapshotKey }) => {
+      if (!seenIds.has(snapshotKey)) nextReminderIdsSet.add(reminderId)
     })
     seenTransferResponseReminderIdsRef.current = nextIds
+    const newReminderIds = Array.from(nextReminderIdsSet)
 
 	    if (newReminderIds.length) {
 	      playNotificationTone({ forceForAdmin: true })
@@ -1342,9 +1447,10 @@ function QuickActions({
               const date = String(reminder?.date || '').trim()
               const time = String(reminder?.time || '').trim()
               const dateTimeCandidate = date ? `${date}T${time || '00:00'}:00` : ''
+              const targetId = getReminderUrgentSnapshotKey(reminder, 'rejected-transfer')
 
               return {
-                id: `rejected-transfer-${reminderId}`,
+                id: targetId || `rejected-transfer-${reminderId}`,
                 reminderId,
                 kind: 'rejected_transfer',
                 anchor: 'top_right',

@@ -1756,9 +1756,10 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow-y: auto;
+  overflow-y: scroll;
   flex: 1;
   min-height: 0;
+  scrollbar-gutter: stable both-edges;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-border) 78%, transparent) transparent;
 }
