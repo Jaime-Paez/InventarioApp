@@ -1954,8 +1954,8 @@
 }
 
 .recordatorios-popup__detail-history-item--pending .recordatorios-popup__detail-history-card {
-  border-color: rgba(245, 158, 11, 0.28);
-  background: color-mix(in srgb, rgba(245, 158, 11, 0.12) 65%, var(--color-surface));
+  border-color: color-mix(in srgb, #f59e0b 28%, var(--color-border));
+  background: color-mix(in srgb, #f59e0b 8%, var(--color-surface));
 }
 
 .recordatorios-popup__detail-history-item--pending .recordatorios-popup__detail-history-point {
@@ -2075,8 +2075,8 @@
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__detail-history-item--pending .recordatorios-popup__detail-history-card {
-  border-color: rgba(251, 191, 36, 0.34);
-  background: rgba(245, 158, 11, 0.12);
+  border-color: color-mix(in srgb, #f59e0b 34%, #36414c);
+  background: color-mix(in srgb, #f59e0b 12%, #242a31);
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__detail-history-item--pending .recordatorios-popup__detail-history-point {
