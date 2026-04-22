@@ -1025,13 +1025,9 @@ function RecordatoriosPopup({
       date: activeDetailReminder?.date || '',
       time: activeDetailReminder?.time || '',
     })
-    const supplementalReminderHistory = backendHistory.length
-      ? reminderHistory.filter((entry) => !hasEquivalentTransferHistoryEntry(backendHistory, entry))
-      : reminderHistory
-    const mergedHistory = mergeTransferHistoryEntriesBySignature(
-      backendHistory,
-      supplementalReminderHistory
-    )
+    const mergedHistory = backendHistory.length
+      ? mergeTransferHistoryEntriesBySignature(backendHistory)
+      : mergeTransferHistoryEntriesBySignature(reminderHistory)
     const inferredDecisionEntry = mergedHistory.length
       ? null
       : buildInferredDecisionHistoryEntry(activeDetailReminder)

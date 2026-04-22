@@ -1708,6 +1708,16 @@
   overflow: hidden;
 }
 
+.recordatorios-popup__detail-card,
+.recordatorios-popup__detail-card *,
+.recordatorios-popup__detail-card *::before,
+.recordatorios-popup__detail-card *::after {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  scroll-behavior: auto !important;
+}
+
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__detail-card {
   border-color: #36414c;
   background: #1f2328;
@@ -2160,11 +2170,10 @@
 }
 
 .recordatorios-popup__detail-history-top {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
-  flex-wrap: wrap;
 }
 
 .recordatorios-popup__detail-history-top .recordatorios-popup__status,
@@ -2177,6 +2186,9 @@
 }
 
 .recordatorios-popup__detail-history-top .recordatorios-popup__status {
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
   animation: none;
   transition: none;
   transform: none;
@@ -2185,6 +2197,12 @@
 .recordatorios-popup__detail-history-time,
 .recordatorios-popup__detail-history-item small {
   color: color-mix(in srgb, currentColor 66%, transparent);
+}
+
+.recordatorios-popup__detail-history-time {
+  justify-self: end;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .recordatorios-popup__detail-history-reason {
