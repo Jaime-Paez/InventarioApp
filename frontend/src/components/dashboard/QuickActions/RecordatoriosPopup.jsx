@@ -86,8 +86,8 @@ const buildTransferResponseDescription = (reminder, decisionStatus) => {
   }
 
   if (decisionStatus === 'enviado') {
-    if (contextReference) return `Su solicitud de traslado ${contextReference} fue enviada y esta en traslado.`
-    return 'Su solicitud de traslado fue enviada y esta en traslado.'
+    if (contextReference) return `Su solicitud de traslado ${contextReference} fue enviada y está en traslado.`
+    return 'Su solicitud de traslado fue enviada y está en traslado.'
   }
 
   if (decisionStatus === 'recibido') {
@@ -501,7 +501,7 @@ const getTimelineReminderSummary = ({
   }
 
   if (isTransferContextReminder && isSpecialReminder) {
-    return 'Pendiente de decision.'
+    return 'Pendiente de decisión.'
   }
 
   return String(reminder?.description || '').trim() || '-'
@@ -1615,7 +1615,7 @@ function RecordatoriosPopup({
       )
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = String(data?.detail || data?.motivo || '').trim() || 'No se pudo registrar la decision.'
+        const detail = String(data?.detail || data?.motivo || '').trim() || 'No se pudo registrar la decisión.'
         throw new Error(detail)
       }
 
@@ -1706,7 +1706,7 @@ function RecordatoriosPopup({
       closeDecisionPanel()
       return true
     } catch (error) {
-      const message = error?.message || 'No se pudo registrar la decision.'
+      const message = error?.message || 'No se pudo registrar la decisión.'
       setDecisionError(message)
       return false
     } finally {
@@ -2040,7 +2040,7 @@ function RecordatoriosPopup({
       const reminderId = normalizeId(reminder?.id) || solicitudId
       if (!solicitudId) {
         if (!suppressError) {
-          notifyError('No se encontro la solicitud asociada a este recordatorio.')
+          notifyError('No se encontró la solicitud asociada a este recordatorio.')
         }
         return false
       }
@@ -2092,7 +2092,7 @@ function RecordatoriosPopup({
       )
       if (!solicitudId) {
         if (!suppressError) {
-          notifyError('No se encontro la solicitud asociada a este recordatorio.')
+          notifyError('No se encontró la solicitud asociada a este recordatorio.')
         }
         return false
       }
@@ -2211,7 +2211,7 @@ function RecordatoriosPopup({
       const solicitudId = normalizeId(reminder?.context?.id)
       const reminderId = normalizeId(reminder?.id) || solicitudId
       if (!solicitudId) {
-        notifyError('No se encontro la solicitud asociada a este recordatorio.')
+        notifyError('No se encontró la solicitud asociada a este recordatorio.')
         return
       }
 
@@ -2282,7 +2282,7 @@ function RecordatoriosPopup({
       const reminderId = normalizeId(reminder?.id) || normalizeId(reminder?.context?.id)
       const solicitudId = normalizeId(reminder?.context?.id)
       if (!solicitudId) {
-        notifyError('No se encontro el envio en camino asociado a este recordatorio.')
+        notifyError('No se encontró el envío en camino asociado a este recordatorio.')
         return false
       }
 
@@ -2293,13 +2293,13 @@ function RecordatoriosPopup({
       try {
         const opened = await onOpenTransferRequestInTransit(reminder)
         if (!opened) {
-          notifyError('No se pudo abrir el envio en camino.')
+          notifyError('No se pudo abrir el envío en camino.')
           return false
         }
         onClose?.()
         return true
       } catch (error) {
-        notifyError(error?.message || 'No se pudo abrir el envio en camino.')
+        notifyError(error?.message || 'No se pudo abrir el envío en camino.')
         return false
       } finally {
         setOpeningTransferReminderId('')
@@ -2393,7 +2393,7 @@ function RecordatoriosPopup({
                 </label>
 
                 <label className="recordatorios-popup__field recordatorios-popup__field--full">
-                  <span>Descripcion</span>
+                  <span>Descripción</span>
                   <textarea
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
@@ -2633,7 +2633,7 @@ function RecordatoriosPopup({
                         )
                         const latestProgressActionLabel = latestTransferStage === 'recibido'
                           ? (latestProgressPreferredTarget === 'salidas' ? 'Ver salida' : 'Ver entrada')
-                          : 'Ver envio pendiente'
+                          : 'Ver envío pendiente'
                         const canOpenLatestTransferProgress = (
                           isTransferContextReminder &&
                           !canResolveDecision &&
@@ -2901,7 +2901,7 @@ function RecordatoriosPopup({
                                     }}
                                     disabled={isOpeningTransfer}
                                   >
-                                    {isOpeningTransfer ? 'Abriendo...' : 'Abrir recepcion'}
+                                    {isOpeningTransfer ? 'Abriendo...' : 'Abrir recepción'}
                                   </button>
                                 ) : canOpenIssueFromReceiptReminder ? (
                                   <button
@@ -2935,7 +2935,7 @@ function RecordatoriosPopup({
                                       : (
                                         isLatestTransferProgressReminder
                                           ? latestProgressActionLabel
-                                          : `Ver ultimo avance (${latestTransferStageLabel})`
+                                          : `Ver último avance (${latestTransferStageLabel})`
                                       )}
                                   </button>
                                 ) : canViewTransferRequest ? (
@@ -2949,7 +2949,7 @@ function RecordatoriosPopup({
                                       ? 'Abriendo...'
                                       : (
                                         shouldUseSentCopyOnTransferEntryAction
-                                          ? 'Solicitud ya enviada, ver envio pendiente'
+                                          ? 'Solicitud ya enviada, ver envío pendiente'
                                           : (shouldShowCorrectionAction ? 'Corregir solicitud' : 'Ver solicitud')
                                       )}
                                   </button>
@@ -2966,8 +2966,8 @@ function RecordatoriosPopup({
                                       ? 'Abriendo...'
                                       : (
                                         isRandomInspectionVerifyReminder(reminder)
-                                          ? 'Ir a revision por sucursal'
-                                          : 'Realizar inspeccion'
+                                          ? 'Ir a revisión por sucursal'
+                                          : 'Realizar inspección'
                                       )}
                                   </button>
                                 ) : canOpenTransferIssueAction ? (
@@ -2990,7 +2990,7 @@ function RecordatoriosPopup({
                                     Marcar como visto
                                   </button>
                                 ) : isSpecialReminder && !canResolveDecision ? (
-                                  <span className="recordatorios-popup__action-placeholder">Decision registrada</span>
+                                  <span className="recordatorios-popup__action-placeholder">Decisión registrada</span>
                                 ) : null}
                               </div>
                             </div>
@@ -3016,7 +3016,7 @@ function RecordatoriosPopup({
                   type="button"
                   className="recordatorios-popup__close"
                   onClick={closeDecisionPanel}
-                  aria-label="Cerrar decision"
+                  aria-label="Cerrar decisión"
                 >
                   <X />
                 </button>
@@ -3052,7 +3052,7 @@ function RecordatoriosPopup({
                     </div>
 
                     <label className="recordatorios-popup__decision-description">
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <p>{String(decisionDetail?.descripcion || '').trim() || '-'}</p>
                     </label>
 
@@ -3060,7 +3060,7 @@ function RecordatoriosPopup({
                       <table className="recordatorios-popup__decision-table">
                         <thead>
                           <tr>
-                            <th>Codigo</th>
+                            <th>Código</th>
                             <th>Producto</th>
                             <th>Cantidad</th>
                           </tr>
@@ -3136,11 +3136,11 @@ function RecordatoriosPopup({
 
                     <div className="recordatorios-popup__reject-body">
                       <label className="recordatorios-popup__field recordatorios-popup__field--full">
-                        <span>Descripcion (obligatoria)</span>
+                        <span>Descripción (obligatoria)</span>
                         <textarea
                           value={rejectionReason}
                           onChange={(event) => setRejectionReason(event.target.value)}
-                          placeholder="Explica por que rechazas la solicitud"
+                          placeholder="Explica por qué rechazas la solicitud"
                           disabled={decisionSubmitting}
                         />
                       </label>
@@ -3207,7 +3207,7 @@ function RecordatoriosPopup({
                 </div>
 
                 <div className="recordatorios-popup__detail-description">
-                  <span>Descripcion</span>
+                  <span>Descripción</span>
                   <p>{activeDetailReminderDescription}</p>
                 </div>
 
@@ -3228,7 +3228,7 @@ function RecordatoriosPopup({
                       <table className="recordatorios-popup__decision-table">
                         <thead>
                           <tr>
-                            <th>Codigo</th>
+                            <th>Código</th>
                             <th>Producto</th>
                             <th>Faltante</th>
                             <th>Estado</th>

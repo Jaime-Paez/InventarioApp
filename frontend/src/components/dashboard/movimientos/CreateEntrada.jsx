@@ -439,7 +439,7 @@ function CreateEntrada({
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
   const isSelectorStep = !formData.subTipoId
   const requiresSucursalObjetivo = isTraslado
-  const documentLabel = isTraslado ? 'Codigo de solicitud' : 'Codigo de entrada'
+  const documentLabel = isTraslado ? 'Código de solicitud' : 'Código de entrada'
   const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
   const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
   const selectedSucursalId = String(formData.sucursalId || '').trim()
@@ -1062,7 +1062,7 @@ function CreateEntrada({
         }
       }
     } catch (err) {
-      notifyError(err?.message || 'Ocurrio un error al cargar los catalogos.')
+      notifyError(err?.message || 'Ocurrió un error al cargar los catálogos.')
     } finally {
       setCatalogsLoading(false)
     }
@@ -2293,7 +2293,7 @@ function CreateEntrada({
 
           if (!ventaClienteLabel) {
             setActiveTab('cliente')
-            throw new Error('No se pudo resolver la informacion del cliente para la venta.')
+            throw new Error('No se pudo resolver la información del cliente para la venta.')
           }
         }
 
@@ -2356,7 +2356,7 @@ function CreateEntrada({
       onCreated?.(data)
       return true
       } catch (err) {
-        notifyError(err.message || 'Ocurrio un error al crear la entrada.')
+        notifyError(err.message || 'Ocurrió un error al crear la entrada.')
         return false
       } finally {
         setLoading(false)
@@ -2515,7 +2515,7 @@ function CreateEntrada({
 
     if (missingAssignments.length > 0) {
       setLocationResolverError(
-        'Debes seleccionar bodega, division y subdivision para cada producto sin ubicacion en la sucursal.'
+        'Debes seleccionar bodega, división y subdivisión para cada producto sin ubicación en la sucursal.'
       )
       return
     }
@@ -2551,7 +2551,7 @@ function CreateEntrada({
     setError('')
 
     if (!entradaTipoId) {
-      notifyError('No se encontro el tipo de movimiento de entrada.')
+      notifyError('No se encontró el tipo de movimiento de entrada.')
       return
     }
 
@@ -2581,16 +2581,16 @@ function CreateEntrada({
     }
 
     if (!String(formData.no_documento || '').trim()) {
-      notifyError('Espera a que se genere el codigo del documento.')
+      notifyError('Espera a que se genere el código del documento.')
       return
     }
 
     if (documentStatus === DOCUMENT_STATUS.checking) {
-      notifyError('Espera a que se genere el codigo del documento.')
+      notifyError('Espera a que se genere el código del documento.')
       return
     }
     if (documentStatus === DOCUMENT_STATUS.error) {
-      notifyError('No se pudo generar el codigo del documento. Intenta de nuevo.')
+      notifyError('No se pudo generar el código del documento. Intenta de nuevo.')
       return
     }
 
@@ -2789,15 +2789,15 @@ function CreateEntrada({
             writeRemindersToStorage(upsertTransferReminder(existingReminders, transferReminder))
             emitRemindersSync()
           } catch {
-            notifyError('La solicitud se creo, pero no se pudo generar el recordatorio obligatorio.')
+            notifyError('La solicitud se creó, pero no se pudo generar el recordatorio obligatorio.')
           }
         } else if (!reminderStoredByServer) {
-          notifyError('La solicitud se creo, pero no se pudo generar el recordatorio obligatorio.')
+          notifyError('La solicitud se creó, pero no se pudo generar el recordatorio obligatorio.')
         }
 
         onCreated?.(data)
       } catch (err) {
-        notifyError(err.message || 'Ocurrio un error al crear la solicitud de traslado.')
+        notifyError(err.message || 'Ocurrió un error al crear la solicitud de traslado.')
       } finally {
         setLoading(false)
       }
@@ -2816,7 +2816,7 @@ function CreateEntrada({
     } catch (err) {
       notifyError(
         err?.message ||
-          'No se pudo validar si los productos tienen ubicacion en la sucursal seleccionada.'
+          'No se pudo validar si los productos tienen ubicación en la sucursal seleccionada.'
       )
       return
     } finally {
@@ -3046,13 +3046,13 @@ function CreateEntrada({
                         required
                       />
                       {documentStatus === DOCUMENT_STATUS.checking && (
-                        <small className="muted">Generando codigo...</small>
+                        <small className="muted">Generando código...</small>
                       )}
                       {documentStatus === DOCUMENT_STATUS.error && (
-                        <small className="create-user__field-error">No se pudo generar el codigo automaticamente.</small>
+                        <small className="create-user__field-error">No se pudo generar el código automáticamente.</small>
                       )}
                       {documentStatus === DOCUMENT_STATUS.available && (
-                        <small className="muted">Codigo generado automaticamente.</small>
+                        <small className="muted">Código generado automáticamente.</small>
                       )}
                     </label>
 
@@ -3124,14 +3124,14 @@ function CreateEntrada({
                           }
                           disabled={loading}
                         >
-                          <option value="true">Si</option>
+                          <option value="true">Sí</option>
                           <option value="false">No</option>
                         </select>
                       </label>
                     )}
 
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <input
                         name="descripcion"
                         type="text"
@@ -3153,7 +3153,7 @@ function CreateEntrada({
 
                   <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions">
                     <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Codigo</span>
+                      <span>Código</span>
                       <span>Nombre</span>
                       <span>Cantidad</span>
                       <span>Precio</span>
@@ -3590,7 +3590,7 @@ function CreateEntrada({
                     </div>
 
                     <p className="create-salida__reminder-helper">
-                      Al crear la solicitud se genera automaticamente un recordatorio para administradores y usuarios seleccionados.
+                      Al crear la solicitud se genera automáticamente un recordatorio para administradores y usuarios seleccionados.
                     </p>
                     <div className="create-salida__reminder-rule" role="note">
                       Solo se listan usuarios con permisos de <strong>crear y editar</strong> en{' '}
@@ -3746,7 +3746,7 @@ function CreateEntrada({
             >
               <h4>Asignar ubicaciones faltantes</h4>
               <p>
-                Algunos productos no tienen ubicacion en{' '}
+                Algunos productos no tienen ubicación en{' '}
                 <strong>{selectedSucursalName || 'la sucursal seleccionada'}</strong>. Selecciona
                 bodega, division y subdivision para cada producto y luego confirma la creacion.
               </p>

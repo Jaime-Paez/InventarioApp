@@ -973,14 +973,14 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const submitResolver = useCallback(async () => {
     if (!token || !selectedIssue) return
     if (!resolverDecision) {
-      setResolverError('Debes elegir una decision para este producto.')
+      setResolverError('Debes elegir una decisión para este producto.')
       return
     }
     if (
       (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') &&
       !normalizeId(resolverSubdivisionId)
     ) {
-      setResolverError('Debes seleccionar bodega, division y subdivision para sumar inventario.')
+      setResolverError('Debes seleccionar bodega, división y subdivisión para sumar inventario.')
       return
     }
 
@@ -1968,7 +1968,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                           ) : null}
                           {!resolverSubdivisionsLoading && resolverNeedsManualLocation && !resolverSubdivisionId ? (
                             <small className="transfer-issues-details__manual-location-hint">
-                              Este producto no tiene ubicacion previa en esta sucursal. Selecciona bodega, division y subdivision.
+                              Este producto no tiene ubicación previa en esta sucursal. Selecciona bodega, división y subdivisión.
                             </small>
                           ) : null}
                         </label>
@@ -2033,7 +2033,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                     onClick={() => void submitResolver()}
                     disabled={resolverSubmitting}
                   >
-                    {resolverSubmitting ? 'Guardando...' : 'Confirmar decision'}
+                    {resolverSubmitting ? 'Guardando...' : 'Confirmar decisión'}
                   </button>
                 ) : null}
               </footer>

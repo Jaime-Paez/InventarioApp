@@ -45,7 +45,7 @@ import {
 
 const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
 const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
-const URGENT_SHIPMENT_MESSAGE = 'Tienes un envio pendiente por despachar.'
+const URGENT_SHIPMENT_MESSAGE = 'Tienes un envío pendiente por despachar.'
 const URGENT_REJECTED_TRANSFER_MESSAGE = 'Corrige tu solicitud de traslado rechazada.'
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
@@ -551,7 +551,7 @@ function QuickActions({
         token
       )
       if (!response.ok) {
-        throw new Error('No se pudieron cargar los envios pendientes.')
+        throw new Error('No se pudieron cargar los envíos pendientes.')
       }
 
       const payload = await response.json().catch(() => ({}))
@@ -575,7 +575,7 @@ function QuickActions({
         setPendingShipments([])
       }
       if (!silent) {
-        showErrorToast(error?.message || 'No se pudieron cargar los envios pendientes.')
+        showErrorToast(error?.message || 'No se pudieron cargar los envíos pendientes.')
       }
       return []
     } finally {
@@ -601,7 +601,7 @@ function QuickActions({
         token
       )
       if (!response.ok) {
-        throw new Error('No se pudieron cargar los envios en camino.')
+        throw new Error('No se pudieron cargar los envíos en camino.')
       }
 
       const payload = await response.json().catch(() => ({}))
@@ -618,7 +618,7 @@ function QuickActions({
     } catch (error) {
       if (!silent) setInTransitShipments([])
       if (!silent) {
-        showErrorToast(error?.message || 'No se pudieron cargar los envios en camino.')
+        showErrorToast(error?.message || 'No se pudieron cargar los envíos en camino.')
       }
       return []
     } finally {
@@ -790,11 +790,11 @@ function QuickActions({
       title = count > 1 ? `Tienes ${count} solicitudes de traslado pendientes.` : 'Tienes una solicitud de traslado pendiente.'
       body = 'Revisa Recordatorios para aceptar o rechazar.'
     } else if (notificationType === 'solicitud_traslado_envio_pendiente') {
-      title = count > 1 ? `Tienes ${count} envios pendientes por despachar.` : 'Tienes un envio pendiente por despachar.'
-      body = 'Abre Envios pendientes para continuar.'
+      title = count > 1 ? `Tienes ${count} envíos pendientes por despachar.` : 'Tienes un envío pendiente por despachar.'
+      body = 'Abre Envíos pendientes para continuar.'
     } else if (notificationType === 'solicitud_traslado_resuelta') {
       title = count > 1 ? `Tienes ${count} novedades de traslados.` : 'Tienes una novedad de traslado.'
-      body = 'Revisa Recordatorios para ver el ultimo avance.'
+      body = 'Revisa Recordatorios para ver el último avance.'
     } else {
       return
     }
@@ -2547,7 +2547,7 @@ function QuickActions({
         const inspectionStatus = String(inspection?.estado || '').trim().toLowerCase()
         if (!isVerifyReminder && inspectionStatus === 'completada') {
           closeRandomInspectionModal()
-          showErrorToast('Esta inspeccion ya fue enviada y no puede volver a realizarse.')
+          showErrorToast('Esta inspección ya fue enviada y no puede volver a realizarse.')
           return false
         }
         setActiveRandomInspection(inspection)
@@ -2854,7 +2854,7 @@ function QuickActions({
       if (!token) return
       const shipmentId = normalizeId(shipment?.id)
       if (!shipmentId) {
-        showErrorToast('No se pudo abrir el envio en camino.')
+        showErrorToast('No se pudo abrir el envío en camino.')
         return
       }
 
@@ -2911,7 +2911,7 @@ function QuickActions({
         const subdivisions = parseApiList(subdivisionsPayload)
         const details = Array.isArray(shipment?.detalles) ? shipment.detalles : []
         if (!details.length) {
-          throw new Error('Este envio no tiene productos para registrar recepcion.')
+          throw new Error('Este envío no tiene productos para registrar recepción.')
         }
 
         const preferredSubdivisionByProductId = await fetchPreferredReceiveSubdivisions({
@@ -2989,7 +2989,7 @@ function QuickActions({
         setIsInTransitShipmentsOpen(false)
         setIsReceiveShipmentModalOpen(true)
       } catch (error) {
-        showErrorToast(error?.message || 'No se pudo abrir el envio en camino.')
+        showErrorToast(error?.message || 'No se pudo abrir el envío en camino.')
       } finally {
         setOpeningInTransitShipmentId('')
         setInTransitSubdivisionsLoading(false)
@@ -3004,7 +3004,7 @@ function QuickActions({
 
       const solicitudId = normalizeId(reminder?.context?.id)
       if (!solicitudId) {
-        showErrorToast('No se pudo identificar el envio en camino del recordatorio.')
+        showErrorToast('No se pudo identificar el envío en camino del recordatorio.')
         return false
       }
 
@@ -3045,7 +3045,7 @@ function QuickActions({
       }
 
       if (!targetShipment) {
-        showErrorToast('No se encontro el envio en camino asociado a este recordatorio.')
+        showErrorToast('No se encontró el envío en camino asociado a este recordatorio.')
         return false
       }
 
@@ -3213,14 +3213,14 @@ function QuickActions({
 
   const handleAdvanceRandomInspectionStep = useCallback(() => {
     if (!randomInspectionRows.length) {
-      setRandomInspectionError('No hay productos para revisar en esta inspeccion.')
+      setRandomInspectionError('No hay productos para revisar en esta inspección.')
       return
     }
 
     if (activeRandomInspectionRow?.cantidad_reportada == null) {
       setRandomInspectionError(
         activeRandomInspectionRow?.requiere_conteo_por_ubicacion
-          ? 'Completa la cantidad contada en cada ubicacion antes de continuar.'
+          ? 'Completa la cantidad contada en cada ubicación antes de continuar.'
           : 'Ingresa la cantidad contada antes de continuar.'
       )
       return
@@ -3282,7 +3282,7 @@ function QuickActions({
       const inspectionStatus = String(activeRandomInspection?.estado || '').trim().toLowerCase()
       if (inspectionStatus === 'completada') {
         setRandomInspectionError(
-          'Esta inspeccion ya fue enviada y no puede volver a realizarse.'
+          'Esta inspección ya fue enviada y no puede volver a realizarse.'
         )
         return
       }
@@ -3391,7 +3391,7 @@ function QuickActions({
       if (!token || !inspectionId) return
 
       if (!randomInspectionRowsToVerify.length) {
-        setRandomInspectionError('Esta inspeccion no tiene diferencias por verificar.')
+        setRandomInspectionError('Esta inspección no tiene diferencias por verificar.')
         return
       }
 
@@ -3400,7 +3400,7 @@ function QuickActions({
         return verificationState === 'pendiente'
       })
       if (!pendingRows.length) {
-        setRandomInspectionError('No hay diferencias pendientes de verificacion.')
+        setRandomInspectionError('No hay diferencias pendientes de verificación.')
         return
       }
 
@@ -3441,7 +3441,7 @@ function QuickActions({
           const payload = await response.json().catch(() => ({}))
           if (!response.ok) {
             throw new Error(
-              String(payload?.detail || '').trim() || 'No se pudo verificar un item de la inspeccion.'
+              String(payload?.detail || '').trim() || 'No se pudo verificar un ítem de la inspección.'
             )
           }
 
@@ -3459,14 +3459,14 @@ function QuickActions({
 
         toast.current?.show({
           severity: 'success',
-          summary: 'Verificacion completada',
+          summary: 'Verificación completada',
           detail: 'Se aplicaron las verificaciones de inventario reportadas.',
           life: 3200,
         })
         closeRandomInspectionModal()
       } catch (error) {
         setRandomInspectionError(
-          error?.message || 'No se pudo completar la verificacion de la inspeccion.'
+          error?.message || 'No se pudo completar la verificación de la inspección.'
         )
       } finally {
         setRandomInspectionSubmitting(false)
@@ -3487,7 +3487,7 @@ function QuickActions({
 
       const rows = receiveShipmentRows
       if (!rows.length) {
-        setReceiveShipmentError('No hay productos para registrar recepcion.')
+        setReceiveShipmentError('No hay productos para registrar recepción.')
         return
       }
 
@@ -3565,7 +3565,7 @@ function QuickActions({
         const payload = await response.json().catch(() => ({}))
         if (!response.ok) {
           throw new Error(
-            String(payload?.detail || '').trim() || 'No se pudo confirmar la recepcion del envio.'
+            String(payload?.detail || '').trim() || 'No se pudo confirmar la recepción del envío.'
           )
         }
 
@@ -3587,7 +3587,7 @@ function QuickActions({
         await fetchInTransitTransferShipments({ silent: true })
       } catch (error) {
         setReceiveShipmentError(
-          error?.message || 'No se pudo confirmar la recepcion del envio.'
+          error?.message || 'No se pudo confirmar la recepción del envío.'
         )
       } finally {
         setReceiveShipmentSubmitting(false)
@@ -3635,7 +3635,7 @@ function QuickActions({
           onClick={() => handleUrgentShieldClick(shield)}
           aria-label={
             shield.kind === 'pending_shipment'
-              ? 'Abrir envio pendiente de traslado'
+              ? 'Abrir envío pendiente de traslado'
               : shield.kind === 'rejected_transfer'
                 ? 'Corregir solicitud de traslado rechazada'
                 : 'Resolver solicitud de traslado pendiente'
@@ -3659,9 +3659,9 @@ function QuickActions({
               type="button"
               className="quick-actions__pending-shipments-trigger quick-actions__in-transit-trigger"
               onClick={() => void toggleInTransitShipmentsPanel()}
-              aria-label="Envios en camino"
+              aria-label="Envíos en camino"
             >
-              <span>Envios en camino</span>
+              <span>Envíos en camino</span>
               {!suppressAdminAlerts && (
                 <span className="quick-actions__pending-shipments-count">
                   {inTransitShipmentsLoading ? '...' : inTransitShipments.length}
@@ -3670,15 +3670,15 @@ function QuickActions({
             </button>
 
             {isInTransitShipmentsOpen && (
-              <div className="quick-actions__pending-shipments-panel quick-actions__in-transit-panel" role="dialog" aria-label="Envios en camino">
+              <div className="quick-actions__pending-shipments-panel quick-actions__in-transit-panel" role="dialog" aria-label="Envíos en camino">
                 <div className="quick-actions__pending-shipments-head">
-                  <strong>Envios por recibir</strong>
+                  <strong>Envíos por recibir</strong>
                   <button
                     type="button"
                     className="quick-actions__pending-shipments-refresh"
                     onClick={() => void fetchInTransitTransferShipments()}
                     disabled={inTransitShipmentsLoading}
-                    aria-label="Actualizar envios en camino"
+                    aria-label="Actualizar envíos en camino"
                   >
                     <i className="pi pi-refresh" aria-hidden="true" />
                   </button>
@@ -3692,10 +3692,10 @@ function QuickActions({
                       aria-live="polite"
                     >
                       <Loader2 size={14} />
-                      <span>Cargando envios en camino...</span>
+                      <span>Cargando envíos en camino...</span>
                     </p>
                   ) : !inTransitShipments.length ? (
-                    <p className="quick-actions__pending-shipments-empty">No hay envios en camino.</p>
+                    <p className="quick-actions__pending-shipments-empty">No hay envíos en camino.</p>
                   ) : (
                     inTransitShipments.map((shipment) => {
                       const shipmentId = normalizeId(shipment?.id)
@@ -3723,7 +3723,7 @@ function QuickActions({
                             Hacia: {receiveBranch}
                           </span>
                           <span className="quick-actions__pending-shipments-item-meta">
-                            {isOpening ? 'Abriendo...' : (fecha ? `Fecha: ${fecha}` : 'Abrir recepcion')}
+                            {isOpening ? 'Abriendo...' : (fecha ? `Fecha: ${fecha}` : 'Abrir recepción')}
                           </span>
                         </button>
                       )
@@ -3745,9 +3745,9 @@ function QuickActions({
               type="button"
               className="quick-actions__pending-shipments-trigger"
               onClick={() => void togglePendingShipmentsPanel()}
-              aria-label="Envios pendientes"
+              aria-label="Envíos pendientes"
             >
-              <span>Envios pendientes</span>
+              <span>Envíos pendientes</span>
               {!suppressAdminAlerts && (
                 <span className="quick-actions__pending-shipments-count">
                   {pendingShipmentsLoading ? '...' : pendingShipments.length}
@@ -3756,7 +3756,7 @@ function QuickActions({
             </button>
 
             {isPendingShipmentsOpen && (
-              <div className="quick-actions__pending-shipments-panel" role="dialog" aria-label="Envios pendientes">
+              <div className="quick-actions__pending-shipments-panel" role="dialog" aria-label="Envíos pendientes">
                 <div className="quick-actions__pending-shipments-head">
                   <strong>Solicitudes por enviar</strong>
                   <button
@@ -3764,7 +3764,7 @@ function QuickActions({
                     className="quick-actions__pending-shipments-refresh"
                     onClick={() => void fetchPendingTransferShipments()}
                     disabled={pendingShipmentsLoading}
-                    aria-label="Actualizar envios pendientes"
+                    aria-label="Actualizar envíos pendientes"
                   >
                     <i className="pi pi-refresh" aria-hidden="true" />
                   </button>
@@ -3778,10 +3778,10 @@ function QuickActions({
                       aria-live="polite"
                     >
                       <Loader2 size={14} />
-                      <span>Cargando envios pendientes...</span>
+                      <span>Cargando envíos pendientes...</span>
                     </p>
                   ) : !pendingShipments.length ? (
-                    <p className="quick-actions__pending-shipments-empty">No hay envios pendientes.</p>
+                    <p className="quick-actions__pending-shipments-empty">No hay envíos pendientes.</p>
                   ) : (
                     pendingShipments.map((solicitud) => {
                       const solicitudId = normalizeId(solicitud?.id)
@@ -3932,11 +3932,11 @@ function QuickActions({
           >
             <header className="quick-actions__inspection-head">
               <div>
-                <h4>{isRandomInspectionVerifyMode ? 'Verificacion de inspeccion aleatoria' : 'Inspeccion aleatoria diaria'}</h4>
+                <h4>{isRandomInspectionVerifyMode ? 'Verificación de inspección aleatoria' : 'Inspección aleatoria diaria'}</h4>
                 <p>
                   {activeRandomInspection?.fecha_programada
                     ? `Fecha: ${String(activeRandomInspection.fecha_programada).trim()}`
-                    : (isRandomInspectionVerifyMode ? 'Revision administrativa de diferencias' : 'Revision diaria de inventario')}
+                    : (isRandomInspectionVerifyMode ? 'Revisión administrativa de diferencias' : 'Revisión diaria de inventario')}
                 </p>
               </div>
               <button
@@ -3954,7 +3954,7 @@ function QuickActions({
               {randomInspectionLoading ? (
                 <p className="quick-actions__inspection-loading">
                   <Loader2 size={14} />
-                  Cargando inspeccion...
+                  Cargando inspección...
                 </p>
               ) : isRandomInspectionVerifyMode ? (
                 <div className="quick-actions__inspection-list">
@@ -3997,7 +3997,7 @@ function QuickActions({
 
                         <div className="quick-actions__inspection-grid">
                           <label>
-                            <span>Decision</span>
+                            <span>Decisión</span>
                             <select
                               value={selectedAction}
                               onChange={(event) =>
@@ -4035,7 +4035,7 @@ function QuickActions({
                         </div>
 
                         <label className="quick-actions__inspection-note">
-                          <span>Nota de verificacion (opcional)</span>
+                          <span>Nota de verificación (opcional)</span>
                           <textarea
                             rows={2}
                             value={String(draft?.nota_verificacion || '')}
@@ -4093,7 +4093,7 @@ function QuickActions({
                             className="quick-actions__inspection-stage"
                           >
                             <div className="quick-actions__inspection-stage-copy">
-                              <p className="quick-actions__inspection-stage-kicker">Codigo a revisar</p>
+                              <p className="quick-actions__inspection-stage-kicker">Código a revisar</p>
                               <h5>
                                 {activeRandomInspectionRow?.producto_codigo || `Producto ${activeRandomInspectionRow?.row_id}`}
                               </h5>
@@ -4149,7 +4149,7 @@ function QuickActions({
                                   </div>
                                 ) : (
                                   <strong>
-                                    {String(activeRandomInspectionRow?.ubicacion_bodega || 'Ubicacion no disponible').trim()}
+                                    {String(activeRandomInspectionRow?.ubicacion_bodega || 'Ubicación no disponible').trim()}
                                   </strong>
                                 )}
                               </div>
@@ -4193,7 +4193,7 @@ function QuickActions({
 
                             <p className="quick-actions__inspection-stage-help">
                               {activeRandomInspectionRow?.requiere_conteo_por_ubicacion
-                                ? 'Cuenta cada ubicacion por separado. El inventario esperado se mostrara al final.'
+                                ? 'Cuenta cada ubicación por separado. El inventario esperado se mostrará al final.'
                                 : 'Cuenta primero y responde solo con la cantidad encontrada. El inventario esperado se mostrara al final.'}
                             </p>
                           </article>
@@ -4338,11 +4338,11 @@ function QuickActions({
                   : isRandomInspectionVerifyMode
                     ? (
                       randomInspectionPendingVerificationCount > 0
-                        ? `Aplicar verificacion (${randomInspectionPendingVerificationCount} pendiente(s))`
+                        ? `Aplicar verificación (${randomInspectionPendingVerificationCount} pendiente(s))`
                         : 'Sin pendientes por verificar'
                     )
                     : isRandomInspectionAlreadyCompleted
-                      ? 'Inspeccion ya enviada'
+                      ? 'Inspección ya enviada'
                     : !isRandomInspectionSummaryVisible
                       ? (
                         activeRandomInspectionStepIndex >= randomInspectionRows.length - 1
@@ -4373,11 +4373,11 @@ function QuickActions({
             onMouseDown={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label="Registrar recepcion de envio"
+            aria-label="Registrar recepción de envío"
           >
             <header className="quick-actions__receive-head">
               <div>
-                <h4>Envio en camino</h4>
+                <h4>Envío en camino</h4>
                 <p>
                   #{String(activeInTransitShipment?.no_documento || activeInTransitShipment?.id || '').trim()} desde{' '}
                   {String(activeInTransitShipment?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'}
@@ -4388,7 +4388,7 @@ function QuickActions({
                 className="quick-actions__receive-close"
                 onClick={closeReceiveShipmentModal}
                 disabled={receiveShipmentSubmitting}
-                aria-label="Cerrar recepcion"
+                aria-label="Cerrar recepción"
               >
                 <X size={16} />
               </button>

@@ -809,7 +809,7 @@ function CreateSalida({
       const requesterRecipient = sanitizeRecipient(contextReminder?.creator)
       if (!requesterRecipient?.id) {
         notifyError(
-          'El envio se cancelo, pero no se pudo enviar el recordatorio al solicitante.'
+          'El envío se canceló, pero no se pudo enviar el recordatorio al solicitante.'
         )
         return
       }
@@ -913,7 +913,7 @@ function CreateSalida({
 
       if (!reminderRecipients.length) {
         notifyError(
-          'La salida se creo, pero no se pudo enviar el recordatorio de envio.'
+          'La salida se creó, pero no se pudo enviar el recordatorio de envío.'
         )
         return
       }
@@ -924,8 +924,8 @@ function CreateSalida({
         : `Solicitud de traslado #${solicitudId}`
       const transferReference = contextLabel.replace(/^solicitud de traslado\s*/i, '').trim() || `#${solicitudId}`
       const description = transferReference
-        ? `Su solicitud de traslado ${transferReference} fue enviada y esta en traslado.`
-        : 'Su solicitud de traslado fue enviada y esta en traslado.'
+        ? `Su solicitud de traslado ${transferReference} fue enviada y está en traslado.`
+        : 'Su solicitud de traslado fue enviada y está en traslado.'
       const now = nowReminderDateTime()
 
       const reminder = {
@@ -1236,7 +1236,7 @@ function CreateSalida({
         }
       }
     } catch (err) {
-      notifyError(err?.message || 'Ocurrio un error al cargar los catalogos.')
+      notifyError(err?.message || 'Ocurrió un error al cargar los catálogos.')
     }
   }, [notifyError, token])
 
@@ -1608,7 +1608,7 @@ function CreateSalida({
 
     const objetivoId = String(selectedSolicitudTraslado.sucursal_solicitante_id || '').trim()
     const autoTransferDescription = [
-      selectedSolicitudDoc ? `Envio de traslado #${selectedSolicitudDoc}.` : 'Envio de traslado.',
+      selectedSolicitudDoc ? `Envío de traslado #${selectedSolicitudDoc}.` : 'Envío de traslado.',
       `Desde ${transferSourceBranchLabel} hacia ${transferTargetBranchLabel}.`,
     ].join(' ')
     setFormData((prev) => {
@@ -2094,7 +2094,7 @@ function CreateSalida({
     const solicitudIdValue = String(formData.solicitudTrasladoId || '').trim()
 
     if (!salidaTipoId) {
-      notifyError('No se encontro el tipo de movimiento de salida.')
+      notifyError('No se encontró el tipo de movimiento de salida.')
       return false
     }
 
@@ -2233,7 +2233,7 @@ function CreateSalida({
 
         if (!ventaClienteLabel) {
           setActiveTab('cliente')
-          throw new Error('No se pudo resolver la informacion del cliente para la venta.')
+          throw new Error('No se pudo resolver la información del cliente para la venta.')
         }
       }
 
@@ -2297,7 +2297,7 @@ function CreateSalida({
       onCreated?.(data)
       return true
     } catch (err) {
-      notifyError(err.message || 'Ocurrio un error al crear la salida.')
+      notifyError(err.message || 'Ocurrió un error al crear la salida.')
       return false
     } finally {
       setLoading(false)
@@ -2333,13 +2333,13 @@ function CreateSalida({
 
     const solicitudId = String(formData.solicitudTrasladoId || '').trim()
     if (!solicitudId) {
-      setTransferCancelReasonError('No se encontro la solicitud de traslado a cancelar.')
+      setTransferCancelReasonError('No se encontró la solicitud de traslado a cancelar.')
       return
     }
 
     const motivo = String(transferCancelReason || '').trim()
     if (!motivo) {
-      setTransferCancelReasonError('Debes indicar el motivo de cancelacion.')
+      setTransferCancelReasonError('Debes indicar el motivo de cancelación.')
       return
     }
 
@@ -2357,7 +2357,7 @@ function CreateSalida({
       )
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = resolveApiErrorMessage(data, 'No se pudo cancelar el envio.')
+        const detail = resolveApiErrorMessage(data, 'No se pudo cancelar el envío.')
         throw new Error(detail)
       }
 
@@ -2369,7 +2369,7 @@ function CreateSalida({
         onClose?.()
       }
     } catch (error) {
-      const message = error?.message || 'No se pudo cancelar el envio.'
+      const message = error?.message || 'No se pudo cancelar el envío.'
       setTransferCancelReasonError(message)
     } finally {
       setTransferCancelSubmitting(false)
@@ -2696,7 +2696,7 @@ function CreateSalida({
                               }
                               disabled={loading}
                             >
-                              <option value="true">Si</option>
+                              <option value="true">Sí</option>
                               <option value="false">No</option>
                             </select>
                           </label>
@@ -2705,7 +2705,7 @@ function CreateSalida({
                     )}
 
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripcion</span>
+                      <span>Descripción</span>
                       <input
                         name="descripcion"
                         type="text"
@@ -2727,7 +2727,7 @@ function CreateSalida({
 
                   <div className={`create-user__locations-table create-salida__products-table${!isPrefilledTransfer ? ' create-salida__products-table--with-actions' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
-                        <span>Codigo</span>
+                        <span>Código</span>
                         <span>Nombre</span>
                         <span>Cantidad</span>
                         <span>Precio</span>
@@ -3165,7 +3165,7 @@ function CreateSalida({
                     </div>
 
                     {useExistingCliente && selectedCliente?.id && (
-                      <small className="muted">Cliente existente detectado. Se usara el registro actual al guardar.</small>
+                      <small className="muted">Cliente existente detectado. Se usará el registro actual al guardar.</small>
                     )}
                   </section>
                 )}
@@ -3186,7 +3186,7 @@ function CreateSalida({
                   onClick={openTransferCancelModal}
                   disabled={loading || transferCancelSubmitting}
                 >
-                  Cancelar envio
+                  Cancelar envío
                 </button>
               )}
               {formData.subTipoId && (
@@ -3211,13 +3211,13 @@ function CreateSalida({
             }}
           >
             <div className="create-salida__confirm-card" onMouseDown={(event) => event.stopPropagation()}>
-              <h4>Confirmar envio</h4>
+              <h4>Confirmar envío</h4>
               <p>
                 Vas a enviar la solicitud <strong>{transferSummaryLabel}</strong> de{' '}
                 <strong>{transferSourceBranchLabel}</strong> a <strong>{transferTargetBranchLabel}</strong>.
               </p>
               <p className="create-salida__confirm-warning">
-                Se restara el inventario y el traslado quedara en estado envio.
+                Se restará el inventario y el traslado quedará en estado de envío.
               </p>
               <div className="create-salida__confirm-actions">
                 <button
@@ -3234,7 +3234,7 @@ function CreateSalida({
                   onClick={handleConfirmTransferSend}
                   disabled={loading}
                 >
-                  {loading ? 'Enviando...' : 'Confirmar envio'}
+                  {loading ? 'Enviando...' : 'Confirmar envío'}
                 </button>
               </div>
             </div>
@@ -3244,12 +3244,12 @@ function CreateSalida({
         {isTransferCancelModalOpen && (
           <div className="create-salida__confirm-overlay" onMouseDown={closeTransferCancelModal}>
             <div className="create-salida__confirm-card create-salida__confirm-card--cancel" onMouseDown={(event) => event.stopPropagation()}>
-              <h4>Cancelar envio</h4>
+              <h4>Cancelar envío</h4>
               <p>
-                La solicitud <strong>{transferSummaryLabel}</strong> pasara a estado rechazada/cancelada.
+                La solicitud <strong>{transferSummaryLabel}</strong> pasará a estado rechazada/cancelada.
               </p>
               <label className="create-salida__confirm-field">
-                <span>Motivo de cancelacion (obligatorio)</span>
+                <span>Motivo de cancelación (obligatorio)</span>
                 <textarea
                   value={transferCancelReason}
                   onChange={(event) => setTransferCancelReason(event.target.value)}
@@ -3276,7 +3276,7 @@ function CreateSalida({
                   onClick={handleConfirmTransferCancel}
                   disabled={transferCancelSubmitting}
                 >
-                  {transferCancelSubmitting ? 'Cancelando...' : 'Confirmar cancelacion'}
+                  {transferCancelSubmitting ? 'Cancelando...' : 'Confirmar cancelación'}
                 </button>
               </div>
             </div>
