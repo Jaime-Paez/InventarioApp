@@ -961,8 +961,8 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
 
   if (transferReceiptOutcome === 'incompleto') {
     return {
-      label: 'Llego',
-      className: 'arrived',
+      label: 'Entregada con novedades',
+      className: 'issue',
       canMarkSeen: false,
     }
   }

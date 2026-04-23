@@ -18,6 +18,7 @@ import {
   isRandomInspectionVerifyReminder,
   isReminderForContext,
   isTransferIssueReminder,
+  reminderCompletedByIds,
   isTransferDecisionAllowedForUser,
   isSpecialTransferDecisionReminder,
   normalizeId,
@@ -2334,9 +2335,36 @@ function RecordatoriosPopup({
                           currentUserIdSet,
                           currentUserName
                         )
-                        const displayStatus = (
-                          visualDecisionStatus === 'recibido' && !isReminderOwnedByCurrentUser
-                        ) ? { ...status, label: 'Entregada' } : status
+                        const isAdminUser = Boolean(
+                          currentUser?.is_superuser ||
+                          currentUser?.is_staff ||
+                          currentUser?.es_administrador ||
+                          String(currentUser?.rol || '').trim().toLowerCase() === 'administrador'
+                        )
+                        const relatedIssueReminder = (
+                          !isTransferIssue && isTransferContextReminder && solicitudId
+                            ? (Array.isArray(reminders) ? reminders : []).find((r) => (
+                                isTransferIssueReminder(r) && normalizeId(r?.context?.id) === solicitudId
+                              ))
+                            : null
+                        )
+                        const isIssueResolved = relatedIssueReminder
+                          ? (
+                              reminderCompletedByIds(relatedIssueReminder).length > 0 ||
+                              String(relatedIssueReminder?.description || '').toLowerCase().includes('resuelto') ||
+                              String(relatedIssueReminder?.description || '').toLowerCase().includes('perdido')
+                            )
+                          : false
+                        const displayStatus = (() => {
+                          if (visualDecisionStatus === 'recibido' && !isReminderOwnedByCurrentUser && !isTransferIssue) {
+                            const outcomeForLabel = latestTransferReceiptOutcome || transferReceiptOutcome
+                            if (outcomeForLabel === 'incompleto' && !isIssueResolved) {
+                              return { ...status, label: 'Entregada con novedades', className: 'issue' }
+                            }
+                            return { ...status, label: 'Entregada' }
+                          }
+                          return status
+                        })()
                         const isRejectedByCurrentUser = (
                           visualDecisionStatus === 'rechazada' &&
                           currentUserIdSet.has(normalizeId(reminder?.decision?.by?.id))
@@ -2455,6 +2483,15 @@ function RecordatoriosPopup({
                           displayStatus.label === 'Pendiente' &&
                           typeof onOpenTransferIssuesSection === 'function'
                         )
+                        const receiptOutcomeForIssue = latestTransferReceiptOutcome || transferReceiptOutcome
+                        const canOpenIssueFromReceiptReminder = (
+                          !isTransferIssue &&
+                          isTransferContextReminder &&
+                          receiptOutcomeForIssue === 'incompleto' &&
+                          !isIssueResolved &&
+                          isAdminUser &&
+                          typeof onOpenTransferIssuesSection === 'function'
+                        )
                         const isPendingInspectionAlert = (
                           status.className === 'pending' &&
                           (
@@ -2493,6 +2530,8 @@ function RecordatoriosPopup({
                               displayStatus.className === 'sent' ? ' recordatorios-popup__timeline-item--sent' : ''
                             }${
                               displayStatus.className === 'cancelled' ? ' recordatorios-popup__timeline-item--cancelled' : ''
+                            }${
+                              displayStatus.className === 'issue' ? ' recordatorios-popup__timeline-item--issue' : ''
                             }${
                               isPendingInspectionAlert ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
                             }${
@@ -2557,6 +2596,17 @@ function RecordatoriosPopup({
                                   disabled={isOpeningTransfer}
                                 >
                                   {isOpeningTransfer ? 'Abriendo...' : 'Abrir recepcion'}
+                                </button>
+                              ) : canOpenIssueFromReceiptReminder ? (
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                  onClick={() => {
+                                    void handleOpenTransferIssueResolution(reminder)
+                                  }}
+                                  disabled={isOpeningTransfer}
+                                >
+                                  {isOpeningTransfer ? 'Abriendo...' : 'Ver inconveniente'}
                                 </button>
                               ) : canOpenLatestTransferProgress ? (
                                 <button

@@ -108,7 +108,7 @@ const selectionColStyle = {
   padding: 0,
 }
 
-function TrasladosInconvenientesTable({ token, moduleActions }) {
+function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicitudId, onPendingOpenHandled }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
@@ -618,6 +618,14 @@ function TrasladosInconvenientesTable({ token, moduleActions }) {
     },
     [resetResolverState]
   )
+
+  useEffect(() => {
+    if (!pendingOpenSolicitudId || !rows.length) return
+    const matches = rows.filter((r) => normalizeId(r.solicitud_id) === normalizeId(pendingOpenSolicitudId))
+    if (!matches.length) return
+    if (matches.length === 1) openDetails(matches[0])
+    onPendingOpenHandled?.()
+  }, [pendingOpenSolicitudId, rows, openDetails, onPendingOpenHandled])
 
   const ensureRowSelected = useCallback((rowData) => {
     if (!rowData) return

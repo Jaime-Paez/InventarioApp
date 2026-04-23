@@ -104,6 +104,7 @@ function Workspace({
   const movementBranchMenuRef = useRef(null)
   const [pendingTransferSalidaRequest, setPendingTransferSalidaRequest] = useState(null)
   const [pendingTransferEntradaRequest, setPendingTransferEntradaRequest] = useState(null)
+  const [pendingOpenIssueId, setPendingOpenIssueId] = useState(null)
 
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
@@ -317,7 +318,9 @@ function Workspace({
     return true
   }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
 
-  const handleOpenTransferIssuesSection = useCallback(() => {
+  const handleOpenTransferIssuesSection = useCallback((reminder) => {
+    const solicitudId = String(reminder?.context?.id || '').trim()
+    if (solicitudId) setPendingOpenIssueId(solicitudId)
     if (!labelHasAccess(INCONVENIENTES_TAB, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) {
       if (!labelHasAccess(INCONVENIENTES_TAB_LEGACY, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return false
       onSelectTab?.(INCONVENIENTES_TAB_LEGACY)
@@ -326,6 +329,10 @@ function Workspace({
     onSelectTab?.(INCONVENIENTES_TAB)
     return true
   }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
+
+  const handlePendingOpenIssueHandled = useCallback(() => {
+    setPendingOpenIssueId(null)
+  }, [])
 
   const handleTransferEntradaRequestHandled = useCallback(() => {
     setPendingTransferEntradaRequest(null)
@@ -469,6 +476,16 @@ function Workspace({
         }
         onPendingTransferEntradaRequestHandled={
           tab === 'Entradas' ? handleTransferEntradaRequestHandled : undefined
+        }
+        pendingOpenSolicitudId={
+          (tab === INCONVENIENTES_TAB || tab === INCONVENIENTES_TAB_LEGACY)
+            ? pendingOpenIssueId
+            : undefined
+        }
+        onPendingOpenHandled={
+          (tab === INCONVENIENTES_TAB || tab === INCONVENIENTES_TAB_LEGACY)
+            ? handlePendingOpenIssueHandled
+            : undefined
         }
       />
     )

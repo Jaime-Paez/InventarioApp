@@ -4684,9 +4684,10 @@ function QuickActions({
                           <textarea
                             rows={2}
                             value={String(row?.novedad || '')}
-                            onChange={(event) =>
+                            onChange={(event) => {
                               handleReceiveShipmentDraftFieldChange(rowProductId, 'novedad', event.target.value)
-                            }
+                              if (receiveShipmentError) setReceiveShipmentError('')
+                            }}
                             disabled={receiveShipmentSubmitting}
                           />
                         </label>
@@ -4753,7 +4754,17 @@ function QuickActions({
                     <button
                       type="button"
                       className="quick-actions__receive-btn quick-actions__receive-btn--primary"
-                      onClick={() => setReceiveShipmentStepIndex((i) => i + 1)}
+                      onClick={() => {
+                        const currentRow = activeReceiveShipmentRow
+                        if (toPositiveInt(currentRow?.cantidad_faltante, 0) > 0 && !String(currentRow?.novedad || '').trim()) {
+                          setReceiveShipmentError(
+                            `Debes indicar la novedad del faltante para ${currentRow?.producto_nombre || currentRow?.producto_codigo || 'el producto'}.`
+                          )
+                          return
+                        }
+                        setReceiveShipmentError('')
+                        setReceiveShipmentStepIndex((i) => i + 1)
+                      }}
                       disabled={receiveShipmentSubmitting}
                     >
                       Siguiente producto
@@ -4762,7 +4773,20 @@ function QuickActions({
                     <button
                       type="button"
                       className="quick-actions__receive-btn quick-actions__receive-btn--primary"
-                      onClick={() => setReceiveShipmentShowSummary(true)}
+                      onClick={() => {
+                        for (const r of receiveShipmentRows) {
+                          if (toPositiveInt(r?.cantidad_faltante, 0) > 0 && !String(r?.novedad || '').trim()) {
+                            setReceiveShipmentError(
+                              `Debes indicar la novedad del faltante para ${r?.producto_nombre || r?.producto_codigo || 'el producto'}.`
+                            )
+                            const idx = receiveShipmentRows.indexOf(r)
+                            if (idx >= 0) setReceiveShipmentStepIndex(idx)
+                            return
+                          }
+                        }
+                        setReceiveShipmentError('')
+                        setReceiveShipmentShowSummary(true)
+                      }}
                       disabled={receiveShipmentSubmitting}
                     >
                       Ver resumen

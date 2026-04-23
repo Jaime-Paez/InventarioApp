@@ -376,6 +376,12 @@
 }
 
 /* ====== THEAD ====== */
+.users-datatable .p-datatable-thead {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 3 !important;
+}
+
 .users-datatable .p-datatable-thead > tr > th {
   background: var(--table-color);
   color: var(--color-text-primary);
@@ -384,6 +390,8 @@
   border-bottom: 2px solid var(--table-color-border);
   border-right: 1px solid var(--table-color-border);
   white-space: nowrap;
+  animation: none !important;
+  transition: none !important;
 }
 .users-datatable .p-datatable-thead > tr > th:last-child {
   border-right: none;
@@ -455,6 +463,8 @@
   background: var(--table-color-dark);
 }
 .dashboard-shell.dark .users-datatable .p-datatable-thead > tr > th {
+  background: var(--table-color-dark);
+  color: var(--color-text-dark);
   border-right-color: var(--color-border-dark);
   border-bottom-color: var(--color-border-dark);
 }
