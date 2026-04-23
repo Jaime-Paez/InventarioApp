@@ -116,10 +116,27 @@
   min-width: 0;
 }
 
-.inventario-v2__location-main {
-  min-width: 0;
+.inventario-v2__location-lines {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.inventario-v2__location-main {
+  display: block;
+  min-width: 0;
   font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inventario-v2__location-main--secondary {
+  font-weight: 500;
 }
 
 .inventario-v2__location-eye {
@@ -221,6 +238,10 @@
 .dashboard-shell.dark .inventario-v2__location-eye:focus-visible {
   background: color-mix(in srgb, var(--color-primary-dark) 34%, var(--color-surface-darker));
   border-color: color-mix(in srgb, #ffffff 56%, var(--color-primary-dark));
+}
+
+.dashboard-shell.dark .inventario-v2__location-main--secondary {
+  color: color-mix(in srgb, var(--color-text-dark) 82%, transparent);
 }
 
 .dashboard-shell.dark .inventario-v2__location-hover-card {

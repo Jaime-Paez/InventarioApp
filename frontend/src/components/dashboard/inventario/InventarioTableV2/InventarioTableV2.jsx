@@ -895,9 +895,22 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       const extraLocations = Array.isArray(locationPayload?.ubicaciones_adicionales)
         ? locationPayload.ubicaciones_adicionales
         : []
-      const tooltip = [principalBodega, principalLabel].filter(Boolean).join(' / ')
+      const normalizedLocations = [
+        principalLabel
+          ? {
+            bodega_nombre: principalBodega,
+            ubicacion: principalLabel,
+          }
+          : null,
+        ...extraLocations.map((location) => ({
+          bodega_nombre: String(location?.bodega_nombre || '').trim(),
+          ubicacion: String(location?.ubicacion || '').trim(),
+        })),
+      ].filter((location) => location?.ubicacion)
+      const visibleLocations = normalizedLocations.slice(0, 1)
+      const remainingLocations = normalizedLocations.slice(1)
 
-      if (!principalLabel) {
+      if (!visibleLocations.length) {
         return (
           <span className="cell-tooltip" style={{ color: '#9ca3af' }}>
             -
@@ -907,27 +920,40 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
 
       return (
         <div className="inventario-v2__location-cell">
-          <span
-            className="cell-tooltip inventario-v2__location-main"
-            data-pr-tooltip={tooltip || principalLabel}
-          >
-            {principalLabel}
-          </span>
+          <div className="inventario-v2__location-lines">
+            {visibleLocations.map((location, index) => {
+              const tooltip = [location.bodega_nombre, location.ubicacion].filter(Boolean).join(' / ')
+              return (
+                <span
+                  key={`location-${branch.id}-${index}-${location.ubicacion}`}
+                  className={`cell-tooltip inventario-v2__location-main${
+                    index > 0 ? ' inventario-v2__location-main--secondary' : ''
+                  }`}
+                  data-pr-tooltip={tooltip || location.ubicacion}
+                >
+                  {location.ubicacion}
+                </span>
+              )
+            })}
+          </div>
 
-          {extraLocations.length > 0 ? (
+          {remainingLocations.length > 0 ? (
             <button
               type="button"
               className="inventario-v2__location-eye"
               aria-label={`Ver otras ubicaciones en ${branch.nombre}`}
-              title="Ver otras ubicaciones"
               onClick={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
               }}
               onMouseDown={(event) => event.stopPropagation()}
-              onMouseEnter={(event) => showLocationHoverCard(event, locationPayload)}
+              onMouseEnter={(event) =>
+                showLocationHoverCard(event, { ubicaciones_adicionales: normalizedLocations })
+              }
               onMouseLeave={scheduleHideLocationHoverCard}
-              onFocus={(event) => showLocationHoverCard(event, locationPayload)}
+              onFocus={(event) =>
+                showLocationHoverCard(event, { ubicaciones_adicionales: normalizedLocations })
+              }
               onBlur={scheduleHideLocationHoverCard}
             >
               <i className="pi pi-eye" />
@@ -2131,7 +2157,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             onMouseEnter={clearLocationHoverHideTimer}
             onMouseLeave={scheduleHideLocationHoverCard}
           >
-            <div className="inventario-v2__location-hover-title">Otras ubicaciones</div>
+            <div className="inventario-v2__location-hover-title">Ubicaciones</div>
             <table className="inventario-v2__location-hover-table">
               <thead>
                 <tr>

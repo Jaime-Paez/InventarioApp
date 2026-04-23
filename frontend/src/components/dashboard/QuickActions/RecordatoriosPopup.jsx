@@ -2562,11 +2562,12 @@ function RecordatoriosPopup({
                           currentUserIdSet,
                           currentUserName
                         )
+                        const currentUserEmail = String(
+                          currentUser?.correo || currentUser?.email || ''
+                        ).trim().toLowerCase()
                         const isAdminUser = Boolean(
-                          currentUser?.is_superuser ||
-                          currentUser?.is_staff ||
-                          currentUser?.es_administrador ||
-                          String(currentUser?.rol || '').trim().toLowerCase() === 'administrador'
+                          currentUser?.administrador ||
+                          currentUserEmail === 'administrador@mail.com'
                         )
                         const issueResolution = solicitudId
                           ? resolvedTransferIssuesBySolicitudId.get(solicitudId)
