@@ -2053,17 +2053,13 @@ function RecordatoriosPopup({
         }
 
         const movimientoSalidaId = normalizeId(solicitudDetail?.movimiento_salida_id)
-        if (!movimientoSalidaId) {
-          throw new Error('La solicitud todavia no tiene una salida generada.')
-        }
-
         onOpenTransferRequestInSalidas({
           requestKey: `${Date.now()}-${solicitudId}`,
           solicitudId,
           sucursalProveedoraId: String(solicitudDetail?.sucursal_proveedora_id || '').trim(),
           movimientoSalidaId,
           solicitud: solicitudDetail,
-          mode: 'view',
+          mode: movimientoSalidaId ? 'view' : 'preview',
         })
         onClose?.()
         return true
@@ -2562,13 +2558,7 @@ function RecordatoriosPopup({
                           currentUserIdSet,
                           currentUserName
                         )
-                        const currentUserEmail = String(
-                          currentUser?.correo || currentUser?.email || ''
-                        ).trim().toLowerCase()
-                        const isAdminUser = Boolean(
-                          currentUser?.administrador ||
-                          currentUserEmail === 'administrador@mail.com'
-                        )
+                        const isAdminUser = Boolean(currentUser?.es_administrador)
                         const issueResolution = solicitudId
                           ? resolvedTransferIssuesBySolicitudId.get(solicitudId)
                           : null
@@ -2725,7 +2715,6 @@ function RecordatoriosPopup({
                           normalizeId(highlightedReminderId) === currentReminderId
                         )
                         const isTransferRelatedReminder = isTransferContextReminder || isTransferIssue
-                        const adminTransferStage = latestTransferStage || normalizeTransferProgressStage(visualDecisionStatus)
                         const canAdminOpenEntradaAction = (
                           isAdminUser &&
                           isTransferRelatedReminder &&
@@ -2734,13 +2723,7 @@ function RecordatoriosPopup({
                         const canAdminOpenSalidaAction = (
                           isAdminUser &&
                           isTransferRelatedReminder &&
-                          (
-                            canCreateSalidaFromReminder ||
-                            (
-                              typeof onOpenTransferRequestInSalidas === 'function' &&
-                              ['enviado', 'recibido'].includes(adminTransferStage)
-                            )
-                          )
+                          typeof onOpenTransferRequestInSalidas === 'function'
                         )
                         const shouldUseAdminTransferActions = canAdminOpenEntradaAction || canAdminOpenSalidaAction
                         const adminTransferSalidaLabel = canCreateSalidaFromReminder ? 'Crear salida' : 'Ver salida'

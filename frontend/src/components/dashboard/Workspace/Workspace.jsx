@@ -281,6 +281,7 @@ function Workspace({
     const solicitudId = String(payload?.solicitudId || solicitud?.id || '').trim()
     if (!solicitudId) return
     if (!labelHasAccess('Salidas', permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
+    const requestMode = String(payload?.mode || '').trim().toLowerCase()
 
     const sucursalProveedoraId = String(
       payload?.sucursalProveedoraId ||
@@ -304,7 +305,7 @@ function Workspace({
       sucursalProveedoraId,
       movimientoSalidaId,
       solicitud,
-      mode: 'view',
+      mode: requestMode === 'view' && movimientoSalidaId ? 'view' : 'preview',
     })
   }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
 
