@@ -290,7 +290,7 @@ def _infer_transfer_history_entry_from_reminder(reminder):
                 "label": reminder.get("contextLabel"),
             }
         )
-    if _normalize_context_type(context.get("type")) != "solicitud_traslado":
+    if context is None or _normalize_context_type(context.get("type")) != "solicitud_traslado":
         return None
 
     decision = _sanitize_decision(reminder.get("decision") or reminder.get("resolucion"))

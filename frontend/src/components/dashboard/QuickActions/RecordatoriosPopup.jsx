@@ -1106,6 +1106,28 @@ function RecordatoriosPopup({
     })
   }, [getTimelineDaySeverityForReminder, normalizedSelectedTimelineDate, remindersByDate])
 
+  const prevWeekHasCritical = useMemo(() => {
+    const start = getWeekStartDate(normalizedSelectedTimelineDate)
+    return Array.from({ length: 6 }, (_, offset) => {
+      const date = new Date(start)
+      date.setDate(start.getDate() - 7 + offset)
+      const dateKey = formatDateKey(date)
+      const dayReminders = remindersByDate.get(dateKey) || []
+      return dayReminders.some((reminder) => getTimelineDaySeverityForReminder(reminder) === 'critical')
+    }).some(Boolean)
+  }, [getTimelineDaySeverityForReminder, normalizedSelectedTimelineDate, remindersByDate])
+
+  const nextWeekHasCritical = useMemo(() => {
+    const start = getWeekStartDate(normalizedSelectedTimelineDate)
+    return Array.from({ length: 6 }, (_, offset) => {
+      const date = new Date(start)
+      date.setDate(start.getDate() + 7 + offset)
+      const dateKey = formatDateKey(date)
+      const dayReminders = remindersByDate.get(dateKey) || []
+      return dayReminders.some((reminder) => getTimelineDaySeverityForReminder(reminder) === 'critical')
+    }).some(Boolean)
+  }, [getTimelineDaySeverityForReminder, normalizedSelectedTimelineDate, remindersByDate])
+
   const timelineWeekRangeLabel = useMemo(() => {
     const first = timelineWeekDays[0]?.dateKey
     const last = timelineWeekDays[timelineWeekDays.length - 1]?.dateKey
@@ -2547,7 +2569,7 @@ function RecordatoriosPopup({
                   <div className="recordatorios-popup__timeline-head">
                     <button
                       type="button"
-                      className="recordatorios-popup__timeline-arrow"
+                      className={`recordatorios-popup__timeline-arrow${prevWeekHasCritical ? ' is-critical' : ''}`}
                       onClick={() => shiftTimelineDay(-7)}
                       aria-label="Semana anterior"
                     >
@@ -2560,7 +2582,7 @@ function RecordatoriosPopup({
 
                     <button
                       type="button"
-                      className="recordatorios-popup__timeline-arrow"
+                      className={`recordatorios-popup__timeline-arrow${nextWeekHasCritical ? ' is-critical' : ''}`}
                       onClick={() => shiftTimelineDay(7)}
                       aria-label="Semana siguiente"
                     >
