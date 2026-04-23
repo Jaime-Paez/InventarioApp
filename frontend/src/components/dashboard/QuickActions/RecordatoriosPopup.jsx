@@ -2589,6 +2589,7 @@ function RecordatoriosPopup({
                         )
                         const canViewTransferRequest = (
                           isTransferContextReminder &&
+                          !canResolveDecision &&
                           typeof onOpenTransferRequestInEntradas === 'function' &&
                           (
                             visualDecisionStatus === 'pendiente' ||
