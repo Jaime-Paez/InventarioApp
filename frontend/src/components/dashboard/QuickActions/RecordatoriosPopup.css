@@ -1019,6 +1019,14 @@
   -webkit-line-clamp: 3;
 }
 
+.recordatorios-popup__timeline-item-context-ref {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: color-mix(in srgb, currentColor 86%, transparent);
+  word-break: break-word;
+}
+
 .recordatorios-popup__timeline-item-meta {
   display: flex;
   flex-direction: column;

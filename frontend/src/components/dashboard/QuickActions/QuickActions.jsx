@@ -3899,6 +3899,7 @@ function QuickActions({
         currentUserName={currentUserName}
         currentUserIds={currentUserIdValues}
         reminders={personalReminders}
+        allReminders={reminders}
         onCreateReminder={handleCreateReminder}
         onMarkReminderSeen={handleMarkReminderSeen}
         darkMode={darkMode}

@@ -3485,6 +3485,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         }:
             queryset = queryset.filter(estado=estado)
 
+        solicitud_id = str(request.query_params.get("solicitud_id") or "").strip()
+        if solicitud_id.isdigit():
+            queryset = queryset.filter(solicitud_id=int(solicitud_id))
+
         allowed = get_allowed_sucursal_ids_for_modules(
             request.user,
             [

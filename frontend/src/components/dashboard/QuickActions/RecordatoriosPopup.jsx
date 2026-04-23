@@ -414,7 +414,7 @@ const getTransferVisualDecisionStatus = ({
 const getTransferVisualStatus = (baseStatus, visualDecisionStatus) => {
   if (visualDecisionStatus === 'recibido') {
     return {
-      label: 'Recibida',
+      label: 'Cumplido',
       className: 'arrived',
       canMarkSeen: false,
     }
@@ -453,6 +453,58 @@ const getTransferVisualStatus = (baseStatus, visualDecisionStatus) => {
 const extractTransferDocumentNumber = (value) => {
   const match = String(value || '').match(/#([A-Za-z0-9._-]+)/)
   return match ? String(match[1] || '').trim() : ''
+}
+
+const getTimelineReminderContextTitle = (reminder) => {
+  const contextType = normalizeReminderContextType(reminder?.context?.type)
+  if (isTransferIssueReminder(reminder) || contextType === 'solicitud_traslado') {
+    return 'Solicitud traslado'
+  }
+  return formatReminderContext(reminder)
+}
+
+const getTimelineReminderContextReference = (reminder) => {
+  const contextType = normalizeReminderContextType(reminder?.context?.type)
+  if (isTransferIssueReminder(reminder) || contextType === 'solicitud_traslado') {
+    const documentNumber = extractTransferDocumentNumber(
+      reminder?.context?.label || reminder?.description
+    )
+    if (documentNumber) return `#${documentNumber}`
+
+    const contextId = normalizeId(reminder?.context?.id)
+    return contextId ? `#${contextId}` : ''
+  }
+  return ''
+}
+
+const getTimelineReminderSummary = ({
+  reminder,
+  isTransferIssue,
+  isTransferContextReminder,
+  isSpecialReminder,
+  visualDecisionStatus,
+  displayStatus,
+}) => {
+  if (isTransferIssue) {
+    const normalizedDescription = normalizeStateText(reminder?.description)
+    if (normalizedDescription.includes('resuelto')) return 'Resuelto.'
+    if (normalizedDescription.includes('perdido')) return 'Marcado como perdido.'
+    return displayStatus?.label === 'Cumplido' ? 'Resuelto.' : 'Pendiente por resolver.'
+  }
+
+  if (isTransferContextReminder && !isSpecialReminder) {
+    if (visualDecisionStatus === 'recibido') return 'Entregada y recibida.'
+    if (visualDecisionStatus === 'enviado') return 'En traslado.'
+    if (visualDecisionStatus === 'aceptada') return 'Aceptada.'
+    if (visualDecisionStatus === 'rechazada') return 'Rechazada.'
+    if (visualDecisionStatus === 'cancelado') return 'Cancelada.'
+  }
+
+  if (isTransferContextReminder && isSpecialReminder) {
+    return 'Pendiente de decision.'
+  }
+
+  return String(reminder?.description || '').trim() || '-'
 }
 
 const parseNumber = (value) => {
@@ -676,6 +728,17 @@ const formatReminderTimeLabel = (reminder) => {
   }).format(new Date(timestamp))
 }
 
+const formatTransferIssueValue = (value, fallback = '-') => {
+  const normalized = String(value || '').trim()
+  if (!normalized) return fallback
+
+  return normalized
+    .split(/[_\s]+/g)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(' ')
+}
+
 function RecordatoriosPopup({
   open,
   onClose,
@@ -684,6 +747,7 @@ function RecordatoriosPopup({
   currentUserName,
   currentUserIds,
   reminders,
+  allReminders,
   onCreateReminder,
   onMarkReminderSeen,
   darkMode,
@@ -726,8 +790,12 @@ function RecordatoriosPopup({
   const [activeDetailReminderId, setActiveDetailReminderId] = useState('')
   const [activeDetailSolicitud, setActiveDetailSolicitud] = useState(null)
   const [activeDetailSolicitudLoading, setActiveDetailSolicitudLoading] = useState(false)
+  const [activeDetailIssues, setActiveDetailIssues] = useState([])
+  const [activeDetailIssuesLoading, setActiveDetailIssuesLoading] = useState(false)
+  const [activeDetailIssuesError, setActiveDetailIssuesError] = useState('')
   const transferLifecycleInFlightRef = useRef(new Set())
   const activeDetailSolicitudCacheRef = useRef(new Map())
+  const activeDetailIssuesCacheRef = useRef(new Map())
   const reminderItemRefs = useRef(new Map())
 
   const notifyError = useCallback(
@@ -747,6 +815,41 @@ function RecordatoriosPopup({
     const values = Array.from(currentUserIdSet)
     return values[0] || ''
   }, [currentUserIdSet])
+
+  const reminderStatusSource = useMemo(
+    () => (Array.isArray(allReminders) && allReminders.length ? allReminders : reminders),
+    [allReminders, reminders]
+  )
+
+  const resolvedTransferIssuesBySolicitudId = useMemo(() => {
+    const source = Array.isArray(reminderStatusSource) ? reminderStatusSource : []
+    const bySolicitudId = new Map()
+
+    source.forEach((reminder) => {
+      if (!isTransferIssueReminder(reminder)) return
+
+      const solicitudId = normalizeId(reminder?.context?.id)
+      if (!solicitudId) return
+
+      const timestamp = Number.isFinite(getReminderDateTimeTimestamp(reminder))
+        ? getReminderDateTimeTimestamp(reminder)
+        : Date.parse(String(reminder?.createdAt || '').trim()) || 0
+      const description = String(reminder?.description || '').toLowerCase()
+      const isResolved = (
+        reminderCompletedByIds(reminder).length > 0 ||
+        description.includes('resuelto') ||
+        description.includes('resueltos') ||
+        description.includes('perdido')
+      )
+
+      const previous = bySolicitudId.get(solicitudId)
+      if (!previous || timestamp >= previous.timestamp) {
+        bySolicitudId.set(solicitudId, { resolved: isResolved, timestamp })
+      }
+    })
+
+    return bySolicitudId
+  }, [reminderStatusSource])
 
   const creatorRecipientId = currentPrimaryUserId || extractUserId(currentUser)
   const creatorRecipientName = currentUserName || formatCurrentUserName(currentUser)
@@ -928,6 +1031,8 @@ function RecordatoriosPopup({
     const selectedReminder = source.find((r) => normalizeId(r?.id) === nId) || null
     if (!selectedReminder) return null
 
+    if (isTransferIssueReminder(selectedReminder)) return selectedReminder
+
     const contextType = normalizeReminderContextType(selectedReminder?.context?.type)
     const contextId = normalizeId(selectedReminder?.context?.id)
     if (contextType !== 'solicitud_traslado' || !contextId) return selectedReminder
@@ -945,9 +1050,17 @@ function RecordatoriosPopup({
     return mergedReminders[0] || selectedReminder
   }, [activeDetailReminderId, reminders])
 
-  const activeDetailIsTransferContext = useMemo(
-    () => normalizeReminderContextType(activeDetailReminder?.context?.type) === 'solicitud_traslado',
+  const activeDetailIsTransferIssue = useMemo(
+    () => isTransferIssueReminder(activeDetailReminder),
     [activeDetailReminder]
+  )
+
+  const activeDetailIsTransferContext = useMemo(
+    () => (
+      !activeDetailIsTransferIssue &&
+      normalizeReminderContextType(activeDetailReminder?.context?.type) === 'solicitud_traslado'
+    ),
+    [activeDetailIsTransferIssue, activeDetailReminder]
   )
 
   const activeDetailSolicitudId = useMemo(
@@ -958,7 +1071,11 @@ function RecordatoriosPopup({
   const activeDetailReminderStatus = useMemo(() => {
     if (!activeDetailReminder) return null
     const baseStatus = buildReminderStatusForUser(activeDetailReminder, currentUserIdSet)
+    if (!activeDetailIsTransferContext) return baseStatus
+
     const solicitudId = normalizeId(activeDetailReminder?.context?.id)
+    const issueResolution = solicitudId ? resolvedTransferIssuesBySolicitudId.get(solicitudId) : null
+    const isIssueResolved = Boolean(issueResolution?.resolved)
     const transferLifecycle = solicitudId ? transferLifecycleBySolicitudId?.[solicitudId] || null : null
     const latestProgressFromReminders = solicitudId
       ? transferLatestProgressBySolicitudId?.[solicitudId] || null
@@ -975,12 +1092,29 @@ function RecordatoriosPopup({
       latestTransferStage: latestStage,
       receiptOutcome: getTransferReceiptOutcome(activeDetailReminder),
     })
+    const outcomeForLabel = String(
+      latestProgressFromReminders?.receiptOutcome || getTransferReceiptOutcome(activeDetailReminder) || ''
+    ).trim()
     const vs = getTransferVisualStatus(baseStatus, visualDecisionStatus)
-    if (visualDecisionStatus === 'recibido' && !isReminderCreatedByCurrentUser(activeDetailReminder, currentUserIdSet, currentUserName)) {
-      return { ...vs, label: 'Entregada' }
+    if (visualDecisionStatus === 'recibido') {
+      if (outcomeForLabel === 'incompleto' && !isIssueResolved) {
+        return { label: 'Entregada con novedades', className: 'issue', canMarkSeen: false }
+      }
+
+      if (!isReminderCreatedByCurrentUser(activeDetailReminder, currentUserIdSet, currentUserName)) {
+        return { ...vs, label: 'Entregada y recibida', className: 'arrived' }
+      }
     }
     return vs
-  }, [activeDetailReminder, currentUserIdSet, currentUserName, transferLifecycleBySolicitudId, transferLatestProgressBySolicitudId])
+  }, [
+    activeDetailIsTransferContext,
+    activeDetailReminder,
+    currentUserIdSet,
+    currentUserName,
+    resolvedTransferIssuesBySolicitudId,
+    transferLifecycleBySolicitudId,
+    transferLatestProgressBySolicitudId,
+  ])
 
   const activeDetailReminderDescription = useMemo(() => {
     if (!activeDetailReminder) return '-'
@@ -991,13 +1125,13 @@ function RecordatoriosPopup({
       latestTransferStage: transferLifecycle?.stage || '',
       receiptOutcome: getTransferReceiptOutcome(activeDetailReminder),
     })
-    const isTransferContext = normalizeReminderContextType(activeDetailReminder?.context?.type) === 'solicitud_traslado'
+    const isTransferContext = activeDetailIsTransferContext
     const isSpecial = isSpecialTransferDecisionReminder(activeDetailReminder)
     if (isTransferContext && !isSpecial) {
       return buildTransferResponseDescription(activeDetailReminder, decisionStatus)
     }
     return String(activeDetailReminder?.description || '').trim() || '-'
-  }, [activeDetailReminder, transferLifecycleBySolicitudId])
+  }, [activeDetailIsTransferContext, activeDetailReminder, transferLifecycleBySolicitudId])
 
   const activeDetailReminderRecipientNames = useMemo(() => {
     if (!activeDetailReminder) return 'Sin destinatarios'
@@ -1007,8 +1141,23 @@ function RecordatoriosPopup({
       .join(', ') || 'Sin destinatarios'
   }, [activeDetailReminder])
 
+  const activeDetailIssueRows = useMemo(
+    () => (Array.isArray(activeDetailIssues) ? activeDetailIssues : []).map((issue, index) => {
+      const issueId = normalizeId(issue?.id)
+      const productId = normalizeId(issue?.producto_id)
+      return {
+        id: issueId || `${activeDetailSolicitudId}-${productId || index}`,
+        productoCodigo: String(issue?.producto_codigo || '').trim() || '-',
+        productoNombre: String(issue?.producto_nombre || '').trim() || 'Producto sin nombre',
+        cantidadFaltante: Number.parseInt(String(issue?.cantidad_faltante || 0), 10) || 0,
+        estadoLabel: formatTransferIssueValue(issue?.estado, 'Pendiente'),
+      }
+    }),
+    [activeDetailIssues, activeDetailSolicitudId]
+  )
+
   const activeDetailTransferHistory = useMemo(() => {
-    if (!activeDetailReminder) return []
+    if (!activeDetailReminder || !activeDetailIsTransferContext) return []
     const contextType = normalizeReminderContextType(activeDetailReminder?.context?.type)
     const contextId = normalizeId(activeDetailReminder?.context?.id)
     const reminderHistory = mergeTransferHistoryForContext(reminders, contextType, contextId)
@@ -1174,7 +1323,11 @@ function RecordatoriosPopup({
       setActiveDetailReminderId('')
       setActiveDetailSolicitud(null)
       setActiveDetailSolicitudLoading(false)
+      setActiveDetailIssues([])
+      setActiveDetailIssuesLoading(false)
+      setActiveDetailIssuesError('')
       activeDetailSolicitudCacheRef.current = new Map()
+      activeDetailIssuesCacheRef.current = new Map()
       transferLifecycleInFlightRef.current = new Set()
       reminderItemRefs.current = new Map()
       return
@@ -1194,6 +1347,9 @@ function RecordatoriosPopup({
     setActiveDetailReminderId('')
     setActiveDetailSolicitud(null)
     setActiveDetailSolicitudLoading(false)
+    setActiveDetailIssues([])
+    setActiveDetailIssuesLoading(false)
+    setActiveDetailIssuesError('')
     closeDecisionPanel()
   }, [open, currentPrimaryUserId, closeDecisionPanel])
 
@@ -1655,6 +1811,30 @@ function RecordatoriosPopup({
     [token]
   )
 
+  const fetchTransferIssueDetails = useCallback(
+    async (solicitudId) => {
+      if (!token || !solicitudId) return []
+
+      const params = new URLSearchParams()
+      params.set('solicitud_id', solicitudId)
+
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/?${params.toString()}`,
+        {},
+        token
+      )
+      const data = await response.json().catch(() => ([]))
+      if (!response.ok) {
+        const detail = String(data?.detail || '').trim() || 'No se pudieron cargar los productos con inconvenientes.'
+        throw new Error(detail)
+      }
+
+      const rows = Array.isArray(data) ? data : []
+      return rows.filter((row) => normalizeId(row?.solicitud_id) === normalizeId(solicitudId))
+    },
+    [token]
+  )
+
   const resolveTransferLifecycleStage = useCallback(
     async (solicitudDetail) => {
       if (!solicitudDetail || typeof solicitudDetail !== 'object') return 'aceptada'
@@ -1744,6 +1924,53 @@ function RecordatoriosPopup({
       cancelled = true
     }
   }, [activeDetailIsTransferContext, activeDetailSolicitudId, fetchTransferSolicitudDetail, open, token])
+
+  useEffect(() => {
+    let cancelled = false
+    const solicitudId = activeDetailSolicitudId
+
+    if (!open || !token || !activeDetailIsTransferIssue || !solicitudId) {
+      setActiveDetailIssues([])
+      setActiveDetailIssuesLoading(false)
+      setActiveDetailIssuesError('')
+      return undefined
+    }
+
+    const cachedIssues = activeDetailIssuesCacheRef.current.get(solicitudId)
+    if (Array.isArray(cachedIssues)) {
+      setActiveDetailIssues(cachedIssues)
+      setActiveDetailIssuesLoading(false)
+      setActiveDetailIssuesError('')
+      return undefined
+    }
+
+    setActiveDetailIssues([])
+    setActiveDetailIssuesLoading(true)
+    setActiveDetailIssuesError('')
+
+    void (async () => {
+      try {
+        const issues = await fetchTransferIssueDetails(solicitudId)
+        if (cancelled) return
+        activeDetailIssuesCacheRef.current.set(solicitudId, issues)
+        setActiveDetailIssues(issues)
+      } catch (error) {
+        if (cancelled) return
+        setActiveDetailIssues([])
+        setActiveDetailIssuesError(
+          error?.message || 'No se pudieron cargar los productos con inconvenientes.'
+        )
+      } finally {
+        if (!cancelled) {
+          setActiveDetailIssuesLoading(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeDetailIsTransferIssue, activeDetailSolicitudId, fetchTransferIssueDetails, open, token])
 
   useEffect(() => {
     if (!open || !token) return
@@ -2341,27 +2568,20 @@ function RecordatoriosPopup({
                           currentUser?.es_administrador ||
                           String(currentUser?.rol || '').trim().toLowerCase() === 'administrador'
                         )
-                        const relatedIssueReminder = (
-                          !isTransferIssue && isTransferContextReminder && solicitudId
-                            ? (Array.isArray(reminders) ? reminders : []).find((r) => (
-                                isTransferIssueReminder(r) && normalizeId(r?.context?.id) === solicitudId
-                              ))
-                            : null
-                        )
-                        const isIssueResolved = relatedIssueReminder
-                          ? (
-                              reminderCompletedByIds(relatedIssueReminder).length > 0 ||
-                              String(relatedIssueReminder?.description || '').toLowerCase().includes('resuelto') ||
-                              String(relatedIssueReminder?.description || '').toLowerCase().includes('perdido')
-                            )
-                          : false
+                        const issueResolution = solicitudId
+                          ? resolvedTransferIssuesBySolicitudId.get(solicitudId)
+                          : null
+                        const isIssueResolved = Boolean(issueResolution?.resolved)
                         const displayStatus = (() => {
-                          if (visualDecisionStatus === 'recibido' && !isReminderOwnedByCurrentUser && !isTransferIssue) {
+                          if (visualDecisionStatus === 'recibido' && !isTransferIssue) {
                             const outcomeForLabel = latestTransferReceiptOutcome || transferReceiptOutcome
                             if (outcomeForLabel === 'incompleto' && !isIssueResolved) {
                               return { ...status, label: 'Entregada con novedades', className: 'issue' }
                             }
-                            return { ...status, label: 'Entregada' }
+                            if (isReminderOwnedByCurrentUser) {
+                              return { ...status, label: 'Cumplido', className: 'arrived' }
+                            }
+                            return { ...status, label: 'Entregada y recibida', className: 'arrived' }
                           }
                           return status
                         })()
@@ -2503,11 +2723,36 @@ function RecordatoriosPopup({
                           Boolean(currentReminderId) &&
                           normalizeId(highlightedReminderId) === currentReminderId
                         )
-                        const timelineDescription = (
-                          isTransferContextReminder && !isSpecialReminder
-                            ? buildTransferResponseDescription(reminder, visualDecisionStatus)
-                            : String(reminder?.description || '').trim() || '-'
+                        const isTransferRelatedReminder = isTransferContextReminder || isTransferIssue
+                        const adminTransferStage = latestTransferStage || normalizeTransferProgressStage(visualDecisionStatus)
+                        const canAdminOpenEntradaAction = (
+                          isAdminUser &&
+                          isTransferRelatedReminder &&
+                          typeof onOpenTransferRequestInEntradas === 'function'
                         )
+                        const canAdminOpenSalidaAction = (
+                          isAdminUser &&
+                          isTransferRelatedReminder &&
+                          (
+                            canCreateSalidaFromReminder ||
+                            (
+                              typeof onOpenTransferRequestInSalidas === 'function' &&
+                              ['enviado', 'recibido'].includes(adminTransferStage)
+                            )
+                          )
+                        )
+                        const shouldUseAdminTransferActions = canAdminOpenEntradaAction || canAdminOpenSalidaAction
+                        const adminTransferSalidaLabel = canCreateSalidaFromReminder ? 'Crear salida' : 'Ver salida'
+                        const timelineContextTitle = getTimelineReminderContextTitle(reminder)
+                        const timelineContextReference = getTimelineReminderContextReference(reminder)
+                        const timelineDescription = getTimelineReminderSummary({
+                          reminder,
+                          isTransferIssue,
+                          isTransferContextReminder,
+                          isSpecialReminder,
+                          visualDecisionStatus,
+                          displayStatus,
+                        })
 
                         return (
                           <article
@@ -2542,7 +2787,14 @@ function RecordatoriosPopup({
                               className="recordatorios-popup__timeline-item-col recordatorios-popup__timeline-item-col--tema recordatorios-popup__timeline-item-col--clickable"
                               onClick={() => setActiveDetailReminderId(String(reminder?.id || ''))}
                             >
-                              <strong className="recordatorios-popup__timeline-item-context">{formatReminderContext(reminder)}</strong>
+                              <strong className="recordatorios-popup__timeline-item-context">
+                                {timelineContextTitle}
+                              </strong>
+                              {!!timelineContextReference && (
+                                <span className="recordatorios-popup__timeline-item-context-ref">
+                                  {timelineContextReference}
+                                </span>
+                              )}
                             </div>
 
                             <div
@@ -2560,135 +2812,202 @@ function RecordatoriosPopup({
                                 {displayStatus.label}
                               </span>
                               <div className="recordatorios-popup__timeline-item-actions">
-                              {canResolveDecision ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => openDecisionPanel(reminder)}
-                                >
-                                  Resolver solicitud
-                                </button>
-                              ) : isTransferLifecycleLoading ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  disabled
-                                >
-                                  <Loader2 className="recordatorios-popup__inline-spinner" />
-                                  Validando estado...
-                                </button>
-                              ) : canCreateSalidaFromReminder ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => handleCreateSalidaFromReminder(reminder)}
-                                  disabled={isOpeningTransfer}
-                                >
-                                  {isOpeningTransfer ? 'Abriendo...' : 'Crear salida'}
-                                </button>
-                              ) : canOpenInTransitTransferFromReminder ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => {
-                                    void handleOpenTransferInTransit(reminder)
-                                  }}
-                                  disabled={isOpeningTransfer}
-                                >
-                                  {isOpeningTransfer ? 'Abriendo...' : 'Abrir recepcion'}
-                                </button>
-                              ) : canOpenIssueFromReceiptReminder ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => {
-                                    void handleOpenTransferIssueResolution(reminder)
-                                  }}
-                                  disabled={isOpeningTransfer}
-                                >
-                                  {isOpeningTransfer ? 'Abriendo...' : 'Ver inconveniente'}
-                                </button>
-                              ) : canOpenLatestTransferProgress ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => {
-                                    if (isLatestTransferProgressReminder) {
-                                      void handleOpenTransferByPreferredTarget(
-                                        reminder,
-                                        latestProgressPreferredTarget
-                                      )
-                                      return
-                                    }
-                                    handleJumpToLatestTransferReminder(reminder)
-                                  }}
-                                  disabled={isOpeningTransfer && isLatestTransferProgressReminder}
-                                >
-                                  {isOpeningTransfer
-                                    ? 'Abriendo...'
-                                    : (
-                                      isLatestTransferProgressReminder
-                                        ? latestProgressActionLabel
-                                        : `Ver ultimo avance (${latestTransferStageLabel})`
+                                {canResolveDecision && (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => openDecisionPanel(reminder)}
+                                  >
+                                    Resolver solicitud
+                                  </button>
+                                )}
+
+                                {shouldUseAdminTransferActions ? (
+                                  <>
+                                    {isTransferLifecycleLoading && !canResolveDecision && (
+                                      <button
+                                        type="button"
+                                        className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                        disabled
+                                      >
+                                        <Loader2 className="recordatorios-popup__inline-spinner" />
+                                        Validando estado...
+                                      </button>
                                     )}
-                                </button>
-                              ) : canViewTransferRequest ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => handleOpenTransferInEntradas(reminder)}
-                                  disabled={isOpeningTransfer}
-                                >
-                                  {isOpeningTransfer
-                                    ? 'Abriendo...'
-                                    : (
-                                      shouldUseSentCopyOnTransferEntryAction
-                                        ? 'Solicitud ya enviada, ver envio pendiente'
-                                        : (shouldShowCorrectionAction ? 'Corregir solicitud' : 'Ver solicitud')
+
+                                    {canAdminOpenEntradaAction && (
+                                      <button
+                                        type="button"
+                                        className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                        onClick={() => handleOpenTransferInEntradas(reminder)}
+                                        disabled={isOpeningTransfer}
+                                      >
+                                        {isOpeningTransfer ? 'Abriendo...' : 'Ver entrada'}
+                                      </button>
                                     )}
-                                </button>
-                              ) : canOpenRandomInspectionAction ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => {
-                                    void handleOpenRandomInspection(reminder)
-                                  }}
-                                  disabled={isOpeningInspection}
-                                >
-                                  {isOpeningInspection
-                                    ? 'Abriendo...'
-                                    : (
-                                      isRandomInspectionVerifyReminder(reminder)
-                                        ? 'Ir a revision por sucursal'
-                                        : 'Realizar inspeccion'
+
+                                    {canAdminOpenSalidaAction && (
+                                      <button
+                                        type="button"
+                                        className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                        onClick={() => {
+                                          if (canCreateSalidaFromReminder) {
+                                            void handleCreateSalidaFromReminder(reminder)
+                                            return
+                                          }
+                                          void handleOpenTransferInSalidas(reminder)
+                                        }}
+                                        disabled={isOpeningTransfer}
+                                      >
+                                        {isOpeningTransfer ? 'Abriendo...' : adminTransferSalidaLabel}
+                                      </button>
                                     )}
-                                </button>
-                              ) : canOpenTransferIssueAction ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                  onClick={() => {
-                                    void handleOpenTransferIssueResolution(reminder)
-                                  }}
-                                  disabled={isOpeningTransfer}
-                                >
-                                  {isOpeningTransfer ? 'Abriendo...' : 'Resolver inconveniente'}
-                                </button>
-                              ) : status.canMarkSeen ? (
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__mark-seen"
-                                  onClick={() => onMarkReminderSeen?.(reminder.id)}
-                                >
-                                  Marcar como visto
-                                </button>
-                              ) : isSpecialReminder ? (
-                                <span className="recordatorios-popup__action-placeholder">Decision registrada</span>
-                              ) : (
-                                null
-                              )}
-                            </div>
+
+                                    {canOpenIssueFromReceiptReminder && (
+                                      <button
+                                        type="button"
+                                        className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                        onClick={() => {
+                                          void handleOpenTransferIssueResolution(reminder)
+                                        }}
+                                        disabled={isOpeningTransfer}
+                                      >
+                                        {isOpeningTransfer ? 'Abriendo...' : 'Ver inconveniente'}
+                                      </button>
+                                    )}
+
+                                    {canOpenTransferIssueAction && (
+                                      <button
+                                        type="button"
+                                        className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                        onClick={() => {
+                                          void handleOpenTransferIssueResolution(reminder)
+                                        }}
+                                        disabled={isOpeningTransfer}
+                                      >
+                                        {isOpeningTransfer ? 'Abriendo...' : 'Resolver inconveniente'}
+                                      </button>
+                                    )}
+                                  </>
+                                ) : isTransferLifecycleLoading ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    disabled
+                                  >
+                                    <Loader2 className="recordatorios-popup__inline-spinner" />
+                                    Validando estado...
+                                  </button>
+                                ) : canCreateSalidaFromReminder ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => handleCreateSalidaFromReminder(reminder)}
+                                    disabled={isOpeningTransfer}
+                                  >
+                                    {isOpeningTransfer ? 'Abriendo...' : 'Crear salida'}
+                                  </button>
+                                ) : canOpenInTransitTransferFromReminder ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => {
+                                      void handleOpenTransferInTransit(reminder)
+                                    }}
+                                    disabled={isOpeningTransfer}
+                                  >
+                                    {isOpeningTransfer ? 'Abriendo...' : 'Abrir recepcion'}
+                                  </button>
+                                ) : canOpenIssueFromReceiptReminder ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => {
+                                      void handleOpenTransferIssueResolution(reminder)
+                                    }}
+                                    disabled={isOpeningTransfer}
+                                  >
+                                    {isOpeningTransfer ? 'Abriendo...' : 'Ver inconveniente'}
+                                  </button>
+                                ) : canOpenLatestTransferProgress ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => {
+                                      if (isLatestTransferProgressReminder) {
+                                        void handleOpenTransferByPreferredTarget(
+                                          reminder,
+                                          latestProgressPreferredTarget
+                                        )
+                                        return
+                                      }
+                                      handleJumpToLatestTransferReminder(reminder)
+                                    }}
+                                    disabled={isOpeningTransfer && isLatestTransferProgressReminder}
+                                  >
+                                    {isOpeningTransfer
+                                      ? 'Abriendo...'
+                                      : (
+                                        isLatestTransferProgressReminder
+                                          ? latestProgressActionLabel
+                                          : `Ver ultimo avance (${latestTransferStageLabel})`
+                                      )}
+                                  </button>
+                                ) : canViewTransferRequest ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => handleOpenTransferInEntradas(reminder)}
+                                    disabled={isOpeningTransfer}
+                                  >
+                                    {isOpeningTransfer
+                                      ? 'Abriendo...'
+                                      : (
+                                        shouldUseSentCopyOnTransferEntryAction
+                                          ? 'Solicitud ya enviada, ver envio pendiente'
+                                          : (shouldShowCorrectionAction ? 'Corregir solicitud' : 'Ver solicitud')
+                                      )}
+                                  </button>
+                                ) : canOpenRandomInspectionAction ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => {
+                                      void handleOpenRandomInspection(reminder)
+                                    }}
+                                    disabled={isOpeningInspection}
+                                  >
+                                    {isOpeningInspection
+                                      ? 'Abriendo...'
+                                      : (
+                                        isRandomInspectionVerifyReminder(reminder)
+                                          ? 'Ir a revision por sucursal'
+                                          : 'Realizar inspeccion'
+                                      )}
+                                  </button>
+                                ) : canOpenTransferIssueAction ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => {
+                                      void handleOpenTransferIssueResolution(reminder)
+                                    }}
+                                    disabled={isOpeningTransfer}
+                                  >
+                                    {isOpeningTransfer ? 'Abriendo...' : 'Resolver inconveniente'}
+                                  </button>
+                                ) : status.canMarkSeen ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen"
+                                    onClick={() => onMarkReminderSeen?.(reminder.id)}
+                                  >
+                                    Marcar como visto
+                                  </button>
+                                ) : isSpecialReminder && !canResolveDecision ? (
+                                  <span className="recordatorios-popup__action-placeholder">Decision registrada</span>
+                                ) : null}
+                              </div>
                             </div>
                           </article>
                         )
@@ -2906,6 +3225,52 @@ function RecordatoriosPopup({
                   <span>Descripcion</span>
                   <p>{activeDetailReminderDescription}</p>
                 </div>
+
+                {activeDetailIsTransferIssue && activeDetailIssuesLoading && (
+                  <div className="recordatorios-popup__detail-history">
+                    <span>Productos con inconvenientes</span>
+                    <div className="recordatorios-popup__loading">
+                      <Loader2 />
+                      <small>Cargando productos...</small>
+                    </div>
+                  </div>
+                )}
+
+                {activeDetailIsTransferIssue && !activeDetailIssuesLoading && (
+                  <div className="recordatorios-popup__detail-history">
+                    <span>Productos con inconvenientes</span>
+                    <div className="recordatorios-popup__decision-table-wrap">
+                      <table className="recordatorios-popup__decision-table">
+                        <thead>
+                          <tr>
+                            <th>Codigo</th>
+                            <th>Producto</th>
+                            <th>Faltante</th>
+                            <th>Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!activeDetailIssueRows.length && (
+                            <tr>
+                              <td colSpan={4}>No hay productos con inconvenientes para este recordatorio.</td>
+                            </tr>
+                          )}
+                          {activeDetailIssueRows.map((issue) => (
+                            <tr key={issue.id}>
+                              <td>{issue.productoCodigo}</td>
+                              <td>{issue.productoNombre}</td>
+                              <td>{issue.cantidadFaltante}</td>
+                              <td>{issue.estadoLabel}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {activeDetailIssuesError && (
+                      <p className="recordatorios-popup__error">{activeDetailIssuesError}</p>
+                    )}
+                  </div>
+                )}
 
                 {activeDetailIsTransferContext && activeDetailSolicitudLoading && (
                   <div className="recordatorios-popup__detail-history">
