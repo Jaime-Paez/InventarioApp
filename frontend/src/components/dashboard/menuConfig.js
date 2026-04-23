@@ -52,7 +52,7 @@ export const MENU_STRUCTURE = [
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
   { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios', requiresAdmin: true },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
-  { label: 'Auditoria', icon: ScrollText, moduleKey: 'usuarios', requiresAdmin: true },
+  { label: 'Auditoría', icon: ScrollText, moduleKey: 'usuarios', requiresAdmin: true },
 ]
 
 const STANDALONE_LABEL_RULES = {

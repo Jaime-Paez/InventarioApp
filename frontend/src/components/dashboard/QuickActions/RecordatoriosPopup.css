@@ -508,6 +508,24 @@
   color: var(--color-button-primary);
 }
 
+.recordatorios-popup__timeline-day.is-critical {
+  border-color: color-mix(in srgb, var(--color-error-text) 38%, transparent);
+  background: color-mix(in srgb, var(--color-error-text) 12%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-error-text) 88%, #3b0a0a);
+}
+
+.recordatorios-popup__timeline-day.is-critical:hover {
+  border-color: color-mix(in srgb, var(--color-error-text) 52%, transparent);
+  background: color-mix(in srgb, var(--color-error-text) 18%, var(--color-surface));
+}
+
+.recordatorios-popup__timeline-day.is-selected.is-critical {
+  border-color: color-mix(in srgb, var(--color-error-text) 64%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error-text) 24%, transparent);
+  background: color-mix(in srgb, var(--color-error-text) 88%, #ffffff 12%);
+  color: #ffffff;
+}
+
 .recordatorios-popup__timeline-day-label {
   display: flex;
   align-items: center;
@@ -555,6 +573,24 @@
   border-color: color-mix(in srgb, var(--color-primary-dark) 64%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary-dark) 24%, transparent);
   background: var(--color-primary-dark);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-day.is-critical {
+  border-color: color-mix(in srgb, var(--color-error-text-dark) 46%, #36414c);
+  background: color-mix(in srgb, var(--color-error-text-dark) 12%, #242a31);
+  color: color-mix(in srgb, var(--color-error-text-dark) 90%, white);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-day.is-critical:hover {
+  border-color: color-mix(in srgb, var(--color-error-text-dark) 58%, #36414c);
+  background: color-mix(in srgb, var(--color-error-text-dark) 18%, #242a31);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-day.is-selected.is-critical {
+  border-color: color-mix(in srgb, var(--color-error-text-dark) 62%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error-text-dark) 24%, transparent);
+  background: color-mix(in srgb, var(--color-error-text-dark) 76%, #111827 24%);
+  color: #ffffff;
 }
 
 .recordatorios-popup__timeline-day-header {

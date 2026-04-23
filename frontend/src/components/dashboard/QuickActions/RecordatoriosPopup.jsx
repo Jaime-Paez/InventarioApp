@@ -953,6 +953,93 @@ function RecordatoriosPopup({
     return map
   }, [reminders])
 
+  const getTimelineDaySeverityForReminder = useCallback((reminder) => {
+    const baseStatus = buildReminderStatusForUser(reminder, currentUserIdSet)
+    const isTransferIssue = isTransferIssueReminder(reminder)
+    const isTransferContextReminder =
+      normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado'
+    const decisionStatus = getReminderDecisionStatus(reminder)
+    const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
+    const solicitudId = normalizeId(reminder?.context?.id)
+    const transferLifecycle = transferLifecycleBySolicitudId?.[solicitudId] || null
+    const latestTransferProgress = solicitudId
+      ? (transferLatestProgressBySolicitudId?.[solicitudId] || null)
+      : null
+    const latestTransferReceiptOutcome = String(
+      latestTransferProgress?.receiptOutcome || ''
+    ).trim()
+    const latestTransferStageFromReminders = normalizeTransferProgressStage(
+      latestTransferProgress?.stage
+    )
+    const latestTransferStageFromLifecycle = normalizeTransferProgressStage(transferLifecycle?.stage || '')
+    const latestTransferStage = (() => {
+      const reminderRank = TRANSFER_PROGRESS_STAGE_RANK[latestTransferStageFromReminders] ?? 0
+      const lifecycleRank = TRANSFER_PROGRESS_STAGE_RANK[latestTransferStageFromLifecycle] ?? 0
+      return lifecycleRank > reminderRank
+        ? latestTransferStageFromLifecycle
+        : latestTransferStageFromReminders
+    })()
+    const visualDecisionStatus = getTransferVisualDecisionStatus({
+      decisionStatus,
+      latestTransferStage,
+      receiptOutcome: transferReceiptOutcome,
+    })
+    const status = getTransferVisualStatus(baseStatus, visualDecisionStatus)
+    const issueResolution = solicitudId
+      ? resolvedTransferIssuesBySolicitudId.get(solicitudId)
+      : null
+    const isIssueResolved = Boolean(issueResolution?.resolved)
+    const isReminderOwnedByCurrentUser = isReminderCreatedByCurrentUser(
+      reminder,
+      currentUserIdSet,
+      currentUserName
+    )
+    const displayStatus = (() => {
+      if (visualDecisionStatus === 'recibido' && !isTransferIssue) {
+        const outcomeForLabel = latestTransferReceiptOutcome || transferReceiptOutcome
+        if (outcomeForLabel === 'incompleto' && !isIssueResolved) {
+          return { ...status, label: 'Entregada con novedades', className: 'issue' }
+        }
+        if (isReminderOwnedByCurrentUser) {
+          return { ...status, label: 'Cumplido', className: 'arrived' }
+        }
+        return { ...status, label: 'Entregada y recibida', className: 'arrived' }
+      }
+      return status
+    })()
+    const isPendingInspectionAlert = (
+      status.className === 'pending' &&
+      (
+        isRandomInspectionDailyReminder(reminder) ||
+        isRandomInspectionVerifyReminder(reminder)
+      )
+    )
+
+    if (
+      displayStatus.className === 'rejected' ||
+      displayStatus.className === 'issue' ||
+      isPendingInspectionAlert
+    ) {
+      return 'critical'
+    }
+
+    if (
+      isTransferContextReminder &&
+      visualDecisionStatus === 'rechazada' &&
+      !isReminderOwnedByCurrentUser
+    ) {
+      return 'critical'
+    }
+
+    return 'default'
+  }, [
+    currentUserIdSet,
+    currentUserName,
+    resolvedTransferIssuesBySolicitudId,
+    transferLifecycleBySolicitudId,
+    transferLatestProgressBySolicitudId,
+  ])
+
   const handleJumpToLatestTransferReminder = useCallback((reminder) => {
     const solicitudId = normalizeId(reminder?.context?.id)
     if (!solicitudId) return false
@@ -1002,15 +1089,22 @@ function RecordatoriosPopup({
       const date = new Date(start)
       date.setDate(start.getDate() + offset)
       const dateKey = formatDateKey(date)
-      const count = (remindersByDate.get(dateKey) || []).length
+      const dayReminders = remindersByDate.get(dateKey) || []
+      const count = dayReminders.length
+      const severity = dayReminders.some(
+        (reminder) => getTimelineDaySeverityForReminder(reminder) === 'critical'
+      )
+        ? 'critical'
+        : 'default'
       return {
         dateKey,
         count,
+        severity,
         dayName: formatTimelineDayName(dateKey),
         dayDate: formatTimelineDayDate(dateKey),
       }
     })
-  }, [normalizedSelectedTimelineDate, remindersByDate])
+  }, [getTimelineDaySeverityForReminder, normalizedSelectedTimelineDate, remindersByDate])
 
   const timelineWeekRangeLabel = useMemo(() => {
     const first = timelineWeekDays[0]?.dateKey
@@ -2483,7 +2577,11 @@ function RecordatoriosPopup({
                           type="button"
                           role="tab"
                           aria-selected={isSelected}
-                          className={`recordatorios-popup__timeline-day${isSelected ? ' is-selected' : ''}`}
+                          className={`recordatorios-popup__timeline-day${
+                            isSelected ? ' is-selected' : ''
+                          }${
+                            day.severity === 'critical' ? ' is-critical' : ''
+                          }`}
                           onClick={() => setSelectedTimelineDate(day.dateKey)}
                           title={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
                           aria-label={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
