@@ -2968,6 +2968,17 @@ function RecordatoriosPopup({
                                       </button>
                                     )}
 
+                                    {shouldShowCorrectionAction && canAdminOpenEntradaAction && (
+                                      <button
+                                        type="button"
+                                        className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                        onClick={() => handleOpenTransferInEntradas(reminder)}
+                                        disabled={isOpeningTransfer}
+                                      >
+                                        {isOpeningTransfer ? 'Abriendo...' : 'Corregir'}
+                                      </button>
+                                    )}
+
                                     {canOpenIssueFromReceiptReminder && (
                                       <button
                                         type="button"

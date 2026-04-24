@@ -3,6 +3,8 @@ import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
+import SubTipoButtonSelector from './SubTipoButtonSelector'
+import StaticFieldDisplay from './StaticFieldDisplay'
 import {
   buildTransferHistoryEntry,
   createReminderId,
@@ -21,9 +23,9 @@ const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const SELECTOR_WIDTH = 520
-const SELECTOR_HEIGHT = 300
+const SELECTOR_HEIGHT = 360
 const SELECTOR_MIN_WIDTH = 420
-const SELECTOR_MIN_HEIGHT = 260
+const SELECTOR_MIN_HEIGHT = 340
 const VIEWPORT_PADDING = 12
 
 const initialForm = {
@@ -223,6 +225,20 @@ const todayISO = () => {
   const month = String(today.getMonth() + 1).padStart(2, '0')
   const day = String(today.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+const formatDateDisplay = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const [year, month, day] = raw.split('-').map((part) => Number(part))
+  if (!year || !month || !day) return raw
+  const parsed = new Date(year, month - 1, day)
+  if (Number.isNaN(parsed.getTime())) return raw
+  return new Intl.DateTimeFormat('es-EC', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(parsed)
 }
 
 const formatCurrency = (value) => {
@@ -428,18 +444,70 @@ function CreateEntrada({
     () => subTiposEntrada.find((sub) => String(sub.id) === String(formData.subTipoId)),
     [subTiposEntrada, formData.subTipoId]
   )
+  const entradaSubTipoOptions = useMemo(
+    () =>
+      subTiposEntrada
+        .map((subTipo, index) => {
+          const normalizedName = normalizeValue(subTipo?.nombre)
+          let label = formatSubTipoLabel(subTipo)
+          let description = 'Selecciona este tipo de entrada.'
+          let order = 90 + index
+
+          if (normalizedName.includes('import')) {
+            label = 'Importación'
+            description = 'Proceso para recibir productos de importación.'
+            order = 0
+          } else if (normalizedName.includes('compra')) {
+            label = 'Compra local'
+            description = 'Proceso para recibir productos de compra local en el mismo país.'
+            order = 1
+          } else if (normalizedName.includes('trasl')) {
+            label = 'Pedido a sucursal'
+            description = 'Hacer una solicitud para pedir productos de otra sucursal.'
+            order = 2
+          } else if (normalizedName.includes('devol')) {
+            label = 'Devolución'
+            description = 'Cuando un cliente pide hacer una devolución de algo que no funciona o no se usó.'
+            order = 3
+          }
+
+          return {
+            value: String(subTipo?.id || ''),
+            label,
+            description,
+            icon: normalizedName.includes('import')
+              ? 'import'
+              : normalizedName.includes('compra')
+                ? 'purchase'
+                : normalizedName.includes('trasl')
+                  ? 'branch'
+                  : normalizedName.includes('devol')
+                    ? 'return'
+                    : 'branch',
+            order,
+            index,
+          }
+        })
+        .sort((first, second) => first.order - second.order || first.index - second.index),
+    [subTiposEntrada]
+  )
+  const selectedSubTipoLabel = useMemo(
+    () =>
+      entradaSubTipoOptions.find((option) => option.value === String(formData.subTipoId))?.label ||
+      formatSubTipoLabel(selectedSubTipo),
+    [entradaSubTipoOptions, formData.subTipoId, selectedSubTipo]
+  )
 
   const selectedSubTipoName = normalizeValue(selectedSubTipo?.nombre)
   const isDevolucion = selectedSubTipoName.includes('devol')
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
   const isCompraEntrada = selectedSubTipoName.includes('compra') || selectedSubTipoName.includes('import')
-  const isEstadoEditable = isVenta
+  const isEditableEntryDate = !isTraslado && !isDevolucion
   const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
   const isSelectorStep = !formData.subTipoId
   const requiresSucursalObjetivo = isTraslado
-  const documentLabel = isTraslado ? 'Código de solicitud' : 'Código de entrada'
   const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
   const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
   const selectedSucursalId = String(formData.sucursalId || '').trim()
@@ -459,6 +527,12 @@ function CreateEntrada({
   const destinationBranches = useMemo(() => {
     return providerBranchPool.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
   }, [providerBranchPool, selectedSucursalId])
+  const formattedFecha = useMemo(() => formatDateDisplay(formData.fecha), [formData.fecha])
+  const documentHelperText = useMemo(() => {
+    if (documentStatus === DOCUMENT_STATUS.error) return 'No se pudo generar el código automáticamente.'
+    return ''
+  }, [documentStatus])
+  const documentHelperTone = documentStatus === DOCUMENT_STATUS.error ? 'error' : 'muted'
 
   const devolucionEstadoOptions = useMemo(
     () =>
@@ -498,7 +572,6 @@ function CreateEntrada({
     trasladoEstadoOptions,
     ventaEstadoOptions,
   ])
-
   const defaultEstadoMovimientoId = useMemo(() => {
     if (!estadoOptions.length) return ''
 
@@ -576,8 +649,6 @@ function CreateEntrada({
   const totalConIva = subtotalNeto * (1 + ivaRateValue)
   const ivaPercent = (ivaRateValue * 100).toFixed(2).replace(/\.00$/, '')
   const descuentoPercentLabel = descuentoPercent.toFixed(2).replace(/\.00$/, '')
-  const estadoSelectOptions = isVenta ? ventaEstadoOptions : (isCompraEntrada ? compraEstadoOptions : estadoOptions)
-
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
@@ -591,13 +662,6 @@ function CreateEntrada({
       ),
     [details]
   )
-  const proveedorBranchName = useMemo(() => {
-    if (!isTraslado) return ''
-    const selectedBranch = providerBranchPool.find(
-      (branch) => String(branch?.id || '') === String(formData.sucursalObjetivoId || '')
-    )
-    return String(selectedBranch?.nombre || '').trim()
-  }, [formData.sucursalObjetivoId, isTraslado, providerBranchPool])
   const showProveedorStockInfo = isTraslado && Boolean(String(formData.sucursalObjetivoId || '').trim())
   const selectedDraftProductId = String(detailDraft.productoId || '').trim()
   const selectedDraftCantidad = parseIntValue(detailDraft.cantidad)
@@ -2013,6 +2077,16 @@ function CreateEntrada({
     })
   }
 
+  const handleSubTipoSelect = (subTipoId) => {
+    handleChange({
+      target: {
+        name: 'subTipoId',
+        value: String(subTipoId || ''),
+        type: 'button',
+      },
+    })
+  }
+
   const handleUseExistingCliente = () => {
     setError('')
     setClienteMode(CLIENT_MODE_EXISTING)
@@ -2850,6 +2924,9 @@ function CreateEntrada({
     .join(' ')
   const showTabs = isVenta || isTraslado
   const showGeneralTab = !showTabs || activeTab === 'general'
+  const defaultHeaderTitle = 'Nueva entrada'
+  const headerDocumentTitle = String(formData.no_documento || '').trim()
+  const headerTitle = !isSelectorStep && headerDocumentTitle ? headerDocumentTitle : defaultHeaderTitle
 
   return (
     <div
@@ -2867,7 +2944,9 @@ function CreateEntrada({
         )}
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
-            <h3>{isTraslado ? 'Nueva solicitud de traslado' : 'Nueva entrada'}</h3>
+            <div className="create-salida__header-title-group">
+              <h3>{headerTitle}</h3>
+            </div>
           </div>
           <div className="create-user__header-actions">
             <button
@@ -2897,29 +2976,19 @@ function CreateEntrada({
               <section className="create-user__section create-salida__selector-card">
                 <div className="create-user__section-header">
                   <div>
-                    <p className="create-user__eyebrow">Datos</p>
                     <h4>Selecciona tipo de entrada</h4>
                   </div>
                 </div>
                 <div className="create-salida__selector-inner">
-                  <label className="create-user__field create-salida__selector-field">
-                    <span>Tipo de entrada</span>
-                    <select
-                      name="subTipoId"
+                  <div className="create-user__field create-user__field--required create-salida__selector-field">
+                    <SubTipoButtonSelector
+                      ariaLabel="Tipo de entrada"
+                      options={entradaSubTipoOptions}
                       value={formData.subTipoId}
-                      onChange={handleChange}
+                      onChange={handleSubTipoSelect}
                       disabled={loading}
-                      required
-                      className={`create-salida__tipo-select${!formData.subTipoId ? ' is-placeholder' : ''}`}
-                    >
-                      <option value="">Selecciona un tipo</option>
-                      {subTiposEntrada.map((subTipo) => (
-                        <option key={subTipo.id} value={subTipo.id}>
-                          {formatSubTipoLabel(subTipo)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    />
+                  </div>
                 </div>
               </section>
             </div>
@@ -2972,162 +3041,154 @@ function CreateEntrada({
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
-                      <span>Tipo de entrada</span>
-                      <select
-                        name="subTipoId"
-                        value={formData.subTipoId}
-                        onChange={handleChange}
-                        disabled
-                        required
-                        className={`create-salida__tipo-select${!formData.subTipoId ? ' is-placeholder' : ''}`}
-                      >
-                        <option value="">Selecciona un tipo</option>
-                        {subTiposEntrada.map((subTipo) => (
-                          <option key={subTipo.id} value={subTipo.id}>
-                            {formatSubTipoLabel(subTipo)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <StaticFieldDisplay
+                      label="Código"
+                      value={formData.no_documento}
+                      helper={documentHelperText}
+                      helperTone={documentHelperTone}
+                      loading={documentStatus === DOCUMENT_STATUS.checking}
+                    />
 
-                    <label className="create-user__field">
-                      <span>Fecha</span>
-                      <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
-                    </label>
+                    <StaticFieldDisplay label="Tipo" value={selectedSubTipoLabel} />
 
-                    <label className="create-user__field">
-                      <span>Sucursal</span>
-                      <select
-                        name="sucursalId"
-                        value={formData.sucursalId}
-                        onChange={handleChange}
-                        disabled={loading || isSucursalPrincipalLocked}
-                        required
-                      >
-                        <option value="">Selecciona una sucursal</option>
-                        {branches.map((branch) => (
-                          <option key={branch.id} value={branch.id}>
-                            {branch.nombre || `Sucursal ${branch.id}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {isTraslado ? (
+                      <>
+                        <StaticFieldDisplay label="Fecha" value={formattedFecha} />
 
-                    {requiresSucursalObjetivo && (
-                      <label className="create-user__field">
-                        <span>{isTraslado ? 'Sucursal proveedora' : 'Sucursal Destino'}</span>
-                        <select
-                          name="sucursalObjetivoId"
-                          value={formData.sucursalObjetivoId}
-                          onChange={handleChange}
-                          disabled={loading}
-                          required={requiresSucursalObjetivo}
-                        >
-                          <option value="">Selecciona una sucursal</option>
-                          {destinationBranches.map((branch) => (
-                            <option key={branch.id} value={branch.id}>
-                              {branch.nombre || `Sucursal ${branch.id}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
+                        {isSucursalPrincipalLocked ? (
+                          <StaticFieldDisplay
+                            label="Sucursal destino"
+                            value={selectedSucursalName}
+                          />
+                        ) : (
+                          <label className="create-user__field">
+                            <span>Sucursal destino</span>
+                            <select
+                              name="sucursalId"
+                              value={formData.sucursalId}
+                              onChange={handleChange}
+                              disabled={loading || isSucursalPrincipalLocked}
+                              required
+                            >
+                              <option value="">Selecciona una sucursal</option>
+                              {branches.map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.nombre || `Sucursal ${branch.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
 
-                    <label className="create-user__field">
-                      <span>{documentLabel}</span>
-                      <input
-                        name="no_documento"
-                        type="text"
-                        value={formData.no_documento}
-                        onChange={handleChange}
-                        disabled
-                        readOnly
-                        required
-                      />
-                      {documentStatus === DOCUMENT_STATUS.checking && (
-                        <small className="muted">Generando código...</small>
-                      )}
-                      {documentStatus === DOCUMENT_STATUS.error && (
-                        <small className="create-user__field-error">No se pudo generar el código automáticamente.</small>
-                      )}
-                      {documentStatus === DOCUMENT_STATUS.available && (
-                        <small className="muted">Código generado automáticamente.</small>
-                      )}
-                    </label>
+                        <label className="create-user__field create-user__field--full">
+                          <span>Sucursal proveedora</span>
+                          <select
+                            name="sucursalObjetivoId"
+                            value={formData.sucursalObjetivoId}
+                            onChange={handleChange}
+                            disabled={loading}
+                            required={requiresSucursalObjetivo}
+                          >
+                            <option value="">Selecciona una sucursal</option>
+                            {destinationBranches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>
+                                {branch.nombre || `Sucursal ${branch.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </>
+                    ) : !isEditableEntryDate ? (
+                      <>
+                        <StaticFieldDisplay label="Fecha" value={formattedFecha} fullWidth />
 
-                    {!isTraslado && !isEstadoEditable && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <input
-                          type="text"
-                          value={estadoOptions.find((estado) => String(estado.id) === String(formData.estadoId))?.nombre || ''}
-                          readOnly
-                          disabled
-                        />
-                      </label>
-                    )}
+                        {!isSucursalPrincipalLocked && (
+                          <label className="create-user__field create-user__field--full">
+                            <span>Sucursal</span>
+                            <select
+                              name="sucursalId"
+                              value={formData.sucursalId}
+                              onChange={handleChange}
+                              disabled={loading || isSucursalPrincipalLocked}
+                              required
+                            >
+                              <option value="">Selecciona una sucursal</option>
+                              {branches.map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.nombre || `Sucursal ${branch.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
 
-                    {!isTraslado && isEstadoEditable && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={loading} required>
-                          <option value="">Selecciona un estado</option>
-                          {estadoSelectOptions.map((estado) => (
-                            <option key={estado.id} value={estado.id}>
-                              {estado.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
+                        <label className="create-user__field">
+                          <span>No. de Factura</span>
+                          <input
+                            name="factura_referencia"
+                            type="text"
+                            value={formData.factura_referencia}
+                            onChange={handleChange}
+                            disabled={loading}
+                            required={isDevolucion}
+                            placeholder="Factura emitida en la venta"
+                          />
+                        </label>
 
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Descuento (%)</span>
-                        <input
-                          name="descuento"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={formData.descuento}
-                          onChange={handleChange}
-                          disabled={loading}
-                        />
-                      </label>
-                    )}
+                        <label className="create-user__field">
+                          <span>Funcional</span>
+                          <select
+                            name="funcional"
+                            value={formData.funcional ? 'true' : 'false'}
+                            onChange={(event) =>
+                              setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
+                            }
+                            disabled={loading}
+                          >
+                            <option value="true">Sí</option>
+                            <option value="false">No</option>
+                          </select>
+                        </label>
+                      </>
+                    ) : (
+                      <>
+                        <label className="create-user__field">
+                          <span>Fecha</span>
+                          <input
+                            name="fecha"
+                            type="date"
+                            value={formData.fecha}
+                            onChange={handleChange}
+                            disabled={loading}
+                            required
+                          />
+                        </label>
 
-                    {isDevolucion && (
-                      <label className="create-user__field">
-                        <span>No. factura venta origen</span>
-                        <input
-                          name="factura_referencia"
-                          type="text"
-                          value={formData.factura_referencia}
-                          onChange={handleChange}
-                          disabled={loading}
-                          required={isDevolucion}
-                          placeholder="Factura emitida en la venta"
-                        />
-                      </label>
-                    )}
-
-                    {isDevolucion && (
-                      <label className="create-user__field">
-                        <span>Funcional</span>
-                        <select
-                          name="funcional"
-                          value={formData.funcional ? 'true' : 'false'}
-                          onChange={(event) =>
-                            setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                          }
-                          disabled={loading}
-                        >
-                          <option value="true">Sí</option>
-                          <option value="false">No</option>
-                        </select>
-                      </label>
+                        {isSucursalPrincipalLocked ? (
+                          <StaticFieldDisplay
+                            label="Sucursal"
+                            value={selectedSucursalName}
+                          />
+                        ) : (
+                          <label className="create-user__field">
+                            <span>Sucursal</span>
+                            <select
+                              name="sucursalId"
+                              value={formData.sucursalId}
+                              onChange={handleChange}
+                              disabled={loading || isSucursalPrincipalLocked}
+                              required
+                            >
+                              <option value="">Selecciona una sucursal</option>
+                              {branches.map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.nombre || `Sucursal ${branch.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                      </>
                     )}
 
                     <label className="create-user__field create-user__field--full">
@@ -3313,18 +3374,14 @@ function CreateEntrada({
                         />
                       </span>
                       <span>
-                        <input
-                          name="valor"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={detailDraft.valor}
-                          readOnly
-                          disabled={loading}
-                        />
+                        <span className="create-salida__table-static-value">
+                          {detailDraft.valor || '-'}
+                        </span>
                       </span>
                       <span>
-                        <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
+                        <span className="create-salida__table-static-value">
+                          {draftLineTotal !== null ? draftLineTotal.toFixed(2) : '-'}
+                        </span>
                       </span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button

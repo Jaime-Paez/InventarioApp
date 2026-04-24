@@ -1465,7 +1465,7 @@ function QuickActions({
   )
 
   const urgentShieldTargets = useMemo(() => {
-    const merged = [...urgentRejectedTransferTargets, ...urgentDecisionTargets, ...pendingShipmentUrgentTargets]
+    const merged = [...urgentRejectedTransferTargets, ...urgentDecisionTargets]
     return merged.sort((a, b) => {
       const timeA = Number(a?.priorityTimestamp)
       const timeB = Number(b?.priorityTimestamp)
@@ -1476,7 +1476,7 @@ function QuickActions({
       if (!Number.isFinite(timeA) && Number.isFinite(timeB)) return 1
       return String(a?.id || '').localeCompare(String(b?.id || ''))
     })
-  }, [pendingShipmentUrgentTargets, urgentDecisionTargets, urgentRejectedTransferTargets])
+  }, [urgentDecisionTargets, urgentRejectedTransferTargets])
 
   const urgentProgressById = useMemo(() => {
     const map = {}

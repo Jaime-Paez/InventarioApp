@@ -4,6 +4,8 @@ import './CreateSalida.css'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
+import SubTipoButtonSelector from './SubTipoButtonSelector'
+import StaticFieldDisplay from './StaticFieldDisplay'
 import {
   buildTransferHistoryEntry,
   createReminderId,
@@ -21,9 +23,9 @@ const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const SELECTOR_WIDTH = 520
-const SELECTOR_HEIGHT = 300
+const SELECTOR_HEIGHT = 360
 const SELECTOR_MIN_WIDTH = 420
-const SELECTOR_MIN_HEIGHT = 260
+const SELECTOR_MIN_HEIGHT = 340
 const VIEWPORT_PADDING = 12
 
 const initialForm = {
@@ -32,6 +34,7 @@ const initialForm = {
   estadoId: '',
   fecha: '',
   no_documento: '',
+  factura_referencia: '',
   descripcion: '',
   funcional: true,
   sucursalObjetivoId: '',
@@ -90,7 +93,7 @@ const normalizeValue = (value) =>
     .toLowerCase()
 const formatSalidaSubTipoLabel = (subTipo) => {
   const nombre = typeof subTipo === 'string' ? subTipo : String(subTipo?.nombre || '').trim()
-  return normalizeValue(nombre) === 'devolucion' ? 'Garantia' : nombre
+  return normalizeValue(nombre) === 'devolucion' ? 'Garantía' : nombre
 }
 const matchesNormalizedStem = (value, stem) =>
   normalizeValue(value)
@@ -172,6 +175,20 @@ const todayISO = () => {
   const month = String(today.getMonth() + 1).padStart(2, '0')
   const day = String(today.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+const formatDateDisplay = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const [year, month, day] = raw.split('-').map((part) => Number(part))
+  if (!year || !month || !day) return raw
+  const parsed = new Date(year, month - 1, day)
+  if (Number.isNaN(parsed.getTime())) return raw
+  return new Intl.DateTimeFormat('es-EC', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(parsed)
 }
 
 const nowReminderDateTime = () => {
@@ -374,6 +391,53 @@ function CreateSalida({
     () => subTiposSalida.find((sub) => String(sub.id) === String(formData.subTipoId)),
     [subTiposSalida, formData.subTipoId]
   )
+  const salidaSubTipoOptions = useMemo(
+    () =>
+      subTiposSalida
+        .map((subTipo, index) => {
+          const normalizedName = normalizeValue(subTipo?.nombre)
+          let label = formatSalidaSubTipoLabel(subTipo)
+          let description = 'Selecciona este tipo de salida.'
+          let order = 90 + index
+
+          if (normalizedName.includes('vent')) {
+            label = 'Cliente'
+            description = 'Ventas hacia clientes.'
+            order = 0
+          } else if (normalizedName.includes('trasl')) {
+            label = 'Sucursal'
+            description = 'Enviar productos a otra sucursal.'
+            order = 1
+          } else if (normalizedName.includes('devol')) {
+            label = 'Garantía'
+            description = 'Regresar productos con garantía al proveedor.'
+            order = 2
+          }
+
+          return {
+            value: String(subTipo?.id || ''),
+            label,
+            description,
+            icon: normalizedName.includes('vent')
+              ? 'customer'
+              : normalizedName.includes('trasl')
+                ? 'branch'
+                : normalizedName.includes('devol')
+                  ? 'guarantee'
+                  : 'branch',
+            order,
+            index,
+          }
+        })
+        .sort((first, second) => first.order - second.order || first.index - second.index),
+    [subTiposSalida]
+  )
+  const selectedSubTipoLabel = useMemo(
+    () =>
+      salidaSubTipoOptions.find((option) => option.value === String(formData.subTipoId))?.label ||
+      formatSalidaSubTipoLabel(selectedSubTipo),
+    [formData.subTipoId, salidaSubTipoOptions, selectedSubTipo]
+  )
 
   const selectedSubTipoName = normalizeValue(selectedSubTipo?.nombre)
   const isDevolucion = selectedSubTipoName.includes('devol')
@@ -388,7 +452,6 @@ function CreateSalida({
   )
   const isSelectorStep = !formData.subTipoId
   const requiresSucursalObjetivo = isTraslado
-  const documentLabel = isTraslado ? 'No. de Traslado' : 'No. de Factura'
   const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
   const selectedSucursalId = String(formData.sucursalId || '').trim()
   const hasSelectedSucursal = Boolean(selectedSucursalId)
@@ -414,64 +477,217 @@ function CreateSalida({
     const branch = branches.find((item) => String(item?.id || '').trim() === objetivoId)
     return String(branch?.nombre || '').trim()
   }, [branches, formData.sucursalObjetivoId])
+  const formattedFecha = useMemo(() => formatDateDisplay(formData.fecha), [formData.fecha])
 
-  const fetchNextDocumentNumber = useCallback(async () => {
-    if (!token || !isTraslado || !salidaTipoId) return
-    const sucursalId = String(formData.sucursalId || '').trim()
-    const subTipoId = String(formData.subTipoId || '').trim()
-    if (!sucursalId || !subTipoId) return
-    const requestKey = Date.now()
-    documentRequestSeqRef.current = requestKey
-    setDocumentLoading(true)
-    try {
-      const params = new URLSearchParams({
-        tipo_movimiento_id: String(salidaTipoId),
-        sub_tipo_movimiento_id: subTipoId,
-        sucursal_id: sucursalId,
-      })
-      const objetivoId = String(formData.sucursalObjetivoId || '').trim()
-      if (objetivoId) {
-        params.set("sucursal_objetivo_id", objetivoId)
+  const fetchNextDocumentNumber = useCallback(
+    async ({ subTipoId, sucursalId, sucursalObjetivoId }) => {
+      if (!token || !salidaTipoId) {
+        setDocumentStatus(DOCUMENT_STATUS.error)
+        return false
       }
-      const endpoint = `${API_URL}/movimientos/movimiento_inventario/next-document-number/?${params.toString()}`
-      const response = await authFetch(endpoint, {}, token)
-      const data = await response.json().catch(() => ({}))
-      if (documentRequestSeqRef.current !== requestKey) return
-      if (!response.ok) {
-        const detail =
-          String(data?.detail || "No se pudo generar el número de traslado.").trim()
-        notifyError(detail)
+      if (!sucursalId || !subTipoId) return false
+
+      const requestKey = Date.now()
+      documentRequestSeqRef.current = requestKey
+      setDocumentStatus(DOCUMENT_STATUS.checking)
+      setDocumentLoading(true)
+
+      try {
+        const params = new URLSearchParams({
+          tipo_movimiento_id: String(salidaTipoId),
+          sub_tipo_movimiento_id: String(subTipoId || '').trim(),
+          sucursal_id: String(sucursalId || '').trim(),
+        })
+        const objetivoId = String(sucursalObjetivoId || '').trim()
+        if (objetivoId) {
+          params.set('sucursal_objetivo_id', objetivoId)
+        }
+
+        const endpoint = `${API_URL}/movimientos/movimiento_inventario/next-document-number/?${params.toString()}`
+        const response = await authFetch(endpoint, {}, token)
+        const data = await response.json().catch(() => ({}))
+        if (documentRequestSeqRef.current !== requestKey) return false
+        if (!response.ok) {
+          setDocumentStatus(DOCUMENT_STATUS.error)
+          return false
+        }
+
+        const nextDoc = String(data?.no_documento || '').trim()
+        if (!nextDoc) {
+          setDocumentStatus(DOCUMENT_STATUS.error)
+          return false
+        }
+
+        setFormData((prev) => (
+          prev.no_documento === nextDoc
+            ? prev
+            : { ...prev, no_documento: nextDoc }
+        ))
+        setDocumentStatus(DOCUMENT_STATUS.available)
+        return true
+      } catch {
+        if (documentRequestSeqRef.current === requestKey) {
+          setDocumentStatus(DOCUMENT_STATUS.error)
+        }
+        return false
+      } finally {
+        if (documentRequestSeqRef.current === requestKey) {
+          setDocumentLoading(false)
+        }
+      }
+    },
+    [salidaTipoId, token]
+  )
+
+  const resolveVentaDocumentNumber = useCallback(
+    async (facturaBase) => {
+      const base = String(facturaBase || '').trim()
+      if (!base || !salidaTipoId || !token) {
+        setDocumentStatus(base ? DOCUMENT_STATUS.error : DOCUMENT_STATUS.invalid)
+        setFormData((prev) => (prev.no_documento ? { ...prev, no_documento: '' } : prev))
         return
       }
-      const nextDoc = String(data?.no_documento || "").trim()
-      if (nextDoc) {
-        setFormData((prev) => ({ ...prev, no_documento: nextDoc }))
+
+      const requestKey = Date.now()
+      documentRequestSeqRef.current = requestKey
+      setDocumentStatus(DOCUMENT_STATUS.checking)
+      setDocumentLoading(true)
+
+      try {
+        let candidate = base
+        let suffix = 0
+
+        while (true) {
+          const response = await authFetch(
+            `${API_URL}/movimientos/movimiento_inventario/validar-documento/?tipo_movimiento_id=${encodeURIComponent(salidaTipoId)}&no_documento=${encodeURIComponent(candidate)}`,
+            {},
+            token
+          )
+          if (documentRequestSeqRef.current !== requestKey) return
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) {
+            setDocumentStatus(DOCUMENT_STATUS.error)
+            return
+          }
+          if (payload?.is_available) {
+            setFormData((prev) =>
+              prev.no_documento === candidate ? prev : { ...prev, no_documento: candidate }
+            )
+            setDocumentStatus(DOCUMENT_STATUS.available)
+            return
+          }
+          suffix += 1
+          candidate = `${base}-${suffix}`
+        }
+      } catch {
+        if (documentRequestSeqRef.current === requestKey) {
+          setDocumentStatus(DOCUMENT_STATUS.error)
+        }
+      } finally {
+        if (documentRequestSeqRef.current === requestKey) {
+          setDocumentLoading(false)
+        }
       }
-    } catch (error) {
-      if (documentRequestSeqRef.current !== requestKey) return
-      notifyError(error?.message || "No se pudo generar el número de traslado.")
-    } finally {
-      if (documentRequestSeqRef.current === requestKey) {
-        setDocumentLoading(false)
+    },
+    [salidaTipoId, token]
+  )
+
+  useEffect(() => {
+    if (!open || isPrefilledTransfer || isVenta) return
+
+    const subTipoId = String(formData.subTipoId || '').trim()
+    const sucursalId = String(formData.sucursalId || '').trim()
+    const sucursalObjetivoId = String(formData.sucursalObjetivoId || '').trim()
+    const requiresObjective = isTraslado
+    const hasRequiredInput = Boolean(
+      subTipoId && sucursalId && (!requiresObjective || sucursalObjetivoId)
+    )
+
+    if (!hasRequiredInput) {
+      setDocumentStatus(DOCUMENT_STATUS.invalid)
+      setFormData((prev) => (
+        prev.no_documento
+          ? { ...prev, no_documento: '' }
+          : prev
+      ))
+      return
+    }
+
+    if (documentCheckTimerRef.current) {
+      clearTimeout(documentCheckTimerRef.current)
+      documentCheckTimerRef.current = null
+    }
+
+    setFormData((prev) => (
+      prev.no_documento
+        ? { ...prev, no_documento: '' }
+        : prev
+    ))
+
+    documentCheckTimerRef.current = setTimeout(() => {
+      void fetchNextDocumentNumber({
+        subTipoId,
+        sucursalId,
+        sucursalObjetivoId,
+      })
+    }, 220)
+
+    return () => {
+      if (documentCheckTimerRef.current) {
+        clearTimeout(documentCheckTimerRef.current)
+        documentCheckTimerRef.current = null
       }
     }
   }, [
+    fetchNextDocumentNumber,
+    formData.subTipoId,
     formData.sucursalId,
     formData.sucursalObjetivoId,
-    formData.subTipoId,
+    isPrefilledTransfer,
     isTraslado,
-    notifyError,
-    salidaTipoId,
-    token,
+    isVenta,
+    open,
   ])
 
   useEffect(() => {
-    if (!open || !isTraslado) return
-    if (!String(formData.sucursalId || '').trim() || !String(formData.sucursalObjetivoId || '').trim()) {
+    if (!open || !isVenta || isPrefilledTransfer) return
+
+    const facturaBase = String(formData.factura_referencia || '').trim()
+    const subTipoId = String(formData.subTipoId || '').trim()
+    const sucursalId = String(formData.sucursalId || '').trim()
+
+    if (documentCheckTimerRef.current) {
+      clearTimeout(documentCheckTimerRef.current)
+      documentCheckTimerRef.current = null
+    }
+
+    if (!facturaBase || !subTipoId || !sucursalId) {
+      setDocumentStatus(DOCUMENT_STATUS.invalid)
+      setFormData((prev) => (prev.no_documento ? { ...prev, no_documento: '' } : prev))
       return
     }
-    void fetchNextDocumentNumber()
-  }, [fetchNextDocumentNumber, open, formData.sucursalId, formData.sucursalObjetivoId, isTraslado])
+
+    setFormData((prev) => (prev.no_documento ? { ...prev, no_documento: '' } : prev))
+
+    documentCheckTimerRef.current = setTimeout(() => {
+      void resolveVentaDocumentNumber(facturaBase)
+    }, 220)
+
+    return () => {
+      if (documentCheckTimerRef.current) {
+        clearTimeout(documentCheckTimerRef.current)
+        documentCheckTimerRef.current = null
+      }
+    }
+  }, [
+    formData.factura_referencia,
+    formData.subTipoId,
+    formData.sucursalId,
+    isPrefilledTransfer,
+    isVenta,
+    open,
+    resolveVentaDocumentNumber,
+  ])
 
   const devolucionEstadoOptions = useMemo(
     () => {
@@ -555,7 +771,6 @@ function CreateSalida({
     ])
     return fallback?.id ? String(fallback.id) : ''
   }, [defaultEstadoMovimientoId, estados, formData.estadoId, isTraslado])
-
   const defaultEstadoProductoId = useMemo(() => {
     if (!estadosProducto.length) return ''
     const preferred = estadosProducto.find((estado) =>
@@ -784,6 +999,15 @@ function CreateSalida({
   ])
   const isManualTransferMode = isTraslado && isTransferWithoutRequest
   const transferRequiresRequest = isTraslado && !isTransferWithoutRequest
+  const documentHelperText = useMemo(() => {
+    if (documentStatus === DOCUMENT_STATUS.error) return 'No se pudo generar el código automáticamente.'
+    if (documentStatus === DOCUMENT_STATUS.duplicate) return 'No se puede usar dos iguales.'
+    return ''
+  }, [documentStatus])
+  const documentHelperTone =
+    documentStatus === DOCUMENT_STATUS.duplicate || documentStatus === DOCUMENT_STATUS.error
+      ? 'error'
+      : 'muted'
   const appendTransferCancellationReminder = useCallback(
     (solicitud, motivo) => {
       const solicitudId = String(
@@ -1136,6 +1360,10 @@ function CreateSalida({
       }
       if (!isDevolucion && !next.funcional) {
         next.funcional = true
+        changed = true
+      }
+      if (!isVenta && !isDevolucion && next.factura_referencia) {
+        next.factura_referencia = ''
         changed = true
       }
 
@@ -1498,40 +1726,6 @@ function CreateSalida({
       }
     }
   }, [clienteQuery, isVenta, open, searchClientes, showClienteDropdown])
-
-  useEffect(() => {
-    if (!open || !formData.subTipoId) {
-      setDocumentStatus(DOCUMENT_STATUS.invalid)
-      return
-    }
-
-    const value = String(formData.no_documento || '').trim()
-    if (!value) {
-      setDocumentStatus(DOCUMENT_STATUS.invalid)
-      if (documentCheckTimerRef.current) {
-        clearTimeout(documentCheckTimerRef.current)
-        documentCheckTimerRef.current = null
-      }
-      return
-    }
-
-    if (documentCheckTimerRef.current) {
-      clearTimeout(documentCheckTimerRef.current)
-      documentCheckTimerRef.current = null
-    }
-
-    setDocumentStatus(DOCUMENT_STATUS.checking)
-    documentCheckTimerRef.current = setTimeout(() => {
-      validateDocumentNumber(value)
-    }, 320)
-
-    return () => {
-      if (documentCheckTimerRef.current) {
-        clearTimeout(documentCheckTimerRef.current)
-        documentCheckTimerRef.current = null
-      }
-    }
-  }, [formData.no_documento, formData.subTipoId, open, validateDocumentNumber])
 
   useEffect(() => {
     if (!open || (!showProductDropdown && !showClienteDropdown)) return undefined
@@ -1904,6 +2098,16 @@ function CreateSalida({
     })
   }
 
+  const handleSubTipoSelect = (subTipoId) => {
+    handleChange({
+      target: {
+        name: 'subTipoId',
+        value: String(subTipoId || ''),
+        type: 'button',
+      },
+    })
+  }
+
   const handleUseExistingCliente = () => {
     setError('')
     setClienteMode(CLIENT_MODE_EXISTING)
@@ -2142,13 +2346,18 @@ function CreateSalida({
     }
 
     if (!String(formData.no_documento || '').trim()) {
-      notifyError('Ingresa el numero de documento.')
+      notifyError('Espera a que se genere el código del documento.')
       return false
     }
 
     const documentoDisponible = await validateDocumentNumber(formData.no_documento)
     if (!documentoDisponible) {
       notifyError('No se puede usar dos iguales.')
+      return false
+    }
+
+    if (isVenta && !String(formData.factura_referencia || '').trim()) {
+      notifyError('El No. de Factura es obligatorio para ventas.')
       return false
     }
 
@@ -2246,6 +2455,7 @@ function CreateSalida({
         solicitud_traslado_id:
           transferRequiresRequest && solicitudIdValue ? Number(solicitudIdValue) : null,
         descripcion: buildDescripcion(ventaClienteLabel),
+        factura_referencia: isVenta || isDevolucion ? String(formData.factura_referencia || '').trim() : '',
         funcional: isDevolucion ? Boolean(formData.funcional) : true,
         sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
         estado_movimiento_id: Number(estadoMovimientoId),
@@ -2401,6 +2611,9 @@ function CreateSalida({
     ? `Enviar a ${transferTargetBranchButtonLabel}`
     : 'Crear salida'
   const transferSummaryLabel = selectedSolicitudDoc || formData.solicitudTrasladoId || 'N/A'
+  const defaultHeaderTitle = 'Nueva salida'
+  const headerDocumentTitle = String(formData.no_documento || '').trim()
+  const headerTitle = !isSelectorStep && headerDocumentTitle ? headerDocumentTitle : defaultHeaderTitle
 
   return (
     <div
@@ -2412,7 +2625,9 @@ function CreateSalida({
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
-            <h3>Nueva salida</h3>
+            <div className="create-salida__header-title-group">
+              <h3>{headerTitle}</h3>
+            </div>
           </div>
           <div className="create-user__header-actions">
             <button
@@ -2442,29 +2657,19 @@ function CreateSalida({
               <section className="create-user__section create-salida__selector-card">
                 <div className="create-user__section-header">
                   <div>
-                    <p className="create-user__eyebrow">Datos</p>
                     <h4>Selecciona tipo de salida</h4>
                   </div>
                 </div>
                 <div className="create-salida__selector-inner">
-                  <label className="create-user__field create-salida__selector-field">
-                    <span>Tipo de salida</span>
-                    <select
-                      name="subTipoId"
+                  <div className="create-user__field create-user__field--required create-salida__selector-field">
+                    <SubTipoButtonSelector
+                      ariaLabel="Tipo de salida"
+                      options={salidaSubTipoOptions}
                       value={formData.subTipoId}
-                      onChange={handleChange}
+                      onChange={handleSubTipoSelect}
                       disabled={loading}
-                      required
-                      className={`create-salida__tipo-select${!formData.subTipoId ? ' is-placeholder' : ''}`}
-                    >
-                      <option value="">Selecciona un tipo</option>
-                      {subTiposSalida.map((subTipo) => (
-                        <option key={subTipo.id} value={subTipo.id}>
-                          {formatSalidaSubTipoLabel(subTipo)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    />
+                  </div>
                 </div>
               </section>
             </div>
@@ -2507,201 +2712,116 @@ function CreateSalida({
                       isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
                     }`}
                   >
-                    {isPrefilledTransfer ? (
-                      <>
-                        <label className="create-user__field">
-                          <span>{documentLabel}</span>
-                          <input
-                            name="no_documento"
-                            type="text"
-                            value={formData.no_documento}
-                            onChange={handleChange}
-                            disabled={loading || isTraslado}
-                            readOnly={isTraslado}
-                            required
-                          />
-                          {documentStatus === DOCUMENT_STATUS.duplicate && (
-                            <small className="create-user__field-error">No se puede usar dos iguales.</small>
-                          )}
-                        </label>
-                        <label className="create-user__field">
-                          <span>Fecha</span>
-                          <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
-                        </label>
-                        <label className="create-user__field">
-                          <span>Sucursal proveedora (enviadora)</span>
-                          <select
-                            name="sucursalId"
-                            value={formData.sucursalId}
-                            onChange={handleChange}
-                            disabled={loading || isSucursalPrincipalLocked || isPrefilledTransfer}
-                            required
-                          >
-                            <option value="">Selecciona una sucursal</option>
-                            {branches.map((branch) => (
-                              <option key={branch.id} value={branch.id}>
-                                {branch.nombre || `Sucursal ${branch.id}`}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        {requiresSucursalObjetivo && (
-                          <label className="create-user__field">
-                            <span>Sucursal solicitante (destino)</span>
-                            <select
-                              name="sucursalObjetivoId"
-                              value={formData.sucursalObjetivoId}
-                              onChange={handleChange}
-                              disabled={loading || transferRequiresRequest || isPrefilledTransfer}
-                              required={requiresSucursalObjetivo}
-                            >
-                              <option value="">Selecciona una sucursal</option>
-                              {transferDestinationBranches.map((branch) => (
-                                <option key={branch.id} value={branch.id}>
-                                  {branch.nombre || `Sucursal ${branch.id}`}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
-                        <input type="hidden" name="solicitudTrasladoId" value={formData.solicitudTrasladoId} />
-                      </>
+                    <StaticFieldDisplay
+                      label="Código"
+                      value={formData.no_documento}
+                      helper={documentHelperText}
+                      helperTone={documentHelperTone}
+                      loading={documentStatus === DOCUMENT_STATUS.checking}
+                    />
+
+                    <StaticFieldDisplay label="Tipo" value={selectedSubTipoLabel} />
+
+                    <StaticFieldDisplay label="Fecha" value={formattedFecha} />
+
+                    {isSucursalPrincipalLocked ? (
+                      <StaticFieldDisplay
+                        label={isTraslado ? 'Sucursal proveedora' : 'Sucursal'}
+                        value={selectedSucursalName}
+                      />
                     ) : (
-                      <>
-                        <label className="create-user__field">
-                          <span>Tipo de salida</span>
-                          <select
-                            name="subTipoId"
-                            value={formData.subTipoId}
-                            onChange={handleChange}
-                            disabled={loading}
-                            required
-                            className={`create-salida__tipo-select${!formData.subTipoId ? ' is-placeholder' : ''}`}
-                          >
-                            <option value="">Selecciona un tipo</option>
-                            {subTiposSalida.map((subTipo) => (
-                              <option key={subTipo.id} value={subTipo.id}>
-                                {formatSalidaSubTipoLabel(subTipo)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                      <label className="create-user__field">
+                        <span>{isTraslado ? 'Sucursal proveedora' : 'Sucursal'}</span>
+                        <select
+                          name="sucursalId"
+                          value={formData.sucursalId}
+                          onChange={handleChange}
+                          disabled={loading || isSucursalPrincipalLocked}
+                          required
+                        >
+                          <option value="">Selecciona una sucursal</option>
+                          {branches.map((branch) => (
+                            <option key={branch.id} value={branch.id}>
+                              {branch.nombre || `Sucursal ${branch.id}`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
 
-                        <label className="create-user__field">
-                          <span>Fecha</span>
-                          <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
-                        </label>
-
-                        <label className="create-user__field">
-                          <span>{isTraslado ? 'Sucursal proveedora (enviadora)' : 'Sucursal'}</span>
+                    {requiresSucursalObjetivo && (
+                      isPrefilledTransfer || (transferRequiresRequest && selectedObjetivoBranchName) ? (
+                        <StaticFieldDisplay
+                          label="Sucursal destino"
+                          value={selectedObjetivoBranchName}
+                          fullWidth
+                        />
+                      ) : (
+                        <label className="create-user__field create-user__field--full">
+                          <span>Sucursal destino</span>
                           <select
-                            name="sucursalId"
-                            value={formData.sucursalId}
+                            name="sucursalObjetivoId"
+                            value={formData.sucursalObjetivoId}
                             onChange={handleChange}
-                            disabled={loading || isSucursalPrincipalLocked}
-                            required
+                            disabled={loading || transferRequiresRequest}
+                            required={requiresSucursalObjetivo}
                           >
                             <option value="">Selecciona una sucursal</option>
-                            {branches.map((branch) => (
+                            {transferDestinationBranches.map((branch) => (
                               <option key={branch.id} value={branch.id}>
                                 {branch.nombre || `Sucursal ${branch.id}`}
                               </option>
                             ))}
                           </select>
                         </label>
+                      )
+                    )}
 
-                        {requiresSucursalObjetivo && (
-                          <label className="create-user__field">
-                            <span>Sucursal destino</span>
-                            <select
-                              name="sucursalObjetivoId"
-                              value={formData.sucursalObjetivoId}
-                              onChange={handleChange}
-                              disabled={loading || transferRequiresRequest}
-                              required={requiresSucursalObjetivo}
-                            >
-                              <option value="">Selecciona una sucursal</option>
-                              {transferDestinationBranches.map((branch) => (
-                                <option key={branch.id} value={branch.id}>
-                                  {branch.nombre || `Sucursal ${branch.id}`}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
+                    {(isVenta || isDevolucion) && (
+                      <label className="create-user__field">
+                        <span>No. de Factura</span>
+                        <input
+                          name="factura_referencia"
+                          type="text"
+                          value={formData.factura_referencia}
+                          onChange={handleChange}
+                          disabled={loading}
+                          required={isVenta}
+                        />
+                      </label>
+                    )}
 
-                        <label className={`create-user__field${isTraslado ? ' create-user__field--full' : ''}`}>
-                          <span>
-                            {documentLabel}
-                            {isTraslado && documentLoading && (
-                              <small className="muted" style={{ marginLeft: 8 }}>
-                                Generando número...
-                              </small>
-                            )}
-                          </span>
-                          <input
-                            name="no_documento"
-                            type="text"
-                            value={formData.no_documento}
-                            onChange={handleChange}
-                            disabled={loading || isTraslado}
-                            readOnly={isTraslado}
-                            required
-                          />
-                          {documentStatus === DOCUMENT_STATUS.duplicate && (
-                            <small className="create-user__field-error">No se puede usar dos iguales.</small>
-                          )}
-                        </label>
+                    {isVenta && (
+                      <label className="create-user__field">
+                        <span>Descuento (%)</span>
+                        <input
+                          name="descuento"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          value={formData.descuento}
+                          onChange={handleChange}
+                          disabled={loading}
+                        />
+                      </label>
+                    )}
 
-                        {!isTraslado && (
-                          <label className="create-user__field">
-                            <span>Estado del movimiento</span>
-                            <input
-                              type="text"
-                              value={estadoReadOnlyOptions.find(
-                                (estado) =>
-                                  String(estado.id) ===
-                                  String(formData.estadoId || resolvedEstadoMovimientoId)
-                              )?.nombre || ''}
-                              readOnly
-                              disabled
-                            />
-                          </label>
-                        )}
-
-                        {isVenta && (
-                          <label className="create-user__field">
-                            <span>Descuento (%)</span>
-                            <input
-                              name="descuento"
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="100"
-                              value={formData.descuento}
-                              onChange={handleChange}
-                              disabled={loading}
-                            />
-                          </label>
-                        )}
-
-                        {isDevolucion && (
-                          <label className="create-user__field">
-                            <span>Funcional</span>
-                            <select
-                              name="funcional"
-                              value={formData.funcional ? 'true' : 'false'}
-                              onChange={(event) =>
-                                setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                              }
-                              disabled={loading}
-                            >
-                              <option value="true">Sí</option>
-                              <option value="false">No</option>
-                            </select>
-                          </label>
-                        )}
-                      </>
+                    {isDevolucion && (
+                      <label className="create-user__field">
+                        <span>Funcional</span>
+                        <select
+                          name="funcional"
+                          value={formData.funcional ? 'true' : 'false'}
+                          onChange={(event) =>
+                            setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
+                          }
+                          disabled={loading}
+                        >
+                          <option value="true">Sí</option>
+                          <option value="false">No</option>
+                        </select>
+                      </label>
                     )}
 
                     <label className="create-user__field create-user__field--full">
@@ -2714,6 +2834,8 @@ function CreateSalida({
                         disabled={loading}
                       />
                     </label>
+
+                    {isPrefilledTransfer && <input type="hidden" name="solicitudTrasladoId" value={formData.solicitudTrasladoId} />}
                   </div>
                 </section>
 
@@ -2903,18 +3025,14 @@ function CreateSalida({
                         />
                       </span>
                       <span>
-                        <input
-                          name="valor"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={detailDraft.valor}
-                          readOnly
-                          disabled={loading || transferRequiresRequest || (requiresStockValidation && stockLoading)}
-                        />
+                        <span className="create-salida__table-static-value">
+                          {detailDraft.valor || '-'}
+                        </span>
                       </span>
                       <span>
-                        <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
+                        <span className="create-salida__table-static-value">
+                          {draftLineTotal !== null ? draftLineTotal.toFixed(2) : '-'}
+                        </span>
                       </span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
