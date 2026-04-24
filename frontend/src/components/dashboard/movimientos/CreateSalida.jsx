@@ -1229,13 +1229,13 @@ function CreateSalida({
 
       const transferDoc = String(solicitud?.no_documento || selectedSolicitudDoc || '').trim()
       const contextLabel = transferDoc
-        ? `Solicitud de traslado #${transferDoc}`
-        : `Solicitud de traslado #${solicitudId}`
-      const transferReference = contextLabel.replace(/^solicitud de traslado\s*/i, '').trim() || `#${solicitudId}`
+        ? `Traslado #${transferDoc}`
+        : `Traslado #${solicitudId}`
+      const transferReference = contextLabel.replace(/^traslado\s*/i, '').trim() || `#${solicitudId}`
       const reason = String(motivo || '').trim()
       const description = transferReference
-        ? `Su solicitud de traslado ${transferReference} fue rechazada. Motivo: ${reason}`
-        : `Su solicitud de traslado fue rechazada. Motivo: ${reason}`
+        ? `Su traslado ${transferReference} fue rechazado. Motivo: ${reason}`
+        : `Su traslado fue rechazado. Motivo: ${reason}`
       const now = nowReminderDateTime()
 
       const reminder = {
@@ -1333,12 +1333,12 @@ function CreateSalida({
 
       const transferDoc = String(solicitud?.no_documento || selectedSolicitudDoc || '').trim()
       const contextLabel = transferDoc
-        ? `Solicitud de traslado #${transferDoc}`
-        : `Solicitud de traslado #${solicitudId}`
-      const transferReference = contextLabel.replace(/^solicitud de traslado\s*/i, '').trim() || `#${solicitudId}`
+        ? `Traslado #${transferDoc}`
+        : `Traslado #${solicitudId}`
+      const transferReference = contextLabel.replace(/^traslado\s*/i, '').trim() || `#${solicitudId}`
       const description = transferReference
-        ? `Su solicitud de traslado ${transferReference} fue enviada y está en traslado.`
-        : 'Su solicitud de traslado fue enviada y está en traslado.'
+        ? `El traslado ${transferReference} fue enviado y está en camino.`
+        : 'El traslado fue enviado y está en camino.'
       const now = nowReminderDateTime()
 
       const reminder = {

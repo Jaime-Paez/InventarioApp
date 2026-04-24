@@ -37,14 +37,45 @@ const getNowDateParts = () => {
   }
 }
 
+const TRANSFER_CONTEXT_DEFAULT_TITLE = 'Traslado'
+
+const getTransferContextPresentation = (reminder) => {
+  const rawLabel = String(reminder?.context?.label || '').trim()
+  const contextId = normalizeId(reminder?.context?.id)
+  const extractedReference = extractTransferDocumentNumber(rawLabel || reminder?.description || '')
+  const reference = extractedReference ? `#${extractedReference}` : (contextId ? `#${contextId}` : '')
+  const baseLabel = rawLabel.replace(/\s*#[A-Za-z0-9._-]+.*$/, '').trim()
+
+  let title = TRANSFER_CONTEXT_DEFAULT_TITLE
+  if (/^traslado directo\b/i.test(baseLabel)) {
+    title = 'Traslado directo'
+  } else if (/^solicitud(?: de)? traslado\b/i.test(baseLabel)) {
+    title = TRANSFER_CONTEXT_DEFAULT_TITLE
+  } else if (/^traslado\b/i.test(baseLabel)) {
+    title = TRANSFER_CONTEXT_DEFAULT_TITLE
+  } else if (baseLabel) {
+    title = baseLabel
+  }
+
+  return {
+    title,
+    reference,
+    fullLabel: reference ? `${title} ${reference}` : title,
+  }
+}
+
 const formatReminderContext = (reminder) => {
+  if (normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado') {
+    return getTransferContextPresentation(reminder).fullLabel
+  }
+
   const label = String(reminder?.context?.label || '').trim()
   if (label) return label
 
   const type = String(reminder?.context?.type || '').trim()
   if (!type) return 'General'
 
-  if (type === 'solicitud_traslado') return 'Solicitud de traslado'
+  if (type === 'solicitud_traslado') return 'Traslado'
 
   const formatted = type.replace(/[_-]+/g, ' ')
   return formatted.charAt(0).toUpperCase() + formatted.slice(1)
@@ -54,10 +85,17 @@ const buildTransferResponseDescription = (reminder, decisionStatus) => {
   const contextType = normalizeReminderContextType(reminder?.context?.type)
   if (contextType !== 'solicitud_traslado') return String(reminder?.description || '').trim() || '-'
 
-  const contextLabel = String(reminder?.context?.label || '').trim()
-  const contextReferenceRaw = contextLabel.replace(/^solicitud de traslado\s*/i, '').trim()
-  const contextId = normalizeId(reminder?.context?.id)
-  const contextReference = contextReferenceRaw || (contextId ? `#${contextId}` : '')
+  const { reference: contextReference } = getTransferContextPresentation(reminder)
+
+  if (decisionStatus === 'enviado') {
+    if (contextReference) return `El traslado ${contextReference} fue enviado y está en camino.`
+    return 'El traslado fue enviado y está en camino.'
+  }
+
+  if (decisionStatus === 'recibido') {
+    if (contextReference) return `El traslado ${contextReference} fue entregado y recibido.`
+    return 'El traslado fue entregado y recibido.'
+  }
 
   if (decisionStatus === 'rechazada') {
     const explicitReason = String(reminder?.decision?.reason || '').trim()
@@ -67,32 +105,22 @@ const buildTransferResponseDescription = (reminder, decisionStatus) => {
 
     if (contextReference) {
       return reason
-        ? `Su solicitud de traslado ${contextReference} fue rechazada. Motivo: ${reason}`
-        : `Su solicitud de traslado ${contextReference} fue rechazada.`
+        ? `Su traslado ${contextReference} fue rechazado. Motivo: ${reason}`
+        : `Su traslado ${contextReference} fue rechazado.`
     }
     return reason
-      ? `Su solicitud de traslado fue rechazada. Motivo: ${reason}`
-      : 'Su solicitud de traslado fue rechazada.'
+      ? `Su traslado fue rechazado. Motivo: ${reason}`
+      : 'Su traslado fue rechazado.'
   }
 
   if (decisionStatus === 'aceptada') {
-    if (contextReference) return `Su solicitud de traslado ${contextReference} fue aceptada.`
-    return 'Su solicitud de traslado fue aceptada.'
+    if (contextReference) return `Su traslado ${contextReference} fue aceptado.`
+    return 'Su traslado fue aceptado.'
   }
 
   if (decisionStatus === 'cancelado') {
-    if (contextReference) return `Su solicitud de traslado ${contextReference} fue cancelada.`
-    return 'Su solicitud de traslado fue cancelada.'
-  }
-
-  if (decisionStatus === 'enviado') {
-    if (contextReference) return `Su solicitud de traslado ${contextReference} fue enviada y está en traslado.`
-    return 'Su solicitud de traslado fue enviada y está en traslado.'
-  }
-
-  if (decisionStatus === 'recibido') {
-    if (contextReference) return `La solicitud de traslado ${contextReference} fue entregada y recibida.`
-    return 'La solicitud de traslado fue entregada y recibida.'
+    if (contextReference) return `Su traslado ${contextReference} fue cancelado.`
+    return 'Su traslado fue cancelado.'
   }
 
   return String(reminder?.description || '').trim() || '-'
@@ -315,14 +343,14 @@ const getTransferProgressStageLabel = (stage) => {
 
 const getTransferHistoryStageLabel = (stage) => {
   const normalized = normalizeStateText(stage)
-  if (normalized === 'pendiente') return 'Solicitud creada'
-  if (normalized === 'aceptada') return 'Solicitud aceptada'
-  if (normalized === 'rechazada') return 'Solicitud rechazada'
-  if (normalized === 'cancelado') return 'Solicitud cancelada'
-  if (normalized === 'enviado') return 'Solicitud enviada'
-  if (normalized === 'recibido') return 'Solicitud recibida'
-  if (normalized === 'completo') return 'Solicitud recibida completa'
-  if (normalized === 'incompleto') return 'Solicitud recibida incompleta'
+  if (normalized === 'pendiente') return 'Traslado creado'
+  if (normalized === 'aceptada') return 'Traslado aceptado'
+  if (normalized === 'rechazada') return 'Traslado rechazado'
+  if (normalized === 'cancelado') return 'Traslado cancelado'
+  if (normalized === 'enviado') return 'Traslado enviado'
+  if (normalized === 'recibido') return 'Traslado recibido'
+  if (normalized === 'completo') return 'Traslado recibido completo'
+  if (normalized === 'incompleto') return 'Traslado recibido incompleto'
   return String(stage || 'Evento').trim() || 'Evento'
 }
 
@@ -334,7 +362,7 @@ const getTransferHistoryDisplayLabel = (entry, previousEntries = []) => {
       return previousStage === 'rechazada' || previousStage === 'cancelado'
     })
 
-    if (comesFromCorrection) return 'Solicitud corregida'
+    if (comesFromCorrection) return 'Traslado corregido'
   }
 
   return String(entry?.label || '').trim() || getTransferHistoryStageLabel(entry?.stage)
@@ -458,7 +486,7 @@ const extractTransferDocumentNumber = (value) => {
 const getTimelineReminderContextTitle = (reminder) => {
   const contextType = normalizeReminderContextType(reminder?.context?.type)
   if (isTransferIssueReminder(reminder) || contextType === 'solicitud_traslado') {
-    return 'Solicitud traslado'
+    return getTransferContextPresentation(reminder).title
   }
   return formatReminderContext(reminder)
 }
@@ -466,13 +494,7 @@ const getTimelineReminderContextTitle = (reminder) => {
 const getTimelineReminderContextReference = (reminder) => {
   const contextType = normalizeReminderContextType(reminder?.context?.type)
   if (isTransferIssueReminder(reminder) || contextType === 'solicitud_traslado') {
-    const documentNumber = extractTransferDocumentNumber(
-      reminder?.context?.label || reminder?.description
-    )
-    if (documentNumber) return `#${documentNumber}`
-
-    const contextId = normalizeId(reminder?.context?.id)
-    return contextId ? `#${contextId}` : ''
+    return getTransferContextPresentation(reminder).reference
   }
   return ''
 }
@@ -493,11 +515,11 @@ const getTimelineReminderSummary = ({
   }
 
   if (isTransferContextReminder && !isSpecialReminder) {
-    if (visualDecisionStatus === 'recibido') return 'Entregada y recibida.'
-    if (visualDecisionStatus === 'enviado') return 'En traslado.'
-    if (visualDecisionStatus === 'aceptada') return 'Aceptada.'
-    if (visualDecisionStatus === 'rechazada') return 'Rechazada.'
-    if (visualDecisionStatus === 'cancelado') return 'Cancelada.'
+    if (visualDecisionStatus === 'recibido') return 'Entregado y recibido.'
+    if (visualDecisionStatus === 'enviado') return 'En camino.'
+    if (visualDecisionStatus === 'aceptada') return 'Aceptado.'
+    if (visualDecisionStatus === 'rechazada') return 'Rechazado.'
+    if (visualDecisionStatus === 'cancelado') return 'Cancelado.'
   }
 
   if (isTransferContextReminder && isSpecialReminder) {
@@ -1317,16 +1339,20 @@ function RecordatoriosPopup({
         actor: sanitizeRecipient(activeDetailReminder?.creator),
       }
       : null
-    const hasInitialCreationEntry = initialCreationEntry
+    const shouldInjectInitialCreationEntry = (
+      initialCreationEntry &&
+      isSpecialTransferDecisionReminder(activeDetailReminder)
+    )
+    const hasInitialCreationEntry = shouldInjectInitialCreationEntry
       ? hasEquivalentTransferHistoryEntry(historyWithDecisionEntry, initialCreationEntry, {
         ignoreDescription: true,
       })
       : true
-    const historyWithInitialCreation = !hasInitialCreationEntry && initialCreationEntry
+    const historyWithInitialCreation = shouldInjectInitialCreationEntry && !hasInitialCreationEntry
       ? [
-        initialCreationEntry,
-        ...historyWithDecisionEntry,
-      ].sort((a, b) => String(a?.at || '').localeCompare(String(b?.at || '')))
+          initialCreationEntry,
+          ...historyWithDecisionEntry,
+        ].sort((a, b) => String(a?.at || '').localeCompare(String(b?.at || '')))
       : historyWithDecisionEntry
     const labeledHistory = historyWithInitialCreation.map((entry, index) => ({
       ...entry,
@@ -2735,7 +2761,6 @@ function RecordatoriosPopup({
                         const canOpenInTransitTransferFromReminder = (
                           isTransferContextReminder &&
                           visualDecisionStatus === 'enviado' &&
-                          isReminderOwnedByCurrentUser &&
                           typeof onOpenTransferRequestInTransit === 'function'
                         )
                         const latestTransferStageLabel = getTransferProgressStageLabel(
@@ -2753,7 +2778,7 @@ function RecordatoriosPopup({
                         )
                         const latestProgressActionLabel = latestTransferStage === 'recibido'
                           ? (latestProgressPreferredTarget === 'salidas' ? 'Ver salida' : 'Ver entrada')
-                          : 'Ver envío pendiente'
+                          : 'Ver envío en camino'
                         const canOpenLatestTransferProgress = (
                           isTransferContextReminder &&
                           !canResolveDecision &&
@@ -2794,6 +2819,9 @@ function RecordatoriosPopup({
                           visualDecisionStatus === 'enviado' ||
                           (visualDecisionStatus === 'aceptada' && hasSentReminderForSameRequest)
                         )
+                        const transferEntryActionLabel = shouldUseSentCopyOnTransferEntryAction
+                          ? 'Traslado ya enviado, ver envío en camino'
+                          : (shouldShowCorrectionAction ? 'Corregir traslado' : 'Ver traslado')
                         const isOpeningTransfer = (
                           normalizeId(openingTransferReminderId) &&
                           normalizeId(openingTransferReminderId) === currentReminderId
@@ -2923,7 +2951,7 @@ function RecordatoriosPopup({
                                     className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
                                     onClick={() => openDecisionPanel(reminder)}
                                   >
-                                    Resolver solicitud
+                                    Resolver traslado
                                   </button>
                                 )}
 
@@ -3032,7 +3060,7 @@ function RecordatoriosPopup({
                                     }}
                                     disabled={isOpeningTransfer}
                                   >
-                                    {isOpeningTransfer ? 'Abriendo...' : 'Abrir recepción'}
+                                    {isOpeningTransfer ? 'Abriendo...' : 'Ver envío en camino'}
                                   </button>
                                 ) : canOpenIssueFromReceiptReminder ? (
                                   <button
@@ -3078,11 +3106,7 @@ function RecordatoriosPopup({
                                   >
                                     {isOpeningTransfer
                                       ? 'Abriendo...'
-                                      : (
-                                        shouldUseSentCopyOnTransferEntryAction
-                                          ? 'Solicitud ya enviada, ver envío pendiente'
-                                          : (shouldShowCorrectionAction ? 'Corregir solicitud' : 'Ver solicitud')
-                                      )}
+                                      : transferEntryActionLabel}
                                   </button>
                                 ) : canOpenRandomInspectionAction ? (
                                   <button
@@ -3140,8 +3164,8 @@ function RecordatoriosPopup({
             <div className="recordatorios-popup__decision-card" onMouseDown={(event) => event.stopPropagation()}>
               <header className="recordatorios-popup__decision-head">
                 <div>
-                  <h4>Solicitud de traslado</h4>
-                  <p>{activeDecisionReminder?.context?.label || 'Detalle de solicitud'}</p>
+                  <h4>Traslado</h4>
+                  <p>{formatReminderContext(activeDecisionReminder) || 'Detalle del traslado'}</p>
                 </div>
                 <button
                   type="button"

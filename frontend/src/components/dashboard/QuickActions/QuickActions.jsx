@@ -318,6 +318,41 @@ const hasModuleBranchAccess = (userItem, moduleKey, branchId) => {
   return Array.isArray(ids) && ids.includes(normalizedBranchId)
 }
 
+const normalizeModuleScopeActions = (rawScopes) => {
+  const scopes = {}
+  ;(Array.isArray(rawScopes) ? rawScopes : []).forEach((item) => {
+    const moduleKey = normalizeString(item?.modulo)
+    if (!moduleKey) return
+    const branchActions = {}
+    ;(Array.isArray(item?.acciones_por_sucursal) ? item.acciones_por_sucursal : []).forEach((entry) => {
+      const branchId = normalizeId(entry?.sucursal_id)
+      if (!branchId) return
+      branchActions[branchId] = {
+        puede_crear: Boolean(entry?.puede_crear),
+        puede_actualizar: Boolean(entry?.puede_actualizar),
+        puede_leer: Boolean(entry?.puede_leer),
+      }
+    })
+    if (Object.keys(branchActions).length) scopes[moduleKey] = branchActions
+  })
+  return scopes
+}
+
+const hasAnyModuleScopeAccess = (moduleScopeActions, moduleKey, actionKeys = ['puede_crear', 'puede_actualizar']) => {
+  const normalizedModule = normalizeString(moduleKey)
+  if (!normalizedModule) return false
+  const branchActions = moduleScopeActions?.[normalizedModule]
+  if (!branchActions || typeof branchActions !== 'object') return false
+  return Object.values(branchActions).some((actions) =>
+    actionKeys.some((key) => Boolean(actions?.[key]))
+  )
+}
+
+const extractTransferDocumentNumber = (value) => {
+  const match = String(value || '').match(/#([A-Za-z0-9._-]+)/)
+  return match ? String(match[1] || '').trim() : ''
+}
+
 const isResolvedTransferResponseReminder = (reminder) => {
   const contextType = normalizeReminderContextType(reminder?.context?.type)
   if (contextType !== 'solicitud_traslado') return false
@@ -485,26 +520,29 @@ function QuickActions({
   const suppressAdminAlerts = isAdministrator
   const allowVisualUrgentShield = allowUrgentShield && !suppressAdminAlerts
   const hasPendingShipments = pendingShipments.length > 0
-  const hasInTransitShipments = inTransitShipments.length > 0
   const shouldAnimatePendingShipments = !suppressAdminAlerts && hasPendingShipments
+  const currentUserModuleScopeActions = useMemo(
+    () => normalizeModuleScopeActions(user?.sucursales_por_modulo),
+    [user?.sucursales_por_modulo]
+  )
   const canDecideTransferRequest = useMemo(() => {
     if (user?.is_staff || user?.is_superuser) return true
-    if (!Array.isArray(user?.permisos)) return false
-    const permissions = user.permisos
+    const permissions = Array.isArray(user?.permisos) ? user.permisos : []
     const salidasPermission = permissions.find(
       (permission) => String(permission?.modulo || '').trim().toLowerCase() === 'movimientos_salidas'
     )
-    return Boolean(salidasPermission?.puede_crear || salidasPermission?.puede_actualizar)
-  }, [user])
+    if (Boolean(salidasPermission?.puede_crear || salidasPermission?.puede_actualizar)) return true
+    return hasAnyModuleScopeAccess(currentUserModuleScopeActions, 'movimientos_salidas')
+  }, [currentUserModuleScopeActions, user])
   const canReceiveTransferRequest = useMemo(() => {
     if (user?.is_staff || user?.is_superuser) return true
-    if (!Array.isArray(user?.permisos)) return false
-    const permissions = user.permisos
+    const permissions = Array.isArray(user?.permisos) ? user.permisos : []
     const entradasPermission = permissions.find(
       (permission) => String(permission?.modulo || '').trim().toLowerCase() === 'movimientos_entradas'
     )
-    return Boolean(entradasPermission?.puede_crear || entradasPermission?.puede_actualizar)
-  }, [user])
+    if (Boolean(entradasPermission?.puede_crear || entradasPermission?.puede_actualizar)) return true
+    return hasAnyModuleScopeAccess(currentUserModuleScopeActions, 'movimientos_entradas')
+  }, [currentUserModuleScopeActions, user])
   const canViewInTransitShipments = canReceiveTransferRequest
 
   const showErrorToast = useCallback((message) => {
@@ -837,6 +875,55 @@ function QuickActions({
     [reminders, currentUserIds]
   )
 
+  const fallbackInTransitShipments = useMemo(() => {
+    const existingShipmentIds = new Set(
+      (Array.isArray(inTransitShipments) ? inTransitShipments : [])
+        .map((shipment) => normalizeId(shipment?.id))
+        .filter(Boolean)
+    )
+
+    return reminders
+      .filter((reminder) => isReminderForCurrentUser(reminder, currentUserIds))
+      .filter((reminder) => normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado')
+      .filter((reminder) => !isSpecialTransferDecisionReminder(reminder))
+      .filter((reminder) => getReminderDecisionStatus(reminder) === 'enviado')
+      .filter((reminder) => (
+        canViewInTransitShipments ||
+        isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)
+      ))
+      .filter((reminder) => {
+        const solicitudId = normalizeId(reminder?.context?.id)
+        return Boolean(solicitudId) && !existingShipmentIds.has(solicitudId)
+      })
+      .map((reminder) => {
+        const solicitudId = normalizeId(reminder?.context?.id)
+        const contextLabel = String(reminder?.context?.label || '').trim()
+        const documentNumber = extractTransferDocumentNumber(contextLabel || reminder?.description || '')
+        return {
+          id: solicitudId,
+          no_documento: documentNumber,
+          fecha: String(reminder?.date || '').trim(),
+          sucursal_solicitante: '',
+          sucursal_proveedora: '',
+          reminder,
+          isReminderFallback: true,
+          description: String(reminder?.description || '').trim(),
+        }
+      })
+      .sort((a, b) => getReminderTimestamp(b?.reminder) - getReminderTimestamp(a?.reminder))
+  }, [canViewInTransitShipments, currentUserIds, currentUserName, inTransitShipments, reminders])
+
+  const visibleInTransitShipments = useMemo(
+    () => [
+      ...(Array.isArray(inTransitShipments) ? inTransitShipments : []),
+      ...fallbackInTransitShipments,
+    ],
+    [fallbackInTransitShipments, inTransitShipments]
+  )
+
+  const hasInTransitShipments = visibleInTransitShipments.length > 0
+  const canOpenInTransitShipments = canViewInTransitShipments || fallbackInTransitShipments.length > 0
+
   const hasPendingReminder = useMemo(
     () => pendingRemindersForCurrentUser.length > 0,
     [pendingRemindersForCurrentUser]
@@ -853,8 +940,8 @@ function QuickActions({
     [pendingRemindersForCurrentUser]
   )
 
-  const mobileShipmentCount = canViewInTransitShipments
-    ? pendingShipments.length + inTransitShipments.length
+  const mobileShipmentCount = canOpenInTransitShipments
+    ? pendingShipments.length + visibleInTransitShipments.length
     : 0
 
   const pendingSpecialDecisionReminders = useMemo(
@@ -966,15 +1053,21 @@ function QuickActions({
   }, [canDecideTransferRequest, fetchPendingTransferShipments, token])
 
   useEffect(() => {
-    if (!canViewInTransitShipments || !token) {
+    if (!token || !canOpenInTransitShipments) {
       setInTransitShipments([])
       setInTransitShipmentsLoading(false)
       setIsInTransitShipmentsOpen(false)
       setOpeningInTransitShipmentId('')
       return
     }
+    if (!canViewInTransitShipments) {
+      setInTransitShipments([])
+      setInTransitShipmentsLoading(false)
+      setOpeningInTransitShipmentId('')
+      return
+    }
     void fetchInTransitTransferShipments()
-  }, [canViewInTransitShipments, fetchInTransitTransferShipments, token])
+  }, [canOpenInTransitShipments, canViewInTransitShipments, fetchInTransitTransferShipments, token])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -2797,14 +2890,16 @@ function QuickActions({
   }
 
   const toggleInTransitShipmentsPanel = async () => {
-    if (!canViewInTransitShipments) return
+    if (!canOpenInTransitShipments) return
     if (isInTransitShipmentsOpen) {
       setIsInTransitShipmentsOpen(false)
       return
     }
     setIsPendingShipmentsOpen(false)
     setIsInTransitShipmentsOpen(true)
-    await fetchInTransitTransferShipments()
+    if (canViewInTransitShipments) {
+      await fetchInTransitTransferShipments()
+    }
   }
 
   const handleOpenPendingShipment = useCallback(
@@ -3649,7 +3744,7 @@ function QuickActions({
         </button>
       ))}
       <div className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}>
-        {canViewInTransitShipments && hasInTransitShipments && (
+        {canOpenInTransitShipments && hasInTransitShipments && (
           <div
             ref={inTransitShipmentsRef}
             className={`quick-actions__pending-shipments quick-actions__in-transit${isInTransitShipmentsOpen ? ' is-open' : ''}`}
@@ -3664,7 +3759,7 @@ function QuickActions({
               <span>Envíos en camino</span>
               {!suppressAdminAlerts && (
                 <span className="quick-actions__pending-shipments-count">
-                  {inTransitShipmentsLoading ? '...' : inTransitShipments.length}
+                  {inTransitShipmentsLoading ? '...' : visibleInTransitShipments.length}
                 </span>
               )}
             </button>
@@ -3694,36 +3789,47 @@ function QuickActions({
                       <Loader2 size={14} />
                       <span>Cargando envíos en camino...</span>
                     </p>
-                  ) : !inTransitShipments.length ? (
+                  ) : !visibleInTransitShipments.length ? (
                     <p className="quick-actions__pending-shipments-empty">No hay envíos en camino.</p>
                   ) : (
-                    inTransitShipments.map((shipment) => {
+                    visibleInTransitShipments.map((shipment) => {
                       const shipmentId = normalizeId(shipment?.id)
                       const isOpening = shipmentId && openingInTransitShipmentId === shipmentId
                       const doc = String(shipment?.no_documento || shipmentId || '').trim()
-                      const providerBranch = String(shipment?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'
-                      const receiveBranch = String(shipment?.sucursal_solicitante || '').trim() || 'Sucursal solicitante'
+                      const providerBranch = String(shipment?.sucursal_proveedora || '').trim()
+                      const receiveBranch = String(shipment?.sucursal_solicitante || '').trim()
                       const fecha = String(shipment?.fecha || '').trim()
+                      const relatedReminder = shipment?.reminder || null
 
                       return (
                         <button
                           key={`in-transit-shipment-${shipmentId || doc || 'row'}`}
                           type="button"
                           className="quick-actions__pending-shipments-item quick-actions__in-transit-item"
-                          onClick={() => void handleOpenInTransitShipment(shipment)}
+                          onClick={() => {
+                            if (relatedReminder) {
+                              void handleOpenInTransitShipmentFromReminder(relatedReminder)
+                              return
+                            }
+                            void handleOpenInTransitShipment(shipment)
+                          }}
                           disabled={Boolean(isOpening || inTransitSubdivisionsLoading)}
                         >
                           <span className="quick-actions__pending-shipments-item-title">
                             {doc ? `#${doc}` : 'Traslado sin documento'}
                           </span>
                           <span className="quick-actions__pending-shipments-item-meta">
-                            Desde: {providerBranch}
+                            {providerBranch ? `Desde: ${providerBranch}` : 'Desde: traslado enviado'}
                           </span>
                           <span className="quick-actions__pending-shipments-item-meta">
-                            Hacia: {receiveBranch}
+                            {receiveBranch ? `Hacia: ${receiveBranch}` : 'Hacia: sucursal destino'}
                           </span>
                           <span className="quick-actions__pending-shipments-item-meta">
-                            {isOpening ? 'Abriendo...' : (fecha ? `Fecha: ${fecha}` : 'Abrir recepción')}
+                            {isOpening
+                              ? 'Abriendo...'
+                              : (fecha
+                                ? `Fecha: ${fecha}`
+                                : (relatedReminder ? 'Abrir envío en camino' : 'Abrir recepción'))}
                           </span>
                         </button>
                       )
