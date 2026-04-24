@@ -794,49 +794,46 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             )
 
             if is_create:
-                if solicitud_traslado is None:
-                    raise serializers.ValidationError(
-                        {
-                            "solicitud_traslado_id": (
-                                "Debes seleccionar una solicitud de traslado aceptada."
-                            )
-                        }
-                    )
+                if solicitud_traslado is not None:
+                    if solicitud_traslado.estado != SolicitudTraslado.Estados.APROBADA:
+                        raise serializers.ValidationError(
+                            {"solicitud_traslado_id": "La solicitud de traslado debe estar aceptada."}
+                        )
 
-                if solicitud_traslado.estado != SolicitudTraslado.Estados.APROBADA:
-                    raise serializers.ValidationError(
-                        {"solicitud_traslado_id": "La solicitud de traslado debe estar aceptada."}
-                    )
+                    if (
+                        solicitud_traslado.movimiento_salida_id
+                        or solicitud_traslado.movimiento_entrada_id
+                    ):
+                        raise serializers.ValidationError(
+                            {"solicitud_traslado_id": "La solicitud ya fue procesada."}
+                        )
 
-                if (
-                    solicitud_traslado.movimiento_salida_id
-                    or solicitud_traslado.movimiento_entrada_id
-                ):
-                    raise serializers.ValidationError(
-                        {"solicitud_traslado_id": "La solicitud ya fue procesada."}
-                    )
+                    if sucursal is None or int(sucursal.id) != int(solicitud_traslado.sucursal_proveedora_id):
+                        raise serializers.ValidationError(
+                            {
+                                "sucursal_id": (
+                                    "La salida debe crearse desde la sucursal proveedora de la solicitud."
+                                )
+                            }
+                        )
 
-                if sucursal is None or int(sucursal.id) != int(solicitud_traslado.sucursal_proveedora_id):
-                    raise serializers.ValidationError(
-                        {
-                            "sucursal_id": (
-                                "La salida debe crearse desde la sucursal proveedora de la solicitud."
-                            )
-                        }
-                    )
-
-                if (
-                    sucursal_objetivo is not None
-                    and int(sucursal_objetivo.id) != int(solicitud_traslado.sucursal_solicitante_id)
-                ):
-                    raise serializers.ValidationError(
-                        {
-                            "sucursal_objetivo_id": (
-                                "La sucursal destino debe coincidir con la sucursal solicitante."
-                            )
-                        }
-                    )
-                attrs["sucursal_objetivo"] = solicitud_traslado.sucursal_solicitante
+                    if (
+                        sucursal_objetivo is not None
+                        and int(sucursal_objetivo.id) != int(solicitud_traslado.sucursal_solicitante_id)
+                    ):
+                        raise serializers.ValidationError(
+                            {
+                                "sucursal_objetivo_id": (
+                                    "La sucursal destino debe coincidir con la sucursal solicitante."
+                                )
+                            }
+                        )
+                    attrs["sucursal_objetivo"] = solicitud_traslado.sucursal_solicitante
+                else:
+                    if sucursal_objetivo is None:
+                        raise serializers.ValidationError(
+                            {"sucursal_objetivo_id": "En traslado debes seleccionar sucursal destino."}
+                        )
             else:
                 if sucursal_objetivo is None:
                     raise serializers.ValidationError(

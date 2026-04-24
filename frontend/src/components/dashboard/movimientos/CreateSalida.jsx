@@ -2312,16 +2312,6 @@ function CreateSalida({
       return false
     }
 
-    if (transferRequiresRequest && !solicitudIdValue) {
-      notifyError('Selecciona una solicitud de traslado aceptada.')
-      return false
-    }
-
-    if (transferRequiresRequest && !selectedSolicitudTraslado) {
-      notifyError('La solicitud seleccionada ya no esta disponible. Recarga e intenta de nuevo.')
-      return false
-    }
-
     if (requiresSucursalObjetivo && !formData.sucursalObjetivoId) {
       notifyError('Selecciona la sucursal destino.')
       return false
@@ -2452,8 +2442,7 @@ function CreateSalida({
         sucursal_id: Number(formData.sucursalId),
         tipo_movimiento_id: Number(salidaTipoId),
         sub_tipo_movimiento_id: Number(formData.subTipoId),
-        solicitud_traslado_id:
-          transferRequiresRequest && solicitudIdValue ? Number(solicitudIdValue) : null,
+        solicitud_traslado_id: (solicitudIdValue && selectedSolicitudTraslado) ? Number(solicitudIdValue) : null,
         descripcion: buildDescripcion(ventaClienteLabel),
         factura_referencia: isVenta || isDevolucion ? String(formData.factura_referencia || '').trim() : '',
         funcional: isDevolucion ? Boolean(formData.funcional) : true,
