@@ -10,7 +10,9 @@ import {
   buildTransferHistoryEntry,
   createReminderId,
   emitRemindersSync,
+  extractUserId,
   fetchRemindersFromBackend,
+  formatCurrentUserName,
   getTransferReminderHistory,
   normalizeId as normalizeReminderId,
   readRemindersFromStorage,
@@ -84,6 +86,33 @@ const hasModuleBranchAccess = (userItem, moduleKey, branchId) => {
   if (!normalizedModule || !normalizedBranchId) return false
   const ids = userItem?.moduleScopes?.[normalizedModule]
   return Array.isArray(ids) && ids.includes(normalizedBranchId)
+}
+const normalizeModuleScopeActions = (rawScopes) => {
+  const scopes = {}
+  ;(Array.isArray(rawScopes) ? rawScopes : []).forEach((item) => {
+    const moduleKey = normalizeValue(item?.modulo)
+    if (!moduleKey) return
+    const branchActions = {}
+    ;(Array.isArray(item?.acciones_por_sucursal) ? item.acciones_por_sucursal : []).forEach((entry) => {
+      const branchId = normalizeReminderId(entry?.sucursal_id)
+      if (!branchId) return
+      branchActions[branchId] = {
+        puede_crear: Boolean(entry?.puede_crear),
+        puede_actualizar: Boolean(entry?.puede_actualizar),
+      }
+    })
+    if (Object.keys(branchActions).length) scopes[moduleKey] = branchActions
+  })
+  return scopes
+}
+const hasModuleBranchCreateAndUpdateAccess = (userItem, moduleKey, branchId) => {
+  if (!hasModuleBranchAccess(userItem, moduleKey, branchId)) return false
+  const normalizedModule = normalizeValue(moduleKey)
+  const normalizedBranchId = normalizeReminderId(branchId)
+  const moduleActions = userItem?.moduleScopeActions?.[normalizedModule]
+  const branchActions = moduleActions?.[normalizedBranchId]
+  if (!branchActions) return false
+  return Boolean(branchActions?.puede_crear && branchActions?.puede_actualizar)
 }
 const normalizeValue = (value) =>
   String(value ?? '')
@@ -323,6 +352,10 @@ function CreateSalida({
   const [transferCancelReasonError, setTransferCancelReasonError] = useState('')
   const [transferCancelSubmitting, setTransferCancelSubmitting] = useState(false)
   const [isTransferWithoutRequest, setIsTransferWithoutRequest] = useState(false)
+  const [reminderUsers, setReminderUsers] = useState([])
+  const [reminderUsersLoading, setReminderUsersLoading] = useState(false)
+  const [reminderUsersError, setReminderUsersError] = useState('')
+  const [selectedReminderUserIds, setSelectedReminderUserIds] = useState([])
   const [documentLoading, setDocumentLoading] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -373,6 +406,11 @@ function CreateSalida({
     if (!detailError) return
     notifyError(detailError)
   }, [detailError, notifyError])
+
+  useEffect(() => {
+    if (!reminderUsersError) return
+    notifyError(reminderUsersError)
+  }, [notifyError, reminderUsersError])
 
   const salidaTipoId = useMemo(() => {
     const salida = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('sal'))
@@ -895,6 +933,11 @@ function CreateSalida({
       }
     )
   }, [currentUser])
+  const currentCreatorId = useMemo(() => normalizeReminderId(extractUserId(currentUser)), [currentUser])
+  const currentCreatorName = useMemo(() => formatCurrentUserName(currentUser), [currentUser])
+  const currentCreatorEmail = String(currentUser?.correo || currentUser?.email || '').trim()
+  const isCurrentUserAdmin = useMemo(() => Boolean(currentUser?.es_administrador), [currentUser])
+
   const resolveProviderReminderRecipients = useCallback(
     async (providerBranchId) => {
       const normalizedProviderBranchId = normalizeReminderId(providerBranchId)
@@ -977,6 +1020,79 @@ function CreateSalida({
     },
     [token]
   )
+
+  const fetchReminderUsers = useCallback(async () => {
+    if (!token) {
+      setReminderUsers([])
+      setReminderUsersLoading(false)
+      setReminderUsersError('')
+      return
+    }
+
+    setReminderUsersLoading(true)
+    setReminderUsersError('')
+
+    const ensureCurrentCreator = (list) => {
+      if (!currentCreatorId) return list
+      if (list.some((userItem) => normalizeReminderId(userItem.id) === currentCreatorId)) return list
+      return [
+        {
+          id: currentCreatorId,
+          name: currentCreatorName || 'Usuario',
+          email: currentCreatorEmail,
+          isAdmin: isCurrentUserAdmin,
+          moduleScopes: normalizeModuleScopes(currentUser?.sucursales_por_modulo),
+          moduleScopeActions: normalizeModuleScopeActions(currentUser?.sucursales_por_modulo),
+        },
+        ...list,
+      ]
+    }
+
+    try {
+      const rows = []
+      let url = `${API_URL}/usuarios/listado/destinatarios/?page_size=200`
+
+      while (url) {
+        const response = await authFetch(url, {}, token)
+        if (!response.ok) throw new Error('No se pudo cargar la lista de usuarios para recordatorios.')
+        const payload = await response.json().catch(() => ({}))
+        if (Array.isArray(payload)) {
+          rows.push(...payload)
+          url = null
+        } else {
+          rows.push(...(Array.isArray(payload?.results) ? payload.results : []))
+          url = payload?.next || null
+        }
+      }
+
+      const seenIds = new Set()
+      const normalizedUsers = []
+      rows.forEach((item) => {
+        const userId = normalizeReminderId(extractUserId(item))
+        if (!userId || seenIds.has(userId)) return
+        seenIds.add(userId)
+        normalizedUsers.push({
+          id: userId,
+          name: formatCurrentUserName(item),
+          email: String(item?.correo || item?.email || '').trim(),
+          isAdmin: Boolean(item?.es_administrador),
+          moduleScopes: normalizeModuleScopes(item?.sucursales_por_modulo),
+          moduleScopeActions: normalizeModuleScopeActions(item?.sucursales_por_modulo),
+        })
+      })
+
+      const withCreator = ensureCurrentCreator(normalizedUsers).sort((a, b) =>
+        String(a?.name || '').localeCompare(String(b?.name || ''), 'es', { sensitivity: 'base' })
+      )
+      setReminderUsers(withCreator)
+    } catch (err) {
+      setReminderUsersError(err?.message || 'No se pudieron cargar los usuarios para recordatorios.')
+      setReminderUsers(ensureCurrentCreator([]))
+    } finally {
+      setReminderUsersLoading(false)
+    }
+  }, [currentCreatorEmail, currentCreatorId, currentCreatorName, currentUser, isCurrentUserAdmin, token])
+
   const transferDestinationBranches = useMemo(() => {
     if (!isTraslado) return destinationBranches
     if (!solicitudRequesterBranchId) return destinationBranches
@@ -999,6 +1115,79 @@ function CreateSalida({
   ])
   const isManualTransferMode = isTraslado && isTransferWithoutRequest
   const transferRequiresRequest = isTraslado && !isTransferWithoutRequest
+
+  const selectedReminderTargetBranchId = String(formData.sucursalObjetivoId || '').trim()
+  const hasSelectedReminderTargetBranch = Boolean(selectedReminderTargetBranchId)
+
+  const reminderBranchUsers = useMemo(() => {
+    if (!isManualTransferMode || !selectedReminderTargetBranchId) return []
+    return reminderUsers.filter((userItem) =>
+      hasModuleBranchCreateAndUpdateAccess(userItem, 'movimientos_entradas', selectedReminderTargetBranchId)
+    )
+  }, [isManualTransferMode, reminderUsers, selectedReminderTargetBranchId])
+
+  const adminReminderRecipients = useMemo(() => {
+    if (!isManualTransferMode) return []
+    return reminderUsers
+      .filter((userItem) => userItem.isAdmin)
+      .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
+      .filter(Boolean)
+      .filter(
+        (recipient, index, list) =>
+          list.findIndex((item) => normalizeReminderId(item?.id) === normalizeReminderId(recipient?.id)) === index
+      )
+  }, [isManualTransferMode, reminderUsers])
+
+  const adminReminderRecipientIds = useMemo(
+    () => new Set(adminReminderRecipients.map((r) => normalizeReminderId(r?.id)).filter(Boolean)),
+    [adminReminderRecipients]
+  )
+
+  const reminderUsersById = useMemo(
+    () => new Map(reminderUsers.map((userItem) => [normalizeReminderId(userItem?.id), userItem])),
+    [reminderUsers]
+  )
+
+  const adminReminderRows = useMemo(
+    () =>
+      adminReminderRecipients
+        .map((recipient) => {
+          const recipientId = normalizeReminderId(recipient?.id)
+          if (!recipientId) return null
+          const matchedUser = reminderUsersById.get(recipientId)
+          const fallbackEmail = recipientId === currentCreatorId ? currentCreatorEmail : ''
+          return {
+            id: recipientId,
+            name: String(recipient?.name || 'Administrador').trim() || 'Administrador',
+            email: String(matchedUser?.email || fallbackEmail || '').trim(),
+          }
+        })
+        .filter(Boolean),
+    [adminReminderRecipients, currentCreatorEmail, currentCreatorId, reminderUsersById]
+  )
+
+  const selectableReminderUsers = useMemo(
+    () => reminderBranchUsers.filter((userItem) => !adminReminderRecipientIds.has(normalizeReminderId(userItem.id))),
+    [adminReminderRecipientIds, reminderBranchUsers]
+  )
+
+  const selectedReminderRecipients = useMemo(() => {
+    if (!selectedReminderUserIds.length) return []
+    const usersMap = new Map(reminderBranchUsers.map((userItem) => [normalizeReminderId(userItem.id), userItem]))
+    return selectedReminderUserIds
+      .map((recipientId) => usersMap.get(normalizeReminderId(recipientId)))
+      .filter(Boolean)
+      .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
+      .filter(Boolean)
+      .filter(
+        (recipient, index, list) =>
+          list.findIndex((item) => normalizeReminderId(item?.id) === normalizeReminderId(recipient?.id)) === index
+      )
+  }, [reminderBranchUsers, selectedReminderUserIds])
+
+  const hasAdminReminderRecipients = adminReminderRecipients.length > 0
+  const hasAdditionalReminderRecipients = selectedReminderRecipients.length > 0
+
   const documentHelperText = useMemo(() => {
     if (documentStatus === DOCUMENT_STATUS.error) return 'No se pudo generar el código automáticamente.'
     if (documentStatus === DOCUMENT_STATUS.duplicate) return 'No se puede usar dos iguales.'
@@ -1375,7 +1564,11 @@ function CreateSalida({
     if (!isTraslado && isTransferWithoutRequest) {
       setIsTransferWithoutRequest(false)
     }
-  }, [isTraslado, isTransferWithoutRequest])
+    if (!isManualTransferMode) {
+      setSelectedReminderUserIds([])
+      setReminderUsers([])
+    }
+  }, [isTraslado, isTransferWithoutRequest, isManualTransferMode])
 
   useEffect(() => {
     if (formData.solicitudTrasladoId && isTransferWithoutRequest) {
@@ -1585,6 +1778,10 @@ function CreateSalida({
     setTransferCancelReasonError('')
     setTransferCancelSubmitting(false)
     setIsTransferWithoutRequest(false)
+    setReminderUsers([])
+    setReminderUsersLoading(false)
+    setReminderUsersError('')
+    setSelectedReminderUserIds([])
     setIsMaximized(false)
     setIsResizingModal(false)
     modalRestoreRef.current = null
@@ -1650,6 +1847,21 @@ function CreateSalida({
     if (isPrefilledTransfer) return
     setIsTransferWithoutRequest(isTraslado)
   }, [open, isPrefilledTransfer, isTraslado])
+
+  useEffect(() => {
+    if (!open || !isManualTransferMode) return
+    fetchReminderUsers()
+  }, [fetchReminderUsers, isManualTransferMode, open])
+
+  useEffect(() => {
+    if (!isManualTransferMode) return
+    setSelectedReminderUserIds((prev) => {
+      if (!prev.length) return prev
+      const validIds = new Set(selectableReminderUsers.map((u) => normalizeReminderId(u.id)).filter(Boolean))
+      const filtered = prev.filter((id) => validIds.has(normalizeReminderId(id)))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [isManualTransferMode, selectableReminderUsers])
 
   useEffect(
     () => () => {
@@ -2292,6 +2504,16 @@ function CreateSalida({
     return `Cliente: ${cliente}\n${descripcionBase}`
   }
 
+  const toggleReminderUser = (userId) => {
+    const normalizedId = normalizeReminderId(userId)
+    if (!normalizedId || adminReminderRecipientIds.has(normalizedId)) return
+    setSelectedReminderUserIds((prev) =>
+      prev.includes(normalizedId)
+        ? prev.filter((id) => id !== normalizedId)
+        : [...prev, normalizedId]
+    )
+  }
+
   const submitSalida = async ({ skipTransferConfirmation = false } = {}) => {
     setError('')
     const estadoMovimientoId = String(formData.estadoId || resolvedEstadoMovimientoId || '').trim()
@@ -2443,6 +2665,12 @@ function CreateSalida({
         tipo_movimiento_id: Number(salidaTipoId),
         sub_tipo_movimiento_id: Number(formData.subTipoId),
         solicitud_traslado_id: (solicitudIdValue && selectedSolicitudTraslado) ? Number(solicitudIdValue) : null,
+        recipients_ids: isManualTransferMode
+          ? [
+              ...adminReminderRecipients.map((r) => normalizeReminderId(r?.id)).filter(Boolean).map(Number).filter(Boolean),
+              ...selectedReminderUserIds.map(Number).filter(Boolean),
+            ].filter((id, index, arr) => arr.indexOf(id) === index)
+          : undefined,
         descripcion: buildDescripcion(ventaClienteLabel),
         factura_referencia: isVenta || isDevolucion ? String(formData.factura_referencia || '').trim() : '',
         funcional: isDevolucion ? Boolean(formData.funcional) : true,
@@ -2664,7 +2892,7 @@ function CreateSalida({
             </div>
           ) : (
             <>
-              {isVenta && (
+              {(isVenta || isManualTransferMode) && (
                 <div className="create-user__tabs create-salida__tabs" role="tablist" aria-label="Secciones de salida">
                   <button
                     type="button"
@@ -2673,13 +2901,24 @@ function CreateSalida({
                   >
                     Datos de salida
                   </button>
-                  <button
-                    type="button"
-                    className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
-                    onClick={() => setActiveTab('cliente')}
-                  >
-                    Datos del cliente
-                  </button>
+                  {isVenta && (
+                    <button
+                      type="button"
+                      className={`create-user__tab ${activeTab === 'cliente' ? 'create-user__tab--active' : ''}`}
+                      onClick={() => setActiveTab('cliente')}
+                    >
+                      Datos del cliente
+                    </button>
+                  )}
+                  {isManualTransferMode && (
+                    <button
+                      type="button"
+                      className={`create-user__tab ${activeTab === 'notificacion' ? 'create-user__tab--active' : ''}`}
+                      onClick={() => setActiveTab('notificacion')}
+                    >
+                      Notificación
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -2693,7 +2932,7 @@ function CreateSalida({
                     </div>
                   </div>
                 )}
-                {(activeTab === 'general' || !isVenta) && (
+                {(activeTab === 'general' || (!isVenta && !isManualTransferMode) || (isManualTransferMode && activeTab === 'general')) && (
                   <>
                     <section className="create-user__section">
                   <div
@@ -3274,6 +3513,129 @@ function CreateSalida({
                     {useExistingCliente && selectedCliente?.id && (
                       <small className="muted">Cliente existente detectado. Se usará el registro actual al guardar.</small>
                     )}
+                  </section>
+                )}
+
+                {isManualTransferMode && activeTab === 'notificacion' && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <p className="create-user__eyebrow">Recordatorio</p>
+                        <h4>Usuarios a quienes recordar</h4>
+                      </div>
+                    </div>
+
+                    <p className="create-salida__reminder-helper">
+                      Al crear el envío se genera automáticamente un recordatorio para administradores y usuarios seleccionados.
+                    </p>
+                    <div className="create-salida__reminder-rule" role="note">
+                      Solo se listan usuarios con permisos de <strong>crear y editar</strong> en{' '}
+                      <strong>Movimientos - Entradas</strong> de la <strong>sucursal destino</strong>.
+                    </div>
+
+                    {!hasSelectedReminderTargetBranch && (
+                      <small className="muted">Selecciona primero una sucursal destino para cargar usuarios.</small>
+                    )}
+
+                    <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdminReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
+                      <div className="create-salida__reminder-head">
+                        <h5>Administradores incluidos</h5>
+                        <span className="create-salida__reminder-count">{adminReminderRows.length}</span>
+                      </div>
+                      {reminderUsersLoading ? (
+                        <p className="muted">Cargando administradores...</p>
+                      ) : (
+                        <div className="create-salida__reminder-table-wrap">
+                          <div className="permissions-matrix__table create-salida__reminder-table" role="grid">
+                            <div className="permissions-matrix__row permissions-matrix__row--head">
+                              <div className="permissions-matrix__cell permissions-matrix__cell--label">Usuario</div>
+                              <div className="permissions-matrix__cell permissions-matrix__cell--label">Correo</div>
+                              <div className="permissions-matrix__cell permissions-matrix__cell--action">Estado</div>
+                            </div>
+
+                            {adminReminderRows.map((recipient) => (
+                              <div key={`salida-admin-recipient-${recipient.id}`} className="permissions-matrix__row">
+                                <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                  {recipient.name}
+                                </div>
+                                <div className="permissions-matrix__cell create-salida__reminder-email">
+                                  {recipient.email || '-'}
+                                </div>
+                                <div className="permissions-matrix__cell permissions-matrix__cell--action">
+                                  <span className="create-salida__reminder-badge">Incluido</span>
+                                </div>
+                              </div>
+                            ))}
+
+                            {!adminReminderRows.length && (
+                              <div className="permissions-matrix__row create-salida__reminder-row--empty">
+                                <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                  No se detectaron administradores.
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
+                      <div className="create-salida__reminder-head">
+                        <h5>Usuarios adicionales</h5>
+                        <span className="create-salida__reminder-count">{selectedReminderUserIds.length}</span>
+                      </div>
+                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients && (
+                        <small className="create-user__field-error">Debes seleccionar al menos un usuario adicional.</small>
+                      )}
+                      <div className="create-salida__reminder-table-wrap">
+                        <div className="permissions-matrix__table create-salida__reminder-table" role="grid">
+                          <div className="permissions-matrix__row permissions-matrix__row--head">
+                            <div className="permissions-matrix__cell permissions-matrix__cell--label">Usuario</div>
+                            <div className="permissions-matrix__cell permissions-matrix__cell--label">Correo</div>
+                            <div className="permissions-matrix__cell permissions-matrix__cell--action">Incluir</div>
+                          </div>
+
+                          {!hasSelectedReminderTargetBranch && (
+                            <div className="permissions-matrix__row create-salida__reminder-row--empty">
+                              <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                Debes seleccionar una sucursal destino.
+                              </div>
+                            </div>
+                          )}
+
+                          {hasSelectedReminderTargetBranch && !reminderUsersLoading && !selectableReminderUsers.length && (
+                            <div className="permissions-matrix__row create-salida__reminder-row--empty">
+                              <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                No hay usuarios disponibles con permisos de crear y editar en entradas para esta sucursal.
+                              </div>
+                            </div>
+                          )}
+
+                          {selectableReminderUsers.map((userItem) => {
+                            const userId = normalizeReminderId(userItem?.id)
+                            const checked = selectedReminderUserIds.includes(userId)
+                            return (
+                              <div key={`salida-reminder-user-${userId}`} className="permissions-matrix__row">
+                                <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                  {userItem.name || 'Usuario'}
+                                </div>
+                                <div className="permissions-matrix__cell create-salida__reminder-email">
+                                  {userItem.email || '-'}
+                                </div>
+                                <label className="permissions-matrix__cell permissions-matrix__cell--action">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleReminderUser(userId)}
+                                    disabled={loading || reminderUsersLoading || !hasSelectedReminderTargetBranch}
+                                  />
+                                </label>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
                   </section>
                 )}
               </div>

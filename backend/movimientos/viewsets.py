@@ -797,6 +797,15 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 solicitud=solicitud_traslado,
                 actor_user=self.request.user,
             )
+        elif self._is_traslado_movement(serializer):
+            raw_ids = self.request.data.get("recipients_ids", [])
+            recipient_ids = [i for i in (raw_ids if isinstance(raw_ids, list) else []) if i]
+            if recipient_ids:
+                reminder_added = self._append_direct_transfer_shipment_reminder(
+                    movement=movement,
+                    actor_user=self.request.user,
+                    recipient_ids=recipient_ids,
+                )
         if reminder_added:
             serializer.context[REMINDERS_SYNC_FLAG] = True
         self._auto_reject_pending_transfers_due_to_sale(movement)
@@ -1728,6 +1737,79 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 reminder=reminder,
             )
             store.payload = _normalize_reminder_list(merged)
+            store.save(update_fields=["payload", "updated_at"])
+
+        return True
+
+    def _append_direct_transfer_shipment_reminder(
+        self,
+        *,
+        movement,
+        actor_user,
+        recipient_ids,
+    ):
+        if not movement or not recipient_ids:
+            return False
+
+        movement_id = int(getattr(movement, "id", 0) or 0)
+        if movement_id <= 0:
+            return False
+
+        User = get_user_model()
+        recipient_users = User.objects.filter(id__in=recipient_ids, is_active=True)
+        recipients = [self._normalize_reminder_recipient(u) for u in recipient_users]
+        recipients = [r for r in recipients if r]
+        if not recipients:
+            return False
+
+        transfer_doc = str(getattr(movement, "no_documento", "") or "").strip()
+        transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{movement_id}"
+        context_label = f"Traslado directo {transfer_reference}"
+        description = f"El traslado {transfer_reference} fue enviado y está en camino."
+
+        now = timezone.localtime(timezone.now())
+        actor = self._normalize_reminder_recipient(actor_user) or {"id": "system", "name": "Sistema"}
+        created_at = timezone.now().isoformat()
+
+        reminder = {
+            "id": str(uuid4()),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M"),
+            "description": description,
+            "creator": actor,
+            "recipients": recipients,
+            "context": {
+                "type": "solicitud_traslado",
+                "id": str(movement_id),
+                "label": context_label,
+            },
+            "kind": "recordatorio_general",
+            "createdAt": created_at,
+            "decision": {
+                "status": "enviado",
+                "reason": "",
+                "by": actor,
+                "at": created_at,
+                "assignedRecipients": [],
+            },
+            "transferHistory": [
+                {
+                    "stage": "enviado",
+                    "label": "Enviado",
+                    "description": description,
+                    "at": created_at,
+                    "actor": actor,
+                }
+            ],
+            "completedBy": [],
+        }
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            existing_payload = store.payload if isinstance(store.payload, list) else []
+            normalized = _normalize_reminder_list(existing_payload)
+            normalized.insert(0, reminder)
+            store.payload = _normalize_reminder_list(normalized)
             store.save(update_fields=["payload", "updated_at"])
 
         return True
