@@ -540,7 +540,7 @@
 .recordatorios-popup__timeline-day-label {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
   justify-content: center;
   flex-wrap: wrap;
   line-height: 1;
