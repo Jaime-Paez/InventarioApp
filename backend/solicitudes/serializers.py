@@ -48,6 +48,11 @@ class ClienteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cliente
         fields = ["id", "nombres", "apellidos", "correo", "telefono", "direccion", "cedula_ruc", "autos"]
+        extra_kwargs = {
+            "correo": {"required": False, "allow_blank": True},
+            "telefono": {"required": False, "allow_blank": True},
+            "direccion": {"required": False, "allow_blank": True},
+        }
 
     def validate(self, attrs):
         nombres = attrs.get("nombres", serializers.empty)
@@ -79,6 +84,11 @@ class ClienteSerializer(serializers.ModelSerializer):
         attrs["nombres"] = nombres
         attrs["apellidos"] = apellidos
         attrs["cedula_ruc"] = cedula_ruc
+        for optional_field in ("correo", "telefono", "direccion"):
+            optional_value = attrs.get(optional_field, serializers.empty)
+            if optional_value is serializers.empty:
+                continue
+            attrs[optional_field] = normalize_text(optional_value)
         return attrs
 
     def create(self, validated_data):
@@ -598,10 +608,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
             errors["cliente_apellidos"] = "Los apellidos son obligatorios."
         if not cedula_ruc:
             errors["cliente_cedula_ruc"] = "La cedula/RUC es obligatoria."
-        if not telefono:
-            errors["cliente_telefono"] = "El telefono es obligatorio."
-        if not direccion:
-            errors["cliente_direccion"] = "La direccion es obligatoria."
 
         if errors:
             raise serializers.ValidationError(errors)

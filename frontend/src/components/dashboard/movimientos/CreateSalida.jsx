@@ -288,7 +288,7 @@ const normalizeClientePayload = (cliente) => ({
   direccion: String(cliente?.direccion || '').trim(),
 })
 
-const clienteRequiredFields = ['nombres', 'apellidos', 'cedula_ruc', 'telefono', 'direccion']
+const clienteRequiredFields = ['nombres', 'apellidos', 'cedula_ruc']
 const CLIENT_MODE_EXISTING = 'existing'
 const CLIENT_MODE_NEW = 'new'
 const DOCUMENT_STATUS = {

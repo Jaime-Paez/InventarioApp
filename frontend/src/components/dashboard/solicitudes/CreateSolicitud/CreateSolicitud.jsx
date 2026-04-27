@@ -38,7 +38,7 @@ const initialProductoDraft = {
   comentario: '',
   cantidad: '1',
 }
-const requiredClienteManualFields = ['cedula_ruc', 'nombres', 'apellidos', 'correo', 'telefono', 'direccion']
+const requiredClienteManualFields = ['cedula_ruc', 'nombres', 'apellidos']
 
 const todayISO = () => {
   const now = new Date()
@@ -1330,7 +1330,7 @@ function CreateSolicitud({
     if (!productos.length) return 'Debe agregar al menos un producto solicitado.'
     if (reminderUsersLoading) return 'Espera a que se carguen los usuarios para recordatorios.'
     if (!hasAdminRecipients) return 'No se pudo resolver un administrador para el recordatorio obligatorio.'
-    if (!isClientReady) return 'Si ingresa datos del cliente, la cedula es obligatoria y debe completar todos los campos.'
+    if (!isClientReady) return 'Si ingresa datos del cliente, debe completar cedula/RUC, nombres y apellidos.'
     return ''
   }, [hasAdminRecipients, isClientReady, productos.length, reminderUsersLoading, sucursalId])
 
@@ -1523,7 +1523,10 @@ function CreateSolicitud({
   const sucursalInvalid = submitAttempted && !sucursalId
   const productosInvalid = submitAttempted && !productos.length
   const isClientFieldInvalid = (fieldName) =>
-    submitAttempted && mustCompleteManualClient && !String(cliente[fieldName] || '').trim()
+    submitAttempted &&
+    mustCompleteManualClient &&
+    requiredClienteManualFields.includes(fieldName) &&
+    !String(cliente[fieldName] || '').trim()
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
@@ -2146,7 +2149,6 @@ function CreateSolicitud({
                       type="email"
                       value={cliente.correo}
                       onChange={handleClienteFieldChange}
-                      required={mustCompleteManualClient}
                       disabled={loading}
                     />
                   </label>
@@ -2159,7 +2161,6 @@ function CreateSolicitud({
                       type="text"
                       value={cliente.telefono}
                       onChange={handleClienteFieldChange}
-                      required={mustCompleteManualClient}
                       disabled={loading}
                     />
                   </label>
@@ -2172,7 +2173,6 @@ function CreateSolicitud({
                       type="text"
                       value={cliente.direccion}
                       onChange={handleClienteFieldChange}
-                      required={mustCompleteManualClient}
                       disabled={loading}
                     />
                   </label>
@@ -2220,8 +2220,5 @@ function CreateSolicitud({
 }
 
 export default CreateSolicitud
-
-
-
 
 

@@ -1022,10 +1022,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             missing_fields.append("apellidos")
         if not cedula_ruc:
             missing_fields.append("cedula/ruc")
-        if not telefono:
-            missing_fields.append("telefono")
-        if not direccion:
-            missing_fields.append("direccion")
 
         if missing_fields:
             return None, {"cliente": f"Faltan campos obligatorios del cliente: {', '.join(missing_fields)}."}
