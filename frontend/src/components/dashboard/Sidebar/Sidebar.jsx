@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import './Sidebar.css'
-import { Settings, PanelLeftClose, Layers } from 'lucide-react'
-import { MENU_STRUCTURE, filterMenuByPermissions } from '../menuConfig'
+import { Settings, PanelLeftClose, Layers, Hand } from 'lucide-react'
+import { MENU_STRUCTURE, filterMenuByPermissions, labelHasAccess } from '../menuConfig'
 
 function Sidebar({
   activeItem,
@@ -35,6 +35,15 @@ function Sidebar({
     [canAccessConfiguration, moduleScopeAccessIndex, permissionIndex]
   )
   const openTabSet = useMemo(() => new Set(openTabs), [openTabs])
+  const canAccessSolicitudes = labelHasAccess(
+    'Solicitudes',
+    permissionIndex,
+    undefined,
+    moduleScopeAccessIndex,
+    canAccessConfiguration
+  )
+  const solicitudesActive = activeItem === 'Solicitudes'
+  const solicitudesHasOpenTab = openTabSet.has('Solicitudes')
 
   const toggleGroup = (label) => {
     setOpenGroups((prev) => {
@@ -138,6 +147,20 @@ function Sidebar({
 
       <footer className="sidebar__footer">
         <div className="sidebar__actions">
+          {canAccessSolicitudes ? (
+            <button
+              type="button"
+              className={`sidebar__action sidebar__action--icon-only ${solicitudesActive ? 'active' : ''}`}
+              onClick={() => onSelect('Solicitudes')}
+              title="Solicitudes"
+              aria-label="Solicitudes"
+            >
+              <Hand />
+              {(solicitudesActive || solicitudesHasOpenTab) && (
+                <span className="sidebar__bullet sidebar__bullet--action" aria-hidden />
+              )}
+            </button>
+          ) : null}
           <button type="button" className="sidebar__action" onClick={onToggleSidebar}>
             <PanelLeftClose />
             Cerrar panel

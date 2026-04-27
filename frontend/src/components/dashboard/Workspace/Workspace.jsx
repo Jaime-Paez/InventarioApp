@@ -55,6 +55,7 @@ const MODULE_KEY_BY_TAB = {
   Bodegas: 'sucursales_bodegas',
   'Casas comerciales': 'proveedores_casas',
   Productos: 'productos',
+  'En camino': 'solicitudes',
   Solicitudes: 'solicitudes',
   Clientes: 'clientes',
   Entradas: 'movimientos_entradas',
@@ -64,6 +65,18 @@ const MODULE_KEY_BY_TAB = {
 }
 const ALL_BRANCH_OPTION_ID = 'all'
 const ALL_BRANCH_OPTION = { id: ALL_BRANCH_OPTION_ID, nombre: 'Todas' }
+
+function ProductosEnCaminoPlaceholder() {
+  return (
+    <div className="workspace__coming-soon">
+      <span className="workspace__coming-soon-badge">Importaciones</span>
+      <h2 className="workspace__coming-soon-title">Próximamente</h2>
+      <p className="workspace__coming-soon-copy">
+        En camino quedará disponible en una siguiente etapa.
+      </p>
+    </div>
+  )
+}
 
 function Workspace({
   activeItem,
@@ -129,6 +142,7 @@ function Workspace({
     Bodegas: BodegasTable,
     'Casas comerciales': CasasComercialesTable,
     Productos: ProductosTable,
+    'En camino': ProductosEnCaminoPlaceholder,
     Solicitudes: SolicitudesTable,
     Clientes: ClientesTable,
     Entradas: EntradasTable,

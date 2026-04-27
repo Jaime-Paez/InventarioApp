@@ -9,7 +9,6 @@ import {
   Compass,
   Box,
   Building,
-  Hand,
   UsersRound,
   IdCard,
   ClipboardCheck,
@@ -46,7 +45,7 @@ export const MENU_STRUCTURE = [
     label: 'Importaciones',
     icon: PackagePlus,
     children: [
-      { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
+      { label: 'En camino', icon: Box, moduleKey: 'solicitudes' },
     ],
   },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
@@ -58,6 +57,7 @@ export const MENU_STRUCTURE = [
 const STANDALONE_LABEL_RULES = {
   Configuraciones: { moduleKey: 'configuracion', requiresAdmin: true },
   'Revision de inventario por sucursal': { moduleKey: 'usuarios', requiresAdmin: true },
+  Solicitudes: { moduleKey: 'solicitudes' },
 }
 
 const BRANCH_SCOPED_MODULE_KEYS = new Set([
