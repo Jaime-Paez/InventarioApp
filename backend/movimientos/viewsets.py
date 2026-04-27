@@ -36,8 +36,10 @@ from usuarios.sucursal_scope import (
     get_readable_sucursal_ids,
 )
 from .models import (
+    DetalleMovimiento,
     MovimientoInventario,
     SolicitudTraslado,
+    SolicitudTrasladoDetalle,
     TrasladoInconveniente,
     TrasladoInconvenienteHistorial,
 )
@@ -105,13 +107,65 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         "total_monto",
     ]
 
+    def filter_queryset(self, queryset):
+        if getattr(self, "action", None) != "tabla":
+            return super().filter_queryset(queryset)
+
+        for backend in list(self.filter_backends):
+            if backend is filters.SearchFilter:
+                continue
+            queryset = backend().filter_queryset(self.request, queryset, self)
+        return queryset
+
+    def _build_table_detail_payload(self, detail):
+        producto = getattr(detail, "producto", None)
+        cantidad = int(getattr(detail, "cantidad", 0) or 0)
+        valor = getattr(detail, "valor", Decimal("0")) or Decimal("0")
+        valor_total = getattr(detail, "valor_total", None)
+        if valor_total in (None, ""):
+            valor_total = valor * cantidad
+        return {
+            "id": int(getattr(detail, "id", 0) or 0),
+            "producto_id": int(getattr(detail, "producto_id", 0) or 0),
+            "producto_codigo": str(getattr(producto, "codigo", "") or "").strip(),
+            "producto_nombre": str(getattr(producto, "nombre", "") or "").strip(),
+            "cantidad": cantidad,
+            "valor": valor,
+            "valor_total": valor_total,
+        }
+
     def _serialize_table_rows(self, rows):
         payload = []
         for row in rows:
-            movement_id = int(row.get("id") or 0)
-            estado_nombre = str(row.get("estado_movimiento__nombre") or "-").strip() or "-"
-            tipo_nombre = self._normalize_state_name(row.get("tipo_movimiento__nombre"))
-            sub_tipo_nombre = self._normalize_state_name(row.get("sub_tipo_movimiento__nombre"))
+            is_mapping = isinstance(row, dict)
+            movement_id = int((row.get("id") if is_mapping else getattr(row, "id", 0)) or 0)
+            estado_raw = (
+                row.get("estado_movimiento__nombre")
+                if is_mapping
+                else getattr(getattr(row, "estado_movimiento", None), "nombre", "")
+            )
+            tipo_raw = (
+                row.get("tipo_movimiento__nombre")
+                if is_mapping
+                else getattr(getattr(row, "tipo_movimiento", None), "nombre", "")
+            )
+            sub_tipo_raw = (
+                row.get("sub_tipo_movimiento__nombre")
+                if is_mapping
+                else getattr(getattr(row, "sub_tipo_movimiento", None), "nombre", "")
+            )
+            fecha_value = row.get("fecha") if is_mapping else getattr(row, "fecha", None)
+            detalles_payload = []
+            detalles_rows = None if is_mapping else getattr(row, "detalles", None)
+            if detalles_rows is not None:
+                detalles_payload = [
+                    self._build_table_detail_payload(detalle)
+                    for detalle in detalles_rows.all()
+                ]
+
+            estado_nombre = str(estado_raw or "-").strip() or "-"
+            tipo_nombre = self._normalize_state_name(tipo_raw)
+            sub_tipo_nombre = self._normalize_state_name(sub_tipo_raw)
             estado_normalizado = self._normalize_state_name(estado_nombre)
 
             if tipo_nombre.startswith("sal") and "trasl" in sub_tipo_nombre:
@@ -123,21 +177,35 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             payload.append(
                 {
                     "id": movement_id,
-                    "no_documento": str(row.get("no_documento") or "").strip(),
-                    "fecha": row.get("fecha"),
-                    "sucursal_nombre": row.get("sucursal__nombre") or "-",
-                    "sub_tipo_nombre": row.get("sub_tipo_movimiento__nombre") or "-",
+                    "no_documento": str(
+                        row.get("no_documento") if is_mapping else getattr(row, "no_documento", "")
+                        or ""
+                    ).strip(),
+                    "fecha": fecha_value,
+                    "sucursal_nombre": (
+                        row.get("sucursal__nombre")
+                        if is_mapping
+                        else getattr(getattr(row, "sucursal", None), "nombre", "")
+                    ) or "-",
+                    "sub_tipo_nombre": sub_tipo_raw or "-",
                     "estado_nombre": estado_nombre,
-                    "sucursal_objetivo_nombre": row.get("sucursal_objetivo__nombre") or "-",
-                    "funcional": bool(row.get("funcional")),
-                    "funcional_label": "Si" if bool(row.get("funcional")) else "No",
-                    "total": row.get("total_monto"),
+                    "sucursal_objetivo_nombre": (
+                        row.get("sucursal_objetivo__nombre")
+                        if is_mapping
+                        else getattr(getattr(row, "sucursal_objetivo", None), "nombre", "")
+                    ) or "-",
+                    "funcional": bool(row.get("funcional") if is_mapping else getattr(row, "funcional", False)),
+                    "funcional_label": "Si"
+                    if bool(row.get("funcional") if is_mapping else getattr(row, "funcional", False))
+                    else "No",
+                    "total": row.get("total_monto") if is_mapping else getattr(row, "total_monto", None),
+                    "detalles": detalles_payload,
                     "es_solicitud_traslado": False,
                     "solicitud_traslado_id": None,
                     "_sort_created_at": (
-                        row.get("fecha").isoformat()
-                        if getattr(row.get("fecha"), "isoformat", None)
-                        else str(row.get("fecha") or "").strip()
+                        fecha_value.isoformat()
+                        if getattr(fecha_value, "isoformat", None)
+                        else str(fecha_value or "").strip()
                     ),
                     "_sort_id": movement_id,
                 }
@@ -166,25 +234,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             detalles_rows = getattr(solicitud, "detalles", None)
             if detalles_rows is not None:
                 for detalle in detalles_rows.all():
-                    producto = getattr(detalle, "producto", None)
-                    cantidad = int(getattr(detalle, "cantidad", 0) or 0)
-                    valor = getattr(detalle, "valor", Decimal("0")) or Decimal("0")
-                    valor_total = valor * cantidad
-                    detalles_payload.append(
-                        {
-                            "id": int(getattr(detalle, "id", 0) or 0),
-                            "producto_id": int(getattr(detalle, "producto_id", 0) or 0),
-                            "producto_codigo": str(
-                                getattr(producto, "codigo", "") or ""
-                            ).strip(),
-                            "producto_nombre": str(
-                                getattr(producto, "nombre", "") or ""
-                            ).strip(),
-                            "cantidad": cantidad,
-                            "valor": valor,
-                            "valor_total": valor_total,
-                        }
-                    )
+                    detalles_payload.append(self._build_table_detail_payload(detalle))
 
             payload.append(
                 {
@@ -438,15 +488,27 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         search_term = (params.get("search") or "").strip()
         if search_term:
             normalized_search = search_term.lower()
+            matching_solicitud_ids = SolicitudTrasladoDetalle.objects.filter(
+                Q(producto__codigo__icontains=search_term)
+                | Q(producto__nombre__icontains=search_term)
+            ).values_list("solicitud_id", flat=True)
             search_query = (
                 Q(no_documento__icontains=search_term)
                 | Q(sucursal_solicitante__nombre__icontains=search_term)
                 | Q(sucursal_proveedora__nombre__icontains=search_term)
                 | Q(estado__icontains=search_term)
+                | Q(pk__in=matching_solicitud_ids)
             )
             if normalized_search in {"traslado", "traslados", "trasl"}:
                 search_query |= Q(pk__isnull=False)
             queryset = queryset.filter(search_query)
+
+        producto_codigo = (params.get("producto_codigo") or "").strip()
+        if producto_codigo:
+            matching_solicitud_ids = SolicitudTrasladoDetalle.objects.filter(
+                producto__codigo__icontains=producto_codigo
+            ).values_list("solicitud_id", flat=True)
+            queryset = queryset.filter(pk__in=matching_solicitud_ids)
 
         total_min = (params.get("total_min") or "").strip()
         if total_min:
@@ -575,6 +637,32 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 sucursal_objetivo__nombre__icontains=sucursal_objetivo
             )
 
+        search_term = (params.get("search") or "").strip()
+        if search_term:
+            normalized_search = search_term.lower()
+            matching_movement_ids = DetalleMovimiento.objects.filter(
+                Q(producto__codigo__icontains=search_term)
+                | Q(producto__nombre__icontains=search_term)
+            ).values_list("movimiento_inventario_id", flat=True)
+            search_query = (
+                Q(no_documento__icontains=search_term)
+                | Q(sucursal__nombre__icontains=search_term)
+                | Q(sucursal_objetivo__nombre__icontains=search_term)
+                | Q(sub_tipo_movimiento__nombre__icontains=search_term)
+                | Q(estado_movimiento__nombre__icontains=search_term)
+                | Q(pk__in=matching_movement_ids)
+            )
+            if normalized_search in {"traslado", "traslados", "trasl"}:
+                search_query |= Q(sub_tipo_movimiento__nombre__icontains="trasl")
+            queryset = queryset.filter(search_query)
+
+        producto_codigo = (params.get("producto_codigo") or "").strip()
+        if producto_codigo:
+            matching_movement_ids = DetalleMovimiento.objects.filter(
+                producto__codigo__icontains=producto_codigo
+            ).values_list("movimiento_inventario_id", flat=True)
+            queryset = queryset.filter(pk__in=matching_movement_ids)
+
         total_min = (params.get("total_min") or "").strip()
         if total_min:
             try:
@@ -665,32 +753,20 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="tabla")
     def tabla(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
-        table_rows = queryset.values(
-            "id",
-            "no_documento",
-            "fecha",
-            "funcional",
-            "tipo_movimiento__nombre",
-            "sucursal__nombre",
-            "sub_tipo_movimiento__nombre",
-            "estado_movimiento__nombre",
-            "sucursal_objetivo__nombre",
-            "total_monto",
-        )
 
         tipo_param = self._resolve_tipo_param()
         if tipo_param != "entrada":
-            page = self.paginate_queryset(table_rows)
+            page = self.paginate_queryset(queryset)
             if page is not None:
                 serialized = self._serialize_table_rows(page)
                 return self.get_paginated_response(
                     self._strip_internal_table_fields(serialized)
                 )
 
-            serialized = self._serialize_table_rows(table_rows)
+            serialized = self._serialize_table_rows(queryset)
             return Response(self._strip_internal_table_fields(serialized))
 
-        serialized_movimientos = self._serialize_table_rows(table_rows)
+        serialized_movimientos = self._serialize_table_rows(queryset)
         serialized_solicitudes = self._get_solicitudes_for_entrada_table()
         combined_rows = self._sort_table_payload(
             [*serialized_movimientos, *serialized_solicitudes]

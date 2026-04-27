@@ -790,6 +790,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "ubicacion": principal.get("ubicacion") or "-",
                 "division_nombre": principal.get("division_nombre") or "",
                 "subdivision_nombre": principal.get("subdivision_nombre") or "",
+                "cantidad": int(principal.get("cantidad") or 0),
             }
             additional_locations = [
                 {
@@ -797,6 +798,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     "ubicacion": location.get("ubicacion") or "-",
                     "division_nombre": location.get("division_nombre") or "",
                     "subdivision_nombre": location.get("subdivision_nombre") or "",
+                    "cantidad": int(location.get("cantidad") or 0),
                 }
                 for location in ordered_locations[1:]
             ]

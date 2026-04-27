@@ -35,7 +35,7 @@ const INVENTARIO_TABLE_COLUMNS_STORAGE_KEY = 'inventario-v2-table-columns-v2'
 const INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY = 'inventario-v2-table-columns-branch-v2'
 const INVENTARIO_TABLE_LAYOUT_STATE_KEY = 'inventario-v2-table-state-v3'
 const INVENTARIO_TABLE_FILTER_STATE_KEY = 'inventario-v2-table-state'
-const LOCATION_HOVER_CARD_WIDTH = 320
+const LOCATION_HOVER_CARD_WIDTH = 420
 const LOCATION_HOVER_CARD_MARGIN = 12
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
@@ -54,6 +54,12 @@ const parseBranchMetadata = (payload) => {
 const normalizeNumber = (value) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+const formatLocationQuantity = (value) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return '-'
+  return Number.isInteger(parsed) ? String(parsed) : parsed.toFixed(2)
 }
 
 const INVENTARIO_V2_FILTER_FIELDS = [
@@ -900,11 +906,13 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           ? {
             bodega_nombre: principalBodega,
             ubicacion: principalLabel,
+            cantidad: normalizeNumber(locationPayload?.principal?.cantidad),
           }
           : null,
         ...extraLocations.map((location) => ({
           bodega_nombre: String(location?.bodega_nombre || '').trim(),
           ubicacion: String(location?.ubicacion || '').trim(),
+          cantidad: normalizeNumber(location?.cantidad),
         })),
       ].filter((location) => location?.ubicacion)
       const visibleLocations = normalizedLocations.slice(0, 1)
@@ -929,7 +937,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                   className={`cell-tooltip inventario-v2__location-main${
                     index > 0 ? ' inventario-v2__location-main--secondary' : ''
                   }`}
-                  data-pr-tooltip={tooltip || location.ubicacion}
+                  data-pr-tooltip={
+                    [tooltip || location.ubicacion, `Cantidad: ${formatLocationQuantity(location?.cantidad)}`]
+                      .filter(Boolean)
+                      .join(' | ')
+                  }
                 >
                   {location.ubicacion}
                 </span>
@@ -2164,6 +2176,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 <tr>
                   <th>Bodega</th>
                   <th>Ubicacion</th>
+                  <th className="inventario-v2__location-hover-qty">Cantidad</th>
                 </tr>
               </thead>
               <tbody>
@@ -2174,6 +2187,12 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                     </td>
                     <td title={String(location?.ubicacion || '-').trim()}>
                       {String(location?.ubicacion || '-').trim()}
+                    </td>
+                    <td
+                      className="inventario-v2__location-hover-qty"
+                      title={formatLocationQuantity(location?.cantidad)}
+                    >
+                      {formatLocationQuantity(location?.cantidad)}
                     </td>
                   </tr>
                 ))}

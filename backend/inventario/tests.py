@@ -123,6 +123,7 @@ class InventarioTableLocationPayloadTests(TestCase):
             principal_branch_payload["principal"]["bodega_nombre"],
             "Bodega Principal",
         )
+        self.assertEqual(principal_branch_payload["principal"]["cantidad"], 8)
         self.assertEqual(principal_branch_payload["total_ubicaciones"], 3)
         self.assertEqual(
             principal_branch_payload["ubicaciones_adicionales"],
@@ -132,12 +133,14 @@ class InventarioTableLocationPayloadTests(TestCase):
                     "ubicacion": "Rack C:Nivel 4",
                     "division_nombre": "Rack C",
                     "subdivision_nombre": "Nivel 4",
+                    "cantidad": 7,
                 },
                 {
                     "bodega_nombre": "Bodega Principal",
                     "ubicacion": "Percha B:Nivel 2",
                     "division_nombre": "Percha B",
                     "subdivision_nombre": "Nivel 2",
+                    "cantidad": 2,
                 },
             ],
         )
@@ -183,4 +186,10 @@ class InventarioTableLocationPayloadTests(TestCase):
                 "bodega_nombre"
             ],
             "Bodega Norte",
+        )
+        self.assertEqual(
+            item[f"ubicacion_sucursal_{self.sucursal_principal.id}"]["principal"][
+                "cantidad"
+            ],
+            8,
         )

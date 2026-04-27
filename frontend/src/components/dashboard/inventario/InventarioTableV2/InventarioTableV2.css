@@ -168,7 +168,7 @@
 .inventario-v2__location-hover-card {
   position: fixed;
   z-index: 1200;
-  width: min(320px, calc(100vw - 24px));
+  width: min(420px, calc(100vw - 24px));
   max-height: min(260px, calc(100vh - 24px));
   overflow: auto;
   background: var(--color-surface);
@@ -214,6 +214,12 @@
 
 .inventario-v2__location-hover-table td {
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 45%, transparent);
+}
+
+.inventario-v2__location-hover-table th.inventario-v2__location-hover-qty,
+.inventario-v2__location-hover-table td.inventario-v2__location-hover-qty {
+  text-align: right;
+  padding-left: 12px;
 }
 
 .inventario-v2__location-hover-table tbody tr:last-child td {

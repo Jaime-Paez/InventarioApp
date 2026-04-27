@@ -23,6 +23,12 @@ import {
   getPrimeGlobalFilterValue,
 } from '../../../utils/primeTableQuery'
 import { REMINDERS_TRANSFER_NOTIFICATION_EVENT } from '../common/reminders/remindersStorage'
+import {
+  buildMovementProductsExportText,
+  buildMovementProductsSearchText,
+  formatMovementProductQuantity,
+  normalizeMovementProducts,
+} from './movementTableProducts'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeValue = (value) =>
@@ -57,6 +63,8 @@ const parseTotalValue = (row) => {
     return acc
   }, 0)
 }
+const MOVEMENT_PRODUCTS_HOVER_CARD_WIDTH = 480
+const MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN = 12
 const formatSalidaSubTipoLabel = (value) => {
   const nombre = String(value || '').trim()
   return normalizeValue(nombre) === 'devolucion' ? 'Garantia' : nombre
@@ -108,6 +116,7 @@ const createInitialFilters = () => ({
 
 const initialSearchCriteria = {
   no_documento: '',
+  producto_codigo: '',
   fecha_desde: '',
   fecha_hasta: '',
   sucursal: '',
@@ -150,11 +159,14 @@ function SalidasTable({
   const preloadSalidaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
   const fetchSeqRef = useRef(0)
+  const fetchMovimientosRef = useRef(null)
+  const latestTableOptionsRef = useRef({})
   const refreshDataRef = useRef(() => Promise.resolve([]))
   const notificationRefreshInFlightRef = useRef(false)
   const pendingNotificationRefreshRef = useRef(false)
   const loadedTokenRef = useRef(null)
   const handledTransferRequestKeyRef = useRef('')
+  const productHoverHideTimeoutRef = useRef(null)
   const clickTimerRef = useRef(null)
   const pendingClickRowRef = useRef(null)
   const pendingClickCountRef = useRef(0)
@@ -199,6 +211,7 @@ function SalidasTable({
   const columnsData = useMemo(
     () => [
       { nombrevar: 'no_documento', header: 'Documento', filterPlaceholder: 'Buscar por documento' },
+      { nombrevar: 'productos_resumen', header: 'Productos', filterPlaceholder: 'Buscar por productos' },
       { nombrevar: 'fecha', header: 'Fecha', filterPlaceholder: 'Buscar por fecha' },
       { nombrevar: 'sucursal_nombre', header: 'Sucursal', filterPlaceholder: 'Buscar por sucursal' },
       { nombrevar: 'sub_tipo_nombre', header: 'Tipo', filterPlaceholder: 'Buscar por tipo' },
@@ -211,6 +224,7 @@ function SalidasTable({
   )
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
   const selectedColumnsRef = useRef(selectedColumns)
+  const [productHoverCard, setProductHoverCard] = useState(null)
   const isTransferSendCreateOpen = Boolean(
     showCreateModal &&
     String(createPrefillTransferRequest?.solicitudId || '').trim()
@@ -257,6 +271,7 @@ function SalidasTable({
     (list) =>
       list.map((row) => {
         const total = parseTotalValue(row)
+        const productos = normalizeMovementProducts(row?.detalles)
         return {
           ...row,
           sucursal_nombre: row?.sucursal_nombre || row?.sucursal || '-',
@@ -264,6 +279,10 @@ function SalidasTable({
           estado_nombre: formatEstadoForTable(row?.estado_nombre || row?.estado_movimiento),
           sucursal_objetivo_nombre: row?.sucursal_objetivo_nombre || row?.sucursal_objetivo || '-',
           funcional_label: row?.funcional_label || (row?.funcional ? 'Si' : 'No'),
+          productos,
+          productos_resumen: buildMovementProductsSearchText(productos) || '-',
+          productos_codigos:
+            productos.map((product) => product?.producto_codigo).filter(Boolean).join(', ') || '-',
           total,
         }
       }),
@@ -293,6 +312,7 @@ function SalidasTable({
     }
 
     addIfPresent('no_documento', criteria?.no_documento)
+    addIfPresent('producto_codigo', criteria?.producto_codigo)
     addIfPresent('fecha_desde', criteria?.fecha_desde)
     addIfPresent('fecha_hasta', criteria?.fecha_hasta)
     addIfPresent('sucursal', criteria?.sucursal)
@@ -445,6 +465,23 @@ function SalidasTable({
   }, [salidaCatalogsPreloaded, token])
 
   useEffect(() => {
+    fetchMovimientosRef.current = fetchMovimientos
+  }, [fetchMovimientos])
+
+  useEffect(() => {
+    latestTableOptionsRef.current = {
+      rows: pageSize,
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+      globalSearchValue: globalFilterValue,
+      subtypeFilter,
+      branchContextId: normalizedCreateBranchId,
+      criteria: lastSearchRef.current,
+    }
+  }, [filters, globalFilterValue, normalizedCreateBranchId, pageSize, sortField, sortOrder, subtypeFilter])
+
+  useEffect(() => {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
       globalSearchDebounceRef.current = null
@@ -461,18 +498,11 @@ function SalidasTable({
     if (loadedTokenRef.current === token) return
     loadedTokenRef.current = token
 
-    fetchMovimientos({
+    fetchMovimientosRef.current?.({
       page: 1,
-      rows: pageSize,
-      tableFilters: filters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
-      globalSearchValue: globalFilterValue,
-      subtypeFilter,
-      branchContextId: normalizedCreateBranchId,
-      criteria: lastSearchRef.current,
+      ...latestTableOptionsRef.current,
     })
-  }, [token, fetchMovimientos, filters, globalFilterValue, pageSize, sortField, sortOrder, subtypeFilter, normalizedCreateBranchId])
+  }, [token])
 
   useEffect(() => {
     setSalidaCatalogsPreloaded(false)
@@ -612,11 +642,11 @@ function SalidasTable({
   useEffect(() => {
     if (!token) return
     setSelectedRows([])
-    refreshData({
+    refreshDataRef.current({
       page: 1,
       branchContextId: normalizedCreateBranchId,
     })
-  }, [normalizedCreateBranchId, refreshData, token])
+  }, [normalizedCreateBranchId, token])
 
   const clearFilter = () => {
     if (globalSearchDebounceRef.current) {
@@ -721,6 +751,76 @@ function SalidasTable({
     if (sorted.length) setSelectedColumns(sorted)
   }
 
+  const clearProductHoverHideTimer = useCallback(() => {
+    if (!productHoverHideTimeoutRef.current) return
+    clearTimeout(productHoverHideTimeoutRef.current)
+    productHoverHideTimeoutRef.current = null
+  }, [])
+
+  const hideProductHoverCard = useCallback(() => {
+    clearProductHoverHideTimer()
+    setProductHoverCard(null)
+  }, [clearProductHoverHideTimer])
+
+  const scheduleHideProductHoverCard = useCallback(() => {
+    clearProductHoverHideTimer()
+    productHoverHideTimeoutRef.current = setTimeout(() => {
+      productHoverHideTimeoutRef.current = null
+      setProductHoverCard(null)
+    }, 120)
+  }, [clearProductHoverHideTimer])
+
+  const showProductHoverCard = useCallback(
+    (event, products) => {
+      const normalizedProducts = Array.isArray(products) ? products : []
+      if (!normalizedProducts.length) {
+        hideProductHoverCard()
+        return
+      }
+
+      clearProductHoverHideTimer()
+      const rect = event?.currentTarget?.getBoundingClientRect?.()
+      if (!rect) return
+
+      let left = rect.right + 10
+      if (left + MOVEMENT_PRODUCTS_HOVER_CARD_WIDTH > window.innerWidth - MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN) {
+        left = Math.max(
+          MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN,
+          rect.left - MOVEMENT_PRODUCTS_HOVER_CARD_WIDTH - 10
+        )
+      }
+
+      const maxTop = Math.max(window.innerHeight - 280, MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN)
+      const top = Math.min(
+        Math.max(rect.top - 8, MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN),
+        maxTop
+      )
+
+      setProductHoverCard({
+        left,
+        top,
+        products: normalizedProducts,
+      })
+    },
+    [clearProductHoverHideTimer, hideProductHoverCard]
+  )
+
+  useEffect(
+    () => () => {
+      clearProductHoverHideTimer()
+    },
+    [clearProductHoverHideTimer]
+  )
+
+  useEffect(() => {
+    const handleScroll = () => {
+      hideProductHoverCard()
+    }
+
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [hideProductHoverCard])
+
   const cellWithTooltip = (rowData, field) => {
     const content = rowData?.[field] ?? '-'
     const textColor = content === '-' ? '#9ca3af' : undefined
@@ -747,6 +847,60 @@ function SalidasTable({
       <span className="cell-tooltip" data-pr-tooltip={value}>
         {value}
       </span>
+    )
+  }
+
+  const productsBodyTemplate = (rowData) => {
+    const products = Array.isArray(rowData?.productos) ? rowData.productos : []
+    if (!products.length) {
+      return (
+        <span className="cell-tooltip" style={{ color: '#9ca3af' }}>
+          -
+        </span>
+      )
+    }
+
+    const primaryProduct = products[0]
+    const remainingProducts = products.slice(1)
+    const primaryLabel = primaryProduct?.producto_codigo || primaryProduct?.producto_nombre || '-'
+    const primaryTooltip = [
+      primaryProduct?.producto_codigo,
+      primaryProduct?.producto_nombre,
+      `Cantidad: ${formatMovementProductQuantity(primaryProduct?.cantidad)}`,
+    ]
+      .filter(Boolean)
+      .join(' | ')
+
+    return (
+      <div className="movimientos-table__product-cell">
+        <div className="movimientos-table__product-lines">
+          <span
+            className="cell-tooltip movimientos-table__product-main"
+            data-pr-tooltip={primaryTooltip || primaryLabel}
+          >
+            {primaryLabel}
+          </span>
+        </div>
+
+        {remainingProducts.length > 0 ? (
+          <button
+            type="button"
+            className="movimientos-table__product-eye"
+            aria-label="Ver todos los productos"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+            onMouseEnter={(event) => showProductHoverCard(event, products)}
+            onMouseLeave={scheduleHideProductHoverCard}
+            onFocus={(event) => showProductHoverCard(event, products)}
+            onBlur={scheduleHideProductHoverCard}
+          >
+            <i className="pi pi-eye" />
+          </button>
+        ) : null}
+      </div>
     )
   }
 
@@ -987,6 +1141,9 @@ function SalidasTable({
   )
 
   const getExportValue = useCallback((row, field) => {
+    if (field === 'productos_resumen') {
+      return buildMovementProductsExportText(row?.productos)
+    }
     if (field === 'total') {
       const total = Number(row?.total)
       return Number.isFinite(total) ? total.toFixed(2) : ''
@@ -1190,6 +1347,8 @@ function SalidasTable({
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={[
             'no_documento',
+            'productos_resumen',
+            'productos_codigos',
             'fecha',
             'sucursal_nombre',
             'sub_tipo_nombre',
@@ -1235,23 +1394,68 @@ function SalidasTable({
 
           {selectedColumns.map((column) => {
             const field = column.nombrevar
-            const bodyTemplate = field === 'total'
-              ? totalBodyTemplate
-              : (rowData) => cellWithTooltip(rowData, field)
+            const bodyTemplate =
+              field === 'total'
+                ? totalBodyTemplate
+                : field === 'productos_resumen'
+                  ? productsBodyTemplate
+                  : (rowData) => cellWithTooltip(rowData, field)
             return (
               <Column
                 key={field}
                 field={field}
                 header={column.header}
                 body={bodyTemplate}
-                sortable
+                sortable={field !== 'productos_resumen'}
                 reorderable
                 className={columnClassName(field)}
-                style={{ minWidth: '32px' }}
+                style={{ minWidth: field === 'productos_resumen' ? '180px' : '32px' }}
               />
             )
           })}
         </DataTable>
+
+        {Array.isArray(productHoverCard?.products) && productHoverCard.products.length > 0 && (
+          <div
+            className="movimientos-table__product-hover-card"
+            role="tooltip"
+            style={{
+              top: productHoverCard.top,
+              left: productHoverCard.left,
+            }}
+            onMouseEnter={clearProductHoverHideTimer}
+            onMouseLeave={scheduleHideProductHoverCard}
+          >
+            <div className="movimientos-table__product-hover-title">Productos</div>
+            <table className="movimientos-table__product-hover-table">
+              <thead>
+                <tr>
+                  <th>Codigo</th>
+                  <th>Producto</th>
+                  <th className="movimientos-table__product-hover-qty">Cantidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productHoverCard.products.map((product, index) => (
+                  <tr key={`salida-product-hover-row-${index}`}>
+                    <td title={String(product?.producto_codigo || '-').trim()}>
+                      {String(product?.producto_codigo || '-').trim()}
+                    </td>
+                    <td title={String(product?.producto_nombre || '-').trim()}>
+                      {String(product?.producto_nombre || '-').trim()}
+                    </td>
+                    <td
+                      className="movimientos-table__product-hover-qty"
+                      title={formatMovementProductQuantity(product?.cantidad)}
+                    >
+                      {formatMovementProductQuantity(product?.cantidad)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
@@ -1358,6 +1562,17 @@ function SalidasTable({
                         type="text"
                         placeholder="Ej: FAC-001"
                         value={searchCriteria.no_documento}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>Codigo producto</span>
+                      <input
+                        name="producto_codigo"
+                        type="text"
+                        placeholder="Ej: ABC-123"
+                        value={searchCriteria.producto_codigo}
                         onChange={handleSearchInputChange}
                       />
                     </label>
