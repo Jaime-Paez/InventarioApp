@@ -55,6 +55,8 @@ const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
 const URGENT_REJECTED_TRANSFER_SHIELD_COLOR = '#f94a15'
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
+const URGENT_SHIELD_STACK_SHADE_STEP = 0.1
+const URGENT_SHIELD_STACK_SHADE_MAX = 0.4
 const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-state'
 const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
 const RANDOM_INSPECTION_DETAIL_ENDPOINT = `${API_URL}/recordatorios/inspeccion-aleatoria`
@@ -1676,6 +1678,10 @@ function QuickActions({
         )
         const size = Math.max(44, Math.round(44 + maxCanvas * progress))
         const offset = anchorStackIndex * stackOffset
+        const stackShade = Math.min(
+          anchorStackIndex * URGENT_SHIELD_STACK_SHADE_STEP,
+          URGENT_SHIELD_STACK_SHADE_MAX
+        )
         const anchorCenter = resolveAnchorCenter(anchor)
         const centerX = anchorCenter.x - offset
         const centerY = anchorCenter.y + offset
@@ -1694,6 +1700,7 @@ function QuickActions({
             left: `${centerX - size / 2}px`,
             top: `${centerY - size / 2}px`,
             '--urgency': String(progress.toFixed(3)),
+            '--urgent-stack-shade': String(stackShade.toFixed(3)),
             '--urgent-color':
               target?.kind === 'pending_shipment'
                 ? URGENT_SHIPMENT_SHIELD_COLOR

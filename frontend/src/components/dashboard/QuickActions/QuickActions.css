@@ -1895,7 +1895,12 @@
   margin: 0;
   pointer-events: auto;
   cursor: pointer;
-  background: #f94a15;
+  background:
+    linear-gradient(
+      rgba(0, 0, 0, var(--urgent-stack-shade, 0)),
+      rgba(0, 0, 0, var(--urgent-stack-shade, 0))
+    ),
+    #f94a15;
   opacity: 1;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.18),
@@ -1913,7 +1918,12 @@
 }
 
 .quick-actions.dark .quick-actions__urgent-shield {
-  background: #f94a15;
+  background:
+    linear-gradient(
+      rgba(0, 0, 0, var(--urgent-stack-shade, 0)),
+      rgba(0, 0, 0, var(--urgent-stack-shade, 0))
+    ),
+    #f94a15;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.13),
     0 10px 24px rgba(2, 6, 23, 0.26);
