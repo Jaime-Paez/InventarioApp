@@ -377,6 +377,7 @@ function SalidaDetails({
   const isVenta = selectedSubTipoName.includes('vent')
   const restrictedEditMode = true
   const lineItemsReadOnly = restrictedEditMode
+  const showDetailActions = !lineItemsReadOnly
   const clientDataReadOnly = restrictedEditMode
   const requiresStockValidation = isTraslado || isVenta || isDevolucion
   const requiresSucursalObjetivo = isTraslado
@@ -2054,14 +2055,14 @@ function SalidaDetails({
                     </div>
                   </div>
 
-                  <div className="create-user__locations-table create-salida__products-table">
+                  <div className={`create-user__locations-table create-salida__products-table${showDetailActions ? ' create-salida__products-table--with-actions' : ''}`}>
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Codigo</span>
                       <span>Nombre</span>
                       <span>Cantidad</span>
                       <span>Precio</span>
                       <span>Precio total</span>
-                      <span>Acciones</span>
+                      {showDetailActions && <span>Acciones</span>}
                     </div>
 
                     {!lineItemsReadOnly && (
@@ -2216,19 +2217,19 @@ function SalidaDetails({
                     {details.map((detail) => (
                       <div key={detail.uid} className="create-user__locations-row">
                         <span>{detail.productoCodigo || '-'}</span>
-                        <span>{detail.productoNombre || '-'}</span>
+                        <span title={detail.productoNombre || undefined}>
+                          <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
+                        </span>
                         <span>{detail.cantidad}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
-                        <span className="create-user__locations-cell create-user__locations-cell--action">
-                          {!lineItemsReadOnly ? (
+                        {showDetailActions && (
+                          <span className="create-user__locations-cell create-user__locations-cell--action">
                             <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={editorDisabled}>
                               x
                             </button>
-                          ) : (
-                            <span>-</span>
-                          )}
-                        </span>
+                          </span>
+                        )}
                       </div>
                     ))}
 
@@ -2538,6 +2539,5 @@ function SalidaDetails({
 }
 
 export default SalidaDetails
-
 
 

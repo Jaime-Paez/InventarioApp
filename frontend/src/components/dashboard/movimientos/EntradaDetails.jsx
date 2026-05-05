@@ -2770,7 +2770,9 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                                 </small>
                               )}
                             </span>
-                          <span>{detail.productoNombre || '-'}</span>
+                          <span title={detail.productoNombre || undefined}>
+                            <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
+                          </span>
                           <span>
                             {!isReadOnlyMode && !lineItemsReadOnly ? (
                                 <input

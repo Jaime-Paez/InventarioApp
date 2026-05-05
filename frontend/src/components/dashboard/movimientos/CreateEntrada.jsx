@@ -3427,7 +3427,9 @@ function CreateEntrada({
                               </small>
                             )}
                           </span>
-                          <span>{detail.productoNombre || '-'}</span>
+                          <span title={detail.productoNombre || undefined}>
+                            <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
+                          </span>
                           <span>{detail.cantidad}</span>
                           <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                           <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>

@@ -377,6 +377,11 @@ function CreateSalida({
   const modalRestoreRef = useRef(null)
   const appliedPrefillRequestKeyRef = useRef('')
   const documentRequestSeqRef = useRef(0)
+  const stockByProductRef = useRef({})
+  const loadedStockBranchIdRef = useRef('')
+  const pendingStockBranchIdRef = useRef('')
+  const pendingStockPromiseRef = useRef(null)
+  const selectedStockBranchIdRef = useRef('')
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const getViewportMetrics = useCallback((compactMode = false) => {
@@ -413,6 +418,14 @@ function CreateSalida({
     if (!reminderUsersError) return
     notifyError(reminderUsersError)
   }, [notifyError, reminderUsersError])
+
+  useEffect(() => {
+    stockByProductRef.current = stockByProduct
+  }, [stockByProduct])
+
+  useEffect(() => {
+    selectedStockBranchIdRef.current = String(formData.sucursalId || '').trim()
+  }, [formData.sucursalId])
 
   const salidaTipoId = useMemo(() => {
     const salida = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('sal'))
@@ -865,6 +878,10 @@ function CreateSalida({
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
+  )
+  const selectedDraftProductName = useMemo(
+    () => String(selectedDraftProduct?.nombre || '').trim(),
+    [selectedDraftProduct]
   )
   const detailProductIdSet = useMemo(
     () =>
@@ -1402,48 +1419,23 @@ function CreateSalida({
     setSubTipos((prev) => (prev.length ? prev : preloadedSubTipos))
   }, [preloadedSubTipos])
 
-  const formatProductoOptionLabel = useCallback(
+  const formatProductoTriggerLabel = useCallback(
     (producto) => {
       if (!producto) return ''
       const codigo = String(producto?.codigo || '').trim()
-      const nombre = String(producto?.nombre || '').trim()
-      return [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
+      return codigo || `ID ${producto?.id ?? ''}`
     },
     []
   )
 
-  const searchProducts = useCallback(
-    async (query) => {
-      const term = String(query ?? '').trim()
-      if (!term || !token || !hasSelectedSucursal) {
-        setProductOptions([])
-        return
-      }
-
-      setProductLoading(true)
-      try {
-        const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
-          {},
-          token
-        )
-        if (!response.ok) throw new Error('No se pudieron cargar los productos.')
-
-        const payload = await response.json()
-        let list = parseApiList(payload)
-        if (requiresStockValidation) {
-          list = list.filter((producto) => Number(stockByProduct[String(producto?.id)] ?? 0) > 0)
-        }
-
-        setProductOptions(list)
-      } catch {
-        setProductOptions([])
-      } finally {
-        setProductLoading(false)
-      }
-    },
-    [hasSelectedSucursal, requiresStockValidation, stockByProduct, token]
-  )
+  const resetStockLookup = useCallback(() => {
+    loadedStockBranchIdRef.current = ''
+    pendingStockBranchIdRef.current = ''
+    pendingStockPromiseRef.current = null
+    stockByProductRef.current = {}
+    setStockByProduct({})
+    setStockLoading(false)
+  }, [])
 
   const searchClientes = useCallback(
     async (query) => {
@@ -1675,40 +1667,115 @@ function CreateSalida({
 
   const fetchStockByBranch = useCallback(
     async (sucursalId) => {
-      if (!token || !sucursalId) {
-        setStockByProduct({})
+      const normalizedBranchId = String(sucursalId || '').trim()
+      if (!token || !normalizedBranchId) {
+        resetStockLookup()
+        return {}
+      }
+      if (loadedStockBranchIdRef.current === normalizedBranchId) {
+        return stockByProductRef.current
+      }
+      if (
+        pendingStockPromiseRef.current &&
+        pendingStockBranchIdRef.current === normalizedBranchId
+      ) {
+        return pendingStockPromiseRef.current
+      }
+
+      setStockLoading(true)
+      pendingStockBranchIdRef.current = normalizedBranchId
+      let request = null
+      request = (async () => {
+        try {
+          const response = await authFetch(
+            `${API_URL}/movimientos/movimiento_inventario/stock-sucursal-global/?sucursal_id=${encodeURIComponent(
+              normalizedBranchId
+            )}`,
+            {},
+            token
+          )
+          if (!response.ok) {
+            throw new Error('No se pudo cargar el inventario de la sucursal seleccionada.')
+          }
+
+          const payload = await response.json().catch(() => [])
+          const map = {}
+          const rows = parseApiList(payload)
+          rows.forEach((row) => {
+            const productId = String(row?.producto_id || '').trim()
+            if (!productId) return
+            const qty = Number(row?.cantidad_disponible)
+            map[productId] = Number.isFinite(qty) && qty > 0 ? qty : 0
+          })
+
+          if (selectedStockBranchIdRef.current === normalizedBranchId) {
+            stockByProductRef.current = map
+            loadedStockBranchIdRef.current = normalizedBranchId
+            setStockByProduct(map)
+          }
+
+          return map
+        } catch (err) {
+          if (selectedStockBranchIdRef.current === normalizedBranchId) {
+            stockByProductRef.current = {}
+            loadedStockBranchIdRef.current = ''
+            setStockByProduct({})
+          }
+          notifyError(err?.message || 'No se pudo cargar el inventario de la sucursal seleccionada.')
+          throw err
+        } finally {
+          if (pendingStockPromiseRef.current === request) {
+            pendingStockPromiseRef.current = null
+            pendingStockBranchIdRef.current = ''
+            setStockLoading(false)
+          }
+        }
+      })()
+
+      pendingStockPromiseRef.current = request
+      return request
+    },
+    [notifyError, resetStockLookup, token]
+  )
+
+  const searchProducts = useCallback(
+    async (query) => {
+      const term = String(query ?? '').trim()
+      if (!term || !token || !hasSelectedSucursal) {
+        setProductOptions([])
         return
       }
-      setStockLoading(true)
+
+      setProductLoading(true)
       try {
-      const response = await authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/stock-sucursal-global/?sucursal_id=${encodeURIComponent(
-          sucursalId
-        )}`,
-        {},
-        token
-      )
-        if (!response.ok) {
-          throw new Error('No se pudo cargar el inventario de la sucursal seleccionada.')
+        const selectedBranchId = String(formData.sucursalId || '').trim()
+        const stockPromise = requiresStockValidation && selectedBranchId
+          ? fetchStockByBranch(selectedBranchId)
+          : Promise.resolve(stockByProductRef.current)
+        const [response, stockMap] = await Promise.all([
+          authFetch(
+            `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
+            {},
+            token
+          ),
+          stockPromise,
+        ])
+        if (!response.ok) throw new Error('No se pudieron cargar los productos.')
+
+        const payload = await response.json()
+        let list = parseApiList(payload)
+        if (requiresStockValidation) {
+          list = list.filter((producto) => Number(stockMap?.[String(producto?.id)] ?? 0) > 0)
         }
-        const payload = await response.json().catch(() => [])
-        const map = {}
-        const rows = parseApiList(payload)
-        rows.forEach((row) => {
-          const productId = String(row?.producto_id || '').trim()
-          if (!productId) return
-          const qty = Number(row?.cantidad_disponible)
-          map[productId] = Number.isFinite(qty) && qty > 0 ? qty : 0
-        })
-        setStockByProduct(map)
-      } catch (err) {
-        setStockByProduct({})
-        notifyError(err?.message || 'No se pudo cargar el inventario de la sucursal seleccionada.')
+
+        setProductOptions(list)
+      } catch {
+        setProductOptions([])
       } finally {
-        setStockLoading(false)
+        setProductLoading(false)
       }
     },
-    [notifyError, token]
+    [fetchStockByBranch, formData.sucursalId, hasSelectedSucursal, requiresStockValidation, token]
   )
 
   const fetchSolicitudesTraslado = useCallback(
@@ -1780,7 +1847,7 @@ function CreateSalida({
     setClienteQuery('')
     setClienteOptions([])
     setClienteLoading(false)
-    setStockByProduct({})
+    resetStockLookup()
     setSolicitudesTraslado([])
     setSolicitudesTrasladoLoading(false)
     setDocumentStatus(DOCUMENT_STATUS.invalid)
@@ -1799,7 +1866,7 @@ function CreateSalida({
     modalRestoreRef.current = null
     setError('')
     fetchCatalogs()
-  }, [fetchCatalogs, normalizedPrefilledSucursalId, open])
+  }, [fetchCatalogs, normalizedPrefilledSucursalId, open, resetStockLookup])
 
   useEffect(() => {
     if (!open) {
@@ -1995,12 +2062,23 @@ function CreateSalida({
   }, [open, showProductDropdown, updateProductDropdownPlacement])
 
   useEffect(() => {
-    if (!open || !requiresStockValidation || !formData.sucursalId) {
-      setStockByProduct({})
+    const currentBranchId = String(formData.sucursalId || '').trim()
+    if (!open || !requiresStockValidation || !currentBranchId) {
+      resetStockLookup()
       return
     }
-    fetchStockByBranch(formData.sucursalId)
-  }, [fetchStockByBranch, formData.sucursalId, open, requiresStockValidation])
+    if (
+      (loadedStockBranchIdRef.current && loadedStockBranchIdRef.current !== currentBranchId) ||
+      (pendingStockBranchIdRef.current && pendingStockBranchIdRef.current !== currentBranchId)
+    ) {
+      loadedStockBranchIdRef.current = ''
+      pendingStockBranchIdRef.current = ''
+      pendingStockPromiseRef.current = null
+      stockByProductRef.current = {}
+      setStockByProduct({})
+      setStockLoading(false)
+    }
+  }, [formData.sucursalId, open, requiresStockValidation, resetStockLookup])
 
   useEffect(() => {
     if (!open || !isTraslado || !formData.sucursalId) {
@@ -3111,7 +3189,7 @@ function CreateSalida({
 
                     {!isPrefilledTransfer && (
                       <div className="create-user__locations-row create-user__locations-row--form">
-                      <span className="create-salida__product-picker">
+                      <span className="create-salida__product-picker create-salida__product-code-cell">
                         <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
                           <button
                             type="button"
@@ -3120,8 +3198,7 @@ function CreateSalida({
                             disabled={
                               loading ||
                               transferRequiresRequest ||
-                              !hasSelectedSucursal ||
-                              (requiresStockValidation && stockLoading)
+                              !hasSelectedSucursal
                             }
                             title={
                               !hasSelectedSucursal
@@ -3129,18 +3206,13 @@ function CreateSalida({
                                 : (
                                   transferRequiresRequest
                                     ? 'Selecciona una solicitud de traslado.'
-                                    : (
-                                      requiresStockValidation && stockLoading
-                                        ? 'Cargando inventario de la sucursal...'
-                                        : undefined
-                                    )
+                                    : undefined
                                 )
                             }
                             onClick={() => {
                               if (
                                 !hasSelectedSucursal ||
-                                transferRequiresRequest ||
-                                (requiresStockValidation && stockLoading)
+                                transferRequiresRequest
                               ) {
                                 return
                               }
@@ -3159,7 +3231,7 @@ function CreateSalida({
                           >
                             <span>
                               {selectedDraftProduct
-                                ? formatProductoOptionLabel(selectedDraftProduct)
+                                ? formatProductoTriggerLabel(selectedDraftProduct)
                                 : 'Selecciona un producto'}
                             </span>
                             {selectedDraftProduct && requiresStockValidation && (
@@ -3187,11 +3259,7 @@ function CreateSalida({
                                       : (
                                         transferRequiresRequest
                                           ? 'Selecciona una solicitud de traslado'
-                                          : (
-                                            requiresStockValidation && stockLoading
-                                              ? 'Cargando inventario...'
-                                              : 'Buscar productos'
-                                          )
+                                          : 'Buscar productos'
                                       )
                                   }
                                   value={productQuery}
@@ -3199,8 +3267,7 @@ function CreateSalida({
                                   autoFocus
                                   disabled={
                                     transferRequiresRequest ||
-                                    !hasSelectedSucursal ||
-                                    (requiresStockValidation && stockLoading)
+                                    !hasSelectedSucursal
                                   }
                                 />
                               </div>
@@ -3265,6 +3332,14 @@ function CreateSalida({
                           )}
                         </div>
                       </span>
+                      <span className="create-salida__product-name-cell">
+                        <span
+                          className="create-salida__table-static-value create-salida__table-static-value--name"
+                          title={selectedDraftProductName || undefined}
+                        >
+                          {selectedDraftProductName || '-'}
+                        </span>
+                      </span>
                       <span>
                         <input
                           name="cantidad"
@@ -3308,7 +3383,9 @@ function CreateSalida({
                     {details.map((detail) => (
                       <div key={detail.uid} className="create-user__locations-row">
                         <span>{detail.productoCodigo || '-'}</span>
-                        <span>{detail.productoNombre || '-'}</span>
+                        <span title={detail.productoNombre || undefined}>
+                          <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
+                        </span>
                         <span>{detail.cantidad}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                         <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
@@ -3515,7 +3592,6 @@ function CreateSalida({
                               value={clienteForm.telefono}
                               onChange={handleClienteFieldChange}
                               disabled={loading}
-                              required
                             />
                           </label>
 
@@ -3527,7 +3603,6 @@ function CreateSalida({
                               value={clienteForm.direccion}
                               onChange={handleClienteFieldChange}
                               disabled={loading}
-                              required
                             />
                           </label>
                         </>
