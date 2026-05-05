@@ -714,7 +714,6 @@ function QuickActions({
             if (branchId !== targetBranchId) return
 
             const qty = toPositiveInt(row?.cantidad, 0)
-            if (qty <= 0) return
 
             const productTotals = totalsByProduct.get(productId) || new Map()
             productTotals.set(subdivisionId, toPositiveInt(productTotals.get(subdivisionId), 0) + qty)
@@ -3074,21 +3073,21 @@ function QuickActions({
           authFetch(
             `${API_URL}/inventario/bodegas/?page_size=500&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
-            )}&modulo=movimientos_entradas`,
+            )}`,
             {},
             token
           ),
           authFetch(
             `${API_URL}/inventario/divisiones/?page_size=500&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
-            )}&modulo=movimientos_entradas`,
+            )}`,
             {},
             token
           ),
           authFetch(
             `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
-            )}&modulo=movimientos_entradas`,
+            )}`,
             {},
             token
           ),
