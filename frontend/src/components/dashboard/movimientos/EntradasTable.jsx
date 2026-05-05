@@ -27,8 +27,11 @@ import {
   getPrimeGlobalFilterValue,
 } from '../../../utils/primeTableQuery'
 import {
+  buildMovementExportColumns,
+  buildMovementProductExportRows,
   buildMovementProductsExportText,
   buildMovementProductsSearchText,
+  formatMovementProductLabel,
   formatMovementProductQuantity,
   normalizeMovementProducts,
 } from './movementTableProducts'
@@ -1192,13 +1195,21 @@ function EntradasTable({
   }
 
   const exportColumns = useMemo(
-    () => selectedColumns.map((col) => ({ key: col.nombrevar, header: col.header })),
+    () => buildMovementExportColumns(selectedColumns.map((col) => ({ key: col.nombrevar, header: col.header }))),
     [selectedColumns]
   )
 
   const getExportValue = useCallback((row, field) => {
     if (field === 'productos_resumen') {
+      if (row?.__export_product) {
+        return formatMovementProductLabel(row.__export_product) || '-'
+      }
       return buildMovementProductsExportText(row?.productos)
+    }
+    if (field === 'producto_cantidad') {
+      return row?.__export_product
+        ? formatMovementProductQuantity(row.__export_product?.cantidad)
+        : '-'
     }
     if (field === 'total') {
       const total = Number(row?.total)
@@ -1212,6 +1223,11 @@ function EntradasTable({
     return processedRows === null ? movimientos : processedRows
   }, [movimientos, processedRows, selectedRows])
 
+  const getExpandedRowsToExport = useCallback(() => {
+    const baseRows = getRowsToExport()
+    return buildMovementProductExportRows(baseRows, exportColumns)
+  }, [exportColumns, getRowsToExport])
+
   const notifyExportWarning = useCallback((detail) => {
     toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail, life: 3000 })
   }, [])
@@ -1221,7 +1237,7 @@ function EntradasTable({
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
+    const rows = getExpandedRowsToExport()
     if (!rows.length) {
       notifyExportWarning('No hay registros para exportar.')
       return
@@ -1232,14 +1248,14 @@ function EntradasTable({
       valueGetter: getExportValue,
       fileName: buildFileName('entradas'),
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [exportColumns, getExpandedRowsToExport, getExportValue, notifyExportWarning])
 
   const handleExportPdf = useCallback(async () => {
     if (!exportColumns.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const rows = getRowsToExport()
+    const rows = getExpandedRowsToExport()
     if (!rows.length) {
       notifyExportWarning('No hay registros para exportar.')
       return
@@ -1251,7 +1267,7 @@ function EntradasTable({
       fileName: buildFileName('entradas'),
       title: 'Reporte de Entradas',
     })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+  }, [exportColumns, getExpandedRowsToExport, getExportValue, notifyExportWarning])
 
   const { shouldRender: shouldRenderSearchModal, isClosing: isClosingSearchModal } = useModalAnimation(showSearchModal)
 

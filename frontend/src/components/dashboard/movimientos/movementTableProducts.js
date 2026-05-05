@@ -12,6 +12,12 @@ const parseProductNameFromLabel = (label) => {
   return match ? raw.slice(0, match.index).trim() : raw
 }
 
+export const formatMovementProductLabel = (product) =>
+  [product?.producto_codigo, product?.producto_nombre]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .join(' - ')
+
 export const formatMovementProductQuantity = (value) => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return '-'
@@ -50,12 +56,39 @@ export const buildMovementProductsSearchText = (products) =>
 export const buildMovementProductsExportText = (products) =>
   (Array.isArray(products) ? products : [])
     .map((product) => {
-      const base = [product?.producto_codigo, product?.producto_nombre]
-        .filter(Boolean)
-        .join(' - ')
+      const base = formatMovementProductLabel(product)
       if (!base) return ''
       const quantity = formatMovementProductQuantity(product?.cantidad)
       return quantity === '-' ? base : `${base} x ${quantity}`
     })
     .filter(Boolean)
     .join('; ')
+
+export const buildMovementExportColumns = (columns) =>
+  (Array.isArray(columns) ? columns : []).flatMap((col) => {
+    if (col?.key === 'productos_resumen') {
+      return [
+        col,
+        { key: 'producto_cantidad', header: 'Cantidad' },
+      ]
+    }
+    return [col]
+  })
+
+export const buildMovementProductExportRows = (rows, columns) => {
+  const exportColumns = Array.isArray(columns) ? columns : []
+  const shouldExpandByProduct = exportColumns.some((col) => col?.key === 'producto_cantidad')
+  const baseRows = Array.isArray(rows) ? rows : []
+  if (!shouldExpandByProduct) return baseRows
+
+  return baseRows.flatMap((row) => {
+    const products = Array.isArray(row?.productos) ? row.productos : []
+    if (!products.length) {
+      return [{ ...row, __export_product: null }]
+    }
+    return products.map((product) => ({
+      ...row,
+      __export_product: product,
+    }))
+  })
+}
