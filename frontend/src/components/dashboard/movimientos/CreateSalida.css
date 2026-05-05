@@ -831,6 +831,10 @@
   z-index: 40;
 }
 
+.create-salida__product-dropdown:has(.create-user__dropdown-panel) {
+  z-index: 120;
+}
+
 .create-salida__product-dropdown .create-user__dropdown-panel {
   min-width: 0;
   width: min(550px, calc(100vw - 32px));

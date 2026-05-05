@@ -318,6 +318,8 @@ function CreateSalida({
   const [, setError] = useState('')
 
   const [branches, setBranches] = useState([])
+  const [allBranches, setAllBranches] = useState([])
+  const [catalogsLoading, setCatalogsLoading] = useState(false)
   const [tipoMovimientos, setTipoMovimientos] = useState(() => preloadedTipoMovimientos)
   const [subTipos, setSubTipos] = useState(() => preloadedSubTipos)
   const [estados, setEstados] = useState([])
@@ -506,15 +508,17 @@ function CreateSalida({
     return String(branch?.nombre || '').trim()
   }, [branches, selectedSucursalId])
   const destinationBranches = useMemo(() => {
-    return branches.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
-  }, [branches, selectedSucursalId])
+    const source = allBranches.length > 0 ? allBranches : branches
+    return source.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
+  }, [allBranches, branches, selectedSucursalId])
 
   const selectedObjetivoBranchName = useMemo(() => {
     const objetivoId = String(formData.sucursalObjetivoId || '').trim()
     if (!objetivoId) return ''
-    const branch = branches.find((item) => String(item?.id || '').trim() === objetivoId)
+    const source = allBranches.length > 0 ? allBranches : branches
+    const branch = source.find((item) => String(item?.id || '').trim() === objetivoId)
     return String(branch?.nombre || '').trim()
-  }, [branches, formData.sucursalObjetivoId])
+  }, [allBranches, branches, formData.sucursalObjetivoId])
   const formattedFecha = useMemo(() => formatDateDisplay(formData.fecha), [formData.fecha])
 
   const fetchNextDocumentNumber = useCallback(
@@ -1601,9 +1605,11 @@ function CreateSalida({
 
   const fetchCatalogs = useCallback(async () => {
     if (!token) return
+    setCatalogsLoading(true)
     try {
       const [
         branchesRes,
+        allBranchesRes,
         tiposRes,
         subTiposRes,
         estadosRes,
@@ -1611,6 +1617,7 @@ function CreateSalida({
         estadosProductoRes,
       ] = await Promise.all([
         authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_salidas`, {}, token),
+        authFetch(`${API_URL}/movimientos/movimiento_inventario/sucursales-traslado-proveedoras/`, {}, token),
         authFetch(`${API_URL}/tipos/tipos-movimiento/`, {}, token),
         authFetch(`${API_URL}/tipos/subtipos-movimiento/`, {}, token),
         authFetch(`${API_URL}/tipos/estados-movimiento/`, {}, token),
@@ -1627,6 +1634,7 @@ function CreateSalida({
 
       const [
         branchesData,
+        allBranchesData,
         tiposData,
         subTiposData,
         estadosData,
@@ -1634,6 +1642,7 @@ function CreateSalida({
         estadosProductoData,
       ] = await Promise.all([
         branchesRes.json(),
+        allBranchesRes.ok ? allBranchesRes.json() : Promise.resolve([]),
         tiposRes.json(),
         subTiposRes.json(),
         estadosRes.json(),
@@ -1642,6 +1651,7 @@ function CreateSalida({
       ])
 
       setBranches(parseApiList(branchesData))
+      setAllBranches(parseApiList(allBranchesData))
       setTipoMovimientos(parseApiList(tiposData))
       setSubTipos(parseApiList(subTiposData))
       setEstados(parseApiList(estadosData))
@@ -1658,6 +1668,8 @@ function CreateSalida({
       }
     } catch (err) {
       notifyError(err?.message || 'Ocurrió un error al cargar los catálogos.')
+    } finally {
+      setCatalogsLoading(false)
     }
   }, [notifyError, token])
 
@@ -1788,6 +1800,12 @@ function CreateSalida({
     setError('')
     fetchCatalogs()
   }, [fetchCatalogs, normalizedPrefilledSucursalId, open])
+
+  useEffect(() => {
+    if (!open) {
+      setCatalogsLoading(false)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -2840,6 +2858,12 @@ function CreateSalida({
       style={overlayStyle}
     >
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
+        {catalogsLoading && (
+          <div className="create-user__modal-loading">
+            <div className="spinner" />
+            <small className="muted">Cargando opciones...</small>
+          </div>
+        )}
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
             <div className="create-salida__header-title-group">
