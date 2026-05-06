@@ -1271,12 +1271,11 @@ function RecordatoriosPopup({
     return String(activeDetailReminder?.description || '').trim() || '-'
   }, [activeDetailIsTransferContext, activeDetailReminder, transferLifecycleBySolicitudId])
 
-  const activeDetailReminderRecipientNames = useMemo(() => {
-    if (!activeDetailReminder) return 'Sin destinatarios'
+  const activeDetailReminderRecipients = useMemo(() => {
+    if (!activeDetailReminder) return []
     return (Array.isArray(activeDetailReminder?.recipients) ? activeDetailReminder.recipients : [])
-      .map((r) => String(r?.name || '').trim())
+      .map((recipient) => String(recipient?.name || '').trim())
       .filter(Boolean)
-      .join(', ') || 'Sin destinatarios'
   }, [activeDetailReminder])
 
   const activeDetailIssueRows = useMemo(
@@ -3467,7 +3466,15 @@ function RecordatoriosPopup({
                   </div>
                   <div className="recordatorios-popup__detail-row">
                     <span>Dirigido a</span>
-                    <strong>{activeDetailReminderRecipientNames}</strong>
+                    {activeDetailReminderRecipients.length ? (
+                      <ul className="recordatorios-popup__detail-recipients">
+                        {activeDetailReminderRecipients.map((recipientName, index) => (
+                          <li key={`${recipientName}-${index}`}>{recipientName}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <strong>-</strong>
+                    )}
                   </div>
                 </div>
               </div>

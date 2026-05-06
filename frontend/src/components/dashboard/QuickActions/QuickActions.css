@@ -1297,6 +1297,15 @@
   color: #9a3412;
 }
 
+.quick-actions__receive-step--list {
+  --receive-list-product-column: minmax(160px, 1fr);
+  --receive-list-pill-column: 144px;
+  --receive-list-pill-gap: 12px;
+  --receive-list-expected-column: 110px;
+  --receive-list-received-column: 110px;
+  --receive-list-check-column: 28px;
+}
+
 .quick-actions__receive-step--list .quick-actions__receive-stage--list {
   display: none;
 }
@@ -1305,9 +1314,67 @@
   gap: 8px;
 }
 
+.quick-actions__receive-step--list .quick-actions__receive-list-header {
+  display: grid;
+  grid-template-columns:
+    var(--receive-list-product-column)
+    1px
+    max-content
+    1px
+    var(--receive-list-expected-column)
+    var(--receive-list-received-column)
+    var(--receive-list-check-column);
+  align-items: end;
+  gap: 12px;
+  padding: 0 14px 2px;
+}
+
+.quick-actions__receive-step--list .quick-actions__receive-list-header-locations {
+  grid-column: 3;
+  display: grid;
+  grid-template-columns: repeat(3, var(--receive-list-pill-column));
+  gap: var(--receive-list-pill-gap);
+}
+
+.quick-actions__receive-step--list .quick-actions__receive-list-header-cell {
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.quick-actions__receive-step--list .quick-actions__receive-list-header-cell--product {
+  grid-column: 1;
+}
+
+.quick-actions__receive-step--list .quick-actions__receive-list-header-cell--stat {
+  text-align: center;
+}
+
+.quick-actions__receive-step--list .quick-actions__receive-list-header-cell--expected {
+  grid-column: 5;
+}
+
+.quick-actions__receive-step--list .quick-actions__receive-list-header-cell--received {
+  grid-column: 6;
+}
+
+.quick-actions__receive-step--list .quick-actions__receive-list-header-cell--check {
+  grid-column: 7;
+}
+
 .quick-actions__receive-step--list .quick-actions__receive-item {
   display: grid;
-  grid-template-columns: minmax(160px, 1.2fr) 1px minmax(320px, 2fr) 1px 120px 110px 28px;
+  grid-template-columns:
+    var(--receive-list-product-column)
+    1px
+    max-content
+    1px
+    var(--receive-list-expected-column)
+    var(--receive-list-received-column)
+    var(--receive-list-check-column);
   grid-template-rows: auto;
   align-items: center;
   gap: 12px;
@@ -1379,14 +1446,15 @@
   grid-column: 3;
   grid-row: 1;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, var(--receive-list-pill-column));
+  gap: var(--receive-list-pill-gap);
   min-width: 0;
   align-self: center;
 }
 
 .quick-actions__receive-step--list .quick-actions__receive-location-field {
   min-width: 0;
+  width: var(--receive-list-pill-column);
 }
 
 .quick-actions__receive-step--list .quick-actions__receive-location-field small {
@@ -1394,16 +1462,19 @@
 }
 
 .quick-actions__receive-step--list .quick-actions__receive-dropdown-trigger--review {
+  width: 100%;
   min-height: 40px;
   padding: 8px 10px;
   font-size: 0.95rem;
 }
 
 .quick-actions__receive-step--list .quick-actions__receive-dropdown-trigger--review span {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
 }
 
 .quick-actions__receive-step--list .quick-actions__receive-check--row .p-checkbox .p-checkbox-box {
@@ -1481,6 +1552,10 @@
 .quick-actions__receive-dialog.dark .quick-actions__receive-step--list .quick-actions__receive-item {
   border-color: var(--color-border-dark);
   background: color-mix(in srgb, var(--color-primary-dark) 6%, var(--color-surface-dark));
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-step--list .quick-actions__receive-list-header-cell {
+  color: var(--color-text-dark);
 }
 
 .quick-actions__receive-dialog.dark .quick-actions__receive-step--list .quick-actions__receive-item-title strong {
@@ -2530,6 +2605,10 @@
 
   .quick-actions__receive-step--list .quick-actions__receive-item {
     grid-template-columns: minmax(0, 1fr) 88px 34px;
+  }
+
+  .quick-actions__receive-step--list .quick-actions__receive-list-header {
+    display: none;
   }
 
   .quick-actions__receive-step--list .quick-actions__receive-item-title {

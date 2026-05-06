@@ -443,6 +443,7 @@ function QuickActions({
   const remindersPollInFlightRef = useRef(false)
   const pendingShipmentsPollInFlightRef = useRef(false)
   const inTransitShipmentsPollInFlightRef = useRef(false)
+  const receiveShipmentLoadRequestRef = useRef(0)
   const receiveLocationSearchDebounceRef = useRef({})
   const receiveLocationDropdownRefs = useRef({})
   const audioContextRef = useRef(null)
@@ -2578,6 +2579,7 @@ function QuickActions({
   }, [])
 
   const closeReceiveShipmentModal = useCallback(() => {
+    receiveShipmentLoadRequestRef.current += 1
     Object.values(receiveLocationSearchDebounceRef.current || {}).forEach((timerId) => {
       clearTimeout(timerId)
     })
@@ -2585,14 +2587,35 @@ function QuickActions({
     receiveLocationDropdownRefs.current = {}
     setActiveReceiveLocationDropdown({ productId: '', field: '' })
     setIsReceiveShipmentModalOpen(false)
+    setOpeningInTransitShipmentId('')
     setActiveInTransitShipment(null)
     setInTransitBodegas([])
     setInTransitDivisions([])
     setInTransitSubdivisions([])
+    setInTransitSubdivisionsLoading(false)
     setReceiveShipmentDraftByProductId({})
     setReceiveShipmentError('')
     setReceiveShipmentSubmitting(false)
     setReceiveShipmentShowSummary(false)
+  }, [])
+
+  const openReceiveShipmentModalShell = useCallback(({ shipmentId, shipment, draftByProductId = {} }) => {
+    const nextLoadRequestId = receiveShipmentLoadRequestRef.current + 1
+    receiveShipmentLoadRequestRef.current = nextLoadRequestId
+
+    setOpeningInTransitShipmentId(shipmentId)
+    setReceiveShipmentError('')
+    setInTransitBodegas([])
+    setInTransitDivisions([])
+    setInTransitSubdivisions([])
+    setInTransitSubdivisionsLoading(true)
+    setReceiveShipmentDraftByProductId(draftByProductId)
+    setActiveInTransitShipment(shipment)
+    setReceiveShipmentShowSummary(false)
+    setIsInTransitShipmentsOpen(false)
+    setIsReceiveShipmentModalOpen(true)
+
+    return nextLoadRequestId
   }, [])
 
   const closeRandomInspectionModal = useCallback(() => {
@@ -3011,7 +3034,7 @@ function QuickActions({
     await fetchPendingTransferShipments()
   }
 
-  const toggleInTransitShipmentsPanel = async () => {
+  const toggleInTransitShipmentsPanel = () => {
     if (!canOpenInTransitShipments) return
     if (isInTransitShipmentsOpen) {
       setIsInTransitShipmentsOpen(false)
@@ -3020,7 +3043,7 @@ function QuickActions({
     setIsPendingShipmentsOpen(false)
     setIsInTransitShipmentsOpen(true)
     if (canViewInTransitShipments) {
-      await fetchInTransitTransferShipments()
+      void fetchInTransitTransferShipments()
     }
   }
 
@@ -3067,7 +3090,7 @@ function QuickActions({
   )
 
   const handleOpenInTransitShipment = useCallback(
-    async (shipment) => {
+    (shipment) => {
       if (!token) return
       const shipmentId = normalizeId(shipment?.id)
       if (!shipmentId) {
@@ -3113,21 +3136,16 @@ function QuickActions({
         }
       })
 
-      setOpeningInTransitShipmentId(shipmentId)
-      setReceiveShipmentError('')
-      setInTransitBodegas([])
-      setInTransitDivisions([])
-      setInTransitSubdivisions([])
-      setInTransitSubdivisionsLoading(true)
-      setReceiveShipmentDraftByProductId(initialDraft)
-      setActiveInTransitShipment(shipment)
-      setReceiveShipmentShowSummary(false)
-      setIsInTransitShipmentsOpen(false)
-      setIsReceiveShipmentModalOpen(true)
+      const loadRequestId = openReceiveShipmentModalShell({
+        shipmentId,
+        shipment,
+        draftByProductId: initialDraft,
+      })
 
-      // Phase 2: load bodegas/divisions/subdivisions and preferred locations in the background
-      try {
-        const [bodegasResponse, divisionsResponse, subdivisionsResponse] = await Promise.all([
+      // Open first and hydrate catalogs afterwards so the modal feels instant.
+      void (async () => {
+        try {
+          const [bodegasResponse, divisionsResponse, subdivisionsResponse] = await Promise.all([
           authFetch(
             `${API_URL}/inventario/bodegas/?page_size=500&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
@@ -3162,6 +3180,7 @@ function QuickActions({
         const bodegasPayload = await bodegasResponse.json().catch(() => ({}))
         const divisionsPayload = await divisionsResponse.json().catch(() => ({}))
         const subdivisionsPayload = await subdivisionsResponse.json().catch(() => ({}))
+        if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
         const bodegas = parseApiList(bodegasPayload)
         const divisions = parseApiList(divisionsPayload)
         const subdivisions = parseApiList(subdivisionsPayload)
@@ -3170,6 +3189,7 @@ function QuickActions({
           sucursalSolicitanteId,
           productIds: details.map((detail) => detail?.producto_id),
         })
+        if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
 
         const localSubdivisionsById = new Map()
         subdivisions.forEach((subdivision) => {
@@ -3184,6 +3204,7 @@ function QuickActions({
 
         // Patch the draft with preferred locations now that subdivision data is available
         setReceiveShipmentDraftByProductId((prev) => {
+          if (receiveShipmentLoadRequestRef.current !== loadRequestId) return prev
           const updated = { ...prev }
           details.forEach((detail) => {
             const productId = normalizeId(detail?.producto_id)
@@ -3215,13 +3236,17 @@ function QuickActions({
           return updated
         })
       } catch (error) {
+        if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
         showErrorToast(error?.message || 'No se pudieron cargar las ubicaciones del envío.')
-      } finally {
-        setOpeningInTransitShipmentId('')
-        setInTransitSubdivisionsLoading(false)
-      }
+        } finally {
+          if (receiveShipmentLoadRequestRef.current === loadRequestId) {
+            setOpeningInTransitShipmentId('')
+            setInTransitSubdivisionsLoading(false)
+          }
+        }
+      })()
     },
-    [fetchPreferredReceiveSubdivisions, showErrorToast, token]
+    [fetchPreferredReceiveSubdivisions, openReceiveShipmentModalShell, showErrorToast, token]
   )
 
   const handleOpenInTransitShipmentFromReminder = useCallback(
@@ -3247,6 +3272,21 @@ function QuickActions({
       }
 
       if (!targetShipment) {
+        openReceiveShipmentModalShell({
+          shipmentId: solicitudId,
+          shipment: {
+            id: Number(solicitudId) || solicitudId,
+            no_documento: extractTransferDocumentNumber(
+              String(reminder?.context?.label || '').trim() || reminder?.description || ''
+            ),
+            fecha: String(reminder?.date || '').trim(),
+            sucursal_solicitante: '',
+            sucursal_proveedora: '',
+            reminder,
+          },
+          draftByProductId: {},
+        })
+
         const detail = await fetchTransferSolicitudDetail(solicitudId)
         if (detail?.movimiento_entrada_id && Array.isArray(detail?.detalles) && detail.detalles.length) {
           targetShipment = {
@@ -3271,18 +3311,21 @@ function QuickActions({
       }
 
       if (!targetShipment) {
+        closeReceiveShipmentModal()
         showErrorToast('No se encontró el envío en camino asociado a este recordatorio.')
         return false
       }
 
-      await handleOpenInTransitShipment(targetShipment)
+      handleOpenInTransitShipment(targetShipment)
       return true
     },
     [
+      closeReceiveShipmentModal,
       fetchInTransitTransferShipments,
       fetchTransferSolicitudDetail,
       handleOpenInTransitShipment,
       inTransitShipments,
+      openReceiveShipmentModalShell,
       showErrorToast,
       token,
     ]
@@ -3971,7 +4014,7 @@ function QuickActions({
                             }
                             void handleOpenInTransitShipment(shipment)
                           }}
-                          disabled={Boolean(isOpening || inTransitSubdivisionsLoading)}
+                          disabled={Boolean(isOpening)}
                         >
                           <span className="quick-actions__pending-shipments-item-title">
                             {doc ? `#${doc}` : 'Traslado sin documento'}
@@ -4760,6 +4803,23 @@ function QuickActions({
                   </article>
 
                   <div className="quick-actions__receive-list">
+                    <div className="quick-actions__receive-list-header" aria-hidden="true">
+                      <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--product">
+                        Producto
+                      </span>
+                      <div className="quick-actions__receive-list-header-locations">
+                        <span className="quick-actions__receive-list-header-cell">Bodega</span>
+                        <span className="quick-actions__receive-list-header-cell">Division</span>
+                        <span className="quick-actions__receive-list-header-cell">Subdivision</span>
+                      </div>
+                      <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--stat quick-actions__receive-list-header-cell--expected">
+                        Esperado
+                      </span>
+                      <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--stat quick-actions__receive-list-header-cell--received">
+                        Recibida
+                      </span>
+                      <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--check" />
+                    </div>
                     {receiveShipmentRows.map((row, index) => {
                       const rowProductId = normalizeId(row?.producto_id)
                       const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
@@ -4892,11 +4952,12 @@ function QuickActions({
                                 <button
                                   type="button"
                                   className="quick-actions__receive-dropdown-trigger quick-actions__receive-dropdown-trigger--review"
-                                  title={String(selectedBodega?.nombre || 'Selecciona bodega').trim()}
+                                  title={String(selectedBodega?.nombre || 'Selecciona').trim()}
+                                  aria-label={selectedBodega?.nombre ? `Bodega: ${String(selectedBodega.nombre).trim()}` : 'Seleccionar bodega'}
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'bodega', true)}
                                   disabled={receiveShipmentSubmitting || !inTransitBodegas.length}
                                 >
-                                  <span>{String(selectedBodega?.nombre || 'Selecciona bodega').trim()}</span>
+                                  <span>{String(selectedBodega?.nombre || 'Selecciona').trim()}</span>
                                   <i className={`pi pi-chevron-${isReceiveLocationDropdownOpen(rowProductId, 'bodega') ? 'up' : 'down'}`} />
                                 </button>
                               </div>
@@ -4908,11 +4969,12 @@ function QuickActions({
                                 <button
                                   type="button"
                                   className="quick-actions__receive-dropdown-trigger quick-actions__receive-dropdown-trigger--review"
-                                  title={String(selectedDivision?.nombre || 'Selecciona division').trim()}
+                                  title={String(selectedDivision?.nombre || 'Selecciona').trim()}
+                                  aria-label={selectedDivision?.nombre ? `Division: ${String(selectedDivision.nombre).trim()}` : 'Seleccionar division'}
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'division', true)}
                                   disabled={receiveShipmentSubmitting || !availableDivisions.length}
                                 >
-                                  <span>{String(selectedDivision?.nombre || 'Selecciona division').trim()}</span>
+                                  <span>{String(selectedDivision?.nombre || 'Selecciona').trim()}</span>
                                   <i className={`pi pi-chevron-${isReceiveLocationDropdownOpen(rowProductId, 'division') ? 'up' : 'down'}`} />
                                 </button>
                               </div>
@@ -4924,11 +4986,12 @@ function QuickActions({
                                 <button
                                   type="button"
                                   className="quick-actions__receive-dropdown-trigger quick-actions__receive-dropdown-trigger--review"
-                                  title={String(selectedSubdivision?.nombre || 'Selecciona subdivision').trim()}
+                                  title={String(selectedSubdivision?.nombre || 'Selecciona').trim()}
+                                  aria-label={selectedSubdivision?.nombre ? `Subdivision: ${String(selectedSubdivision.nombre).trim()}` : 'Seleccionar subdivision'}
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'subdivision', true)}
                                   disabled={receiveShipmentSubmitting || !availableSubdivisions.length}
                                 >
-                                  <span>{String(selectedSubdivision?.nombre || 'Selecciona subdivision').trim()}</span>
+                                  <span>{String(selectedSubdivision?.nombre || 'Selecciona').trim()}</span>
                                   <i className={`pi pi-chevron-${isReceiveLocationDropdownOpen(rowProductId, 'subdivision') ? 'up' : 'down'}`} />
                                 </button>
                               </div>
@@ -5036,7 +5099,7 @@ function QuickActions({
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'bodega')}
                                   disabled={receiveShipmentSubmitting || !inTransitBodegas.length}
                                 >
-                                  <span>{String(selectedBodega?.nombre || 'Selecciona bodega').trim()}</span>
+                                  <span>{String(selectedBodega?.nombre || 'Selecciona').trim()}</span>
                                   <i className={`pi pi-chevron-${isReceiveLocationDropdownOpen(rowProductId, 'bodega') ? 'up' : 'down'}`} />
                                 </button>
                                 {isReceiveLocationDropdownOpen(rowProductId, 'bodega') && (
@@ -5085,7 +5148,7 @@ function QuickActions({
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'division')}
                                   disabled={receiveShipmentSubmitting || !availableDivisions.length}
                                 >
-                                  <span>{String(selectedDivision?.nombre || 'Selecciona division').trim()}</span>
+                                  <span>{String(selectedDivision?.nombre || 'Selecciona').trim()}</span>
                                   <i className={`pi pi-chevron-${isReceiveLocationDropdownOpen(rowProductId, 'division') ? 'up' : 'down'}`} />
                                 </button>
                                 {isReceiveLocationDropdownOpen(rowProductId, 'division') && (
@@ -5134,7 +5197,7 @@ function QuickActions({
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'subdivision')}
                                   disabled={receiveShipmentSubmitting || !availableSubdivisions.length}
                                 >
-                                  <span>{String(selectedSubdivision?.nombre || 'Selecciona subdivision').trim()}</span>
+                                  <span>{String(selectedSubdivision?.nombre || 'Selecciona').trim()}</span>
                                   <i className={`pi pi-chevron-${isReceiveLocationDropdownOpen(rowProductId, 'subdivision') ? 'up' : 'down'}`} />
                                 </button>
                                 {isReceiveLocationDropdownOpen(rowProductId, 'subdivision') && (

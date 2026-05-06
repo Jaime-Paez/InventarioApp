@@ -458,12 +458,11 @@ function EntityRemindersTab({
     return extractReminderDecisionReason(activeReminderDetail)
   }, [activeReminderDetail])
 
-  const activeReminderRecipientsLabel = useMemo(() => {
-    if (!activeReminderDetail) return ''
+  const activeReminderRecipients = useMemo(() => {
+    if (!activeReminderDetail) return []
     return (Array.isArray(activeReminderDetail?.recipients) ? activeReminderDetail.recipients : [])
       .map((recipient) => String(recipient?.name || '').trim())
       .filter(Boolean)
-      .join(', ')
   }, [activeReminderDetail])
 
   const activeReminderContextLabel = useMemo(() => {
@@ -1069,9 +1068,15 @@ function EntityRemindersTab({
 
                 <div className="entity-reminders__detail-item">
                   <span className="entity-reminders__detail-label">Dirigido a</span>
-                  <strong title={activeReminderRecipientsLabel || '-'}>
-                    {activeReminderRecipientsLabel || '-'}
-                  </strong>
+                  {activeReminderRecipients.length ? (
+                    <ul className="entity-reminders__detail-recipients">
+                      {activeReminderRecipients.map((recipientName, index) => (
+                        <li key={`${recipientName}-${index}`}>{recipientName}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <strong>-</strong>
+                  )}
                 </div>
               </div>
 

@@ -1927,6 +1927,22 @@
   line-height: 1.3;
 }
 
+.recordatorios-popup__detail-recipients {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.recordatorios-popup__detail-recipients li {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.recordatorios-popup__detail-recipients li + li {
+  margin-top: 4px;
+}
+
 .recordatorios-popup__detail-description {
   display: flex;
   flex-direction: column;
