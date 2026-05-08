@@ -3119,6 +3119,18 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         if allowed is not None:
             if not allowed:
                 return Response([], status=status.HTTP_200_OK)
+            # Intersect with the user's directly-assigned sucursales so that
+            # users with entradas permissions on a remote branch (e.g. the sender)
+            # don't see incoming shipments destined for that branch in their feed.
+            user_assigned_ids = set(
+                UsuarioSucursal.objects.filter(usuario=request.user).values_list(
+                    "sucursal_id", flat=True
+                )
+            )
+            if user_assigned_ids:
+                allowed = allowed & user_assigned_ids
+            if not allowed:
+                return Response([], status=status.HTTP_200_OK)
             queryset = queryset.filter(sucursal_solicitante_id__in=sorted(allowed))
 
         pending_issue_count_by_solicitud = {
