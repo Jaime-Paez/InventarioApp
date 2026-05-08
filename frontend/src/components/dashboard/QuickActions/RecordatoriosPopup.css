@@ -1937,6 +1937,7 @@
 .recordatorios-popup__detail-recipients li {
   font-size: 13px;
   line-height: 1.3;
+  font-weight: 600;
 }
 
 .recordatorios-popup__detail-recipients li + li {

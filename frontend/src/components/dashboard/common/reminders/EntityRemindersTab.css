@@ -913,6 +913,7 @@
 .entity-reminders__detail-recipients li {
   font-size: var(--font-size-sm);
   line-height: 1.3;
+  font-weight: 600;
 }
 
 .entity-reminders__detail-recipients li + li {

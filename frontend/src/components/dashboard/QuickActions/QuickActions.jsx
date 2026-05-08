@@ -527,6 +527,10 @@ function QuickActions({
   const allowVisualUrgentShield = allowUrgentShield && !suppressAdminAlerts
   const hasPendingShipments = pendingShipments.length > 0
   const shouldAnimatePendingShipments = !suppressAdminAlerts && hasPendingShipments
+  const currentUserModuleScopes = useMemo(
+    () => normalizeModuleScopes(user?.sucursales_por_modulo),
+    [user?.sucursales_por_modulo]
+  )
   const currentUserModuleScopeActions = useMemo(
     () => normalizeModuleScopeActions(user?.sucursales_por_modulo),
     [user?.sucursales_por_modulo]
@@ -550,6 +554,49 @@ function QuickActions({
     return hasAnyModuleScopeAccess(currentUserModuleScopeActions, 'movimientos_entradas')
   }, [currentUserModuleScopeActions, user])
   const canViewInTransitShipments = canReceiveTransferRequest
+  const currentReceiveBranchIds = useMemo(() => {
+    if (user?.is_staff || user?.is_superuser) return []
+
+    const branchIds = new Set()
+    const branchActions = currentUserModuleScopeActions?.movimientos_entradas
+    if (branchActions && typeof branchActions === 'object') {
+      Object.entries(branchActions).forEach(([branchId, actions]) => {
+        if (actions?.puede_crear || actions?.puede_actualizar || actions?.puede_leer) {
+          const normalizedBranchId = normalizeId(branchId)
+          if (normalizedBranchId) branchIds.add(normalizedBranchId)
+        }
+      })
+    }
+
+    const scopedBranchIds = currentUserModuleScopes?.movimientos_entradas
+    if (Array.isArray(scopedBranchIds)) {
+      scopedBranchIds.forEach((branchId) => {
+        const normalizedBranchId = normalizeId(branchId)
+        if (normalizedBranchId) branchIds.add(normalizedBranchId)
+      })
+    }
+
+    if (!branchIds.size) {
+      ;(Array.isArray(user?.sucursales) ? user.sucursales : []).forEach((branch) => {
+        const normalizedBranchId = normalizeId(branch?.id)
+        if (normalizedBranchId) branchIds.add(normalizedBranchId)
+      })
+    }
+
+    return Array.from(branchIds)
+  }, [currentUserModuleScopeActions, currentUserModuleScopes, user])
+  const currentReceiveBranchIdSet = useMemo(
+    () => new Set(currentReceiveBranchIds),
+    [currentReceiveBranchIds]
+  )
+  const shouldIncludeInTransitShipment = useCallback((shipment) => {
+    if (user?.is_staff || user?.is_superuser) return true
+    if (!currentReceiveBranchIdSet.size) return true
+
+    const destinationBranchId = normalizeId(shipment?.sucursal_solicitante_id)
+    if (!destinationBranchId) return false
+    return currentReceiveBranchIdSet.has(destinationBranchId)
+  }, [currentReceiveBranchIdSet, user])
 
   const showErrorToast = useCallback((message) => {
     if (!message) return
@@ -649,7 +696,9 @@ function QuickActions({
       }
 
       const payload = await response.json().catch(() => ({}))
-      const rows = parseApiList(payload).sort((a, b) => {
+      const rows = parseApiList(payload)
+        .filter((shipment) => shouldIncludeInTransitShipment(shipment))
+        .sort((a, b) => {
         const dateA = parseEntityTimestamp(a?.fecha, a?.created_at, a?.updated_at)
         const dateB = parseEntityTimestamp(b?.fecha, b?.created_at, b?.updated_at)
         if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
@@ -669,7 +718,7 @@ function QuickActions({
       inTransitShipmentsPollInFlightRef.current = false
       if (!silent) setInTransitShipmentsLoading(false)
     }
-  }, [canViewInTransitShipments, showErrorToast, token])
+  }, [canViewInTransitShipments, showErrorToast, shouldIncludeInTransitShipment, token])
 
   const fetchPreferredReceiveSubdivisions = useCallback(
     async ({ sucursalSolicitanteId, productIds }) => {
@@ -815,7 +864,7 @@ function QuickActions({
       return
     }
     play()
-  }, [ensureAudioContext])
+  }, [ensureAudioContext, suppressAdminAlerts])
 
   const pushSystemTransferNotification = useCallback((notificationDetail) => {
     if (suppressAdminAlerts) return
@@ -892,10 +941,7 @@ function QuickActions({
       .filter((reminder) => normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado')
       .filter((reminder) => !isSpecialTransferDecisionReminder(reminder))
       .filter((reminder) => getReminderDecisionStatus(reminder) === 'enviado')
-      .filter((reminder) => (
-        canViewInTransitShipments ||
-        isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)
-      ))
+      .filter(() => canViewInTransitShipments)
       .filter((reminder) => {
         const solicitudId = normalizeId(reminder?.context?.id)
         return Boolean(solicitudId) && !existingShipmentIds.has(solicitudId)
@@ -916,7 +962,7 @@ function QuickActions({
         }
       })
       .sort((a, b) => getReminderTimestamp(b?.reminder) - getReminderTimestamp(a?.reminder))
-  }, [canViewInTransitShipments, currentUserIds, currentUserName, inTransitShipments, reminders])
+  }, [canViewInTransitShipments, currentUserIds, inTransitShipments, reminders])
 
   const visibleInTransitShipments = useMemo(
     () => [
@@ -1990,6 +2036,9 @@ function QuickActions({
     return rows.map((row) => {
         const sentQty = toPositiveInt(row?.cantidad_enviada, 0)
         const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
+        const receivedQtyInput = Object.prototype.hasOwnProperty.call(row, 'cantidad_recibida_input')
+          ? String(row?.cantidad_recibida_input ?? '')
+          : String(receivedQty)
         const missingQty = Math.max(0, sentQty - receivedQty)
         const selectedSubdivisionId = normalizeId(row?.location_draft_subdivision_id)
         const locations = selectedSubdivisionId && receivedQty > 0
@@ -2003,6 +2052,7 @@ function QuickActions({
           ...row,
           cantidad_enviada: sentQty,
           cantidad_recibida: receivedQty,
+          cantidad_recibida_input: receivedQtyInput,
           cantidad_faltante: missingQty,
           ubicaciones: locations,
           cantidad_asignada: assignedQty,
@@ -3121,6 +3171,7 @@ function QuickActions({
           producto_nombre: String(detail?.producto_nombre || '').trim(),
           cantidad_enviada: cantidadEnviada,
           cantidad_recibida: cantidadEnviada,
+          cantidad_recibida_input: String(cantidadEnviada),
           recepcion_revisada: false,
           novedad: '',
           ubicaciones: [],
@@ -3342,7 +3393,9 @@ function QuickActions({
 
       const nextRow = { ...current }
       if (field === 'cantidad_recibida') {
-        const parsed = toPositiveInt(value, 0)
+        const normalizedInput = normalizeIntegerInputString(value)
+        const parsed = normalizedInput === '' ? 0 : toPositiveInt(normalizedInput, 0)
+        nextRow.cantidad_recibida_input = normalizedInput
         nextRow.cantidad_recibida = parsed
         const assigned = (Array.isArray(nextRow.ubicaciones) ? nextRow.ubicaciones : []).reduce(
           (total, row) => total + toPositiveInt(row?.cantidad, 0),
@@ -4837,19 +4890,7 @@ function QuickActions({
                         : []
                       const selectedSubdivisionId = normalizeId(row?.location_draft_subdivision_id)
                       const selectedBodega = inTransitBodegaById.get(selectedBodegaId) || null
-                      const bodegaQuery = normalizeSearchText(row?.location_draft_bodega_query || '')
-                      const filteredBodegas = bodegaQuery
-                        ? inTransitBodegas.filter((b) => normalizeSearchText(b?.nombre).includes(bodegaQuery))
-                        : inTransitBodegas
                       const selectedDivision = inTransitDivisionById.get(selectedDivisionId) || null
-                      const divisionQuery = normalizeSearchText(row?.location_draft_division_query || '')
-                      const filteredDivisions = divisionQuery
-                        ? availableDivisions.filter((d) => normalizeSearchText(d?.nombre).includes(divisionQuery))
-                        : availableDivisions
-                      const subdivisionQuery = normalizeSearchText(row?.location_draft_subdivision_query || '')
-                      const filteredSubdivisions = subdivisionQuery
-                        ? availableSubdivisions.filter((s) => normalizeSearchText(s?.nombre).includes(subdivisionQuery))
-                        : availableSubdivisions
                       const selectedSubdivision = inTransitSubdivisionById.get(selectedSubdivisionId) || null
                       const statusLabel = !isReviewed
                         ? 'Por revisar'
@@ -4926,12 +4967,12 @@ function QuickActions({
                                 inputMode="numeric"
                                 maxLength={6}
                                 placeholder="0"
-                                value={receivedQty === 0 ? '' : receivedQty}
+                                value={String(row?.cantidad_recibida_input ?? '')}
                                 onChange={(event) =>
                                   handleReceiveShipmentDraftFieldChange(
                                     rowProductId,
                                     'cantidad_recibida',
-                                    normalizeQuantityInputString(event.target.value)
+                                    event.target.value
                                   )
                                 }
                                 disabled={receiveShipmentSubmitting}
@@ -5033,7 +5074,6 @@ function QuickActions({
                 const row = activeReceiveShipmentRow
                 const rowProductId = normalizeId(row?.producto_id)
                 const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
-                const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
                 const selectedBodegaId = normalizeId(row?.location_draft_bodega_id)
                 const selectedBodega = inTransitBodegaById.get(selectedBodegaId) || null
                 const bodegaQuery = normalizeSearchText(row?.location_draft_bodega_query || '')
@@ -5247,12 +5287,12 @@ function QuickActions({
                           inputMode="numeric"
                           maxLength={6}
                           placeholder="0"
-                          value={receivedQty === 0 ? '' : receivedQty}
+                          value={String(row?.cantidad_recibida_input ?? '')}
                           onChange={(event) =>
                             handleReceiveShipmentDraftFieldChange(
                               rowProductId,
                               'cantidad_recibida',
-                              normalizeQuantityInputString(event.target.value)
+                              event.target.value
                             )
                           }
                           disabled={receiveShipmentSubmitting}
