@@ -486,6 +486,7 @@ function QuickActions({
   const [receiveShipmentDraftByProductId, setReceiveShipmentDraftByProductId] = useState({})
   const [receiveShipmentSubmitting, setReceiveShipmentSubmitting] = useState(false)
   const [receiveShipmentError, setReceiveShipmentError] = useState('')
+  const [receiveShipmentShowErrors, setReceiveShipmentShowErrors] = useState(false)
   const [receiveShipmentShowSummary, setReceiveShipmentShowSummary] = useState(false)
   const [activeRandomInspection, setActiveRandomInspection] = useState(null)
   const [randomInspectionDraftByItemId, setRandomInspectionDraftByItemId] = useState({})
@@ -2645,6 +2646,7 @@ function QuickActions({
     setInTransitSubdivisionsLoading(false)
     setReceiveShipmentDraftByProductId({})
     setReceiveShipmentError('')
+    setReceiveShipmentShowErrors(false)
     setReceiveShipmentSubmitting(false)
     setReceiveShipmentShowSummary(false)
   }, [])
@@ -4880,6 +4882,9 @@ function QuickActions({
                       const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
                       const isReviewed = Boolean(row?.recepcion_revisada)
                       const rowValidationMessage = getReceiveShipmentRowValidationMessage(row)
+                      const rowSummaryValidationMessage = receiveShipmentShowErrors
+                        ? getReceiveShipmentRowValidationMessage(row, { requireReviewed: true })
+                        : ''
                       const selectedBodegaId = normalizeId(row?.location_draft_bodega_id)
                       const availableDivisions = selectedBodegaId
                         ? inTransitDivisionsByBodegaId.get(selectedBodegaId) || []
@@ -4897,14 +4902,15 @@ function QuickActions({
                         : rowValidationMessage
                           ? 'Falta info'
                           : 'Listo'
-                      const hintMessage = !isReviewed
-                        ? 'Marca esta linea cuando termines de revisar el producto.'
-                        : rowValidationMessage
+                      const hintMessage = rowSummaryValidationMessage
+                        || (!isReviewed
+                          ? 'Marca esta linea cuando termines de revisar el producto.'
+                          : rowValidationMessage)
 
                       return (
                         <article
                           key={`receive-item-${rowProductId}`}
-                          className={`quick-actions__receive-item${isReviewed ? ' is-reviewed' : ''}${!isReviewed || rowValidationMessage ? ' is-pending' : ' is-ready'}`}
+                          className={`quick-actions__receive-item${isReviewed ? ' is-reviewed' : ''}${!isReviewed || rowValidationMessage ? ' is-pending' : ' is-ready'}${rowSummaryValidationMessage ? ' has-validation-error' : ''}`}
                         >
                           <div className="quick-actions__receive-item-head quick-actions__receive-item-head--check">
                             <label className="quick-actions__receive-check quick-actions__receive-check--row">
@@ -4924,6 +4930,7 @@ function QuickActions({
                               className="quick-actions__receive-item-title"
                               title={[row?.producto_codigo, String(row?.producto_nombre || '').trim()].filter(Boolean).join(' – ')}
                             >
+                              <small className="quick-actions__receive-col-label">Producto</small>
                               <strong>{row?.producto_codigo || `Producto ${rowProductId}`}</strong>
                               {!!String(row?.producto_nombre || '').trim() && (
                                 <p className="quick-actions__receive-item-name">
@@ -4962,6 +4969,7 @@ function QuickActions({
                                   (esperada: {sentQty})
                                 </span>
                               </span>
+                              <small className="quick-actions__receive-col-label">Recibida</small>
                               <input
                                 type="text"
                                 inputMode="numeric"
@@ -5370,15 +5378,19 @@ function QuickActions({
                     type="button"
                     className="quick-actions__receive-btn quick-actions__receive-btn--primary"
                     onClick={() => {
-                      for (const row of receiveShipmentRows) {
-                        const rowValidationMessage = getReceiveShipmentRowValidationMessage(row, {
-                          requireReviewed: true,
-                        })
-                        if (rowValidationMessage) {
-                          setReceiveShipmentError(rowValidationMessage)
-                          return
-                        }
+                      const invalidRows = receiveShipmentRows.filter((row) =>
+                        getReceiveShipmentRowValidationMessage(row, { requireReviewed: true })
+                      )
+                      if (invalidRows.length > 0) {
+                        setReceiveShipmentShowErrors(true)
+                        setReceiveShipmentError(
+                          invalidRows.length === 1
+                            ? '1 producto requiere atención antes de continuar.'
+                            : `${invalidRows.length} productos requieren atención antes de continuar.`
+                        )
+                        return
                       }
+                      setReceiveShipmentShowErrors(false)
                       setReceiveShipmentError('')
                       setReceiveShipmentShowSummary(true)
                     }}

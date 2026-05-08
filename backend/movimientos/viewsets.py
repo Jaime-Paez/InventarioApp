@@ -1113,6 +1113,50 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         return recipients
 
+    def _resolve_transfer_requester_recipients(
+        self,
+        sucursal_solicitante_id,
+        *,
+        exclude_user_ids=None,
+    ):
+        """Users at the requesting branch (MOVIMIENTOS_ENTRADAS) — the ones waiting to receive."""
+        requester_branch_id = int(sucursal_solicitante_id or 0)
+        if requester_branch_id <= 0:
+            return []
+
+        excluded = {str(uid).strip() for uid in (exclude_user_ids or []) if str(uid).strip()}
+
+        scoped_user_ids = set(
+            UsuarioModuloSucursal.objects.filter(
+                modulo=RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+                sucursal_id=requester_branch_id,
+            ).values_list("usuario_id", flat=True)
+        )
+        assigned_user_ids = set(
+            UsuarioSucursal.objects.filter(
+                sucursal_id=requester_branch_id,
+            ).values_list("usuario_id", flat=True)
+        )
+
+        User = get_user_model()
+        candidate_users = User.objects.filter(is_active=True).filter(
+            Q(is_staff=True)
+            | Q(is_superuser=True)
+            | Q(id__in=sorted(scoped_user_ids | assigned_user_ids))
+        ).order_by("id")
+
+        recipients = []
+        seen_recipient_ids = set()
+        for candidate in candidate_users:
+            recipient = self._normalize_reminder_recipient(candidate)
+            recipient_id = str(recipient.get("id") if recipient else "").strip()
+            if not recipient_id or recipient_id in excluded or recipient_id in seen_recipient_ids:
+                continue
+            seen_recipient_ids.add(recipient_id)
+            recipients.append(recipient)
+
+        return recipients
+
     def _resolve_transfer_request_admin_recipients(
         self,
         *,
@@ -1749,8 +1793,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 solicitud_id=solicitud_id,
             )
 
-            provider_recipients = self._resolve_transfer_provider_recipients(
-                solicitud.sucursal_proveedora_id,
+            requester_recipients = self._resolve_transfer_requester_recipients(
+                solicitud.sucursal_solicitante_id,
             )
             recipients = []
             seen_recipient_ids = set()
@@ -1765,7 +1809,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 seen_recipient_ids.add(candidate_id)
                 recipients.append(normalized_candidate)
 
-            for candidate in provider_recipients:
+            for candidate in requester_recipients:
                 append_unique(candidate)
             append_unique(request_creator)
 

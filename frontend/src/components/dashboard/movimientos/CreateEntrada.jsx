@@ -653,6 +653,10 @@ function CreateEntrada({
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
   )
+  const selectedDraftProductName = useMemo(
+    () => String(selectedDraftProduct?.nombre || '').trim(),
+    [selectedDraftProduct]
+  )
   const detailProductIdSet = useMemo(
     () =>
       new Set(
@@ -862,8 +866,7 @@ function CreateEntrada({
     (producto) => {
       if (!producto) return ''
       const codigo = String(producto?.codigo || '').trim()
-      const nombre = String(producto?.nombre || '').trim()
-      return [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
+      return codigo || `ID ${producto?.id ?? ''}`
     },
     []
   )
@@ -3251,7 +3254,7 @@ function CreateEntrada({
                     </div>
 
                     <div className="create-user__locations-row create-user__locations-row--form">
-                      <span className="create-salida__product-picker">
+                      <span className="create-salida__product-picker create-salida__product-code-cell">
                         <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
                           <button
                             type="button"
@@ -3283,7 +3286,7 @@ function CreateEntrada({
                             <span>
                               {selectedDraftProduct
                                 ? formatProductoOptionLabel(selectedDraftProduct)
-                                : 'Selecciona un producto'}
+                                : 'Selecciona un código'}
                             </span>
                             {selectedDraftProduct && showProveedorStockInfo && (
                               <span className="create-salida__trigger-stock">
@@ -3306,7 +3309,7 @@ function CreateEntrada({
                                   type="text"
                                   placeholder={
                                     hasProductSourceBranch
-                                      ? 'Buscar productos'
+                                      ? 'Buscar código o nombre'
                                       : (isTraslado
                                           ? 'Selecciona una sucursal proveedora primero'
                                           : 'Selecciona una sucursal primero')
@@ -3387,6 +3390,14 @@ function CreateEntrada({
                             </div>
                           )}
                         </div>
+                      </span>
+                      <span className="create-salida__product-name-cell">
+                        <span
+                          className="create-salida__table-static-value create-salida__table-static-value--name"
+                          title={selectedDraftProductName || undefined}
+                        >
+                          {selectedDraftProductName || '-'}
+                        </span>
                       </span>
                       <span>
                         <input
