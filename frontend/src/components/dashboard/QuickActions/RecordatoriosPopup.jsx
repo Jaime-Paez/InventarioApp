@@ -768,6 +768,7 @@ function RecordatoriosPopup({
   currentUser,
   currentUserName,
   currentUserIds,
+  currentReceiveBranchIds,
   reminders,
   allReminders,
   onCreateReminder,
@@ -831,6 +832,11 @@ function RecordatoriosPopup({
   const currentUserIdSet = useMemo(
     () => new Set((Array.isArray(currentUserIds) ? currentUserIds : []).map(normalizeId).filter(Boolean)),
     [currentUserIds]
+  )
+
+  const currentReceiveBranchIdSet = useMemo(
+    () => new Set((Array.isArray(currentReceiveBranchIds) ? currentReceiveBranchIds : []).map(normalizeId).filter(Boolean)),
+    [currentReceiveBranchIds]
   )
 
   const currentPrimaryUserId = useMemo(() => {
@@ -1017,8 +1023,13 @@ function RecordatoriosPopup({
       currentUserName
     )
     const displayStatus = (() => {
-      if (visualDecisionStatus === 'recibido' && !isTransferIssue) {
+      if (visualDecisionStatus === 'recibido') {
         const outcomeForLabel = latestTransferReceiptOutcome || transferReceiptOutcome
+        if (isTransferIssue) {
+          return isIssueResolved
+            ? { ...status, label: 'Cumplido', className: 'arrived' }
+            : { ...status, label: 'Pendiente', className: 'pending' }
+        }
         if (outcomeForLabel === 'incompleto' && !isIssueResolved) {
           return { ...status, label: 'Entregada con novedades', className: 'issue' }
         }
@@ -2709,8 +2720,13 @@ function RecordatoriosPopup({
                           : null
                         const isIssueResolved = Boolean(issueResolution?.resolved)
                         const displayStatus = (() => {
-                          if (visualDecisionStatus === 'recibido' && !isTransferIssue) {
+                          if (visualDecisionStatus === 'recibido') {
                             const outcomeForLabel = latestTransferReceiptOutcome || transferReceiptOutcome
+                            if (isTransferIssue) {
+                              return isIssueResolved
+                                ? { ...status, label: 'Cumplido', className: 'arrived' }
+                                : { ...status, label: 'Pendiente', className: 'pending' }
+                            }
                             if (outcomeForLabel === 'incompleto' && !isIssueResolved) {
                               return { ...status, label: 'Entregada con novedades', className: 'issue' }
                             }
@@ -2757,11 +2773,15 @@ function RecordatoriosPopup({
                           visualDecisionStatus === 'rechazada' &&
                           isReminderOwnedByCurrentUser
                         )
-                        const canOpenInTransitTransferFromReminder = (
-                          isTransferContextReminder &&
-                          visualDecisionStatus === 'enviado' &&
-                          typeof onOpenTransferRequestInTransit === 'function'
-                        )
+                        const canOpenInTransitTransferFromReminder = (() => {
+                          if (!isTransferContextReminder || visualDecisionStatus !== 'enviado') return false
+                          if (typeof onOpenTransferRequestInTransit !== 'function') return false
+                          if (currentUser?.is_staff || currentUser?.is_superuser) return true
+                          const solicitanteId = normalizeId(reminder?.context?.sucursal_solicitante_id)
+                          if (!solicitanteId) return true
+                          if (!currentReceiveBranchIdSet.size) return true
+                          return currentReceiveBranchIdSet.has(solicitanteId)
+                        })()
                         const latestTransferStageLabel = getTransferProgressStageLabel(
                           latestTransferStage,
                           latestTransferStage === 'recibido'

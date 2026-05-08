@@ -2093,8 +2093,11 @@ function QuickActions({
       if (requireReviewed && !row?.recepcion_revisada) {
         return `Debes marcar como revisado ${productLabel}.`
       }
-      if (receivedQty > 0 && assignedQty !== receivedQty) {
-        return `No hay una ubicacion valida para ${productLabel}.`
+      if (receivedQty === 0) {
+        return `Ingresa la cantidad recibida de ${productLabel}.`
+      }
+      if (assignedQty !== receivedQty) {
+        return `Selecciona una ubicacion valida para ${productLabel}.`
       }
       return ''
     },
@@ -4260,6 +4263,7 @@ function QuickActions({
         currentUser={user}
         currentUserName={currentUserName}
         currentUserIds={currentUserIdValues}
+        currentReceiveBranchIds={currentReceiveBranchIds}
         reminders={personalReminders}
         allReminders={reminders}
         onCreateReminder={handleCreateReminder}

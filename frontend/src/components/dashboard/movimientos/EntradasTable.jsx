@@ -824,10 +824,14 @@ function EntradasTable({
     const isSentSolicitud =
       isTransferRow &&
       normalizedEstado.includes('envi')
+    const isPartialSolicitud =
+      isTransferRow &&
+      normalizedEstado.includes('parcial')
     const className = [
       'cell-tooltip',
       field === 'estado_nombre' && isPendingSolicitud ? 'entradas-pending-state-chip' : '',
       field === 'estado_nombre' && isRejectedSolicitud ? 'entradas-rejected-state-chip' : '',
+      field === 'estado_nombre' && isPartialSolicitud ? 'entradas-partial-state-chip' : '',
       field === 'estado_nombre' && isAcceptedSolicitud ? 'entradas-accepted-state-chip' : '',
       field === 'estado_nombre' && isSentSolicitud ? 'entradas-sent-state-chip' : '',
     ]
@@ -1445,6 +1449,9 @@ function EntradasTable({
             }
             if (isSolicitudTraslado && (normalizedEstado.includes('rechaz') || normalizedEstado.includes('cancel'))) {
               classes.push('entradas-row--rejected-solicitud')
+            }
+            if (isTransferRow && normalizedEstado.includes('parcial')) {
+              classes.push('entradas-row--partial-solicitud')
             }
             if (isSolicitudTraslado && (normalizedEstado.includes('acept') || normalizedEstado.includes('aprob'))) {
               classes.push('entradas-row--accepted-solicitud')

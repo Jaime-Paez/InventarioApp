@@ -92,6 +92,32 @@
   font-weight: 700;
 }
 
+.users-datatable .p-datatable-tbody > tr.entradas-row--partial-solicitud > td {
+  background: color-mix(in srgb, #f97316 16%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #c2410c 32%, transparent) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.entradas-row--partial-solicitud:hover > td {
+  background: color-mix(in srgb, #f97316 24%, var(--table-color-hover)) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.entradas-row--partial-solicitud.selected-row-shadow > td,
+.users-datatable .p-datatable-tbody > tr.entradas-row--partial-solicitud.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #f97316 30%, var(--table-color-selected)) !important;
+}
+
+.entradas-partial-state-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #f97316 30%, transparent);
+  color: #9a3412 !important;
+  font-weight: 700;
+}
+
 .users-datatable .p-datatable-tbody > tr.entradas-row--accepted-solicitud > td {
   background: color-mix(in srgb, #22c55e 16%, var(--table-color)) !important;
   border-bottom-color: color-mix(in srgb, #15803d 30%, transparent) !important;
@@ -180,6 +206,25 @@
 .dashboard-shell.dark .entradas-rejected-state-chip {
   background: color-mix(in srgb, #ef4444 36%, transparent);
   color: #fee2e2 !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--partial-solicitud > td {
+  background: color-mix(in srgb, #f97316 20%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #f97316 42%, var(--color-border-dark)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--partial-solicitud:hover > td {
+  background: color-mix(in srgb, #f97316 26%, var(--table-color-dark-hover)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--partial-solicitud.selected-row-shadow > td,
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--partial-solicitud.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #f97316 30%, var(--table-color-selected-dark)) !important;
+}
+
+.dashboard-shell.dark .entradas-partial-state-chip {
+  background: color-mix(in srgb, #f97316 36%, transparent);
+  color: #fed7aa !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--accepted-solicitud > td {

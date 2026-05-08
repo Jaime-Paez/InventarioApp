@@ -831,9 +831,14 @@ function SalidasTable({
     const normalizedSubTipo = normalizeValue(rowData?.sub_tipo_nombre || rowData?.sub_tipo_movimiento)
     const isTransferRow = normalizedSubTipo.includes('trasl')
     const isSentTransfer = isTransferRow && normalizedEstado.includes('envi')
+    const isPartialSalida = isTransferRow && (
+      (normalizedEstado.includes('llego') && normalizedEstado.includes('inconven')) ||
+      normalizedEstado.includes('parcial')
+    )
     const className = [
       'cell-tooltip',
       field === 'estado_nombre' && isSentTransfer ? 'salidas-sent-state-chip' : '',
+      field === 'estado_nombre' && isPartialSalida ? 'salidas-partial-state-chip' : '',
     ]
       .filter(Boolean)
       .join(' ')
@@ -1385,6 +1390,12 @@ function SalidasTable({
             }
             if (isTransferRow && normalizedEstado.includes('envi')) {
               classes.push('salidas-row--sent-traslado')
+            }
+            if (isTransferRow && (
+              (normalizedEstado.includes('llego') && normalizedEstado.includes('inconven')) ||
+              normalizedEstado.includes('parcial')
+            )) {
+              classes.push('salidas-row--partial-traslado')
             }
             return classes.join(' ')
           }}

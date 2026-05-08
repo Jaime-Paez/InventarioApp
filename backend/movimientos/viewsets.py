@@ -1592,6 +1592,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "type": "solicitud_traslado",
                     "id": str(solicitud_id),
                     "label": context_label,
+                    "sucursal_solicitante_id": str(int(solicitud.sucursal_solicitante_id or 0)) if solicitud.sucursal_solicitante_id else "",
+                    "sucursal_proveedora_id": str(int(solicitud.sucursal_proveedora_id or 0)) if solicitud.sucursal_proveedora_id else "",
                 },
                 "kind": "solicitud_traslado_decision",
                 "deadlineAt": deadline_at.isoformat(),
@@ -1837,6 +1839,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "type": "solicitud_traslado",
                     "id": str(solicitud_id),
                     "label": context_label,
+                    "sucursal_solicitante_id": str(int(solicitud.sucursal_solicitante_id or 0)) if solicitud.sucursal_solicitante_id else "",
+                    "sucursal_proveedora_id": str(int(solicitud.sucursal_proveedora_id or 0)) if solicitud.sucursal_proveedora_id else "",
                 },
                 "kind": "recordatorio_general",
                 "createdAt": created_at,
@@ -3636,14 +3640,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             reminder_sent = False
 
         inconvenience_reminder_sent = False
-        if total_faltante > 0:
-            try:
-                inconvenience_reminder_sent = self._sync_transfer_inconvenience_reminder(
-                    solicitud=solicitud_locked,
-                    actor_user=request.user,
-                )
-            except Exception:
-                inconvenience_reminder_sent = False
 
         return Response(
             {
@@ -3916,6 +3912,24 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 actor=request.user,
             )
 
+            still_pending = TrasladoInconveniente.objects.filter(
+                solicitud_id=inconveniente_locked.solicitud_id,
+                estado=TrasladoInconveniente.Estados.PENDIENTE,
+            ).exists()
+
+            if not still_pending:
+                solicitud_obj = inconveniente_locked.solicitud
+                entrada_estado = self._resolve_estado_movimiento("recibido")
+                salida_estado = self._resolve_estado_movimiento("llego", "recibido")
+                if solicitud_obj.movimiento_entrada_id and entrada_estado:
+                    MovimientoInventario.objects.filter(
+                        pk=solicitud_obj.movimiento_entrada_id
+                    ).update(estado_movimiento=entrada_estado)
+                if solicitud_obj.movimiento_salida_id and salida_estado:
+                    MovimientoInventario.objects.filter(
+                        pk=solicitud_obj.movimiento_salida_id
+                    ).update(estado_movimiento=salida_estado)
+
             inconveniente_out = (
                 TrasladoInconveniente.objects.select_related(
                     "solicitud",
@@ -3932,14 +3946,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 .filter(pk=inconveniente_locked.id)
                 .first()
             )
-
-        try:
-            self._sync_transfer_inconvenience_reminder(
-                solicitud=getattr(inconveniente_out, "solicitud", None) or inconveniente.solicitud,
-                actor_user=request.user,
-            )
-        except Exception:
-            pass
 
         return Response(
             {
