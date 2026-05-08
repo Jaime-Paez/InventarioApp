@@ -2474,125 +2474,131 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     </div>
                   </div>
 
-                  <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
-                      <span>Tipo de entrada</span>
-                      <input
-                        type="text"
-                        value={selectedSubTipo?.nombre || formData.subTipoNombre || ''}
-                        readOnly
-                        disabled
-                      />
-                    </label>
+                  <div className="create-salida__field-groups">
+                    <div className="create-salida__field-group create-salida__field-group--defined">
+                      <div className="create-user__grid create-user__grid--two">
+                        <label className="create-user__field">
+                          <span>Tipo de entrada</span>
+                          <input
+                            type="text"
+                            value={selectedSubTipo?.nombre || formData.subTipoNombre || ''}
+                            readOnly
+                            disabled
+                          />
+                        </label>
 
-                    <label className="create-user__field">
-                      <span>Fecha</span>
-                      <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
-                    </label>
+                        <label className="create-user__field">
+                          <span>Fecha</span>
+                          <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
+                        </label>
 
-                    <label className="create-user__field">
-                      <span>Sucursal</span>
-                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled>
-                        <option value="">Selecciona una sucursal</option>
-                        {branches.map((branch) => (
-                          <option key={branch.id} value={branch.id}>
-                            {branch.nombre || `Sucursal ${branch.id}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                        <label className="create-user__field">
+                          <span>Sucursal</span>
+                          <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled>
+                            <option value="">Selecciona una sucursal</option>
+                            {branches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>
+                                {branch.nombre || `Sucursal ${branch.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
 
-                    {requiresSucursalObjetivo && (
-                      <label className="create-user__field">
-                        <span>{isTraslado ? 'Sucursal proveedora' : 'Sucursal Destino'}</span>
-                        <select
-                          name="sucursalObjetivoId"
-                          value={formData.sucursalObjetivoId}
-                          onChange={handleChange}
-                          disabled
-                        >
-                          <option value="">Selecciona una sucursal</option>
-                          {branches.map((branch) => (
-                            <option key={branch.id} value={branch.id}>
-                              {branch.nombre || `Sucursal ${branch.id}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
+                        {requiresSucursalObjetivo && (
+                          <label className="create-user__field">
+                            <span>{isTraslado ? 'Sucursal proveedora' : 'Sucursal Destino'}</span>
+                            <select
+                              name="sucursalObjetivoId"
+                              value={formData.sucursalObjetivoId}
+                              onChange={handleChange}
+                              disabled
+                            >
+                              <option value="">Selecciona una sucursal</option>
+                              {branches.map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.nombre || `Sucursal ${branch.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
 
-                    <label className="create-user__field">
-                      <span>{documentLabel}</span>
-                      <input
-                        name="no_documento"
-                        type="text"
-                        value={formData.no_documento}
-                        onChange={handleChange}
-                        disabled
-                        readOnly
-                      />
-                    </label>
+                        <label className="create-user__field">
+                          <span>{documentLabel}</span>
+                          <input
+                            name="no_documento"
+                            type="text"
+                            value={formData.no_documento}
+                            onChange={handleChange}
+                            disabled
+                            readOnly
+                          />
+                        </label>
 
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Descuento (%)</span>
+                        {isDevolucion && (
+                          <label className="create-user__field">
+                            <span>No. factura venta origen</span>
+                            <input
+                              name="factura_referencia"
+                              type="text"
+                              value={formData.factura_referencia}
+                              onChange={handleChange}
+                              disabled
+                              readOnly
+                              required={isDevolucion}
+                              placeholder="Factura emitida en la venta"
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="create-user__grid create-user__grid--two">
+                      {isVenta && (
+                        <label className="create-user__field">
+                          <span>Descuento (%)</span>
+                          <input
+                            name="descuento"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={formData.descuento}
+                            onChange={handleChange}
+                            disabled={editorDisabled}
+                          />
+                        </label>
+                      )}
+
+                      {isDevolucion && (
+                        <label className="create-user__field">
+                          <span>Funcional</span>
+                          <select
+                            name="funcional"
+                            value={formData.funcional ? 'true' : 'false'}
+                            onChange={(event) =>
+                              isEditing &&
+                              setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
+                            }
+                            disabled={editorDisabled}
+                          >
+                            <option value="true">Si</option>
+                            <option value="false">No</option>
+                          </select>
+                        </label>
+                      )}
+
+                      <label className="create-user__field create-user__field--full">
+                        <span>Descripcion</span>
                         <input
-                          name="descuento"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={formData.descuento}
-                          onChange={handleChange}
-                          disabled={editorDisabled}
-                        />
-                      </label>
-                    )}
-
-                    {isDevolucion && (
-                      <label className="create-user__field">
-                        <span>No. factura venta origen</span>
-                        <input
-                          name="factura_referencia"
+                          name="descripcion"
                           type="text"
-                          value={formData.factura_referencia}
+                          value={formData.descripcion}
                           onChange={handleChange}
-                          disabled
-                          readOnly
-                          required={isDevolucion}
-                          placeholder="Factura emitida en la venta"
+                          disabled={editorDisabled}
                         />
                       </label>
-                    )}
-
-                    {isDevolucion && (
-                      <label className="create-user__field">
-                        <span>Funcional</span>
-                        <select
-                          name="funcional"
-                          value={formData.funcional ? 'true' : 'false'}
-                          onChange={(event) =>
-                            isEditing &&
-                            setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                          }
-                          disabled={editorDisabled}
-                        >
-                          <option value="true">Si</option>
-                          <option value="false">No</option>
-                        </select>
-                      </label>
-                    )}
-
-                    <label className="create-user__field create-user__field--full">
-                      <span>Descripcion</span>
-                      <input
-                        name="descripcion"
-                        type="text"
-                        value={formData.descripcion}
-                        onChange={handleChange}
-                        disabled={editorDisabled}
-                      />
-                    </label>
+                    </div>
                   </div>
                 </section>
 

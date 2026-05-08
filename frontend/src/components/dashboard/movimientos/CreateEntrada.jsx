@@ -3040,7 +3040,9 @@ function CreateEntrada({
                     </div>
                   </div>
 
-                  <div className="create-user__grid create-user__grid--two">
+                  <div className="create-salida__field-groups">
+                    <div className="create-salida__field-group create-salida__field-group--defined">
+                      <div className="create-user__grid create-user__grid--two">
                     <StaticFieldDisplay
                       label="Código"
                       value={formData.no_documento}
@@ -3055,152 +3057,178 @@ function CreateEntrada({
                       <>
                         <StaticFieldDisplay label="Fecha" value={formattedFecha} />
 
-                        {isSucursalPrincipalLocked ? (
+                        {isSucursalPrincipalLocked && (
                           <StaticFieldDisplay
                             label="Sucursal destino"
                             value={selectedSucursalName}
                           />
-                        ) : (
-                          <label className="create-user__field">
-                            <span>Sucursal destino</span>
-                            <select
-                              name="sucursalId"
-                              value={formData.sucursalId}
-                              onChange={handleChange}
-                              disabled={loading || isSucursalPrincipalLocked}
-                              required
-                            >
-                              <option value="">Selecciona una sucursal</option>
-                              {branches.map((branch) => (
-                                <option key={branch.id} value={branch.id}>
-                                  {branch.nombre || `Sucursal ${branch.id}`}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
                         )}
-
-                        <label className="create-user__field create-user__field--full">
-                          <span>Sucursal proveedora</span>
-                          <select
-                            name="sucursalObjetivoId"
-                            value={formData.sucursalObjetivoId}
-                            onChange={handleChange}
-                            disabled={loading}
-                            required={requiresSucursalObjetivo}
-                          >
-                            <option value="">Selecciona una sucursal</option>
-                            {destinationBranches.map((branch) => (
-                              <option key={branch.id} value={branch.id}>
-                                {branch.nombre || `Sucursal ${branch.id}`}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
                       </>
                     ) : !isEditableEntryDate ? (
                       <>
-                        <StaticFieldDisplay label="Fecha" value={formattedFecha} fullWidth />
+                        <StaticFieldDisplay label="Fecha" value={formattedFecha} />
 
-                        {!isSucursalPrincipalLocked && (
-                          <label className="create-user__field create-user__field--full">
-                            <span>Sucursal</span>
-                            <select
-                              name="sucursalId"
-                              value={formData.sucursalId}
-                              onChange={handleChange}
-                              disabled={loading || isSucursalPrincipalLocked}
-                              required
-                            >
-                              <option value="">Selecciona una sucursal</option>
-                              {branches.map((branch) => (
-                                <option key={branch.id} value={branch.id}>
-                                  {branch.nombre || `Sucursal ${branch.id}`}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
-
-                        <label className="create-user__field">
-                          <span>No. de Factura</span>
-                          <input
-                            name="factura_referencia"
-                            type="text"
-                            value={formData.factura_referencia}
-                            onChange={handleChange}
-                            disabled={loading}
-                            required={isDevolucion}
-                            placeholder="Factura emitida en la venta"
-                          />
-                        </label>
-
-                        <label className="create-user__field">
-                          <span>Funcional</span>
-                          <select
-                            name="funcional"
-                            value={formData.funcional ? 'true' : 'false'}
-                            onChange={(event) =>
-                              setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                            }
-                            disabled={loading}
-                          >
-                            <option value="true">Sí</option>
-                            <option value="false">No</option>
-                          </select>
-                        </label>
-                      </>
-                    ) : (
-                      <>
-                        <label className="create-user__field">
-                          <span>Fecha</span>
-                          <input
-                            name="fecha"
-                            type="date"
-                            value={formData.fecha}
-                            onChange={handleChange}
-                            disabled={loading}
-                            required
-                          />
-                        </label>
-
-                        {isSucursalPrincipalLocked ? (
+                        {isSucursalPrincipalLocked && (
                           <StaticFieldDisplay
                             label="Sucursal"
                             value={selectedSucursalName}
                           />
-                        ) : (
-                          <label className="create-user__field">
-                            <span>Sucursal</span>
+                        )}
+
+
+                      </>
+                    ) : (
+                      <>
+                        {isSucursalPrincipalLocked && (
+                          <StaticFieldDisplay
+                            label="Sucursal"
+                            value={selectedSucursalName}
+                          />
+                        )}
+                      </>
+                    )}
+
+                      </div>
+                    </div>
+
+                    <div className="create-user__grid create-user__grid--two">
+                      {isTraslado ? (
+                        <>
+                          {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field">
+                              <span>Sucursal destino</span>
+                              <select
+                                name="sucursalId"
+                                value={formData.sucursalId}
+                                onChange={handleChange}
+                                disabled={loading || isSucursalPrincipalLocked}
+                                required
+                              >
+                                <option value="">Selecciona una sucursal</option>
+                                {branches.map((branch) => (
+                                  <option key={branch.id} value={branch.id}>
+                                    {branch.nombre || `Sucursal ${branch.id}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+
+                          <label className="create-user__field create-user__field--full">
+                            <span>Sucursal proveedora</span>
                             <select
-                              name="sucursalId"
-                              value={formData.sucursalId}
+                              name="sucursalObjetivoId"
+                              value={formData.sucursalObjetivoId}
                               onChange={handleChange}
-                              disabled={loading || isSucursalPrincipalLocked}
-                              required
+                              disabled={loading}
+                              required={requiresSucursalObjetivo}
                             >
                               <option value="">Selecciona una sucursal</option>
-                              {branches.map((branch) => (
+                              {destinationBranches.map((branch) => (
                                 <option key={branch.id} value={branch.id}>
                                   {branch.nombre || `Sucursal ${branch.id}`}
                                 </option>
                               ))}
                             </select>
                           </label>
-                        )}
-                      </>
-                    )}
+                        </>
+                      ) : !isEditableEntryDate ? (
+                        <>
+                          {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field create-user__field--full">
+                              <span>Sucursal</span>
+                              <select
+                                name="sucursalId"
+                                value={formData.sucursalId}
+                                onChange={handleChange}
+                                disabled={loading || isSucursalPrincipalLocked}
+                                required
+                              >
+                                <option value="">Selecciona una sucursal</option>
+                                {branches.map((branch) => (
+                                  <option key={branch.id} value={branch.id}>
+                                    {branch.nombre || `Sucursal ${branch.id}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
 
-                    <label className="create-user__field create-user__field--full">
-                      <span>Descripción</span>
-                      <input
-                        name="descripcion"
-                        type="text"
-                        value={formData.descripcion}
-                        onChange={handleChange}
-                        disabled={loading}
-                      />
-                    </label>
+                          <label className="create-user__field">
+                            <span>No. de Factura</span>
+                            <input
+                              name="factura_referencia"
+                              type="text"
+                              value={formData.factura_referencia}
+                              onChange={handleChange}
+                              disabled={loading}
+                              required={isDevolucion}
+                              placeholder="Factura emitida en la venta"
+                            />
+                          </label>
+
+                          <label className="create-user__field">
+                            <span>Funcional</span>
+                            <select
+                              name="funcional"
+                              value={formData.funcional ? 'true' : 'false'}
+                              onChange={(event) =>
+                                setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
+                              }
+                              disabled={loading}
+                            >
+                              <option value="true">Sí</option>
+                              <option value="false">No</option>
+                            </select>
+                          </label>
+                        </>
+                      ) : (
+                        <>
+                          <label className="create-user__field">
+                            <span>Fecha</span>
+                            <input
+                              name="fecha"
+                              type="date"
+                              value={formData.fecha}
+                              onChange={handleChange}
+                              disabled={loading}
+                              required
+                            />
+                          </label>
+
+                          {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field">
+                              <span>Sucursal</span>
+                              <select
+                                name="sucursalId"
+                                value={formData.sucursalId}
+                                onChange={handleChange}
+                                disabled={loading || isSucursalPrincipalLocked}
+                                required
+                              >
+                                <option value="">Selecciona una sucursal</option>
+                                {branches.map((branch) => (
+                                  <option key={branch.id} value={branch.id}>
+                                    {branch.nombre || `Sucursal ${branch.id}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+                        </>
+                      )}
+
+                      <label className="create-user__field create-user__field--full">
+                        <span>Descripción</span>
+                        <input
+                          name="descripcion"
+                          type="text"
+                          value={formData.descripcion}
+                          onChange={handleChange}
+                          disabled={loading}
+                        />
+                      </label>
+                    </div>
                   </div>
                 </section>
 

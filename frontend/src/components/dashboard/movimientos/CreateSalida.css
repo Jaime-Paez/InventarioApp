@@ -335,6 +335,33 @@
   min-width: 0;
 }
 
+.create-salida__field-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.create-salida__field-group {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.create-salida__field-group--defined {
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
+}
+
+.create-salida__field-group--defined .create-user__grid {
+  margin: 0;
+}
+
+.dashboard-shell.dark .create-salida__field-group--defined {
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
+}
+
 .create-salida__cliente-mode {
   display: flex;
   gap: 8px;
@@ -1395,6 +1422,10 @@
 }
 
 @media (max-width: 640px) {
+  .create-salida__field-group--defined {
+    padding: 12px;
+  }
+
   .create-salida__footer-actions {
     width: 100%;
     justify-content: flex-end;

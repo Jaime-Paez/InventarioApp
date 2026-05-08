@@ -1899,151 +1899,235 @@ function SalidaDetails({
                     </div>
                   </div>
 
-                  <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
-                      <span>Tipo de salida</span>
-                      <input
-                        type="text"
-                        value={formatSalidaSubTipoLabel(selectedSubTipo?.nombre || formData.subTipoNombre || '')}
-                        readOnly
-                        disabled
-                      />
-                    </label>
+                  <div className="create-salida__field-groups">
+                    <div className="create-salida__field-group create-salida__field-group--defined">
+                      <div className="create-user__grid create-user__grid--two">
+                        <label className="create-user__field">
+                          <span>Tipo de salida</span>
+                          <input
+                            type="text"
+                            value={formatSalidaSubTipoLabel(selectedSubTipo?.nombre || formData.subTipoNombre || '')}
+                            readOnly
+                            disabled
+                          />
+                        </label>
 
-                    <label className="create-user__field">
-                      <span>Fecha</span>
-                      <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
-                    </label>
+                        <label className="create-user__field">
+                          <span>Fecha</span>
+                          <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
+                        </label>
 
-                    <label className="create-user__field">
-                      <span>Sucursal</span>
-                      <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={immutableFieldDisabled}>
-                        <option value="">Selecciona una sucursal</option>
-                        {branches.map((branch) => (
-                          <option key={branch.id} value={branch.id}>
-                            {branch.nombre || `Sucursal ${branch.id}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                        {immutableFieldDisabled && (
+                          <label className="create-user__field">
+                            <span>Sucursal</span>
+                            <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={immutableFieldDisabled}>
+                              <option value="">Selecciona una sucursal</option>
+                              {branches.map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.nombre || `Sucursal ${branch.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
 
-                    {requiresSucursalObjetivo && (
-                      <label className="create-user__field">
-                        <span>{isTraslado ? 'Sucursal solicitante (destino)' : 'Sucursal Destino'}</span>
-                        <select
-                          name="sucursalObjetivoId"
-                          value={formData.sucursalObjetivoId}
-                          onChange={handleChange}
-                          disabled={immutableFieldDisabled}
-                        >
-                          <option value="">Selecciona una sucursal</option>
-                          {branches.map((branch) => (
-                            <option key={branch.id} value={branch.id}>
-                              {branch.nombre || `Sucursal ${branch.id}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
+                        {requiresSucursalObjetivo && immutableFieldDisabled && (
+                          <label className="create-user__field">
+                            <span>{isTraslado ? 'Sucursal solicitante (destino)' : 'Sucursal Destino'}</span>
+                            <select
+                              name="sucursalObjetivoId"
+                              value={formData.sucursalObjetivoId}
+                              onChange={handleChange}
+                              disabled={immutableFieldDisabled}
+                            >
+                              <option value="">Selecciona una sucursal</option>
+                              {branches.map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.nombre || `Sucursal ${branch.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
 
-                    <label className="create-user__field">
-                      <span>{documentLabel}</span>
-                      <input
-                        name="no_documento"
-                        type="text"
-                        value={formData.no_documento}
-                        onChange={handleChange}
-                        disabled={immutableFieldDisabled}
-                      />
-                    </label>
+                        {immutableFieldDisabled && (
+                          <label className="create-user__field">
+                            <span>{documentLabel}</span>
+                            <input
+                              name="no_documento"
+                              type="text"
+                              value={formData.no_documento}
+                              onChange={handleChange}
+                              disabled={immutableFieldDisabled}
+                            />
+                          </label>
+                        )}
 
-                    {isDevolucion && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <input type="text" value={selectedEstadoName} readOnly disabled />
-                      </label>
-                    )}
+                        {isDevolucion && (
+                          <label className="create-user__field">
+                            <span>Estado del movimiento</span>
+                            <input type="text" value={selectedEstadoName} readOnly disabled />
+                          </label>
+                        )}
 
-                    {isTraslado && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={immutableFieldDisabled}>
-                          <option value="">Selecciona un estado</option>
-                          {trasladoEstadoOptions.map((estado) => (
-                            <option key={estado.id} value={estado.id}>
-                              {estado.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
+                        {isTraslado && immutableFieldDisabled && (
+                          <label className="create-user__field">
+                            <span>Estado del movimiento</span>
+                            <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={immutableFieldDisabled}>
+                              <option value="">Selecciona un estado</option>
+                              {trasladoEstadoOptions.map((estado) => (
+                                <option key={estado.id} value={estado.id}>
+                                  {estado.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
 
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <input type="text" value={selectedEstadoName} readOnly disabled />
-                      </label>
-                    )}
+                        {isVenta && (
+                          <label className="create-user__field">
+                            <span>Estado del movimiento</span>
+                            <input type="text" value={selectedEstadoName} readOnly disabled />
+                          </label>
+                        )}
 
-                    {!isDevolucion && !isTraslado && !isVenta && (
-                      <label className="create-user__field">
-                        <span>Estado del movimiento</span>
-                        <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={immutableFieldDisabled}>
-                          <option value="">Selecciona un estado</option>
-                          {(estadoOptions.length ? estadoOptions : estados).map((estado) => (
-                            <option key={estado.id} value={estado.id}>
-                              {estado.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
+                        {!isDevolucion && !isTraslado && !isVenta && immutableFieldDisabled && (
+                          <label className="create-user__field">
+                            <span>Estado del movimiento</span>
+                            <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={immutableFieldDisabled}>
+                              <option value="">Selecciona un estado</option>
+                              {(estadoOptions.length ? estadoOptions : estados).map((estado) => (
+                                <option key={estado.id} value={estado.id}>
+                                  {estado.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                    </div>
 
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Descuento (%)</span>
+                    <div className="create-user__grid create-user__grid--two">
+                      {!immutableFieldDisabled && (
+                        <label className="create-user__field">
+                          <span>Sucursal</span>
+                          <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled={immutableFieldDisabled}>
+                            <option value="">Selecciona una sucursal</option>
+                            {branches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>
+                                {branch.nombre || `Sucursal ${branch.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {requiresSucursalObjetivo && !immutableFieldDisabled && (
+                        <label className="create-user__field">
+                          <span>{isTraslado ? 'Sucursal solicitante (destino)' : 'Sucursal Destino'}</span>
+                          <select
+                            name="sucursalObjetivoId"
+                            value={formData.sucursalObjetivoId}
+                            onChange={handleChange}
+                            disabled={immutableFieldDisabled}
+                          >
+                            <option value="">Selecciona una sucursal</option>
+                            {branches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>
+                                {branch.nombre || `Sucursal ${branch.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {!immutableFieldDisabled && (
+                        <label className="create-user__field">
+                          <span>{documentLabel}</span>
+                          <input
+                            name="no_documento"
+                            type="text"
+                            value={formData.no_documento}
+                            onChange={handleChange}
+                            disabled={immutableFieldDisabled}
+                          />
+                        </label>
+                      )}
+
+                      {isTraslado && !immutableFieldDisabled && (
+                        <label className="create-user__field">
+                          <span>Estado del movimiento</span>
+                          <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={immutableFieldDisabled}>
+                            <option value="">Selecciona un estado</option>
+                            {trasladoEstadoOptions.map((estado) => (
+                              <option key={estado.id} value={estado.id}>
+                                {estado.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {!isDevolucion && !isTraslado && !isVenta && !immutableFieldDisabled && (
+                        <label className="create-user__field">
+                          <span>Estado del movimiento</span>
+                          <select name="estadoId" value={formData.estadoId} onChange={handleChange} disabled={immutableFieldDisabled}>
+                            <option value="">Selecciona un estado</option>
+                            {(estadoOptions.length ? estadoOptions : estados).map((estado) => (
+                              <option key={estado.id} value={estado.id}>
+                                {estado.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {isVenta && (
+                        <label className="create-user__field">
+                          <span>Descuento (%)</span>
+                          <input
+                            name="descuento"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={formData.descuento}
+                            onChange={handleChange}
+                            disabled={immutableFieldDisabled}
+                          />
+                        </label>
+                      )}
+
+                      {isDevolucion && (
+                        <label className="create-user__field">
+                          <span>Funcional</span>
+                          <select
+                            name="funcional"
+                            value={formData.funcional ? 'true' : 'false'}
+                            onChange={(event) =>
+                              isEditing &&
+                              !editorDisabled &&
+                              setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
+                            }
+                            disabled={editorDisabled}
+                          >
+                            <option value="true">Si</option>
+                            <option value="false">No</option>
+                          </select>
+                        </label>
+                      )}
+
+                      <label className="create-user__field create-user__field--full">
+                        <span>Descripcion</span>
                         <input
-                          name="descuento"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={formData.descuento}
+                          name="descripcion"
+                          type="text"
+                          value={formData.descripcion}
                           onChange={handleChange}
-                          disabled={immutableFieldDisabled}
+                          disabled={editorDisabled}
                         />
                       </label>
-                    )}
-
-                    {isDevolucion && (
-                      <label className="create-user__field">
-                        <span>Funcional</span>
-                        <select
-                          name="funcional"
-                          value={formData.funcional ? 'true' : 'false'}
-                          onChange={(event) =>
-                            isEditing &&
-                            !editorDisabled &&
-                            setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                          }
-                          disabled={editorDisabled}
-                        >
-                          <option value="true">Si</option>
-                          <option value="false">No</option>
-                        </select>
-                      </label>
-                    )}
-
-                    <label className="create-user__field create-user__field--full">
-                      <span>Descripcion</span>
-                      <input
-                        name="descripcion"
-                        type="text"
-                        value={formData.descripcion}
-                        onChange={handleChange}
-                        disabled={editorDisabled}
-                      />
-                    </label>
+                    </div>
                   </div>
                 </section>
 
@@ -2539,5 +2623,4 @@ function SalidaDetails({
 }
 
 export default SalidaDetails
-
 

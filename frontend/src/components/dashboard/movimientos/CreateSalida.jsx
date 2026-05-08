@@ -3037,11 +3037,13 @@ function CreateSalida({
                 {(activeTab === 'general' || (!isVenta && !isManualTransferMode) || (isManualTransferMode && activeTab === 'general')) && (
                   <>
                     <section className="create-user__section">
-                  <div
-                    className={`create-user__grid create-user__grid--two${
-                      isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
-                    }`}
-                  >
+                      <div className="create-salida__field-groups">
+                        <div className="create-salida__field-group create-salida__field-group--defined">
+                          <div
+                            className={`create-user__grid create-user__grid--two${
+                              isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
+                            }`}
+                          >
                     <StaticFieldDisplay
                       label="Código"
                       value={formData.no_documento}
@@ -3054,58 +3056,70 @@ function CreateSalida({
 
                     <StaticFieldDisplay label="Fecha" value={formattedFecha} />
 
-                    {isSucursalPrincipalLocked ? (
+                    {isSucursalPrincipalLocked && (
                       <StaticFieldDisplay
                         label={isTraslado ? 'Sucursal proveedora' : 'Sucursal'}
                         value={selectedSucursalName}
                       />
-                    ) : (
-                      <label className="create-user__field">
-                        <span>{isTraslado ? 'Sucursal proveedora' : 'Sucursal'}</span>
-                        <select
-                          name="sucursalId"
-                          value={formData.sucursalId}
-                          onChange={handleChange}
-                          disabled={loading || isSucursalPrincipalLocked}
-                          required
-                        >
-                          <option value="">Selecciona una sucursal</option>
-                          {branches.map((branch) => (
-                            <option key={branch.id} value={branch.id}>
-                              {branch.nombre || `Sucursal ${branch.id}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
                     )}
 
-                    {requiresSucursalObjetivo && (
-                      isPrefilledTransfer || (transferRequiresRequest && selectedObjetivoBranchName) ? (
+                    {requiresSucursalObjetivo &&
+                      (isPrefilledTransfer || (transferRequiresRequest && selectedObjetivoBranchName)) && (
                         <StaticFieldDisplay
                           label="Sucursal destino"
                           value={selectedObjetivoBranchName}
                           fullWidth
                         />
-                      ) : (
-                        <label className="create-user__field create-user__field--full">
-                          <span>Sucursal destino</span>
-                          <select
-                            name="sucursalObjetivoId"
-                            value={formData.sucursalObjetivoId}
-                            onChange={handleChange}
-                            disabled={loading || transferRequiresRequest}
-                            required={requiresSucursalObjetivo}
-                          >
-                            <option value="">Selecciona una sucursal</option>
-                            {transferDestinationBranches.map((branch) => (
-                              <option key={branch.id} value={branch.id}>
-                                {branch.nombre || `Sucursal ${branch.id}`}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )
-                    )}
+                      )}
+
+                          </div>
+                        </div>
+
+                        <div
+                          className={`create-user__grid create-user__grid--two${
+                            isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
+                          }`}
+                        >
+                          {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field">
+                              <span>{isTraslado ? 'Sucursal proveedora' : 'Sucursal'}</span>
+                              <select
+                                name="sucursalId"
+                                value={formData.sucursalId}
+                                onChange={handleChange}
+                                disabled={loading || isSucursalPrincipalLocked}
+                                required
+                              >
+                                <option value="">Selecciona una sucursal</option>
+                                {branches.map((branch) => (
+                                  <option key={branch.id} value={branch.id}>
+                                    {branch.nombre || `Sucursal ${branch.id}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+
+                          {requiresSucursalObjetivo &&
+                            !(isPrefilledTransfer || (transferRequiresRequest && selectedObjetivoBranchName)) && (
+                              <label className="create-user__field create-user__field--full">
+                                <span>Sucursal destino</span>
+                                <select
+                                  name="sucursalObjetivoId"
+                                  value={formData.sucursalObjetivoId}
+                                  onChange={handleChange}
+                                  disabled={loading || transferRequiresRequest}
+                                  required={requiresSucursalObjetivo}
+                                >
+                                  <option value="">Selecciona una sucursal</option>
+                                  {transferDestinationBranches.map((branch) => (
+                                    <option key={branch.id} value={branch.id}>
+                                      {branch.nombre || `Sucursal ${branch.id}`}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            )}
 
                     {(isVenta || isDevolucion) && (
                       <label className="create-user__field">
@@ -3166,8 +3180,9 @@ function CreateSalida({
                     </label>
 
                     {isPrefilledTransfer && <input type="hidden" name="solicitudTrasladoId" value={formData.solicitudTrasladoId} />}
-                  </div>
-                </section>
+                        </div>
+                      </div>
+                    </section>
 
                 <section className="create-user__section">
                   <div className="create-user__section-header">
