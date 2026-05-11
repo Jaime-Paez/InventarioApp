@@ -1900,7 +1900,7 @@ function CreateSalida({
     const solicitudDoc = String(
       prefillTransferRequest?.solicitud?.no_documento || prefillTransferSolicitudId
     ).trim()
-    const prefilledDocNumber = `TR-SAL-${solicitudDoc}`.slice(0, 80)
+    const prefilledDocNumber = solicitudDoc.slice(0, 80)
 
     setFormData((prev) => ({
       ...prev,

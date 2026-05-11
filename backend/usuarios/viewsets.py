@@ -32,6 +32,7 @@ from .utils import (
     get_permisos_efectivos,
     get_random_inspection_branch_ids,
     get_usuario_interno_por_correo,
+    is_app_admin,
     normalize_random_inspection_branch_ids,
     remove_personalized_role_for_email,
     sync_random_inspection_branch_assignment,
@@ -106,7 +107,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             "nombre_completo": self._format_display_name(instance),
             "correo": str(instance.email or "").strip(),
             "activo": bool(instance.is_active),
-            "es_administrador": bool(instance.is_staff or instance.is_superuser),
+            "es_administrador": is_app_admin(instance),
             "inspeccion_aleatoria": bool(inspection_branch_ids),
             "inspeccion_aleatoria_sucursales": inspection_branch_ids,
             "puede_ver_inventario": user_has_module_action(
@@ -207,7 +208,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 inspection_branch_ids = sorted(valid_branch_ids)
 
             # Permissions — uses prefetched roles__permisos, no extra queries
-            if instance.is_staff or instance.is_superuser:
+            if is_app_admin(instance):
                 puede_ver = True
             else:
                 extra_roles = [personalized_role] if personalized_role else []
@@ -225,7 +226,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 "nombre_completo": self._format_display_name(instance),
                 "correo": str(instance.email or "").strip(),
                 "activo": bool(instance.is_active),
-                "es_administrador": bool(instance.is_staff or instance.is_superuser),
+                "es_administrador": is_app_admin(instance),
                 "inspeccion_aleatoria": bool(inspection_branch_ids),
                 "inspeccion_aleatoria_sucursales": inspection_branch_ids,
                 "puede_ver_inventario": puede_ver,
@@ -383,7 +384,7 @@ class LoginAPIView(APIView):
 
         token, _ = Token.objects.get_or_create(user=user)
 
-        if user.is_staff or user.is_superuser:
+        if is_app_admin(user):
             permisos = build_full_permissions()
             usuario_interno = get_usuario_interno_por_correo(email)
         else:
@@ -407,7 +408,7 @@ class PerfilAPIView(APIView):
 
     def get(self, request):
         email = request.user.email
-        if request.user.is_staff or request.user.is_superuser:
+        if is_app_admin(request.user):
             permisos = build_full_permissions()
             usuario_interno = get_usuario_interno_por_correo(email)
         else:

@@ -17,6 +17,7 @@ from .utils import (
     build_sucursal_scope_summary,
     get_random_inspection_branch_ids,
     get_personalized_role_for_email,
+    is_app_admin,
     sync_random_inspection_assignment,
 )
 
@@ -296,7 +297,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     apellidos = serializers.CharField(source="last_name")
     correo = serializers.EmailField(source="email")
     activo = serializers.BooleanField(source="is_active", required=False)
-    es_administrador = serializers.BooleanField(source="is_staff", required=False)
+    es_administrador = serializers.SerializerMethodField()
     telefono = serializers.CharField(required=False, allow_blank=True, write_only=True)
     cargo = serializers.CharField(required=False, allow_blank=True, write_only=True)
     inspeccion_aleatoria = serializers.BooleanField(
@@ -332,13 +333,29 @@ class UsuarioSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {"password": {"write_only": True}}
 
+    def get_es_administrador(self, obj):
+        return is_app_admin(obj)
+
+    def to_internal_value(self, data):
+        es_admin_raw = data.get("es_administrador")
+        result = super().to_internal_value(data)
+        if "es_administrador" in data:
+            result["es_administrador"] = bool(es_admin_raw)
+        return result
+
+    def _set_es_administrador(self, user, es_administrador):
+        from app.models import UsuarioPreferencia
+        pref, _ = UsuarioPreferencia.objects.get_or_create(usuario=user)
+        pref.es_administrador = bool(es_administrador)
+        pref.save(update_fields=["es_administrador"])
+
     def create(self, validated_data):
         permisos_personalizados = validated_data.pop("permisos_personalizados", None)
         roles = validated_data.pop("roles", [])
         password = validated_data.pop("password", None)
         sucursales_por_modulo = validated_data.pop("sucursales_por_modulo", None)
         inspeccion_aleatoria = bool(validated_data.pop("inspeccion_aleatoria", False))
-        es_administrador = bool(validated_data.pop("is_staff", False))
+        es_administrador = bool(validated_data.pop("es_administrador", False))
         validated_data.pop("telefono", None)
         validated_data.pop("cargo", None)
 
@@ -346,7 +363,6 @@ class UsuarioSerializer(serializers.ModelSerializer):
             email = validated_data.get("email", "").strip().lower()
             validated_data["email"] = email
             validated_data["username"] = email
-            validated_data["is_staff"] = es_administrador
             if password:
                 user = User.objects.create_user(password=password, **validated_data)
             else:
@@ -357,8 +373,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
             if roles is not None:
                 user.roles.set(roles)
 
+            self._set_es_administrador(user, es_administrador)
             sync_random_inspection_assignment(user, inspeccion_aleatoria)
-            if user.is_staff:
+            if es_administrador:
                 self._sync_personalized_permissions(user, [])
                 self._sync_sucursales_por_modulo(user, [])
             else:
@@ -372,14 +389,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password", None)
         sucursales_por_modulo = validated_data.pop("sucursales_por_modulo", None)
         inspeccion_aleatoria = validated_data.pop("inspeccion_aleatoria", None)
-        es_administrador = validated_data.pop("is_staff", None)
+        es_administrador = validated_data.pop("es_administrador", None)
         validated_data.pop("telefono", None)
         validated_data.pop("cargo", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        if es_administrador is not None:
-            instance.is_staff = bool(es_administrador)
         if "email" in validated_data:
             instance.username = (validated_data.get("email") or "").strip().lower()
         instance.save()
@@ -390,7 +405,11 @@ class UsuarioSerializer(serializers.ModelSerializer):
         if inspeccion_aleatoria is not None:
             sync_random_inspection_assignment(instance, bool(inspeccion_aleatoria))
 
-        if instance.is_staff:
+        if es_administrador is not None:
+            self._set_es_administrador(instance, es_administrador)
+
+        admin_flag = es_administrador if es_administrador is not None else is_app_admin(instance)
+        if admin_flag:
             self._sync_personalized_permissions(instance, [])
             self._sync_sucursales_por_modulo(instance, [])
         else:
@@ -531,7 +550,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             obj.roles.all(),
             extra_roles=[get_personalized_role_for_email(obj.email)],
         )
-        if obj.is_staff or obj.is_superuser:
+        if is_app_admin(obj):
             return summary
         return _filter_admin_only_summary(summary)
 
@@ -575,7 +594,7 @@ class UsuarioDestinatarioSerializer(serializers.ModelSerializer):
     apellidos = serializers.CharField(source="last_name", read_only=True)
     correo = serializers.EmailField(source="email", read_only=True)
     activo = serializers.BooleanField(source="is_active", read_only=True)
-    es_administrador = serializers.BooleanField(source="is_staff", read_only=True)
+    es_administrador = serializers.SerializerMethodField()
     permisos_resumen = serializers.SerializerMethodField()
     sucursales = serializers.SerializerMethodField()
     sucursales_por_modulo = serializers.SerializerMethodField()
@@ -594,12 +613,15 @@ class UsuarioDestinatarioSerializer(serializers.ModelSerializer):
             "sucursales_por_modulo",
         ]
 
+    def get_es_administrador(self, obj):
+        return is_app_admin(obj)
+
     def get_permisos_resumen(self, obj):
         summary = build_permissions_summary(
             obj.roles.all(),
             extra_roles=[get_personalized_role_for_email(obj.email)],
         )
-        if obj.is_staff or obj.is_superuser:
+        if is_app_admin(obj):
             return summary
         return _filter_admin_only_summary(summary)
 
@@ -654,7 +676,7 @@ class AuthUserSerializer(serializers.ModelSerializer):
 
     nombre = serializers.CharField(source="first_name", read_only=True)
     apellido = serializers.CharField(source="last_name", read_only=True)
-    es_administrador = serializers.BooleanField(source="is_staff", read_only=True)
+    es_administrador = serializers.SerializerMethodField()
     sucursales_por_modulo = serializers.SerializerMethodField()
 
     class Meta:
@@ -671,8 +693,11 @@ class AuthUserSerializer(serializers.ModelSerializer):
             "sucursales_por_modulo",
         ]
 
+    def get_es_administrador(self, obj):
+        return is_app_admin(obj)
+
     def get_sucursales_por_modulo(self, obj):
-        if obj.is_staff or obj.is_superuser:
+        if is_app_admin(obj):
             return None
         return build_sucursal_scope_summary(obj)
 

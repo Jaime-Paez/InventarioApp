@@ -12,13 +12,14 @@ from .models import CasaComercial
 
 class CasaComercialListadoTests(APITestCase):
     def setUp(self):
+        from app.models import UsuarioPreferencia
         user_model = get_user_model()
         self.user = user_model.objects.create_user(
             username="admin_casa",
             email="admin_casa@example.com",
             password="test12345",
-            is_staff=True,
         )
+        UsuarioPreferencia.objects.get_or_create(usuario=self.user, defaults={"es_administrador": True})
         self.client.force_authenticate(user=self.user)
 
     def test_listado_casa_comercial_ok(self):

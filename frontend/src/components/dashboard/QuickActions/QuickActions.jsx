@@ -947,6 +947,13 @@ function QuickActions({
         const solicitudId = normalizeId(reminder?.context?.id)
         return Boolean(solicitudId) && !existingShipmentIds.has(solicitudId)
       })
+      .filter((reminder) => {
+        if (user?.is_staff || user?.is_superuser) return true
+        if (!currentReceiveBranchIdSet.size) return true
+        const sucursalSolicitanteId = normalizeId(reminder?.context?.sucursal_solicitante_id)
+        if (!sucursalSolicitanteId) return true
+        return currentReceiveBranchIdSet.has(sucursalSolicitanteId)
+      })
       .map((reminder) => {
         const solicitudId = normalizeId(reminder?.context?.id)
         const contextLabel = String(reminder?.context?.label || '').trim()
@@ -963,7 +970,7 @@ function QuickActions({
         }
       })
       .sort((a, b) => getReminderTimestamp(b?.reminder) - getReminderTimestamp(a?.reminder))
-  }, [canViewInTransitShipments, currentUserIds, inTransitShipments, reminders])
+  }, [canViewInTransitShipments, currentReceiveBranchIdSet, currentUserIds, inTransitShipments, reminders, user])
 
   const visibleInTransitShipments = useMemo(
     () => [

@@ -16,6 +16,20 @@ SCOPE_ACTION_KEYS = (
 )
 
 
+def is_app_admin(user):
+    """True si el usuario es administrador de la app o superuser de Django."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False):
+        return True
+    try:
+        from app.models import UsuarioPreferencia
+        pref = UsuarioPreferencia.objects.get(usuario=user)
+        return bool(pref.es_administrador)
+    except Exception:
+        return False
+
+
 def normalize_scope_action_flags(source):
     flags = {key: bool(source.get(key)) for key in SCOPE_ACTION_KEYS}
 
@@ -105,7 +119,7 @@ def get_permisos_efectivos(usuario, email):
             extra_roles.append(fallback_role)
 
     summary = build_permissions_summary(roles, extra_roles=extra_roles)
-    if usuario and (usuario.is_staff or usuario.is_superuser):
+    if is_app_admin(usuario):
         return summary
 
     return [
@@ -164,7 +178,7 @@ def user_has_module_action(usuario, module_key, action_key="puede_leer"):
     if not usuario:
         return False
 
-    if usuario.is_staff or usuario.is_superuser:
+    if is_app_admin(usuario):
         return True
 
     permisos = get_permisos_efectivos(usuario, getattr(usuario, "email", ""))
@@ -253,7 +267,7 @@ def get_random_inspection_branch_ids(usuario):
 def _sync_random_inspection_inventory_access(usuario, enabled):
     enabled = bool(enabled)
 
-    if usuario.is_staff or usuario.is_superuser:
+    if is_app_admin(usuario):
         return
 
     personalized_role = get_personalized_role_for_email(

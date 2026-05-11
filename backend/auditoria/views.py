@@ -4,13 +4,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from usuarios.utils import is_app_admin
+
 from .models import RegistroAuditoria
 
 
 def _is_admin(user):
-    return user is not None and getattr(user, "is_authenticated", False) and (
-        getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
-    )
+    return user is not None and getattr(user, "is_authenticated", False) and is_app_admin(user)
 
 
 def _serialize_registro(r):

@@ -1,7 +1,7 @@
 from rest_framework.exceptions import PermissionDenied
 
 from .models import MODULOS_CON_ALCANCE_SUCURSAL, UsuarioModuloSucursal, UsuarioSucursal
-from .utils import normalize_scope_action_flags
+from .utils import is_app_admin, normalize_scope_action_flags
 
 
 ACTION_KEYS = (
@@ -102,7 +102,7 @@ def get_allowed_sucursal_ids(user, module_key, action_key=None):
     if not user or not user.is_authenticated:
         return set()
 
-    if user.is_staff or user.is_superuser:
+    if is_app_admin(user):
         return None
 
     scoped_index = _get_scoped_branch_action_index(user)
@@ -129,7 +129,7 @@ def get_readable_sucursal_ids(user, module_key):
     if not user or not user.is_authenticated:
         return set()
 
-    if user.is_staff or user.is_superuser:
+    if is_app_admin(user):
         return None
 
     scoped_index = _get_scoped_branch_action_index(user)

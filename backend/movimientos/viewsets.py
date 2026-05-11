@@ -35,6 +35,7 @@ from usuarios.sucursal_scope import (
     get_allowed_sucursal_ids_for_modules,
     get_readable_sucursal_ids,
 )
+from usuarios.utils import is_app_admin
 from .models import (
     DetalleMovimiento,
     MovimientoInventario,
@@ -439,7 +440,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             movimiento_entrada_id__isnull=True,
         )
 
-        if not (self.request.user.is_staff or self.request.user.is_superuser):
+        if not is_app_admin(self.request.user):
             allowed = get_readable_sucursal_ids(
                 self.request.user,
                 RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
@@ -702,7 +703,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             },
         )
 
-        if self.request.user.is_staff or self.request.user.is_superuser:
+        if is_app_admin(self.request.user):
             return queryset
 
         permission_checker = MovimientoInventarioModulePermission()
@@ -1093,7 +1094,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         candidate_users = User.objects.filter(
             is_active=True
         ).filter(
-            Q(is_staff=True)
+            Q(preferencia_operativa__es_administrador=True)
             | Q(is_superuser=True)
             | Q(id__in=sorted(scoped_user_ids | assigned_user_ids))
         ).order_by("id")
@@ -1140,7 +1141,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         User = get_user_model()
         candidate_users = User.objects.filter(is_active=True).filter(
-            Q(is_staff=True)
+            Q(preferencia_operativa__es_administrador=True)
             | Q(is_superuser=True)
             | Q(id__in=sorted(scoped_user_ids | assigned_user_ids))
         ).order_by("id")
@@ -1168,7 +1169,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         seen_recipient_ids = set()
 
         for candidate in User.objects.filter(is_active=True).filter(
-            Q(is_staff=True) | Q(is_superuser=True)
+            Q(preferencia_operativa__es_administrador=True) | Q(is_superuser=True)
         ).order_by("id"):
             recipient = self._normalize_reminder_recipient(candidate)
             recipient_id = str(recipient.get("id") if recipient else "").strip()
@@ -3660,7 +3661,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="traslados-inconvenientes")
     def traslados_inconvenientes(self, request):
-        if not (request.user.is_staff or request.user.is_superuser):
+        if not is_app_admin(request.user):
             return Response(
                 {
                     "detail": (
@@ -3725,7 +3726,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         url_path=r"traslados-inconvenientes/(?P<inconveniente_id>\d+)/resolver",
     )
     def resolver_traslado_inconveniente(self, request, inconveniente_id=None):
-        if not (request.user.is_staff or request.user.is_superuser):
+        if not is_app_admin(request.user):
             return Response(
                 {
                     "detail": (

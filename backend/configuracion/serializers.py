@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from usuarios.models import RolPermiso
+from usuarios.utils import is_app_admin
 
 from .models import ConfiguracionSistema
 
@@ -8,7 +9,7 @@ from .models import ConfiguracionSistema
 def _can_manage_random_inspection_items(user):
     if user is None or not getattr(user, "is_authenticated", False):
         return False
-    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+    if is_app_admin(user):
         return True
     return user.roles.filter(
         permisos__modulo=RolPermiso.Modulos.USUARIOS,

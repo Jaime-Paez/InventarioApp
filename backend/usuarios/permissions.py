@@ -5,6 +5,7 @@ from .utils import (
     build_full_permissions,
     get_permisos_efectivos,
     get_usuario_interno_por_correo,
+    is_app_admin,
 )
 
 
@@ -54,7 +55,7 @@ class ModulePermission(BasePermission):
         if hasattr(request, "_module_permission_index"):
             return request._module_permission_index
 
-        if request.user.is_staff or request.user.is_superuser:
+        if is_app_admin(request.user):
             permisos = build_full_permissions()
         else:
             email = request.user.email
@@ -325,7 +326,7 @@ class ConfiguracionModulePermission(ModulePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        return bool(request.user.is_staff or request.user.is_superuser)
+        return is_app_admin(request.user)
 
 
 class MovimientoInventarioModulePermission(ModulePermission):
@@ -337,7 +338,7 @@ class MovimientoInventarioModulePermission(ModulePermission):
 
         action = getattr(view, "action", "")
         if action in {"traslados_inconvenientes", "resolver_traslado_inconveniente"}:
-            return bool(request.user.is_staff or request.user.is_superuser)
+            return is_app_admin(request.user)
 
         if action == "decision_solicitud_traslado" and request.method == "POST":
             permission_index = self._get_permission_index(request)

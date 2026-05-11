@@ -44,6 +44,7 @@ class UsuarioPreferencia(models.Model):
         on_delete=models.CASCADE,
         related_name="preferencia_operativa",
     )
+    es_administrador = models.BooleanField(default=False)
     inspeccion_aleatoria = models.BooleanField(default=False)
     inspeccion_aleatoria_sucursales = models.JSONField(
         default=list,

@@ -24,6 +24,7 @@ from usuarios.utils import (
     get_permisos_efectivos,
     get_random_inspection_branch_ids,
     get_usuario_interno_por_correo,
+    is_app_admin,
 )
 
 from .models import (
@@ -87,7 +88,7 @@ def _get_permission_index_for_user(user):
     if user is None or not getattr(user, "is_authenticated", False):
         return {}
 
-    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+    if is_app_admin(user):
         permisos = build_full_permissions()
     else:
         email = str(getattr(user, "email", "") or "").strip().lower()
@@ -432,11 +433,18 @@ def _sanitize_context(raw):
     if not context_type or not context_id:
         return None
 
-    return {
+    result = {
         "type": context_type,
         "id": context_id,
         "label": _normalize_text(source.get("label") or source.get("nombre")),
     }
+    sucursal_solicitante_id = _normalize_id(source.get("sucursal_solicitante_id"))
+    if sucursal_solicitante_id:
+        result["sucursal_solicitante_id"] = sucursal_solicitante_id
+    sucursal_proveedora_id = _normalize_id(source.get("sucursal_proveedora_id"))
+    if sucursal_proveedora_id:
+        result["sucursal_proveedora_id"] = sucursal_proveedora_id
+    return result
 
 
 def _sanitize_reminder(raw):
@@ -723,7 +731,16 @@ def _merge_reminder(existing_reminder, incoming_reminder):
         "name": "Usuario",
     }
 
-    merged["context"] = incoming.get("context") or existing.get("context")
+    _incoming_ctx = incoming.get("context") or {}
+    _existing_ctx = existing.get("context") or {}
+    if _incoming_ctx:
+        _merged_ctx = dict(_incoming_ctx)
+        for _ctx_key in ("sucursal_solicitante_id", "sucursal_proveedora_id"):
+            if not _merged_ctx.get(_ctx_key) and _existing_ctx.get(_ctx_key):
+                _merged_ctx[_ctx_key] = _existing_ctx[_ctx_key]
+        merged["context"] = _merged_ctx
+    else:
+        merged["context"] = _existing_ctx or None
     merged["kind"] = incoming.get("kind") or existing.get("kind") or ""
     merged["deadlineAt"] = incoming.get("deadlineAt") or existing.get("deadlineAt") or ""
 
@@ -1419,7 +1436,7 @@ def _normalize_random_inspection_review_state(value):
 def _can_verify_random_inspection(user):
     if user is None or not getattr(user, "is_authenticated", False):
         return False
-    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+    if is_app_admin(user):
         return True
     return user.roles.filter(
         permisos__modulo=RolPermiso.Modulos.USUARIOS,
@@ -1432,7 +1449,7 @@ def _get_random_inspection_verify_recipients():
     queryset = (
         user_model.objects.filter(is_active=True)
         .filter(
-            Q(is_staff=True)
+            Q(preferencia_operativa__es_administrador=True)
             | Q(is_superuser=True)
             | Q(
                 roles__permisos__modulo=RolPermiso.Modulos.USUARIOS,
