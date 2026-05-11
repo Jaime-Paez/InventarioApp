@@ -97,6 +97,20 @@ class SolicitudTraslado(models.Model):
         choices=Estados.choices,
         default=Estados.PENDIENTE,
     )
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="solicitudes_traslado_creadas",
+        null=True,
+        blank=True,
+    )
+    enviado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="solicitudes_traslado_enviadas",
+        null=True,
+        blank=True,
+    )
     motivo_rechazo = models.TextField(blank=True, default="")
     rechazada_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,

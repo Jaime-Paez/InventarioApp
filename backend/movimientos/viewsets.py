@@ -2289,7 +2289,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 action_key="puede_crear",
             )
 
-            solicitud = serializer.save()
+            solicitud = serializer.save(creado_por=request.user)
             self._append_transfer_request_reminder(
                 solicitud=solicitud,
                 actor_user=request.user,
@@ -2316,6 +2316,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         allowed_states = {choice[0] for choice in SolicitudTraslado.Estados.choices}
         if estado in allowed_states:
             queryset = queryset.filter(estado=estado)
+
+        if estado == SolicitudTraslado.Estados.APROBADA:
+            queryset = queryset.filter(movimiento_salida_id__isnull=True)
 
         sucursal_proveedora_raw = (
             request.query_params.get("sucursal_proveedora_id") or ""
@@ -2683,12 +2686,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 solicitud_locked.motivo_rechazo = ""
                 solicitud_locked.rechazada_por = None
                 solicitud_locked.rechazada_en = None
+                solicitud_locked.enviado_por = request.user
                 solicitud_locked.save(
                     update_fields=[
                         "estado",
                         "motivo_rechazo",
                         "rechazada_por",
                         "rechazada_en",
+                        "enviado_por",
                         "updated_at",
                     ]
                 )
@@ -3160,27 +3165,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 )
             queryset = queryset.filter(sucursal_solicitante_id=int(sucursal_solicitante_raw))
 
-        allowed = get_allowed_sucursal_ids(
-            request.user,
-            RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
-            action_key=("puede_crear", "puede_actualizar"),
-        )
-        if allowed is not None:
-            if not allowed:
-                return Response([], status=status.HTTP_200_OK)
-            # Intersect with the user's directly-assigned sucursales so that
-            # users with entradas permissions on a remote branch (e.g. the sender)
-            # don't see incoming shipments destined for that branch in their feed.
-            user_assigned_ids = set(
-                UsuarioSucursal.objects.filter(usuario=request.user).values_list(
-                    "sucursal_id", flat=True
-                )
-            )
-            if user_assigned_ids:
-                allowed = allowed & user_assigned_ids
-            if not allowed:
-                return Response([], status=status.HTTP_200_OK)
-            queryset = queryset.filter(sucursal_solicitante_id__in=sorted(allowed))
+        queryset = queryset.filter(creado_por=request.user)
 
         pending_issue_count_by_solicitud = {
             int(row["solicitud_id"]): int(row["count"] or 0)

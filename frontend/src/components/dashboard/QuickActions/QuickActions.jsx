@@ -948,10 +948,8 @@ function QuickActions({
         return Boolean(solicitudId) && !existingShipmentIds.has(solicitudId)
       })
       .filter((reminder) => {
-        if (user?.is_staff || user?.is_superuser) return true
-        if (!currentReceiveBranchIdSet.size) return true
         const sucursalSolicitanteId = normalizeId(reminder?.context?.sucursal_solicitante_id)
-        if (!sucursalSolicitanteId) return true
+        if (!sucursalSolicitanteId) return false
         return currentReceiveBranchIdSet.has(sucursalSolicitanteId)
       })
       .map((reminder) => {
