@@ -27,7 +27,6 @@ import {
   getPrimeGlobalFilterValue,
 } from '../../../utils/primeTableQuery'
 import {
-  buildMovementExportColumns,
   buildMovementProductExportRows,
   buildMovementProductsExportText,
   buildMovementProductsSearchText,
@@ -908,7 +907,7 @@ function EntradasTable({
   }
 
   const columnClassName = (field) => {
-    if (field === 'fecha' || field === 'total' || field === 'funcional_label') {
+    if (field === 'fecha' || field === 'total' || field === 'funcional_label' || field === 'estado_nombre') {
       return 'column-max-min-width--small'
     }
     return 'column-max-min-width'
@@ -1198,17 +1197,33 @@ function EntradasTable({
     setShowSearchModal(true)
   }
 
-  const exportColumns = useMemo(
-    () => buildMovementExportColumns(selectedColumns.map((col) => ({ key: col.nombrevar, header: col.header }))),
-    [selectedColumns]
-  )
+  const exportColumns = useMemo(() => {
+    const cols = selectedColumns.flatMap((col) => {
+      if (col.nombrevar === 'productos_resumen') {
+        return [
+          { key: 'producto_codigo', header: 'Código' },
+          { key: 'producto_nombre', header: 'Nombre producto' },
+          { key: 'producto_cantidad', header: 'Cantidad' },
+        ]
+      }
+      return [{ key: col.nombrevar, header: col.header }]
+    })
+    if (!cols.some((col) => col.key === 'estado_nombre')) {
+      cols.push({ key: 'estado_nombre', header: 'Estado' })
+    }
+    return cols
+  }, [selectedColumns])
 
   const getExportValue = useCallback((row, field) => {
-    if (field === 'productos_resumen') {
-      if (row?.__export_product) {
-        return formatMovementProductLabel(row.__export_product) || '-'
-      }
-      return buildMovementProductsExportText(row?.productos)
+    if (field === 'producto_codigo') {
+      return row?.__export_product
+        ? String(row.__export_product?.producto_codigo || '').trim() || '-'
+        : '-'
+    }
+    if (field === 'producto_nombre') {
+      return row?.__export_product
+        ? String(row.__export_product?.producto_nombre || '').trim() || '-'
+        : '-'
     }
     if (field === 'producto_cantidad') {
       return row?.__export_product
@@ -1218,6 +1233,9 @@ function EntradasTable({
     if (field === 'total') {
       const total = Number(row?.total)
       return Number.isFinite(total) ? total.toFixed(2) : ''
+    }
+    if (field === 'estado_nombre') {
+      return formatEstadoForTable(row?.estado_nombre || row?.estado_movimiento) || ''
     }
     return row?.[field] ?? ''
   }, [])

@@ -68,7 +68,8 @@ export const buildMovementExportColumns = (columns) =>
   (Array.isArray(columns) ? columns : []).flatMap((col) => {
     if (col?.key === 'productos_resumen') {
       return [
-        col,
+        { key: 'producto_codigo', header: 'Código' },
+        { key: 'producto_nombre', header: 'Nombre producto' },
         { key: 'producto_cantidad', header: 'Cantidad' },
       ]
     }
@@ -77,7 +78,9 @@ export const buildMovementExportColumns = (columns) =>
 
 export const buildMovementProductExportRows = (rows, columns) => {
   const exportColumns = Array.isArray(columns) ? columns : []
-  const shouldExpandByProduct = exportColumns.some((col) => col?.key === 'producto_cantidad')
+  const shouldExpandByProduct = exportColumns.some(
+    (col) => col?.key === 'producto_cantidad' || col?.key === 'producto_codigo' || col?.key === 'producto_nombre'
+  )
   const baseRows = Array.isArray(rows) ? rows : []
   if (!shouldExpandByProduct) return baseRows
 
