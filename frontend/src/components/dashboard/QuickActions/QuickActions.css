@@ -532,6 +532,34 @@
   border-color: rgba(248, 113, 113, 0.3);
 }
 
+.quick-actions__receive-dialog.dark .quick-actions__receive-summary-title {
+  color: var(--color-text-title-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-summary-table th {
+  color: var(--color-text-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-summary-table td {
+  color: var(--color-text-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-summary-table td strong {
+  color: var(--color-text-title-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-summary-table td span {
+  color: var(--color-text-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-summary-row--missing > td {
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-summary-row--extra > td {
+  background: rgba(34, 197, 94, 0.08);
+}
+
 /* -------------------------------------------------------
    BOTONES (tamaño EXACTO como tú lo tenías)
 ------------------------------------------------------- */
