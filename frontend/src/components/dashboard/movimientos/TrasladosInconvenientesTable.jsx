@@ -17,6 +17,7 @@ import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersTable/UsersTable.css'
 import './CreateSalida.css'
 import './TrasladosInconvenientesTable.css'
+import StaticFieldDisplay from './StaticFieldDisplay'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
@@ -1566,65 +1567,43 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                       <h4>Detalle general</h4>
                     </div>
                   </div>
-                  <p className="create-user__hint transfer-issues-details__meta">
-                    Documento #{String(selectedIssue?.solicitud_no_documento || '-').trim() || '-'} |{' '}
-                    {String(selectedIssue?.producto_codigo || '-').trim() || '-'} -{' '}
-                    {String(selectedIssue?.producto_nombre || '-').trim() || '-'}
-                  </p>
-                  <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
-                      <span>Producto</span>
-                      <input
-                        type="text"
-                        value={`${String(selectedIssue?.producto_codigo || '-').trim()} - ${String(
-                          selectedIssue?.producto_nombre || '-'
-                        ).trim()}`}
-                        readOnly
-                        disabled
+                  <div className="create-salida__field-group--defined">
+                    <div className="create-user__grid create-user__grid--two">
+                      <StaticFieldDisplay
+                        label="Producto"
+                        value={`${String(selectedIssue?.producto_codigo || '-').trim()} - ${String(selectedIssue?.producto_nombre || '-').trim()}`}
                       />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Faltante</span>
-                      <input
-                        type="text"
-                        value={String(Number.parseInt(String(selectedIssue?.cantidad_faltante || 0), 10) || 0)}
-                        readOnly
-                        disabled
-                      />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Sucursal proveedora</span>
-                      <input
-                        type="text"
+                      <div className="create-user__field create-salida__static-field">
+                        <span>{selectedIssue?.tipo === 'sobrante' ? 'Sobrante' : 'Faltante'}</span>
+                        <div className={`create-salida__static-value transfer-issues-cantidad--${selectedIssue?.tipo === 'sobrante' ? 'sobrante' : 'faltante'}`}>
+                          {selectedIssue?.tipo === 'sobrante' ? '+' : '−'}{String(Number.parseInt(String(selectedIssue?.cantidad_faltante || 0), 10) || 0)}
+                        </div>
+                      </div>
+                      <StaticFieldDisplay
+                        label="Sucursal proveedora"
                         value={String(selectedIssue?.sucursal_proveedora || '-').trim() || '-'}
-                        readOnly
-                        disabled
                       />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Sucursal destino</span>
-                      <input
-                        type="text"
+                      <StaticFieldDisplay
+                        label="Sucursal destino"
                         value={String(selectedIssue?.sucursal_solicitante || '-').trim() || '-'}
-                        readOnly
-                        disabled
                       />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Estado</span>
-                      <input type="text" value={formatEstado(selectedIssue?.estado)} readOnly disabled />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Resolucion</span>
-                      <input type="text" value={formatResolucion(selectedIssue?.resolucion)} readOnly disabled />
-                    </label>
+                      <StaticFieldDisplay
+                        label="Estado"
+                        value={formatEstado(selectedIssue?.estado)}
+                      />
+                      <StaticFieldDisplay
+                        label="Resolucion"
+                        value={formatResolucion(selectedIssue?.resolucion)}
+                      />
+                    </div>
+                    {String(selectedIssue?.motivo || '').trim() ? (
+                      <StaticFieldDisplay
+                        label="Novedad"
+                        value={String(selectedIssue?.motivo || '').trim()}
+                        fullWidth
+                      />
+                    ) : null}
                   </div>
-                  {String(selectedIssue?.motivo || '').trim() ? (
-                    <label className="create-user__field create-user__field--full">
-                      <span>Novedad</span>
-                      <textarea rows={2} value={String(selectedIssue?.motivo || '').trim()} readOnly disabled />
-                    </label>
-                  ) : null}
                 </section>
                 <section className="create-user__section">
                   <div className="create-user__section-header">
@@ -1640,10 +1619,10 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                           <p className="muted transfer-issues-details__hint">
                             Decide si el sobrante debe restarse del inventario del proveedor (lo envió por error) o no hacer ningún cambio (el destino se queda con el extra).
                           </p>
-                          <div className="transfer-issues-details__decisions">
+                          <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
                             <button
                               type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
                                 resolverDecision === 'restar_proveedora' ? ' is-active' : ''
                               }`}
                               onClick={() => {
@@ -1660,7 +1639,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                             </button>
                             <button
                               type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
                                 resolverDecision === 'sin_cambios' ? ' is-active' : ''
                               }`}
                               onClick={() => {
@@ -1685,7 +1664,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                           <div className="transfer-issues-details__decisions">
                             <button
                               type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--primary${
                                 resolverDecision === 'sumar_proveedora' ? ' is-active' : ''
                               }`}
                               onClick={() => {
@@ -1702,7 +1681,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                             </button>
                             <button
                               type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--success${
                                 resolverDecision === 'sumar_solicitante' ? ' is-active' : ''
                               }`}
                               onClick={() => {

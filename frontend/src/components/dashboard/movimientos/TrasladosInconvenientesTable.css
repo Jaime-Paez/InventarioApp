@@ -148,6 +148,10 @@
   gap: 10px;
 }
 
+.transfer-issues-details__decisions--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .transfer-issues-details__decision-btn {
   min-height: 40px;
   padding: 8px 12px;
@@ -165,10 +169,124 @@
   background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
 }
 
+/* primary — blue (sumar a proveedora) */
+.transfer-issues-details__decision-btn--primary {
+  color: #1e40af;
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.06);
+}
+.transfer-issues-details__decision-btn--primary:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.13);
+}
+.transfer-issues-details__decision-btn--primary.is-active {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: rgba(59, 130, 246, 0.16);
+  color: #1d4ed8;
+}
+
+/* success — green (sumar a destino) */
+.transfer-issues-details__decision-btn--success {
+  color: #166534;
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.06);
+}
+.transfer-issues-details__decision-btn--success:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.13);
+}
+.transfer-issues-details__decision-btn--success.is-active {
+  border-color: rgba(34, 197, 94, 0.6);
+  background: rgba(34, 197, 94, 0.16);
+  color: #15803d;
+}
+
+/* danger — red (marcar desaparecido) */
 .transfer-issues-details__decision-btn--danger.is-active {
   border-color: rgba(239, 68, 68, 0.5);
   background: rgba(239, 68, 68, 0.14);
   color: #991b1b;
+}
+.transfer-issues-details__decision-btn--danger {
+  color: #991b1b;
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.05);
+}
+.transfer-issues-details__decision-btn--danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+/* warning — orange (restar de proveedora) */
+.transfer-issues-details__decision-btn--warning {
+  color: #92400e;
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.06);
+}
+.transfer-issues-details__decision-btn--warning:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.13);
+}
+.transfer-issues-details__decision-btn--warning.is-active {
+  border-color: rgba(245, 158, 11, 0.6);
+  background: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+}
+
+/* neutral — gray (no hacer nada) */
+.transfer-issues-details__decision-btn--neutral {
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+  background: transparent;
+}
+.transfer-issues-details__decision-btn--neutral:hover:not(:disabled) {
+  background: var(--table-color-hover);
+}
+.transfer-issues-details__decision-btn--neutral.is-active {
+  border-color: var(--color-border);
+  background: color-mix(in srgb, var(--color-border) 30%, transparent);
+  color: var(--color-text-primary);
+}
+
+/* dark mode overrides */
+.dashboard-shell.dark .transfer-issues-details__decision-btn--primary {
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.1);
+}
+.dashboard-shell.dark .transfer-issues-details__decision-btn--primary.is-active {
+  background: rgba(59, 130, 246, 0.22);
+  color: #bfdbfe;
+}
+.dashboard-shell.dark .transfer-issues-details__decision-btn--success {
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.1);
+}
+.dashboard-shell.dark .transfer-issues-details__decision-btn--success.is-active {
+  background: rgba(34, 197, 94, 0.22);
+  color: #bbf7d0;
+}
+.dashboard-shell.dark .transfer-issues-details__decision-btn--danger {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+}
+.dashboard-shell.dark .transfer-issues-details__decision-btn--danger.is-active {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+}
+.dashboard-shell.dark .transfer-issues-details__decision-btn--warning {
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+}
+.dashboard-shell.dark .transfer-issues-details__decision-btn--warning.is-active {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fde68a;
+}
+.dashboard-shell.dark .transfer-issues-details__decision-btn--neutral {
+  color: var(--color-text-dark);
+  border-color: var(--color-border-dark);
+}
+.dashboard-shell.dark .transfer-issues-details__decision-btn--neutral.is-active {
+  color: var(--color-text-title-dark);
 }
 
 .transfer-issues-details__field {
@@ -328,4 +446,22 @@
 
 .transfer-issues-page .users-datatable .row-selection-column .p-checkbox {
   margin: 0;
+}
+
+.transfer-issues-cantidad--faltante {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.transfer-issues-cantidad--sobrante {
+  color: #166534;
+  font-weight: 700;
+}
+
+.dashboard-shell.dark .transfer-issues-cantidad--faltante {
+  color: #fca5a5;
+}
+
+.dashboard-shell.dark .transfer-issues-cantidad--sobrante {
+  color: #86efac;
 }
