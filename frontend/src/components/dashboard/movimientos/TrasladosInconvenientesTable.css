@@ -239,9 +239,11 @@
   background: var(--table-color-hover);
 }
 .transfer-issues-details__decision-btn--neutral.is-active {
-  border-color: var(--color-border);
-  background: color-mix(in srgb, var(--color-border) 30%, transparent);
+  border-color: color-mix(in srgb, var(--color-text-secondary) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-border) 60%, transparent);
   color: var(--color-text-primary);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.13);
+  transform: translateY(1px);
 }
 
 /* dark mode overrides */
@@ -287,6 +289,9 @@
 }
 .dashboard-shell.dark .transfer-issues-details__decision-btn--neutral.is-active {
   color: var(--color-text-title-dark);
+  border-color: color-mix(in srgb, var(--color-text-dark) 55%, var(--color-border-dark));
+  background: color-mix(in srgb, var(--color-border-dark) 65%, transparent);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.28);
 }
 
 .transfer-issues-details__field {
