@@ -254,6 +254,30 @@
   cursor: not-allowed;
 }
 
+.dashboard-shell.dark .transfer-issues-state--pendiente {
+  color: #fde047;
+  background: rgba(250, 204, 21, 0.18);
+  border-color: rgba(250, 204, 21, 0.4);
+}
+
+.dashboard-shell.dark .transfer-issues-details__history-item {
+  border-color: var(--color-border-dark);
+  background: color-mix(in srgb, var(--color-primary-dark) 6%, var(--color-surface-darker));
+}
+
+.dashboard-shell.dark .transfer-issues-details__decision-btn:hover:not(:disabled) {
+  background: var(--table-color-hover-dark);
+}
+
+.dashboard-shell.dark .transfer-issues-details__decision-btn.is-active {
+  border-color: color-mix(in srgb, var(--color-primary-dark) 56%, var(--color-border-dark));
+  background: color-mix(in srgb, var(--color-primary-dark) 18%, var(--color-surface-darker));
+}
+
+.dashboard-shell.dark .transfer-issues-details__decision-btn--danger.is-active {
+  color: #fca5a5;
+}
+
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.transfer-issues-row--pendiente > td {
   background: color-mix(in srgb, #facc15 25%, var(--table-color-dark)) !important;
   border-bottom-color: color-mix(in srgb, #facc15 42%, var(--color-border-dark)) !important;

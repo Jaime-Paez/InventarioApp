@@ -2046,6 +2046,7 @@ function QuickActions({
           ? String(row?.cantidad_recibida_input ?? '')
           : String(receivedQty)
         const missingQty = Math.max(0, sentQty - receivedQty)
+        const surplusQty = Math.max(0, receivedQty - sentQty)
         const selectedSubdivisionId = normalizeId(row?.location_draft_subdivision_id)
         const locations = selectedSubdivisionId && receivedQty > 0
           ? [{ subdivision_id: selectedSubdivisionId, cantidad: receivedQty }]
@@ -2060,6 +2061,7 @@ function QuickActions({
           cantidad_recibida: receivedQty,
           cantidad_recibida_input: receivedQtyInput,
           cantidad_faltante: missingQty,
+          cantidad_sobrante: surplusQty,
           ubicaciones: locations,
           cantidad_asignada: assignedQty,
         }
@@ -2098,7 +2100,7 @@ function QuickActions({
       if (requireReviewed && !row?.recepcion_revisada) {
         return `Debes marcar como revisado ${productLabel}.`
       }
-      if (receivedQty === 0) {
+      if (receivedQty === 0 && !row?.recepcion_revisada) {
         return `Ingresa la cantidad recibida de ${productLabel}.`
       }
       if (assignedQty !== receivedQty) {
@@ -5091,6 +5093,7 @@ function QuickActions({
                 const row = activeReceiveShipmentRow
                 const rowProductId = normalizeId(row?.producto_id)
                 const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
+                const surplusQty = toPositiveInt(row?.cantidad_sobrante, 0)
                 const selectedBodegaId = normalizeId(row?.location_draft_bodega_id)
                 const selectedBodega = inTransitBodegaById.get(selectedBodegaId) || null
                 const bodegaQuery = normalizeSearchText(row?.location_draft_bodega_query || '')
@@ -5326,6 +5329,21 @@ function QuickActions({
                           <span>Novedad del faltante (obligatoria)</span>
                           <textarea
                             rows={2}
+                            value={String(row?.novedad || '')}
+                            onChange={(event) => {
+                              handleReceiveShipmentDraftFieldChange(rowProductId, 'novedad', event.target.value)
+                              if (receiveShipmentError) setReceiveShipmentError('')
+                            }}
+                            disabled={receiveShipmentSubmitting}
+                          />
+                        </label>
+                      )}
+                      {surplusQty > 0 && (
+                        <label className="quick-actions__receive-note">
+                          <span>Sobrante: {surplusQty} unidad{surplusQty !== 1 ? 'es' : ''} de más — se creará un inconveniente para resolverlo.</span>
+                          <textarea
+                            rows={2}
+                            placeholder="Novedad del sobrante (opcional)"
                             value={String(row?.novedad || '')}
                             onChange={(event) => {
                               handleReceiveShipmentDraftFieldChange(rowProductId, 'novedad', event.target.value)

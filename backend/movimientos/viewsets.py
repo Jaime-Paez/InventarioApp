@@ -2238,6 +2238,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "producto_id": int(inconveniente.producto_id),
             "producto_codigo": str(getattr(getattr(inconveniente, "producto", None), "codigo", "") or "").strip(),
             "producto_nombre": str(getattr(getattr(inconveniente, "producto", None), "nombre", "") or "").strip(),
+            "tipo": str(inconveniente.tipo or "faltante").strip(),
             "cantidad_faltante": int(inconveniente.cantidad_faltante or 0),
             "estado": str(inconveniente.estado or "").strip(),
             "resolucion": str(inconveniente.resolucion or "").strip(),
@@ -2271,6 +2272,21 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             defaults={"cantidad": 0},
         )
         inventory_row.cantidad = int(inventory_row.cantidad or 0) + qty
+        inventory_row.save(update_fields=["cantidad"])
+
+    @staticmethod
+    def _remove_stock_from_subdivision(subdivision_id, producto_id, cantidad):
+        qty = int(cantidad or 0)
+        if qty <= 0:
+            return
+        inventory_row = Inventario.objects.select_for_update().filter(
+            subdivision_id=int(subdivision_id),
+            producto_id=int(producto_id),
+            referencia="",
+        ).first()
+        if inventory_row is None:
+            return
+        inventory_row.cantidad = max(0, int(inventory_row.cantidad or 0) - qty)
         inventory_row.save(update_fields=["cantidad"])
 
     @action(detail=False, methods=["get", "post"], url_path="solicitudes-traslado")
@@ -3344,11 +3360,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if cantidad_recibida < 0 or cantidad_recibida > cantidad_enviada:
+            if cantidad_recibida < 0:
                 return Response(
                     {
                         "detail": (
-                            f"La cantidad recibida para producto {product_id} debe estar entre 0 y {cantidad_enviada}."
+                            f"La cantidad recibida para producto {product_id} no puede ser negativa."
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -3412,7 +3428,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            cantidad_faltante = int(cantidad_enviada - cantidad_recibida)
+            cantidad_faltante = max(0, int(cantidad_enviada - cantidad_recibida))
+            cantidad_sobrante = max(0, int(cantidad_recibida - cantidad_enviada))
             total_faltante += cantidad_faltante
 
             processed_items.append(
@@ -3422,6 +3439,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "cantidad_enviada": cantidad_enviada,
                     "cantidad_recibida": cantidad_recibida,
                     "cantidad_faltante": cantidad_faltante,
+                    "cantidad_sobrante": cantidad_sobrante,
                     "ubicaciones": ubicaciones,
                     "novedad": str(raw_item.get("novedad") or "").strip(),
                 }
@@ -3437,6 +3455,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        total_sobrante = sum(int(item.get("cantidad_sobrante") or 0) for item in processed_items)
 
         if resultado == "completo" and total_faltante > 0:
             return Response(
@@ -3578,6 +3598,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     solicitud=solicitud_locked,
                     movimiento_entrada=movimiento_entrada_locked,
                     producto_id=int(item["producto_id"]),
+                    tipo=TrasladoInconveniente.Tipos.FALTANTE,
                     cantidad_faltante=faltante,
                     estado=TrasladoInconveniente.Estados.PENDIENTE,
                     motivo=str(item.get("novedad") or "").strip(),
@@ -3589,6 +3610,48 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     detalle=(
                         f"Faltante detectado en recepcion. Enviado: {item['cantidad_enviada']}, "
                         f"recibido: {item['cantidad_recibida']}, faltante: {faltante}."
+                    ),
+                    actor=request.user,
+                )
+                inconveniente = (
+                    TrasladoInconveniente.objects.select_related(
+                        "solicitud",
+                        "solicitud__sucursal_solicitante",
+                        "solicitud__sucursal_proveedora",
+                        "producto",
+                        "creado_por",
+                        "resuelto_por",
+                        "sucursal_resolucion",
+                        "subdivision_resolucion",
+                    )
+                    .prefetch_related("historial__actor")
+                    .filter(pk=inconveniente.id)
+                    .first()
+                )
+                if inconveniente is not None:
+                    inconvenientes_payload.append(self._serialize_inconveniente(inconveniente))
+
+            for item in processed_items:
+                sobrante = int(item.get("cantidad_sobrante") or 0)
+                if sobrante <= 0:
+                    continue
+
+                inconveniente = TrasladoInconveniente.objects.create(
+                    solicitud=solicitud_locked,
+                    movimiento_entrada=movimiento_entrada_locked,
+                    producto_id=int(item["producto_id"]),
+                    tipo=TrasladoInconveniente.Tipos.SOBRANTE,
+                    cantidad_faltante=sobrante,
+                    estado=TrasladoInconveniente.Estados.PENDIENTE,
+                    motivo=str(item.get("novedad") or "").strip(),
+                    creado_por=request.user,
+                )
+                TrasladoInconvenienteHistorial.objects.create(
+                    inconveniente=inconveniente,
+                    accion="detectado",
+                    detalle=(
+                        f"Sobrante detectado en recepcion. Enviado: {item['cantidad_enviada']}, "
+                        f"recibido: {item['cantidad_recibida']}, sobrante: {sobrante}."
                     ),
                     actor=request.user,
                 )
@@ -3636,6 +3699,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 ),
                 "resultado": reception_result,
                 "faltantes": int(total_faltante),
+                "sobrantes": int(total_sobrante),
                 "solicitud": solicitud_output,
                 "inconvenientes": inconvenientes_payload,
                 "recordatorio_enviado": bool(reminder_sent),
@@ -3772,11 +3836,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         decision = self._normalize_state_name(request.data.get("decision"))
         motivo = str(request.data.get("motivo") or "").strip()
 
-        if decision not in {"sumar_solicitante", "sumar_proveedora", "perdido"}:
+        valid_decisions = {"sumar_solicitante", "sumar_proveedora", "perdido", "restar_proveedora", "sin_cambios"}
+        if decision not in valid_decisions:
             return Response(
                 {
                     "detail": (
-                        "Debes enviar una decision valida: sumar_solicitante, sumar_proveedora o perdido."
+                        "Debes enviar una decision valida: sumar_solicitante, sumar_proveedora, perdido, restar_proveedora o sin_cambios."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -3817,17 +3882,20 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             subdivision_resolucion_id = None
             resolucion = ""
             estado_resultado = TrasladoInconveniente.Estados.RESUELTO
+            es_sobrante = inconveniente_locked.tipo == TrasladoInconveniente.Tipos.SOBRANTE
 
-            if decision in {"sumar_solicitante", "sumar_proveedora"}:
-                target_branch_id = (
-                    int(inconveniente_locked.solicitud.sucursal_solicitante_id)
-                    if decision == "sumar_solicitante"
-                    else int(inconveniente_locked.solicitud.sucursal_proveedora_id)
-                )
+            if decision in {"sumar_solicitante", "sumar_proveedora", "restar_proveedora"}:
+                if decision == "restar_proveedora":
+                    target_branch_id = int(inconveniente_locked.solicitud.sucursal_proveedora_id)
+                elif decision == "sumar_solicitante":
+                    target_branch_id = int(inconveniente_locked.solicitud.sucursal_solicitante_id)
+                else:
+                    target_branch_id = int(inconveniente_locked.solicitud.sucursal_proveedora_id)
+
                 subdivision_id_raw = str(request.data.get("subdivision_id") or "").strip()
                 if not subdivision_id_raw.isdigit():
                     return Response(
-                        {"detail": "Debes indicar una subdivision valida para sumar inventario."},
+                        {"detail": "Debes indicar una subdivision valida para ajustar inventario."},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
@@ -3844,18 +3912,28 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                self._add_stock_to_subdivision(
-                    subdivision_id=int(subdivision.id),
-                    producto_id=int(inconveniente_locked.producto_id),
-                    cantidad=cantidad_faltante,
-                )
+                if decision == "restar_proveedora":
+                    self._remove_stock_from_subdivision(
+                        subdivision_id=int(subdivision.id),
+                        producto_id=int(inconveniente_locked.producto_id),
+                        cantidad=cantidad_faltante,
+                    )
+                    resolucion = TrasladoInconveniente.Resoluciones.RESTAR_PROVEEDORA
+                else:
+                    self._add_stock_to_subdivision(
+                        subdivision_id=int(subdivision.id),
+                        producto_id=int(inconveniente_locked.producto_id),
+                        cantidad=cantidad_faltante,
+                    )
+                    resolucion = (
+                        TrasladoInconveniente.Resoluciones.SUMAR_SOLICITANTE
+                        if decision == "sumar_solicitante"
+                        else TrasladoInconveniente.Resoluciones.SUMAR_PROVEEDORA
+                    )
                 sucursal_resolucion_id = target_branch_id
                 subdivision_resolucion_id = int(subdivision.id)
-                resolucion = (
-                    TrasladoInconveniente.Resoluciones.SUMAR_SOLICITANTE
-                    if decision == "sumar_solicitante"
-                    else TrasladoInconveniente.Resoluciones.SUMAR_PROVEEDORA
-                )
+            elif decision == "sin_cambios":
+                resolucion = TrasladoInconveniente.Resoluciones.SIN_CAMBIOS
             else:
                 resolucion = TrasladoInconveniente.Resoluciones.PERDIDO
                 estado_resultado = TrasladoInconveniente.Estados.PERDIDO
@@ -3878,16 +3956,19 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 ]
             )
 
-            action_label = (
-                "sumado_a_sucursal"
-                if decision in {"sumar_solicitante", "sumar_proveedora"}
-                else "marcado_como_perdido"
-            )
-            detail_text = (
-                f"Se resolvio el faltante de {cantidad_faltante} unidades."
-                if decision in {"sumar_solicitante", "sumar_proveedora"}
-                else f"Se marco como perdido el faltante de {cantidad_faltante} unidades."
-            )
+            tipo_label = "sobrante" if es_sobrante else "faltante"
+            if decision in {"sumar_solicitante", "sumar_proveedora"}:
+                action_label = "sumado_a_sucursal"
+                detail_text = f"Se resolvio el {tipo_label} de {cantidad_faltante} unidades sumando a sucursal."
+            elif decision == "restar_proveedora":
+                action_label = "restado_de_proveedora"
+                detail_text = f"Se resolvio el {tipo_label} de {cantidad_faltante} unidades restando del proveedor."
+            elif decision == "sin_cambios":
+                action_label = "sin_cambios"
+                detail_text = f"Se resolvio el {tipo_label} de {cantidad_faltante} unidades sin modificar inventario."
+            else:
+                action_label = "marcado_como_perdido"
+                detail_text = f"Se marco como perdido el {tipo_label} de {cantidad_faltante} unidades."
             if motivo:
                 detail_text = f"{detail_text} Motivo: {motivo}"
 

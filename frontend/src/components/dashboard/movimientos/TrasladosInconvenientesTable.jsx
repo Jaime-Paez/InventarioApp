@@ -88,6 +88,8 @@ const formatResolucion = (value) => {
   if (normalized === 'sumar_solicitante') return 'Sumado a sucursal destino'
   if (normalized === 'sumar_proveedora') return 'Sumado a sucursal proveedora'
   if (normalized === 'perdido') return 'Marcado como desaparecido'
+  if (normalized === 'restar_proveedora') return 'Restado de sucursal proveedora'
+  if (normalized === 'sin_cambios') return 'Sin cambios de inventario'
   return '-'
 }
 
@@ -96,6 +98,8 @@ const formatHistorialAccion = (value) => {
   if (normalized === 'detectado') return 'Detectado'
   if (normalized === 'sumado_a_sucursal') return 'Sumado a sucursal'
   if (normalized === 'marcado_como_perdido') return 'Marcado como desaparecido'
+  if (normalized === 'restado_de_proveedora') return 'Restado de proveedora'
+  if (normalized === 'sin_cambios') return 'Sin cambios'
   return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
 }
 
@@ -347,7 +351,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const resolverTargetBranchId = useMemo(() => {
     if (!selectedIssue) return ''
     if (resolverDecision === 'sumar_solicitante') return normalizeId(selectedIssue?.sucursal_solicitante_id)
-    if (resolverDecision === 'sumar_proveedora') return normalizeId(selectedIssue?.sucursal_proveedora_id)
+    if (resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora') return normalizeId(selectedIssue?.sucursal_proveedora_id)
     return ''
   }, [resolverDecision, selectedIssue])
 
@@ -356,7 +360,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     if (resolverDecision === 'sumar_solicitante') {
       return String(selectedIssue?.sucursal_solicitante || '').trim() || 'Sucursal destino'
     }
-    if (resolverDecision === 'sumar_proveedora') {
+    if (resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora') {
       return String(selectedIssue?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'
     }
     return ''
@@ -1631,64 +1635,110 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                   </div>
                   {canResolveSelectedIssue ? (
                     <>
-                      <p className="muted transfer-issues-details__hint">
-                        Decide si este faltante debe sumarse en la sucursal proveedora, en la sucursal destino, o marcarse como desaparecido.
-                      </p>
-                      <div className="transfer-issues-details__decisions">
-                        <button
-                          type="button"
-                          className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
-                            resolverDecision === 'sumar_proveedora' ? ' is-active' : ''
-                          }`}
-                          onClick={() => {
-                            setResolverDecision('sumar_proveedora')
-                            setResolverBodegaId('')
-                            setResolverDivisionId('')
-                            setResolverSubdivisionId('')
-                            setResolverNeedsManualLocation(false)
-                            closeResolverLocationDropdown()
-                          }}
-                          disabled={resolverSubmitting}
-                        >
-                          Sumar a sucursal proveedora
-                        </button>
-                        <button
-                          type="button"
-                          className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
-                            resolverDecision === 'sumar_solicitante' ? ' is-active' : ''
-                          }`}
-                          onClick={() => {
-                            setResolverDecision('sumar_solicitante')
-                            setResolverBodegaId('')
-                            setResolverDivisionId('')
-                            setResolverSubdivisionId('')
-                            setResolverNeedsManualLocation(false)
-                            closeResolverLocationDropdown()
-                          }}
-                          disabled={resolverSubmitting}
-                        >
-                          Sumar a sucursal destino
-                        </button>
-                        <button
-                          type="button"
-                          className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--danger${
-                            resolverDecision === 'perdido' ? ' is-active' : ''
-                          }`}
-                          onClick={() => {
-                            setResolverDecision('perdido')
-                            setResolverBodegaId('')
-                            setResolverDivisionId('')
-                            setResolverSubdivisionId('')
-                            setResolverNeedsManualLocation(false)
-                            closeResolverLocationDropdown()
-                          }}
-                          disabled={resolverSubmitting}
-                        >
-                          Marcar como desaparecido
-                        </button>
-                      </div>
+                      {selectedIssue?.tipo === 'sobrante' ? (
+                        <>
+                          <p className="muted transfer-issues-details__hint">
+                            Decide si el sobrante debe restarse del inventario del proveedor (lo envió por error) o no hacer ningún cambio (el destino se queda con el extra).
+                          </p>
+                          <div className="transfer-issues-details__decisions">
+                            <button
+                              type="button"
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                                resolverDecision === 'restar_proveedora' ? ' is-active' : ''
+                              }`}
+                              onClick={() => {
+                                setResolverDecision('restar_proveedora')
+                                setResolverBodegaId('')
+                                setResolverDivisionId('')
+                                setResolverSubdivisionId('')
+                                setResolverNeedsManualLocation(false)
+                                closeResolverLocationDropdown()
+                              }}
+                              disabled={resolverSubmitting}
+                            >
+                              Restar a sucursal proveedora
+                            </button>
+                            <button
+                              type="button"
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                                resolverDecision === 'sin_cambios' ? ' is-active' : ''
+                              }`}
+                              onClick={() => {
+                                setResolverDecision('sin_cambios')
+                                setResolverBodegaId('')
+                                setResolverDivisionId('')
+                                setResolverSubdivisionId('')
+                                setResolverNeedsManualLocation(false)
+                                closeResolverLocationDropdown()
+                              }}
+                              disabled={resolverSubmitting}
+                            >
+                              No hacer nada
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p className="muted transfer-issues-details__hint">
+                            Decide si este faltante debe sumarse en la sucursal proveedora, en la sucursal destino, o marcarse como desaparecido.
+                          </p>
+                          <div className="transfer-issues-details__decisions">
+                            <button
+                              type="button"
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                                resolverDecision === 'sumar_proveedora' ? ' is-active' : ''
+                              }`}
+                              onClick={() => {
+                                setResolverDecision('sumar_proveedora')
+                                setResolverBodegaId('')
+                                setResolverDivisionId('')
+                                setResolverSubdivisionId('')
+                                setResolverNeedsManualLocation(false)
+                                closeResolverLocationDropdown()
+                              }}
+                              disabled={resolverSubmitting}
+                            >
+                              Sumar a sucursal proveedora
+                            </button>
+                            <button
+                              type="button"
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn${
+                                resolverDecision === 'sumar_solicitante' ? ' is-active' : ''
+                              }`}
+                              onClick={() => {
+                                setResolverDecision('sumar_solicitante')
+                                setResolverBodegaId('')
+                                setResolverDivisionId('')
+                                setResolverSubdivisionId('')
+                                setResolverNeedsManualLocation(false)
+                                closeResolverLocationDropdown()
+                              }}
+                              disabled={resolverSubmitting}
+                            >
+                              Sumar a sucursal destino
+                            </button>
+                            <button
+                              type="button"
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--danger${
+                                resolverDecision === 'perdido' ? ' is-active' : ''
+                              }`}
+                              onClick={() => {
+                                setResolverDecision('perdido')
+                                setResolverBodegaId('')
+                                setResolverDivisionId('')
+                                setResolverSubdivisionId('')
+                                setResolverNeedsManualLocation(false)
+                                closeResolverLocationDropdown()
+                              }}
+                              disabled={resolverSubmitting}
+                            >
+                              Marcar como desaparecido
+                            </button>
+                          </div>
+                        </>
+                      )}
 
-                      {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') && (
+                      {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora') && (
                         <label className="create-user__field create-user__field--full transfer-issues-details__field">
                           <span>Ubicacion ({resolverTargetBranchLabel})</span>
                           <div className="create-entrada__location-picker-grid">

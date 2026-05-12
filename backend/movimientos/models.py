@@ -233,6 +233,10 @@ class PagoMovimiento(models.Model):
 class TrasladoInconveniente(models.Model):
     """Inconvenientes detectados al recibir un traslado enviado."""
 
+    class Tipos(models.TextChoices):
+        FALTANTE = "faltante", "Faltante"
+        SOBRANTE = "sobrante", "Sobrante"
+
     class Estados(models.TextChoices):
         PENDIENTE = "pendiente", "Pendiente"
         RESUELTO = "resuelto", "Resuelto"
@@ -242,6 +246,8 @@ class TrasladoInconveniente(models.Model):
         SUMAR_SOLICITANTE = "sumar_solicitante", "Sumar a sucursal solicitante"
         SUMAR_PROVEEDORA = "sumar_proveedora", "Sumar a sucursal proveedora"
         PERDIDO = "perdido", "Perdido / robado / no recuperado"
+        RESTAR_PROVEEDORA = "restar_proveedora", "Restar de sucursal proveedora"
+        SIN_CAMBIOS = "sin_cambios", "Sin cambios de inventario"
 
     solicitud = models.ForeignKey(
         SolicitudTraslado,
@@ -257,6 +263,11 @@ class TrasladoInconveniente(models.Model):
         "productos.Producto",
         on_delete=models.PROTECT,
         related_name="inconvenientes_traslado",
+    )
+    tipo = models.CharField(
+        max_length=20,
+        choices=Tipos.choices,
+        default=Tipos.FALTANTE,
     )
     cantidad_faltante = models.PositiveIntegerField(default=0)
     estado = models.CharField(
