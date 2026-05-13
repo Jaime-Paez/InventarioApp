@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
 import { Loader2 } from 'lucide-react'
@@ -44,7 +45,18 @@ const initialForm = {
   descuento: '',
   iva_rate: String(DEFAULT_IVA_RATE),
   solicitudTrasladoId: '',
+  tipo_pago: '',
 }
+
+const TIPO_PAGO_OPTIONS = [
+  'EFECTIVO',
+  'TARJETA',
+  'TRANSFERENCIA',
+  'DEPÓSITO',
+  'CRÉDITO',
+  'CHEQUE',
+  'MIXTO',
+]
 
 const initialDetail = {
   productoId: '',
@@ -340,6 +352,9 @@ function CreateSalida({
   const [selectedCliente, setSelectedCliente] = useState(null)
   const [clienteForm, setClienteForm] = useState(initialClienteForm)
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+  const [showTipoPagoDropdown, setShowTipoPagoDropdown] = useState(false)
+  const [tipoPagoDropdownStyle, setTipoPagoDropdownStyle] = useState({})
+  const [formSubmitted, setFormSubmitted] = useState(false)
   const [clienteQuery, setClienteQuery] = useState('')
   const [clienteOptions, setClienteOptions] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
@@ -367,6 +382,9 @@ function CreateSalida({
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
   const clienteDropdownRef = useRef(null)
+  const tipoPagoDropdownRef = useRef(null)
+  const tipoPagoTriggerRef = useRef(null)
+  const tipoPagoPanelRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
   const documentCheckTimerRef = useRef(null)
   const documentCheckSequenceRef = useRef(0)
@@ -1865,6 +1883,7 @@ function CreateSalida({
     setIsResizingModal(false)
     modalRestoreRef.current = null
     setError('')
+    setFormSubmitted(false)
     fetchCatalogs()
   }, [fetchCatalogs, normalizedPrefilledSucursalId, open, resetStockLookup])
 
@@ -2024,8 +2043,32 @@ function CreateSalida({
     }
   }, [clienteQuery, isVenta, open, searchClientes, showClienteDropdown])
 
+  const updateTipoPagoDropdownPosition = useCallback(() => {
+    if (!tipoPagoTriggerRef.current) return
+    const rect = tipoPagoTriggerRef.current.getBoundingClientRect()
+    setTipoPagoDropdownStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 9999,
+    })
+  }, [])
+
   useEffect(() => {
-    if (!open || (!showProductDropdown && !showClienteDropdown)) return undefined
+    if (!open || !showTipoPagoDropdown) return undefined
+    updateTipoPagoDropdownPosition()
+    const handleReposition = () => updateTipoPagoDropdownPosition()
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [open, showTipoPagoDropdown, updateTipoPagoDropdownPosition])
+
+  useEffect(() => {
+    if (!open || (!showProductDropdown && !showClienteDropdown && !showTipoPagoDropdown)) return undefined
     const handleClick = (event) => {
       if (productDropdownRef.current && !productDropdownRef.current.contains(event.target)) {
         setShowProductDropdown(false)
@@ -2033,19 +2076,28 @@ function CreateSalida({
       if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
         setShowClienteDropdown(false)
       }
+      const tipoPagoTouched =
+        (tipoPagoDropdownRef.current && tipoPagoDropdownRef.current.contains(event.target)) ||
+        (tipoPagoPanelRef.current && tipoPagoPanelRef.current.contains(event.target))
+      if (!tipoPagoTouched) {
+        setShowTipoPagoDropdown(false)
+      }
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [open, showClienteDropdown, showProductDropdown])
+  }, [open, showClienteDropdown, showProductDropdown, showTipoPagoDropdown])
 
   useEffect(() => {
     if (activeTab !== 'cliente' && showClienteDropdown) {
       setShowClienteDropdown(false)
     }
+    if (activeTab !== 'general' && showTipoPagoDropdown) {
+      setShowTipoPagoDropdown(false)
+    }
     if (activeTab !== 'general' && showProductDropdown) {
       setShowProductDropdown(false)
     }
-  }, [activeTab, showClienteDropdown, showProductDropdown])
+  }, [activeTab, showClienteDropdown, showProductDropdown, showTipoPagoDropdown])
 
   useEffect(() => {
     if (!open || !showProductDropdown) return undefined
@@ -2669,6 +2721,11 @@ function CreateSalida({
       return false
     }
 
+    if (isVenta && !String(formData.tipo_pago || '').trim()) {
+      notifyError('El Tipo de pago es obligatorio para ventas.')
+      return false
+    }
+
     if (!details.length) {
       notifyError('Agrega al menos un producto.')
       return false
@@ -2790,6 +2847,8 @@ function CreateSalida({
 
       if (isVenta) {
         setFormData((prev) => ({ ...prev, cliente: ventaClienteLabel }))
+        const tipoPago = String(formData.tipo_pago || '').trim()
+        if (tipoPago) payload.tipo_pago = tipoPago
       }
 
       const response = await authFetch(
@@ -2829,6 +2888,7 @@ function CreateSalida({
 
   const handleSubmit = (event) => {
     event.preventDefault()
+    setFormSubmitted(true)
     void submitSalida()
   }
 
@@ -3165,6 +3225,60 @@ function CreateSalida({
                           <option value="true">Sí</option>
                           <option value="false">No</option>
                         </select>
+                      </label>
+                    )}
+
+                    {isVenta && (
+                      <label className="create-user__field create-user__field--full create-user__field--required">
+                        <span>Tipo de pago</span>
+                        <div className="create-user__dropdown" ref={tipoPagoDropdownRef}>
+                          <button
+                            ref={tipoPagoTriggerRef}
+                            type="button"
+                            className={`create-user__dropdown-trigger${!formData.tipo_pago ? ' create-salida__cliente-trigger--placeholder' : ''}${formSubmitted && !formData.tipo_pago ? ' create-salida__input--invalid' : ''}`}
+                            onClick={() => {
+                              if (!showTipoPagoDropdown) updateTipoPagoDropdownPosition()
+                              setShowTipoPagoDropdown((prev) => !prev)
+                            }}
+                            disabled={loading}
+                            aria-haspopup="listbox"
+                            aria-expanded={showTipoPagoDropdown}
+                          >
+                            <span>{formData.tipo_pago || 'Seleccionar tipo de pago'}</span>
+                            <i className={`pi pi-chevron-${showTipoPagoDropdown ? 'up' : 'down'}`} />
+                          </button>
+                        </div>
+                        {showTipoPagoDropdown && createPortal(
+                          <div
+                            ref={tipoPagoPanelRef}
+                            className="create-user__dropdown-panel create-salida__cliente-panel"
+                            style={tipoPagoDropdownStyle}
+                          >
+                            <div className="create-user__dropdown-results">
+                              {TIPO_PAGO_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  className="create-user__result-option"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setError('')
+                                    setFormData((prev) => ({ ...prev, tipo_pago: opt }))
+                                    setShowTipoPagoDropdown(false)
+                                  }}
+                                >
+                                  <div className="create-user__result-info">
+                                    <strong>{opt}</strong>
+                                  </div>
+                                  {formData.tipo_pago === opt && (
+                                    <span className="create-user__result-tag is-selected">Seleccionado</span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>,
+                          document.body
+                        )}
                       </label>
                     )}
 
