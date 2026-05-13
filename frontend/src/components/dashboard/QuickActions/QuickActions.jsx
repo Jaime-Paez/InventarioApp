@@ -52,13 +52,13 @@ const URGENT_REJECTED_TRANSFER_MESSAGE = 'Corrige tu solicitud de traslado recha
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
-const URGENT_DECISION_SHIELD_COLOR = '#0b4f79'
+const URGENT_DECISION_SHIELD_COLOR = '#FF7900'
 const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
 const URGENT_REJECTED_TRANSFER_SHIELD_COLOR = '#f94a15'
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
 const URGENT_SHIELD_STACK_OFFSET_MOBILE = 14
-const URGENT_SHIELD_STACK_SHADE_STEP = 0.1
-const URGENT_SHIELD_STACK_SHADE_MAX = 0.4
+const URGENT_SHIELD_STACK_SHADE_STEP = 0.3
+const URGENT_SHIELD_STACK_SHADE_MAX = 0.6
 const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-state'
 const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
 const RANDOM_INSPECTION_DETAIL_ENDPOINT = `${API_URL}/recordatorios/inspeccion-aleatoria`
@@ -1609,7 +1609,7 @@ function QuickActions({
                 id: targetId || `rejected-transfer-${reminderId}`,
                 reminderId,
                 kind: 'rejected_transfer',
-                anchor: 'top_right',
+                anchor: 'top_left',
                 message: URGENT_REJECTED_TRANSFER_MESSAGE,
                 priorityTimestamp: resolveReminderStateTimestamp(reminder) || parseEntityTimestamp(dateTimeCandidate),
                 reminder,
@@ -1719,6 +1719,9 @@ function QuickActions({
           }
         }
       }
+      if (anchor === 'top_left') {
+        return { x: 0, y: 0 }
+      }
       return {
         x: viewportWidth,
         y: 0,
@@ -1767,7 +1770,7 @@ function QuickActions({
                 : target?.kind === 'rejected_transfer'
                   ? URGENT_REJECTED_TRANSFER_SHIELD_COLOR
                   : URGENT_DECISION_SHIELD_COLOR,
-            zIndex: String(Math.max(1200, 1299 - index)),
+            zIndex: String(1200 + index),
           },
         }
       })
@@ -4246,11 +4249,9 @@ function QuickActions({
                 {mobileShipmentCount > 9 ? '9+' : mobileShipmentCount}
               </span>
             )}
-            {pendingReminderDotCount > 0 && (
+            {hasPendingReminder && (
               <span className="quick-actions__pending-dots" aria-hidden="true">
-                {Array.from({ length: pendingReminderDotCount }, (_, i) => (
-                  <span key={i} className={`quick-actions__pending-dot quick-actions__pending-dot--${i + 1}`} />
-                ))}
+                <span className="quick-actions__pending-dot quick-actions__pending-dot--1" />
               </span>
             )}
           </button>
