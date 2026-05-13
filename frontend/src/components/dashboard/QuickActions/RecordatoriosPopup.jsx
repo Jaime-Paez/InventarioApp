@@ -2717,6 +2717,13 @@ function RecordatoriosPopup({
                           currentUserName
                         )
                         const isAdminUser = Boolean(currentUser?.es_administrador)
+                        const isCurrentUserSolicitante = (() => {
+                          const solicitanteId = normalizeId(reminder?.context?.sucursal_solicitante_id)
+                          if (solicitanteId && currentReceiveBranchIdSet.size) {
+                            return currentReceiveBranchIdSet.has(solicitanteId)
+                          }
+                          return !isReminderOwnedByCurrentUser
+                        })()
                         const issueResolution = solicitudId
                           ? resolvedTransferIssuesBySolicitudId.get(solicitudId)
                           : null
@@ -2775,15 +2782,20 @@ function RecordatoriosPopup({
                           visualDecisionStatus === 'rechazada' &&
                           isReminderOwnedByCurrentUser
                         )
-                        const canOpenInTransitTransferFromReminder = (() => {
-                          if (!isTransferContextReminder || visualDecisionStatus !== 'enviado') return false
-                          if (typeof onOpenTransferRequestInTransit !== 'function') return false
-                          if (currentUser?.is_staff || currentUser?.is_superuser) return true
-                          const solicitanteId = normalizeId(reminder?.context?.sucursal_solicitante_id)
-                          if (!solicitanteId) return true
-                          if (!currentReceiveBranchIdSet.size) return true
-                          return currentReceiveBranchIdSet.has(solicitanteId)
-                        })()
+                        const canOpenInTransitTransferFromReminder = (
+                          isTransferContextReminder &&
+                          visualDecisionStatus === 'enviado' &&
+                          typeof onOpenTransferRequestInTransit === 'function' &&
+                          !isAdminUser &&
+                          isCurrentUserSolicitante
+                        )
+                        const canOpenSalidaAsProvider = (
+                          isTransferContextReminder &&
+                          visualDecisionStatus === 'enviado' &&
+                          typeof onOpenTransferRequestInSalidas === 'function' &&
+                          !isAdminUser &&
+                          !isCurrentUserSolicitante
+                        )
                         const latestTransferStageLabel = getTransferProgressStageLabel(
                           latestTransferStage,
                           latestTransferStage === 'recibido'
@@ -2799,7 +2811,7 @@ function RecordatoriosPopup({
                         )
                         const latestProgressActionLabel = latestTransferStage === 'recibido'
                           ? (latestProgressPreferredTarget === 'salidas' ? 'Ver salida' : 'Ver entrada')
-                          : 'Ver envío en camino'
+                          : (isCurrentUserSolicitante ? 'Ver envío en camino' : 'Ver salida en envío')
                         const canOpenLatestTransferProgress = (
                           isTransferContextReminder &&
                           !canResolveDecision &&
@@ -3071,6 +3083,17 @@ function RecordatoriosPopup({
                                     disabled={isOpeningTransfer}
                                   >
                                     {isOpeningTransfer ? 'Abriendo...' : 'Crear salida'}
+                                  </button>
+                                ) : canOpenSalidaAsProvider ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => {
+                                      void handleOpenTransferInSalidas(reminder)
+                                    }}
+                                    disabled={isOpeningTransfer}
+                                  >
+                                    {isOpeningTransfer ? 'Abriendo...' : 'Ver salida en envío'}
                                   </button>
                                 ) : canOpenInTransitTransferFromReminder ? (
                                   <button

@@ -2515,23 +2515,35 @@
   border-color: color-mix(in srgb, var(--color-primary-dark) 52%, var(--color-border-dark));
 }
 
-.quick-actions__pending-dot {
+.quick-actions__pending-dots {
   position: absolute;
   top: 3px;
   left: 50%;
-  transform: translateX(6px);
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #f94a15;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-surface) 75%, transparent);
+  transform: translateX(4px);
+  display: flex;
+  gap: 2px;
   pointer-events: none;
 }
 
+.quick-actions__pending-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-surface) 75%, transparent);
+}
+
+.quick-actions__pending-dot--1 { background: #f94a15; }
+.quick-actions__pending-dot--2 { background: #ffa040; }
+.quick-actions__pending-dot--3 { background: #ffc87a; }
+
 .quick-actions.dark .quick-actions__pending-dot {
-  background: #f94a15;
   box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.65);
 }
+
+.quick-actions.dark .quick-actions__pending-dot--1 { background: #f94a15; }
+.quick-actions.dark .quick-actions__pending-dot--2 { background: #ffa040; }
+.quick-actions.dark .quick-actions__pending-dot--3 { background: #ffc87a; }
 
 .quick-actions__mobile-count {
   display: none;

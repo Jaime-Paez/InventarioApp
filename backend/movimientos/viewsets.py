@@ -1799,6 +1799,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             requester_recipients = self._resolve_transfer_requester_recipients(
                 solicitud.sucursal_solicitante_id,
             )
+            provider_recipients = self._resolve_transfer_provider_recipients(
+                solicitud.sucursal_proveedora_id,
+            )
             recipients = []
             seen_recipient_ids = set()
 
@@ -1815,6 +1818,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             for candidate in requester_recipients:
                 append_unique(candidate)
             append_unique(request_creator)
+            for candidate in provider_recipients:
+                append_unique(candidate)
+            append_unique(creator)
 
             description = f"Su solicitud de traslado {transfer_reference} fue enviada y está en traslado."
             created_at = timezone.now().isoformat()

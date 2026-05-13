@@ -986,6 +986,11 @@ function QuickActions({
     [pendingRemindersForCurrentUser]
   )
 
+  const pendingReminderDotCount = useMemo(
+    () => Math.min(pendingRemindersForCurrentUser.length, 3),
+    [pendingRemindersForCurrentUser]
+  )
+
   const generalPendingRemindersForCurrentUser = useMemo(
     () =>
       pendingRemindersForCurrentUser.filter((reminder) => {
@@ -4241,11 +4246,12 @@ function QuickActions({
                 {mobileShipmentCount > 9 ? '9+' : mobileShipmentCount}
               </span>
             )}
-            {hasPendingReminder && (
-              <span
-                className="quick-actions__pending-dot"
-                aria-hidden="true"
-              />
+            {pendingReminderDotCount > 0 && (
+              <span className="quick-actions__pending-dots" aria-hidden="true">
+                {Array.from({ length: pendingReminderDotCount }, (_, i) => (
+                  <span key={i} className={`quick-actions__pending-dot quick-actions__pending-dot--${i + 1}`} />
+                ))}
+              </span>
             )}
           </button>
 
