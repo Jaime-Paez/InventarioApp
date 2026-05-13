@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
+import './CreateCliente.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 
@@ -17,16 +18,16 @@ const initialForm = {
 }
 
 const emptyAuto = {
-  placa: '',
+  vin: '',
   modelo: '',
+  motor: '',
   anio: '',
-  marca: '',
-  color: '',
 }
 
 function CreateCliente({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [autos, setAutos] = useState([])
+  const [autoDraft, setAutoDraft] = useState({ ...emptyAuto })
   const [loading, setLoading] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -67,6 +68,7 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
     if (!open) return
     setFormData(initialForm)
     setAutos([])
+    setAutoDraft({ ...emptyAuto })
     setLoading(false)
     setIsMaximized(false)
     restoreRef.current = null
@@ -100,24 +102,16 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
     }))
   }
 
-  const handleAutoChange = (index, field, value) => {
-    setAutos((prev) =>
-      prev.map((auto, i) => (i === index ? { ...auto, [field]: value } : auto))
-    )
-  }
-
-  const canAddAuto = useCallback(() => {
-    if (!autos.length) return true
-    const last = autos[autos.length - 1]
-    return Boolean(last.placa && last.modelo && last.anio)
-  }, [autos])
-
   const addAutoRow = () => {
-    if (!canAddAuto()) {
-      notifyError('Completa el auto actual antes de agregar otro.')
-      return
-    }
-    setAutos((prev) => [...prev, { ...emptyAuto }])
+    const { vin, modelo, motor, anio } = autoDraft
+    if (!vin.trim() && !modelo.trim() && !motor.trim() && !anio.trim()) return
+    setAutos((prev) => [...prev, {
+      vin: vin.trim(),
+      modelo: modelo.trim(),
+      motor: motor.trim(),
+      anio: anio.trim(),
+    }])
+    setAutoDraft({ ...emptyAuto })
   }
 
   const removeAutoRow = (index) => {
@@ -137,26 +131,13 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
       direccion: formData.direccion.trim(),
     }
 
-    const autosPayload = autos
-      .map((auto) => ({
-        placa: auto.placa.trim(),
-        modelo: auto.modelo.trim(),
-        anio: auto.anio ? Number(auto.anio) : null,
-        marca: auto.marca.trim(),
-        color: auto.color.trim(),
+    if (autos.length) {
+      payload.autos = autos.map((a) => ({
+        vin: a.vin,
+        modelo: a.modelo,
+        motor: a.motor,
+        anio: a.anio ? Number(a.anio) : null,
       }))
-      .filter((auto) => auto.placa || auto.modelo || auto.anio || auto.marca || auto.color)
-
-    if (autosPayload.length) {
-      const validAutos = autosPayload.filter(
-        (auto) => auto.placa && auto.modelo && Number.isFinite(auto.anio)
-      )
-      if (validAutos.length !== autosPayload.length) {
-        setLoading(false)
-        notifyError('Completa placa, modelo y año para cada auto agregado.')
-        return
-      }
-      payload.autos = validAutos
     }
 
     if (!payload.nombres) {
@@ -487,97 +468,93 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
               <div className="create-user__section-header" style={{ marginTop: 18 }}>
                 <div>
                   <p className="create-user__eyebrow">Autos</p>
-                  <h4>Vehiculos asociados</h4>
+                  <h4>Vehículos asociados <small className="muted">(opcional)</small></h4>
                 </div>
               </div>
 
-              <div className="create-user__grid create-user__grid--two">
-                {autos.length === 0 && (
-                  <p className="workspace__subtitle" style={{ margin: 0 }}>
-                    No hay autos asociados.
-                  </p>
+              <div className="create-user__locations-table create-clientes__autos-table">
+                <div className="create-user__locations-row create-user__locations-row--head">
+                  <span>VIN</span>
+                  <span>Modelo</span>
+                  <span>Motor</span>
+                  <span>Año</span>
+                  <span>Acciones</span>
+                </div>
+
+                <div className="create-user__locations-row create-user__locations-row--form">
+                  <span>
+                    <input
+                      type="text"
+                      placeholder="VIN"
+                      value={autoDraft.vin}
+                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, vin: e.target.value }))}
+                      disabled={loading}
+                    />
+                  </span>
+                  <span>
+                    <input
+                      type="text"
+                      placeholder="Modelo"
+                      value={autoDraft.modelo}
+                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, modelo: e.target.value }))}
+                      disabled={loading}
+                    />
+                  </span>
+                  <span>
+                    <input
+                      type="text"
+                      placeholder="Motor"
+                      value={autoDraft.motor}
+                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, motor: e.target.value }))}
+                      disabled={loading}
+                    />
+                  </span>
+                  <span>
+                    <input
+                      type="text"
+                      placeholder="Año"
+                      value={autoDraft.anio}
+                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, anio: e.target.value }))}
+                      disabled={loading}
+                    />
+                  </span>
+                  <span className="create-user__locations-cell create-user__locations-cell--action">
+                    <button
+                      type="button"
+                      className="create-user__ghost"
+                      onClick={addAutoRow}
+                      disabled={loading}
+                    >
+                      Agregar
+                    </button>
+                  </span>
+                </div>
+
+                {!autos.length && (
+                  <div className="create-user__locations-row create-user__locations-row--empty">
+                    <span>Sin vehículos agregados.</span>
+                  </div>
                 )}
 
                 {autos.map((auto, index) => (
-                  <div key={`auto-${index}`} className="create-user__field create-user__field--full" style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14 }}>
-                    <div className="create-user__grid create-user__grid--two">
-                      <label className="create-user__field">
-                        <span>Placa</span>
-                        <input
-                          type="text"
-                          value={auto.placa}
-                          onChange={(event) => handleAutoChange(index, 'placa', event.target.value)}
-                          disabled={loading}
-                        />
-                      </label>
-
-                      <label className="create-user__field">
-                        <span>Modelo</span>
-                        <input
-                          type="text"
-                          value={auto.modelo}
-                          onChange={(event) => handleAutoChange(index, 'modelo', event.target.value)}
-                          disabled={loading}
-                        />
-                      </label>
-
-                      <label className="create-user__field">
-                        <span>Año</span>
-                        <input
-                          type="number"
-                          min="1900"
-                          max="2100"
-                          value={auto.anio}
-                          onChange={(event) => handleAutoChange(index, 'anio', event.target.value)}
-                          disabled={loading}
-                        />
-                      </label>
-
-                      <label className="create-user__field">
-                        <span>Marca</span>
-                        <input
-                          type="text"
-                          value={auto.marca}
-                          onChange={(event) => handleAutoChange(index, 'marca', event.target.value)}
-                          disabled={loading}
-                        />
-                      </label>
-
-                      <label className="create-user__field">
-                        <span>Color</span>
-                        <input
-                          type="text"
-                          value={auto.color}
-                          onChange={(event) => handleAutoChange(index, 'color', event.target.value)}
-                          disabled={loading}
-                        />
-                      </label>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                  <div key={`auto-${index}`} className="create-user__locations-row">
+                    <span>{auto.vin || '-'}</span>
+                    <span>{auto.modelo || '-'}</span>
+                    <span>{auto.motor || '-'}</span>
+                    <span>{auto.anio || '-'}</span>
+                    <span className="create-user__locations-cell create-user__locations-cell--action">
                       <button
                         type="button"
-                        className="create-user__action create-user__action--cancel"
+                        className="create-user__locations-remove"
                         onClick={() => removeAutoRow(index)}
                         disabled={loading}
+                        aria-label="Eliminar vehículo"
                       >
-                        Quitar auto
+                        X
                       </button>
-                    </div>
+                    </span>
                   </div>
-
                 ))}
-              </div>
-
-              <div style={{ marginTop: 10 }}>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--secondary"
-                  onClick={addAutoRow}
-                  disabled={loading || !canAddAuto()}
-                >
-                  Agregar auto
-                </button>
               </div>
             </section>
           </div>

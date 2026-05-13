@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSolicitud.css'
+import '../../clientes/CreateCliente/CreateCliente.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 import {
@@ -27,6 +28,8 @@ const initialCliente = {
   telefono: '',
   direccion: '',
 }
+
+const emptyAuto = { vin: '', modelo: '', motor: '', anio: '' }
 
 const initialProductoDraft = {
   productoId: '',
@@ -200,6 +203,8 @@ function CreateSolicitud({
 }) {
   const [clienteMode, setClienteMode] = useState(CLIENT_MODE_EXISTING)
   const [cliente, setCliente] = useState(initialCliente)
+  const [autos, setAutos] = useState([])
+  const [autoDraft, setAutoDraft] = useState({ ...emptyAuto })
   const [selectedCliente, setSelectedCliente] = useState(null)
   const [clienteResultados, setClienteResultados] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
@@ -304,6 +309,8 @@ function CreateSolicitud({
   const clearAll = useCallback(() => {
     setClienteMode(CLIENT_MODE_EXISTING)
     setCliente(initialCliente)
+    setAutos([])
+    setAutoDraft({ ...emptyAuto })
     setSelectedCliente(null)
     setClienteResultados([])
     setClienteLoading(false)
@@ -925,6 +932,19 @@ function CreateSolicitud({
     setClienteLoading(false)
     setShowClienteDropdown(false)
     setCliente(initialCliente)
+    setAutos([])
+    setAutoDraft({ ...emptyAuto })
+  }
+
+  const handleAddAuto = () => {
+    const { vin, modelo, motor, anio } = autoDraft
+    if (!vin.trim() && !modelo.trim() && !motor.trim() && !anio.trim()) return
+    setAutos((prev) => [...prev, { vin: vin.trim(), modelo: modelo.trim(), motor: motor.trim(), anio: anio.trim() }])
+    setAutoDraft({ ...emptyAuto })
+  }
+
+  const handleRemoveAuto = (index) => {
+    setAutos((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleClienteDropdownToggle = () => {
@@ -1456,7 +1476,17 @@ function CreateSolicitud({
     if (useExistingCliente && selectedCliente?.id) {
       payload.cliente_id = Number(selectedCliente.id)
     } else if (useNewCliente) {
-      payload.cliente = normalizeClientePayload(cliente)
+      const clientePayload = normalizeClientePayload(cliente)
+      const autosPayload = autos
+        .map((a) => ({
+          vin: String(a.vin || '').trim(),
+          modelo: String(a.modelo || '').trim(),
+          motor: String(a.motor || '').trim(),
+          anio: a.anio ? Number(a.anio) : null,
+        }))
+        .filter((a) => a.vin || a.modelo || a.motor || a.anio)
+      if (autosPayload.length) clientePayload.autos = autosPayload
+      payload.cliente = clientePayload
     }
 
     setLoading(true)
@@ -2074,6 +2104,72 @@ function CreateSolicitud({
                     </>
                   )}
                 </div>
+
+                {useNewCliente && (
+                  <>
+                    <div className="create-user__section-header" style={{ marginTop: 18 }}>
+                      <div>
+                        <p className="create-user__eyebrow">Autos</p>
+                        <h4>Vehículos asociados <small className="muted">(opcional)</small></h4>
+                      </div>
+                    </div>
+
+                    <div className="create-user__locations-table create-clientes__autos-table">
+                      <div className="create-user__locations-row create-user__locations-row--head">
+                        <span>VIN</span>
+                        <span>Modelo</span>
+                        <span>Motor</span>
+                        <span>Año</span>
+                        <span>Acciones</span>
+                      </div>
+
+                      <div className="create-user__locations-row create-user__locations-row--form">
+                        <span>
+                          <input type="text" placeholder="VIN" value={autoDraft.vin}
+                            onChange={(e) => setAutoDraft((p) => ({ ...p, vin: e.target.value }))} disabled={loading} />
+                        </span>
+                        <span>
+                          <input type="text" placeholder="Modelo" value={autoDraft.modelo}
+                            onChange={(e) => setAutoDraft((p) => ({ ...p, modelo: e.target.value }))} disabled={loading} />
+                        </span>
+                        <span>
+                          <input type="text" placeholder="Motor" value={autoDraft.motor}
+                            onChange={(e) => setAutoDraft((p) => ({ ...p, motor: e.target.value }))} disabled={loading} />
+                        </span>
+                        <span>
+                          <input type="text" placeholder="Año" value={autoDraft.anio}
+                            onChange={(e) => setAutoDraft((p) => ({ ...p, anio: e.target.value }))} disabled={loading} />
+                        </span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button type="button" className="create-user__ghost" onClick={handleAddAuto} disabled={loading}>
+                            Agregar
+                          </button>
+                        </span>
+                      </div>
+
+                      {!autos.length && (
+                        <div className="create-user__locations-row create-user__locations-row--empty">
+                          <span>Sin vehículos agregados.</span>
+                        </div>
+                      )}
+
+                      {autos.map((auto, index) => (
+                        <div key={`auto-sol-${index}`} className="create-user__locations-row">
+                          <span>{auto.vin || '-'}</span>
+                          <span>{auto.modelo || '-'}</span>
+                          <span>{auto.motor || '-'}</span>
+                          <span>{auto.anio || '-'}</span>
+                          <span className="create-user__locations-cell create-user__locations-cell--action">
+                            <button type="button" className="create-user__locations-remove"
+                              onClick={() => handleRemoveAuto(index)} disabled={loading} aria-label="Eliminar vehículo">
+                              X
+                            </button>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
 
                 {useExistingCliente && selectedCliente?.id && (
                   <small className="muted">Cliente existente detectado. Se usará el registro actual al guardar.</small>
