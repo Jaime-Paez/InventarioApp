@@ -1947,19 +1947,7 @@ function SalidaDetails({
 
                     <div className="create-user__grid create-user__grid--two">
                       {isVenta && (
-                        <label className="create-user__field">
-                          <span>Descuento (%)</span>
-                          <input
-                            name="descuento"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            max="100"
-                            value={formData.descuento}
-                            onChange={handleChange}
-                            disabled={immutableFieldDisabled}
-                          />
-                        </label>
+                        <StaticFieldDisplay label="Descuento (%)" value={formData.descuento} />
                       )}
 
                       {isDevolucion && (
