@@ -4,16 +4,52 @@
 
 .create-solicitud__products-table .create-user__locations-row {
   grid-template-columns:
-    minmax(52px, 0.52fr)
-    minmax(52px, 0.52fr)
-    minmax(72px, 0.78fr)
-    minmax(52px, 0.58fr)
-    minmax(60px, 0.64fr)
-    minmax(60px, 0.64fr)
-    minmax(50px, 0.5fr)
+    minmax(60px, 0.6fr)
+    minmax(70px, 0.7fr)
+    minmax(100px, 1.2fr)
+    minmax(54px, 0.54fr)
     minmax(56px, 0.56fr);
   min-width: 0;
   padding: 6px 8px;
+}
+
+.create-solicitud__cliente-mode {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.create-solicitud__cliente-mode-btn {
+  min-width: 180px;
+}
+
+.create-solicitud__cliente-mode-btn.is-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-button-primary);
+}
+
+.dashboard-shell.dark .create-solicitud__cliente-mode-btn.is-active {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+}
+
+.create-solicitud__cliente-dropdown .create-user__dropdown-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.create-solicitud__cliente-trigger--placeholder > span {
+  opacity: 0.45;
+}
+
+.create-solicitud__cliente-panel {
+  min-width: 0;
+}
+
+.create-solicitud__cliente-panel .create-user__dropdown-results {
+  max-height: 210px;
 }
 
 .create-solicitud__form .create-user__grid--three {
@@ -149,7 +185,7 @@
 }
 
 .create-solicitud__inline-panel--wide {
-  width: max(420px, 100%);
+  width: 460px;
   max-width: min(680px, calc(100vw - 32px));
   min-width: 360px;
 }

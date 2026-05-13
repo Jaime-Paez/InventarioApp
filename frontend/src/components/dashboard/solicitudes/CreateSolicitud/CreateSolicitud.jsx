@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSolicitud.css'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -136,6 +137,9 @@ const formatStockByBranch = (rows) => {
   return parts.join(', ')
 }
 
+const CLIENT_MODE_EXISTING = 'existing'
+const CLIENT_MODE_NEW = 'new'
+
 const resolveClienteNombre = (cliente) =>
   String(cliente?.nombre_completo || `${cliente?.nombres || ''} ${cliente?.apellidos || ''}`).trim()
 
@@ -149,6 +153,42 @@ const formatClienteLabel = (cliente) => {
   return ''
 }
 
+const normalizeClientePayload = (c) => ({
+  nombres: String(c?.nombres || '').trim(),
+  apellidos: String(c?.apellidos || '').trim(),
+  cedula_ruc: String(c?.cedula_ruc || '').trim(),
+  correo: String(c?.correo || '').trim(),
+  telefono: String(c?.telefono || '').trim(),
+  direccion: String(c?.direccion || '').trim(),
+})
+
+function InlinePanel({ anchorRef, panelRef, open, className, children }) {
+  const [style, setStyle] = useState({})
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef.current) return
+    const update = () => {
+      const rect = anchorRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setStyle({ position: 'fixed', top: rect.bottom + 4, left: rect.left, zIndex: 9999 })
+    }
+    update()
+    const scrollBody = document.querySelector('.create-user__body')
+    scrollBody?.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update, { passive: true })
+    return () => {
+      scrollBody?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [open, anchorRef])
+
+  if (!open) return null
+  return createPortal(
+    <div className={className} style={style} ref={panelRef}>{children}</div>,
+    document.body
+  )
+}
+
 function CreateSolicitud({
   open,
   onClose,
@@ -158,6 +198,7 @@ function CreateSolicitud({
   currentUser,
   prefilledSucursalId = '',
 }) {
+  const [clienteMode, setClienteMode] = useState(CLIENT_MODE_EXISTING)
   const [cliente, setCliente] = useState(initialCliente)
   const [selectedCliente, setSelectedCliente] = useState(null)
   const [clienteResultados, setClienteResultados] = useState([])
@@ -209,6 +250,8 @@ function CreateSolicitud({
   const referenciaDropdownRef = useRef(null)
   const codigoDropdownRef = useRef(null)
   const oemDropdownRef = useRef(null)
+  const oemPanelRef = useRef(null)
+  const codigoPanelRef = useRef(null)
   const casaComercialDropdownRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
   const referenciaSearchTimerRef = useRef(null)
@@ -259,6 +302,7 @@ function CreateSolicitud({
   }, [])
 
   const clearAll = useCallback(() => {
+    setClienteMode(CLIENT_MODE_EXISTING)
     setCliente(initialCliente)
     setSelectedCliente(null)
     setClienteResultados([])
@@ -697,12 +741,12 @@ function CreateSolicitud({
         }
       }
       if (showCodigoDropdown) {
-        if (!codigoDropdownRef.current || !codigoDropdownRef.current.contains(event.target)) {
+        if (!codigoDropdownRef.current?.contains(event.target) && !codigoPanelRef.current?.contains(event.target)) {
           setShowCodigoDropdown(false)
         }
       }
       if (showOemDropdown) {
-        if (!oemDropdownRef.current || !oemDropdownRef.current.contains(event.target)) {
+        if (!oemDropdownRef.current?.contains(event.target) && !oemPanelRef.current?.contains(event.target)) {
           setShowOemDropdown(false)
         }
       }
@@ -869,43 +913,54 @@ function CreateSolicitud({
     setIsMaximized(true)
   }
 
+  const handleUseExistingCliente = () => {
+    setClienteMode(CLIENT_MODE_EXISTING)
+  }
+
+  const handleCreateNewCliente = () => {
+    setClienteMode(CLIENT_MODE_NEW)
+    setSelectedCliente(null)
+    setClienteSearchTerm('')
+    setClienteResultados([])
+    setClienteLoading(false)
+    setShowClienteDropdown(false)
+    setCliente(initialCliente)
+  }
+
+  const handleClienteDropdownToggle = () => {
+    if (loading) return
+    setShowClienteDropdown((prev) => {
+      const next = !prev
+      if (next) {
+        setClienteSearchTerm('')
+        setClienteResultados([])
+        setClienteLoading(false)
+      }
+      return next
+    })
+  }
+
   const handleClienteFieldChange = (event) => {
     const { name, value } = event.target
-
     setCliente((prev) => ({ ...prev, [name]: value }))
-    if (selectedCliente && normalizeString(value) !== normalizeString(selectedCliente[name])) {
-      setSelectedCliente(null)
-    }
+    if (selectedCliente) setSelectedCliente(null)
   }
 
   const handleClienteSearchChange = (event) => {
     const value = event.target.value
     setClienteSearchTerm(value)
-    setShowClienteDropdown(Boolean(value))
     if (!value.trim()) {
       setClienteResultados([])
       setClienteLoading(false)
-    }
-    if (selectedCliente) {
-      const selectedLabel = formatClienteLabel(selectedCliente)
-      if (normalizeString(value) !== normalizeString(selectedLabel)) {
-        setSelectedCliente(null)
-      }
     }
   }
 
   const handleClienteSelect = (item) => {
     if (!item) return
+    setClienteMode(CLIENT_MODE_EXISTING)
     setSelectedCliente(item)
-    setCliente({
-      nombres: item.nombres || '',
-      apellidos: item.apellidos || '',
-      cedula_ruc: item.cedula_ruc || '',
-      correo: item.correo || '',
-      telefono: item.telefono || '',
-      direccion: item.direccion || '',
-    })
-    setClienteSearchTerm(formatClienteLabel(item))
+    setCliente(normalizeClientePayload(item))
+    setClienteSearchTerm('')
     setClienteResultados([])
     setClienteLoading(false)
     setShowClienteDropdown(false)
@@ -1307,16 +1362,13 @@ function CreateSolicitud({
     )
   }, [currentCreatorId, currentCreatorName, reminderUsers])
 
-  const hasAnyManualClienteData = useMemo(
-    () => Object.values(cliente).some((value) => String(value || '').trim()),
-    [cliente]
+  const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
+  const useNewCliente = clienteMode === CLIENT_MODE_NEW
+  const selectedClienteLabel = useMemo(() => formatClienteLabel(selectedCliente), [selectedCliente])
+
+  const isClientReady = useExistingCliente || requiredClienteManualFields.every(
+    (field) => String(cliente[field] || '').trim()
   )
-  const mustCompleteManualClient = !selectedCliente?.id && hasAnyManualClienteData
-  const hasManualClienteData = useMemo(
-    () => requiredClienteManualFields.every((field) => String(cliente[field] || '').trim()),
-    [cliente]
-  )
-  const isClientReady = !mustCompleteManualClient || hasManualClienteData
   const hasAdminRecipients = adminReminderRecipients.length > 0
   const canSubmit =
     Boolean(sucursalId) &&
@@ -1330,7 +1382,7 @@ function CreateSolicitud({
     if (!productos.length) return 'Debe agregar al menos un producto solicitado.'
     if (reminderUsersLoading) return 'Espera a que se carguen los usuarios para recordatorios.'
     if (!hasAdminRecipients) return 'No se pudo resolver un administrador para el recordatorio obligatorio.'
-    if (!isClientReady) return 'Si ingresa datos del cliente, debe completar cedula/RUC, nombres y apellidos.'
+    if (!isClientReady) return 'Si crea un nuevo cliente, debe completar cedula/RUC, nombres y apellidos.'
     return ''
   }, [hasAdminRecipients, isClientReady, productos.length, reminderUsersLoading, sucursalId])
 
@@ -1401,17 +1453,10 @@ function CreateSolicitud({
       }),
     }
 
-    if (selectedCliente?.id) {
+    if (useExistingCliente && selectedCliente?.id) {
       payload.cliente_id = Number(selectedCliente.id)
-    } else if (mustCompleteManualClient) {
-      payload.cliente = {
-        nombres: String(cliente.nombres || '').trim(),
-        apellidos: String(cliente.apellidos || '').trim(),
-        cedula_ruc: String(cliente.cedula_ruc || '').trim(),
-        correo: String(cliente.correo || '').trim(),
-        telefono: String(cliente.telefono || '').trim(),
-        direccion: String(cliente.direccion || '').trim(),
-      }
+    } else if (useNewCliente) {
+      payload.cliente = normalizeClientePayload(cliente)
     }
 
     setLoading(true)
@@ -1515,18 +1560,12 @@ function CreateSolicitud({
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
 
-  const showClientHint = Boolean(selectedCliente?.id)
   const draftCantidadRaw = Number(productoDraft.cantidad)
   const productoCodigoInvalid = productoAttempted && !String(productoDraft.referencia || productoDraft.codigo || '').trim()
   const productoNombreInvalid = productoAttempted && !String(productoDraft.nombre || '').trim()
   const productoCantidadInvalid = productoAttempted && (!Number.isFinite(draftCantidadRaw) || draftCantidadRaw <= 0)
   const sucursalInvalid = submitAttempted && !sucursalId
   const productosInvalid = submitAttempted && !productos.length
-  const isClientFieldInvalid = (fieldName) =>
-    submitAttempted &&
-    mustCompleteManualClient &&
-    requiredClienteManualFields.includes(fieldName) &&
-    !String(cliente[fieldName] || '').trim()
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
@@ -1667,10 +1706,7 @@ function CreateSolicitud({
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>OEM</span>
                       <span>Código</span>
-                      <span>Casa comercial</span>
-                      <span>Referencia</span>
                       <span>Descripción</span>
-                      <span>Comentario</span>
                       <span>Cantidad</span>
                       <span>Acciones</span>
                     </div>
@@ -1691,50 +1727,48 @@ function CreateSolicitud({
                             disabled={loading}
                             autoComplete="off"
                           />
-                          {showOemDropdown && (
-                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--wide">
-                              <div className="create-solicitud__inline-results">
-                                {oemLoading && <small className="muted">Buscando por OEM...</small>}
-                                {!oemLoading && String(oemSearchTerm || '').trim().length < 2 && (
-                                  <small className="muted">Escribe al menos 2 caracteres.</small>
+                          <InlinePanel anchorRef={oemDropdownRef} panelRef={oemPanelRef} open={showOemDropdown} className="create-solicitud__inline-panel create-solicitud__inline-panel--wide">
+                            <div className="create-solicitud__inline-results">
+                              {oemLoading && <small className="muted">Buscando por OEM...</small>}
+                              {!oemLoading && String(oemSearchTerm || '').trim().length < 2 && (
+                                <small className="muted">Escribe al menos 2 caracteres.</small>
+                              )}
+                              {!oemLoading &&
+                                String(oemSearchTerm || '').trim().length >= 2 &&
+                                !oemOptions.length && (
+                                  <small className="muted">
+                                    Sin coincidencias. Puedes escribir un OEM nuevo.
+                                  </small>
                                 )}
-                                {!oemLoading &&
-                                  String(oemSearchTerm || '').trim().length >= 2 &&
-                                  !oemOptions.length && (
-                                    <small className="muted">
-                                      Sin coincidencias. Puedes escribir un OEM nuevo.
-                                    </small>
-                                  )}
-                                {oemOptions.length > 0 && (
-                                  <div className="create-solicitud__results-header">
-                                    <span>Código</span>
-                                    <span>Nombre</span>
-                                    <span>Disponible</span>
-                                  </div>
-                                )}
-                                {oemOptions.map((producto) => {
-                                  const isSelected =
-                                    String(selectedDraftProducto?.id || '') === String(producto.id)
-                                  const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
-                                  const nombre = String(producto?.nombre || '').trim()
-                                  const stock = Number(producto?.total_stock ?? 0)
-                                  return (
-                                    <button
-                                      key={`oem-opt-${producto.id}`}
-                                      type="button"
-                                      className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
-                                      onMouseDown={(event) => event.preventDefault()}
-                                      onClick={() => handleProductoSelect(producto)}
-                                    >
-                                      <span className="result-codigo">{codigo}</span>
-                                      <span className="result-nombre">{nombre || '-'}</span>
-                                      <span className="result-stock">{stock}</span>
-                                    </button>
-                                  )
-                                })}
-                              </div>
+                              {oemOptions.length > 0 && (
+                                <div className="create-solicitud__results-header">
+                                  <span>Código</span>
+                                  <span>Nombre</span>
+                                  <span>Disponible</span>
+                                </div>
+                              )}
+                              {oemOptions.map((producto) => {
+                                const isSelected =
+                                  String(selectedDraftProducto?.id || '') === String(producto.id)
+                                const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
+                                const nombre = String(producto?.nombre || '').trim()
+                                const stock = Number(producto?.total_stock ?? 0)
+                                return (
+                                  <button
+                                    key={`oem-opt-${producto.id}`}
+                                    type="button"
+                                    className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => handleProductoSelect(producto)}
+                                  >
+                                    <span className="result-codigo">{codigo}</span>
+                                    <span className="result-nombre">{nombre || '-'}</span>
+                                    <span className="result-stock">{stock}</span>
+                                  </button>
+                                )
+                              })}
                             </div>
-                          )}
+                          </InlinePanel>
                         </div>
                       </span>
 
@@ -1754,185 +1788,48 @@ function CreateSolicitud({
                             disabled={loading}
                             autoComplete="off"
                           />
-                          {showCodigoDropdown && (
-                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
-                              <div className="create-solicitud__inline-results">
-                                {codigoLoading && <small className="muted">Buscando...</small>}
-                                {!codigoLoading && String(productoDraft.codigo || '').trim().length < 2 && (
-                                  <small className="muted">Escribe al menos 2 caracteres.</small>
+                          <InlinePanel anchorRef={codigoDropdownRef} panelRef={codigoPanelRef} open={showCodigoDropdown} className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
+                            <div className="create-solicitud__inline-results">
+                              {codigoLoading && <small className="muted">Buscando...</small>}
+                              {!codigoLoading && String(productoDraft.codigo || '').trim().length < 2 && (
+                                <small className="muted">Escribe al menos 2 caracteres.</small>
+                              )}
+                              {!codigoLoading &&
+                                String(productoDraft.codigo || '').trim().length >= 2 &&
+                                !codigoOptions.length && (
+                                  <small className="muted">
+                                    Sin coincidencias. Puedes agregar como producto nuevo.
+                                  </small>
                                 )}
-                                {!codigoLoading &&
-                                  String(productoDraft.codigo || '').trim().length >= 2 &&
-                                  !codigoOptions.length && (
-                                    <small className="muted">
-                                      Sin coincidencias. Puedes agregar como producto nuevo.
-                                    </small>
-                                  )}
-                                {codigoOptions.length > 0 && (
-                                  <div className="create-solicitud__results-header">
-                                    <span>Código</span>
-                                    <span>Nombre</span>
-                                    <span>Disponible</span>
-                                  </div>
-                                )}
-                                {codigoOptions.map((producto) => {
-                                  const isSelected =
-                                    String(selectedDraftProducto?.id || '') === String(producto.id)
-                                  const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
-                                  const nombre = String(producto?.nombre || '').trim()
-                                  const stock = Number(producto?.total_stock ?? 0)
-
-                                  return (
-                                    <button
-                                      key={`codigo-opt-${producto.id}`}
-                                      type="button"
-                                      className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
-                                      onMouseDown={(event) => event.preventDefault()}
-                                      onClick={() => handleProductoSelect(producto)}
-                                    >
-                                      <span className="result-codigo">{codigo}</span>
-                                      <span className="result-nombre">{nombre || '-'}</span>
-                                      <span className="result-stock">{stock}</span>
-                                    </button>
-                                  )
-                                })}
-                              </div>
+                              {codigoOptions.length > 0 && (
+                                <div className="create-solicitud__results-header">
+                                  <span>Código</span>
+                                  <span>Nombre</span>
+                                  <span>Disponible</span>
+                                </div>
+                              )}
+                              {codigoOptions.map((producto) => {
+                                const isSelected =
+                                  String(selectedDraftProducto?.id || '') === String(producto.id)
+                                const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
+                                const nombre = String(producto?.nombre || '').trim()
+                                const stock = Number(producto?.total_stock ?? 0)
+                                return (
+                                  <button
+                                    key={`codigo-opt-${producto.id}`}
+                                    type="button"
+                                    className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => handleProductoSelect(producto)}
+                                  >
+                                    <span className="result-codigo">{codigo}</span>
+                                    <span className="result-nombre">{nombre || '-'}</span>
+                                    <span className="result-stock">{stock}</span>
+                                  </button>
+                                )
+                              })}
                             </div>
-                          )}
-                        </div>
-                      </span>
-
-                      <span>
-                        <div className="create-solicitud__inline-dropdown" ref={casaComercialDropdownRef}>
-                          <button
-                            type="button"
-                            className={`create-solicitud__inline-trigger${!productoDraft.casaComercialNombre ? ' create-solicitud__inline-trigger--placeholder' : ''}`}
-                            onClick={handleCasaComercialDropdownToggle}
-                            disabled={loading}
-                            aria-haspopup="listbox"
-                            aria-expanded={showCasaComercialDropdown}
-                          >
-                            <span>{productoDraft.casaComercialNombre || 'Casa comercial (opcional)'}</span>
-                            <i
-                              className={`pi pi-chevron-${showCasaComercialDropdown ? 'up' : 'down'}`}
-                              aria-hidden="true"
-                            />
-                          </button>
-                          {showCasaComercialDropdown && (
-                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--compact">
-                              <div className="create-user__dropdown-search">
-                                <i className="pi pi-search" />
-                                <input
-                                  type="text"
-                                  placeholder="Buscar casa comercial"
-                                  value={casaComercialSearchTerm}
-                                  onChange={handleCasaComercialSearchChange}
-                                  autoFocus
-                                  autoComplete="off"
-                                />
-                              </div>
-                              <div className="create-solicitud__inline-results">
-                                {casaComercialLoading && <small className="muted">Buscando casas comerciales...</small>}
-                                {!casaComercialLoading && String(casaComercialSearchTerm || '').trim().length < 2 && (
-                                  <small className="muted">Escribe al menos 2 caracteres.</small>
-                                )}
-                                {!casaComercialLoading &&
-                                  String(casaComercialSearchTerm || '').trim().length >= 2 &&
-                                  !casaComercialOptions.length && (
-                                    <small className="muted">
-                                      Sin coincidencias.
-                                    </small>
-                                  )}
-                                {casaComercialOptions.map((casaOption) => {
-                                  const isSelected =
-                                    String(productoDraft.casaComercialId || '') === String(casaOption.id)
-                                  return (
-                                    <button
-                                      key={`casa-opt-${casaOption.id}`}
-                                      type="button"
-                                      className="create-user__result-option"
-                                      onMouseDown={(event) => event.preventDefault()}
-                                      onClick={() => handleCasaComercialSelect(casaOption)}
-                                    >
-                                      <div className="create-user__result-info">
-                                        <strong>{casaOption.nombre || `Casa comercial ${casaOption.id}`}</strong>
-                                        <small>
-                                          {casaOption.codigo
-                                            ? `Codigo: ${casaOption.codigo}`
-                                            : `ID: ${casaOption.id}`}
-                                        </small>
-                                      </div>
-                                      {isSelected && (
-                                        <span className="create-user__result-tag is-selected">Seleccionada</span>
-                                      )}
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </span>
-
-                      <span>
-                        <div className="create-solicitud__inline-dropdown" ref={referenciaDropdownRef}>
-                          <input
-                            name="referencia"
-                            type="text"
-                            placeholder="Referencia"
-                            value={productoDraft.referencia}
-                            onChange={handleProductoDraftChange}
-                            onFocus={() => {
-                              const hasTerm = String(productoDraft.referencia || '').trim().length >= 1
-                              setShowReferenciaDropdown(hasTerm)
-                            }}
-                            disabled={loading}
-                            autoComplete="off"
-                          />
-                          {showReferenciaDropdown && (
-                            <div className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
-                              <div className="create-solicitud__inline-results">
-                                {referenciaLoading && <small className="muted">Buscando...</small>}
-                                {!referenciaLoading && String(productoDraft.referencia || '').trim().length < 2 && (
-                                  <small className="muted">Escribe al menos 2 caracteres.</small>
-                                )}
-                                {!referenciaLoading &&
-                                  String(productoDraft.referencia || '').trim().length >= 2 &&
-                                  !referenciaOptions.length && (
-                                    <small className="muted">
-                                      Sin coincidencias. Puedes agregar como producto nuevo.
-                                    </small>
-                                  )}
-                                {referenciaOptions.length > 0 && (
-                                  <div className="create-solicitud__results-header">
-                                    <span>Código</span>
-                                    <span>Nombre</span>
-                                    <span>Disponible</span>
-                                  </div>
-                                )}
-                                {referenciaOptions.map((producto) => {
-                                  const isSelected =
-                                    String(selectedDraftProducto?.id || '') === String(producto.id)
-                                  const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
-                                  const nombre = String(producto?.nombre || '').trim()
-                                  const stock = Number(producto?.total_stock ?? 0)
-                                  return (
-                                    <button
-                                      key={`ref-opt-${producto.id}`}
-                                      type="button"
-                                      className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
-                                      onMouseDown={(event) => event.preventDefault()}
-                                      onClick={() => handleProductoSelect(producto)}
-                                    >
-                                      <span className="result-codigo">{codigo}</span>
-                                      <span className="result-nombre">{nombre || '-'}</span>
-                                      <span className="result-stock">{stock}</span>
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
+                          </InlinePanel>
                         </div>
                       </span>
 
@@ -1943,17 +1840,6 @@ function CreateSolicitud({
                           type="text"
                           placeholder="Descripción"
                           value={productoDraft.nombre}
-                          onChange={handleProductoDraftChange}
-                          disabled={loading}
-                        />
-                      </span>
-
-                      <span>
-                        <input
-                          name="comentario"
-                          type="text"
-                          placeholder="Comentario por producto"
-                          value={productoDraft.comentario}
                           onChange={handleProductoDraftChange}
                           disabled={loading}
                         />
@@ -1995,13 +1881,7 @@ function CreateSolicitud({
                       <div key={item.uid} className="create-user__locations-row">
                         <span>{item.oems?.length ? item.oems.join(', ') : '-'}</span>
                         <span>{item.codigo || '-'}</span>
-                        <span>{item.casaComercialNombre || '-'}</span>
-                        <span>
-                          {item.referencia || '-'}
-                          {item.tipo === 'existente' && <small className="create-solicitud__chip">Catalogo</small>}
-                        </span>
                         <span>{item.nombre || '-'}</span>
-                        <span>{item.comentario || '-'}</span>
                         <span className="create-solicitud__quantity-cell">{item.cantidad}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
                           <button
@@ -2020,26 +1900,6 @@ function CreateSolicitud({
 
                 </section>
 
-                <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Solicitud</p>
-                      <h4>Descripción general</h4>
-                    </div>
-                  </div>
-
-                  <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field create-user__field--full">
-                      <span>Comentarios</span>
-                      <textarea
-                        value={descripcionGeneral}
-                        onChange={(event) => setDescripcionGeneral(event.target.value)}
-                        placeholder="Comentarios generales de la solicitud"
-                        disabled={loading}
-                      />
-                    </label>
-                  </div>
-                </section>
               </>
             )}
 
@@ -2053,133 +1913,170 @@ function CreateSolicitud({
                 </div>
 
                 <div className="create-user__grid create-user__grid--two">
-                  <label className="create-user__field">
-                    <span>Cliente</span>
-                    <div className="create-user__dropdown" ref={clienteDropdownRef}>
-                      <input
-                        type="text"
-                        placeholder="Buscar por cedula o nombre"
-                        value={clienteSearchTerm}
-                        onChange={handleClienteSearchChange}
-                        onFocus={() => setShowClienteDropdown(Boolean(clienteSearchTerm))}
+                  <div className="create-user__field create-user__field--full">
+                    <span>Modo de cliente</span>
+                    <div className="create-solicitud__cliente-mode">
+                      <button
+                        type="button"
+                        className={`create-user__ghost create-solicitud__cliente-mode-btn ${useExistingCliente ? 'is-active' : ''}`}
+                        onClick={handleUseExistingCliente}
                         disabled={loading}
-                        autoComplete="off"
-                      />
-                      {showClienteDropdown && (
-                        <div className="create-user__dropdown-panel">
-                          <div className="create-user__dropdown-results">
-                            {clienteLoading && <small className="muted">Buscando cliente...</small>}
-                            {!clienteLoading && !clienteSearchTerm.trim() && (
-                              <small className="muted">Escribe para buscar.</small>
-                            )}
-                            {!clienteLoading && clienteSearchTerm.trim() && clienteSearchTerm.trim().length < 2 && (
-                              <small className="muted">Escribe al menos 2 caracteres.</small>
-                            )}
-                            {!clienteLoading && clienteSearchTerm.trim().length >= 2 && !clienteResultados.length && (
-                              <small className="muted">Sin coincidencias.</small>
-                            )}
-                            {clienteResultados.map((item) => {
-                              const isSelected = String(selectedCliente?.id || '') === String(item?.id || '')
-                              return (
-                                <button
-                                  key={item.id}
-                                  type="button"
-                                  className="create-user__result-option"
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={() => handleClienteSelect(item)}
-                                >
-                                  <div className="create-user__result-info">
-                                    <strong>{formatClienteLabel(item) || `Cliente ${item.id}`}</strong>
-                                    <small>ID: {item.id}</small>
-                                  </div>
-                                  {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
+                      >
+                        Seleccionar existente
+                      </button>
+                      <button
+                        type="button"
+                        className={`create-user__ghost create-solicitud__cliente-mode-btn ${useNewCliente ? 'is-active' : ''}`}
+                        onClick={handleCreateNewCliente}
+                        disabled={loading}
+                      >
+                        Crear nuevo cliente
+                      </button>
                     </div>
-                  </label>
+                  </div>
 
-                  <label className="create-user__field">
-                    <span>Cedula/RUC</span>
-                    <input
-                      className={isClientFieldInvalid('cedula_ruc') ? 'create-solicitud__input--invalid' : ''}
-                      name="cedula_ruc"
-                      type="text"
-                      value={cliente.cedula_ruc}
-                      onChange={handleClienteFieldChange}
-                      required={mustCompleteManualClient}
-                      disabled={loading}
-                    />
-                  </label>
+                  {useExistingCliente && (
+                    <label className="create-user__field create-user__field--full">
+                      <span>Cliente <small className="muted">(opcional)</small></span>
+                      <div className="create-user__dropdown create-solicitud__cliente-dropdown" ref={clienteDropdownRef}>
+                        <button
+                          type="button"
+                          className={`create-user__dropdown-trigger${!selectedClienteLabel ? ' create-solicitud__cliente-trigger--placeholder' : ''}`}
+                          onClick={handleClienteDropdownToggle}
+                          disabled={loading}
+                          aria-haspopup="listbox"
+                          aria-expanded={showClienteDropdown}
+                        >
+                          <span>{selectedClienteLabel || 'Selecciona un cliente'}</span>
+                          <i className={`pi pi-chevron-${showClienteDropdown ? 'up' : 'down'}`} />
+                        </button>
+                        {showClienteDropdown && (
+                          <div className="create-user__dropdown-panel create-solicitud__cliente-panel">
+                            <div className="create-user__dropdown-search">
+                              <i className="pi pi-search" />
+                              <input
+                                type="text"
+                                placeholder="Buscar por cedula o nombre"
+                                value={clienteSearchTerm}
+                                onChange={handleClienteSearchChange}
+                                disabled={loading}
+                                autoComplete="off"
+                                autoFocus
+                              />
+                            </div>
+                            <div className="create-user__dropdown-results">
+                              {clienteLoading && <small className="muted">Buscando cliente...</small>}
+                              {!clienteLoading && !clienteSearchTerm.trim() && (
+                                <small className="muted">Escribe para buscar.</small>
+                              )}
+                              {!clienteLoading && clienteSearchTerm.trim() && clienteSearchTerm.trim().length < 2 && (
+                                <small className="muted">Escribe al menos 2 caracteres.</small>
+                              )}
+                              {!clienteLoading && clienteSearchTerm.trim().length >= 2 && !clienteResultados.length && (
+                                <small className="muted">Sin resultados.</small>
+                              )}
+                              {clienteResultados.map((item) => {
+                                const optionLabel = formatClienteLabel(item)
+                                const selected = String(selectedCliente?.id || '') === String(item?.id || '')
+                                return (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => handleClienteSelect(item)}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>{optionLabel || `Cliente ${item.id}`}</strong>
+                                      <small>ID: {item.id}</small>
+                                    </div>
+                                    {selected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  )}
 
-                  <label className="create-user__field">
-                    <span>Nombres</span>
-                    <input
-                      className={isClientFieldInvalid('nombres') ? 'create-solicitud__input--invalid' : ''}
-                      name="nombres"
-                      type="text"
-                      value={cliente.nombres}
-                      onChange={handleClienteFieldChange}
-                      required={mustCompleteManualClient}
-                      disabled={loading}
-                    />
-                  </label>
+                  {useNewCliente && (
+                    <>
+                      <label className="create-user__field">
+                        <span>Cedula/RUC</span>
+                        <input
+                          name="cedula_ruc"
+                          type="text"
+                          value={cliente.cedula_ruc}
+                          onChange={handleClienteFieldChange}
+                          disabled={loading}
+                          required
+                        />
+                      </label>
 
-                  <label className="create-user__field">
-                    <span>Apellidos</span>
-                    <input
-                      className={isClientFieldInvalid('apellidos') ? 'create-solicitud__input--invalid' : ''}
-                      name="apellidos"
-                      type="text"
-                      value={cliente.apellidos}
-                      onChange={handleClienteFieldChange}
-                      required={mustCompleteManualClient}
-                      disabled={loading}
-                    />
-                  </label>
+                      <label className="create-user__field">
+                        <span>Nombres</span>
+                        <input
+                          name="nombres"
+                          type="text"
+                          value={cliente.nombres}
+                          onChange={handleClienteFieldChange}
+                          disabled={loading}
+                          required
+                        />
+                      </label>
 
-                  <label className="create-user__field">
-                    <span>Correo</span>
-                    <input
-                      className={isClientFieldInvalid('correo') ? 'create-solicitud__input--invalid' : ''}
-                      name="correo"
-                      type="email"
-                      value={cliente.correo}
-                      onChange={handleClienteFieldChange}
-                      disabled={loading}
-                    />
-                  </label>
+                      <label className="create-user__field">
+                        <span>Apellidos</span>
+                        <input
+                          name="apellidos"
+                          type="text"
+                          value={cliente.apellidos}
+                          onChange={handleClienteFieldChange}
+                          disabled={loading}
+                          required
+                        />
+                      </label>
 
-                  <label className="create-user__field">
-                    <span>Teléfono</span>
-                    <input
-                      className={isClientFieldInvalid('telefono') ? 'create-solicitud__input--invalid' : ''}
-                      name="telefono"
-                      type="text"
-                      value={cliente.telefono}
-                      onChange={handleClienteFieldChange}
-                      disabled={loading}
-                    />
-                  </label>
+                      <label className="create-user__field">
+                        <span>Correo</span>
+                        <input
+                          name="correo"
+                          type="email"
+                          value={cliente.correo}
+                          onChange={handleClienteFieldChange}
+                          disabled={loading}
+                        />
+                      </label>
 
-                  <label className="create-user__field create-user__field--full">
-                    <span>Dirección</span>
-                    <input
-                      className={isClientFieldInvalid('direccion') ? 'create-solicitud__input--invalid' : ''}
-                      name="direccion"
-                      type="text"
-                      value={cliente.direccion}
-                      onChange={handleClienteFieldChange}
-                      disabled={loading}
-                    />
-                  </label>
+                      <label className="create-user__field">
+                        <span>Telefono</span>
+                        <input
+                          name="telefono"
+                          type="text"
+                          value={cliente.telefono}
+                          onChange={handleClienteFieldChange}
+                          disabled={loading}
+                        />
+                      </label>
+
+                      <label className="create-user__field create-user__field--full">
+                        <span>Direccion</span>
+                        <input
+                          name="direccion"
+                          type="text"
+                          value={cliente.direccion}
+                          onChange={handleClienteFieldChange}
+                          disabled={loading}
+                        />
+                      </label>
+                    </>
+                  )}
                 </div>
 
-                {showClientHint && (
-                  <small className="muted">Cliente existente detectado. Se usara el registro actual al guardar.</small>
+                {useExistingCliente && selectedCliente?.id && (
+                  <small className="muted">Cliente existente detectado. Se usará el registro actual al guardar.</small>
                 )}
               </section>
             )}
