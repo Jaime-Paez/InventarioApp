@@ -1284,7 +1284,9 @@ function RecordatoriosPopup({
 
   const activeDetailReminderRecipients = useMemo(() => {
     if (!activeDetailReminder) return []
+    const creatorId = activeDetailReminder?.creator?.id
     return (Array.isArray(activeDetailReminder?.recipients) ? activeDetailReminder.recipients : [])
+      .filter((recipient) => !creatorId || String(recipient?.id) !== String(creatorId))
       .map((recipient) => String(recipient?.name || '').trim())
       .filter(Boolean)
   }, [activeDetailReminder])
