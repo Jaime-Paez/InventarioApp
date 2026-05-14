@@ -20,6 +20,7 @@ const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'productos',
   'solicitudes',
 ])
+const ENTRADAS_MODULE_KEY = 'movimientos_entradas'
 const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
 
 const isActionAllowedForModule = (moduleKey, actionKey) =>
@@ -201,10 +202,13 @@ const serializeModuleBranchMatrix = (matrix, allowedModules = []) => {
           if (!normalizedBranchId) return null
           const normalizedEntry = applyPermissionDependencies(modulo, rawEntry)
           if (!hasAnyAllowedActionEnabled(modulo, normalizedEntry)) return null
-          return {
-            sucursal_id: normalizedBranchId,
-            ...normalizedEntry,
+          const entry = { sucursal_id: normalizedBranchId, ...normalizedEntry }
+          if (normalizeModuleKey(modulo) === ENTRADAS_MODULE_KEY) {
+            const canCreate = Boolean(normalizedEntry.puede_crear)
+            entry.puede_crear_compra_local = canCreate ? Boolean(rawEntry?.puede_crear_compra_local ?? true) : false
+            entry.puede_crear_importacion = canCreate ? Boolean(rawEntry?.puede_crear_importacion ?? true) : false
           }
+          return entry
         })
         .filter(Boolean)
         .sort((a, b) => a.sucursal_id - b.sucursal_id)
@@ -463,6 +467,26 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       }
 
       return { ...prevScopes, [normalizedModuleKey]: nextModuleScopes }
+    })
+  }
+
+  const toggleEntradasSubtype = (subtypeKey) => {
+    if (isAdministrator) return
+    const normalizedBranchId = normalizeBranchId(selectedBranchId)
+    if (!normalizedBranchId) return
+    setModuleBranchMatrix((prev) => {
+      const moduleScopes = prev[ENTRADAS_MODULE_KEY]
+      if (!moduleScopes || typeof moduleScopes !== 'object') return prev
+      const branchKey = String(normalizedBranchId)
+      const current = moduleScopes[branchKey]
+      if (!current || !current.puede_crear) return prev
+      return {
+        ...prev,
+        [ENTRADAS_MODULE_KEY]: {
+          ...moduleScopes,
+          [branchKey]: { ...current, [subtypeKey]: !current[subtypeKey] },
+        },
+      }
     })
   }
 
@@ -1234,6 +1258,38 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
                   {branchPermissionOptions.map((module) => renderPermissionRow(module))}
                 </div>
+
+                {branchPermissionOptions.some((m) => normalizeModuleKey(m?.key) === ENTRADAS_MODULE_KEY) && (() => {
+                  const normalizedBranchId = normalizeBranchId(selectedBranchId)
+                  const entradasEntry = getBranchPermissionEntry(moduleBranchMatrix, ENTRADAS_MODULE_KEY, normalizedBranchId)
+                  const canCreate = isAdministrator || Boolean(entradasEntry?.puede_crear)
+                  const subtypeDisabled = loading || permissionsLoading || branchesLoading || isAdministrator || !canCreate
+                  const subtypes = [
+                    { key: 'puede_crear_compra_local', label: 'Compras locales' },
+                    { key: 'puede_crear_importacion', label: 'Importaciones' },
+                  ]
+                  return (
+                    <div className="create-user__entrada-subtypes">
+                      <p className="create-user__entrada-subtypes-label">Tipos de entrada permitidos para crear</p>
+                      <div className="create-user__entrada-subtypes-options">
+                        {subtypes.map(({ key, label }) => {
+                          const checked = isAdministrator ? true : Boolean(entradasEntry?.[key] ?? true)
+                          return (
+                            <label key={key} className={`create-user__subtype-option${subtypeDisabled ? ' create-user__subtype-option--disabled' : ''}`}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleEntradasSubtype(key)}
+                                disabled={subtypeDisabled}
+                              />
+                              <span>{label}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           </div>,

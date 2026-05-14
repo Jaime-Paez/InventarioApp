@@ -159,6 +159,8 @@ class UsuarioModuloSucursal(models.Model):
     puede_leer = models.BooleanField(default=True)
     puede_actualizar = models.BooleanField(default=True)
     puede_eliminar = models.BooleanField(default=True)
+    puede_crear_compra_local = models.BooleanField(default=True)
+    puede_crear_importacion = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = "Alcance de sucursal por modulo"
@@ -179,6 +181,10 @@ class UsuarioModuloSucursal(models.Model):
 
         if self.puede_crear or self.puede_actualizar or self.puede_eliminar:
             self.puede_leer = True
+
+        if not self.puede_crear:
+            self.puede_crear_compra_local = False
+            self.puede_crear_importacion = False
 
         if not any(
             (

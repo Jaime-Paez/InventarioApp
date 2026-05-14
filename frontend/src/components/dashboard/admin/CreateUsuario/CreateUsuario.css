@@ -903,6 +903,61 @@
   min-height: 0;
 }
 
+.create-user__entrada-subtypes {
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.create-user__entrada-subtypes-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+}
+
+.create-user__entrada-subtypes-options {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.create-user__subtype-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 0.94rem;
+  font-weight: 500;
+  user-select: none;
+}
+
+.create-user__subtype-option input[type='checkbox'] {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.create-user__subtype-option--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.create-user__subtype-option--disabled input[type='checkbox'] {
+  cursor: not-allowed;
+}
+
+.dashboard-shell.dark .create-user__entrada-subtypes {
+  border-top-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__subtype-option input[type='checkbox'] {
+  accent-color: var(--color-primary-dark);
+}
+
 .dashboard-shell.dark .create-user__branch-list,
 .dashboard-shell.dark .create-user__branch-item,
 .dashboard-shell.dark .create-user__permissions-panel {

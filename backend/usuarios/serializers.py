@@ -132,6 +132,13 @@ def build_sucursal_scope_payload(scopes):
         if not any(normalized_flags.values()):
             continue
 
+        normalized_flags["puede_crear_compra_local"] = bool(
+            getattr(scope, "puede_crear_compra_local", True)
+        )
+        normalized_flags["puede_crear_importacion"] = bool(
+            getattr(scope, "puede_crear_importacion", True)
+        )
+
         grouped.setdefault(modulo, {})
         grouped[modulo][branch_id] = normalized_flags
 
@@ -234,11 +241,20 @@ class ModuloSucursalActionSerializer(serializers.Serializer):
     puede_leer = serializers.BooleanField(required=False, default=False)
     puede_actualizar = serializers.BooleanField(required=False, default=False)
     puede_eliminar = serializers.BooleanField(required=False, default=False)
+    puede_crear_compra_local = serializers.BooleanField(required=False, default=True)
+    puede_crear_importacion = serializers.BooleanField(required=False, default=True)
 
     def validate(self, attrs):
+        flags = normalize_scope_action_flags(attrs)
+        if not flags.get("puede_crear"):
+            flags["puede_crear_compra_local"] = False
+            flags["puede_crear_importacion"] = False
+        else:
+            flags["puede_crear_compra_local"] = bool(attrs.get("puede_crear_compra_local", True))
+            flags["puede_crear_importacion"] = bool(attrs.get("puede_crear_importacion", True))
         return {
             "sucursal_id": attrs["sucursal_id"],
-            **normalize_scope_action_flags(attrs),
+            **flags,
         }
 
 
@@ -513,6 +529,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 flags = normalize_scope_action_flags(action_scope)
                 if not any(flags.values()):
                     continue
+                if not flags.get("puede_crear"):
+                    flags["puede_crear_compra_local"] = False
+                    flags["puede_crear_importacion"] = False
+                else:
+                    flags["puede_crear_compra_local"] = bool(action_scope.get("puede_crear_compra_local", True))
+                    flags["puede_crear_importacion"] = bool(action_scope.get("puede_crear_importacion", True))
                 action_map[branch_id] = flags
 
             if action_map:
