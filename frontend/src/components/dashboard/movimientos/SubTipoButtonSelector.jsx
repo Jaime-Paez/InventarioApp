@@ -42,8 +42,9 @@ function SubTipoButtonSelector({
     [normalizedOptions, hoveredValue]
   )
 
-  const resolvedHelperText =
-    hoveredOption?.description || selectedOption?.description || helperText
+  const resolvedHelperText = hoveredOption?.blocked
+    ? 'No tienes permiso para crear este tipo de entrada en esta sucursal.'
+    : hoveredOption?.description || selectedOption?.description || helperText
   const helperClassName = [
     'create-salida__subtipo-help',
     hoveredOption ? 'is-hovered' : '',
@@ -64,18 +65,20 @@ function SubTipoButtonSelector({
         {normalizedOptions.map((option) => {
           const optionValue = String(option?.value || '')
           const isActive = optionValue === String(value)
+          const isBlocked = Boolean(option?.blocked)
           const Icon = ICONS_BY_NAME[option?.icon] || null
           return (
             <button
               key={optionValue}
               type="button"
-              className="create-salida__subtipo-btn"
+              className={`create-salida__subtipo-btn${isBlocked ? ' create-salida__subtipo-btn--blocked' : ''}`}
               aria-pressed={isActive}
-              disabled={disabled}
+              aria-disabled={isBlocked || undefined}
+              disabled={disabled || isBlocked}
               onMouseEnter={() => setHoveredValue(optionValue)}
               onFocus={() => setHoveredValue(optionValue)}
               onBlur={() => setHoveredValue('')}
-              onClick={() => onChange?.(optionValue)}
+              onClick={() => !isBlocked && onChange?.(optionValue)}
             >
               {Icon ? <Icon size={28} strokeWidth={2.1} className="create-salida__subtipo-btn-icon" aria-hidden="true" /> : null}
               <span className="create-salida__subtipo-btn-label">{option?.label}</span>

@@ -106,6 +106,8 @@ const normalizeModuleScopeActions = (rawScopes) => {
       branchActions[branchId] = {
         puede_crear: Boolean(entry?.puede_crear),
         puede_actualizar: Boolean(entry?.puede_actualizar),
+        puede_crear_compra_local: Boolean(entry?.puede_crear_compra_local),
+        puede_crear_importacion: Boolean(entry?.puede_crear_importacion),
       }
     })
 
@@ -418,6 +420,14 @@ function CreateEntrada({
     [currentUser]
   )
 
+  const currentUserEntradasSubtypeActions = useMemo(() => {
+    if (isCurrentUserAdmin) return null
+    const branchId = normalizeId(prefilledSucursalId || formData.sucursalId)
+    if (!branchId) return null
+    const actions = normalizeModuleScopeActions(currentUser?.sucursales_por_modulo)
+    return actions?.['movimientos_entradas']?.[branchId] ?? null
+  }, [isCurrentUserAdmin, prefilledSucursalId, formData.sucursalId, currentUser])
+
   useEffect(() => {
     if (!detailError) return
     notifyError(detailError)
@@ -467,13 +477,21 @@ function CreateEntrada({
             order = 3
           }
 
+          const isImport = normalizedName.includes('import')
+          const isCompra = normalizedName.includes('compra')
+          let blocked = false
+          if (currentUserEntradasSubtypeActions) {
+            if (isImport) blocked = !currentUserEntradasSubtypeActions.puede_crear_importacion
+            else if (isCompra) blocked = !currentUserEntradasSubtypeActions.puede_crear_compra_local
+          }
+
           return {
             value: String(subTipo?.id || ''),
             label,
             description,
-            icon: normalizedName.includes('import')
+            icon: isImport
               ? 'import'
-              : normalizedName.includes('compra')
+              : isCompra
                 ? 'purchase'
                 : normalizedName.includes('trasl')
                   ? 'branch'
@@ -482,10 +500,11 @@ function CreateEntrada({
                     : 'branch',
             order,
             index,
+            blocked,
           }
         })
         .sort((first, second) => first.order - second.order || first.index - second.index),
-    [subTiposEntrada]
+    [subTiposEntrada, currentUserEntradasSubtypeActions]
   )
   const selectedSubTipoLabel = useMemo(
     () =>

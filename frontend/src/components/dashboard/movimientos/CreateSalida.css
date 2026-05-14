@@ -170,6 +170,16 @@
   box-shadow: none;
 }
 
+.create-salida__subtipo-btn--blocked,
+.create-salida__subtipo-btn--blocked:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+  border-style: dashed;
+  border-color: #b0bec8;
+  color: #8da0b0;
+}
+
 .create-salida__subtipo-btn-icon {
   flex-shrink: 0;
   width: 20px;
@@ -295,6 +305,12 @@
   box-shadow:
     0 4px 10px rgba(2, 6, 23, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dashboard-shell.dark .create-salida__subtipo-btn--blocked,
+.dashboard-shell.dark .create-salida__subtipo-btn--blocked:disabled {
+  border-color: rgba(148, 163, 184, 0.22);
+  color: #64748b;
 }
 
 .dashboard-shell.dark .create-salida__subtipo-btn:hover:not(:disabled),
