@@ -47,6 +47,7 @@ import {
 
 const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
 const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
+const URGENT_URGENTE_DECISION_MESSAGE = 'Urgente'
 const URGENT_SHIPMENT_MESSAGE = 'Tienes un envío pendiente por despachar.'
 const URGENT_REJECTED_TRANSFER_MESSAGE = 'Corrige tu solicitud de traslado rechazada.'
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
@@ -1348,7 +1349,7 @@ function QuickActions({
             reminderId,
             kind: 'decision',
             anchor: 'top_right',
-            message: URGENT_DECISION_MESSAGE,
+            message: Boolean(reminder?.context?.urgente) ? URGENT_URGENTE_DECISION_MESSAGE : URGENT_DECISION_MESSAGE,
             priorityTimestamp: resolveReminderStateTimestamp(reminder) || parseEntityTimestamp(dateTimeCandidate),
             isUrgente: Boolean(reminder?.context?.urgente),
             reminder,
@@ -4020,6 +4021,9 @@ function QuickActions({
                 : 'Resolver solicitud de traslado pendiente'
           }
         >
+          {shield.target?.isUrgente && (
+            <span className="quick-actions__urgent-exclamation" aria-hidden="true">!</span>
+          )}
           {shield.id === activeUrgentShield?.id && urgentMessageStyle && (
             <span className="quick-actions__urgent-message" style={urgentMessageStyle} aria-hidden="true">
               {activeUrgentShield?.message || URGENT_DECISION_MESSAGE}
