@@ -2966,9 +2966,6 @@ function RecordatoriosPopup({
                                   {timelineContextReference}
                                 </span>
                               )}
-                              {isUrgenteReminder && (
-                                <span className="recordatorios-popup__urgente-badge">Urgente</span>
-                              )}
                             </div>
 
                             <div
