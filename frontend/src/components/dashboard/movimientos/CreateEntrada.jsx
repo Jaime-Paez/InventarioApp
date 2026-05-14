@@ -6,17 +6,11 @@ import useModalAnimation from '../common/useModalAnimation'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import {
-  buildTransferHistoryEntry,
-  createReminderId,
   emitRemindersSync,
   extractUserId,
-  fetchRemindersFromBackend,
   formatCurrentUserName,
   normalizeId,
-  readRemindersFromStorage,
   sanitizeRecipient,
-  upsertTransferReminder,
-  writeRemindersToStorage,
 } from '../common/reminders/remindersStorage'
 
 const DEFAULT_IVA_RATE = 0.15
@@ -36,6 +30,7 @@ const initialForm = {
   no_documento: '',
   factura_referencia: '',
   descripcion: '',
+  urgente: false,
   funcional: true,
   sucursalObjetivoId: '',
   cliente: '',
@@ -369,6 +364,7 @@ function CreateEntrada({
   const [reminderUsersError, setReminderUsersError] = useState('')
   const [selectedReminderUserIds, setSelectedReminderUserIds] = useState([])
   const [documentStatus, setDocumentStatus] = useState(DOCUMENT_STATUS.invalid)
+  const [showUrgenteConfirm, setShowUrgenteConfirm] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -2736,6 +2732,7 @@ function CreateEntrada({
         const payload = {
           fecha: formData.fecha,
           descripcion: String(formData.descripcion || '').trim(),
+          urgente: Boolean(formData.urgente),
           sucursal_solicitante_id: Number(formData.sucursalId),
           sucursal_proveedora_id: Number(formData.sucursalObjetivoId),
           recordatorio_destinatario_ids: reminderRecipientIds,
@@ -2761,117 +2758,7 @@ function CreateEntrada({
           throw new Error(detail)
         }
 
-        const creatorId = normalizeId(currentCreatorId)
-        const creatorName = String(currentCreatorName || 'Usuario').trim() || 'Usuario'
-        const now = getNowDateParts()
-        const createdAt = new Date().toISOString()
-        const solicitudId = normalizeId(data?.id)
-        const solicitudDoc = String(data?.no_documento || formData.no_documento || '').trim()
-        const solicitudLabel = solicitudDoc
-          ? `Solicitud de traslado #${solicitudDoc}`
-          : `Solicitud de traslado #${solicitudId || 'N/A'}`
-
-        const normalizeRecipientList = (list) =>
-          list
-            .map((recipient) => sanitizeRecipient(recipient))
-            .filter(Boolean)
-            .filter(
-              (recipient, index, source) =>
-                source.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
-            )
-
-        const adminRecipients = normalizeRecipientList(adminReminderRecipients)
-        const additionalRecipients = normalizeRecipientList(selectedReminderRecipients)
-        const context = solicitudId
-          ? {
-            type: 'solicitud_traslado',
-            id: solicitudId,
-            label: solicitudLabel,
-          }
-          : null
-
-        let reminderStoredByServer = false
-        if (solicitudId) {
-          try {
-            const remoteReminders = await fetchRemindersFromBackend(token)
-            reminderStoredByServer = remoteReminders.some((reminder) => {
-              const reminderContextType = normalizeId(reminder?.context?.type)
-              const reminderContextId = normalizeId(reminder?.context?.id)
-              return reminderContextType === 'solicitud_traslado' && reminderContextId === solicitudId
-            })
-            if (reminderStoredByServer) {
-              emitRemindersSync()
-            }
-          } catch {
-            reminderStoredByServer = false
-          }
-        }
-
-        if (!reminderStoredByServer && (adminRecipients.length || additionalRecipients.length)) {
-          const deadlineAt = new Date()
-          deadlineAt.setHours(23, 59, 59, 999)
-          const pendingDescription = additionalRecipients.length
-            ? `${solicitudLabel}. Revisar gestion pendiente. Usuarios asignados deben aceptar o rechazar hoy.`
-            : `${solicitudLabel}. Revisar gestion pendiente.`
-          const reminderRecipients = [
-            ...adminRecipients,
-            ...additionalRecipients,
-            {
-              id: creatorId,
-              name: creatorName,
-            },
-          ]
-            .filter(Boolean)
-            .filter(
-              (recipient, index, source) =>
-                source.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
-            )
-
-          const transferReminder = {
-            id: createReminderId(),
-            date: now.date,
-            time: now.time,
-            description: pendingDescription,
-            creator: {
-              id: creatorId,
-              name: creatorName,
-            },
-            recipients: reminderRecipients,
-            context,
-            kind: 'solicitud_traslado_decision',
-            deadlineAt: deadlineAt.toISOString(),
-            decision: {
-              status: 'pendiente',
-              reason: '',
-              by: null,
-              at: '',
-              assignedRecipients: additionalRecipients,
-            },
-            transferHistory: [
-              buildTransferHistoryEntry({
-                stage: 'pendiente',
-                description: pendingDescription,
-                at: createdAt,
-                actor: {
-                  id: creatorId,
-                  name: creatorName,
-                },
-              }),
-            ],
-            createdAt,
-            completedBy: [],
-          }
-          try {
-            const existingReminders = readRemindersFromStorage()
-            writeRemindersToStorage(upsertTransferReminder(existingReminders, transferReminder))
-            emitRemindersSync()
-          } catch {
-            notifyError('La solicitud se creó, pero no se pudo generar el recordatorio obligatorio.')
-          }
-        } else if (!reminderStoredByServer) {
-          notifyError('La solicitud se creó, pero no se pudo generar el recordatorio obligatorio.')
-        }
-
+        emitRemindersSync()
         onCreated?.(data)
       } catch (err) {
         notifyError(err.message || 'Ocurrió un error al crear la solicitud de traslado.')
@@ -3231,6 +3118,24 @@ function CreateEntrada({
                           disabled={loading}
                         />
                       </label>
+
+                      {isTraslado && (
+                        <label className="create-user__field">
+                          <span>Urgente</span>
+                          <input
+                            type="checkbox"
+                            checked={formData.urgente}
+                            onChange={(event) => {
+                              if (event.target.checked) {
+                                setShowUrgenteConfirm(true)
+                              } else {
+                                setFormData((prev) => ({ ...prev, urgente: false }))
+                              }
+                            }}
+                            disabled={loading}
+                          />
+                        </label>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -3829,6 +3734,40 @@ function CreateEntrada({
             )}
           </div>
         </form>
+
+        {showUrgenteConfirm && (
+          <div
+            className="create-salida__confirm-overlay"
+            onMouseDown={() => setShowUrgenteConfirm(false)}
+          >
+            <div
+              className="create-salida__confirm-card"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <h4>Confirmar urgencia</h4>
+              <p>¿Está seguro de que esta solicitud es urgente?</p>
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={() => setShowUrgenteConfirm(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action"
+                  onClick={() => {
+                    setFormData((prev) => ({ ...prev, urgente: true }))
+                    setShowUrgenteConfirm(false)
+                  }}
+                >
+                  Sí, es urgente
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showLocationResolver && (
           <div

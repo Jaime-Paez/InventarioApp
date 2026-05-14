@@ -589,6 +589,7 @@ const mapTransferRowToEntradaPreview = (row) => {
     sucursal_proveedora_id: row?.sucursal_proveedora_id || '',
     descripcion: String(row?.descripcion || '').trim(),
     motivo_rechazo: String(row?.motivo_rechazo || '').trim(),
+    urgente: Boolean(row?.urgente),
     detalles,
     movimiento_salida_id: row?.movimiento_salida_id ?? null,
     movimiento_entrada_id: movimientoEntradaId || null,
@@ -629,6 +630,7 @@ const mapTransferDetailToEntradaPreview = (detail) => {
     sucursal_proveedora_id: detail?.sucursal_proveedora_id || '',
     descripcion: String(detail?.descripcion || '').trim(),
     motivo_rechazo: String(detail?.motivo_rechazo || '').trim(),
+    urgente: Boolean(detail?.urgente),
     detalles,
     movimiento_salida_id: detail?.movimiento_salida_id ?? null,
     movimiento_entrada_id: detail?.movimiento_entrada_id ?? null,
@@ -2909,6 +2911,7 @@ function RecordatoriosPopup({
                         )
                         const shouldUseAdminTransferActions = canAdminOpenEntradaAction || canAdminOpenSalidaAction
                         const adminTransferSalidaLabel = canCreateSalidaFromReminder ? 'Crear salida' : 'Ver salida'
+                        const isUrgenteReminder = isTransferContextReminder && Boolean(reminder?.context?.urgente)
                         const timelineContextTitle = getTimelineReminderContextTitle(reminder)
                         const timelineContextReference = getTimelineReminderContextReference(reminder)
                         const timelineDescription = getTimelineReminderSummary({
@@ -2947,6 +2950,8 @@ function RecordatoriosPopup({
                               isPendingInspectionAlert ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
                             }${
                               isHighlightedReminder ? ' recordatorios-popup__timeline-item--highlighted' : ''
+                            }${
+                              isUrgenteReminder ? ' recordatorios-popup__timeline-item--urgente' : ''
                             }`}
                           >
                             <div
@@ -2960,6 +2965,9 @@ function RecordatoriosPopup({
                                 <span className="recordatorios-popup__timeline-item-context-ref">
                                   {timelineContextReference}
                                 </span>
+                              )}
+                              {isUrgenteReminder && (
+                                <span className="recordatorios-popup__urgente-badge">Urgente</span>
                               )}
                             </div>
 
@@ -3193,6 +3201,9 @@ function RecordatoriosPopup({
                                 ) : null}
                               </div>
                             </div>
+                            {isUrgenteReminder && (
+                              <span className="recordatorios-popup__urgente-dot" aria-hidden="true">!</span>
+                            )}
                           </article>
                         )
                     })

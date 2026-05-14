@@ -444,6 +444,8 @@ def _sanitize_context(raw):
     sucursal_proveedora_id = _normalize_id(source.get("sucursal_proveedora_id"))
     if sucursal_proveedora_id:
         result["sucursal_proveedora_id"] = sucursal_proveedora_id
+    if "urgente" in source:
+        result["urgente"] = bool(source.get("urgente"))
     return result
 
 
@@ -701,6 +703,60 @@ def _hydrate_transfer_history_from_solicitudes(reminders):
 
         updated_reminder = dict(reminder)
         updated_reminder["transferHistory"] = merged_history
+        hydrated.append(updated_reminder)
+        changed = True
+
+    return hydrated, changed
+
+
+def _hydrate_urgente_from_solicitudes(reminders):
+    normalized = _normalize_reminder_list(reminders)
+    solicitud_ids = set()
+
+    for reminder in normalized:
+        context = reminder.get("context") if isinstance(reminder.get("context"), dict) else {}
+        context_type = _normalize_context_type(context.get("type"))
+        context_id = _normalize_id(context.get("id"))
+        if context_type != "solicitud_traslado" or not context_id.isdigit():
+            continue
+        solicitud_ids.add(int(context_id))
+
+    if not solicitud_ids:
+        return normalized, False
+
+    from movimientos.models import SolicitudTraslado
+
+    urgente_by_id = {}
+    for solicitud_id, urgente in (
+        SolicitudTraslado.objects.filter(id__in=sorted(solicitud_ids))
+        .values_list("id", "urgente")
+    ):
+        urgente_by_id[str(int(solicitud_id))] = bool(urgente)
+
+    hydrated = []
+    changed = False
+    for reminder in normalized:
+        context = reminder.get("context") if isinstance(reminder.get("context"), dict) else {}
+        context_type = _normalize_context_type(context.get("type"))
+        context_id = _normalize_id(context.get("id"))
+        if context_type != "solicitud_traslado" or not context_id:
+            hydrated.append(reminder)
+            continue
+
+        if context_id not in urgente_by_id:
+            hydrated.append(reminder)
+            continue
+
+        current_urgente = context.get("urgente")
+        db_urgente = urgente_by_id[context_id]
+        if current_urgente == db_urgente:
+            hydrated.append(reminder)
+            continue
+
+        updated_context = dict(context)
+        updated_context["urgente"] = db_urgente
+        updated_reminder = dict(reminder)
+        updated_reminder["context"] = updated_context
         hydrated.append(updated_reminder)
         changed = True
 
@@ -1777,7 +1833,8 @@ class ReminderStateAPIView(APIView):
             reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(
                 reminders
             )
-            payload_changed = reminders != current_payload or transfer_history_changed
+            reminders, urgente_changed = _hydrate_urgente_from_solicitudes(reminders)
+            payload_changed = reminders != current_payload or transfer_history_changed or urgente_changed
             if payload_changed:
                 store.payload = reminders
 
@@ -1793,7 +1850,8 @@ class ReminderStateAPIView(APIView):
             reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(
                 reminders
             )
-            if transfer_history_changed:
+            reminders, urgente_changed2 = _hydrate_urgente_from_solicitudes(reminders)
+            if transfer_history_changed or urgente_changed2:
                 store.payload = reminders
                 store.save(update_fields=["payload", "updated_at"])
 

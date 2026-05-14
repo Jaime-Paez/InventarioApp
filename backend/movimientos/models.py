@@ -90,6 +90,7 @@ class SolicitudTraslado(models.Model):
         related_name="solicitudes_traslado_recibidas",
     )
     descripcion = models.TextField(blank=True)
+    urgente = models.BooleanField(default=False)
     fecha = models.DateField()
     no_documento = models.CharField(max_length=80, unique=True)
     estado = models.CharField(

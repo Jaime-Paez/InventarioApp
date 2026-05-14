@@ -6,6 +6,7 @@ import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
+import StaticFieldDisplay from './StaticFieldDisplay'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -28,6 +29,7 @@ const emptyForm = {
   cliente: '',
   descuento: '',
   iva_rate: String(DEFAULT_IVA_RATE),
+  urgente: false,
 }
 
 const initialClienteForm = {
@@ -402,6 +404,22 @@ function EntradaDetails({
   const isCompraEntrada = selectedSubTipoName.includes('compra') || selectedSubTipoName.includes('import')
   const requiresSucursalObjetivo = isTraslado
   const documentLabel = isTraslado ? 'Codigo de solicitud' : 'Codigo de entrada'
+
+  const selectedBranchName = useMemo(
+    () => branches.find((b) => String(b.id) === String(formData.sucursalId))?.nombre || formData.sucursalId || '-',
+    [branches, formData.sucursalId]
+  )
+  const selectedObjectiveBranchName = useMemo(
+    () => branches.find((b) => String(b.id) === String(formData.sucursalObjetivoId))?.nombre || formData.sucursalObjetivoId || '-',
+    [branches, formData.sucursalObjetivoId]
+  )
+  const formattedFecha = useMemo(() => {
+    if (!formData.fecha) return '-'
+    const date = new Date(`${formData.fecha}T00:00:00`)
+    if (!Number.isFinite(date.getTime())) return formData.fecha
+    return date.toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: 'numeric' })
+  }, [formData.fecha])
+
   const stockBranchId = useMemo(() => {
     if (isTraslado) {
       return String(formData.sucursalObjetivoId || '').trim()
@@ -895,6 +913,7 @@ function EntradaDetails({
         cliente: clienteFieldValue,
         descuento: salida?.descuento ?? '',
         iva_rate: String(salida?.iva_rate ?? DEFAULT_IVA_RATE),
+        urgente: Boolean(linkedSolicitud?.urgente ?? salida?.urgente),
       },
       clienteForm,
       detalles,
@@ -967,6 +986,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       cliente: '',
       descuento: '',
       iva_rate: String(DEFAULT_IVA_RATE),
+      urgente: Boolean(preview?.urgente),
     }
 
     setFormData(nextForm)
@@ -2477,78 +2497,21 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   <div className="create-salida__field-groups">
                     <div className="create-salida__field-group create-salida__field-group--defined">
                       <div className="create-user__grid create-user__grid--two">
-                        <label className="create-user__field">
-                          <span>Tipo de entrada</span>
-                          <input
-                            type="text"
-                            value={selectedSubTipo?.nombre || formData.subTipoNombre || ''}
-                            readOnly
-                            disabled
-                          />
-                        </label>
-
-                        <label className="create-user__field">
-                          <span>Fecha</span>
-                          <input name="fecha" type="date" value={formData.fecha} readOnly disabled />
-                        </label>
-
-                        <label className="create-user__field">
-                          <span>Sucursal</span>
-                          <select name="sucursalId" value={formData.sucursalId} onChange={handleChange} disabled>
-                            <option value="">Selecciona una sucursal</option>
-                            {branches.map((branch) => (
-                              <option key={branch.id} value={branch.id}>
-                                {branch.nombre || `Sucursal ${branch.id}`}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
+                        <StaticFieldDisplay label="Tipo de entrada" value={selectedSubTipo?.nombre || formData.subTipoNombre} />
+                        <StaticFieldDisplay label="Fecha" value={formattedFecha} />
+                        <StaticFieldDisplay label="Sucursal" value={selectedBranchName} />
                         {requiresSucursalObjetivo && (
-                          <label className="create-user__field">
-                            <span>{isTraslado ? 'Sucursal proveedora' : 'Sucursal Destino'}</span>
-                            <select
-                              name="sucursalObjetivoId"
-                              value={formData.sucursalObjetivoId}
-                              onChange={handleChange}
-                              disabled
-                            >
-                              <option value="">Selecciona una sucursal</option>
-                              {branches.map((branch) => (
-                                <option key={branch.id} value={branch.id}>
-                                  {branch.nombre || `Sucursal ${branch.id}`}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
-
-                        <label className="create-user__field">
-                          <span>{documentLabel}</span>
-                          <input
-                            name="no_documento"
-                            type="text"
-                            value={formData.no_documento}
-                            onChange={handleChange}
-                            disabled
-                            readOnly
+                          <StaticFieldDisplay
+                            label={isTraslado ? 'Sucursal proveedora' : 'Sucursal Destino'}
+                            value={selectedObjectiveBranchName}
                           />
-                        </label>
-
+                        )}
+                        <StaticFieldDisplay label={documentLabel} value={formData.no_documento} />
                         {isDevolucion && (
-                          <label className="create-user__field">
-                            <span>No. factura venta origen</span>
-                            <input
-                              name="factura_referencia"
-                              type="text"
-                              value={formData.factura_referencia}
-                              onChange={handleChange}
-                              disabled
-                              readOnly
-                              required={isDevolucion}
-                              placeholder="Factura emitida en la venta"
-                            />
-                          </label>
+                          <StaticFieldDisplay label="No. factura venta origen" value={formData.factura_referencia} />
+                        )}
+                        {isTraslado && (
+                          <StaticFieldDisplay label="Urgente" value={formData.urgente ? 'Sí' : 'No'} />
                         )}
                       </div>
                     </div>

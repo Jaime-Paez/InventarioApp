@@ -269,6 +269,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "motivo_rechazo": str(
                         getattr(solicitud, "motivo_rechazo", "") or ""
                     ).strip(),
+                    "urgente": bool(getattr(solicitud, "urgente", False)),
                     "detalles": detalles_payload,
                     "movimiento_salida_id": getattr(
                         solicitud, "movimiento_salida_id", None
@@ -1595,6 +1596,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "label": context_label,
                     "sucursal_solicitante_id": str(int(solicitud.sucursal_solicitante_id or 0)) if solicitud.sucursal_solicitante_id else "",
                     "sucursal_proveedora_id": str(int(solicitud.sucursal_proveedora_id or 0)) if solicitud.sucursal_proveedora_id else "",
+                    "urgente": bool(getattr(solicitud, "urgente", False)),
                 },
                 "kind": "solicitud_traslado_decision",
                 "deadlineAt": deadline_at.isoformat(),
@@ -1739,6 +1741,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "type": "solicitud_traslado",
                     "id": str(solicitud_id),
                     "label": context_label,
+                    "urgente": bool(getattr(solicitud, "urgente", False)),
                 },
                 "kind": "recordatorio_general",
                 "createdAt": resolved_at,
@@ -1848,6 +1851,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "label": context_label,
                     "sucursal_solicitante_id": str(int(solicitud.sucursal_solicitante_id or 0)) if solicitud.sucursal_solicitante_id else "",
                     "sucursal_proveedora_id": str(int(solicitud.sucursal_proveedora_id or 0)) if solicitud.sucursal_proveedora_id else "",
+                    "urgente": bool(getattr(solicitud, "urgente", False)),
                 },
                 "kind": "recordatorio_general",
                 "createdAt": created_at,
@@ -2047,6 +2051,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "type": "solicitud_traslado",
                     "id": str(int(solicitud.id)),
                     "label": context_label,
+                    "urgente": bool(getattr(solicitud, "urgente", False)),
                 },
                 "kind": "recordatorio_general",
                 "createdAt": created_at,
@@ -2996,33 +3001,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        motivo = str(request.data.get("motivo") or "").strip() or "Pedido cancelado por el solicitante."
-        solicitud.motivo_rechazo = motivo
-        solicitud.rechazada_por = request.user
-        solicitud.rechazada_en = timezone.now()
-        solicitud.save(
-            update_fields=[
-                "motivo_rechazo",
-                "rechazada_por",
-                "rechazada_en",
-                "updated_at",
-            ]
-        )
+        solicitud_id_str = str(int(solicitud.id))
+        with transaction.atomic():
+            solicitud.delete()
+        _purge_reminders_for_context("solicitud_traslado", solicitud_id_str)
 
-        self._append_transfer_decision_result_reminder(
-            solicitud=solicitud,
-            actor_user=request.user,
-            decision_status="cancelado",
-            rejection_reason=motivo,
-        )
-
-        output = SolicitudTrasladoSerializer(instance=solicitud)
         return Response(
-            {
-                "detail": "Pedido cancelado correctamente.",
-                "decision": "cancelado",
-                "solicitud": output.data,
-            },
+            {"detail": "Pedido eliminado correctamente."},
             status=status.HTTP_200_OK,
         )
 
@@ -3133,6 +3118,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "type": "solicitud_traslado",
                     "id": str(solicitud_id),
                     "label": context_label,
+                    "urgente": bool(getattr(solicitud, "urgente", False)),
                 },
                 "kind": "solicitud_traslado_decision",
                 "deadlineAt": deadline_at.isoformat(),

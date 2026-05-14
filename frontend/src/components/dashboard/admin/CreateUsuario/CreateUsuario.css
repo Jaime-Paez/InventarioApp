@@ -439,6 +439,12 @@
   color: inherit;
 }
 
+.create-user__field input[type='checkbox'] {
+  align-self: flex-start;
+  width: auto;
+  cursor: pointer;
+}
+
 .create-user__field span {
   font-size: var(--font-size-base);
   font-weight: 700;

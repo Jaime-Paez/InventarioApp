@@ -53,6 +53,7 @@ const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
 const URGENT_DECISION_SHIELD_COLOR = '#FF7900'
+const URGENT_URGENTE_SHIELD_COLOR = '#FFD700'
 const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
 const URGENT_REJECTED_TRANSFER_SHIELD_COLOR = '#f94a15'
 const URGENT_SHIELD_STACK_OFFSET_DESKTOP = 22
@@ -1349,6 +1350,7 @@ function QuickActions({
             anchor: 'top_right',
             message: URGENT_DECISION_MESSAGE,
             priorityTimestamp: resolveReminderStateTimestamp(reminder) || parseEntityTimestamp(dateTimeCandidate),
+            isUrgente: Boolean(reminder?.context?.urgente),
             reminder,
           }
         })
@@ -1609,7 +1611,7 @@ function QuickActions({
                 id: targetId || `rejected-transfer-${reminderId}`,
                 reminderId,
                 kind: 'rejected_transfer',
-                anchor: 'top_left',
+                anchor: 'top_right',
                 message: URGENT_REJECTED_TRANSFER_MESSAGE,
                 priorityTimestamp: resolveReminderStateTimestamp(reminder) || parseEntityTimestamp(dateTimeCandidate),
                 reminder,
@@ -1645,7 +1647,8 @@ function QuickActions({
         return
       }
 
-      map[targetId] = resolveUrgentDecisionProgress(target?.reminder, now)
+      const rawProgress = resolveUrgentDecisionProgress(target?.reminder, now)
+      map[targetId] = target?.isUrgente ? clamp01(rawProgress * 2) : rawProgress
     })
     return map
   }, [clockTick, urgentShieldTargets])
@@ -1709,6 +1712,7 @@ function QuickActions({
       ? URGENT_SHIELD_STACK_OFFSET_MOBILE
       : URGENT_SHIELD_STACK_OFFSET_DESKTOP
     const stackByAnchor = new Map()
+    const urgenteStackByAnchor = new Map()
     const resolveAnchorCenter = (anchor) => {
       if (anchor === 'pending_shipments') {
         const rect = pendingShipmentsTriggerRef.current?.getBoundingClientRect()
@@ -1734,20 +1738,31 @@ function QuickActions({
         if (!targetId) return null
 
         const anchor = String(target?.anchor || 'top_right')
-        const anchorStackIndex = Number(stackByAnchor.get(anchor) || 0)
-        stackByAnchor.set(anchor, anchorStackIndex + 1)
+        const isUrgente = Boolean(target?.isUrgente)
+        const shadeMap = isUrgente ? urgenteStackByAnchor : stackByAnchor
+        const anchorStackIndex = Number(shadeMap.get(anchor) || 0)
+        shadeMap.set(anchor, anchorStackIndex + 1)
         const progress = clamp01(
           urgentVisualProgressById[targetId] ?? urgentProgressById[targetId]
         )
         const size = Math.max(44, Math.round(44 + maxCanvas * progress))
-        const offset = anchorStackIndex * stackOffset
         const stackShade = Math.min(
           anchorStackIndex * URGENT_SHIELD_STACK_SHADE_STEP,
           URGENT_SHIELD_STACK_SHADE_MAX
         )
         const anchorCenter = resolveAnchorCenter(anchor)
-        const centerX = anchorCenter.x - offset
-        const centerY = anchorCenter.y + offset
+        const centerX = anchorCenter.x
+        const centerY = anchorCenter.y
+        const urgentColor = isUrgente
+          ? URGENT_URGENTE_SHIELD_COLOR
+          : target?.kind === 'pending_shipment'
+            ? URGENT_SHIPMENT_SHIELD_COLOR
+            : target?.kind === 'rejected_transfer'
+              ? URGENT_REJECTED_TRANSFER_SHIELD_COLOR
+              : URGENT_DECISION_SHIELD_COLOR
+        const zIndex = isUrgente
+          ? String(1400 + Math.round(99 * (1 - progress)))
+          : String(Math.round(1200 + 99 * (1 - progress)))
 
         return {
           id: targetId,
@@ -1764,13 +1779,8 @@ function QuickActions({
             top: `${centerY - size / 2}px`,
             '--urgency': String(progress.toFixed(3)),
             '--urgent-stack-shade': String(stackShade.toFixed(3)),
-            '--urgent-color':
-              target?.kind === 'pending_shipment'
-                ? URGENT_SHIPMENT_SHIELD_COLOR
-                : target?.kind === 'rejected_transfer'
-                  ? URGENT_REJECTED_TRANSFER_SHIELD_COLOR
-                  : URGENT_DECISION_SHIELD_COLOR,
-            zIndex: String(1200 + index),
+            '--urgent-color': urgentColor,
+            zIndex,
           },
         }
       })

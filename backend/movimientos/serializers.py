@@ -292,6 +292,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "no_documento",
             "fecha",
             "descripcion",
+            "urgente",
             "estado",
             "estado_label",
             "sucursal_solicitante",

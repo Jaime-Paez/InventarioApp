@@ -117,11 +117,11 @@ const sanitizeReminderContext = (rawContext) => {
 
   if (!type || !id) return null
 
-  return {
-    type,
-    id,
-    label,
+  const result = { type, id, label }
+  if (rawContext?.urgente !== undefined) {
+    result.urgente = Boolean(rawContext.urgente)
   }
+  return result
 }
 
 const parseIsoTimestamp = (value) => {
