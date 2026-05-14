@@ -159,8 +159,8 @@ class UsuarioModuloSucursal(models.Model):
     puede_leer = models.BooleanField(default=True)
     puede_actualizar = models.BooleanField(default=True)
     puede_eliminar = models.BooleanField(default=True)
-    puede_crear_compra_local = models.BooleanField(default=True)
-    puede_crear_importacion = models.BooleanField(default=True)
+    puede_crear_compra_local = models.BooleanField(default=False)
+    puede_crear_importacion = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Alcance de sucursal por modulo"

@@ -205,8 +205,8 @@ const serializeModuleBranchMatrix = (matrix, allowedModules = []) => {
           const entry = { sucursal_id: normalizedBranchId, ...normalizedEntry }
           if (normalizeModuleKey(modulo) === ENTRADAS_MODULE_KEY) {
             const canCreate = Boolean(normalizedEntry.puede_crear)
-            entry.puede_crear_compra_local = canCreate ? Boolean(rawEntry?.puede_crear_compra_local ?? true) : false
-            entry.puede_crear_importacion = canCreate ? Boolean(rawEntry?.puede_crear_importacion ?? true) : false
+            entry.puede_crear_compra_local = canCreate ? Boolean(rawEntry?.puede_crear_compra_local ?? false) : false
+            entry.puede_crear_importacion = canCreate ? Boolean(rawEntry?.puede_crear_importacion ?? false) : false
           }
           return entry
         })
@@ -1273,7 +1273,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                       <p className="create-user__entrada-subtypes-label">Tipos de entrada permitidos para crear</p>
                       <div className="create-user__entrada-subtypes-options">
                         {subtypes.map(({ key, label }) => {
-                          const checked = isAdministrator ? true : Boolean(entradasEntry?.[key] ?? true)
+                          const checked = isAdministrator ? true : Boolean(entradasEntry?.[key] ?? false)
                           return (
                             <label key={key} className={`create-user__subtype-option${subtypeDisabled ? ' create-user__subtype-option--disabled' : ''}`}>
                               <input
