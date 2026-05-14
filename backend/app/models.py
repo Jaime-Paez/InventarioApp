@@ -125,6 +125,7 @@ class InspeccionAleatoriaDiaria(models.Model):
     total_items = models.PositiveSmallIntegerField(default=0)
     cobertura_porcentaje = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     completada_en = models.DateTimeField(null=True, blank=True)
+    borrador_paso_actual = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

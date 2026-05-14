@@ -2883,16 +2883,20 @@ function QuickActions({
           setRandomInspectionDraftByItemId(buildRandomInspectionVerificationDraft(inspection))
         } else {
           const baseDraft = buildRandomInspectionDraft(inspection)
-          let savedState = null
+          let localState = null
           try {
             const raw = localStorage.getItem(`ri_draft_${inspectionId}`)
-            if (raw) savedState = JSON.parse(raw)
+            if (raw) localState = JSON.parse(raw)
           } catch {}
-          if (savedState?.draft) {
-            setRandomInspectionDraftByItemId({ ...baseDraft, ...savedState.draft })
-            setRandomInspectionStepIndex(savedState.stepIndex ?? 0)
+          if (localState?.draft) {
+            // localStorage es más reciente (captura cambios no guardados al backend todavía)
+            setRandomInspectionDraftByItemId({ ...baseDraft, ...localState.draft })
+            setRandomInspectionStepIndex(localState.stepIndex ?? 0)
           } else {
+            // fallback: usar datos del servidor (otro dispositivo o localStorage limpio)
             setRandomInspectionDraftByItemId(baseDraft)
+            const serverStep = toPositiveInt(inspection?.borrador_paso_actual, 0)
+            if (serverStep > 0) setRandomInspectionStepIndex(serverStep)
           }
         }
         return true
@@ -3617,6 +3621,26 @@ function QuickActions({
     })
   }, [])
 
+  const saveInspectionDraftToBackend = useCallback(async (stepIndex) => {
+    const inspectionId = normalizeId(activeRandomInspection?.id)
+    if (!token || !inspectionId) return
+    const itemsPayload = randomInspectionRows.map((row) => ({
+      id: Number(normalizeId(row?.row_id || row?.id)),
+      cantidad_reportada: row?.cantidad_reportada ?? null,
+      observacion: String(row?.observacion || '').trim(),
+    }))
+    try {
+      await authFetch(
+        `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/borrador/`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ paso_actual: stepIndex, items: itemsPayload }),
+        },
+        token
+      )
+    } catch {}
+  }, [activeRandomInspection, randomInspectionRows, token])
+
   const handleAdvanceRandomInspectionStep = useCallback(() => {
     if (!randomInspectionRows.length) {
       setRandomInspectionError('No hay productos para revisar en esta inspección.')
@@ -3635,13 +3659,17 @@ function QuickActions({
     setRandomInspectionError('')
     if (activeRandomInspectionStepIndex >= randomInspectionRows.length - 1) {
       setRandomInspectionShowSummary(true)
+      void saveInspectionDraftToBackend(activeRandomInspectionStepIndex)
       return
     }
-    setRandomInspectionStepIndex((prev) => prev + 1)
+    const nextStep = activeRandomInspectionStepIndex + 1
+    setRandomInspectionStepIndex(nextStep)
+    void saveInspectionDraftToBackend(nextStep)
   }, [
     activeRandomInspectionRow,
     activeRandomInspectionStepIndex,
     randomInspectionRows,
+    saveInspectionDraftToBackend,
   ])
 
   const handleGoBackRandomInspectionStep = useCallback(() => {
@@ -3650,8 +3678,10 @@ function QuickActions({
       setRandomInspectionShowSummary(false)
       return
     }
-    setRandomInspectionStepIndex((prev) => Math.max(0, prev - 1))
-  }, [isRandomInspectionSummaryVisible])
+    const prevStep = Math.max(0, activeRandomInspectionStepIndex - 1)
+    setRandomInspectionStepIndex(prevStep)
+    void saveInspectionDraftToBackend(prevStep)
+  }, [activeRandomInspectionStepIndex, isRandomInspectionSummaryVisible, saveInspectionDraftToBackend])
 
   const handleRandomInspectionLocationCountChange = useCallback((itemId, locationKey, value) => {
     const normalizedItemId = normalizeId(itemId)

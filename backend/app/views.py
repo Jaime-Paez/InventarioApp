@@ -1439,6 +1439,7 @@ def _serialize_random_inspection(inspection):
         "total_items": int(inspection.total_items or len(inspection_items)),
         "cobertura_porcentaje": float(inspection.cobertura_porcentaje or 0),
         "completada_en": _parse_iso_timestamp(inspection.completada_en),
+        "borrador_paso_actual": int(inspection.borrador_paso_actual or 0),
         "items": [_serialize_random_inspection_item(item) for item in inspection_items],
     }
 
@@ -2178,8 +2179,9 @@ class RandomInspectionRespondAPIView(APIView):
             inspection.estado = InspeccionAleatoriaDiaria.Estados.COMPLETADA
             inspection.total_items = len(inspection_items)
             inspection.completada_en = now
+            inspection.borrador_paso_actual = 0
             inspection.save(
-                update_fields=["estado", "total_items", "completada_en", "updated_at"]
+                update_fields=["estado", "total_items", "completada_en", "borrador_paso_actual", "updated_at"]
             )
 
             store = ReminderState.get_global(for_update=True)
@@ -2226,6 +2228,73 @@ class RandomInspectionRespondAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class RandomInspectionSaveDraftAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, inspection_id):
+        paso_actual = request.data.get("paso_actual")
+        payload_items = request.data.get("items")
+        if not isinstance(payload_items, list):
+            return Response(
+                {"detail": "Debes enviar un arreglo en `items`."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            inspection = (
+                InspeccionAleatoriaDiaria.objects.select_for_update()
+                .filter(pk=inspection_id)
+                .first()
+            )
+            if inspection is None:
+                return Response(
+                    {"detail": "No se encontro la inspeccion aleatoria."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if int(inspection.usuario_id) != int(request.user.id):
+                return Response(
+                    {"detail": "Solo el usuario asignado puede modificar este borrador."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if str(inspection.estado).strip().lower() == InspeccionAleatoriaDiaria.Estados.COMPLETADA:
+                return Response(
+                    {"detail": "Esta inspeccion ya fue completada."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            payload_by_id = {}
+            for row in payload_items:
+                if not isinstance(row, dict):
+                    continue
+                item_id = _normalize_int(row.get("id"), 0)
+                if item_id > 0:
+                    payload_by_id[item_id] = row
+
+            if payload_by_id:
+                items_to_update = list(
+                    InspeccionAleatoriaItem.objects.filter(
+                        inspeccion=inspection, pk__in=payload_by_id.keys()
+                    )
+                )
+                for item in items_to_update:
+                    row = payload_by_id.get(int(item.id), {})
+                    raw_qty = row.get("cantidad_reportada")
+                    item.cantidad_reportada = (
+                        max(0, int(raw_qty)) if raw_qty is not None and str(raw_qty).strip() != "" else None
+                    )
+                    item.observacion = str(row.get("observacion") or "").strip()
+                if items_to_update:
+                    InspeccionAleatoriaItem.objects.bulk_update(
+                        items_to_update, ["cantidad_reportada", "observacion"]
+                    )
+
+            if paso_actual is not None:
+                inspection.borrador_paso_actual = max(0, int(paso_actual or 0))
+                inspection.save(update_fields=["borrador_paso_actual", "updated_at"])
+
+        return Response({"ok": True}, status=status.HTTP_200_OK)
 
 
 class RandomInspectionVerifyItemAPIView(APIView):

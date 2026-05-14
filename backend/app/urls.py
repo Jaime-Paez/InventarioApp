@@ -47,6 +47,11 @@ urlpatterns = [
         name="recordatorios-inspeccion-aleatoria-responder",
     ),
     path(
+        "recordatorios/inspeccion-aleatoria/<int:inspection_id>/borrador/",
+        views.RandomInspectionSaveDraftAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-borrador",
+    ),
+    path(
         "recordatorios/inspeccion-aleatoria/items/<int:item_id>/verificar/",
         views.RandomInspectionVerifyItemAPIView.as_view(),
         name="recordatorios-inspeccion-aleatoria-verificar",
