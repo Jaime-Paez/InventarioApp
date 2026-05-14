@@ -15,6 +15,7 @@ import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
   RANDOM_INSPECTION_VERIFY_KIND,
+  RANDOM_INSPECTION_ADMIN_SUMMARY_KIND,
   TRANSFER_RECEIPT_NOTIFICATION_KIND,
   buildTransferHistoryEntry,
   buildUserIdSet,
@@ -446,6 +447,7 @@ function QuickActions({
   const pendingShipmentsPollInFlightRef = useRef(false)
   const inTransitShipmentsPollInFlightRef = useRef(false)
   const receiveShipmentLoadRequestRef = useRef(0)
+  const receiveShipmentDraftSaveDebounceRef = useRef(null)
   const receiveLocationSearchDebounceRef = useRef({})
   const receiveLocationDropdownRefs = useRef({})
   const audioContextRef = useRef(null)
@@ -2680,6 +2682,35 @@ function QuickActions({
     setReceiveShipmentShowSummary(false)
   }, [])
 
+  useEffect(() => {
+    const shipmentId = normalizeId(activeInTransitShipment?.id)
+    if (!shipmentId || !isReceiveShipmentModalOpen) return
+    try {
+      localStorage.setItem(`rs_draft_${shipmentId}`, JSON.stringify(receiveShipmentDraftByProductId))
+    } catch {}
+
+    clearTimeout(receiveShipmentDraftSaveDebounceRef.current)
+    receiveShipmentDraftSaveDebounceRef.current = setTimeout(() => {
+      if (!token || !shipmentId) return
+      const items = {}
+      Object.values(receiveShipmentDraftByProductId).forEach((row) => {
+        const pid = normalizeId(row?.producto_id)
+        if (!pid) return
+        items[pid] = {
+          cantidad_recibida: row?.cantidad_recibida ?? null,
+          recepcion_revisada: Boolean(row?.recepcion_revisada),
+          novedad: String(row?.novedad || '').trim(),
+          ubicaciones: Array.isArray(row?.ubicaciones) ? row.ubicaciones : [],
+        }
+      })
+      void authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(shipmentId)}/borrador-recepcion/`,
+        { method: 'PATCH', body: JSON.stringify({ items }) },
+        token
+      ).catch(() => {})
+    }, 1500)
+  }, [receiveShipmentDraftByProductId, activeInTransitShipment, isReceiveShipmentModalOpen, token])
+
   const openReceiveShipmentModalShell = useCallback(({ shipmentId, shipment, draftByProductId = {} }) => {
     const nextLoadRequestId = receiveShipmentLoadRequestRef.current + 1
     receiveShipmentLoadRequestRef.current = nextLoadRequestId
@@ -2859,7 +2890,8 @@ function QuickActions({
 
       const reminderKind = normalizeId(reminder?.kind)
       const isVerifyReminder = reminderKind === RANDOM_INSPECTION_VERIFY_KIND
-      if (isVerifyReminder && typeof onOpenInventoryReviewSection === 'function') {
+      const isAdminSummaryReminder = reminderKind === RANDOM_INSPECTION_ADMIN_SUMMARY_KIND
+      if ((isVerifyReminder || isAdminSummaryReminder) && typeof onOpenInventoryReviewSection === 'function') {
         const opened = onOpenInventoryReviewSection()
         return opened !== false
       }
@@ -3244,6 +3276,36 @@ function QuickActions({
         }
       })
 
+      // Restore saved draft: localStorage (mismo dispositivo) → servidor (otro dispositivo)
+      let savedLocal = null
+      try {
+        const raw = localStorage.getItem(`rs_draft_${shipmentId}`)
+        if (raw) savedLocal = JSON.parse(raw)
+      } catch {}
+
+      const serverDraft = (shipment?.borrador_recepcion && typeof shipment.borrador_recepcion === 'object')
+        ? shipment.borrador_recepcion
+        : null
+
+      const savedDraftSource = savedLocal || serverDraft
+      if (savedDraftSource) {
+        Object.keys(initialDraft).forEach((productId) => {
+          const saved = savedDraftSource[productId]
+          if (!saved || typeof saved !== 'object') return
+          const cantidadEnviada = initialDraft[productId].cantidad_enviada
+          const cantRecibida = saved.cantidad_recibida != null ? toPositiveInt(saved.cantidad_recibida, cantidadEnviada) : cantidadEnviada
+          initialDraft[productId] = {
+            ...initialDraft[productId],
+            ...saved,
+            cantidad_recibida: cantRecibida,
+            cantidad_recibida_input: String(cantRecibida),
+            recepcion_revisada: Boolean(saved.recepcion_revisada),
+            novedad: String(saved.novedad || '').trim(),
+            ubicaciones: Array.isArray(saved.ubicaciones) ? saved.ubicaciones : [],
+          }
+        })
+      }
+
       const loadRequestId = openReceiveShipmentModalShell({
         shipmentId,
         shipment,
@@ -3330,7 +3392,8 @@ function QuickActions({
                 suggestedSubdivision?.division?.bodega_id ||
                 ''
             )
-            if (suggestedSubdivisionId && suggestedDivisionId && suggestedBodegaId) {
+            const alreadyHasUbicaciones = Array.isArray(updated[productId]?.ubicaciones) && updated[productId].ubicaciones.length > 0
+            if (suggestedSubdivisionId && suggestedDivisionId && suggestedBodegaId && !alreadyHasUbicaciones) {
               const cantidadEnviada = toPositiveInt(detail?.cantidad_enviada, 0)
               updated[productId] = {
                 ...updated[productId],
@@ -3338,6 +3401,18 @@ function QuickActions({
                 location_draft_bodega_id: suggestedBodegaId,
                 location_draft_division_id: suggestedDivisionId,
                 location_draft_subdivision_id: suggestedSubdivisionId,
+              }
+            } else if (alreadyHasUbicaciones && suggestedBodegaId && !updated[productId].location_draft_bodega_id) {
+              // Restore location picker state from the saved subdivision ID
+              const savedSubId = normalizeId(updated[productId]?.ubicaciones?.[0]?.subdivision_id)
+              const savedSub = localSubdivisionsById.get(savedSubId) || null
+              if (savedSub) {
+                updated[productId] = {
+                  ...updated[productId],
+                  location_draft_bodega_id: normalizeId(savedSub?.division?.bodega?.id || savedSub?.division?.bodega_id || ''),
+                  location_draft_division_id: normalizeId(savedSub?.division?.id || savedSub?.division_id || ''),
+                  location_draft_subdivision_id: savedSubId,
+                }
               }
             }
           })
@@ -3408,6 +3483,7 @@ function QuickActions({
             movimiento_salida_id: toPositiveInt(detail?.movimiento_salida_id, 0),
             movimiento_entrada_id: toPositiveInt(detail?.movimiento_entrada_id, 0),
             descripcion: String(detail?.descripcion || '').trim(),
+            borrador_recepcion: detail?.borrador_recepcion || {},
             detalles: detail.detalles.map((row) => ({
               producto_id: toPositiveInt(row?.producto_id, 0),
               producto_codigo: String(row?.producto_codigo || '').trim(),
@@ -4014,6 +4090,7 @@ function QuickActions({
             items: builtItems,
           })
         }
+        try { localStorage.removeItem(`rs_draft_${normalizeId(activeInTransitShipment?.id)}`) } catch {}
         closeReceiveShipmentModal()
         await fetchInTransitTransferShipments({ silent: true })
       } catch (error) {

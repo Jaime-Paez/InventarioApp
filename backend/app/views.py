@@ -446,6 +446,22 @@ def _sanitize_context(raw):
         result["sucursal_proveedora_id"] = sucursal_proveedora_id
     if "urgente" in source:
         result["urgente"] = bool(source.get("urgente"))
+    detalle_usuarios = source.get("detalle_usuarios")
+    if isinstance(detalle_usuarios, list):
+        sanitized_detalle = []
+        for entry in detalle_usuarios:
+            if not isinstance(entry, dict):
+                continue
+            uid = _normalize_id(entry.get("id"))
+            if not uid:
+                continue
+            sanitized_detalle.append({
+                "id": uid,
+                "name": str(entry.get("name") or "").strip() or "Usuario",
+                "completada": bool(entry.get("completada")),
+            })
+        if sanitized_detalle:
+            result["detalle_usuarios"] = sanitized_detalle
     return result
 
 
@@ -837,6 +853,7 @@ def _merge_reminder(existing_reminder, incoming_reminder):
 RANDOM_INSPECTION_CONTEXT_TYPE = "inspeccion_aleatoria"
 RANDOM_INSPECTION_KIND = "inspeccion_aleatoria_diaria"
 RANDOM_INSPECTION_VERIFY_KIND = "inspeccion_aleatoria_verificacion"
+RANDOM_INSPECTION_ADMIN_SUMMARY_KIND = "inspeccion_aleatoria_resumen_admin"
 RANDOM_INSPECTION_START_HOUR = 9
 RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY = 5
 RANDOM_INSPECTION_MIN_ITEMS_PER_DAY = 1
@@ -1586,6 +1603,118 @@ def _upsert_random_inspection_verify_reminder(store, inspection, mismatch_count,
     return changed
 
 
+def _build_random_inspection_admin_summary_reminder(today, user_summaries, admin_recipients, *, time_str=None):
+    if not admin_recipients or not user_summaries:
+        return None
+    pending_count = sum(1 for u in user_summaries if not u["completada"])
+    completed_count = sum(1 for u in user_summaries if u["completada"])
+    total_count = len(user_summaries)
+    if pending_count == 0:
+        description = f"Todos los usuarios ({total_count}) completaron su inspeccion aleatoria del dia."
+    else:
+        description = (
+            f"Resumen de inspecciones del dia: {completed_count}/{total_count} completadas, "
+            f"{pending_count} pendiente(s)."
+        )
+    date_str = today.isoformat()
+    reminder_time = time_str or f"{RANDOM_INSPECTION_START_HOUR:02d}:00"
+    return {
+        "id": f"insp-admin-summary-{date_str}",
+        "date": date_str,
+        "time": reminder_time,
+        "description": description,
+        "creator": {"id": "sistema", "name": "Sistema"},
+        "recipients": admin_recipients,
+        "context": {
+            "type": RANDOM_INSPECTION_CONTEXT_TYPE,
+            "id": date_str,
+            "label": f"Resumen inspecciones {date_str}",
+            "detalle_usuarios": user_summaries,
+        },
+        "kind": RANDOM_INSPECTION_ADMIN_SUMMARY_KIND,
+        "deadlineAt": "",
+        "decision": {"status": "pendiente", "reason": "", "by": None, "at": ""},
+        "createdAt": _iso_now(),
+        "completedBy": [],
+    }
+
+
+def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=None):
+    inspections_today = list(
+        InspeccionAleatoriaDiaria.objects
+        .filter(fecha_programada=today)
+        .select_related("usuario")
+    )
+    if not inspections_today:
+        return False
+
+    user_map = {}
+    for inspection in inspections_today:
+        user = inspection.usuario
+        if user is None:
+            continue
+        user_id = str(int(user.id))
+        is_completed = inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA
+        if user_id not in user_map:
+            user_map[user_id] = {
+                "id": user_id,
+                "name": _format_user_display_name(user),
+                "completada": is_completed,
+            }
+        elif is_completed:
+            user_map[user_id]["completada"] = True
+
+    if not user_map:
+        return False
+
+    user_summaries = sorted(user_map.values(), key=lambda u: u["name"])
+    admin_recipients = _get_random_inspection_verify_recipients()
+    if not admin_recipients:
+        return False
+
+    reminder = _sanitize_reminder(
+        _build_random_inspection_admin_summary_reminder(
+            today, user_summaries, admin_recipients, time_str=time_str
+        )
+    )
+    if reminder is None:
+        return False
+
+    all_completed = all(u["completada"] for u in user_summaries)
+    existing_payload = list(store.payload) if isinstance(store.payload, list) else []
+    reminder_id = _normalize_id(reminder.get("id"))
+
+    target_index = None
+    for index, existing in enumerate(existing_payload):
+        if not isinstance(existing, dict):
+            continue
+        if _normalize_id(existing.get("id")) == reminder_id:
+            target_index = index
+            break
+        if _normalize_id(existing.get("kind")) == RANDOM_INSPECTION_ADMIN_SUMMARY_KIND:
+            if str(existing.get("date") or "").strip() == today.isoformat():
+                target_index = index
+                break
+
+    if target_index is not None:
+        merged = _merge_reminder(existing_payload[target_index], reminder)
+        if merged is None:
+            return False
+        admin_ids = sorted(r["id"] for r in admin_recipients)
+        merged["completedBy"] = sorted(set(admin_ids)) if all_completed else []
+        existing_payload[target_index] = merged
+    else:
+        admin_ids = sorted(r["id"] for r in admin_recipients)
+        reminder["completedBy"] = sorted(set(admin_ids)) if all_completed else []
+        existing_payload = [reminder, *existing_payload]
+
+    normalized_payload = _normalize_reminder_list(existing_payload)
+    changed = normalized_payload != (store.payload if isinstance(store.payload, list) else [])
+    if changed:
+        store.payload = normalized_payload
+    return changed
+
+
 def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, delta):
     delta = int(delta or 0)
     if delta == 0:
@@ -2205,6 +2334,10 @@ class RandomInspectionRespondAPIView(APIView):
                     mismatch_count,
                     request.user,
                 ) or payload_changed
+
+            payload_changed = _upsert_random_inspection_admin_summary_reminder(
+                store, timezone.localdate()
+            ) or payload_changed
 
             if payload_changed:
                 store.save(update_fields=["payload", "updated_at"])
@@ -2975,6 +3108,7 @@ class RandomInspectionSendNowAPIView(APIView):
                         "productos": len(selected),
                     })
 
+            _upsert_random_inspection_admin_summary_reminder(store, scheduled_date, time_str=time_str)
             store.save()
 
         return Response(

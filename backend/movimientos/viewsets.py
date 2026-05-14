@@ -3232,6 +3232,46 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
     @action(
         detail=False,
+        methods=["patch"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/borrador-recepcion",
+    )
+    def guardar_borrador_recepcion(self, request, solicitud_id=None):
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        items = request.data.get("items")
+        if not isinstance(items, dict):
+            return Response(
+                {"detail": "Se esperaba un objeto en `items`."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        borrador = {}
+        for producto_id, data in items.items():
+            if not isinstance(data, dict):
+                continue
+            raw_qty = data.get("cantidad_recibida")
+            borrador[str(producto_id)] = {
+                "cantidad_recibida": max(0, int(raw_qty)) if raw_qty is not None else None,
+                "recepcion_revisada": bool(data.get("recepcion_revisada", False)),
+                "novedad": str(data.get("novedad") or "").strip(),
+                "ubicaciones": [
+                    {"subdivision_id": loc["subdivision_id"], "cantidad": loc["cantidad"]}
+                    for loc in (data.get("ubicaciones") or [])
+                    if isinstance(loc, dict) and loc.get("subdivision_id") and loc.get("cantidad") is not None
+                ],
+            }
+
+        solicitud.borrador_recepcion = borrador
+        solicitud.save(update_fields=["borrador_recepcion", "updated_at"])
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
         methods=["post"],
         url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/confirmar-recepcion",
     )
@@ -3665,6 +3705,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 if inconveniente is not None:
                     inconvenientes_payload.append(self._serialize_inconveniente(inconveniente))
 
+            solicitud_locked.borrador_recepcion = {}
+            solicitud_locked.save(update_fields=["borrador_recepcion", "updated_at"])
             solicitud_output = SolicitudTrasladoSerializer(instance=solicitud_locked).data
 
         reception_result = "completo" if total_faltante <= 0 else "incompleto"

@@ -8,6 +8,7 @@ export const TRANSFER_RECEIPT_NOTIFICATION_KIND = 'solicitud_traslado_recepcion'
 export const TRANSFER_ISSUE_NOTIFICATION_KIND = 'solicitud_traslado_inconveniente'
 export const RANDOM_INSPECTION_KIND = 'inspeccion_aleatoria_diaria'
 export const RANDOM_INSPECTION_VERIFY_KIND = 'inspeccion_aleatoria_verificacion'
+export const RANDOM_INSPECTION_ADMIN_SUMMARY_KIND = 'inspeccion_aleatoria_resumen_admin'
 export const RANDOM_INSPECTION_CONTEXT_TYPE = 'inspeccion_aleatoria'
 export const REMINDERS_BACKEND_ENDPOINT = `${API_URL}/recordatorios/estado/`
 
@@ -120,6 +121,18 @@ const sanitizeReminderContext = (rawContext) => {
   const result = { type, id, label }
   if (rawContext?.urgente !== undefined) {
     result.urgente = Boolean(rawContext.urgente)
+  }
+  if (Array.isArray(rawContext?.detalle_usuarios)) {
+    const sanitized = rawContext.detalle_usuarios
+      .filter((entry) => entry && typeof entry === 'object' && normalizeId(entry?.id))
+      .map((entry) => ({
+        id: normalizeId(entry.id),
+        name: String(entry.name || 'Usuario').trim() || 'Usuario',
+        completada: Boolean(entry.completada),
+      }))
+    if (sanitized.length > 0) {
+      result.detalle_usuarios = sanitized
+    }
   }
   return result
 }
@@ -557,8 +570,13 @@ export const isRandomInspectionDailyReminder = (reminder) => {
 export const isRandomInspectionVerifyReminder = (reminder) =>
   normalizeId(reminder?.kind) === RANDOM_INSPECTION_VERIFY_KIND
 
+export const isRandomInspectionAdminSummaryReminder = (reminder) =>
+  normalizeId(reminder?.kind) === RANDOM_INSPECTION_ADMIN_SUMMARY_KIND
+
 export const isRandomInspectionReminder = (reminder) =>
-  isRandomInspectionDailyReminder(reminder) || isRandomInspectionVerifyReminder(reminder)
+  isRandomInspectionDailyReminder(reminder) ||
+  isRandomInspectionVerifyReminder(reminder) ||
+  isRandomInspectionAdminSummaryReminder(reminder)
 
 const normalizeComparableText = (value) =>
   String(value || '')
@@ -923,6 +941,7 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
   const isTransferIssue = isTransferIssueReminder(reminder)
   const isRandomInspectionDaily = isRandomInspectionDailyReminder(reminder)
   const isRandomInspectionVerify = isRandomInspectionVerifyReminder(reminder)
+  const isRandomInspectionAdminSummary = isRandomInspectionAdminSummaryReminder(reminder)
   const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
   const decisionStatus = getReminderDecisionStatus(reminder)
   const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
@@ -1026,6 +1045,21 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
       label: 'Por verificar',
       className: 'pending',
       canMarkSeen: true,
+    }
+  }
+
+  if (isRandomInspectionAdminSummary) {
+    if (seenByCurrentUser) {
+      return {
+        label: 'Completado',
+        className: 'seen',
+        canMarkSeen: false,
+      }
+    }
+    return {
+      label: 'Pendiente',
+      className: 'pending',
+      canMarkSeen: false,
     }
   }
 

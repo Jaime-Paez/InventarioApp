@@ -16,6 +16,7 @@ import {
   isReminderCreatedByCurrentUser,
   isRandomInspectionDailyReminder,
   isRandomInspectionVerifyReminder,
+  isRandomInspectionAdminSummaryReminder,
   isReminderForContext,
   isTransferIssueReminder,
   reminderCompletedByIds,
@@ -1051,10 +1052,11 @@ function RecordatoriosPopup({
       status.className === 'pending' &&
       (
         isRandomInspectionDailyReminder(reminder) ||
-        isRandomInspectionVerifyReminder(reminder)
+        isRandomInspectionVerifyReminder(reminder) ||
+        isRandomInspectionAdminSummaryReminder(reminder)
       )
     )
-    const isInspectionInProgress = isPendingInspectionAlert && hasRandomInspectionDraft(solicitudId)
+    const isInspectionInProgress = isPendingInspectionAlert && !isRandomInspectionAdminSummaryReminder(reminder) && hasRandomInspectionDraft(solicitudId)
 
     if (
       displayStatus.className === 'rejected' ||
@@ -2920,18 +2922,21 @@ function RecordatoriosPopup({
                           isAdminUser &&
                           typeof onOpenTransferIssuesSection === 'function'
                         )
+                        const isAdminSummaryReminder = isRandomInspectionAdminSummaryReminder(reminder)
                         const isPendingInspectionAlert = (
                           status.className === 'pending' &&
                           (
                             isRandomInspectionDailyReminder(reminder) ||
-                            isRandomInspectionVerifyReminder(reminder)
+                            isRandomInspectionVerifyReminder(reminder) ||
+                            isAdminSummaryReminder
                           )
                         )
-                        const isInspectionInProgress = isPendingInspectionAlert && hasRandomInspectionDraft(currentReminderId && normalizeId(reminder?.context?.id))
+                        const isInspectionInProgress = isPendingInspectionAlert && !isAdminSummaryReminder && hasRandomInspectionDraft(currentReminderId && normalizeId(reminder?.context?.id))
                         const isCompletedInspectionDailyReminder = (
                           isRandomInspectionDailyReminder(reminder) &&
                           !isPendingInspectionAlert
                         )
+                        const isCompletedAdminSummaryReminder = isAdminSummaryReminder && !isPendingInspectionAlert
                         const isHighlightedReminder = (
                           Boolean(currentReminderId) &&
                           normalizeId(highlightedReminderId) === currentReminderId
@@ -3014,6 +3019,19 @@ function RecordatoriosPopup({
                               <p className="recordatorios-popup__timeline-item-description" title={timelineDescription}>
                                 {timelineDescription}
                               </p>
+                              {isAdminSummaryReminder && Array.isArray(reminder?.context?.detalle_usuarios) && reminder.context.detalle_usuarios.length > 0 && (
+                                <ul className="recordatorios-popup__inspection-summary-list">
+                                  {reminder.context.detalle_usuarios.map((u) => (
+                                    <li
+                                      key={u.id}
+                                      className={`recordatorios-popup__inspection-summary-item${u.completada ? ' recordatorios-popup__inspection-summary-item--done' : ' recordatorios-popup__inspection-summary-item--pending'}`}
+                                    >
+                                      <span className="recordatorios-popup__inspection-summary-icon">{u.completada ? '✓' : '✗'}</span>
+                                      <span className="recordatorios-popup__inspection-summary-name">{u.name}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                             </div>
 
                             <div className="recordatorios-popup__timeline-item-col recordatorios-popup__timeline-item-col--estado" onClick={(e) => e.stopPropagation()}>
@@ -3214,6 +3232,19 @@ function RecordatoriosPopup({
                                             : 'Realizar inspección'
                                       )}
                                   </button>
+                                ) : isAdminSummaryReminder && typeof onOpenRandomInspection === 'function' ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => {
+                                      void handleOpenRandomInspection(reminder)
+                                    }}
+                                    disabled={isOpeningInspection}
+                                  >
+                                    {isOpeningInspection ? 'Abriendo...' : 'Ver inspecciones'}
+                                  </button>
+                                ) : isCompletedAdminSummaryReminder ? (
+                                  <span className="recordatorios-popup__action-placeholder">Todas completadas</span>
                                 ) : canOpenTransferIssueAction ? (
                                   <button
                                     type="button"

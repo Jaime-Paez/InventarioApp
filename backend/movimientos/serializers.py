@@ -302,6 +302,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "movimiento_salida_id",
             "movimiento_entrada_id",
             "historial_transfer",
+            "borrador_recepcion",
             "motivo_rechazo",
             "rechazada_por",
             "rechazada_por_nombre",

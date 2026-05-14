@@ -136,6 +136,7 @@ class SolicitudTraslado(models.Model):
         blank=True,
     )
     historial_transfer = models.JSONField(default=list, blank=True)
+    borrador_recepcion = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
