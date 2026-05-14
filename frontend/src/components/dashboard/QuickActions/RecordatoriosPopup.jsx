@@ -3216,7 +3216,12 @@ function RecordatoriosPopup({
             <div className="recordatorios-popup__decision-card" onMouseDown={(event) => event.stopPropagation()}>
               <header className="recordatorios-popup__decision-head">
                 <div>
-                  <h4>Traslado</h4>
+                  <h4 className="recordatorios-popup__decision-title">
+                    Traslado
+                    {Boolean(activeDecisionReminder?.context?.urgente) && (
+                      <span className="recordatorios-popup__urgente-dot recordatorios-popup__urgente-dot--decision" aria-hidden="true">!</span>
+                    )}
+                  </h4>
                   <p>{formatReminderContext(activeDecisionReminder) || 'Detalle del traslado'}</p>
                 </div>
                 <button

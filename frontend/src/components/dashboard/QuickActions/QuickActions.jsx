@@ -47,7 +47,7 @@ import {
 
 const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
 const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
-const URGENT_URGENTE_DECISION_MESSAGE = 'Urgente'
+const URGENT_URGENTE_DECISION_MESSAGE = '¡Urgente! Tienes una solicitud de traslado pendiente.'
 const URGENT_SHIPMENT_MESSAGE = 'Tienes un envío pendiente por despachar.'
 const URGENT_REJECTED_TRANSFER_MESSAGE = 'Corrige tu solicitud de traslado rechazada.'
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48

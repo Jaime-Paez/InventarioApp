@@ -2638,17 +2638,23 @@
 
 .quick-actions__urgent-exclamation {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: calc(var(--urgency, 0) * 10vmin);
-  font-weight: 900;
-  color: rgba(0, 0, 0, 0.22);
+  top: 12%;
+  right: 12%;
+  width: clamp(18px, 10%, 32px);
+  height: clamp(18px, 10%, 32px);
+  border-radius: 50%;
+  background: #ef4444;
+  color: #fff;
+  font-size: clamp(11px, 5.5%, 18px);
+  font-weight: 800;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
   user-select: none;
-  z-index: 0;
-  transition: font-size 900ms linear;
+  z-index: 2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* MOBILE */

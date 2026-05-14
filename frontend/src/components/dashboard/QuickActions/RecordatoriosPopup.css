@@ -1131,6 +1131,24 @@
   user-select: none;
 }
 
+.recordatorios-popup__decision-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recordatorios-popup__urgente-dot--decision {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .recordatorios-popup__timeline-item-meta {
   display: flex;
   flex-direction: column;
@@ -1547,6 +1565,7 @@
 }
 
 .recordatorios-popup__decision-card {
+  position: relative;
   width: min(860px, calc(100% - 16px));
   max-height: calc(100% - 16px);
   border-radius: 14px;
