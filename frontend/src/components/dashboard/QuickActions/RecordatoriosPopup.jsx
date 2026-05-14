@@ -304,6 +304,11 @@ const emitRejectedTransferEditingState = (solicitudId, active) => {
   )
 }
 
+const hasRandomInspectionDraft = (inspectionId) => {
+  if (!inspectionId) return false
+  try { return !!localStorage.getItem(`ri_draft_${inspectionId}`) } catch { return false }
+}
+
 const normalizeStateText = (value) =>
   String(value || '')
     .normalize('NFD')
@@ -1049,13 +1054,18 @@ function RecordatoriosPopup({
         isRandomInspectionVerifyReminder(reminder)
       )
     )
+    const isInspectionInProgress = isPendingInspectionAlert && hasRandomInspectionDraft(solicitudId)
 
     if (
       displayStatus.className === 'rejected' ||
       displayStatus.className === 'issue' ||
-      isPendingInspectionAlert
+      (isPendingInspectionAlert && !isInspectionInProgress)
     ) {
       return 'critical'
+    }
+
+    if (isInspectionInProgress) {
+      return 'warning'
     }
 
     if (
@@ -1126,11 +1136,12 @@ function RecordatoriosPopup({
       const dateKey = formatDateKey(date)
       const dayReminders = remindersByDate.get(dateKey) || []
       const count = dayReminders.length
-      const severity = dayReminders.some(
-        (reminder) => getTimelineDaySeverityForReminder(reminder) === 'critical'
-      )
+      const daySeverities = dayReminders.map(getTimelineDaySeverityForReminder)
+      const severity = daySeverities.includes('critical')
         ? 'critical'
-        : 'default'
+        : daySeverities.includes('warning')
+          ? 'warning'
+          : 'default'
       return {
         dateKey,
         count,
@@ -1152,6 +1163,17 @@ function RecordatoriosPopup({
     }).some(Boolean)
   }, [getTimelineDaySeverityForReminder, normalizedSelectedTimelineDate, remindersByDate])
 
+  const prevWeekHasWarning = useMemo(() => {
+    const start = getWeekStartDate(normalizedSelectedTimelineDate)
+    return Array.from({ length: 6 }, (_, offset) => {
+      const date = new Date(start)
+      date.setDate(start.getDate() - 7 + offset)
+      const dateKey = formatDateKey(date)
+      const dayReminders = remindersByDate.get(dateKey) || []
+      return dayReminders.some((reminder) => getTimelineDaySeverityForReminder(reminder) === 'warning')
+    }).some(Boolean)
+  }, [getTimelineDaySeverityForReminder, normalizedSelectedTimelineDate, remindersByDate])
+
   const nextWeekHasCritical = useMemo(() => {
     const start = getWeekStartDate(normalizedSelectedTimelineDate)
     return Array.from({ length: 6 }, (_, offset) => {
@@ -1160,6 +1182,17 @@ function RecordatoriosPopup({
       const dateKey = formatDateKey(date)
       const dayReminders = remindersByDate.get(dateKey) || []
       return dayReminders.some((reminder) => getTimelineDaySeverityForReminder(reminder) === 'critical')
+    }).some(Boolean)
+  }, [getTimelineDaySeverityForReminder, normalizedSelectedTimelineDate, remindersByDate])
+
+  const nextWeekHasWarning = useMemo(() => {
+    const start = getWeekStartDate(normalizedSelectedTimelineDate)
+    return Array.from({ length: 6 }, (_, offset) => {
+      const date = new Date(start)
+      date.setDate(start.getDate() + 7 + offset)
+      const dateKey = formatDateKey(date)
+      const dayReminders = remindersByDate.get(dateKey) || []
+      return dayReminders.some((reminder) => getTimelineDaySeverityForReminder(reminder) === 'warning')
     }).some(Boolean)
   }, [getTimelineDaySeverityForReminder, normalizedSelectedTimelineDate, remindersByDate])
 
@@ -2609,7 +2642,7 @@ function RecordatoriosPopup({
                   <div className="recordatorios-popup__timeline-head">
                     <button
                       type="button"
-                      className={`recordatorios-popup__timeline-arrow${prevWeekHasCritical ? ' is-critical' : ''}`}
+                      className={`recordatorios-popup__timeline-arrow${prevWeekHasCritical ? ' is-critical' : prevWeekHasWarning ? ' is-warning' : ''}`}
                       onClick={() => shiftTimelineDay(-7)}
                       aria-label="Semana anterior"
                     >
@@ -2622,7 +2655,7 @@ function RecordatoriosPopup({
 
                     <button
                       type="button"
-                      className={`recordatorios-popup__timeline-arrow${nextWeekHasCritical ? ' is-critical' : ''}`}
+                      className={`recordatorios-popup__timeline-arrow${nextWeekHasCritical ? ' is-critical' : nextWeekHasWarning ? ' is-warning' : ''}`}
                       onClick={() => shiftTimelineDay(7)}
                       aria-label="Semana siguiente"
                     >
@@ -2642,7 +2675,7 @@ function RecordatoriosPopup({
                           className={`recordatorios-popup__timeline-day${
                             isSelected ? ' is-selected' : ''
                           }${
-                            day.severity === 'critical' ? ' is-critical' : ''
+                            day.severity === 'critical' ? ' is-critical' : day.severity === 'warning' ? ' is-warning' : ''
                           }`}
                           onClick={() => setSelectedTimelineDate(day.dateKey)}
                           title={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
@@ -2894,6 +2927,11 @@ function RecordatoriosPopup({
                             isRandomInspectionVerifyReminder(reminder)
                           )
                         )
+                        const isInspectionInProgress = isPendingInspectionAlert && hasRandomInspectionDraft(currentReminderId && normalizeId(reminder?.context?.id))
+                        const isCompletedInspectionDailyReminder = (
+                          isRandomInspectionDailyReminder(reminder) &&
+                          !isPendingInspectionAlert
+                        )
                         const isHighlightedReminder = (
                           Boolean(currentReminderId) &&
                           normalizeId(highlightedReminderId) === currentReminderId
@@ -2947,7 +2985,7 @@ function RecordatoriosPopup({
                             }${
                               displayStatus.className === 'issue' ? ' recordatorios-popup__timeline-item--issue' : ''
                             }${
-                              isPendingInspectionAlert ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
+                              (isPendingInspectionAlert && !isInspectionInProgress) ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
                             }${
                               isHighlightedReminder ? ' recordatorios-popup__timeline-item--highlighted' : ''
                             }${
@@ -3171,7 +3209,9 @@ function RecordatoriosPopup({
                                       : (
                                         isRandomInspectionVerifyReminder(reminder)
                                           ? 'Ir a revisión por sucursal'
-                                          : 'Realizar inspección'
+                                          : isInspectionInProgress
+                                            ? 'Continuar inspección'
+                                            : 'Realizar inspección'
                                       )}
                                   </button>
                                 ) : canOpenTransferIssueAction ? (
@@ -3185,6 +3225,8 @@ function RecordatoriosPopup({
                                   >
                                     {isOpeningTransfer ? 'Abriendo...' : 'Resolver inconveniente'}
                                   </button>
+                                ) : isCompletedInspectionDailyReminder ? (
+                                  <span className="recordatorios-popup__action-placeholder">Ya realizaste el conteo</span>
                                 ) : status.canMarkSeen ? (
                                   <button
                                     type="button"

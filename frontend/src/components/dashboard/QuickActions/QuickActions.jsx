@@ -2711,6 +2711,17 @@ function QuickActions({
     setRandomInspectionLoading(false)
   }, [])
 
+  useEffect(() => {
+    const inspectionId = normalizeId(activeRandomInspection?.id)
+    if (!inspectionId || isRandomInspectionVerifyMode || !isRandomInspectionModalOpen) return
+    try {
+      localStorage.setItem(
+        `ri_draft_${inspectionId}`,
+        JSON.stringify({ draft: randomInspectionDraftByItemId, stepIndex: randomInspectionStepIndex })
+      )
+    } catch {}
+  }, [randomInspectionDraftByItemId, randomInspectionStepIndex, activeRandomInspection, isRandomInspectionVerifyMode, isRandomInspectionModalOpen])
+
   const buildRandomInspectionDraft = useCallback((inspection) => {
     const rows = Array.isArray(inspection?.items) ? inspection.items : []
     return rows.reduce((acc, item) => {
@@ -2868,11 +2879,22 @@ function QuickActions({
           return false
         }
         setActiveRandomInspection(inspection)
-        setRandomInspectionDraftByItemId(
-          isVerifyReminder
-            ? buildRandomInspectionVerificationDraft(inspection)
-            : buildRandomInspectionDraft(inspection)
-        )
+        if (isVerifyReminder) {
+          setRandomInspectionDraftByItemId(buildRandomInspectionVerificationDraft(inspection))
+        } else {
+          const baseDraft = buildRandomInspectionDraft(inspection)
+          let savedState = null
+          try {
+            const raw = localStorage.getItem(`ri_draft_${inspectionId}`)
+            if (raw) savedState = JSON.parse(raw)
+          } catch {}
+          if (savedState?.draft) {
+            setRandomInspectionDraftByItemId({ ...baseDraft, ...savedState.draft })
+            setRandomInspectionStepIndex(savedState.stepIndex ?? 0)
+          } else {
+            setRandomInspectionDraftByItemId(baseDraft)
+          }
+        }
         return true
       } catch (error) {
         closeRandomInspectionModal()
@@ -3750,6 +3772,7 @@ function QuickActions({
           })
         }
 
+        try { localStorage.removeItem(`ri_draft_${inspectionId}`) } catch {}
         closeRandomInspectionModal()
         const remoteReminders = await fetchRemindersFromBackend(token)
         setReminders(remoteReminders)
@@ -4464,7 +4487,7 @@ function QuickActions({
                         <div className="quick-actions__inspection-progress-bar">
                           <span
                             style={{
-                              width: `${(randomInspectionAnsweredCount / Math.max(randomInspectionRows.length, 1)) * 100}%`,
+                              width: `${((activeRandomInspectionStepIndex + 1) / Math.max(randomInspectionRows.length, 1)) * 100}%`,
                             }}
                           />
                         </div>

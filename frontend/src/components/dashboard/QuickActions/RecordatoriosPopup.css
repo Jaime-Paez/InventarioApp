@@ -478,6 +478,17 @@
   background: color-mix(in srgb, var(--color-error-text) 18%, var(--color-surface));
 }
 
+.recordatorios-popup__timeline-arrow.is-warning {
+  border-color: color-mix(in srgb, #d97706 38%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, var(--color-surface));
+  color: #92400e;
+}
+
+.recordatorios-popup__timeline-arrow.is-warning:hover {
+  border-color: color-mix(in srgb, #d97706 52%, transparent);
+  background: color-mix(in srgb, #f59e0b 18%, var(--color-surface));
+}
+
 .recordatorios-popup__timeline-arrow svg {
   width: 10px;
   height: 10px;
@@ -528,6 +539,22 @@
 .recordatorios-popup__timeline-day.is-critical:hover {
   border-color: color-mix(in srgb, var(--color-error-text) 52%, transparent);
   background: color-mix(in srgb, var(--color-error-text) 18%, var(--color-surface));
+}
+
+.recordatorios-popup__timeline-day.is-warning {
+  border-color: color-mix(in srgb, #d97706 38%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, var(--color-surface));
+  color: #92400e;
+}
+
+.recordatorios-popup__timeline-day.is-warning:hover {
+  border-color: color-mix(in srgb, #d97706 52%, transparent);
+  background: color-mix(in srgb, #f59e0b 18%, var(--color-surface));
+}
+
+.recordatorios-popup__timeline-day.is-selected.is-warning {
+  border-color: color-mix(in srgb, #d97706 64%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #f59e0b 24%, transparent);
 }
 
 .recordatorios-popup__timeline-day.is-selected.is-critical {
@@ -587,6 +614,17 @@
   background: color-mix(in srgb, var(--color-error-text-dark) 18%, #242a31);
 }
 
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-arrow.is-warning {
+  border-color: color-mix(in srgb, #d97706 46%, #36414c);
+  background: color-mix(in srgb, #f59e0b 12%, #242a31);
+  color: #fcd34d;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-arrow.is-warning:hover {
+  border-color: color-mix(in srgb, #d97706 60%, #36414c);
+  background: color-mix(in srgb, #f59e0b 18%, #242a31);
+}
+
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-day {
   background: color-mix(in srgb, #22272d 80%, var(--color-primary-dark) 20%);
 }
@@ -606,6 +644,22 @@
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-day.is-critical:hover {
   border-color: color-mix(in srgb, var(--color-error-text-dark) 58%, #36414c);
   background: color-mix(in srgb, var(--color-error-text-dark) 18%, #242a31);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-day.is-warning {
+  border-color: color-mix(in srgb, #d97706 46%, #36414c);
+  background: color-mix(in srgb, #f59e0b 12%, #242a31);
+  color: #fcd34d;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-day.is-warning:hover {
+  border-color: color-mix(in srgb, #d97706 58%, #36414c);
+  background: color-mix(in srgb, #f59e0b 18%, #242a31);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-day.is-selected.is-warning {
+  border-color: color-mix(in srgb, #d97706 62%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #f59e0b 24%, transparent);
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-day.is-selected.is-critical {
