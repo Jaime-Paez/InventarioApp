@@ -571,6 +571,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "detalles",
             "pagos",
             "ubicaciones_iniciales",
+            "garantia_pendiente",
         ]
         extra_kwargs = {
             "no_documento": {
@@ -580,6 +581,9 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "factura_referencia": {
                 "required": False,
                 "allow_blank": True,
+            },
+            "garantia_pendiente": {
+                "read_only": True,
             },
         }
 
@@ -1196,7 +1200,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         previous_details = list(instance.detalles.select_related("producto").all())
 
         with transaction.atomic():
-            self._apply_inventory_effect(instance, previous_details, reverse=True)
+            if not getattr(instance, "garantia_pendiente", False):
+                self._apply_inventory_effect(instance, previous_details, reverse=True)
 
             movimiento = super().update(instance, validated_data)
             if detalles_data is not None:
@@ -1304,6 +1309,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         inventory_row.save(update_fields=["cantidad"])
 
     def _apply_inventory_effect(self, movimiento, details_source, reverse=False):
+        if getattr(movimiento, "garantia_pendiente", False):
+            return
         subtipo_key = self._resolve_subtipo_key(getattr(movimiento, "sub_tipo_movimiento", None))
         tipo_name = self._resolve_tipo_name(getattr(movimiento, "tipo_movimiento", None))
         estado_name = self._resolve_estado_name(getattr(movimiento, "estado_movimiento", None))

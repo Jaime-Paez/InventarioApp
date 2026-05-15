@@ -1,3 +1,21 @@
+.salidas-garantia-pendiente-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #eab308 28%, transparent);
+  color: #713f12 !important;
+  font-weight: 600;
+  font-size: 0.8em;
+}
+
+.dashboard-shell.dark .salidas-garantia-pendiente-chip {
+  background: color-mix(in srgb, #eab308 32%, transparent);
+  color: #fef08a !important;
+}
+
 .salidas-type-filter {
   display: flex;
   align-items: center;

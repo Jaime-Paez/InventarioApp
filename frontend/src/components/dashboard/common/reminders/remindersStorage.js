@@ -4,6 +4,7 @@ export const REMINDERS_STORAGE_KEY = 'inventario-recordatorios-v1'
 export const REMINDERS_SYNC_EVENT = 'inventario-reminders-sync'
 export const REMINDERS_TRANSFER_NOTIFICATION_EVENT = 'inventario-reminders-transfer-notification'
 export const SPECIAL_TRANSFER_DECISION_KIND = 'solicitud_traslado_decision'
+export const GARANTIA_APPROVAL_KIND = 'solicitud_garantia'
 export const TRANSFER_RECEIPT_NOTIFICATION_KIND = 'solicitud_traslado_recepcion'
 export const TRANSFER_ISSUE_NOTIFICATION_KIND = 'solicitud_traslado_inconveniente'
 export const RANDOM_INSPECTION_KIND = 'inspeccion_aleatoria_diaria'
@@ -559,6 +560,9 @@ export const isReminderSeenByCurrentUser = (reminder, userIdSet) => {
 
 export const isSpecialTransferDecisionReminder = (reminder) =>
   normalizeId(reminder?.kind) === SPECIAL_TRANSFER_DECISION_KIND
+
+export const isGarantiaApprovalReminder = (reminder) =>
+  normalizeId(reminder?.kind) === GARANTIA_APPROVAL_KIND
 
 export const isRandomInspectionDailyReminder = (reminder) => {
   const kind = normalizeId(reminder?.kind)

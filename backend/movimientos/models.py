@@ -60,6 +60,10 @@ class MovimientoInventario(models.Model):
         related_name="movimientos",
         blank=True,
     )
+    garantia_pendiente = models.BooleanField(
+        default=False,
+        help_text="True si es una salida de garantia creada por no-admin que requiere aprobacion.",
+    )
 
     class Meta:
         ordering = ["-fecha", "-id"]

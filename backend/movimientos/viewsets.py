@@ -203,6 +203,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "detalles": detalles_payload,
                     "es_solicitud_traslado": False,
                     "solicitud_traslado_id": None,
+                    "garantia_pendiente": bool(
+                        row.get("garantia_pendiente") if is_mapping else getattr(row, "garantia_pendiente", False)
+                    ),
                     "_sort_created_at": (
                         fecha_value.isoformat()
                         if getattr(fecha_value, "isoformat", None)
@@ -789,6 +792,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         nombre = str(getattr(sub_tipo, "nombre", "") or "").strip().lower()
         return "trasl" in nombre
 
+    def _is_garantia_salida_from_validated(self, serializer):
+        sub_tipo = serializer.validated_data.get("sub_tipo_movimiento")
+        tipo = serializer.validated_data.get("tipo_movimiento")
+        sub_nombre = str(getattr(sub_tipo, "nombre", "") or "").strip().lower()
+        tipo_nombre = str(getattr(tipo, "nombre", "") or "").strip().lower()
+        return tipo_nombre.startswith("sal") and "devol" in sub_nombre
+
     def _is_sale_movement(self, movement):
         tipo_nombre = str(getattr(movement.tipo_movimiento, "nombre", "") or "").strip().lower()
         subtipo_nombre = str(getattr(movement.sub_tipo_movimiento, "nombre", "") or "").strip().lower()
@@ -868,6 +878,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 field_label="sucursal objetivo",
                 action_key="puede_crear",
             )
+        is_garantia_for_approval = (
+            not is_app_admin(self.request.user)
+            and self._is_garantia_salida_from_validated(serializer)
+        )
+        if is_garantia_for_approval:
+            serializer.validated_data["garantia_pendiente"] = True
+
         movement = serializer.save()
         reminder_added = False
         if solicitud_traslado:
@@ -884,6 +901,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     actor_user=self.request.user,
                     recipient_ids=recipient_ids,
                 )
+        elif movement.garantia_pendiente:
+            reminder_added = self._append_garantia_approval_reminder(
+                movement=movement,
+                actor_user=self.request.user,
+            )
         if reminder_added:
             serializer.context[REMINDERS_SYNC_FLAG] = True
         self._auto_reject_pending_transfers_due_to_sale(movement)
@@ -1948,6 +1970,136 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             store.save(update_fields=["payload", "updated_at"])
 
         return True
+
+    def _append_garantia_approval_reminder(self, *, movement, actor_user):
+        movement_id = int(getattr(movement, "id", 0) or 0)
+        if movement_id <= 0:
+            return False
+
+        doc = str(getattr(movement, "no_documento", "") or "").strip()
+        reference = f"#{doc}" if doc else f"#{movement_id}"
+        context_label = f"Garantia {reference}"
+        description = f"Solicitud de garantia {reference} requiere aprobacion."
+
+        now = timezone.localtime(timezone.now())
+        actor = self._normalize_reminder_recipient(actor_user) or {"id": "system", "name": "Sistema"}
+        created_at = timezone.now().isoformat()
+
+        admin_recipients = self._resolve_transfer_request_admin_recipients(
+            exclude_user_ids=[str(actor.get("id") or "")],
+        )
+        if not admin_recipients:
+            return False
+
+        reminder = {
+            "id": str(uuid4()),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M"),
+            "description": description,
+            "creator": actor,
+            "recipients": admin_recipients,
+            "context": {
+                "type": "solicitud_garantia",
+                "id": str(movement_id),
+                "label": context_label,
+            },
+            "kind": "solicitud_garantia",
+            "createdAt": created_at,
+            "decision": {
+                "status": "pendiente",
+                "reason": "",
+                "by": None,
+                "at": created_at,
+                "assignedRecipients": [],
+            },
+            "completedBy": [],
+        }
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            existing_payload = store.payload if isinstance(store.payload, list) else []
+            normalized = _normalize_reminder_list(existing_payload)
+            normalized.insert(0, reminder)
+            store.payload = _normalize_reminder_list(normalized)
+            store.save(update_fields=["payload", "updated_at"])
+
+        return True
+
+    def _update_garantia_reminder_decision(self, movement_id, actor_user, decision_status, reason=""):
+        actor = self._normalize_reminder_recipient(actor_user) or {"id": "system", "name": "Sistema"}
+        now = timezone.now().isoformat()
+        movement_id_str = str(movement_id)
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            payload = store.payload if isinstance(store.payload, list) else []
+            updated = []
+            for item in payload:
+                ctx = item.get("context") or {}
+                if (
+                    str(item.get("kind") or "").strip() == "solicitud_garantia"
+                    and str(ctx.get("type") or "").strip() == "solicitud_garantia"
+                    and str(ctx.get("id") or "").strip() == movement_id_str
+                ):
+                    item = dict(item)
+                    item["decision"] = {
+                        **(item.get("decision") or {}),
+                        "status": decision_status,
+                        "reason": reason,
+                        "by": actor,
+                        "at": now,
+                    }
+                updated.append(item)
+            store.payload = _normalize_reminder_list(updated)
+            store.save(update_fields=["payload", "updated_at"])
+
+    @action(detail=True, methods=["post"], url_path="aceptar-garantia")
+    def aceptar_garantia(self, request, pk=None):
+        if not is_app_admin(request.user):
+            raise PermissionDenied("Solo los administradores pueden aprobar garantias.")
+
+        movement = self.get_object()
+        if not movement.garantia_pendiente:
+            return Response(
+                {"detail": "Este movimiento no tiene aprobacion pendiente."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            movement.garantia_pendiente = False
+            movement.save(update_fields=["garantia_pendiente"])
+
+            serializer = MovimientoInventarioSerializer(context=self.get_serializer_context())
+            detalles = list(movement.detalles.select_related("producto").all())
+            serializer._apply_inventory_effect(movement, detalles, reverse=False)
+
+        self._update_garantia_reminder_decision(movement.id, request.user, "aceptada")
+        response_data = MovimientoInventarioSerializer(
+            movement, context=self.get_serializer_context()
+        ).data
+        response_data[REMINDERS_SYNC_FLAG] = True
+        return Response(response_data)
+
+    @action(detail=True, methods=["post"], url_path="rechazar-garantia")
+    def rechazar_garantia(self, request, pk=None):
+        if not is_app_admin(request.user):
+            raise PermissionDenied("Solo los administradores pueden rechazar garantias.")
+
+        movement = self.get_object()
+        if not movement.garantia_pendiente:
+            return Response(
+                {"detail": "Este movimiento no tiene aprobacion pendiente."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        motivo = str(request.data.get("motivo") or "").strip()
+        movement_id = movement.id
+        self._update_garantia_reminder_decision(movement_id, request.user, "rechazada", reason=motivo)
+
+        with transaction.atomic():
+            movement.delete()
+
+        return Response({REMINDERS_SYNC_FLAG: True}, status=status.HTTP_200_OK)
 
     def _append_transfer_reception_reminder(
         self,

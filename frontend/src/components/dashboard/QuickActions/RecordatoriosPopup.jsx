@@ -22,6 +22,7 @@ import {
   reminderCompletedByIds,
   isTransferDecisionAllowedForUser,
   isSpecialTransferDecisionReminder,
+  isGarantiaApprovalReminder,
   normalizeId,
   sanitizeRecipient,
   upsertTransferReminder,
@@ -1454,8 +1455,8 @@ function RecordatoriosPopup({
 
   const loadDecisionDetail = useCallback(
     async (reminder) => {
-      const solicitudId = normalizeId(reminder?.context?.id)
-      if (!solicitudId || !token) {
+      const contextId = normalizeId(reminder?.context?.id)
+      if (!contextId || !token) {
         setDecisionDetail(null)
         return
       }
@@ -1463,19 +1464,24 @@ function RecordatoriosPopup({
       setDecisionLoading(true)
       setDecisionError('')
       try {
-        const response = await authFetch(
-          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/`,
-          {},
-          token
-        )
+        let url
+        let errorMsg
+        if (isGarantiaApprovalReminder(reminder)) {
+          url = `${API_URL}/movimientos/movimiento_inventario/${encodeURIComponent(contextId)}/`
+          errorMsg = 'No se pudo cargar el detalle de la garantia.'
+        } else {
+          url = `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(contextId)}/`
+          errorMsg = 'No se pudo cargar la solicitud de traslado.'
+        }
+        const response = await authFetch(url, {}, token)
         const data = await response.json().catch(() => ({}))
         if (!response.ok) {
-          const detail = String(data?.detail || '').trim() || 'No se pudo cargar la solicitud de traslado.'
+          const detail = String(data?.detail || '').trim() || errorMsg
           throw new Error(detail)
         }
         setDecisionDetail(data)
       } catch (error) {
-        const message = error?.message || 'No se pudo cargar la solicitud de traslado.'
+        const message = error?.message || 'No se pudo cargar el detalle.'
         setDecisionError(message)
       } finally {
         setDecisionLoading(false)
@@ -1675,7 +1681,7 @@ function RecordatoriosPopup({
     if (reminderDateKey) {
       setSelectedTimelineDate(normalizeWorkingDateKey(reminderDateKey) || reminderDateKey)
     }
-    if (reminder && isSpecialTransferDecisionReminder(reminder)) {
+    if (reminder && (isSpecialTransferDecisionReminder(reminder) || isGarantiaApprovalReminder(reminder))) {
       setActiveView('list')
       openDecisionPanel(reminder)
     }
@@ -1905,9 +1911,68 @@ function RecordatoriosPopup({
     }
   }
 
+  const handleGarantiaDecision = async (decisionType) => {
+    const reminder = activeDecisionReminder
+    const movimientoId = normalizeId(reminder?.context?.id)
+    if (!movimientoId || !token) {
+      setDecisionError('No se pudo resolver el movimiento de garantia.')
+      return false
+    }
+
+    const decision = String(decisionType || '').trim().toLowerCase()
+    if (decision === 'rechazar' && !String(rejectionReason || '').trim()) {
+      setRejectReasonError('Debes escribir un motivo de rechazo.')
+      return false
+    }
+
+    setDecisionSubmitting(true)
+    setDecisionError('')
+    setRejectReasonError('')
+
+    try {
+      const endpoint = decision === 'rechazar'
+        ? `${API_URL}/movimientos/movimiento_inventario/${encodeURIComponent(movimientoId)}/rechazar-garantia/`
+        : `${API_URL}/movimientos/movimiento_inventario/${encodeURIComponent(movimientoId)}/aceptar-garantia/`
+
+      const payload = decision === 'rechazar'
+        ? { motivo: String(rejectionReason || '').trim() }
+        : {}
+
+      const response = await authFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) }, token)
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = String(data?.detail || '').trim() || 'No se pudo registrar la decision.'
+        throw new Error(detail)
+      }
+
+      if (token) {
+        const remoteReminders = await fetchRemindersFromBackend(token)
+        onApplyRemindersUpdate?.(remoteReminders)
+      }
+      closeDecisionPanel()
+      return true
+    } catch (error) {
+      const message = error?.message || 'No se pudo registrar la decision.'
+      setDecisionError(message)
+      return false
+    } finally {
+      setDecisionSubmitting(false)
+    }
+  }
+
   const activeDecisionStatus = getReminderDecisionStatus(activeDecisionReminder)
   const canSubmitDecision = activeDecisionStatus === 'pendiente'
-  const decisionDetalles = Array.isArray(decisionDetail?.detalles) ? decisionDetail.detalles : []
+  const activeDecisionIsGarantia = isGarantiaApprovalReminder(activeDecisionReminder)
+  const decisionDetalles = (() => {
+    const raw = Array.isArray(decisionDetail?.detalles) ? decisionDetail.detalles : []
+    if (!activeDecisionIsGarantia) return raw
+    return raw.map((d) => ({
+      id: d.id,
+      cantidad: d.cantidad,
+      producto_nombre: String(d.producto || '').replace(/\s*\([^)]*\)\s*$/, '').trim(),
+      producto_codigo: (String(d.producto || '').match(/\(([^)]+)\)$/) || [])[1] || '',
+    }))
+  })()
 
   const handleRejectButtonClick = () => {
     if (!canSubmitDecision || decisionSubmitting || decisionLoading) return
@@ -1924,7 +1989,9 @@ function RecordatoriosPopup({
 
   const handleConfirmRejectDecision = async () => {
     if (decisionSubmitting || decisionLoading) return
-    const resolved = await handleTransferDecision('rechazar')
+    const resolved = activeDecisionIsGarantia
+      ? await handleGarantiaDecision('rechazar')
+      : await handleTransferDecision('rechazar')
     if (resolved) {
       setIsRejectReasonModalOpen(false)
     }
@@ -2794,6 +2861,11 @@ function RecordatoriosPopup({
                           !isReminderOwnedByCurrentUser &&
                           isTransferDecisionAllowedForUser(reminder, currentUserIdSet)
                         )
+                        const canResolveGarantia = (
+                          isGarantiaApprovalReminder(reminder) &&
+                          decisionStatus === 'pendiente' &&
+                          isAdminUser
+                        )
                         const canViewTransferRequest = (
                           isTransferContextReminder &&
                           !canResolveDecision &&
@@ -3048,6 +3120,15 @@ function RecordatoriosPopup({
                                     Resolver traslado
                                   </button>
                                 )}
+                                {canResolveGarantia && (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => openDecisionPanel(reminder)}
+                                  >
+                                    Resolver garantía
+                                  </button>
+                                )}
 
                                 {shouldUseAdminTransferActions ? (
                                   <>
@@ -3290,12 +3371,12 @@ function RecordatoriosPopup({
               <header className="recordatorios-popup__decision-head">
                 <div>
                   <h4 className="recordatorios-popup__decision-title">
-                    Traslado
+                    {activeDecisionIsGarantia ? 'Solicitud de Garantía' : 'Traslado'}
                     {Boolean(activeDecisionReminder?.context?.urgente) && (
                       <span className="recordatorios-popup__urgente-dot recordatorios-popup__urgente-dot--decision" aria-hidden="true">!</span>
                     )}
                   </h4>
-                  <p>{formatReminderContext(activeDecisionReminder) || 'Detalle del traslado'}</p>
+                  <p>{formatReminderContext(activeDecisionReminder) || (activeDecisionIsGarantia ? 'Detalle de la garantia' : 'Detalle del traslado')}</p>
                 </div>
                 <button
                   type="button"
@@ -3326,14 +3407,23 @@ function RecordatoriosPopup({
                         <span>Fecha</span>
                         <strong>{decisionDetail?.fecha || '-'}</strong>
                       </label>
-                      <label>
-                        <span>Sucursal solicitante</span>
-                        <strong>{decisionDetail?.sucursal_solicitante || '-'}</strong>
-                      </label>
-                      <label>
-                        <span>Sucursal proveedora</span>
-                        <strong>{decisionDetail?.sucursal_proveedora || '-'}</strong>
-                      </label>
+                      {activeDecisionIsGarantia ? (
+                        <label>
+                          <span>Sucursal</span>
+                          <strong>{decisionDetail?.sucursal || '-'}</strong>
+                        </label>
+                      ) : (
+                        <>
+                          <label>
+                            <span>Sucursal solicitante</span>
+                            <strong>{decisionDetail?.sucursal_solicitante || '-'}</strong>
+                          </label>
+                          <label>
+                            <span>Sucursal proveedora</span>
+                            <strong>{decisionDetail?.sucursal_proveedora || '-'}</strong>
+                          </label>
+                        </>
+                      )}
                     </div>
 
                     <label className="recordatorios-popup__decision-description">
@@ -3386,7 +3476,7 @@ function RecordatoriosPopup({
                     <button
                       type="button"
                       className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--accept"
-                      onClick={() => handleTransferDecision('aceptar')}
+                      onClick={() => activeDecisionIsGarantia ? handleGarantiaDecision('aceptar') : handleTransferDecision('aceptar')}
                       disabled={decisionSubmitting || decisionLoading}
                     >
                       {decisionSubmitting ? 'Guardando...' : 'Aceptar'}

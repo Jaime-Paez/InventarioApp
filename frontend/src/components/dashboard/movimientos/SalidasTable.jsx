@@ -834,16 +834,19 @@ function SalidasTable({
       (normalizedEstado.includes('llego') && normalizedEstado.includes('inconven')) ||
       normalizedEstado.includes('parcial')
     )
+    const isGarantiaPendiente = field === 'estado_nombre' && Boolean(rowData?.garantia_pendiente)
     const className = [
       'cell-tooltip',
       field === 'estado_nombre' && isSentTransfer ? 'salidas-sent-state-chip' : '',
       field === 'estado_nombre' && isPartialSalida ? 'salidas-partial-state-chip' : '',
+      isGarantiaPendiente ? 'salidas-garantia-pendiente-chip' : '',
     ]
       .filter(Boolean)
       .join(' ')
+    const displayContent = isGarantiaPendiente ? 'Aprobación pendiente' : String(content)
     return (
-      <span className={className} data-pr-tooltip={String(content)} style={{ color: textColor }}>
-        {String(content)}
+      <span className={className} data-pr-tooltip={displayContent} style={{ color: textColor }}>
+        {displayContent}
       </span>
     )
   }
