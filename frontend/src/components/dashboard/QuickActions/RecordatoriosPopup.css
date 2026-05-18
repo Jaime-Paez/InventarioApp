@@ -2386,6 +2386,20 @@
   background: #ffffff;
 }
 
+.recordatorios-popup__detail-history-item--issue .recordatorios-popup__detail-history-card {
+  border-color: color-mix(in srgb, #ea580c 28%, var(--color-border));
+  background: color-mix(in srgb, #ea580c 10%, white);
+}
+
+.recordatorios-popup__detail-history-item--issue .recordatorios-popup__detail-history-point {
+  border-color: color-mix(in srgb, #ea580c 48%, white);
+  color: #9a3412;
+}
+
+.recordatorios-popup__detail-history-item--issue .recordatorios-popup__detail-history-point::before {
+  background: color-mix(in srgb, #ea580c 16%, white);
+}
+
 .recordatorios-popup__detail-history-item--upcoming .recordatorios-popup__detail-history-card {
   border-style: dashed;
   background: color-mix(in srgb, var(--color-surface) 72%, transparent);
@@ -2505,6 +2519,20 @@
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__detail-history-item--arrived .recordatorios-popup__detail-history-point::before {
   background: #d1d5db;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__detail-history-item--issue .recordatorios-popup__detail-history-card {
+  border-color: color-mix(in srgb, #ea580c 34%, #36414c);
+  background: color-mix(in srgb, #ea580c 12%, #242a31);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__detail-history-item--issue .recordatorios-popup__detail-history-point {
+  border-color: color-mix(in srgb, #ea580c 48%, #111827);
+  color: #fb923c;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__detail-history-item--issue .recordatorios-popup__detail-history-point::before {
+  background: color-mix(in srgb, #ea580c 22%, #1f252c);
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__detail-history-item--upcoming .recordatorios-popup__detail-history-card {

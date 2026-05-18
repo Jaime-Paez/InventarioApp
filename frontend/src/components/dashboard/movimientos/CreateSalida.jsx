@@ -356,6 +356,11 @@ function CreateSalida({
   const [clienteForm, setClienteForm] = useState(initialClienteForm)
   const [clienteAutos, setClienteAutos] = useState([])
   const [clienteAutoDraft, setClienteAutoDraft] = useState({ ...emptyAuto })
+  const [selectedClienteAutos, setSelectedClienteAutos] = useState([])
+  const [autoConfirmData, setAutoConfirmData] = useState(null)
+  const [savingAuto, setSavingAuto] = useState(false)
+  const [pendingClienteAutoDraft, setPendingClienteAutoDraft] = useState({ placa: '', modelo: '', anio: '', marca: '' })
+  const [fetchingClienteAutos, setFetchingClienteAutos] = useState(false)
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
   const [showTipoPagoDropdown, setShowTipoPagoDropdown] = useState(false)
   const [tipoPagoDropdownStyle, setTipoPagoDropdownStyle] = useState({})
@@ -1622,6 +1627,11 @@ function CreateSalida({
     setClienteForm(initialClienteForm)
     setClienteAutos([])
     setClienteAutoDraft({ ...emptyAuto })
+    setSelectedClienteAutos([])
+    setAutoConfirmData(null)
+    setSavingAuto(false)
+    setPendingClienteAutoDraft({ placa: '', modelo: '', anio: '', marca: '' })
+    setFetchingClienteAutos(false)
     setShowClienteDropdown(false)
     setClienteQuery('')
     setClienteOptions([])
@@ -1878,6 +1888,11 @@ function CreateSalida({
     setClienteForm(initialClienteForm)
     setClienteAutos([])
     setClienteAutoDraft({ ...emptyAuto })
+    setSelectedClienteAutos([])
+    setAutoConfirmData(null)
+    setSavingAuto(false)
+    setPendingClienteAutoDraft({ placa: '', modelo: '', anio: '', marca: '' })
+    setFetchingClienteAutos(false)
     setShowClienteDropdown(false)
     setClienteQuery('')
     setClienteOptions([])
@@ -2485,6 +2500,90 @@ function CreateSalida({
     })
   }
 
+  const fetchClienteAutosData = useCallback(async (clienteId) => {
+    if (!token || !clienteId) return
+    setFetchingClienteAutos(true)
+    try {
+      const response = await authFetch(`${API_URL}/solicitudes/clientes/${clienteId}/`, {}, token)
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) return
+      setSelectedClienteAutos(Array.isArray(data?.autos) ? data.autos : [])
+    } catch {
+      setSelectedClienteAutos([])
+    } finally {
+      setFetchingClienteAutos(false)
+    }
+  }, [token])
+
+  const handleAutoAgregarClick = () => {
+    const { placa, modelo, anio, marca } = pendingClienteAutoDraft
+    if (!placa.trim() && !modelo.trim()) return
+    setAutoConfirmData({ placa: placa.trim(), modelo: modelo.trim(), anio: anio.trim(), marca: marca.trim() })
+  }
+
+  const handleConfirmAddAuto = async () => {
+    if (!autoConfirmData || !selectedCliente?.id) return
+    setSavingAuto(true)
+    try {
+      const allAutos = [
+        ...selectedClienteAutos.map((a) => ({
+          placa: String(a.placa || '').trim(),
+          modelo: String(a.modelo || '').trim(),
+          anio: a.anio ? Number(a.anio) : null,
+          marca: String(a.marca || '').trim(),
+          color: String(a.color || '').trim(),
+        })),
+        {
+          placa: autoConfirmData.placa,
+          modelo: autoConfirmData.modelo,
+          anio: autoConfirmData.anio ? Number(autoConfirmData.anio) : null,
+          marca: autoConfirmData.marca,
+          color: '',
+        },
+      ]
+      const res = await authFetch(
+        `${API_URL}/solicitudes/clientes/${selectedCliente.id}/`,
+        { method: 'PATCH', body: JSON.stringify({ autos: allAutos }) },
+        token
+      )
+      const resData = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(resolveApiErrorMessage(resData, 'No se pudo agregar el vehículo.'))
+      }
+      setSelectedClienteAutos(Array.isArray(resData?.autos) ? resData.autos : allAutos)
+      setAutoConfirmData(null)
+      setPendingClienteAutoDraft({ placa: '', modelo: '', anio: '', marca: '' })
+    } catch (err) {
+      setError(err?.message || 'No se pudo agregar el vehículo.')
+    } finally {
+      setSavingAuto(false)
+    }
+  }
+
+  const handleCedulaBlur = async () => {
+    const cedula = String(clienteForm.cedula_ruc || '').trim()
+    if (cedula.length < 5 || loading) return
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/buscar-cliente/?q=${encodeURIComponent(cedula)}&page_size=10`,
+        {},
+        token
+      )
+      if (!response.ok) return
+      const data = await response.json()
+      const results = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
+      const exactMatch = results.find(
+        (c) => String(c.cedula_ruc || '').trim().toLowerCase() === cedula.toLowerCase()
+      )
+      if (exactMatch) {
+        handleClienteSelect(exactMatch)
+        notifyError('Ya existe un cliente con esa cédula/RUC. Se seleccionó automáticamente.')
+      }
+    } catch {
+      // ignore silently
+    }
+  }
+
   const handleUseExistingCliente = () => {
     setError('')
     setClienteMode(CLIENT_MODE_EXISTING)
@@ -2502,6 +2601,9 @@ function CreateSalida({
     setClienteForm(initialClienteForm)
     setClienteAutos([])
     setClienteAutoDraft({ ...emptyAuto })
+    setSelectedClienteAutos([])
+    setAutoConfirmData(null)
+    setPendingClienteAutoDraft({ placa: '', modelo: '', anio: '', marca: '' })
   }
 
   const handleAddClienteAuto = () => {
@@ -2557,6 +2659,10 @@ function CreateSalida({
     setSelectedCliente(cliente || null)
     setFormData((prev) => ({ ...prev, cliente: label }))
     setClienteQuery('')
+    setSelectedClienteAutos([])
+    setAutoConfirmData(null)
+    setPendingClienteAutoDraft({ placa: '', modelo: '', anio: '', marca: '' })
+    if (cliente?.id) fetchClienteAutosData(cliente.id)
     setClienteForm(normalizeClientePayload(cliente))
     setShowClienteDropdown(false)
     setClienteOptions([])
@@ -2793,6 +2899,7 @@ function CreateSalida({
             throw new Error('Selecciona un cliente existente o usa "Crear nuevo cliente".')
           }
           ventaClienteLabel = formatClienteFieldValue(ventaCliente)
+
         }
 
         if (useNewCliente) {
@@ -3715,6 +3822,7 @@ function CreateSalida({
                               type="text"
                               value={clienteForm.cedula_ruc}
                               onChange={handleClienteFieldChange}
+                              onBlur={handleCedulaBlur}
                               disabled={loading}
                               required
                             />
@@ -3847,7 +3955,64 @@ function CreateSalida({
                     )}
 
                     {useExistingCliente && selectedCliente?.id && (
-                      <small className="muted">Cliente existente detectado. Se usará el registro actual al guardar.</small>
+                      <>
+                        <div className="create-user__section-header" style={{ marginTop: 18 }}>
+                          <div>
+                            <p className="create-user__eyebrow">Autos</p>
+                            <h4>Vehículos del cliente <small className="muted">(opcional)</small></h4>
+                          </div>
+                        </div>
+
+                        <div className="create-user__locations-table create-clientes__autos-table">
+                          <div className="create-user__locations-row create-user__locations-row--head">
+                            <span>Placa</span>
+                            <span>Modelo</span>
+                            <span>Año</span>
+                            <span>Marca</span>
+                            <span>Acciones</span>
+                          </div>
+
+                          <div className="create-user__locations-row create-user__locations-row--form">
+                            <span>
+                              <input type="text" placeholder="Placa" value={pendingClienteAutoDraft.placa}
+                                onChange={(e) => setPendingClienteAutoDraft((p) => ({ ...p, placa: e.target.value }))} disabled={loading} />
+                            </span>
+                            <span>
+                              <input type="text" placeholder="Modelo" value={pendingClienteAutoDraft.modelo}
+                                onChange={(e) => setPendingClienteAutoDraft((p) => ({ ...p, modelo: e.target.value }))} disabled={loading} />
+                            </span>
+                            <span>
+                              <input type="text" placeholder="Año" value={pendingClienteAutoDraft.anio}
+                                onChange={(e) => setPendingClienteAutoDraft((p) => ({ ...p, anio: e.target.value }))} disabled={loading} />
+                            </span>
+                            <span>
+                              <input type="text" placeholder="Marca (opcional)" value={pendingClienteAutoDraft.marca}
+                                onChange={(e) => setPendingClienteAutoDraft((p) => ({ ...p, marca: e.target.value }))} disabled={loading} />
+                            </span>
+                            <span className="create-user__locations-cell create-user__locations-cell--action">
+                              <button type="button" className="create-user__ghost" onClick={handleAutoAgregarClick} disabled={loading || savingAuto}>
+                                Agregar
+                              </button>
+                            </span>
+                          </div>
+
+                          {!selectedClienteAutos.length && (
+                            <div className="create-user__locations-row create-user__locations-row--empty">
+                              <span>{fetchingClienteAutos ? 'Cargando vehículos...' : 'Sin vehículos registrados.'}</span>
+                            </div>
+                          )}
+
+                          {selectedClienteAutos.map((auto, index) => (
+                            <div key={`sel-auto-sal-${index}`} className="create-user__locations-row">
+                              <span>{auto.placa || '-'}</span>
+                              <span>{auto.modelo || '-'}</span>
+                              <span>{auto.anio || '-'}</span>
+                              <span>{auto.marca || '-'}</span>
+                              <span />
+                            </div>
+                          ))}
+                        </div>
+                      </>
                     )}
                   </section>
                 )}
@@ -4006,6 +4171,48 @@ function CreateSalida({
             </div>
           </div>
         </form>
+
+        {autoConfirmData && (
+          <div
+            className="create-salida__confirm-overlay"
+            onMouseDown={() => { if (!savingAuto) setAutoConfirmData(null) }}
+          >
+            <div className="create-salida__confirm-card" onMouseDown={(e) => e.stopPropagation()}>
+              <h4>Agregar vehículo</h4>
+              <p>
+                ¿Agregar este vehículo al cliente{' '}
+                <strong>
+                  {String(selectedCliente?.nombre_completo || `${selectedCliente?.nombres || ''} ${selectedCliente?.apellidos || ''}`).trim() || `Cliente ${selectedCliente?.id}`}
+                </strong>?
+              </p>
+              <p>
+                <strong>
+                  {[autoConfirmData.placa, autoConfirmData.modelo, autoConfirmData.anio, autoConfirmData.marca]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </strong>
+              </p>
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={() => setAutoConfirmData(null)}
+                  disabled={savingAuto}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleConfirmAddAuto}
+                  disabled={savingAuto}
+                >
+                  {savingAuto ? 'Guardando...' : 'Sí, agregar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {isTransferSendConfirmOpen && (
           <div

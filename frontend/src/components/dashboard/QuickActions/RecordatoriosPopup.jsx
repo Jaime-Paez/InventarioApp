@@ -96,8 +96,8 @@ const buildTransferResponseDescription = (reminder, decisionStatus) => {
   }
 
   if (decisionStatus === 'recibido') {
-    if (contextReference) return `El traslado ${contextReference} fue entregado y recibido.`
-    return 'El traslado fue entregado y recibido.'
+    if (contextReference) return `El traslado ${contextReference} fue recibido.`
+    return 'El traslado fue recibido.'
   }
 
   if (decisionStatus === 'rechazada') {
@@ -392,7 +392,10 @@ const getTransferHistoryVisualStatus = (stage, customLabel = '') => {
   if (normalized === 'enviado') {
     return { label, className: 'sent' }
   }
-  if (normalized === 'completo' || normalized === 'incompleto' || normalized === 'recibido') {
+  if (normalized === 'incompleto') {
+    return { label, className: 'issue' }
+  }
+  if (normalized === 'completo' || normalized === 'recibido') {
     return { label, className: 'arrived' }
   }
 
@@ -523,7 +526,7 @@ const getTimelineReminderSummary = ({
   }
 
   if (isTransferContextReminder && !isSpecialReminder) {
-    if (visualDecisionStatus === 'recibido') return 'Entregado y recibido.'
+    if (visualDecisionStatus === 'recibido') return 'Recibido.'
     if (visualDecisionStatus === 'enviado') return 'En camino.'
     if (visualDecisionStatus === 'aceptada') return 'Aceptado.'
     if (visualDecisionStatus === 'rechazada') return 'Rechazado.'
@@ -854,10 +857,15 @@ function RecordatoriosPopup({
     return values[0] || ''
   }, [currentUserIdSet])
 
-  const reminderStatusSource = useMemo(
-    () => (Array.isArray(allReminders) && allReminders.length ? allReminders : reminders),
-    [allReminders, reminders]
-  )
+  const reminderStatusSource = useMemo(() => {
+    const all = Array.isArray(allReminders) && allReminders.length ? allReminders : []
+    const local = Array.isArray(reminders) ? reminders : []
+    if (!all.length) return local
+    if (!local.length) return all
+    const map = new Map(all.map((r) => [normalizeId(r?.id), r]).filter(([id]) => id))
+    local.forEach((r) => { const id = normalizeId(r?.id); if (id) map.set(id, r) })
+    return [...map.values()]
+  }, [allReminders, reminders])
 
   const resolvedTransferIssuesBySolicitudId = useMemo(() => {
     const source = Array.isArray(reminderStatusSource) ? reminderStatusSource : []
@@ -889,6 +897,20 @@ function RecordatoriosPopup({
     return bySolicitudId
   }, [reminderStatusSource])
 
+  const issueReminderBySolicitudId = useMemo(() => {
+    const map = new Map()
+    ;(Array.isArray(reminders) ? reminders : []).forEach((reminder) => {
+      if (!isTransferIssueReminder(reminder)) return
+      const solicitudId = normalizeId(reminder?.context?.id)
+      if (!solicitudId) return
+      const existing = map.get(solicitudId)
+      const ts = getReminderDateTimeTimestamp(reminder) || 0
+      const existingTs = existing ? (getReminderDateTimeTimestamp(existing) || 0) : -1
+      if (!existing || ts >= existingTs) map.set(solicitudId, reminder)
+    })
+    return map
+  }, [reminders])
+
   const creatorRecipientId = currentPrimaryUserId || extractUserId(currentUser)
   const creatorRecipientName = currentUserName || formatCurrentUserName(currentUser)
 
@@ -915,9 +937,20 @@ function RecordatoriosPopup({
     })
 
     grouped.forEach((dayReminders, dateKey) => {
+      const mainTransferSolicitudIds = new Set(
+        dayReminders
+          .filter((r) => !isTransferIssueReminder(r) && normalizeReminderContextType(r?.context?.type) === 'solicitud_traslado')
+          .map((r) => normalizeId(r?.context?.id))
+          .filter(Boolean)
+      )
+      const filtered = dayReminders.filter((r) => {
+        if (!isTransferIssueReminder(r)) return true
+        const sid = normalizeId(r?.context?.id)
+        return !sid || !mainTransferSolicitudIds.has(sid)
+      })
       grouped.set(
         dateKey,
-        [...dayReminders].sort((a, b) => {
+        [...filtered].sort((a, b) => {
           const timestampA = getReminderDateTimeTimestamp(a)
           const timestampB = getReminderDateTimeTimestamp(b)
 
@@ -1047,7 +1080,7 @@ function RecordatoriosPopup({
         if (isReminderOwnedByCurrentUser) {
           return { ...status, label: 'Cumplido', className: 'arrived' }
         }
-        return { ...status, label: 'Entregada y recibida', className: 'arrived' }
+        return { ...status, label: 'Recibida', className: 'arrived' }
       }
       return status
     })()
@@ -1077,6 +1110,16 @@ function RecordatoriosPopup({
       isTransferContextReminder &&
       visualDecisionStatus === 'rechazada' &&
       !isReminderOwnedByCurrentUser
+    ) {
+      return 'critical'
+    }
+
+    if (
+      isTransferContextReminder &&
+      Boolean(reminder?.context?.urgente) &&
+      visualDecisionStatus !== 'recibido' &&
+      visualDecisionStatus !== 'completo' &&
+      visualDecisionStatus !== 'incompleto'
     ) {
       return 'critical'
     }
@@ -1291,7 +1334,7 @@ function RecordatoriosPopup({
       }
 
       if (!isReminderCreatedByCurrentUser(activeDetailReminder, currentUserIdSet, currentUserName)) {
-        return { ...vs, label: 'Entregada y recibida', className: 'arrived' }
+        return { ...vs, label: 'Recibida', className: 'arrived' }
       }
     }
     return vs
@@ -1427,8 +1470,38 @@ function RecordatoriosPopup({
       }
     })
 
+    const solicitudIdForIssue = normalizeId(activeDetailReminder?.context?.id)
+    const issueReminder = solicitudIdForIssue ? issueReminderBySolicitudId.get(solicitudIdForIssue) || null : null
+    if (issueReminder) {
+      const issueDesc = String(issueReminder?.description || '').toLowerCase()
+      const issueResolved = (
+        reminderCompletedByIds(issueReminder).length > 0 ||
+        issueDesc.includes('resuelto') ||
+        issueDesc.includes('perdido')
+      )
+      const issueTs = (() => {
+        const ts = getReminderDateTimeTimestamp(issueReminder)
+        if (Number.isFinite(ts)) return new Date(ts).toISOString()
+        return String(issueReminder?.createdAt || issueReminder?.date || '').trim()
+      })()
+      const issueActorName = String(
+        issueReminder?.decision?.by?.name ||
+        issueReminder?.creator?.name ||
+        ''
+      ).trim()
+      timelineItems.push({
+        id: `issue-${solicitudIdForIssue}`,
+        label: issueResolved ? 'Novedad resuelta' : 'Novedad pendiente',
+        className: issueResolved ? 'arrived' : 'issue',
+        actorName: issueActorName,
+        detailText: '',
+        timestamp: issueTs,
+        isPlaceholder: false,
+      })
+    }
+
     return [...timelineItems].reverse()
-  }, [activeDetailIsTransferContext, activeDetailReminder, activeDetailSolicitud, activeDetailSolicitudLoading, reminders])
+  }, [activeDetailIsTransferContext, activeDetailReminder, activeDetailSolicitud, activeDetailSolicitudLoading, issueReminderBySolicitudId, reminders])
 
   const shiftTimelineDay = useCallback((offset) => {
     setSelectedTimelineDate((current) => normalizeWorkingDateKey(addDaysToDateKey(current, offset)))
@@ -2851,6 +2924,9 @@ function RecordatoriosPopup({
                           if (isGarantiaResultReminder(reminder)) {
                             return { ...status, label: 'Notificado', className: 'info', canMarkSeen: false }
                           }
+                          if (isGarantiaApprovalReminder(reminder) && visualDecisionStatus === 'rechazada') {
+                            return { ...status, label: '', className: 'default', canMarkSeen: false }
+                          }
                           if (visualDecisionStatus === 'recibido') {
                             const outcomeForLabel = latestTransferReceiptOutcome || transferReceiptOutcome
                             if (isTransferIssue) {
@@ -2864,7 +2940,7 @@ function RecordatoriosPopup({
                             if (isReminderOwnedByCurrentUser) {
                               return { ...status, label: 'Cumplido', className: 'arrived' }
                             }
-                            return { ...status, label: 'Entregada y recibida', className: 'arrived' }
+                            return { ...status, label: 'Recibida', className: 'arrived' }
                           }
                           return status
                         })()
@@ -2883,6 +2959,13 @@ function RecordatoriosPopup({
                           isGarantiaApprovalReminder(reminder) &&
                           decisionStatus === 'pendiente' &&
                           isAdminUser
+                        )
+                        const canAdminAcceptTransfer = (
+                          isAdminUser &&
+                          isTransferContextReminder &&
+                          !isTransferIssue &&
+                          decisionStatus === 'pendiente' &&
+                          !canResolveDecision
                         )
                         const canViewTransferRequest = (
                           isTransferContextReminder &&
@@ -3032,6 +3115,22 @@ function RecordatoriosPopup({
                           normalizeId(highlightedReminderId) === currentReminderId
                         )
                         const isTransferRelatedReminder = isTransferContextReminder || isTransferIssue
+                        const linkedIssueReminder = (
+                          !isTransferIssue && isTransferContextReminder && solicitudId
+                            ? issueReminderBySolicitudId.get(solicitudId) || null
+                            : null
+                        )
+                        const linkedIssueDesc = String(linkedIssueReminder?.description || '').toLowerCase()
+                        const linkedIssueIsResolved = linkedIssueReminder ? (
+                          reminderCompletedByIds(linkedIssueReminder).length > 0 ||
+                          linkedIssueDesc.includes('resuelto') ||
+                          linkedIssueDesc.includes('perdido')
+                        ) : false
+                        const canShowLinkedIssueAction = (
+                          isAdminUser &&
+                          linkedIssueReminder !== null &&
+                          typeof onOpenTransferIssuesSection === 'function'
+                        )
                         const canAdminOpenEntradaAction = (
                           isAdminUser &&
                           isTransferRelatedReminder &&
@@ -3044,7 +3143,13 @@ function RecordatoriosPopup({
                         )
                         const shouldUseAdminTransferActions = canAdminOpenEntradaAction || canAdminOpenSalidaAction
                         const adminTransferSalidaLabel = canCreateSalidaFromReminder ? 'Crear salida' : 'Ver salida'
-                        const isUrgenteReminder = isTransferContextReminder && Boolean(reminder?.context?.urgente)
+                        const isUrgenteReminder = (
+                          isTransferContextReminder &&
+                          Boolean(reminder?.context?.urgente) &&
+                          visualDecisionStatus !== 'recibido' &&
+                          visualDecisionStatus !== 'completo' &&
+                          visualDecisionStatus !== 'incompleto'
+                        )
                         const timelineContextTitle = getTimelineReminderContextTitle(reminder)
                         const timelineContextReference = getTimelineReminderContextReference(reminder)
                         const timelineDescription = getTimelineReminderSummary({
@@ -3130,6 +3235,11 @@ function RecordatoriosPopup({
                               <span className={`recordatorios-popup__status recordatorios-popup__status--${displayStatus.className}`}>
                                 {displayStatus.label}
                               </span>
+                              {linkedIssueReminder && (
+                                <span className={`recordatorios-popup__status recordatorios-popup__status--${linkedIssueIsResolved ? 'arrived' : 'issue'}`}>
+                                  {linkedIssueIsResolved ? 'Novedad resuelta' : 'Novedad pendiente'}
+                                </span>
+                              )}
                               <div className="recordatorios-popup__timeline-item-actions">
                                 {canResolveDecision && (
                                   <button
@@ -3149,6 +3259,15 @@ function RecordatoriosPopup({
                                     Resolver garantía
                                   </button>
                                 )}
+                                {canAdminAcceptTransfer && (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => openDecisionPanel(reminder)}
+                                  >
+                                    Resolver traslado
+                                  </button>
+                                )}
 
                                 {shouldUseAdminTransferActions ? (
                                   <>
@@ -3160,6 +3279,19 @@ function RecordatoriosPopup({
                                       >
                                         <Loader2 className="recordatorios-popup__inline-spinner" />
                                         Validando estado...
+                                      </button>
+                                    )}
+
+                                    {canShowLinkedIssueAction && (
+                                      <button
+                                        type="button"
+                                        className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                        onClick={() => {
+                                          void handleOpenTransferIssueResolution(linkedIssueReminder)
+                                        }}
+                                        disabled={isOpeningTransfer}
+                                      >
+                                        {isOpeningTransfer ? 'Abriendo...' : (linkedIssueIsResolved ? 'Ver novedad' : 'Resolver novedad')}
                                       </button>
                                     )}
 

@@ -1294,6 +1294,8 @@ function QuickActions({
       const contextType = normalizeReminderContextType(reminder?.context?.type)
       if (contextType !== 'solicitud_traslado') return false
       if (isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)) return false
+      const latestStage = String(getLatestTransferHistoryEntry(reminder)?.stage || '').toLowerCase()
+      if (latestStage === 'completo' || latestStage === 'incompleto' || latestStage === 'recibido') return false
       return isTransferDecisionAllowedForUser(reminder, currentUserIds)
     })
   }, [
