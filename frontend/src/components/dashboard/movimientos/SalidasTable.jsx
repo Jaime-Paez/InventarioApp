@@ -875,9 +875,10 @@ function SalidasTable({
 
     const primaryProduct = products[0]
     const remainingProducts = products.slice(1)
-    const primaryLabel = primaryProduct?.producto_codigo || primaryProduct?.producto_nombre || '-'
+    const allCodes = products.map((p) => p?.producto_codigo).filter(Boolean).join(', ')
+    const primaryLabel = allCodes || primaryProduct?.producto_nombre || '-'
     const primaryTooltip = [
-      primaryProduct?.producto_codigo,
+      allCodes || primaryProduct?.producto_codigo,
       primaryProduct?.producto_nombre,
       `Cantidad: ${formatMovementProductQuantity(primaryProduct?.cantidad)}`,
     ]

@@ -25,6 +25,8 @@ import {
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
+const SOLICITUD_PRODUCT_HOVER_CARD_WIDTH = 480
+const SOLICITUD_PRODUCT_HOVER_CARD_MARGIN = 12
 const SOLICITUD_FILTER_FIELDS = [
   'codigo',
   'fecha',
@@ -139,6 +141,8 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const [sortOrder, setSortOrder] = useState(null)
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const [productHoverCard, setProductHoverCard] = useState(null)
+  const productHoverHideTimeoutRef = useRef(null)
 
   const fetchSucursales = useCallback(async () => {
     if (!token) return
@@ -208,6 +212,24 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
             : '') ||
           '-'
 
+        const tabla = String(item?.tabla || '').trim()
+        const productoCodigo = String(
+          tabla === 'producto'
+            ? item?.producto_data?.codigo || ''
+            : item?.producto_solicitado_data?.codigo || ''
+        ).trim()
+        const productos =
+          productoCodigo || productoSolicitadoNombre !== '-'
+            ? [
+                {
+                  producto_codigo: productoCodigo,
+                  producto_nombre: productoSolicitadoNombre !== '-' ? productoSolicitadoNombre : '',
+                  cantidad: item?.cantidad,
+                  comentario: item?.comentario || '',
+                },
+              ]
+            : []
+
         return {
           ...item,
           codigo: item?.codigo || '-',
@@ -222,6 +244,8 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           producto_solicitado_descripcion: productoSolicitadoDescripcion,
           descripcion_general: item?.descripcion_general || '-',
           producto_conseguido: productoConseguido,
+          producto_codigo: productoCodigo,
+          productos,
         }
       }),
     []
@@ -482,6 +506,61 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const autoFitColumns = useCallback(() => {
     autoFitTableColumns(tableWrapperRef.current, 'solicitudes-table-state')
   }, [])
+
+  const clearProductHoverHideTimer = useCallback(() => {
+    if (!productHoverHideTimeoutRef.current) return
+    clearTimeout(productHoverHideTimeoutRef.current)
+    productHoverHideTimeoutRef.current = null
+  }, [])
+
+  const hideProductHoverCard = useCallback(() => {
+    clearProductHoverHideTimer()
+    setProductHoverCard(null)
+  }, [clearProductHoverHideTimer])
+
+  const scheduleHideProductHoverCard = useCallback(() => {
+    clearProductHoverHideTimer()
+    productHoverHideTimeoutRef.current = setTimeout(() => {
+      productHoverHideTimeoutRef.current = null
+      setProductHoverCard(null)
+    }, 120)
+  }, [clearProductHoverHideTimer])
+
+  const showProductHoverCard = useCallback(
+    (event, products) => {
+      const normalizedProducts = Array.isArray(products) ? products : []
+      if (!normalizedProducts.length) {
+        hideProductHoverCard()
+        return
+      }
+      clearProductHoverHideTimer()
+      const rect = event?.currentTarget?.getBoundingClientRect?.()
+      if (!rect) return
+
+      let left = rect.right + 10
+      if (left + SOLICITUD_PRODUCT_HOVER_CARD_WIDTH > window.innerWidth - SOLICITUD_PRODUCT_HOVER_CARD_MARGIN) {
+        left = Math.max(
+          SOLICITUD_PRODUCT_HOVER_CARD_MARGIN,
+          rect.left - SOLICITUD_PRODUCT_HOVER_CARD_WIDTH - 10
+        )
+      }
+      const maxTop = Math.max(window.innerHeight - 280, SOLICITUD_PRODUCT_HOVER_CARD_MARGIN)
+      const top = Math.min(
+        Math.max(rect.top - 8, SOLICITUD_PRODUCT_HOVER_CARD_MARGIN),
+        maxTop
+      )
+      setProductHoverCard({ left, top, products: normalizedProducts })
+    },
+    [clearProductHoverHideTimer, hideProductHoverCard]
+  )
+
+  useEffect(() => () => { clearProductHoverHideTimer() }, [clearProductHoverHideTimer])
+
+  useEffect(() => {
+    const handleScroll = () => hideProductHoverCard()
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [hideProductHoverCard])
 
 const handleResetTable = () => {
     localStorage.removeItem('solicitudes-table-columns')
@@ -809,6 +888,36 @@ const handleResetTable = () => {
   }, [clients, exportColumns, getExportValue, notifyExportWarning, processedRows, selectedRows])
 
   // ---------------- Body templates ----------------
+  const solicitudProductBodyTemplate = (rowData) => {
+    const products = Array.isArray(rowData?.productos) ? rowData.productos : []
+    const codigo = String(rowData?.producto_codigo || '').trim() || '-'
+    if (!products.length) {
+      return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+    }
+    return (
+      <div className="movimientos-table__product-cell">
+        <div className="movimientos-table__product-lines">
+          <span className="cell-tooltip movimientos-table__product-main" data-pr-tooltip={codigo}>
+            {codigo}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="movimientos-table__product-eye"
+          aria-label="Ver producto"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseEnter={(e) => showProductHoverCard(e, products)}
+          onMouseLeave={scheduleHideProductHoverCard}
+          onFocus={(e) => showProductHoverCard(e, products)}
+          onBlur={scheduleHideProductHoverCard}
+        >
+          <i className="pi pi-eye" />
+        </button>
+      </div>
+    )
+  }
+
   const cellWithTooltip = (rowData, field) => {
     const content = rowData?.[field] ?? '-'
     const textColor = content === '-' ? '#9ca3af' : undefined
@@ -1484,6 +1593,9 @@ const handleResetTable = () => {
               case 'cliente_nombre':
                 bodyTemplate = (rowData) => clienteBodyTemplate(rowData)
                 break
+              case 'producto_solicitado_nombre':
+                bodyTemplate = (rowData) => solicitudProductBodyTemplate(rowData)
+                break
               case 'cantidad':
                 bodyTemplate = (rowData) => numericBodyTemplate(rowData, column.nombrevar)
                 className = 'column-max-min-width--small'
@@ -1669,6 +1781,46 @@ const handleResetTable = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {Array.isArray(productHoverCard?.products) && productHoverCard.products.length > 0 && (
+        <div
+          className="movimientos-table__product-hover-card"
+          role="tooltip"
+          style={{ top: productHoverCard.top, left: productHoverCard.left }}
+          onMouseEnter={clearProductHoverHideTimer}
+          onMouseLeave={scheduleHideProductHoverCard}
+        >
+          <div className="movimientos-table__product-hover-title">Producto</div>
+          <table className="movimientos-table__product-hover-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Producto</th>
+                <th className="movimientos-table__product-hover-qty">Cantidad</th>
+                <th>Comentario</th>
+              </tr>
+            </thead>
+            <tbody>
+              {productHoverCard.products.map((product, index) => (
+                <tr key={`sol-product-hover-${index}`}>
+                  <td title={String(product?.producto_codigo || '-').trim()}>
+                    {String(product?.producto_codigo || '-').trim()}
+                  </td>
+                  <td title={String(product?.producto_nombre || '-').trim()}>
+                    {String(product?.producto_nombre || '-').trim()}
+                  </td>
+                  <td className="movimientos-table__product-hover-qty">
+                    {product?.cantidad != null ? String(product.cantidad) : '-'}
+                  </td>
+                  <td title={String(product?.comentario || '-').trim()}>
+                    {String(product?.comentario || '-').trim()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

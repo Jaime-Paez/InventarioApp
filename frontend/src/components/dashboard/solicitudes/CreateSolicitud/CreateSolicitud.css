@@ -72,7 +72,8 @@
 }
 
 .create-solicitud__products-table .create-user__locations-row--form {
-  gap: 6px;
+  gap: 0;
+  padding: 0;
 }
 
 .create-solicitud__products-table .create-user__locations-row > span {
@@ -570,6 +571,49 @@
   color: var(--color-text-secondary);
   line-height: 1.2;
   word-break: break-word;
+}
+
+.create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) {
+  padding: 0;
+}
+
+.create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > span {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > span + span {
+  border-left: 1px solid var(--color-border);
+}
+
+.dashboard-shell.dark .create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > span + span {
+  border-left-color: var(--color-border-dark);
+}
+
+.create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty):not(.create-user__locations-row--head) > span:nth-child(3),
+.create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty):not(.create-user__locations-row--head) > span:nth-child(4) {
+  justify-content: flex-start;
+}
+
+.create-solicitud__products-table .create-user__locations-row--form > span {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+}
+
+.create-solicitud__products-table .create-user__locations-row--form > span + span {
+  border-left: 1px solid var(--color-border);
+}
+
+.dashboard-shell.dark .create-solicitud__products-table .create-user__locations-row--form > span + span {
+  border-left-color: var(--color-border-dark);
 }
 
 @media (max-width: 1200px) {

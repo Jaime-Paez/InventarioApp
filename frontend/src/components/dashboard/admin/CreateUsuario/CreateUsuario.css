@@ -1396,10 +1396,6 @@
   overflow: visible;
 }
 
-.create-user__locations-table--alternos .create-user__locations-row--form {
-  gap: 8px;
-}
-
 .create-user__locations-table--alternos .create-user__locations-row--form > span {
   min-width: 0;
 }
@@ -1432,10 +1428,6 @@
 
 .create-user__locations-table--locations-selectors.create-user__locations-table--with-actions .create-user__locations-row {
   grid-template-columns: minmax(0, 1.12fr) minmax(0, 1.12fr) minmax(0, 0.88fr) minmax(0, 0.88fr) minmax(84px, 0.58fr) 84px;
-}
-
-.create-user__locations-table--locations-selectors .create-user__locations-row--form {
-  gap: 8px;
 }
 
 .create-user__locations-table--locations-selectors .create-user__locations-row--form > span {
@@ -1485,12 +1477,32 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
   align-items: center;
-  padding: 8px 10px;
+  padding: 0;
   font-size: var(--font-size-base);
 }
 
 .create-user__locations-row + .create-user__locations-row {
   border-top: 1px solid var(--color-border);
+}
+
+.create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > span {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > span + span {
+  border-left: 1px solid var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > span + span {
+  border-left-color: var(--color-border-dark);
 }
 
 .create-user__locations-row--head {
@@ -1549,7 +1561,28 @@
 }
 
 .create-user__locations-row--form {
-  gap: 10px;
+  gap: 0;
+  padding: 0;
+}
+
+.create-user__locations-row--form > span {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.create-user__locations-row--form > span + span {
+  border-left: 1px solid var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__locations-row--form > span + span {
+  border-left-color: var(--color-border-dark);
+}
+
+.create-user__locations-row--form > span > .create-user__dropdown {
+  width: 100%;
 }
 
 .create-user__locations-row--form select:focus,

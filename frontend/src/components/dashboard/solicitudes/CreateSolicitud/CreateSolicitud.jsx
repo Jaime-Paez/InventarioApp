@@ -1398,7 +1398,6 @@ function CreateSolicitud({
     }
 
     const missingFields = []
-    if (!codigo) missingFields.push('codigo')
     if (!nombre) missingFields.push('nombre')
 
     if (missingFields.length) {
@@ -1693,7 +1692,7 @@ function CreateSolicitud({
   }
 
   const draftCantidadRaw = Number(productoDraft.cantidad)
-  const productoCodigoInvalid = productoAttempted && !String(productoDraft.referencia || productoDraft.codigo || '').trim()
+  const productoCodigoInvalid = false
   const productoNombreInvalid = productoAttempted && !String(productoDraft.nombre || '').trim()
   const productoCantidadInvalid = productoAttempted && (!Number.isFinite(draftCantidadRaw) || draftCantidadRaw <= 0)
   const sucursalInvalid = submitAttempted && !sucursalId
@@ -1837,7 +1836,7 @@ function CreateSolicitud({
                   >
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>OEM</span>
-                      <span>Código</span>
+                      <span>Código JP</span>
                       <span>Descripción</span>
                       <span>Comentario</span>
                       <span>Cantidad</span>
@@ -1911,7 +1910,7 @@ function CreateSolicitud({
                             className={productoCodigoInvalid ? 'create-solicitud__input--invalid' : ''}
                             name="codigo"
                             type="text"
-                            placeholder="Código"
+                            placeholder="Código JP"
                             value={productoDraft.codigo}
                             onChange={handleProductoDraftChange}
                             onFocus={() => {
