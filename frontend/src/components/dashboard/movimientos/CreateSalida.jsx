@@ -3014,7 +3014,9 @@ function CreateSalida({
     .join(' ')
   const transferSubmitLabel = isTraslado
     ? `Enviar a ${transferTargetBranchButtonLabel}`
-    : 'Crear salida'
+    : isDevolucion
+      ? 'Solicitar garantía'
+      : 'Crear salida'
   const transferSummaryLabel = selectedSolicitudDoc || formData.solicitudTrasladoId || 'N/A'
   const defaultHeaderTitle = 'Nueva salida'
   const headerDocumentTitle = String(formData.no_documento || '').trim()

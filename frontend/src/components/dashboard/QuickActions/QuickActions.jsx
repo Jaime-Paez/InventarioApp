@@ -47,6 +47,7 @@ import {
 } from '../common/reminders/remindersStorage'
 
 const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
+const URGENT_URGENTE_NEAR_FULL_MS = 10 * 60 * 1000
 const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
 const URGENT_URGENTE_DECISION_MESSAGE = '¡Urgente! Tienes una solicitud de traslado pendiente.'
 const URGENT_SHIPMENT_MESSAGE = 'Tienes un envío pendiente por despachar.'
@@ -380,7 +381,7 @@ const isResolvedTransferResponseReminder = (reminder) => {
   return decisionStatus === 'aceptada' || decisionStatus === 'rechazada' || decisionStatus === 'enviado'
 }
 
-const resolveUrgentDecisionProgress = (reminder, nowValue) => {
+const resolveUrgentDecisionProgress = (reminder, nowValue, windowMs = URGENT_SHIELD_NEAR_FULL_MS) => {
   const deadline = getReminderDeadlineTimestamp(reminder)
   const stateStartedAt = resolveReminderStateTimestamp(reminder)
   const now = Number(nowValue || Date.now())
@@ -394,7 +395,7 @@ const resolveUrgentDecisionProgress = (reminder, nowValue) => {
   const deadlineWindow = Number.isFinite(deadline)
     ? Math.max(1, deadline - stateStartedAt)
     : Number.POSITIVE_INFINITY
-  const growthWindow = Math.min(URGENT_SHIELD_NEAR_FULL_MS, deadlineWindow)
+  const growthWindow = Math.min(windowMs, deadlineWindow)
   const ratio = elapsed / growthWindow
   return clamp01(ratio)
 }
@@ -513,6 +514,7 @@ function QuickActions({
   const [focusReminderId, setFocusReminderId] = useState('')
   const [urgentVisualProgressById, setUrgentVisualProgressById] = useState({})
   const urgentVisualReminderIdsRef = useRef(new Set())
+  const hasUrgenteActiveRef = useRef(false)
   const wasTransferSendModalOpenRef = useRef(false)
 
   const currentUserIds = useMemo(() => buildUserIdSet(user), [user])
@@ -1650,8 +1652,8 @@ function QuickActions({
         return
       }
 
-      const rawProgress = resolveUrgentDecisionProgress(target?.reminder, now)
-      map[targetId] = target?.isUrgente ? clamp01(rawProgress * 2) : rawProgress
+      const windowMs = target?.isUrgente ? URGENT_URGENTE_NEAR_FULL_MS : URGENT_SHIELD_NEAR_FULL_MS
+      map[targetId] = resolveUrgentDecisionProgress(target?.reminder, now, windowMs)
     })
     return map
   }, [clockTick, urgentShieldTargets])
@@ -2500,6 +2502,20 @@ function QuickActions({
     didPlayLoginToneRef.current = true
     playNotificationTone({ forceForAdmin: true })
   }, [token, currentPrimaryUserId, pendingRemindersForCurrentUser.length, playNotificationTone])
+
+  useEffect(() => {
+    hasUrgenteActiveRef.current = urgentShieldTargets.some((t) => t?.isUrgente)
+  }, [urgentShieldTargets])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const timer = window.setInterval(() => {
+      if (hasUrgenteActiveRef.current) {
+        playNotificationTone({ forceForAdmin: true })
+      }
+    }, 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [playNotificationTone])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !urgentShieldStyles.length || isReminderModalOpen) return undefined

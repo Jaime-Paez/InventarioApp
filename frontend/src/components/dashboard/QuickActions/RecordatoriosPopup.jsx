@@ -992,6 +992,7 @@ function RecordatoriosPopup({
   }, [reminders])
 
   const getTimelineDaySeverityForReminder = useCallback((reminder) => {
+    if (isGarantiaResultReminder(reminder)) return 'default'
     const baseStatus = buildReminderStatusForUser(reminder, currentUserIdSet)
     const isTransferIssue = isTransferIssueReminder(reminder)
     const isTransferContextReminder =
@@ -2834,6 +2835,9 @@ function RecordatoriosPopup({
                           : null
                         const isIssueResolved = Boolean(issueResolution?.resolved)
                         const displayStatus = (() => {
+                          if (isGarantiaResultReminder(reminder)) {
+                            return { ...status, label: 'Notificado', className: 'info', canMarkSeen: false }
+                          }
                           if (visualDecisionStatus === 'recibido') {
                             const outcomeForLabel = latestTransferReceiptOutcome || transferReceiptOutcome
                             if (isTransferIssue) {
@@ -3342,7 +3346,7 @@ function RecordatoriosPopup({
                                   </button>
                                 ) : isCompletedInspectionDailyReminder ? (
                                   <span className="recordatorios-popup__action-placeholder">Ya realizaste el conteo</span>
-                                ) : status.canMarkSeen ? (
+                                ) : status.canMarkSeen && !isGarantiaApprovalReminder(reminder) && !isGarantiaResultReminder(reminder) ? (
                                   <button
                                     type="button"
                                     className="recordatorios-popup__mark-seen"

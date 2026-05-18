@@ -51,6 +51,7 @@ from .serializers import (
     generate_transfer_request_document_number,
     normalize_name,
     resolve_subtipo_key,
+    SALIDA_SUBTYPE_PREFIXES,
 )
 from .stock_availability import get_available_transfer_quantities_by_product
 from .transfer_helpers import (
@@ -333,12 +334,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        tipo_nombre = str(getattr(tipo_movimiento, "nombre", "") or "").strip().lower()
+        prefix_map = SALIDA_SUBTYPE_PREFIXES if tipo_nombre.startswith("sal") else None
+
         try:
             document_number = generate_entry_document_number(
                 tipo_movimiento,
                 subtipo_key,
                 sucursal,
                 sucursal_objetivo,
+                prefix_map=prefix_map,
             )
         except drf_serializers.ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)

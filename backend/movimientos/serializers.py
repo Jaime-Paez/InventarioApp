@@ -41,6 +41,10 @@ ENTRY_SUBTYPE_PREFIXES = {
     "devolucion": "dev",
     "traslado": "tr",
 }
+SALIDA_SUBTYPE_PREFIXES = {
+    **ENTRY_SUBTYPE_PREFIXES,
+    "devolucion": "gar",
+}
 BRANCH_WORD_STOPWORDS = {
     "de",
     "del",
@@ -124,8 +128,10 @@ def _next_incremental_document_number(model, base, filters=None):
     return f"{base_token}-{max_number + 1}"
 
 
-def build_entry_document_base(subtipo_key, sucursal, sucursal_objetivo=None):
-    prefix = ENTRY_SUBTYPE_PREFIXES.get(str(subtipo_key or "").strip())
+def build_entry_document_base(subtipo_key, sucursal, sucursal_objetivo=None, prefix_map=None):
+    if prefix_map is None:
+        prefix_map = ENTRY_SUBTYPE_PREFIXES
+    prefix = prefix_map.get(str(subtipo_key or "").strip())
     if not prefix:
         raise serializers.ValidationError(
             {"sub_tipo_movimiento_id": "No se pudo resolver el prefijo del documento."}
@@ -144,6 +150,7 @@ def generate_entry_document_number(
     subtipo_key,
     sucursal,
     sucursal_objetivo=None,
+    prefix_map=None,
 ):
     if tipo_movimiento is None:
         raise serializers.ValidationError(
@@ -154,6 +161,7 @@ def generate_entry_document_number(
         subtipo_key=subtipo_key,
         sucursal=sucursal,
         sucursal_objetivo=sucursal_objetivo,
+        prefix_map=prefix_map,
     )
     return _next_incremental_document_number(
         model=MovimientoInventario,
@@ -376,7 +384,8 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
                 }
             )
 
-        if sucursal_solicitante is not None and sucursal_proveedora is not None:
+        is_urgente = bool(attrs.get("urgente", False))
+        if sucursal_solicitante is not None and sucursal_proveedora is not None and not is_urgente:
             pending_qs = SolicitudTraslado.objects.filter(
                 sucursal_solicitante_id=int(sucursal_solicitante.id),
                 sucursal_proveedora_id=int(sucursal_proveedora.id),
