@@ -984,10 +984,6 @@
   opacity: 0.74;
 }
 
-.create-user__permissions-popup-overlay.dashboard-shell.dark {
-  background: rgba(15, 23, 42, 0.5);
-}
-
 .dashboard-shell.dark .create-user__permissions-popup {
   background: var(--table-color-dark);
   border-color: var(--color-border);

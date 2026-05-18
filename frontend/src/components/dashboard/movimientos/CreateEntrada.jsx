@@ -412,6 +412,23 @@ function CreateEntrada({
     [onError]
   )
 
+  const [liveUserScopes, setLiveUserScopes] = useState(null)
+
+  useEffect(() => {
+    if (!open || !token) return
+    let cancelled = false
+    authFetch(`${API_URL}/auth/me/`, { headers: { Authorization: `Token ${token}` } }, token)
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled) return
+        setLiveUserScopes(data?.usuario?.sucursales_por_modulo ?? null)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [open, token])
+
+  const effectiveScopes = liveUserScopes ?? currentUser?.sucursales_por_modulo
+
   const currentCreatorId = useMemo(() => normalizeId(extractUserId(currentUser)), [currentUser])
   const currentCreatorName = useMemo(() => formatCurrentUserName(currentUser), [currentUser])
   const currentCreatorEmail = String(currentUser?.correo || currentUser?.email || '').trim()
@@ -421,12 +438,11 @@ function CreateEntrada({
   )
 
   const currentUserEntradasSubtypeActions = useMemo(() => {
-    if (isCurrentUserAdmin) return null
     const branchId = normalizeId(prefilledSucursalId || formData.sucursalId)
     if (!branchId) return null
-    const actions = normalizeModuleScopeActions(currentUser?.sucursales_por_modulo)
+    const actions = normalizeModuleScopeActions(effectiveScopes)
     return actions?.['movimientos_entradas']?.[branchId] ?? null
-  }, [isCurrentUserAdmin, prefilledSucursalId, formData.sucursalId, currentUser])
+  }, [prefilledSucursalId, formData.sucursalId, effectiveScopes])
 
   useEffect(() => {
     if (!detailError) return
@@ -1528,6 +1544,7 @@ function CreateEntrada({
   useEffect(() => {
     if (!open) {
       setCatalogsLoading(false)
+      setLiveUserScopes(null)
     }
   }, [open])
 

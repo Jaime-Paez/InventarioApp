@@ -1630,7 +1630,7 @@ function UsersDetails({
             </div>
           </div>
         </div>,
-        document.body
+        document.querySelector('.dashboard-shell') || document.body
       )}
 
       {allowDelete && showDeleteDialog && (
