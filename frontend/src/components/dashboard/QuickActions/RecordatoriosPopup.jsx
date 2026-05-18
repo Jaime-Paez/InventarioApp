@@ -2930,7 +2930,7 @@ function RecordatoriosPopup({
                             : ''
                         )
                         const latestProgressPreferredTarget = latestTransferStage === 'recibido'
-                          ? (isReminderOwnedByCurrentUser ? 'salidas' : 'entradas')
+                          ? (!isCurrentUserSolicitante ? 'salidas' : 'entradas')
                           : 'salidas'
                         const currentReminderId = normalizeId(reminder?.id)
                         const isLatestTransferProgressReminder = Boolean(

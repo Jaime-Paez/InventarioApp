@@ -4298,6 +4298,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 .first()
             )
 
+        try:
+            self._sync_transfer_inconvenience_reminder(
+                solicitud=inconveniente_out.solicitud if inconveniente_out else None,
+                actor_user=request.user,
+            )
+        except Exception:
+            pass
+
         return Response(
             {
                 "detail": "Inconveniente resuelto correctamente.",

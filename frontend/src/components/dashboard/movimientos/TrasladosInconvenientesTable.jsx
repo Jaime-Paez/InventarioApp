@@ -9,6 +9,7 @@ import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
+import { fetchRemindersFromBackend } from '../common/reminders/remindersStorage'
 import { clearTableLayouts } from '../../../utils/tableLayoutSync'
 import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
@@ -1018,6 +1019,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
       showSuccessToast('Inconveniente resuelto correctamente.')
       setShowDetailsModal(false)
       await fetchRows({ withOverlay: false })
+      void fetchRemindersFromBackend(token).catch(() => {})
     } catch (requestError) {
       setResolverError(requestError?.message || 'No se pudo resolver el inconveniente.')
     } finally {
