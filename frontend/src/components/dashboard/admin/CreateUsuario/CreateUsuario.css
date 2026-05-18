@@ -954,6 +954,15 @@
   border-top-color: var(--color-border);
 }
 
+.dashboard-shell.dark .create-user__entrada-subtypes-label {
+  color: var(--color-text-dark);
+  opacity: 0.72;
+}
+
+.dashboard-shell.dark .create-user__subtype-option {
+  color: var(--color-text-dark);
+}
+
 .dashboard-shell.dark .create-user__subtype-option input[type='checkbox'] {
   accent-color: var(--color-primary-dark);
 }

@@ -15,6 +15,11 @@ SCOPE_ACTION_KEYS = (
     "puede_eliminar",
 )
 
+SCOPE_SUBTYPE_KEYS = (
+    "puede_crear_compra_local",
+    "puede_crear_importacion",
+)
+
 
 def is_app_admin(user):
     """True si el usuario es administrador de la app o superuser de Django."""
@@ -44,6 +49,9 @@ def normalize_scope_action_flags(source):
         flags["puede_crear"] = False
         flags["puede_actualizar"] = False
         flags["puede_eliminar"] = False
+
+    for key in SCOPE_SUBTYPE_KEYS:
+        flags[key] = bool(source.get(key)) and flags["puede_crear"]
 
     return flags
 
@@ -373,6 +381,8 @@ def build_sucursal_scope_summary(usuario):
         "puede_leer",
         "puede_actualizar",
         "puede_eliminar",
+        "puede_crear_compra_local",
+        "puede_crear_importacion",
     )
     for row in rows:
         modulo = row.get("modulo")
