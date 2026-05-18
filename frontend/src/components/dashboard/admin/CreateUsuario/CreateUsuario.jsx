@@ -1203,7 +1203,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
         {showPermissionsPopup && selectedBranch && typeof document !== 'undefined' && createPortal(
           <div
-            className="create-user__permissions-popup-overlay"
+            className={`create-user__permissions-popup-overlay${document.querySelector('.dashboard-shell')?.classList.contains('dark') ? ' dashboard-shell dark' : ''}`}
             role="dialog"
             aria-modal="true"
             aria-label={`Permisos de ${selectedBranch.nombre}`}
