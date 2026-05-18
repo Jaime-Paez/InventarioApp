@@ -572,6 +572,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "pagos",
             "ubicaciones_iniciales",
             "garantia_pendiente",
+            "estado_garantia",
         ]
         extra_kwargs = {
             "no_documento": {
@@ -583,6 +584,9 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 "allow_blank": True,
             },
             "garantia_pendiente": {
+                "read_only": True,
+            },
+            "estado_garantia": {
                 "read_only": True,
             },
         }
@@ -1310,6 +1314,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
     def _apply_inventory_effect(self, movimiento, details_source, reverse=False):
         if getattr(movimiento, "garantia_pendiente", False):
+            return
+        if str(getattr(movimiento, "estado_garantia", "") or "").strip() == "eliminada":
             return
         subtipo_key = self._resolve_subtipo_key(getattr(movimiento, "sub_tipo_movimiento", None))
         tipo_name = self._resolve_tipo_name(getattr(movimiento, "tipo_movimiento", None))

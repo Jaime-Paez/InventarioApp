@@ -23,6 +23,7 @@ import {
   isTransferDecisionAllowedForUser,
   isSpecialTransferDecisionReminder,
   isGarantiaApprovalReminder,
+  isGarantiaResultReminder,
   normalizeId,
   sanitizeRecipient,
   upsertTransferReminder,
@@ -3063,6 +3064,8 @@ function RecordatoriosPopup({
                               displayStatus.className === 'issue' ? ' recordatorios-popup__timeline-item--issue' : ''
                             }${
                               (isPendingInspectionAlert && !isInspectionInProgress) ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
+                            }${
+                              (isGarantiaApprovalReminder(reminder) && decisionStatus === 'pendiente') ? ' recordatorios-popup__timeline-item--garantia-alert' : ''
                             }${
                               isHighlightedReminder ? ' recordatorios-popup__timeline-item--highlighted' : ''
                             }${

@@ -16,6 +16,24 @@
   color: #fef08a !important;
 }
 
+.salidas-garantia-realizada-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #16a34a 22%, transparent);
+  color: #14532d !important;
+  font-weight: 600;
+  font-size: 0.8em;
+}
+
+.dashboard-shell.dark .salidas-garantia-realizada-chip {
+  background: color-mix(in srgb, #22c55e 28%, transparent);
+  color: #bbf7d0 !important;
+}
+
 .salidas-type-filter {
   display: flex;
   align-items: center;

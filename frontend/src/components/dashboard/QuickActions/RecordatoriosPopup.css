@@ -1108,6 +1108,54 @@
   background: color-mix(in srgb, var(--color-error-text-dark) 20%, transparent);
 }
 
+.recordatorios-popup__timeline-item--garantia-alert {
+  border-color: color-mix(in srgb, #dc2626 52%, var(--color-border));
+  border-left: 4px solid #dc2626;
+  background: color-mix(in srgb, #dc2626 9%, var(--color-surface));
+}
+
+.recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-time,
+.recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-description,
+.recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-context,
+.recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-meta,
+.recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-meta strong {
+  color: color-mix(in srgb, #991b1b 90%, #3b0a0a);
+}
+
+.recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__mark-seen--decision {
+  border-color: color-mix(in srgb, #dc2626 44%, transparent);
+  color: #991b1b;
+  background: color-mix(in srgb, #dc2626 10%, transparent);
+}
+
+.recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__mark-seen--decision:hover {
+  background: color-mix(in srgb, #dc2626 16%, transparent);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item--garantia-alert {
+  border-color: color-mix(in srgb, #f87171 52%, #36414c);
+  border-left: 4px solid #f87171;
+  background: color-mix(in srgb, #dc2626 12%, #242a31);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-time,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-description,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-context,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-meta,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__timeline-item-meta strong {
+  color: color-mix(in srgb, #fca5a5 88%, white);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__mark-seen--decision {
+  border-color: color-mix(in srgb, #f87171 44%, transparent);
+  color: #f87171;
+  background: color-mix(in srgb, #dc2626 14%, transparent);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item--garantia-alert .recordatorios-popup__mark-seen--decision:hover {
+  background: color-mix(in srgb, #dc2626 20%, transparent);
+}
+
 .recordatorios-popup__timeline-item-head {
   display: flex;
   justify-content: space-between;

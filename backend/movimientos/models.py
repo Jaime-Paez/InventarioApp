@@ -65,6 +65,20 @@ class MovimientoInventario(models.Model):
         help_text="True si es una salida de garantia creada por no-admin que requiere aprobacion.",
     )
 
+    class EstadoGarantia(models.TextChoices):
+        SOLICITADA = "solicitada", "Solicitada"
+        REALIZADA = "realizada", "Realizada"
+        ELIMINADA = "eliminada", "Eliminada"
+
+    estado_garantia = models.CharField(
+        max_length=20,
+        choices=EstadoGarantia.choices,
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Estado del flujo de aprobacion de garantia. Null si no aplica.",
+    )
+
     class Meta:
         ordering = ["-fecha", "-id"]
         verbose_name = "Movimiento de inventario"
