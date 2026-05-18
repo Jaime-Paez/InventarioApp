@@ -2832,13 +2832,13 @@ function RecordatoriosPopup({
                           if (proveedoraId && currentReceiveBranchIdSet.size) {
                             return !currentReceiveBranchIdSet.has(proveedoraId)
                           }
-                          // El usuario que hizo la salida (proveedora) es quien seteó decision.status='enviado'
-                          const decisionById = normalizeId(reminder?.decision?.by?.id)
-                          if (
-                            reminder?.decision?.status === 'enviado' &&
-                            decisionById &&
-                            currentUserIdSet.has(decisionById)
-                          ) {
+                          // El actor del stage 'enviado' en el history es la proveedora (quien hizo la salida)
+                          const historyEntries = getTransferReminderHistory(reminder)
+                          const enviandoEntry = [...historyEntries].reverse().find(
+                            (e) => String(e?.stage || '').toLowerCase() === 'enviado'
+                          )
+                          const enviandoActorId = normalizeId(enviandoEntry?.actor?.id)
+                          if (enviandoActorId && currentUserIdSet.has(enviandoActorId)) {
                             return false
                           }
                           return !isReminderOwnedByCurrentUser

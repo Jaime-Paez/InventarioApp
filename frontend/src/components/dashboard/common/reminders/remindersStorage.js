@@ -124,6 +124,10 @@ const sanitizeReminderContext = (rawContext) => {
   if (rawContext?.urgente !== undefined) {
     result.urgente = Boolean(rawContext.urgente)
   }
+  const solicitanteId = normalizeId(rawContext?.sucursal_solicitante_id)
+  if (solicitanteId) result.sucursal_solicitante_id = solicitanteId
+  const proveedoraId = normalizeId(rawContext?.sucursal_proveedora_id)
+  if (proveedoraId) result.sucursal_proveedora_id = proveedoraId
   if (Array.isArray(rawContext?.detalle_usuarios)) {
     const sanitized = rawContext.detalle_usuarios
       .filter((entry) => entry && typeof entry === 'object' && normalizeId(entry?.id))
