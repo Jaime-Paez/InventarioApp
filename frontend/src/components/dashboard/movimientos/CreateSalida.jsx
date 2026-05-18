@@ -1396,6 +1396,14 @@ function CreateSalida({
           type: 'solicitud_traslado',
           id: solicitudId,
           label: contextLabel,
+          sucursal_solicitante_id: String(
+            contextReminder?.context?.sucursal_solicitante_id ||
+            solicitud?.sucursal_solicitante_id || ''
+          ).trim(),
+          sucursal_proveedora_id: String(
+            contextReminder?.context?.sucursal_proveedora_id ||
+            solicitud?.sucursal_proveedora_id || ''
+          ).trim(),
         },
         kind: 'recordatorio_general',
         createdAt: contextReminder?.createdAt || now.iso,

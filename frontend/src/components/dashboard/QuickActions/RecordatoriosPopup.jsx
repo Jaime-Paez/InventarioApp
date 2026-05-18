@@ -2825,8 +2825,21 @@ function RecordatoriosPopup({
                         const isAdminUser = Boolean(currentUser?.es_administrador)
                         const isCurrentUserSolicitante = (() => {
                           const solicitanteId = normalizeId(reminder?.context?.sucursal_solicitante_id)
+                          const proveedoraId = normalizeId(reminder?.context?.sucursal_proveedora_id)
                           if (solicitanteId && currentReceiveBranchIdSet.size) {
                             return currentReceiveBranchIdSet.has(solicitanteId)
+                          }
+                          if (proveedoraId && currentReceiveBranchIdSet.size) {
+                            return !currentReceiveBranchIdSet.has(proveedoraId)
+                          }
+                          // El usuario que hizo la salida (proveedora) es quien seteó decision.status='enviado'
+                          const decisionById = normalizeId(reminder?.decision?.by?.id)
+                          if (
+                            reminder?.decision?.status === 'enviado' &&
+                            decisionById &&
+                            currentUserIdSet.has(decisionById)
+                          ) {
+                            return false
                           }
                           return !isReminderOwnedByCurrentUser
                         })()
@@ -2925,7 +2938,7 @@ function RecordatoriosPopup({
                         )
                         const latestProgressActionLabel = latestTransferStage === 'recibido'
                           ? (latestProgressPreferredTarget === 'salidas' ? 'Ver salida' : 'Ver entrada')
-                          : (isCurrentUserSolicitante ? 'Ver envío en camino' : 'Ver salida en envío')
+                          : (isCurrentUserSolicitante ? 'Ver envío en camino' : 'Ver salida')
                         const canOpenLatestTransferProgress = (
                           isTransferContextReminder &&
                           !canResolveDecision &&
@@ -3242,7 +3255,7 @@ function RecordatoriosPopup({
                                     }}
                                     disabled={isOpeningTransfer}
                                   >
-                                    {isOpeningTransfer ? 'Abriendo...' : 'Ver salida en envío'}
+                                    {isOpeningTransfer ? 'Abriendo...' : 'Ver salida'}
                                   </button>
                                 ) : canOpenInTransitTransferFromReminder ? (
                                   <button
