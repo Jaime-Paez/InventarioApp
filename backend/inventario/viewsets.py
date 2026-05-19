@@ -845,6 +845,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "casas_comerciales_nombres": ", ".join(casas),
                 "casa_comercial_nombre": (casas[0] if casas else "") or "",
                 "oem_codes": ", ".join(oem_codes),
+                "oem_codes_list": oem_codes,
             }
 
         serialized = []
@@ -869,6 +870,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "precio": row.get("precio"),
                 "total_general": int(row.get("total_general") or 0),
                 "oem_codes": meta.get("oem_codes") or "",
+                "oem_codes_list": meta.get("oem_codes_list") or [],
                 "creado_en": row.get("creado_en"),
             }
             branch_locations = branch_location_payloads.get(product_id, {})

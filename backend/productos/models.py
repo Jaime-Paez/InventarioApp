@@ -49,7 +49,6 @@ class OEM(models.Model):
     """Identificador OEM provisto por el fabricante."""
 
     codigo = models.CharField(max_length=80, unique=True)
-    descripcion = models.TextField(blank=True)
 
     class Meta:
         ordering = ["codigo"]

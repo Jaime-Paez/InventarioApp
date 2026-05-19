@@ -25,7 +25,7 @@ import {
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
-const SOLICITUD_PRODUCT_HOVER_CARD_WIDTH = 480
+const SOLICITUD_PRODUCT_HOVER_CARD_WIDTH = 600
 const SOLICITUD_PRODUCT_HOVER_CARD_MARGIN = 12
 const SOLICITUD_FILTER_FIELDS = [
   'codigo',
@@ -38,10 +38,6 @@ const SOLICITUD_FILTER_FIELDS = [
   'anio',
   'sucursal_nombre',
   'producto_solicitado_nombre',
-  'producto_solicitado_descripcion',
-  'descripcion_general',
-  'producto_conseguido',
-  'cantidad',
 ]
 const SOLICITUD_FILTER_DEFAULT_MODES = {
   codigo: FilterMatchMode.STARTS_WITH,
@@ -54,10 +50,6 @@ const SOLICITUD_FILTER_DEFAULT_MODES = {
   anio: FilterMatchMode.CONTAINS,
   sucursal_nombre: FilterMatchMode.CONTAINS,
   producto_solicitado_nombre: FilterMatchMode.CONTAINS,
-  producto_solicitado_descripcion: FilterMatchMode.CONTAINS,
-  descripcion_general: FilterMatchMode.CONTAINS,
-  producto_conseguido: FilterMatchMode.CONTAINS,
-  cantidad: FilterMatchMode.EQUALS,
 }
 const SOLICITUD_ORDERING_MAP = {
   codigo: 'codigo',
@@ -70,10 +62,6 @@ const SOLICITUD_ORDERING_MAP = {
   anio: 'anio',
   sucursal_nombre: 'sucursal__nombre',
   producto_solicitado_nombre: 'producto_referencia_text',
-  producto_solicitado_descripcion: 'producto_solicitado_descripcion_text',
-  descripcion_general: 'descripcion_general',
-  producto_conseguido: 'producto_conseguido_text',
-  cantidad: 'cantidad',
 }
 const createBulkCancelError = () => {
   const err = new Error('Seleccion global cancelada.')
@@ -198,20 +186,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           item?.producto ||
           '-'
 
-        const productoSolicitadoDescripcion =
-          item?.producto_solicitado_descripcion ||
-          item?.producto_solicitado_data?.descripcion ||
-          item?.producto_solicitado_descripcion_text ||
-          '-'
-
-        const productoConseguido =
-          item?.producto_conseguido ||
-          item?.producto_conseguido_text ||
-          (item?.producto_resuelto_data
-            ? `${item.producto_resuelto_data.codigo || ''} ${item.producto_resuelto_data.nombre || ''}`.trim()
-            : '') ||
-          '-'
-
         const tabla = String(item?.tabla || '').trim()
         const productoCodigo = String(
           tabla === 'producto'
@@ -226,6 +200,9 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
                   producto_nombre: productoSolicitadoNombre !== '-' ? productoSolicitadoNombre : '',
                   cantidad: item?.cantidad,
                   comentario: item?.comentario || '',
+                  oem: Array.isArray(item?.producto_solicitado_data?.oem_codigos)
+                    ? item.producto_solicitado_data.oem_codigos.filter(Boolean).join(', ')
+                    : '',
                 },
               ]
             : []
@@ -241,9 +218,6 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           anio,
           sucursal_nombre: sucursalNombre,
           producto_solicitado_nombre: productoSolicitadoNombre,
-          producto_solicitado_descripcion: productoSolicitadoDescripcion,
-          descripcion_general: item?.descripcion_general || '-',
-          producto_conseguido: productoConseguido,
           producto_codigo: productoCodigo,
           productos,
         }
@@ -774,22 +748,6 @@ const handleResetTable = () => {
         header: 'Productos',
         filterPlaceholder: 'Buscar por productos',
       },
-      {
-        nombrevar: 'producto_solicitado_descripcion',
-        header: 'Descripción',
-        filterPlaceholder: 'Buscar por descripción',
-      },
-      {
-        nombrevar: 'descripcion_general',
-        header: 'Comentario general',
-        filterPlaceholder: 'Buscar por comentario general',
-      },
-      {
-        nombrevar: 'producto_conseguido',
-        header: 'Producto conseguido',
-        filterPlaceholder: 'Buscar por producto conseguido',
-      },
-      { nombrevar: 'cantidad', header: 'Cantidad', filterPlaceholder: 'Buscar por cantidad' },
     ],
     []
   )
@@ -1526,10 +1484,6 @@ const handleResetTable = () => {
             'anio',
             'sucursal_nombre',
             'producto_solicitado_nombre',
-            'producto_solicitado_descripcion',
-            'descripcion_general',
-            'producto_conseguido',
-            'cantidad',
           ]}
           reorderableColumns
           onColReorder={handleOrderChange}
@@ -1786,25 +1740,36 @@ const handleResetTable = () => {
 
       {Array.isArray(productHoverCard?.products) && productHoverCard.products.length > 0 && (
         <div
-          className="movimientos-table__product-hover-card"
+          className="movimientos-table__product-hover-card movimientos-table__product-hover-card--wide"
           role="tooltip"
           style={{ top: productHoverCard.top, left: productHoverCard.left }}
           onMouseEnter={clearProductHoverHideTimer}
           onMouseLeave={scheduleHideProductHoverCard}
         >
           <div className="movimientos-table__product-hover-title">Producto</div>
-          <table className="movimientos-table__product-hover-table">
+          <table className="movimientos-table__product-hover-table" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <colgroup>
+              <col style={{ width: '120px' }} />
+              <col style={{ width: '80px' }} />
+              <col />
+              <col style={{ width: '58px' }} />
+              <col style={{ width: '100px' }} />
+            </colgroup>
             <thead>
               <tr>
-                <th>Código</th>
+                <th>OEM</th>
+                <th>Código JP</th>
                 <th>Producto</th>
-                <th className="movimientos-table__product-hover-qty">Cantidad</th>
+                <th className="movimientos-table__product-hover-qty">Cant.</th>
                 <th>Comentario</th>
               </tr>
             </thead>
             <tbody>
               {productHoverCard.products.map((product, index) => (
                 <tr key={`sol-product-hover-${index}`}>
+                  <td title={String(product?.oem || '-').trim()}>
+                    {String(product?.oem || '-').trim()}
+                  </td>
                   <td title={String(product?.producto_codigo || '-').trim()}>
                     {String(product?.producto_codigo || '-').trim()}
                   </td>

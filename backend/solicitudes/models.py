@@ -92,7 +92,6 @@ class ProductoSolicitado(models.Model):
         null=True,
         blank=True,
     )
-    descripcion = models.TextField(blank=True)
     conseguido = models.BooleanField(default=False)
     producto = models.ForeignKey(
         "productos.Producto",
@@ -136,7 +135,6 @@ class Solicitud(models.Model):
     )
     tabla = models.CharField(max_length=30, choices=Tabla.choices)
     fecha = models.DateField()
-    descripcion_general = models.TextField(blank=True)
     comentario = models.TextField(blank=True)
     marca = models.CharField(max_length=120, blank=True, default="")
     modelo = models.CharField(max_length=120, blank=True, default="")

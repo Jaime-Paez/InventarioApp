@@ -260,7 +260,7 @@ def build_producto_rating_summary(producto):
 class OEMSerializer(serializers.ModelSerializer):
     class Meta:
         model = OEM
-        fields = ["id", "codigo", "descripcion"]
+        fields = ["id", "codigo"]
 
 
 class OEMProductoSerializer(serializers.ModelSerializer):

@@ -1659,7 +1659,6 @@ function SolicitudDetails({
                           width: '100%',
                           maxWidth: '100%',
                           boxSizing: 'border-box',
-                          border: 0,
                           color: 'inherit',
                           textAlign: 'left',
                           cursor:

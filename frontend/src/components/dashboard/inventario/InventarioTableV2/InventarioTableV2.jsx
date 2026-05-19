@@ -37,6 +37,8 @@ const INVENTARIO_TABLE_LAYOUT_STATE_KEY = 'inventario-v2-table-state-v3'
 const INVENTARIO_TABLE_FILTER_STATE_KEY = 'inventario-v2-table-state'
 const LOCATION_HOVER_CARD_WIDTH = 420
 const LOCATION_HOVER_CARD_MARGIN = 12
+const OEM_HOVER_CARD_WIDTH = 240
+const OEM_HOVER_CARD_MARGIN = 12
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 
@@ -114,6 +116,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
   const locationHoverHideTimeoutRef = useRef(null)
+  const oemHoverHideTimeoutRef = useRef(null)
   const _widthsClearedRef = useRef(null)
   if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths(INVENTARIO_TABLE_LAYOUT_STATE_KEY) }
   const [tableResetKey, setTableResetKey] = useState(0)
@@ -169,6 +172,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [isCodigoColumnFrozen, setIsCodigoColumnFrozen] = useState(false)
   const [locationHoverCard, setLocationHoverCard] = useState(null)
+  const [oemHoverCard, setOemHoverCard] = useState(null)
 
   // Branch state
   const [branches, setBranches] = useState([])
@@ -180,10 +184,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     (list) =>
       list.map((product) => {
         const houses = Array.isArray(product?.casas_comerciales) ? product.casas_comerciales : []
-        const oems = Array.isArray(product?.oem_productos) ? product.oem_productos : []
-        const oemCodes = oems
-          .map((item) => item?.oem?.codigo ?? item?.oem_codigo ?? item?.codigo)
-          .filter(Boolean)
+        const oemCodes = Array.isArray(product?.oem_codes_list)
+          ? product.oem_codes_list.filter(Boolean)
+          : (product?.oem_codes ? String(product.oem_codes).split(',').map((s) => s.trim()).filter(Boolean) : [])
         const firstHouseName =
           houses.map((house) => house?.nombre).find(Boolean) ??
           product?.casa_comercial_nombre ??
@@ -201,6 +204,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             ? Number(product.precio) * (1 + ivaRate)
             : null,
           oem_codes: oemCodes.join(', '),
+          oem_codes_list: oemCodes,
           total_general: normalizeNumber(product?.total_general),
         }
         branches.forEach((branch) => {
@@ -879,6 +883,61 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [hideLocationHoverCard])
 
+  const clearOemHoverHideTimer = useCallback(() => {
+    if (!oemHoverHideTimeoutRef.current) return
+    clearTimeout(oemHoverHideTimeoutRef.current)
+    oemHoverHideTimeoutRef.current = null
+  }, [])
+
+  const hideOemHoverCard = useCallback(() => {
+    clearOemHoverHideTimer()
+    setOemHoverCard(null)
+  }, [clearOemHoverHideTimer])
+
+  const scheduleHideOemHoverCard = useCallback(() => {
+    clearOemHoverHideTimer()
+    oemHoverHideTimeoutRef.current = setTimeout(() => {
+      oemHoverHideTimeoutRef.current = null
+      setOemHoverCard(null)
+    }, 120)
+  }, [clearOemHoverHideTimer])
+
+  const showOemHoverCard = useCallback(
+    (event, codes) => {
+      if (!codes.length) {
+        hideOemHoverCard()
+        return
+      }
+      clearOemHoverHideTimer()
+      const rect = event?.currentTarget?.getBoundingClientRect?.()
+      if (!rect) return
+
+      let left = rect.right + 10
+      if (left + OEM_HOVER_CARD_WIDTH > window.innerWidth - OEM_HOVER_CARD_MARGIN) {
+        left = Math.max(OEM_HOVER_CARD_MARGIN, rect.left - OEM_HOVER_CARD_WIDTH - 10)
+      }
+
+      const maxTop = Math.max(window.innerHeight - 260, OEM_HOVER_CARD_MARGIN)
+      const top = Math.min(Math.max(rect.top - 8, OEM_HOVER_CARD_MARGIN), maxTop)
+
+      setOemHoverCard({ left, top, codes })
+    },
+    [clearOemHoverHideTimer, hideOemHoverCard]
+  )
+
+  useEffect(
+    () => () => {
+      clearOemHoverHideTimer()
+    },
+    [clearOemHoverHideTimer]
+  )
+
+  useEffect(() => {
+    const handleScroll = () => hideOemHoverCard()
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [hideOemHoverCard])
+
   // ---------------- quantityBody helper ----------------
   const quantityBody = useCallback((rowData, field) => {
     const qty = rowData?.[field]
@@ -975,6 +1034,38 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       )
     },
     [scheduleHideLocationHoverCard, showLocationHoverCard]
+  )
+
+  const oemBodyTemplate = useCallback(
+    (rowData) => {
+      const codes = Array.isArray(rowData?.oem_codes_list) ? rowData.oem_codes_list : []
+      if (!codes.length) {
+        return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+      }
+      const first = codes[0]
+      const remaining = codes.length - 1
+      return (
+        <div className="inventario-v2__location-cell">
+          <span className="cell-tooltip inventario-v2__location-main" title={first}>{first}</span>
+          {remaining > 0 ? (
+            <button
+              type="button"
+              className="inventario-v2__location-eye"
+              aria-label="Ver todos los OEM"
+              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+              onMouseDown={(event) => event.stopPropagation()}
+              onMouseEnter={(event) => showOemHoverCard(event, codes)}
+              onMouseLeave={scheduleHideOemHoverCard}
+              onFocus={(event) => showOemHoverCard(event, codes)}
+              onBlur={scheduleHideOemHoverCard}
+            >
+              <i className="pi pi-eye" />
+            </button>
+          ) : null}
+        </div>
+      )
+    },
+    [scheduleHideOemHoverCard, showOemHoverCard]
   )
 
   function resolveSelectedColumnConfig(column) {
@@ -2092,6 +2183,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 }
                 className = 'column-max-min-width--small'
                 break
+              case 'oem_codes':
+                bodyTemplate = (rowData) => oemBodyTemplate(rowData)
+                break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
                 break
@@ -2194,6 +2288,32 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                     >
                       {formatLocationQuantity(location?.cantidad)}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {Array.isArray(oemHoverCard?.codes) && oemHoverCard.codes.length > 0 && (
+          <div
+            className="movimientos-table__product-hover-card inventario-v2__oem-hover-card"
+            role="tooltip"
+            style={{ top: oemHoverCard.top, left: oemHoverCard.left }}
+            onMouseEnter={clearOemHoverHideTimer}
+            onMouseLeave={scheduleHideOemHoverCard}
+          >
+            <div className="movimientos-table__product-hover-title">OEM</div>
+            <table className="movimientos-table__product-hover-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                </tr>
+              </thead>
+              <tbody>
+                {oemHoverCard.codes.map((code, index) => (
+                  <tr key={`oem-hover-${index}`}>
+                    <td title={code}>{code}</td>
                   </tr>
                 ))}
               </tbody>

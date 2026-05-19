@@ -1,7 +1,7 @@
 import uuid
 
 from django.db import transaction
-from django.db.models import CharField, Count, F, Q, Sum, TextField, Value
+from django.db.models import CharField, Count, F, Q, Sum, Value
 from django.db.models.functions import Coalesce, Concat
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -117,7 +117,7 @@ class ProductoSolicitadoViewSet(viewsets.ModelViewSet):
     serializer_class = ProductoSolicitadoSerializer
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["nombre", "descripcion", "casa_comercial__nombre", "producto__nombre", "producto__codigo"]
+    search_fields = ["nombre", "casa_comercial__nombre", "producto__nombre", "producto__codigo"]
     ordering_fields = ["nombre", "casa_comercial__nombre", "conseguido", "producto__nombre"]
 
 
@@ -132,7 +132,6 @@ class OEMProductoSolicitadoViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "producto_solicitado__nombre",
-        "producto_solicitado__descripcion",
         "oem__codigo",
     ]
     ordering_fields = ["producto_solicitado__nombre", "oem__codigo"]
@@ -157,7 +156,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
             "codigo",
-            "descripcion_general",
             "comentario",
             "marca",
             "modelo",
@@ -171,22 +169,17 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "producto_solicitado__nombre",
             "producto_solicitado__codigo",
             "producto_solicitado__casa_comercial__nombre",
-            "producto_solicitado__descripcion",
             "producto_solicitado__oem_relaciones__oem__codigo",
             "sucursal__nombre",
         ]
     ordering_fields = [
         "codigo",
         "fecha",
-        "cantidad",
         "cliente__nombres",
         "cliente__apellidos",
         "cliente__cedula_ruc",
         "sucursal__nombre",
         "producto_referencia_text",
-        "producto_solicitado_descripcion_text",
-        "descripcion_general",
-        "producto_conseguido_text",
         "cliente_nombre_text",
         "marca",
         "modelo",
@@ -217,17 +210,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 output_field=CharField(),
             ),
             producto_referencia_text=Coalesce("producto_solicitado__nombre", "producto__nombre", Value("")),
-            producto_solicitado_descripcion_text=Coalesce(
-                "producto_solicitado__descripcion",
-                Value("", output_field=TextField()),
-                output_field=TextField(),
-            ),
-            producto_conseguido_text=Concat(
-                Coalesce("producto_solicitado__producto__codigo", Value("")),
-                Value(" "),
-                Coalesce("producto_solicitado__producto__nombre", Value("")),
-                output_field=CharField(),
-            ),
         )
         queryset = apply_sucursal_scope(
             queryset,
@@ -292,14 +274,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 "cedula_ruc": "cliente__cedula_ruc",
                 "sucursal_nombre": "sucursal__nombre",
                 "producto_solicitado_nombre": "producto_referencia_text",
-                "producto_solicitado_descripcion": "producto_solicitado_descripcion_text",
-                "descripcion_general": "descripcion_general",
                 "marca": "marca",
                 "modelo": "modelo",
                 "motor": "motor",
                 "anio": "anio",
-                "producto_conseguido": "producto_conseguido_text",
-                "cantidad": {"lookup": "cantidad", "type": "number"},
             },
         )
 
@@ -479,7 +457,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         )
 
         fecha = timezone.localdate()
-        descripcion_general = str(payload.get("descripcion_general") or "").strip()
         marca = str(payload.get("marca") or "").strip()
         modelo = str(payload.get("modelo") or "").strip()
         motor = str(payload.get("motor") or "").strip()
@@ -594,7 +571,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 except (TypeError, ValueError):
                     casa_comercial = None
 
-            descripcion = str(item.get("descripcion") or "").strip()
             oem_codigos = self._parse_oem_codes(item.get("oems"))
 
             codigo_key = codigo.lower()
@@ -630,7 +606,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     "codigo": codigo,
                     "nombre": nombre,
                     "casa_comercial": casa_comercial,
-                    "descripcion": descripcion,
                     "oem_codigos": oem_codigos,
                     "cantidad": cantidad,
                     "comentario": comentario,
@@ -649,7 +624,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         cantidad=item["cantidad"],
                         tabla=Solicitud.Tabla.PRODUCTO,
                         fecha=fecha,
-                        descripcion_general=descripcion_general,
                         comentario=item.get("comentario", ""),
                         marca=marca,
                         modelo=modelo,
@@ -664,7 +638,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         codigo=item["codigo"],
                         nombre=item["nombre"],
                         casa_comercial=item.get("casa_comercial"),
-                        descripcion=item["descripcion"],
                     )
                     for oem_codigo in item.get("oem_codigos", []):
                         oem, _ = OEM.objects.get_or_create(
@@ -682,7 +655,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         cantidad=item["cantidad"],
                         tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
                         fecha=fecha,
-                        descripcion_general=descripcion_general,
                         comentario=item.get("comentario", ""),
                         marca=marca,
                         modelo=modelo,
@@ -758,8 +730,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
         total_cantidad = 0
         nombres = []
-        descripciones = []
-        resueltos = []
 
         for row in sorted_rows:
             total_cantidad += int(getattr(row, "cantidad", 0) or 0)
@@ -768,26 +738,12 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             if nombre:
                 nombres.append(nombre)
 
-            descripcion = self._resolve_row_product_description(row)
-            if descripcion:
-                descripciones.append(descripcion)
-
-            resuelto = self._resolve_row_resolved_product(row)
-            if resuelto:
-                resueltos.append(resuelto)
-
         data["id"] = int(getattr(lead, "id", 0) or 0)
         data["codigo"] = str(data.get("codigo") or f"Solicitud #{lead.pk}").strip()
         data["grupo_codigo"] = str(getattr(lead, "grupo_codigo", "") or "").strip()
         data["cantidad"] = total_cantidad
         data["producto_referencia"] = self._build_preview_text(nombres)
         data["producto_solicitado_nombre"] = self._build_preview_text(nombres)
-        data["producto_solicitado_descripcion"] = (
-            f"{len(sorted_rows)} productos en la solicitud"
-            if len(sorted_rows) > 1
-            else self._build_preview_text(descripciones)
-        )
-        data["producto_conseguido"] = self._build_preview_text(resueltos)
         data.pop("conseguido", None)
         data.pop("conseguido_label", None)
         data["detalle_count"] = len(sorted_rows)
@@ -834,14 +790,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         return ""
 
     @staticmethod
-    def _resolve_row_product_description(row):
-        if getattr(row, "tabla", "") == Solicitud.Tabla.PRODUCTO and getattr(row, "producto", None):
-            return str(getattr(row.producto, "descripcion", "") or "").strip()
-        if getattr(row, "producto_solicitado", None):
-            return str(getattr(row.producto_solicitado, "descripcion", "") or "").strip()
-        return ""
-
-    @staticmethod
     def _resolve_row_resolved_product(row):
         if getattr(row, "tabla", "") == Solicitud.Tabla.PRODUCTO and getattr(row, "producto", None):
             codigo = str(getattr(row.producto, "codigo", "") or "").strip()
@@ -865,7 +813,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
         sync_sucursal = "sucursal_id" in payload
         sync_auto = any(k in payload for k in ("marca", "modelo", "motor", "anio"))
-        sync_descripcion_general = "descripcion_general" in payload
         sync_cliente = any(
             key in payload
             for key in (
@@ -879,7 +826,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             )
         )
 
-        if not any((sync_sucursal, sync_auto, sync_descripcion_general, sync_cliente)):
+        if not any((sync_sucursal, sync_auto, sync_cliente)):
             return
 
         siblings = (
@@ -902,13 +849,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     if getattr(sibling, field) != getattr(instance, field):
                         setattr(sibling, field, getattr(instance, field))
                         update_fields.append(field)
-
-            if (
-                sync_descripcion_general
-                and sibling.descripcion_general != instance.descripcion_general
-            ):
-                sibling.descripcion_general = instance.descripcion_general
-                update_fields.append("descripcion_general")
 
             if sync_cliente and sibling.cliente_id != instance.cliente_id:
                 sibling.cliente = instance.cliente

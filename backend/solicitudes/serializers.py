@@ -142,7 +142,6 @@ class ProductoSolicitadoSerializer(serializers.ModelSerializer):
             "casa_comercial_nombre",
             "casa_comercial_id",
             "casa_comercial_data",
-            "descripcion",
             "conseguido",
             "producto",
             "producto_id",
@@ -209,7 +208,6 @@ class ProductoSolicitadoLiteSerializer(serializers.ModelSerializer):
             "casa_comercial_nombre",
             "casa_comercial_id",
             "casa_comercial_data",
-            "descripcion",
             "conseguido",
             "producto_id",
             "producto_data",
@@ -289,7 +287,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
     sucursal_nombre = serializers.SerializerMethodField()
     producto_referencia = serializers.SerializerMethodField()
     producto_solicitado_nombre = serializers.SerializerMethodField()
-    producto_solicitado_descripcion = serializers.SerializerMethodField()
     conseguido = serializers.SerializerMethodField()
     conseguido_label = serializers.SerializerMethodField()
     producto_conseguido = serializers.SerializerMethodField()
@@ -303,7 +300,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
     producto_codigo = serializers.CharField(write_only=True, required=False, allow_blank=True)
     producto_nombre = serializers.CharField(write_only=True, required=False, allow_blank=True)
     producto_casa_comercial_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
-    producto_descripcion = serializers.CharField(write_only=True, required=False, allow_blank=True)
     producto_oems = serializers.ListField(
         child=serializers.CharField(allow_blank=False),
         write_only=True,
@@ -322,7 +318,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "producto_solicitado",
             "producto_id",
             "fecha",
-            "descripcion_general",
             "comentario",
             "marca",
             "modelo",
@@ -341,7 +336,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "sucursal_nombre",
             "producto_referencia",
             "producto_solicitado_nombre",
-            "producto_solicitado_descripcion",
             "conseguido",
             "conseguido_label",
             "producto_conseguido",
@@ -355,7 +349,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "producto_codigo",
             "producto_nombre",
             "producto_casa_comercial_id",
-            "producto_descripcion",
             "producto_oems",
         ]
         read_only_fields = ["codigo", "fecha", "grupo_codigo"]
@@ -378,7 +371,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
                 "producto_codigo",
                 "producto_nombre",
                 "producto_casa_comercial_id",
-                "producto_descripcion",
                 "producto_oems",
             ),
         )
@@ -544,11 +536,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
     def get_producto_solicitado_nombre(self, obj):
         return self.get_producto_referencia(obj)
 
-    def get_producto_solicitado_descripcion(self, obj):
-        if obj.producto_solicitado_id:
-            return normalize_text(getattr(obj.producto_solicitado, "descripcion", ""))
-        return ""
-
     def get_conseguido(self, obj):
         if obj.tabla == Solicitud.Tabla.PRODUCTO:
             return True
@@ -654,7 +641,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
         codigo = normalize_text(payload.get("producto_codigo", getattr(target, "codigo", "")))
         nombre = normalize_text(payload.get("producto_nombre", getattr(target, "nombre", "")))
         casa_comercial_id = payload.get("producto_casa_comercial_id", getattr(target, "casa_comercial_id", None))
-        descripcion = normalize_text(payload.get("producto_descripcion", getattr(target, "descripcion", "")))
 
         if "producto_oems" in payload:
             oem_codes = parse_oem_codes(payload.get("producto_oems"))
@@ -698,7 +684,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
         target.codigo = codigo
         target.nombre = nombre
         target.casa_comercial = casa_comercial
-        target.descripcion = descripcion
         target.save()
 
         if is_new or "producto_oems" in payload:
@@ -734,7 +719,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
         for oem_code in normalized_codes:
             oem, _ = OEM.objects.get_or_create(
                 codigo=oem_code,
-                defaults={"descripcion": ""},
+                defaults={},
             )
             OEMProductoSolicitado.objects.get_or_create(
                 producto_solicitado=producto_solicitado,

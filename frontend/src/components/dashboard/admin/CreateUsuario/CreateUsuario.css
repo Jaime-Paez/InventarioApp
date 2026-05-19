@@ -1453,7 +1453,7 @@
 }
 
 .create-user__locations-table--oem .create-user__locations-row {
-  grid-template-columns: minmax(140px, 0.9fr) minmax(0, 1.6fr) 100px;
+  grid-template-columns: minmax(140px, 1fr) 100px;
 }
 
 .create-user__locations-table--oem .create-user__locations-row--empty {
@@ -1479,6 +1479,10 @@
   align-items: center;
   padding: 0;
   font-size: var(--font-size-base);
+}
+
+button.create-user__locations-row {
+  border: 0;
 }
 
 .create-user__locations-row + .create-user__locations-row {

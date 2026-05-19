@@ -119,14 +119,12 @@ function ProductoDetails({
   const [originalAlternativas, setOriginalAlternativas] = useState([])
   const [oemItems, setOemItems] = useState([])
   const [originalOemItems, setOriginalOemItems] = useState([])
-  const [showOemForm, setShowOemForm] = useState(false)
-  const [oemDraft, setOemDraft] = useState({ codigo: '', descripcion: '' })
+  const [oemDraft, setOemDraft] = useState({ codigo: '' })
   const [oemError, setOemError] = useState('')
   const [alternoQuery, setAlternoQuery] = useState('')
   const [alternoOptions, setAlternoOptions] = useState([])
   const [alternoLoading, setAlternoLoading] = useState(false)
   const [showAlternoDropdown, setShowAlternoDropdown] = useState(false)
-  const [showAlternoForm, setShowAlternoForm] = useState(false)
   const [alternoDraft, setAlternoDraft] = useState(null)
   const [alternoError, setAlternoError] = useState('')
   const [ivaRate, setIvaRate] = useState(DEFAULT_IVA_RATE)
@@ -328,20 +326,17 @@ function ProductoDetails({
             relationId: relation?.id ?? null,
             oemId: oem?.id ?? relation?.oem_id ?? null,
             codigo: oem?.codigo ?? relation?.codigo ?? '',
-            descripcion: oem?.descripcion ?? relation?.descripcion ?? '',
           }
         })
         .filter((item) => item.codigo)
       setOemItems(normalizedOems)
       setOriginalOemItems(normalizedOems)
-      setShowOemForm(false)
-      setOemDraft({ codigo: '', descripcion: '' })
+      setOemDraft({ codigo: '' })
       setOemError('')
       setAlternoQuery('')
       setAlternoOptions([])
       setAlternoLoading(false)
       setShowAlternoDropdown(false)
-      setShowAlternoForm(false)
       setAlternoDraft(null)
       setAlternoError('')
       setIsEditing(false)
@@ -460,14 +455,12 @@ function ProductoDetails({
     setOriginalAlternativas([])
     setOemItems([])
     setOriginalOemItems([])
-    setShowOemForm(false)
-    setOemDraft({ codigo: '', descripcion: '' })
+    setOemDraft({ codigo: '' })
     setOemError('')
     setAlternoQuery('')
     setAlternoOptions([])
     setAlternoLoading(false)
     setShowAlternoDropdown(false)
-    setShowAlternoForm(false)
     setAlternoDraft(null)
     setAlternoError('')
     setShowCasaDropdown(false)
@@ -670,7 +663,6 @@ function ProductoDetails({
   const handleAddOem = () => {
     if (!isEditing) return
     const codigo = String(oemDraft.codigo ?? '').trim()
-    const descripcion = String(oemDraft.descripcion ?? '').trim()
     if (!codigo) {
       setOemError('Ingresa un código OEM.')
       return
@@ -680,14 +672,8 @@ function ProductoDetails({
       setOemError('Ese código OEM ya está en la tabla.')
       return
     }
-    setOemItems((prev) => [
-      ...prev,
-      {
-        codigo,
-        descripcion,
-      },
-    ])
-    setOemDraft({ codigo: '', descripcion: '' })
+    setOemItems((prev) => [...prev, { codigo }])
+    setOemDraft({ codigo: '' })
     setOemError('')
   }
 
@@ -705,7 +691,6 @@ function ProductoDetails({
       if (!codigo) return null
       const payload = {
         codigo,
-        descripcion: String(item?.descripcion ?? '').trim(),
       }
 
       const searchResponse = await authFetch(
@@ -970,15 +955,13 @@ function ProductoDetails({
       const nextOems = Array.isArray(oemItems) ? oemItems : []
       setOemItems(nextOems)
       setOriginalOemItems(nextOems)
-      setShowOemForm(false)
-      setOemDraft({ codigo: '', descripcion: '' })
+      setOemDraft({ codigo: '' })
       setOemError('')
       setShowCasaDropdown(false)
       setAlternoQuery('')
       setAlternoOptions([])
       setAlternoLoading(false)
       setShowAlternoDropdown(false)
-      setShowAlternoForm(false)
       setAlternoDraft(null)
       setAlternoError('')
       if (inventarioEditorRef.current?.save) {
@@ -1041,13 +1024,11 @@ function ProductoDetails({
     setSelectedCasa(originalCasa)
     setAlternativas(originalAlternativas)
     setOemItems(originalOemItems)
-    setShowOemForm(false)
-    setOemDraft({ codigo: '', descripcion: '' })
+    setOemDraft({ codigo: '' })
     setOemError('')
     setAlternoQuery('')
     setAlternoOptions([])
     setShowAlternoDropdown(false)
-    setShowAlternoForm(false)
     setAlternoDraft(null)
     setAlternoError('')
     setShowCasaDropdown(false)
@@ -1486,34 +1467,15 @@ function ProductoDetails({
                 <section className="create-user__section">
                   <div className="create-user__section-header">
                     <h4>OEMs</h4>
-                    <button
-                      type="button"
-                      className="create-user__ghost"
-                      onClick={() => {
-                        if (editorDisabled) return
-                        setOemError('')
-                        setShowOemForm((prev) => {
-                          const next = !prev
-                          if (!next) {
-                            setOemDraft({ codigo: '', descripcion: '' })
-                          }
-                          return next
-                        })
-                      }}
-                      disabled={editorDisabled}
-                    >
-                      {showOemForm ? 'Cancelar' : 'Agregar OEM'}
-                    </button>
                   </div>
 
                   <div className="create-user__locations-table create-user__locations-table--oem">
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Código</span>
-                      <span>Descripción</span>
                       <span>Acciones</span>
                     </div>
 
-                    {showOemForm && (
+                    {isEditing && (
                       <div className="create-user__locations-row create-user__locations-row--form">
                         <span>
                           <input
@@ -1521,15 +1483,6 @@ function ProductoDetails({
                             placeholder="Código OEM"
                             value={oemDraft.codigo}
                             onChange={(event) => handleOemDraftChange('codigo', event.target.value)}
-                            disabled={editorDisabled}
-                          />
-                        </span>
-                        <span>
-                          <input
-                            type="text"
-                            placeholder="Descripción (opcional)"
-                            value={oemDraft.descripcion}
-                            onChange={(event) => handleOemDraftChange('descripcion', event.target.value)}
                             disabled={editorDisabled}
                           />
                         </span>
@@ -1546,7 +1499,7 @@ function ProductoDetails({
                       </div>
                     )}
 
-                    {!oemItems.length && !showOemForm && (
+                    {!oemItems.length && (
                       <div className="create-user__locations-row create-user__locations-row--empty">
                         <span>No hay OEMs registrados.</span>
                       </div>
@@ -1555,7 +1508,6 @@ function ProductoDetails({
                     {oemItems.map((item, index) => (
                       <div key={`${item.codigo}-${index}`} className="create-user__locations-row">
                         <span>{item.codigo || '-'}</span>
-                        <span>{item.descripcion || '-'}</span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
                           <button
                             type="button"
@@ -1657,27 +1609,6 @@ function ProductoDetails({
               <section className="create-user__section">
                 <div className="create-user__section-header">
                   <h4>Alternos</h4>
-                  <button
-                    type="button"
-                    className="create-user__ghost create-user__location-action"
-                    onClick={() => {
-                      if (editorDisabled) return
-                      setAlternoError('')
-                      setShowAlternoForm((prev) => {
-                        const next = !prev
-                        if (!next) {
-                          setShowAlternoDropdown(false)
-                          setAlternoDraft(null)
-                          setAlternoQuery('')
-                          setAlternoOptions([])
-                        }
-                        return next
-                      })
-                    }}
-                    disabled={editorDisabled}
-                  >
-                    {showAlternoForm ? 'Cancelar' : 'Agregar alterno'}
-                  </button>
                 </div>
 
                 <div className="create-user__locations-table create-user__locations-table--alternos">
@@ -1688,7 +1619,7 @@ function ProductoDetails({
                     <span>Acciones</span>
                   </div>
 
-                  {showAlternoForm && (
+                  {isEditing && (
                     <div className="create-user__locations-row create-user__locations-row--form">
                       <span>{alternoDraft?.codigo || '-'}</span>
                       <span>
@@ -1772,7 +1703,7 @@ function ProductoDetails({
                     </div>
                   )}
 
-                  {!alternativas.length && !showAlternoForm && (
+                  {!alternativas.length && (
                     <div className="create-user__locations-row create-user__locations-row--empty">
                       <span>No hay alternos registrados.</span>
                     </div>
