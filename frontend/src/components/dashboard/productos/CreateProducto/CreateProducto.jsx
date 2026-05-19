@@ -145,7 +145,6 @@ function CreateProducto({
     division: 0,
     subdivision: 0,
   })
-  const codigoPrefixRef = useRef('')
   const codigoCheckTimerRef = useRef(null)
   const codigoCheckSeqRef = useRef(0)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
@@ -585,7 +584,6 @@ function CreateProducto({
     setEditingValue('')
     setEditError('')
     restoreRef.current = null
-    codigoPrefixRef.current = ''
     if (codigoCheckTimerRef.current) {
       clearTimeout(codigoCheckTimerRef.current)
       codigoCheckTimerRef.current = null
@@ -853,27 +851,6 @@ function CreateProducto({
     [token]
   )
 
-  const applyCodigoPrefix = useCallback((prefix) => {
-    const cleanPrefix = toUpperProductCode(prefix).trim()
-    if (!cleanPrefix) return
-    const prevPrefix = codigoPrefixRef.current
-    codigoPrefixRef.current = cleanPrefix
-    setFormData((prev) => {
-      const current = toUpperProductCode(prev.codigo)
-      const currentTrim = current.trim()
-      if (!currentTrim || currentTrim === prevPrefix) {
-        scheduleCodigoCheck(cleanPrefix)
-        return { ...prev, codigo: cleanPrefix }
-      }
-      if (prevPrefix && currentTrim.startsWith(prevPrefix)) {
-        const nextCodigo = cleanPrefix + currentTrim.slice(prevPrefix.length)
-        scheduleCodigoCheck(nextCodigo)
-        return { ...prev, codigo: nextCodigo }
-      }
-      return prev
-    })
-  }, [scheduleCodigoCheck])
-
   const handleCasaToggle = (supplier) => {
     if (!supplier) return
     const id = String(supplier.id)
@@ -889,9 +866,6 @@ function CreateProducto({
       setSelectedCasa({ id: supplier.id, nombre: supplier.nombre })
       return { ...prev, casasIds: [id] }
     })
-    if (didSelect) {
-      applyCodigoPrefix(supplier.codigo)
-    }
     setCasaSearch('')
     setShowCasaDropdown(false)
   }
@@ -1785,21 +1759,8 @@ function CreateProducto({
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field create-user__field--required">
-                      <span>Nombre</span>
-                      <input
-                        name="nombre"
-                        type="text"
-                        placeholder="Nombre"
-                        value={formData.nombre}
-                        onChange={handleChange}
-                        required
-                        disabled={loading}
-                      />
-                    </label>
-
                     <label className="create-user__field">
-                      <span>Código</span>
+                      <span>Código JP</span>
                       <input
                         name="codigo"
                         type="text"
@@ -1810,21 +1771,19 @@ function CreateProducto({
                         spellCheck={false}
                         disabled={loading}
                       />
-                      {!codigoChecking && !codigoError && (
-                        <small className="muted">Sugerencia: se autocompleta con el codigo de la casa comercial.</small>
-                      )}
                       {codigoChecking && <small className="muted">Validando codigo...</small>}
                       {!codigoChecking && codigoError && <small className="create-user__field-error">{codigoError}</small>}
                     </label>
 
-                    <label className="create-user__field">
-                      <span>Referencia</span>
+                    <label className="create-user__field create-user__field--required">
+                      <span>Descripción</span>
                       <input
-                        name="referencia"
+                        name="nombre"
                         type="text"
-                        placeholder="Referencia del producto (ej: REF-001)"
-                        value={formData.referencia}
+                        placeholder="Descripción del producto"
+                        value={formData.nombre}
                         onChange={handleChange}
+                        required
                         disabled={loading}
                       />
                     </label>
@@ -1889,7 +1848,19 @@ function CreateProducto({
                       {casaInvalid && <small className="create-user__field-error">Selecciona una casa comercial.</small>}
                     </label>
 
-                    <div className="create-user__pieza-original-wrapper">
+                    <label className="create-user__field">
+                      <span>Referencia</span>
+                      <input
+                        name="referencia"
+                        type="text"
+                        placeholder="Referencia del producto (ej: REF-001)"
+                        value={formData.referencia}
+                        onChange={handleChange}
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <div className="create-user__pieza-original-wrapper create-user__field--full">
                       <span className="create-user__pieza-original-label">Original</span>
                       <label className="create-user__pieza-original">
                         <input
@@ -2010,12 +1981,11 @@ function CreateProducto({
                 <section className="create-user__section">
                   <div className="create-user__section-header">
                     <div>
-                      <h4>Descripción</h4>
+                      <h4>Detalle</h4>
                     </div>
                   </div>
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripción</span>
                       <textarea
                         name="descripcion"
                         placeholder="Describe el producto, su uso, diferentes nombres o caracteristicas importantes."

@@ -1342,6 +1342,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 and estado_name in {"recibido", "parcialmente recibido"}
             )
             if should_add_on_entry:
+                if subtipo_key == "devolucion" and not getattr(movimiento, "funcional", True):
+                    return
                 for producto_id, cantidad in quantities.items():
                     delta = cantidad * factor
                     self._adjust_stock(

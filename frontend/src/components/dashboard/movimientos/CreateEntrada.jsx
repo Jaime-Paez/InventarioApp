@@ -2808,21 +2808,23 @@ function CreateEntrada({
 
     if (showLocationResolver || locationResolverLoading || locationResolverSubmitting) return
 
-    try {
-      setCheckingLocationCoverage(true)
-      const missingProducts = await checkMissingLocationsByProduct(formData.sucursalId, details)
-      if (missingProducts.length > 0) {
-        await openLocationResolverForProducts(missingProducts, formData.sucursalId)
+    if (!isDevolucion || formData.funcional) {
+      try {
+        setCheckingLocationCoverage(true)
+        const missingProducts = await checkMissingLocationsByProduct(formData.sucursalId, details)
+        if (missingProducts.length > 0) {
+          await openLocationResolverForProducts(missingProducts, formData.sucursalId)
+          return
+        }
+      } catch (err) {
+        notifyError(
+          err?.message ||
+            'No se pudo validar si los productos tienen ubicación en la sucursal seleccionada.'
+        )
         return
+      } finally {
+        setCheckingLocationCoverage(false)
       }
-    } catch (err) {
-      notifyError(
-        err?.message ||
-          'No se pudo validar si los productos tienen ubicación en la sucursal seleccionada.'
-      )
-      return
-    } finally {
-      setCheckingLocationCoverage(false)
     }
 
     await createEntradaMovimiento([])
@@ -3112,7 +3114,7 @@ function CreateEntrada({
                         </>
                       ) : (
                         <>
-                          <label className="create-user__field">
+                          <label className={`create-user__field${isSucursalPrincipalLocked ? ' create-user__field--full' : ''}`}>
                             <span>Fecha</span>
                             <input
                               name="fecha"

@@ -108,10 +108,9 @@ function CasaComercialDetails({
   const handleChange = (event) => {
     if (!isEditing) return
     const { name, value } = event.target
-    if (name === 'codigo') return
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: name === 'codigo' ? value.toUpperCase() : value,
     }))
   }
 
@@ -619,10 +618,11 @@ function CasaComercialDetails({
                     name="codigo"
                     type="text"
                     value={formData.codigo}
-                    readOnly
+                    onChange={handleChange}
                     autoComplete="off"
                     required
-                    disabled
+                    maxLength={50}
+                    disabled={editorDisabled}
                   />
                 </label>
 

@@ -81,8 +81,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       user?.es_administrador ||
       String(user?.rol || '').trim().toLowerCase() === 'administrador'
   )
-  const isAdminByUsersPermissions = moduleHasAnyAction('usuarios', permissionIndex)
-  const canSeeCost = isAdminByRole || isAdminByUsersPermissions
+  const canSeeCost = isAdminByRole
 
   const showErrorToast = useCallback(
     (detail, summary = 'Error') =>

@@ -1444,6 +1444,7 @@ function SolicitudDetails({
       currentUser={currentUser}
       lockModal
       initialData={createProductInitialData}
+      showCostField={Boolean(currentUser?.es_administrador)}
     />
   ) : null
   const catalogProductModal = isCatalogProductModalOpen && catalogProductId ? (
