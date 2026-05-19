@@ -4120,12 +4120,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         decision = self._normalize_state_name(request.data.get("decision"))
         motivo = str(request.data.get("motivo") or "").strip()
 
-        valid_decisions = {"sumar_solicitante", "sumar_proveedora", "perdido", "restar_proveedora", "sin_cambios"}
+        valid_decisions = {"sumar_solicitante", "sumar_proveedora", "perdido", "restar_proveedora", "sin_cambios", "devolver_proveedora"}
         if decision not in valid_decisions:
             return Response(
                 {
                     "detail": (
-                        "Debes enviar una decision valida: sumar_solicitante, sumar_proveedora, perdido, restar_proveedora o sin_cambios."
+                        "Debes enviar una decision valida: sumar_solicitante, sumar_proveedora, perdido, restar_proveedora, sin_cambios o devolver_proveedora."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -4216,6 +4216,65 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     )
                 sucursal_resolucion_id = target_branch_id
                 subdivision_resolucion_id = int(subdivision.id)
+            elif decision == "devolver_proveedora":
+                if not es_sobrante:
+                    return Response(
+                        {"detail": "La decision 'devolver_proveedora' solo aplica para inconvenientes de tipo sobrante."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                subdivision_id_raw = str(request.data.get("subdivision_id") or "").strip()
+                subdivision_prov_id_raw = str(request.data.get("subdivision_proveedora_id") or "").strip()
+                if not subdivision_id_raw.isdigit():
+                    return Response(
+                        {"detail": "Debes indicar una subdivision valida de la sucursal destino para restar el sobrante."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if not subdivision_prov_id_raw.isdigit():
+                    return Response(
+                        {"detail": "Debes indicar una subdivision valida de la sucursal proveedora para devolver el sobrante."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                subdivision_dest = (
+                    SubDivision.objects.select_related("division__bodega")
+                    .filter(pk=int(subdivision_id_raw))
+                    .first()
+                )
+                bodega_dest = getattr(getattr(subdivision_dest, "division", None), "bodega", None)
+                bodega_dest_sucursal_id = int(getattr(bodega_dest, "sucursal_id", 0) or 0)
+                if subdivision_dest is None or bodega_dest_sucursal_id != int(inconveniente_locked.solicitud.sucursal_solicitante_id):
+                    return Response(
+                        {"detail": "La subdivision de destino no pertenece a la sucursal solicitante."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                subdivision_prov = (
+                    SubDivision.objects.select_related("division__bodega")
+                    .filter(pk=int(subdivision_prov_id_raw))
+                    .first()
+                )
+                bodega_prov = getattr(getattr(subdivision_prov, "division", None), "bodega", None)
+                bodega_prov_sucursal_id = int(getattr(bodega_prov, "sucursal_id", 0) or 0)
+                if subdivision_prov is None or bodega_prov_sucursal_id != int(inconveniente_locked.solicitud.sucursal_proveedora_id):
+                    return Response(
+                        {"detail": "La subdivision de proveedor no pertenece a la sucursal proveedora."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                self._remove_stock_from_subdivision(
+                    subdivision_id=int(subdivision_dest.id),
+                    producto_id=int(inconveniente_locked.producto_id),
+                    cantidad=cantidad_faltante,
+                )
+                self._add_stock_to_subdivision(
+                    subdivision_id=int(subdivision_prov.id),
+                    producto_id=int(inconveniente_locked.producto_id),
+                    cantidad=cantidad_faltante,
+                )
+                resolucion = TrasladoInconveniente.Resoluciones.DEVOLVER_PROVEEDORA
+                sucursal_resolucion_id = int(inconveniente_locked.solicitud.sucursal_solicitante_id)
+                subdivision_resolucion_id = int(subdivision_dest.id)
             elif decision == "sin_cambios":
                 resolucion = TrasladoInconveniente.Resoluciones.SIN_CAMBIOS
             else:
@@ -4247,6 +4306,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             elif decision == "restar_proveedora":
                 action_label = "restado_de_proveedora"
                 detail_text = f"Se resolvio el {tipo_label} de {cantidad_faltante} unidades restando del proveedor."
+            elif decision == "devolver_proveedora":
+                action_label = "devuelto_a_proveedora"
+                detail_text = f"Se devolvio el sobrante de {cantidad_faltante} unidades a la sucursal proveedora."
             elif decision == "sin_cambios":
                 action_label = "sin_cambios"
                 detail_text = f"Se resolvio el {tipo_label} de {cantidad_faltante} unidades sin modificar inventario."

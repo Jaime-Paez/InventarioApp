@@ -177,6 +177,17 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const [resolverLocationDebouncedQuery, setResolverLocationDebouncedQuery] = useState('')
   const [resolverSubmitting, setResolverSubmitting] = useState(false)
   const [resolverError, setResolverError] = useState('')
+  const [resolverProvBodegaId, setResolverProvBodegaId] = useState('')
+  const [resolverProvDivisionId, setResolverProvDivisionId] = useState('')
+  const [resolverProvSubdivisionId, setResolverProvSubdivisionId] = useState('')
+  const [resolverProvSubdivisions, setResolverProvSubdivisions] = useState([])
+  const [resolverProvSubdivisionsLoading, setResolverProvSubdivisionsLoading] = useState(false)
+  const [resolverProvNeedsManualLocation, setResolverProvNeedsManualLocation] = useState(false)
+  const [resolverProvLocationDropdownField, setResolverProvLocationDropdownField] = useState('')
+  const [resolverProvLocationDropdownDirection, setResolverProvLocationDropdownDirection] = useState('down')
+  const [resolverProvLocationDropdownMaxHeight, setResolverProvLocationDropdownMaxHeight] = useState(null)
+  const [resolverProvLocationQuery, setResolverProvLocationQuery] = useState('')
+  const [resolverProvLocationDebouncedQuery, setResolverProvLocationDebouncedQuery] = useState('')
   const modalRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
@@ -184,6 +195,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const modalPositionRef = useRef(modalPosition)
   const modalRestoreRef = useRef(null)
   const resolverLocationDropdownRef = useRef(null)
+  const resolverProvLocationDropdownRef = useRef(null)
 
   const { shouldRender: shouldRenderDetailsModal, isClosing: isClosingDetailsModal } =
     useModalAnimation(showDetailsModal)
@@ -352,14 +364,14 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
 
   const resolverTargetBranchId = useMemo(() => {
     if (!selectedIssue) return ''
-    if (resolverDecision === 'sumar_solicitante') return normalizeId(selectedIssue?.sucursal_solicitante_id)
+    if (resolverDecision === 'sumar_solicitante' || resolverDecision === 'devolver_proveedora') return normalizeId(selectedIssue?.sucursal_solicitante_id)
     if (resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora') return normalizeId(selectedIssue?.sucursal_proveedora_id)
     return ''
   }, [resolverDecision, selectedIssue])
 
   const resolverTargetBranchLabel = useMemo(() => {
     if (!selectedIssue) return ''
-    if (resolverDecision === 'sumar_solicitante') {
+    if (resolverDecision === 'sumar_solicitante' || resolverDecision === 'devolver_proveedora') {
       return String(selectedIssue?.sucursal_solicitante || '').trim() || 'Sucursal destino'
     }
     if (resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora') {
@@ -484,6 +496,113 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     [resolverLocationDebouncedQuery]
   )
 
+  const resolverProvSubdivisionPathById = useMemo(() => {
+    const map = new Map()
+    resolverProvSubdivisions.forEach((subdivision) => {
+      const subdivisionId = normalizeId(subdivision?.id)
+      const division = subdivision?.division
+      const divisionId = normalizeId(division?.id)
+      const bodega = division?.bodega
+      const bodegaId = normalizeId(bodega?.id)
+      if (!subdivisionId || !divisionId || !bodegaId) return
+      map.set(subdivisionId, { subdivisionId, divisionId, bodegaId })
+    })
+    return map
+  }, [resolverProvSubdivisions])
+
+  const resolverProvBodegas = useMemo(() => {
+    const map = new Map()
+    resolverProvSubdivisions.forEach((subdivision) => {
+      const bodega = subdivision?.division?.bodega
+      const bodegaId = normalizeId(bodega?.id)
+      if (!bodegaId || map.has(bodegaId)) return
+      map.set(bodegaId, { ...bodega, id: bodegaId })
+    })
+    return Array.from(map.values()).sort((a, b) =>
+      String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' })
+    )
+  }, [resolverProvSubdivisions])
+
+  const resolverProvDivisionsByBodega = useMemo(() => {
+    const map = new Map()
+    resolverProvSubdivisions.forEach((subdivision) => {
+      const division = subdivision?.division
+      const divisionId = normalizeId(division?.id)
+      const bodega = division?.bodega
+      const bodegaId = normalizeId(bodega?.id)
+      if (!divisionId || !bodegaId) return
+      if (!map.has(bodegaId)) map.set(bodegaId, new Map())
+      const divisionsMap = map.get(bodegaId)
+      if (divisionsMap.has(divisionId)) return
+      divisionsMap.set(divisionId, { ...division, id: divisionId, bodega: { ...bodega, id: bodegaId } })
+    })
+    const grouped = new Map()
+    map.forEach((divisionsMap, bodegaId) => {
+      grouped.set(
+        bodegaId,
+        Array.from(divisionsMap.values()).sort((a, b) =>
+          String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' })
+        )
+      )
+    })
+    return grouped
+  }, [resolverProvSubdivisions])
+
+  const resolverProvSubdivisionsByDivision = useMemo(() => {
+    const map = new Map()
+    resolverProvSubdivisions.forEach((subdivision) => {
+      const divisionId = normalizeId(subdivision?.division?.id)
+      const subdivisionId = normalizeId(subdivision?.id)
+      if (!divisionId || !subdivisionId) return
+      if (!map.has(divisionId)) map.set(divisionId, new Map())
+      const subdivisionsMap = map.get(divisionId)
+      if (subdivisionsMap.has(subdivisionId)) return
+      subdivisionsMap.set(subdivisionId, { ...subdivision, id: subdivisionId })
+    })
+    const grouped = new Map()
+    map.forEach((subdivisionsMap, divisionId) => {
+      grouped.set(
+        divisionId,
+        Array.from(subdivisionsMap.values()).sort((a, b) =>
+          String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { sensitivity: 'base' })
+        )
+      )
+    })
+    return grouped
+  }, [resolverProvSubdivisions])
+
+  const resolverProvDivisionOptions = useMemo(
+    () => resolverProvDivisionsByBodega.get(resolverProvBodegaId) || [],
+    [resolverProvBodegaId, resolverProvDivisionsByBodega]
+  )
+  const resolverProvSubdivisionOptions = useMemo(
+    () => resolverProvSubdivisionsByDivision.get(resolverProvDivisionId) || [],
+    [resolverProvDivisionId, resolverProvSubdivisionsByDivision]
+  )
+  const selectedResolverProvBodega = useMemo(
+    () => resolverProvBodegas.find((item) => normalizeId(item?.id) === resolverProvBodegaId) || null,
+    [resolverProvBodegaId, resolverProvBodegas]
+  )
+  const selectedResolverProvDivision = useMemo(
+    () => resolverProvDivisionOptions.find((item) => normalizeId(item?.id) === resolverProvDivisionId) || null,
+    [resolverProvDivisionId, resolverProvDivisionOptions]
+  )
+  const selectedResolverProvSubdivision = useMemo(
+    () => resolverProvSubdivisionOptions.find((item) => normalizeId(item?.id) === resolverProvSubdivisionId) || null,
+    [resolverProvSubdivisionId, resolverProvSubdivisionOptions]
+  )
+
+  const filterResolverProvLocationOptions = useCallback(
+    (options, getSearchLabel) => {
+      const term = String(resolverProvLocationDebouncedQuery || '').trim()
+      if (!term) return options
+      return (Array.isArray(options) ? options : []).filter((option) =>
+        normalizeValue(String(getSearchLabel?.(option) || '')).includes(term)
+      )
+    },
+    [resolverProvLocationDebouncedQuery]
+  )
+
   useEffect(() => {
     if (!showDetailsModal || !token || !resolverTargetBranchId) {
       setResolverSubdivisions([])
@@ -593,6 +712,117 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     }
   }, [resolverTargetBranchId, selectedIssue?.producto_id, showDetailsModal, showErrorToast, token])
 
+  const resolverProvTargetBranchId = useMemo(() => {
+    if (!selectedIssue || resolverDecision !== 'devolver_proveedora') return ''
+    return normalizeId(selectedIssue?.sucursal_proveedora_id)
+  }, [resolverDecision, selectedIssue])
+
+  useEffect(() => {
+    if (!showDetailsModal || !token || !resolverProvTargetBranchId) {
+      setResolverProvSubdivisions([])
+      setResolverProvBodegaId('')
+      setResolverProvDivisionId('')
+      setResolverProvSubdivisionId('')
+      setResolverProvNeedsManualLocation(false)
+      setResolverProvLocationDropdownField('')
+      setResolverProvLocationDropdownDirection('down')
+      setResolverProvLocationDropdownMaxHeight(null)
+      setResolverProvLocationQuery('')
+      setResolverProvLocationDebouncedQuery('')
+      return
+    }
+
+    let cancelled = false
+    const loadProvSubdivisions = async () => {
+      setResolverProvSubdivisionsLoading(true)
+      try {
+        const response = await authFetch(
+          `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(
+            resolverProvTargetBranchId
+          )}&modulo=movimientos_inconvenientes`,
+          {},
+          token
+        )
+        if (!response.ok) {
+          throw new Error('No se pudieron cargar las subdivisiones de la sucursal proveedora.')
+        }
+        const payload = await response.json().catch(() => ({}))
+        if (cancelled) return
+        const parsed = parseApiList(payload)
+        const subdivisionPathById = new Map()
+        parsed.forEach((subdivision) => {
+          const subdivisionId = normalizeId(subdivision?.id)
+          const divisionId = normalizeId(subdivision?.division?.id)
+          const bodegaId = normalizeId(subdivision?.division?.bodega?.id)
+          if (!subdivisionId || !divisionId || !bodegaId) return
+          subdivisionPathById.set(subdivisionId, { bodegaId, divisionId, subdivisionId })
+        })
+        const availableSubdivisionIds = new Set(parsed.map((item) => normalizeId(item?.id)).filter(Boolean))
+
+        let preferredSubdivisionId = ''
+        const selectedProductId = Number.parseInt(String(selectedIssue?.producto_id || 0), 10)
+        if (selectedProductId > 0) {
+          try {
+            const inventoryResponse = await authFetch(
+              `${API_URL}/inventario/inventario/?page_size=400&producto_ids=${encodeURIComponent(
+                String(selectedProductId)
+              )}`,
+              {},
+              token
+            )
+            if (inventoryResponse.ok) {
+              const inventoryPayload = await inventoryResponse.json().catch(() => ({}))
+              const inventoryRows = parseApiList(inventoryPayload)
+              const branchKey = normalizeId(resolverProvTargetBranchId)
+              const preferred = inventoryRows
+                .map((row) => {
+                  const rowBranchId = normalizeId(
+                    row?.subdivision?.division?.bodega?.sucursal?.id ??
+                      row?.subdivision?.division?.bodega?.sucursal_id
+                  )
+                  if (rowBranchId !== branchKey) return null
+                  const subdivisionId = normalizeId(row?.subdivision?.id ?? row?.subdivision_id)
+                  if (!subdivisionId) return null
+                  const qty = Number.parseFloat(String(row?.cantidad ?? 0))
+                  return { subdivisionId, qty: Number.isFinite(qty) ? qty : 0 }
+                })
+                .filter(Boolean)
+                .sort((a, b) => b.qty - a.qty)
+              preferredSubdivisionId = normalizeId(preferred?.[0]?.subdivisionId)
+            }
+          } catch {
+            preferredSubdivisionId = ''
+          }
+        }
+
+        const preferredValid = preferredSubdivisionId && availableSubdivisionIds.has(preferredSubdivisionId)
+        const nextSubdivisionId = preferredValid ? preferredSubdivisionId : ''
+        const nextPath = subdivisionPathById.get(nextSubdivisionId) || null
+        setResolverProvSubdivisions(parsed)
+        setResolverProvBodegaId(nextPath?.bodegaId || '')
+        setResolverProvDivisionId(nextPath?.divisionId || '')
+        setResolverProvNeedsManualLocation(!preferredValid)
+        setResolverProvSubdivisionId(nextSubdivisionId)
+      } catch (requestError) {
+        if (cancelled) return
+        const message = requestError?.message || 'No se pudieron cargar las subdivisiones de la sucursal proveedora.'
+        setResolverProvSubdivisions([])
+        setResolverProvBodegaId('')
+        setResolverProvDivisionId('')
+        setResolverProvSubdivisionId('')
+        setResolverProvNeedsManualLocation(false)
+        showErrorToast(message)
+      } finally {
+        if (!cancelled) setResolverProvSubdivisionsLoading(false)
+      }
+    }
+
+    void loadProvSubdivisions()
+    return () => {
+      cancelled = true
+    }
+  }, [resolverProvTargetBranchId, selectedIssue?.producto_id, showDetailsModal, showErrorToast, token])
+
   const resetResolverState = useCallback(() => {
     setResolverDecision('')
     setResolverMotivo('')
@@ -609,6 +839,17 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     setResolverLocationDebouncedQuery('')
     setResolverSubmitting(false)
     setResolverError('')
+    setResolverProvBodegaId('')
+    setResolverProvDivisionId('')
+    setResolverProvSubdivisionId('')
+    setResolverProvSubdivisions([])
+    setResolverProvSubdivisionsLoading(false)
+    setResolverProvNeedsManualLocation(false)
+    setResolverProvLocationDropdownField('')
+    setResolverProvLocationDropdownDirection('down')
+    setResolverProvLocationDropdownMaxHeight(null)
+    setResolverProvLocationQuery('')
+    setResolverProvLocationDebouncedQuery('')
   }, [])
 
   const openDetails = useCallback(
@@ -665,6 +906,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     setResolverLocationDropdownMaxHeight(null)
     setResolverLocationQuery('')
     setResolverLocationDebouncedQuery('')
+    setResolverProvLocationDropdownField('')
+    setResolverProvLocationDropdownDirection('down')
+    setResolverProvLocationDropdownMaxHeight(null)
+    setResolverProvLocationQuery('')
+    setResolverProvLocationDebouncedQuery('')
     setShowDetailsModal(false)
   }, [resolverSubmitting])
 
@@ -801,6 +1047,132 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
       resolverDivisionsByBodega,
       resolverSubdivisionPathById,
       resolverSubdivisionsByDivision,
+    ]
+  )
+
+  const closeResolverProvLocationDropdown = useCallback(() => {
+    setResolverProvLocationDropdownField('')
+    setResolverProvLocationDropdownDirection('down')
+    setResolverProvLocationDropdownMaxHeight(null)
+    setResolverProvLocationQuery('')
+    setResolverProvLocationDebouncedQuery('')
+  }, [])
+
+  const updateResolverProvLocationDropdownPlacement = useCallback(() => {
+    if (!showDetailsModal || !resolverProvLocationDropdownField || !resolverProvLocationDropdownRef.current) return
+    const trigger = resolverProvLocationDropdownRef.current.querySelector('.create-user__dropdown-trigger')
+    if (!trigger) return
+    const triggerRect = trigger.getBoundingClientRect()
+    const spacing = 10
+    const availableBelow = Math.max(Math.floor(window.innerHeight - triggerRect.bottom - VIEWPORT_PADDING - spacing), 0)
+    const availableAbove = Math.max(Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing), 0)
+    const nextDirection = availableBelow < 220 && availableAbove > availableBelow ? 'up' : 'down'
+    const availableSpace = nextDirection === 'up' ? availableAbove : availableBelow
+    const nextMaxHeight = Math.max(140, Math.min(320, availableSpace))
+    setResolverProvLocationDropdownDirection((prev) => (prev === nextDirection ? prev : nextDirection))
+    setResolverProvLocationDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
+  }, [resolverProvLocationDropdownField, showDetailsModal])
+
+  const toggleResolverProvLocationDropdown = useCallback(
+    (field) => {
+      const nextField = String(field || '').trim().toLowerCase()
+      if (!nextField) return
+      setResolverProvLocationDropdownField((current) => (current === nextField ? '' : nextField))
+      setResolverProvLocationDropdownDirection('down')
+      setResolverProvLocationDropdownMaxHeight(null)
+      setResolverProvLocationQuery('')
+      setResolverProvLocationDebouncedQuery('')
+      setTimeout(() => { updateResolverProvLocationDropdownPlacement() }, 0)
+    },
+    [updateResolverProvLocationDropdownPlacement]
+  )
+
+  useEffect(() => {
+    if (!showDetailsModal || !resolverProvLocationDropdownField) {
+      setResolverProvLocationDebouncedQuery('')
+      return
+    }
+    const handle = setTimeout(() => {
+      setResolverProvLocationDebouncedQuery(normalizeValue(resolverProvLocationQuery))
+    }, 260)
+    return () => clearTimeout(handle)
+  }, [resolverProvLocationDropdownField, resolverProvLocationQuery, showDetailsModal])
+
+  useEffect(() => {
+    if (!showDetailsModal || !resolverProvLocationDropdownField) return undefined
+    const handleClick = (event) => {
+      if (resolverProvLocationDropdownRef.current && !resolverProvLocationDropdownRef.current.contains(event.target)) {
+        closeResolverProvLocationDropdown()
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [closeResolverProvLocationDropdown, resolverProvLocationDropdownField, showDetailsModal])
+
+  useEffect(() => {
+    if (!showDetailsModal || !resolverProvLocationDropdownField) return undefined
+    updateResolverProvLocationDropdownPlacement()
+    const handleReposition = () => { updateResolverProvLocationDropdownPlacement() }
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [resolverProvLocationDropdownField, showDetailsModal, updateResolverProvLocationDropdownPlacement])
+
+  const handleResolverProvLocationPick = useCallback(
+    (field, optionId) => {
+      const normalizedField = String(field || '').trim().toLowerCase()
+      const normalizedOptionId = normalizeId(optionId)
+      if (!normalizedField || !normalizedOptionId) return
+
+      if (normalizedField === 'bodega') {
+        setResolverProvBodegaId(normalizedOptionId)
+        setResolverProvDivisionId('')
+        setResolverProvSubdivisionId('')
+        setResolverProvNeedsManualLocation(true)
+        setResolverError('')
+        closeResolverProvLocationDropdown()
+        return
+      }
+
+      if (normalizedField === 'division') {
+        if (!resolverProvBodegaId) return
+        const isValidDivision = (resolverProvDivisionsByBodega.get(resolverProvBodegaId) || []).some(
+          (division) => normalizeId(division?.id) === normalizedOptionId
+        )
+        if (!isValidDivision) return
+        setResolverProvDivisionId(normalizedOptionId)
+        setResolverProvSubdivisionId('')
+        setResolverProvNeedsManualLocation(true)
+        setResolverError('')
+        closeResolverProvLocationDropdown()
+        return
+      }
+
+      if (normalizedField === 'subdivision') {
+        if (!resolverProvDivisionId) return
+        const isValidSubdivision = (resolverProvSubdivisionsByDivision.get(resolverProvDivisionId) || []).some(
+          (subdivision) => normalizeId(subdivision?.id) === normalizedOptionId
+        )
+        if (!isValidSubdivision) return
+        const selectedPath = resolverProvSubdivisionPathById.get(normalizedOptionId) || null
+        setResolverProvBodegaId(selectedPath?.bodegaId || resolverProvBodegaId)
+        setResolverProvDivisionId(selectedPath?.divisionId || resolverProvDivisionId)
+        setResolverProvSubdivisionId(normalizedOptionId)
+        setResolverProvNeedsManualLocation(false)
+        setResolverError('')
+        closeResolverProvLocationDropdown()
+      }
+    },
+    [
+      closeResolverProvLocationDropdown,
+      resolverProvBodegaId,
+      resolverProvDivisionId,
+      resolverProvDivisionsByBodega,
+      resolverProvSubdivisionPathById,
+      resolverProvSubdivisionsByDivision,
     ]
   )
 
@@ -989,6 +1361,16 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
       setResolverError('Debes seleccionar bodega, división y subdivisión para sumar inventario.')
       return
     }
+    if (resolverDecision === 'devolver_proveedora') {
+      if (!normalizeId(resolverSubdivisionId)) {
+        setResolverError('Debes seleccionar la ubicación en sucursal destino de donde restar el sobrante.')
+        return
+      }
+      if (!normalizeId(resolverProvSubdivisionId)) {
+        setResolverError('Debes seleccionar la ubicación en sucursal proveedora donde devolver el sobrante.')
+        return
+      }
+    }
 
     setResolverError('')
     setResolverSubmitting(true)
@@ -999,6 +1381,10 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
       }
       if (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') {
         body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
+      }
+      if (resolverDecision === 'devolver_proveedora') {
+        body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
+        body.subdivision_proveedora_id = Number.parseInt(String(resolverProvSubdivisionId || ''), 10)
       }
 
       const response = await authFetch(
@@ -1029,6 +1415,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     fetchRows,
     resolverDecision,
     resolverMotivo,
+    resolverProvSubdivisionId,
     resolverSubdivisionId,
     selectedIssue,
     showSuccessToast,
@@ -1619,25 +2006,30 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                       {selectedIssue?.tipo === 'sobrante' ? (
                         <>
                           <p className="muted transfer-issues-details__hint">
-                            Decide si el sobrante debe restarse del inventario del proveedor (lo envió por error) o no hacer ningún cambio (el destino se queda con el extra).
+                            Decide si los productos sobrantes deben devolverse a la sucursal proveedora (se restan del destino y se suman al origen) o mantenerse en la sucursal destino.
                           </p>
                           <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
                             <button
                               type="button"
                               className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
-                                resolverDecision === 'restar_proveedora' ? ' is-active' : ''
+                                resolverDecision === 'devolver_proveedora' ? ' is-active' : ''
                               }`}
                               onClick={() => {
-                                setResolverDecision('restar_proveedora')
+                                setResolverDecision('devolver_proveedora')
                                 setResolverBodegaId('')
                                 setResolverDivisionId('')
                                 setResolverSubdivisionId('')
                                 setResolverNeedsManualLocation(false)
                                 closeResolverLocationDropdown()
+                                setResolverProvBodegaId('')
+                                setResolverProvDivisionId('')
+                                setResolverProvSubdivisionId('')
+                                setResolverProvNeedsManualLocation(false)
+                                closeResolverProvLocationDropdown()
                               }}
                               disabled={resolverSubmitting}
                             >
-                              Restar a sucursal proveedora
+                              Devolver
                             </button>
                             <button
                               type="button"
@@ -1651,10 +2043,15 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                 setResolverSubdivisionId('')
                                 setResolverNeedsManualLocation(false)
                                 closeResolverLocationDropdown()
+                                setResolverProvBodegaId('')
+                                setResolverProvDivisionId('')
+                                setResolverProvSubdivisionId('')
+                                setResolverProvNeedsManualLocation(false)
+                                closeResolverProvLocationDropdown()
                               }}
                               disabled={resolverSubmitting}
                             >
-                              No hacer nada
+                              Mantener
                             </button>
                           </div>
                         </>
@@ -1719,9 +2116,9 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                         </>
                       )}
 
-                      {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora') && (
+                      {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora' || resolverDecision === 'devolver_proveedora') && (
                         <label className="create-user__field create-user__field--full transfer-issues-details__field">
-                          <span>Ubicacion ({resolverTargetBranchLabel})</span>
+                          <span>{resolverDecision === 'devolver_proveedora' ? `Donde restar en destino (${resolverTargetBranchLabel})` : `Ubicacion (${resolverTargetBranchLabel})`}</span>
                           <div className="create-entrada__location-picker-grid">
                             <div className="create-entrada__location-picker-item">
                               <small>Bodega</small>
@@ -2000,6 +2397,215 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                           {!resolverSubdivisionsLoading && resolverNeedsManualLocation && !resolverSubdivisionId ? (
                             <small className="transfer-issues-details__manual-location-hint">
                               Este producto no tiene ubicación previa en esta sucursal. Selecciona bodega, división y subdivisión.
+                            </small>
+                          ) : null}
+                        </label>
+                      )}
+
+                      {resolverDecision === 'devolver_proveedora' && (
+                        <label className="create-user__field create-user__field--full transfer-issues-details__field">
+                          <span>Donde sumar en proveedora ({String(selectedIssue?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'})</span>
+                          <div className="create-entrada__location-picker-grid">
+                            <div className="create-entrada__location-picker-item">
+                              <small>Bodega</small>
+                              <div
+                                className="create-user__dropdown create-salida__product-dropdown"
+                                ref={resolverProvLocationDropdownField === 'bodega' ? resolverProvLocationDropdownRef : null}
+                              >
+                                <button
+                                  type="button"
+                                  className="create-user__dropdown-trigger"
+                                  onClick={() => toggleResolverProvLocationDropdown('bodega')}
+                                  disabled={resolverSubmitting || resolverProvSubdivisionsLoading}
+                                >
+                                  <span>
+                                    {selectedResolverProvBodega
+                                      ? formatBodegaLocationLabel(selectedResolverProvBodega)
+                                      : 'Selecciona una bodega'}
+                                  </span>
+                                  <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'bodega' ? 'up' : 'down'}`} />
+                                </button>
+                                {resolverProvLocationDropdownField === 'bodega' && (
+                                  <div
+                                    className={`create-user__dropdown-panel ${
+                                      resolverProvLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                    }`}
+                                    style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${resolverProvLocationDropdownMaxHeight}px` } : undefined}
+                                  >
+                                    <div className="create-user__dropdown-search">
+                                      <i className="pi pi-search" />
+                                      <input
+                                        type="text"
+                                        placeholder="Buscar bodega"
+                                        value={resolverProvLocationQuery}
+                                        onChange={(event) => setResolverProvLocationQuery(event.target.value)}
+                                        disabled={resolverSubmitting}
+                                      />
+                                    </div>
+                                    <div
+                                      className="create-user__dropdown-results"
+                                      style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${Math.max(resolverProvLocationDropdownMaxHeight - 72, 84)}px` } : undefined}
+                                    >
+                                      {!filterResolverProvLocationOptions(resolverProvBodegas, (bodega) => `${formatBodegaLocationLabel(bodega)} ${String(bodega?.sucursal?.nombre || '').trim()}`).length && (
+                                        <small className="muted">Sin resultados.</small>
+                                      )}
+                                      {filterResolverProvLocationOptions(resolverProvBodegas, (bodega) => `${formatBodegaLocationLabel(bodega)} ${String(bodega?.sucursal?.nombre || '').trim()}`).map((bodega) => (
+                                        <button
+                                          key={`resolver-prov-bodega-option-${bodega.id}`}
+                                          type="button"
+                                          className="create-user__result-option"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleResolverProvLocationPick('bodega', bodega.id) }}
+                                          disabled={resolverSubmitting}
+                                        >
+                                          <div className="create-user__result-info">
+                                            <strong>{String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}</strong>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="create-entrada__location-picker-item">
+                              <small>Division</small>
+                              <div
+                                className="create-user__dropdown create-salida__product-dropdown"
+                                ref={resolverProvLocationDropdownField === 'division' ? resolverProvLocationDropdownRef : null}
+                              >
+                                <button
+                                  type="button"
+                                  className="create-user__dropdown-trigger"
+                                  onClick={() => toggleResolverProvLocationDropdown('division')}
+                                  disabled={resolverSubmitting || resolverProvSubdivisionsLoading || !resolverProvBodegaId}
+                                >
+                                  <span>
+                                    {selectedResolverProvDivision
+                                      ? String(selectedResolverProvDivision?.nombre || '').trim()
+                                      : 'Selecciona una division'}
+                                  </span>
+                                  <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'division' ? 'up' : 'down'}`} />
+                                </button>
+                                {resolverProvLocationDropdownField === 'division' && (
+                                  <div
+                                    className={`create-user__dropdown-panel ${
+                                      resolverProvLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                    }`}
+                                    style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${resolverProvLocationDropdownMaxHeight}px` } : undefined}
+                                  >
+                                    <div className="create-user__dropdown-search">
+                                      <i className="pi pi-search" />
+                                      <input
+                                        type="text"
+                                        placeholder="Buscar division"
+                                        value={resolverProvLocationQuery}
+                                        onChange={(event) => setResolverProvLocationQuery(event.target.value)}
+                                        disabled={resolverSubmitting}
+                                      />
+                                    </div>
+                                    <div
+                                      className="create-user__dropdown-results"
+                                      style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${Math.max(resolverProvLocationDropdownMaxHeight - 72, 84)}px` } : undefined}
+                                    >
+                                      {!filterResolverProvLocationOptions(resolverProvDivisionOptions, (division) => `${formatDivisionLocationLabel(division)} ${String(division?.bodega?.sucursal?.nombre || '').trim()}`).length && (
+                                        <small className="muted">Sin resultados.</small>
+                                      )}
+                                      {filterResolverProvLocationOptions(resolverProvDivisionOptions, (division) => `${formatDivisionLocationLabel(division)} ${String(division?.bodega?.sucursal?.nombre || '').trim()}`).map((division) => (
+                                        <button
+                                          key={`resolver-prov-division-option-${division.id}`}
+                                          type="button"
+                                          className="create-user__result-option"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleResolverProvLocationPick('division', division.id) }}
+                                          disabled={resolverSubmitting}
+                                        >
+                                          <div className="create-user__result-info">
+                                            <strong>{String(division?.nombre || `Division ${division.id}`).trim()}</strong>
+                                            <small>{formatDivisionLocationLabel(division)}</small>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="create-entrada__location-picker-item">
+                              <small>Subdivision</small>
+                              <div
+                                className="create-user__dropdown create-salida__product-dropdown"
+                                ref={resolverProvLocationDropdownField === 'subdivision' ? resolverProvLocationDropdownRef : null}
+                              >
+                                <button
+                                  type="button"
+                                  className="create-user__dropdown-trigger"
+                                  onClick={() => toggleResolverProvLocationDropdown('subdivision')}
+                                  disabled={resolverSubmitting || resolverProvSubdivisionsLoading || !resolverProvDivisionId}
+                                >
+                                  <span>
+                                    {selectedResolverProvSubdivision
+                                      ? String(selectedResolverProvSubdivision?.nombre || '').trim()
+                                      : 'Selecciona una subdivision'}
+                                  </span>
+                                  <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'subdivision' ? 'up' : 'down'}`} />
+                                </button>
+                                {resolverProvLocationDropdownField === 'subdivision' && (
+                                  <div
+                                    className={`create-user__dropdown-panel ${
+                                      resolverProvLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
+                                    }`}
+                                    style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${resolverProvLocationDropdownMaxHeight}px` } : undefined}
+                                  >
+                                    <div className="create-user__dropdown-search">
+                                      <i className="pi pi-search" />
+                                      <input
+                                        type="text"
+                                        placeholder="Buscar subdivision"
+                                        value={resolverProvLocationQuery}
+                                        onChange={(event) => setResolverProvLocationQuery(event.target.value)}
+                                        disabled={resolverSubmitting}
+                                      />
+                                    </div>
+                                    <div
+                                      className="create-user__dropdown-results"
+                                      style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${Math.max(resolverProvLocationDropdownMaxHeight - 72, 84)}px` } : undefined}
+                                    >
+                                      {!filterResolverProvLocationOptions(resolverProvSubdivisionOptions, (subdivision) => `${formatSubdivisionLocationLabel(subdivision)} ${String(subdivision?.division?.bodega?.sucursal?.nombre || '').trim()}`).length && (
+                                        <small className="muted">Sin resultados.</small>
+                                      )}
+                                      {filterResolverProvLocationOptions(resolverProvSubdivisionOptions, (subdivision) => `${formatSubdivisionLocationLabel(subdivision)} ${String(subdivision?.division?.bodega?.sucursal?.nombre || '').trim()}`).map((subdivision) => (
+                                        <button
+                                          key={`resolver-prov-subdivision-option-${subdivision.id}`}
+                                          type="button"
+                                          className="create-user__result-option"
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleResolverProvLocationPick('subdivision', subdivision.id) }}
+                                          disabled={resolverSubmitting}
+                                        >
+                                          <div className="create-user__result-info">
+                                            <strong>{String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}</strong>
+                                            <small>{formatSubdivisionLocationLabel(subdivision)}</small>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          {resolverProvSubdivisionsLoading ? (
+                            <small className="transfer-issues-details__loading">
+                              <Loader2 size={12} />
+                              Cargando subdivisiones...
+                            </small>
+                          ) : null}
+                          {!resolverProvSubdivisionsLoading && resolverProvNeedsManualLocation && !resolverProvSubdivisionId ? (
+                            <small className="transfer-issues-details__manual-location-hint">
+                              Este producto no tiene ubicación previa en la sucursal proveedora. Selecciona bodega, división y subdivisión.
                             </small>
                           ) : null}
                         </label>

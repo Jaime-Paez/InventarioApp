@@ -268,6 +268,7 @@ class TrasladoInconveniente(models.Model):
         PERDIDO = "perdido", "Perdido / robado / no recuperado"
         RESTAR_PROVEEDORA = "restar_proveedora", "Restar de sucursal proveedora"
         SIN_CAMBIOS = "sin_cambios", "Sin cambios de inventario"
+        DEVOLVER_PROVEEDORA = "devolver_proveedora", "Devolver a sucursal proveedora"
 
     solicitud = models.ForeignKey(
         SolicitudTraslado,
