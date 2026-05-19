@@ -7,6 +7,7 @@
 
 .create-user__body {
   position: relative;
+  padding-bottom: 24px;
 }
 
 .create-salida__header-title-group {
@@ -1496,4 +1497,51 @@
   .create-salida__products-table .create-user__locations-row {
     min-width: 620px;
   }
+}
+
+/* Urgente danger zone */
+.create-entrada__urgente-zone {
+  margin-bottom: 0;
+  border: 1px solid #f87171;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.create-entrada__urgente-zone-header {
+  padding: 10px 16px;
+  background-color: #fef2f2;
+  border-bottom: 1px solid #f87171;
+}
+
+.create-entrada__urgente-zone-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #dc2626;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.create-entrada__urgente-zone-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  background-color: #fff9f9;
+}
+
+.create-entrada__urgente-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.create-entrada__urgente-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #dc2626;
+  cursor: pointer;
+  flex-shrink: 0;
 }

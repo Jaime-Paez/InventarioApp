@@ -31,6 +31,7 @@ const initialForm = {
   factura_referencia: '',
   descripcion: '',
   urgente: false,
+  descripcion_urgencia: '',
   funcional: true,
   sucursalObjetivoId: '',
   cliente: '',
@@ -2769,6 +2770,7 @@ function CreateEntrada({
           fecha: formData.fecha,
           descripcion: String(formData.descripcion || '').trim(),
           urgente: Boolean(formData.urgente),
+          descripcion_urgencia: formData.urgente ? String(formData.descripcion_urgencia || '').trim() : '',
           sucursal_solicitante_id: Number(formData.sucursalId),
           sucursal_proveedora_id: Number(formData.sucursalObjetivoId),
           recordatorio_destinatario_ids: reminderRecipientIds,
@@ -3155,23 +3157,6 @@ function CreateEntrada({
                         />
                       </label>
 
-                      {isTraslado && (
-                        <label className="create-user__field">
-                          <span>Urgente</span>
-                          <input
-                            type="checkbox"
-                            checked={formData.urgente}
-                            onChange={(event) => {
-                              if (event.target.checked) {
-                                setShowUrgenteConfirm(true)
-                              } else {
-                                setFormData((prev) => ({ ...prev, urgente: false }))
-                              }
-                            }}
-                            disabled={loading}
-                          />
-                        </label>
-                      )}
                     </div>
                   </div>
                 </section>
@@ -3446,6 +3431,33 @@ function CreateEntrada({
                   </div>
 
                 </section>
+
+                {isTraslado && (
+                  <section className="create-entrada__urgente-zone">
+                    <div className="create-entrada__urgente-zone-header">
+                      <span className="create-entrada__urgente-zone-title">Urgente</span>
+                    </div>
+                    <div className="create-entrada__urgente-zone-body">
+                      <label className="create-entrada__urgente-check-row">
+                        <input
+                          type="checkbox"
+                          className="create-entrada__urgente-checkbox"
+                          checked={formData.urgente}
+                          onChange={(event) => {
+                            if (event.target.checked) {
+                              setShowUrgenteConfirm(true)
+                            } else {
+                              setFormData((prev) => ({ ...prev, urgente: false }))
+                            }
+                          }}
+                          disabled={loading}
+                        />
+                        <span>Marcar solicitud como urgente</span>
+                      </label>
+                    </div>
+                  </section>
+                )}
+
                   </>
                 )}
 
