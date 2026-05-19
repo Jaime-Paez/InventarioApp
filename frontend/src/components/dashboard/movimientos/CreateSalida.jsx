@@ -1171,7 +1171,7 @@ function CreateSalida({
   const reminderBranchUsers = useMemo(() => {
     if (!isManualTransferMode || !selectedReminderTargetBranchId) return []
     return reminderUsers.filter((userItem) =>
-      hasModuleBranchCreateAndUpdateAccess(userItem, 'movimientos_entradas', selectedReminderTargetBranchId)
+      hasModuleBranchCreateAndUpdateAccess(userItem, 'movimientos_salidas', selectedReminderTargetBranchId)
     )
   }, [isManualTransferMode, reminderUsers, selectedReminderTargetBranchId])
 
@@ -2890,6 +2890,24 @@ function CreateSalida({
       return false
     }
 
+    if (isManualTransferMode) {
+      if (reminderUsersLoading) {
+        setActiveTab('notificacion')
+        notifyError('Espera a que se carguen los usuarios para el recordatorio.')
+        return false
+      }
+      if (!hasAdminReminderRecipients) {
+        setActiveTab('notificacion')
+        notifyError('No se pudo resolver un administrador para el recordatorio obligatorio.')
+        return false
+      }
+      if (!hasAdditionalReminderRecipients) {
+        setActiveTab('notificacion')
+        notifyError('Debes seleccionar al menos un usuario adicional para el recordatorio.')
+        return false
+      }
+    }
+
     if (isTraslado && !skipTransferConfirmation) {
       setIsTransferSendConfirmOpen(true)
       return false
@@ -3235,7 +3253,7 @@ function CreateSalida({
                       className={`create-user__tab ${activeTab === 'notificacion' ? 'create-user__tab--active' : ''}`}
                       onClick={() => setActiveTab('notificacion')}
                     >
-                      Notificación
+                      Recordatorio
                     </button>
                   )}
                 </div>
@@ -4023,7 +4041,7 @@ function CreateSalida({
                     </p>
                     <div className="create-salida__reminder-rule" role="note">
                       Solo se listan usuarios con permisos de <strong>crear y editar</strong> en{' '}
-                      <strong>Movimientos - Entradas</strong> de la <strong>sucursal destino</strong>.
+                      <strong>Movimientos - Salidas</strong> de la <strong>sucursal destino</strong>.
                     </div>
 
                     {!hasSelectedReminderTargetBranch && (
@@ -4099,7 +4117,7 @@ function CreateSalida({
                           {hasSelectedReminderTargetBranch && !reminderUsersLoading && !selectableReminderUsers.length && (
                             <div className="permissions-matrix__row create-salida__reminder-row--empty">
                               <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                No hay usuarios disponibles con permisos de crear y editar en entradas para esta sucursal.
+                                No hay usuarios disponibles con permisos de crear y editar en salidas para esta sucursal.
                               </div>
                             </div>
                           )}
