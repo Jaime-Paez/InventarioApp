@@ -7,6 +7,9 @@
 
 .create-user__body {
   position: relative;
+}
+
+.create-salida__modal .create-user__body {
   padding-bottom: 24px;
 }
 
