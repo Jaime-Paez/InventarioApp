@@ -109,13 +109,6 @@
   min-width: 32px;
 }
 
-.inventario-v2__location-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
 .inventario-v2__location-lines {
   display: flex;
   flex: 1 1 auto;
@@ -125,44 +118,8 @@
   min-width: 0;
 }
 
-.inventario-v2__location-main {
-  display: block;
-  min-width: 0;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .inventario-v2__location-main--secondary {
   font-weight: 500;
-}
-
-.inventario-v2__location-eye {
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
-  color: var(--color-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex: 0 0 auto;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.inventario-v2__location-eye:hover,
-.inventario-v2__location-eye:focus-visible {
-  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
-  border-color: var(--color-primary);
-  outline: none;
-}
-
-.inventario-v2__location-eye i {
-  font-size: 0.82rem;
 }
 
 .inventario-v2__location-hover-card {
@@ -234,18 +191,6 @@
   color: #f87171;
 }
 
-.dashboard-shell.dark .inventario-v2__location-eye {
-  border-color: color-mix(in srgb, #ffffff 26%, var(--color-border));
-  background: color-mix(in srgb, var(--color-primary-dark) 20%, var(--color-surface-darker));
-  color: #fff;
-}
-
-.dashboard-shell.dark .inventario-v2__location-eye:hover,
-.dashboard-shell.dark .inventario-v2__location-eye:focus-visible {
-  background: color-mix(in srgb, var(--color-primary-dark) 34%, var(--color-surface-darker));
-  border-color: color-mix(in srgb, #ffffff 56%, var(--color-primary-dark));
-}
-
 .dashboard-shell.dark .inventario-v2__location-main--secondary {
   color: color-mix(in srgb, var(--color-text-dark) 82%, transparent);
 }
@@ -268,12 +213,6 @@
 
 .dashboard-shell.dark .inventario-v2__location-hover-table td {
   border-bottom-color: color-mix(in srgb, var(--color-border) 52%, transparent);
-}
-
-.inventario-v2__oem-hover-card {
-  position: fixed;
-  z-index: 1200;
-  width: min(220px, calc(100vw - 24px));
 }
 
 .inventario-v2__row {

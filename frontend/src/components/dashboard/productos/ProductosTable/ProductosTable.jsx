@@ -68,6 +68,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
+  const oemHoverHideTimeoutRef = useRef(null)
   const _widthsClearedRef = useRef(null)
   if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('productos-table-state') }
   const [tableResetKey, setTableResetKey] = useState(0)
@@ -122,6 +123,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [isCodigoColumnFrozen, setIsCodigoColumnFrozen] = useState(false)
+  const [oemHoverCard, setOemHoverCard] = useState(null)
 
   const normalizeList = useCallback(
     (list) =>
@@ -141,6 +143,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
             ? Number(product.precio) * (1 + ivaRate)
             : null,
           oem_codes: oemCodes.join(', '),
+          oem_codes_list: oemCodes,
         }
       }),
     [ivaRate]
@@ -886,6 +889,80 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     )
   }
 
+  // ---------------- OEM hover card ----------------
+  const clearOemHoverHideTimer = useCallback(() => {
+    if (!oemHoverHideTimeoutRef.current) return
+    clearTimeout(oemHoverHideTimeoutRef.current)
+    oemHoverHideTimeoutRef.current = null
+  }, [])
+
+  const hideOemHoverCard = useCallback(() => {
+    clearOemHoverHideTimer()
+    setOemHoverCard(null)
+  }, [clearOemHoverHideTimer])
+
+  const scheduleHideOemHoverCard = useCallback(() => {
+    clearOemHoverHideTimer()
+    oemHoverHideTimeoutRef.current = setTimeout(() => {
+      oemHoverHideTimeoutRef.current = null
+      setOemHoverCard(null)
+    }, 120)
+  }, [clearOemHoverHideTimer])
+
+  const showOemHoverCard = useCallback(
+    (event, codes) => {
+      if (!codes.length) { hideOemHoverCard(); return }
+      clearOemHoverHideTimer()
+      const rect = event?.currentTarget?.getBoundingClientRect?.()
+      if (!rect) return
+      const cardWidth = 220
+      let left = rect.right + 10
+      if (left + cardWidth > window.innerWidth - 12) {
+        left = Math.max(12, rect.left - cardWidth - 10)
+      }
+      const top = Math.min(Math.max(rect.top - 8, 12), Math.max(window.innerHeight - 260, 12))
+      setOemHoverCard({ left, top, codes })
+    },
+    [clearOemHoverHideTimer, hideOemHoverCard]
+  )
+
+  useEffect(() => () => { clearOemHoverHideTimer() }, [clearOemHoverHideTimer])
+
+  useEffect(() => {
+    const handleScroll = () => hideOemHoverCard()
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [hideOemHoverCard])
+
+  const oemBodyTemplate = useCallback(
+    (rowData) => {
+      const codes = Array.isArray(rowData?.oem_codes_list) ? rowData.oem_codes_list : []
+      if (!codes.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+      const label = codes.join(', ')
+      return (
+        <div className="inventario-v2__location-cell">
+          <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
+          {codes.length > 1 && (
+            <button
+              type="button"
+              className="inventario-v2__location-eye"
+              aria-label="Ver todos los OEM"
+              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+              onMouseDown={(event) => event.stopPropagation()}
+              onMouseEnter={(event) => showOemHoverCard(event, codes)}
+              onMouseLeave={scheduleHideOemHoverCard}
+              onFocus={(event) => showOemHoverCard(event, codes)}
+              onBlur={scheduleHideOemHoverCard}
+            >
+              <i className="pi pi-eye" />
+            </button>
+          )}
+        </div>
+      )
+    },
+    [scheduleHideOemHoverCard, showOemHoverCard]
+  )
+
   // ---------------- Row click -> detalles ----------------
   const clickTimerRef = useRef(null)
 
@@ -1568,6 +1645,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                 }
                 className = 'column-max-min-width--small'
                 break
+              case 'oem_codes':
+                bodyTemplate = (rowData) => oemBodyTemplate(rowData)
+                break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
                 break
@@ -1588,6 +1668,30 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
             )
           })}
         </DataTable>
+
+        {Array.isArray(oemHoverCard?.codes) && oemHoverCard.codes.length > 0 && (
+          <div
+            className="movimientos-table__product-hover-card inventario-v2__oem-hover-card"
+            role="tooltip"
+            style={{ top: oemHoverCard.top, left: oemHoverCard.left }}
+            onMouseEnter={clearOemHoverHideTimer}
+            onMouseLeave={scheduleHideOemHoverCard}
+          >
+            <div className="movimientos-table__product-hover-title">OEM</div>
+            <table className="movimientos-table__product-hover-table">
+              <thead>
+                <tr><th>Código</th></tr>
+              </thead>
+              <tbody>
+                {oemHoverCard.codes.map((code, index) => (
+                  <tr key={`oem-hover-${index}`}>
+                    <td title={code}>{code}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>

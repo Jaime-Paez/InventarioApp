@@ -248,6 +248,7 @@ function CreateSolicitud({
   const [reminderUsersError, setReminderUsersError] = useState('')
   const [selectedClienteAutos, setSelectedClienteAutos] = useState([])
   const [autoConfirmData, setAutoConfirmData] = useState(null)
+  const [stockWarningData, setStockWarningData] = useState(null)
   const [savingAuto, setSavingAuto] = useState(false)
   const [pendingAutoDraft, setPendingAutoDraft] = useState({ placa: '', modelo: '', anio: '', marca: '' })
   const [fetchingClienteAutos, setFetchingClienteAutos] = useState(false)
@@ -961,6 +962,7 @@ function CreateSolicitud({
     setAutoDraft({ ...emptyAuto })
     setSelectedClienteAutos([])
     setAutoConfirmData(null)
+    setStockWarningData(null)
     setSavingAuto(false)
     setPendingAutoDraft({ placa: '', modelo: '', anio: '', marca: '' })
   }
@@ -1062,6 +1064,24 @@ function CreateSolicitud({
     } finally {
       setSavingAuto(false)
     }
+  }
+
+  const handleConfirmStockWarning = () => {
+    if (!stockWarningData) return
+    const { item } = stockWarningData
+    setProductos((prev) => [...prev, item])
+    setProductoDraft(initialProductoDraft)
+    setSelectedDraftProducto(null)
+    setProductoAttempted(false)
+    setShowReferenciaDropdown(false)
+    setShowCodigoDropdown(false)
+    setShowOemDropdown(false)
+    setShowCasaComercialDropdown(false)
+    setReferenciaOptions([])
+    setCodigoOptions([])
+    setOemOptions([])
+    setCasaComercialOptions([])
+    setStockWarningData(null)
   }
 
   const handleCedulaBlur = async () => {
@@ -1379,24 +1399,6 @@ function CreateSolicitud({
       return
     }
 
-    if (hasProductoId) {
-      try {
-        const { stockTotal: stockDisponible, sucursalesStock } = await fetchProductoStockInfo(productoIdRaw)
-        if (stockDisponible > 0) {
-          const detalleStock = formatStockByBranch(sucursalesStock)
-          notifyError(
-            detalleStock
-              ? `No se puede solicitar este producto porque tiene stock disponible (${stockDisponible}) en: ${detalleStock}.`
-              : `No se puede solicitar este producto porque tiene stock disponible (${stockDisponible}).`
-          )
-          return
-        }
-      } catch (err) {
-        notifyError(err?.message || 'No se pudo validar el stock del producto.')
-        return
-      }
-    }
-
     const missingFields = []
     if (!nombre) missingFields.push('nombre')
 
@@ -1439,6 +1441,23 @@ function CreateSolicitud({
       oems: oemList,
       comentario,
       cantidad,
+    }
+
+    if (hasProductoId) {
+      try {
+        const { stockTotal: stockDisponible, sucursalesStock } = await fetchProductoStockInfo(productoIdRaw)
+        if (stockDisponible > 0) {
+          const detalleStock = formatStockByBranch(sucursalesStock)
+          const warningMsg = detalleStock
+            ? `Este producto tiene stock disponible (${stockDisponible}) en: ${detalleStock}.`
+            : `Este producto tiene stock disponible (${stockDisponible}).`
+          setStockWarningData({ item, message: warningMsg })
+          return
+        }
+      } catch (err) {
+        notifyError(err?.message || 'No se pudo validar el stock del producto.')
+        return
+      }
     }
 
     setProductos((prev) => [...prev, item])
@@ -2372,6 +2391,35 @@ function CreateSolicitud({
             </div>
           </div>
         </form>
+
+        {stockWarningData && (
+          <div
+            className="create-solicitud__confirm-overlay"
+            onMouseDown={() => setStockWarningData(null)}
+          >
+            <div className="create-solicitud__confirm-card" onMouseDown={(e) => e.stopPropagation()}>
+              <h4>Producto con stock disponible</h4>
+              <p>{stockWarningData.message}</p>
+              <p>¿Estás seguro de hacer esta solicitud?</p>
+              <div className="create-solicitud__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={() => setStockWarningData(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleConfirmStockWarning}
+                >
+                  Sí, agregar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {autoConfirmData && (
           <div
