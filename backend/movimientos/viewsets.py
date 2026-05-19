@@ -1949,6 +1949,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 "type": "solicitud_traslado",
                 "id": str(movement_id),
                 "label": context_label,
+                "sucursal_solicitante_id": str(getattr(movement, "sucursal_objetivo_id", "") or ""),
+                "sucursal_proveedora_id": str(getattr(movement, "sucursal_id", "") or ""),
             },
             "kind": "recordatorio_general",
             "createdAt": created_at,
