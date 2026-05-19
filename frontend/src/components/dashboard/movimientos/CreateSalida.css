@@ -9,8 +9,10 @@
   position: relative;
 }
 
-.create-salida__modal .create-user__body {
-  padding-bottom: 24px;
+.create-salida__modal .create-user__body::after {
+  content: '';
+  display: block;
+  height: 24px;
 }
 
 .create-salida__header-title-group {
