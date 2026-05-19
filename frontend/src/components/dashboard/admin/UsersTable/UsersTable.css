@@ -29,13 +29,21 @@
 .users-topbtn.p-button {
   border-radius: 5px;
   padding: 5px 10px;
-  background: var(--color-primary);
-  border: 1px solid var(--color-primary);
-  color: var(--color-button-primary);
+  color: #fff;
 }
 
 .users-topbtn.p-button:hover {
-  filter: brightness(0.98);
+  filter: brightness(0.93);
+}
+
+.users-topbtn--create.p-button {
+  background: #2e7d32;
+  border: 1px solid #2e7d32;
+}
+
+.users-topbtn--search.p-button {
+  background: #0288d1;
+  border: 1px solid #0288d1;
 }
 
 .users-topbtn--create.p-button .p-button-icon,
@@ -43,10 +51,14 @@
   font-size: 0.9rem;
 }
 
-.dashboard-shell.dark .users-topbtn.p-button {
-  background: var(--color-primary-dark);
-  border-color: var(--color-primary-dark);
-  color: var(--color-button-primary);
+.dashboard-shell.dark .users-topbtn--create.p-button {
+  background: #388e3c;
+  border-color: #388e3c;
+}
+
+.dashboard-shell.dark .users-topbtn--search.p-button {
+  background: #0277bd;
+  border-color: #0277bd;
 }
 
 /* ====== TU CONTENEDOR (ahora como card) ====== */
