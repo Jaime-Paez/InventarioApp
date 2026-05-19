@@ -868,7 +868,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         sucursal_objetivo = serializer.validated_data.get("sucursal_objetivo")
         solicitud_traslado = serializer.validated_data.get("solicitud_traslado")
         skip_target_scope_validation = bool(
-            solicitud_traslado is not None and self._is_traslado_movement(serializer)
+            (solicitud_traslado is not None and self._is_traslado_movement(serializer))
+            or RolPermiso.Modulos.MOVIMIENTOS_SALIDAS in module_keys
         )
 
         ensure_sucursal_allowed_for_modules(
