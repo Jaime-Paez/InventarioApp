@@ -1579,7 +1579,7 @@ function CreateSalida({
         next.descuento = ''
         changed = true
       }
-      if (!isDevolucion && !next.funcional) {
+      if (!next.funcional) {
         next.funcional = true
         changed = true
       }
@@ -2178,9 +2178,11 @@ function CreateSalida({
 
     const solicitudId = String(formData.solicitudTrasladoId || '').trim()
     if (!solicitudId) {
-      setDetails([])
-      setDetailDraft(initialDetail)
-      setDetailError('')
+      if (!isManualTransferMode) {
+        setDetails([])
+        setDetailDraft(initialDetail)
+        setDetailError('')
+      }
       if (transferRequiresRequest) {
         setFormData((prev) => {
           if (!prev.sucursalObjetivoId) return prev
@@ -2710,7 +2712,8 @@ function CreateSalida({
     const cantidad = parseIntValue(detailDraft.cantidad)
     const estadoProductoId = String(defaultEstadoProductoId || '').trim()
     const producto = productos.find((item) => String(item.id) === productoId)
-    const valor = parseNumber(resolveProductPrice(producto))
+    const valorRaw = parseNumber(resolveProductPrice(producto))
+    const valor = isTraslado ? (valorRaw ?? 0) : valorRaw
 
     if (isTraslado && !formData.sucursalId) {
       setDetailError('Selecciona primero la sucursal para cargar disponibilidad.')
@@ -2852,8 +2855,13 @@ function CreateSalida({
       return false
     }
 
-    if (isVenta && !String(formData.factura_referencia || '').trim()) {
-      notifyError('El No. de Factura es obligatorio para ventas.')
+    if ((isVenta || isDevolucion) && !String(formData.factura_referencia || '').trim()) {
+      notifyError('El No. de Factura es obligatorio.')
+      return false
+    }
+
+    if (isDevolucion && !String(formData.descripcion || '').trim()) {
+      notifyError('La Descripción es obligatoria para solicitudes de garantía.')
       return false
     }
 
@@ -2973,7 +2981,7 @@ function CreateSalida({
           : undefined,
         descripcion: buildDescripcion(ventaClienteLabel),
         factura_referencia: isVenta || isDevolucion ? String(formData.factura_referencia || '').trim() : '',
-        funcional: isDevolucion ? Boolean(formData.funcional) : true,
+        funcional: true,
         sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
         estado_movimiento_id: Number(estadoMovimientoId),
         descuento,
@@ -3331,7 +3339,7 @@ function CreateSalida({
                             )}
 
                     {(isVenta || isDevolucion) && (
-                      <label className="create-user__field">
+                      <label className="create-user__field create-user__field--full">
                         <span>No. de Factura</span>
                         <input
                           name="factura_referencia"
@@ -3339,7 +3347,7 @@ function CreateSalida({
                           value={formData.factura_referencia}
                           onChange={handleChange}
                           disabled={loading}
-                          required={isVenta}
+                          required={isVenta || isDevolucion}
                         />
                       </label>
                     )}
@@ -3357,23 +3365,6 @@ function CreateSalida({
                           onChange={handleChange}
                           disabled={loading}
                         />
-                      </label>
-                    )}
-
-                    {isDevolucion && (
-                      <label className="create-user__field">
-                        <span>Funcional</span>
-                        <select
-                          name="funcional"
-                          value={formData.funcional ? 'true' : 'false'}
-                          onChange={(event) =>
-                            setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                          }
-                          disabled={loading}
-                        >
-                          <option value="true">Sí</option>
-                          <option value="false">No</option>
-                        </select>
                       </label>
                     )}
 
@@ -3431,14 +3422,15 @@ function CreateSalida({
                       </label>
                     )}
 
-                    <label className="create-user__field create-user__field--full">
+                    <label className={`create-user__field create-user__field--full${isDevolucion ? ' create-user__field--required' : ''}`}>
                       <span>Descripción</span>
-                      <input
+                      <textarea
                         name="descripcion"
-                        type="text"
                         value={formData.descripcion}
                         onChange={handleChange}
                         disabled={loading}
+                        rows={3}
+                        required={isDevolucion}
                       />
                     </label>
 

@@ -76,6 +76,34 @@
   color: var(--color-button-primary);
 }
 
+.users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada > td {
+  background: color-mix(in srgb, #eab308 14%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #ca8a04 28%, transparent) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada:hover > td {
+  background: color-mix(in srgb, #eab308 22%, var(--table-color-hover)) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada.selected-row-shadow > td,
+.users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #eab308 28%, var(--table-color-selected)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada > td {
+  background: color-mix(in srgb, #eab308 18%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #eab308 38%, var(--color-border-dark)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada:hover > td {
+  background: color-mix(in srgb, #eab308 26%, var(--table-color-dark-hover)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada.selected-row-shadow > td,
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #eab308 32%, var(--table-color-selected-dark)) !important;
+}
+
 .users-datatable .p-datatable-tbody > tr.salidas-row--sent-traslado > td {
   background: color-mix(in srgb, #0ea5e9 16%, var(--table-color)) !important;
   border-bottom-color: color-mix(in srgb, #0369a1 30%, transparent) !important;

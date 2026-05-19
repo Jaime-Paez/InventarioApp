@@ -22,6 +22,7 @@ const emptyForm = {
   estadoNombre: '',
   fecha: '',
   no_documento: '',
+  factura_referencia: '',
   descripcion: '',
   funcional: true,
   sucursalObjetivoId: '',
@@ -291,6 +292,7 @@ function SalidaDetails({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteInventoryAction, setDeleteInventoryAction] = useState('reverse')
   const [isEditing, setIsEditing] = useState(false)
+  const [formSubmitted, setFormSubmitted] = useState(false)
   const [, setError] = useState('')
 
   const [branches, setBranches] = useState([])
@@ -396,7 +398,7 @@ function SalidaDetails({
   const clientDataReadOnly = restrictedEditMode
   const requiresStockValidation = isTraslado || isVenta || isDevolucion
   const requiresSucursalObjetivo = isTraslado
-  const documentLabel = isTraslado ? 'No. de Traslado' : 'No. de Factura'
+  const documentLabel = isTraslado ? 'No. de Traslado' : isDevolucion ? 'No. Garantía' : 'No. de Factura'
   const selectedSucursalName = branches.find((b) => String(b.id) === String(formData.sucursalId))?.nombre || ''
   const selectedObjetivoName = branches.find((b) => String(b.id) === String(formData.sucursalObjetivoId))?.nombre || ''
   const formattedFecha = formatDateDisplay(formData.fecha)
@@ -679,7 +681,7 @@ function SalidaDetails({
         next.descuento = ''
         changed = true
       }
-      if (!isDevolucion && !next.funcional) {
+      if (!next.funcional) {
         next.funcional = true
         changed = true
       }
@@ -806,6 +808,7 @@ function SalidaDetails({
         estadoNombre: estadoNombre || '',
         fecha: salida?.fecha || todayISO(),
         no_documento: salida?.no_documento ?? '',
+        factura_referencia: salida?.factura_referencia ?? '',
         descripcion,
         funcional: Boolean(salida?.funcional),
         sucursalObjetivoId: sucursalObjetivoId ? String(sucursalObjetivoId) : '',
@@ -995,6 +998,7 @@ function SalidaDetails({
     setTransferSolicitudId('')
     setOriginalData(null)
     setIsEditing(false)
+    setFormSubmitted(false)
     setShowDeleteConfirm(false)
     setDeleteInventoryAction('reverse')
     setIsMaximized(false)
@@ -1401,7 +1405,7 @@ function SalidaDetails({
   const handleChange = (event) => {
     if (!isEditing) return
     const { name, value, type, checked } = event.target
-    if (name !== 'descripcion') return
+    if (name !== 'descripcion' && name !== 'factura_referencia') return
     setFormData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -1566,6 +1570,7 @@ function SalidaDetails({
   }
 
   const handleCancelEdit = () => {
+    setFormSubmitted(false)
     if (!originalData) {
       setIsEditing(false)
       setShowDeleteConfirm(false)
@@ -1605,6 +1610,7 @@ function SalidaDetails({
   const handleSave = async () => {
     if (!allowEdit) return
     if (!isEditing || saving) return
+    setFormSubmitted(true)
     setError('')
 
     const sourceForm = originalData?.form ? { ...originalData.form } : { ...formData }
@@ -1644,6 +1650,16 @@ function SalidaDetails({
 
     if (!String(sourceForm.no_documento || '').trim()) {
       notifyError('Ingresa el numero de documento.')
+      return
+    }
+
+    if ((isVenta || isDevolucion) && !String(formData.factura_referencia || '').trim()) {
+      notifyError('El No. de Factura es obligatorio.')
+      return
+    }
+
+    if (isDevolucion && !String(formData.descripcion || '').trim()) {
+      notifyError('La Descripción es obligatoria para solicitudes de garantía.')
       return
     }
 
@@ -1691,7 +1707,8 @@ function SalidaDetails({
       tipo_movimiento_id: Number(salidaTipoId),
       sub_tipo_movimiento_id: Number(sourceForm.subTipoId),
       descripcion: buildDescripcion(ventaClienteLabel),
-      funcional: isDevolucion ? Boolean(formData.funcional) : true,
+      funcional: true,
+      factura_referencia: isVenta || isDevolucion ? String(formData.factura_referencia || '').trim() : '',
       sucursal_objetivo_id: requiresSucursalObjetivo ? Number(sourceForm.sucursalObjetivoId) : null,
       estado_movimiento_id: Number(sourceForm.estadoId),
       descuento,
@@ -1735,7 +1752,8 @@ function SalidaDetails({
       const updatedForm = {
         ...sourceForm,
         descripcion: String(formData.descripcion || ''),
-        funcional: isDevolucion ? Boolean(formData.funcional) : Boolean(sourceForm.funcional),
+        factura_referencia: String(formData.factura_referencia || ''),
+        funcional: true,
         cliente: ventaClienteLabel,
       }
       setFormData(updatedForm)
@@ -1823,6 +1841,7 @@ function SalidaDetails({
     isSentTransferRibbon ? 'entrada-details__modal--pending' : '',
     isClosing ? 'create-user__modal--closing' : '',
     isResizingModal ? 'create-salida__modal--resizing' : '',
+    formSubmitted ? 'create-user__modal--submitted' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -1950,33 +1969,29 @@ function SalidaDetails({
                         <StaticFieldDisplay label="Descuento (%)" value={formData.descuento} />
                       )}
 
-                      {isDevolucion && (
-                        <label className="create-user__field">
-                          <span>Funcional</span>
-                          <select
-                            name="funcional"
-                            value={formData.funcional ? 'true' : 'false'}
-                            onChange={(event) =>
-                              isEditing &&
-                              !editorDisabled &&
-                              setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                            }
+                      {(isVenta || isDevolucion) && (
+                        <label className="create-user__field create-user__field--full">
+                          <span>No. de Factura</span>
+                          <input
+                            name="factura_referencia"
+                            type="text"
+                            value={formData.factura_referencia}
+                            onChange={handleChange}
                             disabled={editorDisabled}
-                          >
-                            <option value="true">Si</option>
-                            <option value="false">No</option>
-                          </select>
+                            required={isVenta || isDevolucion}
+                          />
                         </label>
                       )}
 
-                      <label className="create-user__field create-user__field--full">
-                        <span>Descripcion</span>
-                        <input
+                      <label className={`create-user__field create-user__field--full${isDevolucion ? ' create-user__field--required' : ''}`}>
+                        <span>Descripción</span>
+                        <textarea
                           name="descripcion"
-                          type="text"
                           value={formData.descripcion}
                           onChange={handleChange}
                           disabled={editorDisabled}
+                          rows={3}
+                          required={isDevolucion}
                         />
                       </label>
                     </div>

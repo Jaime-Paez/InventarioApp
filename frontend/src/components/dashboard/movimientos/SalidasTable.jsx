@@ -46,6 +46,7 @@ const formatEstadoForTable = (value) => {
   if (normalized.includes('solicitud') && normalized.includes('pend')) {
     return 'Pendiente'
   }
+  if (normalized === 'llego') return 'Llegó'
   return rawValue
 }
 const parseCurrency = (value) => {
@@ -87,7 +88,6 @@ const SALIDAS_FILTER_FIELDS = [
   'estado_nombre',
   'sucursal_objetivo_nombre',
   'total',
-  'funcional_label',
 ]
 
 const SALIDAS_FILTER_DEFAULT_MODES = {
@@ -98,7 +98,6 @@ const SALIDAS_FILTER_DEFAULT_MODES = {
   estado_nombre: FilterMatchMode.CONTAINS,
   sucursal_objetivo_nombre: FilterMatchMode.CONTAINS,
   total: FilterMatchMode.EQUALS,
-  funcional_label: FilterMatchMode.CONTAINS,
 }
 
 const SALIDAS_ORDERING_MAP = {
@@ -109,7 +108,6 @@ const SALIDAS_ORDERING_MAP = {
   estado_nombre: 'estado_movimiento__nombre',
   sucursal_objetivo_nombre: 'sucursal_objetivo__nombre',
   total: 'total_monto',
-  funcional_label: 'funcional',
 }
 
 const createInitialFilters = () => ({
@@ -127,7 +125,6 @@ const initialSearchCriteria = {
   sucursal_objetivo: '',
   total_min: '',
   total_max: '',
-  funcional: '',
 }
 
 const normId = (value) => (value == null ? null : String(value))
@@ -220,7 +217,6 @@ function SalidasTable({
       { nombrevar: 'sucursal_objetivo_nombre', header: 'Destino', filterPlaceholder: 'Buscar por destino' },
       { nombrevar: 'estado_nombre', header: 'Estado', filterPlaceholder: 'Buscar por estado' },
       { nombrevar: 'total', header: 'Total', filterPlaceholder: 'Buscar por total' },
-      { nombrevar: 'funcional_label', header: 'Funcional', filterPlaceholder: 'Buscar por funcional' },
     ],
     []
   )
@@ -280,7 +276,6 @@ function SalidasTable({
           sub_tipo_nombre: formatSalidaSubTipoLabel(row?.sub_tipo_nombre || row?.sub_tipo_movimiento || '-'),
           estado_nombre: formatEstadoForTable(row?.estado_nombre || row?.estado_movimiento),
           sucursal_objetivo_nombre: row?.sucursal_objetivo_nombre || row?.sucursal_objetivo || '-',
-          funcional_label: row?.funcional_label || (row?.funcional ? 'Si' : 'No'),
           productos,
           productos_resumen: buildMovementProductsSearchText(productos) || '-',
           productos_codigos:
@@ -323,11 +318,6 @@ function SalidasTable({
     addIfPresent('sucursal_objetivo', criteria?.sucursal_objetivo)
     addIfPresent('total_min', criteria?.total_min)
     addIfPresent('total_max', criteria?.total_max)
-
-    const funcionalValue = String(criteria?.funcional ?? '').trim().toLowerCase()
-    if (funcionalValue === 'si' || funcionalValue === 'no') {
-      params.set('funcional', funcionalValue)
-    }
 
     if (subtype && subtype !== 'all') {
       params.set('subtipo', subtype)
@@ -836,13 +826,11 @@ function SalidasTable({
     )
     const estadoGarantia = field === 'estado_nombre' ? String(rowData?.estado_garantia || '').trim() : ''
     const isGarantiaSolicitada = estadoGarantia === 'solicitada'
-    const isGarantiaRealizada = estadoGarantia === 'realizada'
     const className = [
       'cell-tooltip',
       field === 'estado_nombre' && isSentTransfer ? 'salidas-sent-state-chip' : '',
       field === 'estado_nombre' && isPartialSalida ? 'salidas-partial-state-chip' : '',
       isGarantiaSolicitada ? 'salidas-garantia-pendiente-chip' : '',
-      isGarantiaRealizada ? 'salidas-garantia-realizada-chip' : '',
     ]
       .filter(Boolean)
       .join(' ')
@@ -919,7 +907,7 @@ function SalidasTable({
   }
 
   const columnClassName = (field) => {
-    if (field === 'fecha' || field === 'total' || field === 'funcional_label' || field === 'estado_nombre') {
+    if (field === 'fecha' || field === 'total' || field === 'estado_nombre') {
       return 'column-max-min-width--small'
     }
     return 'column-max-min-width'
@@ -1401,7 +1389,6 @@ function SalidasTable({
             'sucursal_objetivo_nombre',
             'estado_nombre',
             'total',
-            'funcional_label',
           ]}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
@@ -1412,6 +1399,9 @@ function SalidasTable({
             const isTransferRow = normalizedSubTipo.includes('trasl')
             if (selectedRowIds.includes(normId(rowData?.id))) {
               classes.push('selected-row-shadow')
+            }
+            if (String(rowData?.estado_garantia || '').trim() === 'solicitada') {
+              classes.push('salidas-row--garantia-solicitada')
             }
             if (isTransferRow && normalizedEstado.includes('envi')) {
               classes.push('salidas-row--sent-traslado')
@@ -1691,19 +1681,6 @@ function SalidasTable({
                         value={searchCriteria.sucursal_objetivo}
                         onChange={handleSearchInputChange}
                       />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Funcional</span>
-                      <select
-                        name="funcional"
-                        value={searchCriteria.funcional}
-                        onChange={handleSearchInputChange}
-                      >
-                        <option value="">Todos</option>
-                        <option value="si">Si</option>
-                        <option value="no">No</option>
-                      </select>
                     </label>
 
                     <label className="create-user__field">
