@@ -648,8 +648,6 @@ class SolicitudSerializer(serializers.ModelSerializer):
             oem_codes = self._get_producto_solicitado_oem_codes(target)
 
         errors = {}
-        if not codigo:
-            errors["producto_codigo"] = "El codigo es obligatorio."
         if not nombre:
             errors["producto_nombre"] = "El nombre es obligatorio."
         if errors:
@@ -668,7 +666,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
                     {"producto_casa_comercial_id": "La casa comercial seleccionada no existe."}
                 ) from exc
 
-        if is_new or "producto_codigo" in payload:
+        if codigo and (is_new or "producto_codigo" in payload):
             if Producto.objects.filter(codigo__iexact=codigo).exists():
                 raise serializers.ValidationError(
                     {"producto_codigo": "Ya existe un producto de catalogo con ese codigo."}

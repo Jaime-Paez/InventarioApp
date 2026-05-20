@@ -745,6 +745,11 @@
   cursor: not-allowed;
 }
 
+.create-salida__result-row.is-zero-stock .result-stock {
+  color: var(--color-error, #dc2626);
+  font-weight: 700;
+}
+
 .create-salida__result-row .result-codigo {
   font-weight: 600;
   white-space: nowrap;

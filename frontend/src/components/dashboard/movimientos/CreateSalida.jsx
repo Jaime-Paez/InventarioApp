@@ -1806,11 +1806,7 @@ function CreateSalida({
         if (!response.ok) throw new Error('No se pudieron cargar los productos.')
 
         const payload = await response.json()
-        let list = parseApiList(payload)
-        if (requiresStockValidation) {
-          list = list.filter((producto) => Number(stockMap?.[String(producto?.id)] ?? 0) > 0)
-        }
-
+        const list = parseApiList(payload)
         setProductOptions(list)
       } catch {
         setProductOptions([])
@@ -3578,6 +3574,7 @@ function CreateSalida({
                                   const isSelected = normalizedProductId === String(detailDraft.productoId || '').trim()
                                   const isAlreadyAdded = detailProductIdSet.has(normalizedProductId)
                                   const available = Number(stockByProduct[String(producto.id)] ?? 0)
+                                  const isZeroStock = requiresStockValidation && available === 0
                                   const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
                                   const nombre = String(producto?.nombre || '').trim()
                                   const dispLabel = requiresStockValidation
@@ -3587,15 +3584,15 @@ function CreateSalida({
                                     <button
                                       key={producto.id}
                                       type="button"
-                                      className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
+                                      className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}${isZeroStock ? ' is-zero-stock' : ''}`}
                                       onMouseDown={(event) => event.preventDefault()}
                                       onClick={(event) => {
                                         event.preventDefault()
                                         event.stopPropagation()
-                                        if (isAlreadyAdded) return
+                                        if (isAlreadyAdded || isZeroStock) return
                                         handleProductSelect(producto)
                                       }}
-                                      disabled={isAlreadyAdded}
+                                      disabled={isAlreadyAdded || isZeroStock}
                                     >
                                       <span className="result-codigo">{codigo}</span>
                                       <span className="result-nombre">{nombre || '-'}</span>
