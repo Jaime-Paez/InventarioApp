@@ -8,6 +8,8 @@ import useModalAnimation from '../../common/useModalAnimation'
 import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
+import RevisarProductoModal from '../RevisarProductoModal/RevisarProductoModal'
+import ArchivarProductoModal from '../ArchivarProductoModal/ArchivarProductoModal'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -199,6 +201,8 @@ const buildGroupItem = (solicitud) => {
           ? solicitud?.producto_id || productoCatalogo?.id || 0
           : productoSolicitado?.producto_id || productoSolicitado?.producto_data?.id || 0
       ) > 0,
+    estado: String(solicitud?.estado || 'solicitado'),
+    revisiones: Array.isArray(solicitud?.revisiones) ? solicitud.revisiones : [],
   }
 }
 
@@ -269,6 +273,8 @@ function SolicitudDetails({
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [revisarTarget, setRevisarTarget] = useState(null)
+  const [archivarTarget, setArchivarTarget] = useState(null)
   const [activeTab, setActiveTab] = useState('productos')
   const [isEditing, setIsEditing] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -1119,6 +1125,34 @@ function SolicitudDetails({
     }
   }
 
+  const handleRevisado = (updatedSolicitud) => {
+    setRevisarTarget(null)
+    if (updatedSolicitud?.id) {
+      setGroupItems((prev) =>
+        prev.map((item) =>
+          String(item.id) === String(updatedSolicitud.id)
+            ? { ...item, estado: updatedSolicitud.estado, revisiones: updatedSolicitud.revisiones || [] }
+            : item
+        )
+      )
+    }
+    onUpdated?.()
+  }
+
+  const handleArchivado = (updatedSolicitud) => {
+    setArchivarTarget(null)
+    if (updatedSolicitud?.id) {
+      setGroupItems((prev) =>
+        prev.map((item) =>
+          String(item.id) === String(updatedSolicitud.id)
+            ? { ...item, estado: updatedSolicitud.estado }
+            : item
+        )
+      )
+    }
+    onUpdated?.()
+  }
+
   const handleDelete = async () => {
     const deleteTargetId = Number(solicitudId || 0)
     if (!allowDelete || !deleteTargetId || deleteLoading) return
@@ -1159,7 +1193,7 @@ function SolicitudDetails({
     linkingCreatedProduct ||
     (isProductModalOpen && Boolean(selectedSolicitudId) && !productSolicitud)
   const groupTableGridTemplate =
-    'minmax(84px, 0.78fr) minmax(0, 1.28fr) minmax(0, 0.82fr) minmax(0, 0.72fr) minmax(0, 1.08fr) minmax(54px, 0.34fr) 42px'
+    'minmax(84px, 0.78fr) minmax(0, 1.28fr) minmax(0, 0.82fr) minmax(0, 0.72fr) minmax(0, 1.08fr) minmax(54px, 0.34fr) 42px 110px'
   const selectedGroupItem = groupItems.find(
     (item) => String(item.id || '') === String(selectedSolicitudId || '')
   )
@@ -1482,7 +1516,7 @@ function SolicitudDetails({
         aria-hidden={isCreateProductModalOpen || isCatalogProductModalOpen ? 'true' : undefined}
         style={{
           ...overlayStyle,
-          pointerEvents: isCreateProductModalOpen || isCatalogProductModalOpen ? 'none' : 'auto',
+          pointerEvents: isCreateProductModalOpen || isCatalogProductModalOpen ? 'none' : undefined,
           userSelect: isCreateProductModalOpen || isCatalogProductModalOpen ? 'none' : undefined,
         }}
       >
@@ -1646,56 +1680,83 @@ function SolicitudDetails({
                       <span style={{ minWidth: 0 }}>Comentario</span>
                       <span style={{ minWidth: 0 }}>Cantidad</span>
                       <span style={{ textAlign: 'center' }}>Existe</span>
+                      <span style={{ textAlign: 'center' }}>Acciones</span>
                     </div>
 
                     {groupItems.map((item) => (
-                      <button
+                      <div
                         key={item.id}
-                        type="button"
                         className="create-user__locations-row"
-                        onClick={() => handleSelectGroupItem(item.id)}
-                        disabled={loading || saving || openingProductSelection}
                         style={{
                           gridTemplateColumns: groupTableGridTemplate,
                           width: '100%',
                           maxWidth: '100%',
                           boxSizing: 'border-box',
-                          color: 'inherit',
-                          textAlign: 'left',
-                          cursor:
-                            loading || saving || openingProductSelection ? 'wait' : 'pointer',
-                          background: 'transparent',
-                          boxShadow: 'none',
+                          alignItems: 'center',
                         }}
                       >
-                        <span style={{ minWidth: 0 }}>{item.productoCodigo || '-'}</span>
-                        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                          {item.productoNombre || '-'}
-                        </span>
-                        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                          {item.casaComercialNombre || '-'}
-                        </span>
-                        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                          {item.productoOems.length ? item.productoOems.join(', ') : '-'}
-                        </span>
-                        <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                          {item.comentario || '-'}
-                        </span>
-                        <span style={{ minWidth: 0 }}>{item.cantidad || '-'}</span>
-                        <span
-                          aria-label={item.existsInCatalog ? 'Existe' : 'No existe'}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                          }}
+                        <button
+                          type="button"
+                          onClick={() => handleSelectGroupItem(item.id)}
+                          disabled={loading || saving || openingProductSelection}
+                          style={{ display: 'contents', cursor: loading || saving || openingProductSelection ? 'wait' : 'pointer', color: 'inherit', background: 'none', border: 'none', textAlign: 'left' }}
                         >
-                          <i
-                            className={`pi pi-${item.existsInCatalog ? 'check-circle' : 'times-circle'}`}
-                            style={{ color: item.existsInCatalog ? '#22c55e' : '#9ca3af' }}
-                            aria-hidden="true"
-                          />
+                          <span style={{ minWidth: 0 }}>{item.productoCodigo || '-'}</span>
+                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                            {item.productoNombre || '-'}
+                          </span>
+                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                            {item.casaComercialNombre || '-'}
+                          </span>
+                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                            {item.productoOems.length ? item.productoOems.join(', ') : '-'}
+                          </span>
+                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                            {item.comentario || '-'}
+                          </span>
+                          <span style={{ minWidth: 0 }}>{item.cantidad || '-'}</span>
+                          <span
+                            aria-label={item.existsInCatalog ? 'Existe' : 'No existe'}
+                            style={{ display: 'flex', justifyContent: 'center' }}
+                          >
+                            <i
+                              className={`pi pi-${item.existsInCatalog ? 'check-circle' : 'times-circle'}`}
+                              style={{ color: item.existsInCatalog ? '#22c55e' : '#9ca3af' }}
+                              aria-hidden="true"
+                            />
+                          </span>
+                        </button>
+                        <span style={{ display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
+                          {item.estado === 'revisado' || item.estado === 'archivado' ? (
+                            <span style={{ fontSize: '0.75rem', color: item.estado === 'archivado' ? '#9ca3af' : '#22c55e', fontWeight: 600 }}>
+                              {item.estado === 'archivado' ? 'Archivado' : 'Revisado'}
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="create-user__ghost"
+                                style={{ padding: '2px 7px', fontSize: '0.75rem' }}
+                                disabled={loading || saving}
+                                onClick={() => setRevisarTarget({ id: item.id, nombre: item.productoNombre })}
+                                title="Revisar producto"
+                              >
+                                Revisar
+                              </button>
+                              <button
+                                type="button"
+                                className="create-user__ghost"
+                                style={{ padding: '2px 7px', fontSize: '0.75rem' }}
+                                disabled={loading || saving}
+                                onClick={() => setArchivarTarget({ id: item.id, nombre: item.productoNombre })}
+                                title="Archivar producto"
+                              >
+                                Archivar
+                              </button>
+                            </>
+                          )}
                         </span>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 </section>
@@ -1897,6 +1958,24 @@ function SolicitudDetails({
       {productModalOverlay && (canUsePortal ? createPortal(productModalOverlay, document.body) : productModalOverlay)}
       {catalogProductModal && (canUsePortal ? createPortal(catalogProductModal, document.body) : catalogProductModal)}
       {createProductModal && (canUsePortal ? createPortal(createProductModal, document.body) : createProductModal)}
+      {canUsePortal && createPortal(
+        <RevisarProductoModal
+          open={Boolean(revisarTarget)}
+          solicitudId={revisarTarget?.id}
+          productoNombre={revisarTarget?.nombre}
+          token={token}
+          onRevisado={handleRevisado}
+          onClose={() => setRevisarTarget(null)}
+        />, document.body)}
+      {canUsePortal && createPortal(
+        <ArchivarProductoModal
+          open={Boolean(archivarTarget)}
+          solicitudId={archivarTarget?.id}
+          productoNombre={archivarTarget?.nombre}
+          token={token}
+          onArchivado={handleArchivado}
+          onClose={() => setArchivarTarget(null)}
+        />, document.body)}
     </>
   )
 }

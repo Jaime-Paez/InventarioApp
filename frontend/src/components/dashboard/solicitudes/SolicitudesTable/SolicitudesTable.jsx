@@ -11,6 +11,7 @@ import { Button } from 'primereact/button'
 import CreateSolicitud from '../CreateSolicitud/CreateSolicitud'
 import SolicitudDetails from '../SolicitudDetails/SolicitudDetails'
 import '../../admin/UsersTable/UsersTable.css'
+import '../../movimientos/TrasladosInconvenientesTable.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -105,6 +106,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
     []
   )
 
+  const [statusFilter, setStatusFilter] = useState('solicitado')
   const [clients, setClients] = useState([])
   const [totalRecords, setTotalRecords] = useState(0)
   const [pageFirst, setPageFirst] = useState(0)
@@ -236,9 +238,15 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       options?.branchContextId ?? normalizedCreateBranchId
     ).trim()
     const branchContextId = branchContextIdRaw.toLowerCase() === 'all' ? 'all' : branchContextIdRaw
+    const estadoFilter = options?.estadoFilter ?? statusFilter
 
     params.set('page', String(page))
     params.set('page_size', String(rows))
+    if (estadoFilter === 'solicitado') {
+      params.set('estado', 'solicitado')
+    } else if (estadoFilter === 'revisado') {
+      params.set('estado', 'revisado,archivado')
+    }
 
     const addIfPresent = (key, value) => {
       const parsed = String(value ?? '').trim()
@@ -271,7 +279,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
     if (ordering) params.set('ordering', ordering)
 
     return `${API_URL}/solicitudes/solicitudes/?${params.toString()}`
-  }, [normalizedCreateBranchId])
+  }, [normalizedCreateBranchId, statusFilter])
 
   const fetchClients = useCallback(
     async (criteria, page = 1, rows = pageSize, options = {}) => {
@@ -591,6 +599,20 @@ const handleResetTable = () => {
       ...prev,
       [name]: value,
     }))
+  }
+
+  const handleStatusFilterChange = (nextFilter) => {
+    if (nextFilter === statusFilter) return
+    setStatusFilter(nextFilter)
+    setPageFirst(0)
+    setIsRefreshing(true)
+    fetchClients(lastSearchRef.current, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+      branchContextId: normalizedCreateBranchId,
+      estadoFilter: nextFilter,
+    })
   }
 
   const handleSearchSubmit = async (event) => {
@@ -1412,6 +1434,20 @@ const handleResetTable = () => {
             <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={handleOpenCreateModal} type="button" />
           )}
           <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
+          <div className="transfer-issues-page__type-filter" role="group" aria-label="Filtro de estado">
+            {[
+              { key: 'solicitado', label: 'Solicitudes' },
+              { key: 'revisado', label: 'Revisados' },
+            ].map((option) => (
+              <Button
+                key={option.key}
+                label={option.label}
+                type="button"
+                className={`users-topbtn transfer-issues-page__type-btn${statusFilter === option.key ? ' transfer-issues-page__type-btn--active' : ''}`}
+                onClick={() => handleStatusFilterChange(option.key)}
+              />
+            ))}
+          </div>
         </div>
       </div>
 

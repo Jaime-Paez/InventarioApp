@@ -116,6 +116,11 @@ class Solicitud(models.Model):
         PRODUCTO = "producto", "Producto"
         PRODUCTO_SOLICITADO = "producto_solicitado", "Producto solicitado"
 
+    class Estado(models.TextChoices):
+        SOLICITADO = "solicitado", "Solicitado"
+        REVISADO = "revisado", "Revisado"
+        ARCHIVADO = "archivado", "Archivado"
+
     codigo = models.CharField(max_length=80, blank=True, default="", db_index=True)
     grupo_codigo = models.CharField(max_length=80, blank=True, default="", db_index=True)
     cantidad = models.PositiveIntegerField()
@@ -151,6 +156,11 @@ class Solicitud(models.Model):
         related_name="solicitudes",
         null=True,
         blank=True,
+    )
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.SOLICITADO,
     )
 
     class Meta:
@@ -237,6 +247,34 @@ class Solicitud(models.Model):
                 kwargs["update_fields"] = list(updated)
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class RevisionReferencia(models.Model):
+    """Referencias de casas comerciales agregadas al revisar una solicitud."""
+
+    solicitud = models.ForeignKey(
+        Solicitud,
+        on_delete=models.CASCADE,
+        related_name="revisiones",
+    )
+    casa_comercial = models.ForeignKey(
+        CasaComercial,
+        on_delete=models.SET_NULL,
+        related_name="revisiones_solicitud",
+        null=True,
+        blank=True,
+    )
+    referencia = models.CharField(max_length=255, blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["creado_en"]
+        verbose_name = "Revisión de referencia"
+        verbose_name_plural = "Revisiones de referencia"
+
+    def __str__(self) -> str:  # pragma: no cover
+        casa = self.casa_comercial.nombre if self.casa_comercial else "sin casa"
+        return f"{self.solicitud} - {casa}: {self.referencia}"
 
 
 class OEMProductoSolicitado(models.Model):

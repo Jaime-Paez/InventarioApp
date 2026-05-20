@@ -18,12 +18,13 @@ from usuarios.models import RolPermiso
 from usuarios.permissions import ClientesModulePermission, SolicitudesModulePermission
 from usuarios.sucursal_scope import apply_sucursal_scope, ensure_sucursal_allowed
 
-from .models import Cliente, OEMProductoSolicitado, ProductoSolicitado, Solicitud
+from .models import Cliente, OEMProductoSolicitado, ProductoSolicitado, RevisionReferencia, Solicitud
 from .serializers import (
     ClienteSerializer,
     ClienteLiteSerializer,
     OEMProductoSolicitadoSerializer,
     ProductoSolicitadoSerializer,
+    RevisionReferenciaSerializer,
     SolicitudSerializer,
 )
 
@@ -249,6 +250,14 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         if fecha_hasta:
             queryset = queryset.filter(fecha__lte=fecha_hasta)
 
+        estado_param = (params.get("estado") or "").strip().lower()
+        if estado_param:
+            estados = [e.strip() for e in estado_param.split(",") if e.strip()]
+            valid_estados = {choice[0] for choice in Solicitud.Estado.choices}
+            estados = [e for e in estados if e in valid_estados]
+            if estados:
+                queryset = queryset.filter(estado__in=estados)
+
         conseguido = self._parse_bool_param(params.get("conseguido"))
         if conseguido is True:
             queryset = queryset.filter(
@@ -426,6 +435,63 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 update_fields.append("conseguido")
             if update_fields:
                 producto_solicitado.save(update_fields=update_fields)
+
+        solicitud.refresh_from_db()
+        serializer = self.get_serializer(solicitud)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="revisar")
+    def revisar(self, request, pk=None):
+        solicitud = self.get_object()
+        ensure_sucursal_allowed(
+            request.user,
+            RolPermiso.Modulos.SOLICITUDES,
+            getattr(solicitud, "sucursal_id", None),
+            action_key="puede_actualizar",
+        )
+
+        referencias_raw = request.data.get("referencias", [])
+        if not isinstance(referencias_raw, list) or not referencias_raw:
+            return Response(
+                {"referencias": "Debe agregar al menos una referencia."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            RevisionReferencia.objects.filter(solicitud=solicitud).delete()
+            for item in referencias_raw:
+                casa_comercial_id = item.get("casa_comercial_id") or item.get("casa_comercial")
+                referencia = str(item.get("referencia") or "").strip()
+                casa_comercial = None
+                if casa_comercial_id:
+                    try:
+                        casa_comercial = CasaComercial.objects.get(pk=int(casa_comercial_id))
+                    except (CasaComercial.DoesNotExist, TypeError, ValueError):
+                        pass
+                RevisionReferencia.objects.create(
+                    solicitud=solicitud,
+                    casa_comercial=casa_comercial,
+                    referencia=referencia,
+                )
+            solicitud.estado = Solicitud.Estado.REVISADO
+            solicitud.save(update_fields=["estado"])
+
+        solicitud.refresh_from_db()
+        serializer = self.get_serializer(solicitud)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="archivar")
+    def archivar(self, request, pk=None):
+        solicitud = self.get_object()
+        ensure_sucursal_allowed(
+            request.user,
+            RolPermiso.Modulos.SOLICITUDES,
+            getattr(solicitud, "sucursal_id", None),
+            action_key="puede_actualizar",
+        )
+        with transaction.atomic():
+            solicitud.estado = Solicitud.Estado.ARCHIVADO
+            solicitud.save(update_fields=["estado"])
 
         solicitud.refresh_from_db()
         serializer = self.get_serializer(solicitud)

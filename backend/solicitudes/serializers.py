@@ -6,7 +6,7 @@ from casa_comercial.models import CasaComercial
 from inventario.models import Inventario, Sucursal
 from productos.models import OEM, Producto
 
-from .models import Auto, Cliente, OEMProductoSolicitado, ProductoSolicitado, Solicitud
+from .models import Auto, Cliente, OEMProductoSolicitado, ProductoSolicitado, RevisionReferencia, Solicitud
 
 
 def normalize_text(value):
@@ -256,6 +256,22 @@ class OEMProductoSolicitadoSerializer(serializers.ModelSerializer):
         return data
 
 
+class RevisionReferenciaSerializer(serializers.ModelSerializer):
+    casa_comercial_nombre = serializers.SerializerMethodField()
+    casa_comercial_codigo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RevisionReferencia
+        fields = ["id", "casa_comercial", "casa_comercial_nombre", "casa_comercial_codigo", "referencia", "creado_en"]
+        read_only_fields = ["id", "creado_en"]
+
+    def get_casa_comercial_nombre(self, obj):
+        return obj.casa_comercial.nombre if obj.casa_comercial else ""
+
+    def get_casa_comercial_codigo(self, obj):
+        return obj.casa_comercial.codigo if obj.casa_comercial else ""
+
+
 class SolicitudSerializer(serializers.ModelSerializer):
     codigo = serializers.CharField(read_only=True)
     cliente = serializers.StringRelatedField(read_only=True)
@@ -291,6 +307,7 @@ class SolicitudSerializer(serializers.ModelSerializer):
     conseguido_label = serializers.SerializerMethodField()
     producto_conseguido = serializers.SerializerMethodField()
     producto_resuelto_data = serializers.SerializerMethodField()
+    revisiones = RevisionReferenciaSerializer(many=True, read_only=True)
     cliente_nombres = serializers.CharField(write_only=True, required=False, allow_blank=True)
     cliente_apellidos = serializers.CharField(write_only=True, required=False, allow_blank=True)
     cliente_cedula_ruc = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -340,6 +357,8 @@ class SolicitudSerializer(serializers.ModelSerializer):
             "conseguido_label",
             "producto_conseguido",
             "producto_resuelto_data",
+            "estado",
+            "revisiones",
             "cliente_nombres",
             "cliente_apellidos",
             "cliente_cedula_ruc",
