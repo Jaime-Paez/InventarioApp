@@ -1041,11 +1041,12 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       if (!codes.length) {
         return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
       }
-      const label = codes.join(', ')
+      const allLabel = codes.join(', ')
+      const displayLabel = codes.length > 2 ? codes.slice(0, 2).join(', ') + '...' : allLabel
       return (
         <div className="inventario-v2__location-cell">
-          <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
-          {codes.length > 1 ? (
+          <span className="cell-tooltip inventario-v2__location-main" title={allLabel}>{displayLabel}</span>
+          {codes.length > 2 ? (
             <button
               type="button"
               className="inventario-v2__location-eye"
