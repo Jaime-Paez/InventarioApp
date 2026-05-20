@@ -557,11 +557,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 )
 
             codigo = str(item.get("codigo") or "").strip()
-            if not codigo:
-                return Response(
-                    {"productos": f"El codigo es obligatorio en la fila {index + 1}."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
 
             casa_comercial_id = item.get("casa_comercial_id")
             casa_comercial = None
@@ -573,18 +568,19 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
             oem_codigos = self._parse_oem_codes(item.get("oems"))
 
-            codigo_key = codigo.lower()
-            if codigo_key in codigos_nuevos:
-                return Response(
-                    {"productos": f"Fila {index + 1}: ya existe este producto."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if Producto.objects.filter(codigo__iexact=codigo).exists():
-                return Response(
-                    {"productos": f"Fila {index + 1}: ya existe este producto."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            codigos_nuevos.add(codigo_key)
+            if codigo:
+                codigo_key = codigo.lower()
+                if codigo_key in codigos_nuevos:
+                    return Response(
+                        {"productos": f"Fila {index + 1}: ya existe este producto."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if Producto.objects.filter(codigo__iexact=codigo).exists():
+                    return Response(
+                        {"productos": f"Fila {index + 1}: ya existe este producto."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                codigos_nuevos.add(codigo_key)
 
             for oem_codigo in oem_codigos:
                 oem_key = oem_codigo.lower()
@@ -635,14 +631,13 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     )
                 else:
                     producto_solicitado = ProductoSolicitado.objects.create(
-                        codigo=item["codigo"],
+                        codigo=item.get("codigo") or "",
                         nombre=item["nombre"],
                         casa_comercial=item.get("casa_comercial"),
                     )
                     for oem_codigo in item.get("oem_codigos", []):
                         oem, _ = OEM.objects.get_or_create(
                             codigo=oem_codigo,
-                            defaults={"descripcion": ""},
                         )
                         OEMProductoSolicitado.objects.get_or_create(
                             producto_solicitado=producto_solicitado,
