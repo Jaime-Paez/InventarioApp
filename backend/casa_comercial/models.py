@@ -14,7 +14,7 @@ class CasaComercial(models.Model):
     ]
 
     nombre = models.CharField(max_length=150)
-    codigo = models.CharField(max_length=50, unique=True)
+    codigo = models.CharField(max_length=50)
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default=TIPO_LOCAL)
     descripcion = models.TextField(blank=True)
     pais = models.ForeignKey(

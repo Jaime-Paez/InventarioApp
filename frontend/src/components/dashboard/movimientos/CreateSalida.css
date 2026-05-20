@@ -1090,6 +1090,37 @@
   display: none;
 }
 
+.create-salida__discount-inline-input {
+  display: inline-block !important;
+  width: 44px !important;
+  max-width: 44px !important;
+  min-width: 0 !important;
+  padding: 1px 4px;
+  font-size: inherit;
+  font-weight: 700;
+  text-align: right;
+  border: 1px solid var(--color-border, #ccc);
+  border-radius: 4px;
+  background: var(--color-surface, #fff);
+  color: inherit;
+  vertical-align: baseline;
+  margin: 0 2px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+  flex: none !important;
+}
+
+.create-salida__discount-inline-input::-webkit-outer-spin-button,
+.create-salida__discount-inline-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.create-salida__discount-inline-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .create-salida__input--invalid {
   border-color: var(--color-error-border) !important;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-error-border) 30%, transparent) !important;

@@ -3420,22 +3420,6 @@ function CreateSalida({
                       </label>
                     )}
 
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Descuento (%)</span>
-                        <input
-                          name="descuento"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={formData.descuento}
-                          onChange={handleChange}
-                          disabled={loading}
-                        />
-                      </label>
-                    )}
-
                     {isPrefilledTransfer && <input type="hidden" name="solicitudTrasladoId" value={formData.solicitudTrasladoId} />}
                         </div>
                       </div>
@@ -3685,7 +3669,21 @@ function CreateSalida({
 
                     {isVenta && (
                       <div className="create-user__locations-row create-salida__totals-row">
-                        <span className="create-salida__totals-label">Descuento ({descuentoPercentLabel}%)</span>
+                        <span className="create-salida__totals-label">
+                          Descuento&nbsp;(
+                          <input
+                            name="descuento"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={formData.descuento}
+                            onChange={handleChange}
+                            disabled={loading}
+                            className="create-salida__discount-inline-input"
+                          />
+                          %)
+                        </span>
                         <span className="create-salida__totals-value">-{formatCurrency(descuentoAplicado)}</span>
                         <span className="create-salida__totals-spacer" />
                       </div>

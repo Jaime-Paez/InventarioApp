@@ -120,11 +120,6 @@ class CasaComercialSerializer(serializers.ModelSerializer):
         value = str(value or "").strip().upper()
         if not value:
             raise serializers.ValidationError("El código no puede estar vacío.")
-        qs = CasaComercial.objects.filter(codigo__iexact=value)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError("Ya existe una casa comercial con este código.")
         return value
 
     def create(self, validated_data):
