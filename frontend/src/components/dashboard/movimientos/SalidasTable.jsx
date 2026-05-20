@@ -863,8 +863,10 @@ function SalidasTable({
 
     const primaryProduct = products[0]
     const remainingProducts = products.slice(1)
-    const allCodes = products.map((p) => p?.producto_codigo).filter(Boolean).join(', ')
-    const primaryLabel = allCodes || primaryProduct?.producto_nombre || '-'
+    const codes = products.map((p) => p?.producto_codigo).filter(Boolean)
+    const allCodes = codes.join(', ')
+    const displayCodes = codes.length > 2 ? codes.slice(0, 2).join(', ') + '...' : allCodes
+    const primaryLabel = displayCodes || primaryProduct?.producto_nombre || '-'
     const primaryTooltip = [
       allCodes || primaryProduct?.producto_codigo,
       primaryProduct?.producto_nombre,

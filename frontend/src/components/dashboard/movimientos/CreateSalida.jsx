@@ -3371,23 +3371,7 @@ function CreateSalida({
                     )}
 
                     {isVenta && (
-                      <label className="create-user__field">
-                        <span>Descuento (%)</span>
-                        <input
-                          name="descuento"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={formData.descuento}
-                          onChange={handleChange}
-                          disabled={loading}
-                        />
-                      </label>
-                    )}
-
-                    {isVenta && (
-                      <label className="create-user__field create-user__field--full create-user__field--required">
+                      <label className="create-user__field create-user__field--required">
                         <span>Tipo de pago</span>
                         <div className="create-user__dropdown" ref={tipoPagoDropdownRef}>
                           <button
@@ -3440,17 +3424,21 @@ function CreateSalida({
                       </label>
                     )}
 
-                    <label className={`create-user__field create-user__field--full${isDevolucion ? ' create-user__field--required' : ''}`}>
-                      <span>Descripción</span>
-                      <textarea
-                        name="descripcion"
-                        value={formData.descripcion}
-                        onChange={handleChange}
-                        disabled={loading}
-                        rows={3}
-                        required={isDevolucion}
-                      />
-                    </label>
+                    {isVenta && (
+                      <label className="create-user__field">
+                        <span>Descuento (%)</span>
+                        <input
+                          name="descuento"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          value={formData.descuento}
+                          onChange={handleChange}
+                          disabled={loading}
+                        />
+                      </label>
+                    )}
 
                     {isPrefilledTransfer && <input type="hidden" name="solicitudTrasladoId" value={formData.solicitudTrasladoId} />}
                         </div>
@@ -3715,6 +3703,20 @@ function CreateSalida({
                     </div>
                   </div>
 
+                </section>
+
+                <section className="create-user__section">
+                  <label className={`create-user__field create-user__field--full${isDevolucion ? ' create-user__field--required' : ''}`}>
+                    <span>Descripción</span>
+                    <textarea
+                      name="descripcion"
+                      value={formData.descripcion}
+                      onChange={handleChange}
+                      disabled={loading}
+                      rows={3}
+                      required={isDevolucion}
+                    />
+                  </label>
                 </section>
                   </>
                 )}
