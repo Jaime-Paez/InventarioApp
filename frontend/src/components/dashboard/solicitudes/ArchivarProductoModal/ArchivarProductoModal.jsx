@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 
+const VIEWPORT_PADDING = 12
+
 function ArchivarProductoModal({ open, solicitudId, productoNombre, token, onArchivado, onClose }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const [loading, setLoading] = useState(false)
@@ -38,14 +40,36 @@ function ArchivarProductoModal({ open, solicitudId, productoNombre, token, onArc
       className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`}
       role="dialog"
       aria-modal="true"
-      style={{ padding: 12 }}
+      style={{
+        padding: `${VIEWPORT_PADDING}px`,
+        background: 'rgba(15, 23, 42, 0.28)',
+        backdropFilter: 'blur(1px)',
+        zIndex: 10030,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
     >
       <div
-        className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
-        style={{ width: 440, height: 'auto', minHeight: 0, maxWidth: 'calc(100vw - 24px)', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+        style={{
+          background: 'var(--modal-color, #fff)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 10,
+          boxShadow: 'var(--shadow-panel)',
+          width: 440,
+          maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          pointerEvents: 'auto',
+          color: 'var(--color-text-primary)',
+          animation: isClosing
+            ? 'create-user-modal-out 180ms ease both'
+            : 'create-user-modal-in 180ms ease both',
+        }}
       >
-        <header className="create-user__header">
-          <div className="create-user__header-text">
+        <header className="create-user__header" style={{ cursor: 'default', borderBottom: '1px solid var(--color-border)' }}>
+          <div className="create-user__header-text" style={{ cursor: 'default' }}>
             <h3>Archivar producto</h3>
           </div>
           <div className="create-user__header-actions">
@@ -61,18 +85,23 @@ function ArchivarProductoModal({ open, solicitudId, productoNombre, token, onArc
           </div>
         </header>
 
-        <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <p style={{ margin: 0 }}>
-            ¿Deseas archivar el producto <strong>{productoNombre || 'seleccionado'}</strong>? Quedará guardado como no deseado.
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p className="create-user__eyebrow" style={{ margin: 0 }}>Solicitudes</p>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: '0.95rem' }}>
+            {productoNombre || 'Producto seleccionado'}
           </p>
-
+          <p style={{ margin: '0', color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
+            ¿Deseas archivar este producto? Quedará guardado como no deseado.
+          </p>
           {error && (
             <p style={{ margin: 0, color: 'var(--color-error, #e53e3e)', fontSize: '0.875rem' }}>
               {error}
             </p>
           )}
+        </div>
 
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="create-user__footer">
+          <div className="user-details__footer-left">
             <button
               type="button"
               className="create-user__action create-user__action--cancel"
@@ -81,9 +110,11 @@ function ArchivarProductoModal({ open, solicitudId, productoNombre, token, onArc
             >
               Cancelar
             </button>
+          </div>
+          <div className="user-details__footer-right">
             <button
               type="button"
-              className="create-user__action"
+              className="create-user__action create-user__action--primary"
               onClick={handleArchivar}
               disabled={loading}
             >

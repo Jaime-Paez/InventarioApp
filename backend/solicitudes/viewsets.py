@@ -148,7 +148,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "producto_solicitado__casa_comercial",
             "producto_solicitado__producto",
         )
-        .prefetch_related("producto_solicitado__oem_relaciones__oem")
+        .prefetch_related(
+            "producto_solicitado__oem_relaciones__oem",
+            "revisiones__casa_comercial",
+        )
         .all()
         .order_by("-fecha", "-id")
     )
@@ -298,6 +301,16 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             return super().list(request, *args, **kwargs)
 
         queryset = self.filter_queryset(self.get_queryset())
+
+        flat = request.query_params.get("flat", "").strip() in ("1", "true")
+        if flat:
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+
         grouped_rows = self._build_grouped_list_payload(queryset)
 
         page = self.paginate_queryset(grouped_rows)
@@ -799,6 +812,12 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             if nombre:
                 nombres.append(nombre)
 
+        estado_counts = {Solicitud.Estado.SOLICITADO: 0, Solicitud.Estado.REVISADO: 0, Solicitud.Estado.ARCHIVADO: 0}
+        for row in sorted_rows:
+            row_estado = str(getattr(row, "estado", Solicitud.Estado.SOLICITADO) or Solicitud.Estado.SOLICITADO)
+            if row_estado in estado_counts:
+                estado_counts[row_estado] += 1
+
         data["id"] = int(getattr(lead, "id", 0) or 0)
         data["codigo"] = str(data.get("codigo") or f"Solicitud #{lead.pk}").strip()
         data["grupo_codigo"] = str(getattr(lead, "grupo_codigo", "") or "").strip()
@@ -808,6 +827,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         data.pop("conseguido", None)
         data.pop("conseguido_label", None)
         data["detalle_count"] = len(sorted_rows)
+        data["estado_counts"] = estado_counts
         return data
 
     @staticmethod

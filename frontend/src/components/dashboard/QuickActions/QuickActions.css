@@ -2248,6 +2248,17 @@
   color: #b91c1c;
 }
 
+.quick-actions__inspection-summary-badge.is-mismatch-btn {
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.quick-actions__inspection-summary-badge.is-mismatch-btn:hover {
+  background: rgba(220, 38, 38, 0.22);
+  color: #991b1b;
+}
+
 .quick-actions__inspection-item-head {
   display: flex;
   align-items: center;
@@ -2467,6 +2478,11 @@
 .quick-actions__inspection-overlay.dark .quick-actions__inspection-summary-badge.is-mismatch {
   background: rgba(248, 113, 113, 0.18);
   color: #fecaca;
+}
+
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-summary-badge.is-mismatch-btn:hover {
+  background: rgba(248, 113, 113, 0.3);
+  color: #fca5a5;
 }
 
 .quick-actions__inspection-overlay.dark .quick-actions__inspection-item-head strong {

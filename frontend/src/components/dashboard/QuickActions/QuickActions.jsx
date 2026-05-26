@@ -4771,7 +4771,7 @@ function QuickActions({
                       </div>
 
                       <div className="quick-actions__inspection-list">
-                        {randomInspectionRows.map((row) => {
+                        {randomInspectionRows.map((row, rowIndex) => {
                           const rowId = normalizeId(row?.row_id || row?.id)
                           const expectedQty = toPositiveInt(row?.cantidad_esperada, 0)
                           const countedQty = toPositiveInt(row?.cantidad_reportada, 0)
@@ -4800,9 +4800,23 @@ function QuickActions({
                                   <small>Diferencia</small>
                                   <strong>{formatSignedInteger(delta)}</strong>
                                 </div>
-                                <span className={`quick-actions__inspection-summary-badge${isMismatch ? ' is-mismatch' : ' is-match'}`}>
-                                  {isMismatch ? 'No coincide' : 'Coincide'}
-                                </span>
+                                {isMismatch ? (
+                                  <button
+                                    type="button"
+                                    className="quick-actions__inspection-summary-badge is-mismatch is-mismatch-btn"
+                                    onClick={() => {
+                                      setRandomInspectionError('')
+                                      setRandomInspectionShowSummary(false)
+                                      setRandomInspectionStepIndex(rowIndex)
+                                    }}
+                                  >
+                                    Corregir
+                                  </button>
+                                ) : (
+                                  <span className="quick-actions__inspection-summary-badge is-match">
+                                    Coincide
+                                  </span>
+                                )}
                               </div>
                             </article>
                           )

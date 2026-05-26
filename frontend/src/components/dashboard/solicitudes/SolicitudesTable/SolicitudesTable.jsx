@@ -222,6 +222,8 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           producto_solicitado_nombre: productoSolicitadoNombre,
           producto_codigo: productoCodigo,
           productos,
+          revisiones: Array.isArray(item?.revisiones) ? item.revisiones : [],
+          estado_counts: item?.estado_counts || null,
         }
       }),
     []
@@ -244,8 +246,12 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
     params.set('page_size', String(rows))
     if (estadoFilter === 'solicitado') {
       params.set('estado', 'solicitado')
-    } else if (estadoFilter === 'revisado') {
-      params.set('estado', 'revisado,archivado')
+    } else if (estadoFilter === 'aceptado') {
+      params.set('estado', 'revisado')
+      params.set('flat', '1')
+    } else if (estadoFilter === 'archivado') {
+      params.set('estado', 'archivado')
+      params.set('flat', '1')
     }
 
     const addIfPresent = (key, value) => {
@@ -604,6 +610,7 @@ const handleResetTable = () => {
   const handleStatusFilterChange = (nextFilter) => {
     if (nextFilter === statusFilter) return
     setStatusFilter(nextFilter)
+    setSelectedRows([])
     setPageFirst(0)
     setIsRefreshing(true)
     fetchClients(lastSearchRef.current, 1, pageSize, {
@@ -917,6 +924,47 @@ const handleResetTable = () => {
     )
   }
 
+  const estadoBadgeBodyTemplate = (rowData) => {
+    const counts = rowData?.estado_counts || {}
+    const revisado = Number(counts.revisado || 0)
+    const archivado = Number(counts.archivado || 0)
+    const solicitado = Number(counts.solicitado || 0)
+    const total = revisado + archivado + solicitado
+    if (!total || (revisado === 0 && archivado === 0)) return null
+    const all = solicitado === 0
+    return (
+      <span
+        style={{
+          display: 'inline-block',
+          padding: '2px 8px',
+          borderRadius: 999,
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          background: all ? 'var(--color-success-bg, #dcfce7)' : 'var(--color-warning-bg, #fef9c3)',
+          color: all ? 'var(--color-success, #15803d)' : 'var(--color-warning, #a16207)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {all ? 'Completado' : `${revisado + archivado}/${total} revisados`}
+      </span>
+    )
+  }
+
+  const revisionesBodyTemplate = (rowData) => {
+    const revisiones = Array.isArray(rowData?.revisiones) ? rowData.revisiones : []
+    if (!revisiones.length) return <span style={{ color: '#9ca3af' }}>-</span>
+    const text = revisiones.map((r) => {
+      const casa = r?.casa_comercial_nombre || r?.casa_comercial_codigo || ''
+      const ref = r?.referencia || ''
+      return [casa, ref].filter(Boolean).join(' · ')
+    }).filter(Boolean).join(', ')
+    return (
+      <span className="cell-tooltip" data-pr-tooltip={text} style={{ fontSize: '0.85rem' }}>
+        {text || '-'}
+      </span>
+    )
+  }
+
   const numericBodyTemplate = (rowData, field) => {
     const value = Number(rowData?.[field])
     if (!Number.isFinite(value)) return <span className="cell-tooltip">-</span>
@@ -1024,9 +1072,11 @@ const handleResetTable = () => {
           <i className="pi pi-arrows-h" />
         </button>
 
-        <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Campos">
-          <i className="pi pi-sliders-h" />
-        </button>
+        {statusFilter === 'solicitado' && (
+          <button className="rounded-icon-btn" type="button" onClick={(e) => opColumns.current?.toggle(e)} title="Campos">
+            <i className="pi pi-sliders-h" />
+          </button>
+        )}
       </div>
 
       <div className="users-header__right">
@@ -1437,7 +1487,8 @@ const handleResetTable = () => {
           <div className="transfer-issues-page__type-filter" role="group" aria-label="Filtro de estado">
             {[
               { key: 'solicitado', label: 'Solicitudes' },
-              { key: 'revisado', label: 'Revisados' },
+              { key: 'aceptado', label: 'Aceptados' },
+              { key: 'archivado', label: 'Archivados' },
             ].map((option) => (
               <Button
                 key={option.key}
@@ -1525,9 +1576,9 @@ const handleResetTable = () => {
           onColReorder={handleOrderChange}
           resizableColumns
           columnResizeMode="expand"
-          key={tableResetKey}
+          key={`${tableResetKey}-${statusFilter}`}
           stateStorage="local"
-          stateKey="solicitudes-table-state"
+          stateKey={statusFilter === 'solicitado' ? 'solicitudes-table-state' : undefined}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
@@ -1575,7 +1626,7 @@ const handleResetTable = () => {
             resizable={false}
           />
 
-          {selectedColumns.map((column, index) => {
+          {statusFilter === 'solicitado' && selectedColumns.map((column, index) => {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
 
@@ -1611,6 +1662,28 @@ const handleResetTable = () => {
               />
             )
           })}
+
+          {statusFilter === 'solicitado' && (
+            <Column
+              key="estado_badge"
+              header="Estado"
+              body={estadoBadgeBodyTemplate}
+              className="column-max-min-width--small"
+              style={{ minWidth: '100px' }}
+              reorderable={false}
+              resizable={false}
+            />
+          )}
+
+          {(statusFilter === 'aceptado' || statusFilter === 'archivado') && [
+            <Column key="fecha" field="fecha" header="Fecha" body={(r) => cellWithTooltip(r, 'fecha')} sortable className="column-max-min-width--small" style={{ minWidth: '90px' }} />,
+            <Column key="cliente_nombre" field="cliente_nombre" header="Cliente" body={clienteBodyTemplate} sortable className="column-max-min-width" style={{ minWidth: '120px' }} />,
+            <Column key="sucursal_nombre" field="sucursal_nombre" header="Sucursal" body={(r) => cellWithTooltip(r, 'sucursal_nombre')} sortable className="column-max-min-width" style={{ minWidth: '100px' }} />,
+            <Column key="producto_solicitado_nombre" field="producto_solicitado_nombre" header="Producto" body={(r) => cellWithTooltip(r, 'producto_solicitado_nombre')} sortable className="column-max-min-width" style={{ minWidth: '140px' }} />,
+            statusFilter === 'aceptado' && (
+              <Column key="revisiones" header="Casas Comerciales" body={revisionesBodyTemplate} className="column-max-min-width" style={{ minWidth: '160px' }} />
+            ),
+          ].filter(Boolean)}
         </DataTable>
 
         <OverlayPanel ref={opColumns} className="table-options-list">
