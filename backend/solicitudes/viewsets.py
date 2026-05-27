@@ -464,7 +464,18 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         )
 
         referencias_raw = request.data.get("referencias", [])
-        if not isinstance(referencias_raw, list) or not referencias_raw:
+        producto_resuelto_id = getattr(getattr(solicitud, "producto_solicitado", None), "producto_id", None)
+        puede_revisar_sin_referencias = bool(
+            solicitud.tabla == Solicitud.Tabla.PRODUCTO
+            or producto_resuelto_id
+        )
+
+        if not isinstance(referencias_raw, list):
+            return Response(
+                {"referencias": "Debe enviar una lista valida de referencias."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not referencias_raw and not puede_revisar_sin_referencias:
             return Response(
                 {"referencias": "Debe agregar al menos una referencia."},
                 status=status.HTTP_400_BAD_REQUEST,

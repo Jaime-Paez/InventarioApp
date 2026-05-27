@@ -1,0 +1,96 @@
+.create-solicitud-details__review-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.create-solicitud-details__review-helper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
+}
+
+.create-solicitud-details__review-helper-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+
+.create-solicitud-details__review-helper p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.create-solicitud-details__review-table .create-user__locations-row {
+  grid-template-columns:
+    minmax(220px, 1.28fr)
+    minmax(180px, 1fr)
+    minmax(92px, 0.56fr);
+}
+
+.create-solicitud-details__review-table:has(.create-user__dropdown-panel) {
+  overflow: visible;
+}
+
+.create-solicitud-details__review-picker {
+  min-width: 0;
+}
+
+.create-solicitud-details__supplier-dropdown {
+  position: relative;
+  z-index: 40;
+}
+
+.create-solicitud-details__supplier-dropdown:has(.create-user__dropdown-panel) {
+  z-index: 120;
+}
+
+.create-solicitud-details__supplier-dropdown .create-user__dropdown-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.create-solicitud-details__supplier-dropdown .create-user__dropdown-panel {
+  min-width: 0;
+  width: min(430px, calc(100vw - 32px));
+  max-width: min(430px, calc(100vw - 32px));
+  right: auto;
+  z-index: 60;
+  box-shadow: var(--shadow-panel);
+  padding: 8px;
+}
+
+.create-solicitud-details__supplier-dropdown .create-user__dropdown-results {
+  max-height: 220px;
+}
+
+.dashboard-shell.dark .create-solicitud-details__review-helper {
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
+}
+
+.dashboard-shell.dark .create-solicitud-details__review-helper-label {
+  color: #7dd3fc;
+}
+
+.dashboard-shell.dark .create-solicitud-details__review-helper p {
+  color: #cbd5e1;
+}
+
+@media (max-width: 960px) {
+  .create-solicitud-details__review-table .create-user__locations-row {
+    grid-template-columns:
+      minmax(170px, 1.18fr)
+      minmax(136px, 0.92fr)
+      minmax(78px, 0.5fr);
+  }
+}

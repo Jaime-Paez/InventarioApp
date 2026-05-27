@@ -3,17 +3,20 @@ import { createPortal } from 'react-dom'
 import { Eye, Info, Pencil } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
+import '../../movimientos/CreateSalida.css'
+import './SolicitudDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
-import ArchivarProductoModal from '../ArchivarProductoModal/ArchivarProductoModal'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const PRODUCT_MODAL_MIN_WIDTH = 680
 const PRODUCT_MODAL_MIN_HEIGHT = 460
+const REVIEW_MODAL_WIDTH = 760
+const REVIEW_MODAL_HEIGHT = 520
 const VIEWPORT_PADDING = 12
 
 const emptyForm = {
@@ -48,11 +51,21 @@ const emptyCliente = {
   direccion: '',
 }
 
-const emptyRevisarRef = () => ({ uid: `r-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, casaComercialId: '', casaComercialNombre: '', referencia: '' })
+const createEmptyRevisarDraft = () => ({
+  casaComercialId: '',
+  casaComercialNombre: '',
+  casaComercialCodigo: '',
+  referencia: '',
+})
+const emptyRevisarRef = () => ({
+  uid: `r-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  ...createEmptyRevisarDraft(),
+})
 
 const normalizeText = (value) => String(value ?? '').trim()
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+const isReviewedEstado = (value) => ['revisado', 'archivado'].includes(String(value || '').trim().toLowerCase())
 const parseApiErrorValue = (value) => {
   if (!value) return ''
   if (typeof value === 'string') return value.trim()
@@ -165,6 +178,13 @@ const buildGroupItem = (solicitud) => {
   const productoSolicitado = solicitud?.producto_solicitado_data || null
   const productoCatalogo = solicitud?.producto_data || null
   const tabla = String(solicitud?.tabla || '').trim()
+  const estado = String(solicitud?.estado || 'solicitado')
+  const catalogProductId =
+    tabla === 'producto'
+      ? Number(solicitud?.producto_id || productoCatalogo?.id || 0)
+      : Number(
+          productoSolicitado?.producto_id || productoSolicitado?.producto_data?.id || 0
+        )
   return {
     id: Number(solicitud?.id || 0),
     codigo: normalizeText(solicitud?.codigo) || `Solicitud #${solicitud?.id || '-'}`,
@@ -187,22 +207,14 @@ const buildGroupItem = (solicitud) => {
       : [],
     cantidad: Number(solicitud?.cantidad || 0),
     comentario: String(solicitud?.comentario || ''),
-    catalogProductId:
-      tabla === 'producto'
-        ? Number(solicitud?.producto_id || productoCatalogo?.id || 0)
-        : Number(
-            productoSolicitado?.producto_id || productoSolicitado?.producto_data?.id || 0
-          ),
+    catalogProductId,
     createdFromSolicitud:
       tabla === 'producto_solicitado' &&
       Number(productoSolicitado?.producto_id || productoSolicitado?.producto_data?.id || 0) > 0,
-    existsInCatalog:
-      Number(
-        tabla === 'producto'
-          ? solicitud?.producto_id || productoCatalogo?.id || 0
-          : productoSolicitado?.producto_id || productoSolicitado?.producto_data?.id || 0
-      ) > 0,
-    estado: String(solicitud?.estado || 'solicitado'),
+    existsInCatalog: catalogProductId > 0,
+    isReviewed: isReviewedEstado(estado),
+    isAccepted: estado === 'revisado',
+    estado,
     revisiones: Array.isArray(solicitud?.revisiones) ? solicitud.revisiones : [],
   }
 }
@@ -250,6 +262,7 @@ function SolicitudDetails({
   onUpdated,
   onDeleted,
   onError,
+  onOpenReviewedProduct,
   currentUser,
   allowEdit = true,
   allowDelete = true,
@@ -276,14 +289,14 @@ function SolicitudDetails({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [revisarTarget, setRevisarTarget] = useState(null)
   const [isRevisarModalOpen, setIsRevisarModalOpen] = useState(false)
-  const [revisarFilas, setRevisarFilas] = useState([emptyRevisarRef()])
+  const [revisarFilas, setRevisarFilas] = useState([])
+  const [revisarDraft, setRevisarDraft] = useState(createEmptyRevisarDraft())
   const [revisarLoading, setRevisarLoading] = useState(false)
   const [revisarError, setRevisarError] = useState('')
   const [revisarCasasOptions, setRevisarCasasOptions] = useState([])
   const [revisarCasasLoading, setRevisarCasasLoading] = useState(false)
-  const [revisarOpenDropdownUid, setRevisarOpenDropdownUid] = useState(null)
+  const [showRevisarCasaDropdown, setShowRevisarCasaDropdown] = useState(false)
   const [revisarCasaQuery, setRevisarCasaQuery] = useState('')
-  const [archivarTarget, setArchivarTarget] = useState(null)
   const [activeTab, setActiveTab] = useState('productos')
   const [isEditing, setIsEditing] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -310,8 +323,9 @@ function SolicitudDetails({
 
   const modalRef = useRef(null)
   const productModalRef = useRef(null)
-  const revisarDropdownRef = useRef(null)
-  const revisarSearchTimerRef = useRef(null)
+  const revisarCasaDropdownRef = useRef(null)
+  const revisarCasaSearchTimerRef = useRef(null)
+  const revisarCasaSearchSeqRef = useRef(0)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const productDragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
@@ -981,6 +995,10 @@ function SolicitudDetails({
     if (loading || saving || openingProductSelection) return
     const targetItem = groupItems.find((item) => String(item.id || '') === String(itemId || ''))
     if (!targetItem) return
+    if (targetItem.isReviewed && typeof onOpenReviewedProduct === 'function') {
+      onOpenReviewedProduct(targetItem.id, targetItem.estado)
+      return
+    }
 
     setOpeningProductSelection(true)
     try {
@@ -1139,11 +1157,18 @@ function SolicitudDetails({
   const handleRevisado = (updatedSolicitud) => {
     setIsRevisarModalOpen(false)
     setRevisarTarget(null)
+    setRevisarFilas([])
+    setRevisarDraft(createEmptyRevisarDraft())
+    setShowRevisarCasaDropdown(false)
+    setRevisarCasaQuery('')
+    setRevisarCasasOptions([])
+    setRevisarCasasLoading(false)
+    setRevisarError('')
     if (updatedSolicitud?.id) {
       setGroupItems((prev) =>
         prev.map((item) =>
           String(item.id) === String(updatedSolicitud.id)
-            ? { ...item, estado: updatedSolicitud.estado, revisiones: updatedSolicitud.revisiones || [] }
+            ? buildGroupItem(updatedSolicitud)
             : item
         )
       )
@@ -1152,12 +1177,19 @@ function SolicitudDetails({
   }
 
   const handleOpenRevisarModal = (item) => {
-    setRevisarTarget({ id: item.id, nombre: item.productoNombre })
-    setRevisarFilas([emptyRevisarRef()])
+    const canAcceptWithoutReferences = Boolean(item?.existsInCatalog || item?.tabla === 'producto')
+    setRevisarTarget({
+      id: item.id,
+      nombre: item.productoNombre,
+      canAcceptWithoutReferences,
+    })
+    setRevisarFilas([])
+    setRevisarDraft(createEmptyRevisarDraft())
     setRevisarError('')
-    setRevisarOpenDropdownUid(null)
+    setShowRevisarCasaDropdown(false)
     setRevisarCasaQuery('')
     setRevisarCasasOptions([])
+    setRevisarCasasLoading(false)
     setIsRevisarModalOpen(true)
   }
 
@@ -1165,55 +1197,111 @@ function SolicitudDetails({
     if (revisarLoading) return
     setIsRevisarModalOpen(false)
     setRevisarTarget(null)
-  }
-
-  const searchRevisarCasas = useCallback(async (query) => {
-    const term = String(query ?? '').trim()
-    if (!term || !token) { setRevisarCasasOptions([]); return }
-    setRevisarCasasLoading(true)
-    try {
-      const res = await authFetch(`${API_URL}/casa-comercial/casas-comerciales/?search=${encodeURIComponent(term)}&page_size=10`, {}, token)
-      if (!res.ok) throw new Error()
-      const data = await res.json().catch(() => ({}))
-      setRevisarCasasOptions(Array.isArray(data) ? data : data?.results || [])
-    } catch {
-      setRevisarCasasOptions([])
-    } finally {
-      setRevisarCasasLoading(false)
-    }
-  }, [token])
-
-  const handleRevisarCasaQueryChange = (uid, value) => {
-    setRevisarCasaQuery(value)
-    setRevisarOpenDropdownUid(uid)
-    setRevisarFilas((prev) => prev.map((f) => f.uid === uid ? { ...f, casaComercialId: '', casaComercialNombre: value } : f))
-    if (revisarSearchTimerRef.current) clearTimeout(revisarSearchTimerRef.current)
-    revisarSearchTimerRef.current = setTimeout(() => searchRevisarCasas(value), 240)
-  }
-
-  const handleRevisarCasaSelect = (uid, casa) => {
-    setRevisarFilas((prev) => prev.map((f) => f.uid === uid ? { ...f, casaComercialId: String(casa.id), casaComercialNombre: casa.nombre } : f))
-    setRevisarOpenDropdownUid(null)
+    setRevisarFilas([])
+    setRevisarDraft(createEmptyRevisarDraft())
+    setRevisarError('')
+    setShowRevisarCasaDropdown(false)
     setRevisarCasaQuery('')
     setRevisarCasasOptions([])
+    setRevisarCasasLoading(false)
   }
 
-  const handleRevisarReferenciaChange = (uid, value) => {
-    setRevisarFilas((prev) => prev.map((f) => f.uid === uid ? { ...f, referencia: value } : f))
+  const handleRevisarCasaSelect = (casaOption) => {
+    if (!casaOption?.id) return
+    setRevisarDraft((prev) => ({
+      ...prev,
+      casaComercialId: String(casaOption.id),
+      casaComercialNombre: String(casaOption.nombre || '').trim(),
+      casaComercialCodigo: String(casaOption.codigo || '').trim(),
+    }))
+    setShowRevisarCasaDropdown(false)
+    setRevisarCasaQuery('')
+    setRevisarCasasOptions([])
+    setRevisarCasasLoading(false)
   }
 
-  const handleRevisarAddFila = () => setRevisarFilas((prev) => [...prev, emptyRevisarRef()])
+  const handleClearRevisarCasa = () => {
+    setRevisarDraft((prev) => ({
+      ...prev,
+      casaComercialId: '',
+      casaComercialNombre: '',
+      casaComercialCodigo: '',
+    }))
+    setRevisarCasaQuery('')
+    setRevisarCasasOptions([])
+    setRevisarCasasLoading(false)
+  }
+
+  const handleRevisarCasaSearchChange = (event) => {
+    const value = event.target.value
+    setRevisarCasaQuery(value)
+    if (!showRevisarCasaDropdown) {
+      setShowRevisarCasaDropdown(true)
+    }
+    if (!String(value || '').trim()) {
+      setRevisarCasasOptions([])
+      setRevisarCasasLoading(false)
+    }
+  }
+
+  const handleRevisarCasaDropdownToggle = () => {
+    if (showRevisarCasaDropdown) {
+      setShowRevisarCasaDropdown(false)
+      return
+    }
+    setRevisarCasaQuery('')
+    setRevisarCasasOptions([])
+    setRevisarCasasLoading(false)
+    setShowRevisarCasaDropdown(true)
+  }
+
+  const handleRevisarReferenciaChange = (value) => {
+    setRevisarDraft((prev) => ({ ...prev, referencia: value }))
+  }
+
+  const handleRevisarAddFila = () => {
+    const referencia = String(revisarDraft.referencia || '').trim()
+    if (!revisarDraft.casaComercialId && !referencia) {
+      setRevisarError('Selecciona una casa comercial o escribe una referencia antes de agregar.')
+      return
+    }
+    setRevisarFilas((prev) => [
+      ...prev,
+      {
+        ...emptyRevisarRef(),
+        casaComercialId: revisarDraft.casaComercialId,
+        casaComercialNombre: revisarDraft.casaComercialNombre,
+        casaComercialCodigo: revisarDraft.casaComercialCodigo,
+        referencia,
+      },
+    ])
+    setRevisarDraft(createEmptyRevisarDraft())
+    setRevisarError('')
+    setShowRevisarCasaDropdown(false)
+    setRevisarCasaQuery('')
+    setRevisarCasasOptions([])
+    setRevisarCasasLoading(false)
+  }
 
   const handleRevisarRemoveFila = (uid) => {
-    setRevisarFilas((prev) => {
-      const next = prev.filter((f) => f.uid !== uid)
-      return next.length ? next : [emptyRevisarRef()]
-    })
+    setRevisarFilas((prev) => prev.filter((f) => f.uid !== uid))
   }
 
   const handleRevisarGuardar = async () => {
-    const validFilas = revisarFilas.filter((f) => f.casaComercialId || String(f.casaComercialNombre || '').trim() || String(f.referencia || '').trim())
-    if (!validFilas.length) {
+    const draftReferencia = String(revisarDraft.referencia || '').trim()
+    const preparedFilas = [
+      ...revisarFilas,
+      ...(
+        revisarDraft.casaComercialId || draftReferencia
+          ? [{
+              ...revisarDraft,
+              referencia: draftReferencia,
+            }]
+          : []
+      ),
+    ]
+    const validFilas = preparedFilas.filter((f) => f.casaComercialId || String(f.referencia || '').trim())
+    if (!revisarTarget?.canAcceptWithoutReferences && !validFilas.length) {
       setRevisarError('Agrega al menos una referencia.')
       return
     }
@@ -1236,19 +1324,50 @@ function SolicitudDetails({
       const data = await res.json().catch(() => ({}))
       handleRevisado(data)
     } catch (err) {
-      setRevisarError(String(err?.message || 'Ocurrió un error al guardar.'))
+      setRevisarError(String(err?.message || 'Ocurrió un error al aceptar.'))
+    } finally {
+      setRevisarLoading(false)
+    }
+  }
+
+  const handleRevisarArchivar = async () => {
+    if (!revisarTarget?.id) return
+    setRevisarLoading(true)
+    setRevisarError('')
+    try {
+      const res = await authFetch(
+        `${API_URL}/solicitudes/solicitudes/${revisarTarget.id}/archivar/`,
+        { method: 'POST' },
+        token
+      )
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new Error(payload?.detail || 'No se pudo archivar el producto.')
+      }
+      const data = await res.json().catch(() => ({}))
+      handleArchivado(data)
+    } catch (err) {
+      setRevisarError(String(err?.message || 'Ocurrió un error al archivar.'))
     } finally {
       setRevisarLoading(false)
     }
   }
 
   const handleArchivado = (updatedSolicitud) => {
-    setArchivarTarget(null)
+    setIsRevisarModalOpen(false)
+    setRevisarTarget(null)
+    setRevisarFilas([])
+    setRevisarDraft(createEmptyRevisarDraft())
+    setShowRevisarCasaDropdown(false)
+    setRevisarCasaQuery('')
+    setRevisarCasasOptions([])
+    setRevisarCasasLoading(false)
+    setRevisarError('')
     if (updatedSolicitud?.id) {
       setGroupItems((prev) =>
         prev.map((item) =>
           String(item.id) === String(updatedSolicitud.id)
-            ? { ...item, estado: updatedSolicitud.estado }
+            ? buildGroupItem(updatedSolicitud)
             : item
         )
       )
@@ -1288,15 +1407,61 @@ function SolicitudDetails({
   }
 
   useEffect(() => {
-    if (!revisarOpenDropdownUid) return
-    const handleClickOutside = (e) => {
-      if (revisarDropdownRef.current && !revisarDropdownRef.current.contains(e.target)) {
-        setRevisarOpenDropdownUid(null)
+    if (!open || !isRevisarModalOpen || !showRevisarCasaDropdown) return
+    const term = String(revisarCasaQuery || '').trim()
+    if (!term || term.length < 2 || !token) {
+      setRevisarCasasOptions([])
+      setRevisarCasasLoading(false)
+      return
+    }
+
+    if (revisarCasaSearchTimerRef.current) {
+      clearTimeout(revisarCasaSearchTimerRef.current)
+    }
+
+    setRevisarCasasLoading(true)
+    revisarCasaSearchTimerRef.current = setTimeout(async () => {
+      const requestId = revisarCasaSearchSeqRef.current + 1
+      revisarCasaSearchSeqRef.current = requestId
+
+      try {
+        const response = await authFetch(
+          `${API_URL}/casa-comercial/casas/?search=${encodeURIComponent(term)}&page_size=5`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron cargar las casas comerciales.')
+        const data = await response.json()
+        if (requestId !== revisarCasaSearchSeqRef.current) return
+        setRevisarCasasOptions(parseApiList(data))
+      } catch {
+        if (requestId !== revisarCasaSearchSeqRef.current) return
+        setRevisarCasasOptions([])
+      } finally {
+        if (requestId === revisarCasaSearchSeqRef.current) {
+          setRevisarCasasLoading(false)
+        }
+      }
+    }, 320)
+
+    return () => {
+      if (revisarCasaSearchTimerRef.current) {
+        clearTimeout(revisarCasaSearchTimerRef.current)
+        revisarCasaSearchTimerRef.current = null
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [revisarOpenDropdownUid])
+  }, [isRevisarModalOpen, open, revisarCasaQuery, showRevisarCasaDropdown, token])
+
+  useEffect(() => {
+    if (!showRevisarCasaDropdown) return
+    const handleClickOutside = (event) => {
+      if (revisarCasaDropdownRef.current && !revisarCasaDropdownRef.current.contains(event.target)) {
+        setShowRevisarCasaDropdown(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClickOutside)
+    return () => window.removeEventListener('mousedown', handleClickOutside)
+  }, [showRevisarCasaDropdown])
 
   const { shouldRender, isClosing } = useModalAnimation(open)
   if (!shouldRender) return null
@@ -1638,8 +1803,8 @@ function SolicitudDetails({
         style={{
           inset: 0,
           margin: 'auto',
-          width: PRODUCT_MODAL_MIN_WIDTH,
-          height: PRODUCT_MODAL_MIN_HEIGHT,
+          width: REVIEW_MODAL_WIDTH,
+          height: REVIEW_MODAL_HEIGHT,
           maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
           maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
         }}
@@ -1671,118 +1836,187 @@ function SolicitudDetails({
                 </div>
               </div>
 
-              <div>
-                <div
-                  className="create-user__locations-row create-user__locations-row--head"
-                  style={{ gridTemplateColumns: '1fr 1fr 36px' }}
-                >
-                  <span>Casa comercial</span>
-                  <span>Referencia</span>
-                  <span />
+              <div className="create-solicitud-details__review-layout">
+                <div className="create-solicitud-details__review-helper">
+                  <span className="create-solicitud-details__review-helper-label">
+                    {revisarTarget.canAcceptWithoutReferences ? 'Producto existente' : 'Producto nuevo'}
+                  </span>
+                  <p>
+                    {revisarTarget.canAcceptWithoutReferences
+                      ? 'Este producto ya existe en la base de datos. Puedes aceptarlo o archivarlo sin agregar referencias.'
+                      : 'Agrega una o varias referencias con su casa comercial. La tabla usa el mismo flujo de captura que Entradas y Salidas.'}
+                  </p>
                 </div>
+                {!revisarTarget.canAcceptWithoutReferences && (
+                  <div className="create-user__locations-table create-salida__products-table create-solicitud-details__review-table">
+                    <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Casa comercial</span>
+                      <span>Referencia</span>
+                      <span>Acciones</span>
+                    </div>
 
-                {revisarFilas.map((fila) => (
-                  <div
-                    key={fila.uid}
-                    className="create-user__locations-row create-user__locations-row--form"
-                    style={{ gridTemplateColumns: '1fr 1fr 36px' }}
-                  >
-                    <span
-                      ref={revisarOpenDropdownUid === fila.uid ? revisarDropdownRef : null}
-                      style={{ position: 'relative' }}
-                    >
-                      <input
-                        type="text"
-                        value={revisarOpenDropdownUid === fila.uid ? revisarCasaQuery : fila.casaComercialNombre}
-                        placeholder="Buscar casa comercial..."
-                        disabled={revisarLoading}
-                        onChange={(e) => handleRevisarCasaQueryChange(fila.uid, e.target.value)}
-                        onFocus={() => {
-                          setRevisarCasaQuery(fila.casaComercialNombre)
-                          setRevisarOpenDropdownUid(fila.uid)
-                          if (fila.casaComercialNombre) searchRevisarCasas(fila.casaComercialNombre)
-                        }}
-                      />
-                      {revisarOpenDropdownUid === fila.uid && (revisarCasasLoading || revisarCasasOptions.length > 0) && (
+                    <div className="create-user__locations-row create-user__locations-row--form">
+                      <span className="create-solicitud-details__review-picker">
                         <div
-                          style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: 0,
-                            right: 0,
-                            zIndex: 200,
-                            background: 'var(--modal-color, #fff)',
-                            border: '1px solid var(--color-border, #ccc)',
-                            borderRadius: 6,
-                            boxShadow: 'var(--shadow-panel)',
-                            maxHeight: 180,
-                            overflowY: 'auto',
-                          }}
+                          className="create-user__dropdown create-solicitud-details__supplier-dropdown"
+                          ref={revisarCasaDropdownRef}
                         >
-                          {revisarCasasLoading && (
-                            <div style={{ padding: '8px 12px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
-                              Buscando...
+                          <button
+                            type="button"
+                            className="create-user__dropdown-trigger"
+                            onClick={handleRevisarCasaDropdownToggle}
+                            disabled={revisarLoading}
+                          >
+                            <span>
+                              {revisarDraft.casaComercialNombre || 'Selecciona una casa comercial'}
+                            </span>
+                            <i className={`pi pi-chevron-${showRevisarCasaDropdown ? 'up' : 'down'}`} />
+                          </button>
+
+                          {showRevisarCasaDropdown && (
+                            <div className="create-user__dropdown-panel">
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar casas comerciales"
+                                  value={revisarCasaQuery}
+                                  onChange={handleRevisarCasaSearchChange}
+                                  autoFocus
+                                  disabled={revisarLoading}
+                                />
+                              </div>
+
+                              <div className="create-user__dropdown-results">
+                                {revisarDraft.casaComercialId && (
+                                  <button
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      handleClearRevisarCasa()
+                                    }}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>Sin casa comercial</strong>
+                                      <small>Quitar la selección actual</small>
+                                    </div>
+                                  </button>
+                                )}
+                                {revisarCasasLoading && <small className="muted">Buscando casas comerciales...</small>}
+                                {!revisarCasasLoading && String(revisarCasaQuery || '').trim().length < 2 && (
+                                  <small className="muted">Escribe al menos 2 caracteres.</small>
+                                )}
+                                {!revisarCasasLoading &&
+                                  String(revisarCasaQuery || '').trim().length >= 2 &&
+                                  !revisarCasasOptions.length && (
+                                    <small className="muted">Sin resultados.</small>
+                                  )}
+                                {revisarCasasOptions.map((casa) => {
+                                  const isSelected =
+                                    String(revisarDraft.casaComercialId || '') === String(casa.id)
+                                  return (
+                                    <button
+                                      key={`rev-casa-${casa.id}`}
+                                      type="button"
+                                      className="create-user__result-option"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={(event) => {
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        handleRevisarCasaSelect(casa)
+                                      }}
+                                    >
+                                      <div className="create-user__result-info">
+                                        <strong>{String(casa?.nombre || '').trim() || `Casa #${casa.id}`}</strong>
+                                        <small>
+                                          {String(casa?.codigo || '').trim()
+                                            ? `Código: ${String(casa.codigo).trim()}`
+                                            : `ID: ${casa.id}`}
+                                        </small>
+                                      </div>
+                                      {isSelected && (
+                                        <span className="create-user__result-tag is-selected">Seleccionado</span>
+                                      )}
+                                    </button>
+                                  )
+                                })}
+                              </div>
                             </div>
                           )}
-                          {!revisarCasasLoading && revisarCasasOptions.map((casa) => (
-                            <button
-                              key={casa.id}
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => handleRevisarCasaSelect(fila.uid, casa)}
-                              style={{
-                                display: 'block',
-                                width: '100%',
-                                textAlign: 'left',
-                                padding: '7px 12px',
-                                background: 'transparent',
-                                border: 'none',
-                                cursor: 'pointer',
-                                fontSize: '0.875rem',
-                              }}
-                            >
-                              <strong>{casa.codigo}</strong>&nbsp;{casa.nombre}
-                            </button>
-                          ))}
                         </div>
-                      )}
-                    </span>
-                    <span>
-                      <input
-                        type="text"
-                        value={fila.referencia}
-                        placeholder="Referencia..."
-                        disabled={revisarLoading}
-                        onChange={(e) => handleRevisarReferenciaChange(fila.uid, e.target.value)}
-                      />
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
-                      <button
-                        type="button"
-                        className="create-user__locations-remove"
-                        onClick={() => handleRevisarRemoveFila(fila.uid)}
-                        disabled={revisarLoading || revisarFilas.length === 1}
-                        title="Eliminar fila"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  </div>
-                ))}
+                      </span>
 
-                <button
-                  type="button"
-                  className="create-user__ghost"
-                  onClick={handleRevisarAddFila}
-                  disabled={revisarLoading}
-                  style={{ marginTop: 8, fontSize: '0.85rem' }}
-                >
-                  + Agregar referencia
-                </button>
+                      <span>
+                        <input
+                          type="text"
+                          value={revisarDraft.referencia}
+                          placeholder="Referencia"
+                          disabled={revisarLoading}
+                          onChange={(event) => handleRevisarReferenciaChange(event.target.value)}
+                        />
+                      </span>
+
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleRevisarAddFila}
+                          disabled={revisarLoading}
+                        >
+                          Agregar
+                        </button>
+                      </span>
+                    </div>
+
+                    {!revisarFilas.length && (
+                      <div className="create-user__locations-row create-user__locations-row--empty">
+                        <span>Sin referencias agregadas.</span>
+                      </div>
+                    )}
+
+                    {revisarFilas.map((fila) => {
+                      const casaLabel = [
+                        String(fila.casaComercialCodigo || '').trim(),
+                        String(fila.casaComercialNombre || '').trim(),
+                      ]
+                        .filter(Boolean)
+                        .join(' - ')
+
+                      return (
+                        <div key={fila.uid} className="create-user__locations-row">
+                          <span title={casaLabel || undefined}>
+                            <span className="create-salida__table-static-value create-salida__table-static-value--name">
+                              {casaLabel || '-'}
+                            </span>
+                          </span>
+                          <span title={fila.referencia || undefined}>
+                            <span className="create-salida__table-static-value create-salida__table-static-value--name">
+                              {fila.referencia || '-'}
+                            </span>
+                          </span>
+                          <span className="create-user__locations-cell create-user__locations-cell--action">
+                            <button
+                              type="button"
+                              className="create-user__locations-remove"
+                              onClick={() => handleRevisarRemoveFila(fila.uid)}
+                              disabled={revisarLoading}
+                              title="Eliminar referencia"
+                            >
+                              <i className="pi pi-trash" aria-hidden="true" />
+                            </button>
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               {revisarError && (
-                <p style={{ margin: '10px 0 0', color: 'var(--color-error, #e53e3e)', fontSize: '0.875rem' }}>
+                <p className="create-user__error" style={{ margin: '10px 0 0' }}>
                   {revisarError}
                 </p>
               )}
@@ -1804,11 +2038,19 @@ function SolicitudDetails({
           <div className="user-details__footer-right">
             <button
               type="button"
+              className="create-user__action create-user__action--secondary create-salida__action--danger-solid"
+              onClick={handleRevisarArchivar}
+              disabled={revisarLoading}
+            >
+              {revisarLoading ? 'Procesando...' : 'Archivar'}
+            </button>
+            <button
+              type="button"
               className="create-user__action create-user__action--primary"
               onClick={handleRevisarGuardar}
               disabled={revisarLoading}
             >
-              {revisarLoading ? 'Guardando...' : 'Guardar revisión'}
+              {revisarLoading ? 'Procesando...' : 'Aceptar'}
             </button>
           </div>
         </div>
@@ -1988,7 +2230,7 @@ function SolicitudDetails({
                       <span style={{ minWidth: 0 }}>OEM</span>
                       <span style={{ minWidth: 0 }}>Comentario</span>
                       <span style={{ minWidth: 0 }}>Cantidad</span>
-                      <span style={{ textAlign: 'center' }}>Existe</span>
+                      <span style={{ textAlign: 'center' }}>Revisado</span>
                       <span style={{ textAlign: 'center' }}>Acciones</span>
                     </div>
 
@@ -2025,44 +2267,32 @@ function SolicitudDetails({
                           </span>
                           <span style={{ minWidth: 0 }}>{item.cantidad || '-'}</span>
                           <span
-                            aria-label={item.existsInCatalog ? 'Existe' : 'No existe'}
+                            aria-label={item.isReviewed ? 'Revisado' : 'Sin revisar'}
                             style={{ display: 'flex', justifyContent: 'center' }}
                           >
                             <i
-                              className={`pi pi-${item.existsInCatalog ? 'check-circle' : 'times-circle'}`}
-                              style={{ color: item.existsInCatalog ? '#22c55e' : '#9ca3af' }}
+                              className={`pi pi-${item.isReviewed ? 'check-circle' : 'times-circle'}`}
+                              style={{ color: item.isReviewed ? (item.isAccepted ? '#22c55e' : '#64748b') : '#9ca3af' }}
                               aria-hidden="true"
                             />
                           </span>
                         </button>
                         <span style={{ display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
-                          {item.estado === 'revisado' || item.estado === 'archivado' ? (
+                          {item.isReviewed ? (
                             <span style={{ fontSize: '0.75rem', color: item.estado === 'archivado' ? '#9ca3af' : '#22c55e', fontWeight: 600 }}>
-                              {item.estado === 'archivado' ? 'Archivado' : 'Revisado'}
+                              {item.estado === 'archivado' ? 'Archivado' : 'Aceptado'}
                             </span>
                           ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="create-user__ghost"
-                                style={{ padding: '2px 7px', fontSize: '0.75rem' }}
-                                disabled={loading || saving}
-                                onClick={() => handleOpenRevisarModal(item)}
-                                title="Revisar producto"
-                              >
-                                Revisar
-                              </button>
-                              <button
-                                type="button"
-                                className="create-user__ghost"
-                                style={{ padding: '2px 7px', fontSize: '0.75rem' }}
-                                disabled={loading || saving}
-                                onClick={() => setArchivarTarget({ id: item.id, nombre: item.productoNombre })}
-                                title="Archivar producto"
-                              >
-                                Archivar
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              className="create-user__ghost"
+                              style={{ padding: '2px 7px', fontSize: '0.75rem' }}
+                              disabled={loading || saving}
+                              onClick={() => handleOpenRevisarModal(item)}
+                              title="Revisar producto"
+                            >
+                              Revisar
+                            </button>
                           )}
                         </span>
                       </div>
@@ -2268,15 +2498,6 @@ function SolicitudDetails({
       {catalogProductModal && (canUsePortal ? createPortal(catalogProductModal, document.body) : catalogProductModal)}
       {createProductModal && (canUsePortal ? createPortal(createProductModal, document.body) : createProductModal)}
       {revisarModalOverlay && (canUsePortal ? createPortal(revisarModalOverlay, document.body) : revisarModalOverlay)}
-      {canUsePortal && createPortal(
-        <ArchivarProductoModal
-          open={Boolean(archivarTarget)}
-          solicitudId={archivarTarget?.id}
-          productoNombre={archivarTarget?.nombre}
-          token={token}
-          onArchivado={handleArchivado}
-          onClose={() => setArchivarTarget(null)}
-        />, document.body)}
     </>
   )
 }

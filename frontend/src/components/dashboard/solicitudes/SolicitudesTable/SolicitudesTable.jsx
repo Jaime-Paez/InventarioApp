@@ -87,6 +87,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
+  const isAdminUser = Boolean(user?.es_administrador)
   const normalizedCreateBranchIdRaw = String(createBranchId || '').trim()
   const normalizedCreateBranchId = (
     normalizedCreateBranchIdRaw.toLowerCase() === 'all' ? 'all' : normalizedCreateBranchIdRaw
@@ -292,6 +293,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       setLoading(true)
       setError(null)
       try {
+        const estadoFilter = options?.estadoFilter ?? statusFilter
         const tableFilters = options?.tableFilters ?? filters
         const tableSortField = options?.tableSortField ?? sortField
         const tableSortOrder = options?.tableSortOrder ?? sortOrder
@@ -302,6 +304,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         const url = buildClientsListUrl(criteria, {
           page,
           rows,
+          estadoFilter,
           tableFilters,
           tableSortField,
           tableSortOrder,
@@ -330,11 +333,12 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         setIsRefreshing(false)
       }
     },
-    [token, normalizeList, pageSize, buildClientsListUrl, filters, sortField, sortOrder, normalizedCreateBranchId]
+    [token, normalizeList, pageSize, buildClientsListUrl, filters, sortField, sortOrder, normalizedCreateBranchId, statusFilter]
   )
 
   const fetchAllClients = useCallback(
     async (criteria, options = {}) => {
+      const estadoFilter = options?.estadoFilter ?? statusFilter
       const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null
       const signal = options?.signal
       const isCancelled = typeof options?.isCancelled === 'function' ? options.isCancelled : () => false
@@ -352,6 +356,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       let url = buildClientsListUrl(criteria, {
         page: 1,
         rows: 200,
+        estadoFilter,
         tableFilters,
         tableSortField,
         tableSortOrder,
@@ -402,7 +407,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
 
       return normalizeList(all)
     },
-    [token, normalizeList, buildClientsListUrl, filters, sortField, sortOrder, normalizedCreateBranchId]
+    [token, normalizeList, buildClientsListUrl, filters, sortField, sortOrder, normalizedCreateBranchId, statusFilter]
   )
 
   useEffect(() => {
@@ -611,6 +616,8 @@ const handleResetTable = () => {
     if (nextFilter === statusFilter) return
     setStatusFilter(nextFilter)
     setSelectedRows([])
+    setClients([])
+    setTotalRecords(0)
     setPageFirst(0)
     setIsRefreshing(true)
     fetchClients(lastSearchRef.current, 1, pageSize, {
@@ -924,28 +931,28 @@ const handleResetTable = () => {
     )
   }
 
-  const estadoBadgeBodyTemplate = (rowData) => {
+  const getSolicitudPendingMeta = useCallback((rowData) => {
     const counts = rowData?.estado_counts || {}
     const revisado = Number(counts.revisado || 0)
     const archivado = Number(counts.archivado || 0)
     const solicitado = Number(counts.solicitado || 0)
     const total = revisado + archivado + solicitado
-    if (!total || (revisado === 0 && archivado === 0)) return null
-    const all = solicitado === 0
+    return {
+      revisado,
+      archivado,
+      solicitado,
+      total,
+      isPending: total > 0 && solicitado > 0,
+    }
+  }, [])
+
+  const estadoBadgeBodyTemplate = (rowData) => {
+    if (!isAdminUser) return null
+    const { isPending } = getSolicitudPendingMeta(rowData)
+    if (!isPending) return null
     return (
-      <span
-        style={{
-          display: 'inline-block',
-          padding: '2px 8px',
-          borderRadius: 999,
-          fontSize: '0.75rem',
-          fontWeight: 600,
-          background: all ? 'var(--color-success-bg, #dcfce7)' : 'var(--color-warning-bg, #fef9c3)',
-          color: all ? 'var(--color-success, #15803d)' : 'var(--color-warning, #a16207)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {all ? 'Completado' : `${revisado + archivado}/${total} revisados`}
+      <span className="transfer-issues-state transfer-issues-state--pendiente">
+        Pendiente
       </span>
     )
   }
@@ -974,6 +981,17 @@ const handleResetTable = () => {
         {text}
       </span>
     )
+  }
+
+  const rowClassNameTemplate = (rowData) => {
+    const classes = []
+    if (isAdminUser && statusFilter === 'solicitado' && getSolicitudPendingMeta(rowData).isPending) {
+      classes.push('transfer-issues-row--pendiente')
+    }
+    if (selectedRowIds.includes(normId(rowData?.id))) {
+      classes.push('selected-row-shadow')
+    }
+    return classes.join(' ')
   }
 
   // ---------------- Row click -> detalles ----------------
@@ -1032,6 +1050,32 @@ const handleResetTable = () => {
     setSelectedId(null)
     refreshData()
     toast.current?.show({ severity: 'success', summary: 'Eliminado', detail: 'Solicitud eliminada correctamente', life: 2500 })
+  }
+
+  const handleOpenReviewedProduct = async (itemId, estado) => {
+    const normalizedId = Number(itemId || 0)
+    if (!normalizedId) return
+
+    const nextFilter = String(estado || '').trim().toLowerCase() === 'archivado'
+      ? 'archivado'
+      : 'aceptado'
+
+    setStatusFilter(nextFilter)
+    setSelectedRows([])
+    setClients([])
+    setTotalRecords(0)
+    setPageFirst(0)
+    setSelectedId(normalizedId)
+    setShowDetailsModal(true)
+    setIsRefreshing(true)
+
+    await fetchClients(lastSearchRef.current || initialSearchCriteria, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+      branchContextId: normalizedCreateBranchId,
+      estadoFilter: nextFilter,
+    })
   }
 
   // ---------------- Header ----------------
@@ -1581,7 +1625,7 @@ const handleResetTable = () => {
           stateKey={statusFilter === 'solicitado' ? 'solicitudes-table-state' : undefined}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
-          rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
+          rowClassName={rowClassNameTemplate}
           selectionMode="multiple"
           selection={selectedRows}
           onAllRowsUnselect={handleUnselectAllRows}
@@ -1663,7 +1707,7 @@ const handleResetTable = () => {
             )
           })}
 
-          {statusFilter === 'solicitado' && (
+          {statusFilter === 'solicitado' && isAdminUser && (
             <Column
               key="estado_badge"
               header="Estado"
@@ -1916,6 +1960,7 @@ const handleResetTable = () => {
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}
         onError={showErrorToast}
+        onOpenReviewedProduct={handleOpenReviewedProduct}
         currentUser={user}
         allowEdit={canEdit}
         allowDelete={canDelete}
@@ -2076,10 +2121,6 @@ const handleResetTable = () => {
 }
 
 export default SolicitudesTable
-
-
-
-
 
 
 
