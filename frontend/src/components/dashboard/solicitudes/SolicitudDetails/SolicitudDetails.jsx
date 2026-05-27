@@ -7,7 +7,6 @@ import '../../movimientos/CreateSalida.css'
 import './SolicitudDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
-import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
 
@@ -995,10 +994,6 @@ function SolicitudDetails({
     if (loading || saving || openingProductSelection) return
     const targetItem = groupItems.find((item) => String(item.id || '') === String(itemId || ''))
     if (!targetItem) return
-    if (targetItem.isReviewed && typeof onOpenReviewedProduct === 'function') {
-      onOpenReviewedProduct(targetItem.id, targetItem.estado)
-      return
-    }
 
     setOpeningProductSelection(true)
     try {
@@ -1472,7 +1467,7 @@ function SolicitudDetails({
     linkingCreatedProduct ||
     (isProductModalOpen && Boolean(selectedSolicitudId) && !productSolicitud)
   const groupTableGridTemplate =
-    'minmax(84px, 0.78fr) minmax(0, 1.28fr) minmax(0, 0.82fr) minmax(0, 0.72fr) minmax(0, 1.08fr) minmax(54px, 0.34fr) 42px 110px'
+    'minmax(80px, 0.72fr) minmax(0, 1.24fr) minmax(110px, 0.82fr) minmax(0, 0.68fr) minmax(0, 1.04fr) minmax(52px, 0.3fr) 72px 100px'
   const selectedGroupItem = groupItems.find(
     (item) => String(item.id || '') === String(selectedSolicitudId || '')
   )
@@ -1483,6 +1478,7 @@ function SolicitudDetails({
     rootGroupItem?.codigo ||
     solicitud?.codigo ||
     (solicitudId ? `Solicitud #${solicitudId}` : 'Detalle de solicitud')
+  const allGroupItemsReviewed = groupItems.length > 0 && groupItems.every((item) => item.isReviewed)
   const productModalTitle = [
     selectedGroupItem?.productoCodigo || productFormData.productoCodigo || 'Producto',
     selectedGroupItem?.productoNombre || productFormData.productoNombre || '',
@@ -1504,7 +1500,8 @@ function SolicitudDetails({
       normalizeText(productFormData.productoCodigo) &&
       !productCodeCheckLoading &&
       !productCodeExists &&
-      !resolvedProductId
+      !resolvedProductId &&
+      !selectedGroupItem?.isReviewed
   )
   const createProductInitialData = {
     codigo: productFormData.productoCodigo,
@@ -1606,7 +1603,7 @@ function SolicitudDetails({
                   </div>
                 </div>
 
-                {productFormData.tabla === 'producto_solicitado' && !resolvedProductId && (
+                {productFormData.tabla === 'producto_solicitado' && !resolvedProductId && !selectedGroupItem?.isReviewed && (
                   <div
                     style={{
                       margin: '0 0 14px',
@@ -1633,6 +1630,14 @@ function SolicitudDetails({
                     <p style={{ margin: 0, fontWeight: 700, lineHeight: 1.35 }}>
                       Este producto aun no existe en la base de datos.
                     </p>
+                  </div>
+                )}
+
+                {selectedGroupItem?.isReviewed && (
+                  <div style={{ margin: '0 0 14px', padding: '10px 14px', borderRadius: '10px', border: `1px solid ${selectedGroupItem.estado === 'archivado' ? 'var(--color-error-border, #fca5a5)' : 'var(--color-success-border, #86efac)'}`, background: selectedGroupItem.estado === 'archivado' ? 'var(--color-error-surface, #fef2f2)' : 'var(--color-success-surface, #f0fdf4)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: selectedGroupItem.estado === 'archivado' ? 'var(--color-error-text, #ef4444)' : 'var(--color-success-text, #16a34a)' }}>
+                      {selectedGroupItem.estado === 'archivado' ? 'Archivado' : 'Aceptado'}
+                    </span>
                   </div>
                 )}
 
@@ -2082,6 +2087,16 @@ function SolicitudDetails({
             <span>Abriendo producto...</span>
           </div>
         ) : null}
+        {groupItems.length > 0 && (
+          <div
+            className={`entrada-details__pending-ribbon${allGroupItemsReviewed ? ' entrada-details__pending-ribbon--accepted' : ' entrada-details__pending-ribbon--pending'}`}
+            aria-label={allGroupItemsReviewed ? 'Solicitud revisada' : 'Solicitud pendiente'}
+          >
+            <span className="entrada-details__pending-ribbon-label">
+              {allGroupItemsReviewed ? 'Solicitud\nrevisada' : 'Solicitud\npendiente'}
+            </span>
+          </div>
+        )}
         <header className="create-user__header" onMouseDown={handleHeaderMouseDown}>
           <div className="create-user__header-text">
             <h3>{modalTitle}</h3>
@@ -2126,13 +2141,6 @@ function SolicitudDetails({
               onClick={() => setActiveTab('cliente')}
             >
               Datos del cliente
-            </button>
-            <button
-              type="button"
-              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('recordatorios')}
-            >
-              Recordatorios
             </button>
           </div>
 
@@ -2224,14 +2232,14 @@ function SolicitudDetails({
                       className="create-user__locations-row create-user__locations-row--head"
                       style={{ gridTemplateColumns: groupTableGridTemplate }}
                     >
-                      <span style={{ minWidth: 0 }}>Codigo</span>
-                      <span style={{ minWidth: 0 }}>Nombre</span>
-                      <span style={{ minWidth: 0 }}>Casa comercial</span>
-                      <span style={{ minWidth: 0 }}>OEM</span>
-                      <span style={{ minWidth: 0 }}>Comentario</span>
-                      <span style={{ minWidth: 0 }}>Cantidad</span>
-                      <span style={{ textAlign: 'center' }}>Revisado</span>
-                      <span style={{ textAlign: 'center' }}>Acciones</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Codigo</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Nombre</span>
+                      <span style={{ whiteSpace: 'nowrap' }}>Casa comercial</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>OEM</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Comentario</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Cantidad</span>
+                      <span style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Revisado</span>
+                      <span style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Acciones</span>
                     </div>
 
                     {groupItems.map((item) => (
@@ -2252,34 +2260,34 @@ function SolicitudDetails({
                           disabled={loading || saving || openingProductSelection}
                           style={{ display: 'contents', cursor: loading || saving || openingProductSelection ? 'wait' : 'pointer', color: 'inherit', background: 'none', border: 'none', textAlign: 'left' }}
                         >
-                          <span style={{ minWidth: 0 }}>{item.productoCodigo || '-'}</span>
-                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.productoCodigo || undefined}>{item.productoCodigo || '-'}</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.productoNombre || undefined}>
                             {item.productoNombre || '-'}
                           </span>
-                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.casaComercialNombre || undefined}>
                             {item.casaComercialNombre || '-'}
                           </span>
-                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.productoOems.length ? item.productoOems.join(', ') : undefined}>
                             {item.productoOems.length ? item.productoOems.join(', ') : '-'}
                           </span>
-                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.comentario || undefined}>
                             {item.comentario || '-'}
                           </span>
-                          <span style={{ minWidth: 0 }}>{item.cantidad || '-'}</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.cantidad || '-'}</span>
                           <span
                             aria-label={item.isReviewed ? 'Revisado' : 'Sin revisar'}
                             style={{ display: 'flex', justifyContent: 'center' }}
                           >
                             <i
                               className={`pi pi-${item.isReviewed ? 'check-circle' : 'times-circle'}`}
-                              style={{ color: item.isReviewed ? (item.isAccepted ? '#22c55e' : '#64748b') : '#9ca3af' }}
+                              style={{ color: item.isReviewed ? (item.isAccepted ? '#22c55e' : 'var(--color-error-text, #ef4444)') : '#9ca3af' }}
                               aria-hidden="true"
                             />
                           </span>
                         </button>
                         <span style={{ display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
                           {item.isReviewed ? (
-                            <span style={{ fontSize: '0.75rem', color: item.estado === 'archivado' ? '#9ca3af' : '#22c55e', fontWeight: 600 }}>
+                            <span style={{ fontSize: '0.75rem', color: item.estado === 'archivado' ? 'var(--color-error-text, #ef4444)' : '#22c55e', fontWeight: 600 }}>
                               {item.estado === 'archivado' ? 'Archivado' : 'Aceptado'}
                             </span>
                           ) : (
@@ -2300,25 +2308,6 @@ function SolicitudDetails({
                   </div>
                 </section>
 
-                <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Solicitud</p>
-                      <h4>Comentario general</h4>
-                    </div>
-                  </div>
-                  <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field create-user__field--full">
-                      <span>Descripcion general</span>
-                      <textarea
-                        name="descripcionGeneral"
-                        value={formData.descripcionGeneral}
-                        onChange={handleFormFieldChange}
-                        disabled={editorDisabled}
-                      />
-                    </label>
-                  </div>
-                </section>
 
               </>
             )}
@@ -2333,6 +2322,15 @@ function SolicitudDetails({
                 </div>
                 <div className="create-user__grid create-user__grid--two">
                   <label className="create-user__field">
+                    <span>Cedula/RUC</span>
+                    <input
+                      name="cedula_ruc"
+                      value={clienteData.cedula_ruc}
+                      onChange={handleClienteFieldChange}
+                      disabled={editorDisabled}
+                    />
+                  </label>
+                  <label className="create-user__field">
                     <span>Nombres</span>
                     <input
                       name="nombres"
@@ -2346,15 +2344,6 @@ function SolicitudDetails({
                     <input
                       name="apellidos"
                       value={clienteData.apellidos}
-                      onChange={handleClienteFieldChange}
-                      disabled={editorDisabled}
-                    />
-                  </label>
-                  <label className="create-user__field">
-                    <span>Cedula/RUC</span>
-                    <input
-                      name="cedula_ruc"
-                      value={clienteData.cedula_ruc}
                       onChange={handleClienteFieldChange}
                       disabled={editorDisabled}
                     />
@@ -2391,18 +2380,6 @@ function SolicitudDetails({
               </section>
             )}
 
-            {!loading && activeTab === 'recordatorios' && (
-              <EntityRemindersTab
-                token={token}
-                currentUser={currentUser}
-                entityType="solicitud"
-                entityId={solicitudId}
-                isOpen={open}
-                entityLabel={modalTitle}
-                canCreateReminder={allowEdit && isEditing}
-                onError={notifyError}
-              />
-            )}
           </div>
         </div>
 

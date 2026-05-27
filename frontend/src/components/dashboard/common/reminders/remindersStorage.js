@@ -135,6 +135,7 @@ const sanitizeReminderContext = (rawContext) => {
         id: normalizeId(entry.id),
         name: String(entry.name || 'Usuario').trim() || 'Usuario',
         completada: Boolean(entry.completada),
+        disculpada: Boolean(entry.disculpada),
       }))
     if (sanitized.length > 0) {
       result.detalle_usuarios = sanitized

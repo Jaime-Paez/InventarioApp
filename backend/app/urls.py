@@ -22,6 +22,11 @@ urlpatterns = [
         name="recordatorios-inspeccion-aleatoria-enviar-ahora",
     ),
     path(
+        "recordatorios/inspeccion-aleatoria/admin/disculpar/",
+        views.RandomInspectionAdminExcuseAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-admin-disculpar",
+    ),
+    path(
         "recordatorios/inspeccion-aleatoria/admin/resumen/",
         views.RandomInspectionAdminSummaryAPIView.as_view(),
         name="recordatorios-inspeccion-aleatoria-admin-resumen",

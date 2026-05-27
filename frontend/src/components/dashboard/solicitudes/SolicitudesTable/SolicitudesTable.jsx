@@ -10,6 +10,7 @@ import { Button } from 'primereact/button'
 
 import CreateSolicitud from '../CreateSolicitud/CreateSolicitud'
 import SolicitudDetails from '../SolicitudDetails/SolicitudDetails'
+import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
 import '../../admin/UsersTable/UsersTable.css'
 import '../../movimientos/TrasladosInconvenientesTable.css'
 
@@ -77,7 +78,7 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
-function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '' }) {
+function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '', pendingOpenClienteSolicitudId, onPendingOpenClienteSolicitudHandled }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
@@ -246,7 +247,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
     params.set('page', String(page))
     params.set('page_size', String(rows))
     if (estadoFilter === 'solicitado') {
-      params.set('estado', 'solicitado')
+      params.set('estado', 'solicitado,revisado')
     } else if (estadoFilter === 'aceptado') {
       params.set('estado', 'revisado')
       params.set('flat', '1')
@@ -948,13 +949,18 @@ const handleResetTable = () => {
 
   const estadoBadgeBodyTemplate = (rowData) => {
     if (!isAdminUser) return null
-    const { isPending } = getSolicitudPendingMeta(rowData)
-    if (!isPending) return null
-    return (
+    const { isPending, total, solicitado } = getSolicitudPendingMeta(rowData)
+    if (isPending) return (
       <span className="transfer-issues-state transfer-issues-state--pendiente">
         Pendiente
       </span>
     )
+    if (total > 0 && solicitado === 0) return (
+      <span className="transfer-issues-state transfer-issues-state--revisada">
+        Revisada
+      </span>
+    )
+    return null
   }
 
   const revisionesBodyTemplate = (rowData) => {
@@ -998,6 +1004,55 @@ const handleResetTable = () => {
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const clickTimerRef = useRef(null)
+  const pendingRefreshAfterCloseRef = useRef(false)
+
+  useEffect(() => {
+    if (!pendingOpenClienteSolicitudId) return
+    setSelectedId(pendingOpenClienteSolicitudId)
+    setShowDetailsModal(true)
+    onPendingOpenClienteSolicitudHandled?.()
+  }, [pendingOpenClienteSolicitudId, onPendingOpenClienteSolicitudHandled])
+
+  const [showProductoDetailsModal, setShowProductoDetailsModal] = useState(false)
+  const [selectedProductoId, setSelectedProductoId] = useState(null)
+  const [showBasicProductModal, setShowBasicProductModal] = useState(false)
+  const [basicProductData, setBasicProductData] = useState(null)
+  const [basicModalPosition, setBasicModalPosition] = useState({ x: 12, y: 12 })
+  const basicModalRef = useRef(null)
+  const basicModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+
+  useEffect(() => {
+    if (!showBasicProductModal) return
+    const w = 560
+    const h = 420
+    setBasicModalPosition({
+      x: Math.max(12, (window.innerWidth - w) / 2),
+      y: Math.max(12, (window.innerHeight - h) / 2),
+    })
+  }, [showBasicProductModal])
+
+  const handleBasicModalHeaderMouseDown = useCallback((event) => {
+    if (event.button !== 0) return
+    const rect = basicModalRef.current?.getBoundingClientRect() || { left: 0, top: 0 }
+    basicModalDrag.current = { active: true, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top }
+    const handleMove = (ev) => {
+      if (!basicModalDrag.current.active) return
+      ev.preventDefault()
+      const mw = basicModalRef.current?.offsetWidth || 0
+      const mh = basicModalRef.current?.offsetHeight || 0
+      setBasicModalPosition({
+        x: Math.min(Math.max(ev.clientX - basicModalDrag.current.offsetX, 12), window.innerWidth - mw - 12),
+        y: Math.min(Math.max(ev.clientY - basicModalDrag.current.offsetY, 12), window.innerHeight - mh - 12),
+      })
+    }
+    const handleUp = () => {
+      basicModalDrag.current.active = false
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+  }, [])
 
   const handleRowClick = (event) => {
     const target = event?.originalEvent?.target
@@ -1031,7 +1086,33 @@ const handleResetTable = () => {
     const target = event?.originalEvent?.target
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
 
-    const id = event?.data?.id
+    const rowData = event?.data
+    if (!rowData) return
+
+    if (statusFilter === 'aceptado' || statusFilter === 'archivado') {
+      const tabla = String(rowData?.tabla || '').trim()
+      if (tabla === 'producto') {
+        const catalogProductId = rowData?.producto_id || rowData?.producto_data?.id
+        if (catalogProductId) {
+          setSelectedProductoId(catalogProductId)
+          setShowProductoDetailsModal(true)
+        }
+      } else {
+        const solData = rowData?.producto_solicitado_data || {}
+        setBasicProductData({
+          nombre: rowData?.producto_solicitado_nombre || solData?.nombre || '-',
+          oem: Array.isArray(solData?.oem_codigos) ? solData.oem_codigos.filter(Boolean).join(', ') : '',
+          comentario: String(rowData?.comentario || ''),
+          cantidad: Number(rowData?.cantidad || 0),
+          revisiones: Array.isArray(rowData?.revisiones) ? rowData.revisiones : [],
+          estado: statusFilter,
+        })
+        setShowBasicProductModal(true)
+      }
+      return
+    }
+
+    const id = rowData?.id
     if (id == null) return
 
     setSelectedId(id)
@@ -1041,8 +1122,17 @@ const handleResetTable = () => {
   }
 
   const handleUpdated = () => {
-    refreshData()
+    if (showDetailsModal) {
+      pendingRefreshAfterCloseRef.current = true
+    } else {
+      refreshData()
+    }
     toast.current?.show({ severity: 'success', summary: 'Actualizado', detail: 'Solicitud actualizada correctamente', life: 2500 })
+  }
+
+  const handleCloseDetailsModal = () => {
+    setShowDetailsModal(false)
+    pendingRefreshAfterCloseRef.current = false
   }
 
   const handleDeleted = () => {
@@ -1724,9 +1814,15 @@ const handleResetTable = () => {
             <Column key="cliente_nombre" field="cliente_nombre" header="Cliente" body={clienteBodyTemplate} sortable className="column-max-min-width" style={{ minWidth: '120px' }} />,
             <Column key="sucursal_nombre" field="sucursal_nombre" header="Sucursal" body={(r) => cellWithTooltip(r, 'sucursal_nombre')} sortable className="column-max-min-width" style={{ minWidth: '100px' }} />,
             <Column key="producto_solicitado_nombre" field="producto_solicitado_nombre" header="Producto" body={(r) => cellWithTooltip(r, 'producto_solicitado_nombre')} sortable className="column-max-min-width" style={{ minWidth: '140px' }} />,
-            statusFilter === 'aceptado' && (
-              <Column key="revisiones" header="Casas Comerciales" body={revisionesBodyTemplate} className="column-max-min-width" style={{ minWidth: '160px' }} />
-            ),
+            <Column key="oem" header="OEM" body={(r) => {
+              const oems = Array.isArray(r?.producto_solicitado_data?.oem_codigos) ? r.producto_solicitado_data.oem_codigos.filter(Boolean) : []
+              const text = oems.join(', ')
+              if (!text) return <span style={{ color: '#9ca3af' }}>-</span>
+              return <span className="cell-tooltip" data-pr-tooltip={text}>{text}</span>
+            }} className="column-max-min-width--small" style={{ minWidth: '100px' }} />,
+            <Column key="revisiones" header="Casas Comerciales" body={revisionesBodyTemplate} className="column-max-min-width" style={{ minWidth: '160px' }} />,
+            <Column key="cantidad" field="cantidad" header="Cantidad" body={(r) => <span>{r?.cantidad ?? '-'}</span>} sortable style={{ minWidth: '80px' }} />,
+            <Column key="comentario" field="comentario" header="Comentario" body={(r) => cellWithTooltip(r, 'comentario')} sortable className="column-max-min-width" style={{ minWidth: '120px' }} />,
           ].filter(Boolean)}
         </DataTable>
 
@@ -1955,7 +2051,7 @@ const handleResetTable = () => {
       <SolicitudDetails
         open={showDetailsModal}
         solicitudId={selectedId}
-        onClose={() => setShowDetailsModal(false)}
+        onClose={handleCloseDetailsModal}
         token={token}
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}
@@ -1965,6 +2061,114 @@ const handleResetTable = () => {
         allowEdit={canEdit}
         allowDelete={canDelete}
       />
+
+      <ProductoDetails
+        open={showProductoDetailsModal}
+        productoId={selectedProductoId}
+        onClose={() => { setShowProductoDetailsModal(false); setSelectedProductoId(null) }}
+        token={token}
+        currentUser={user}
+        allowEdit={false}
+        allowDelete={false}
+      />
+
+      {showBasicProductModal && basicProductData && (
+        <div
+          className="create-user__overlay"
+          role="dialog"
+          aria-modal="true"
+          style={{ padding: '12px' }}
+        >
+          <div
+            className="create-user__modal"
+            ref={basicModalRef}
+            style={{ top: basicModalPosition.y, left: basicModalPosition.x, width: 560, maxWidth: 'calc(100vw - 24px)' }}
+          >
+            <header
+              className="create-user__header"
+              onMouseDown={handleBasicModalHeaderMouseDown}
+              style={{ cursor: 'default' }}
+            >
+              <div className="create-user__header-text">
+                <h3>Producto {basicProductData.estado === 'archivado' ? 'archivado' : 'aceptado'}</h3>
+              </div>
+              <div className="create-user__header-actions">
+                <button
+                  type="button"
+                  className="create-user__icon-button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => setShowBasicProductModal(false)}
+                  aria-label="Cerrar"
+                >
+                  <i className="pi pi-times" aria-hidden="true" />
+                </button>
+              </div>
+            </header>
+            <div className="create-user__content">
+              <div className="create-user__body">
+                <section className="create-user__section">
+                  <div className="create-user__grid create-user__grid--two" style={{ gap: '12px' }}>
+                    <label className="create-user__field create-user__field--full">
+                      <span>Nombre</span>
+                      <input type="text" readOnly value={basicProductData.nombre} />
+                    </label>
+                    {basicProductData.oem && (
+                      <label className="create-user__field create-user__field--full">
+                        <span>OEM</span>
+                        <input type="text" readOnly value={basicProductData.oem} />
+                      </label>
+                    )}
+                    {basicProductData.cantidad > 0 && (
+                      <label className="create-user__field">
+                        <span>Cantidad</span>
+                        <input type="text" readOnly value={basicProductData.cantidad} />
+                      </label>
+                    )}
+                    {basicProductData.comentario && (
+                      <label className="create-user__field">
+                        <span>Comentario</span>
+                        <input type="text" readOnly value={basicProductData.comentario} />
+                      </label>
+                    )}
+                  </div>
+                </section>
+                {basicProductData.revisiones.length > 0 && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <h4>Casas comerciales / Referencias</h4>
+                      </div>
+                    </div>
+                    <div className="create-user__locations-table">
+                      <div className="create-user__locations-row create-user__locations-row--header" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                        <span>Casa comercial</span>
+                        <span>Referencia</span>
+                      </div>
+                      {basicProductData.revisiones.map((r, i) => (
+                        <div key={i} className="create-user__locations-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                          <span>{r?.casa_comercial_nombre || r?.casa_comercial_codigo || '-'}</span>
+                          <span>{r?.referencia || '-'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+            </div>
+            <div className="create-user__footer">
+              <div className="user-details__footer-right">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={() => setShowBasicProductModal(false)}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {shouldRenderSearchModal && (
         <div className={`create-user__overlay${isClosingSearchModal ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={{ padding: `${SEARCH_PADDING}px` }}>

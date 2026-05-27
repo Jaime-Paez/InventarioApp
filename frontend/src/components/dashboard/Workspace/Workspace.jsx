@@ -118,6 +118,7 @@ function Workspace({
   const [pendingTransferSalidaRequest, setPendingTransferSalidaRequest] = useState(null)
   const [pendingTransferEntradaRequest, setPendingTransferEntradaRequest] = useState(null)
   const [pendingOpenIssueId, setPendingOpenIssueId] = useState(null)
+  const [pendingOpenClienteSolicitudId, setPendingOpenClienteSolicitudId] = useState(null)
 
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
@@ -349,6 +350,16 @@ function Workspace({
     setPendingOpenIssueId(null)
   }, [])
 
+  const handleOpenSolicitudCliente = useCallback((solicitudId) => {
+    if (!solicitudId) return
+    setPendingOpenClienteSolicitudId(String(solicitudId))
+    onSelectTab?.('Solicitudes')
+  }, [onSelectTab])
+
+  const handlePendingOpenClienteSolicitudHandled = useCallback(() => {
+    setPendingOpenClienteSolicitudId(null)
+  }, [])
+
   const handleTransferEntradaRequestHandled = useCallback(() => {
     setPendingTransferEntradaRequest(null)
   }, [])
@@ -502,6 +513,12 @@ function Workspace({
             ? handlePendingOpenIssueHandled
             : undefined
         }
+        pendingOpenClienteSolicitudId={
+          tab === 'Solicitudes' ? pendingOpenClienteSolicitudId : undefined
+        }
+        onPendingOpenClienteSolicitudHandled={
+          tab === 'Solicitudes' ? handlePendingOpenClienteSolicitudHandled : undefined
+        }
       />
     )
   }
@@ -543,6 +560,7 @@ function Workspace({
           onOpenTransferRequestInSalidas={handleOpenTransferRequestInSalidas}
           onOpenInventoryReviewSection={handleOpenInventoryReviewSection}
           onOpenTransferIssuesSection={handleOpenTransferIssuesSection}
+          onOpenSolicitudCliente={handleOpenSolicitudCliente}
         />
       </div>
 

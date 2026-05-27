@@ -1,7 +1,7 @@
 import random
 import re
 import json
-from datetime import datetime, time as dt_time, timezone as dt_timezone
+from datetime import date as dt_date, datetime, timedelta, time as dt_time, timezone as dt_timezone
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
@@ -1317,6 +1317,26 @@ def _ensure_daily_random_inspection_for_user(user, store):
     return inspection, changed_payload
 
 
+def _ensure_admin_summary_for_yesterday(user, store):
+    """If user can verify inspections, upsert yesterday's admin summary into the store."""
+    if not _can_verify_random_inspection(user):
+        return False
+    yesterday = timezone.localdate() - timedelta(days=1)
+    config = InspeccionAleatoriaConfiguracion.get_global()
+    hora_config = config.hora_recordatorio
+    time_str = (
+        f"{hora_config.hour:02d}:{hora_config.minute:02d}"
+        if hora_config is not None
+        else f"{RANDOM_INSPECTION_START_HOUR:02d}:00"
+    )
+    return _upsert_random_inspection_admin_summary_reminder(
+        store,
+        yesterday,
+        time_str=time_str,
+        reminder_date=yesterday,
+    )
+
+
 def _serialize_random_inspection_item(item):
     location_payload = getattr(item, "_inspection_location_payload", None) or {}
     return {
@@ -1603,11 +1623,11 @@ def _upsert_random_inspection_verify_reminder(store, inspection, mismatch_count,
     return changed
 
 
-def _build_random_inspection_admin_summary_reminder(today, user_summaries, admin_recipients, *, time_str=None):
+def _build_random_inspection_admin_summary_reminder(today, user_summaries, admin_recipients, *, time_str=None, reminder_date=None):
     if not admin_recipients or not user_summaries:
         return None
-    pending_count = sum(1 for u in user_summaries if not u["completada"])
-    completed_count = sum(1 for u in user_summaries if u["completada"])
+    pending_count = sum(1 for u in user_summaries if not u["completada"] and not u.get("disculpada", False))
+    completed_count = sum(1 for u in user_summaries if u["completada"] or u.get("disculpada", False))
     total_count = len(user_summaries)
     if pending_count == 0:
         description = f"Todos los usuarios ({total_count}) completaron su inspeccion aleatoria del dia."
@@ -1616,7 +1636,7 @@ def _build_random_inspection_admin_summary_reminder(today, user_summaries, admin
             f"Resumen de inspecciones del dia: {completed_count}/{total_count} completadas, "
             f"{pending_count} pendiente(s)."
         )
-    date_str = today.isoformat()
+    date_str = (reminder_date or today).isoformat()
     reminder_time = time_str or f"{RANDOM_INSPECTION_START_HOUR:02d}:00"
     return {
         "id": f"insp-admin-summary-{date_str}",
@@ -1639,7 +1659,7 @@ def _build_random_inspection_admin_summary_reminder(today, user_summaries, admin
     }
 
 
-def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=None):
+def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=None, reminder_date=None):
     inspections_today = list(
         InspeccionAleatoriaDiaria.objects
         .filter(fecha_programada=today)
@@ -1655,14 +1675,19 @@ def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=N
             continue
         user_id = str(int(user.id))
         is_completed = inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA
+        is_disculpada = bool(inspection.disculpada)
         if user_id not in user_map:
             user_map[user_id] = {
                 "id": user_id,
                 "name": _format_user_display_name(user),
                 "completada": is_completed,
+                "disculpada": is_disculpada,
             }
-        elif is_completed:
-            user_map[user_id]["completada"] = True
+        else:
+            if is_completed:
+                user_map[user_id]["completada"] = True
+            if is_disculpada:
+                user_map[user_id]["disculpada"] = True
 
     if not user_map:
         return False
@@ -1674,13 +1699,13 @@ def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=N
 
     reminder = _sanitize_reminder(
         _build_random_inspection_admin_summary_reminder(
-            today, user_summaries, admin_recipients, time_str=time_str
+            today, user_summaries, admin_recipients, time_str=time_str, reminder_date=reminder_date
         )
     )
     if reminder is None:
         return False
 
-    all_completed = all(u["completada"] for u in user_summaries)
+    all_completed = all(u["completada"] or u.get("disculpada", False) for u in user_summaries)
     existing_payload = list(store.payload) if isinstance(store.payload, list) else []
     reminder_id = _normalize_id(reminder.get("id"))
 
@@ -1692,7 +1717,8 @@ def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=N
             target_index = index
             break
         if _normalize_id(existing.get("kind")) == RANDOM_INSPECTION_ADMIN_SUMMARY_KIND:
-            if str(existing.get("date") or "").strip() == today.isoformat():
+            check_date = (reminder_date or today).isoformat()
+            if str(existing.get("date") or "").strip() == check_date:
                 target_index = index
                 break
 
@@ -1972,7 +1998,8 @@ class ReminderStateAPIView(APIView):
                 request.user,
                 store,
             )
-            payload_changed = payload_changed or inspection_payload_changed
+            summary_changed = _ensure_admin_summary_for_yesterday(request.user, store)
+            payload_changed = payload_changed or inspection_payload_changed or summary_changed
 
             if payload_changed:
                 store.save(update_fields=["payload", "updated_at"])
@@ -2597,6 +2624,113 @@ class RandomInspectionVerifyItemAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class RandomInspectionAdminExcuseAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta acción."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        usuario_id = request.data.get("usuario_id")
+        fecha_str = request.data.get("fecha")
+
+        if not usuario_id or not fecha_str:
+            return Response(
+                {"detail": "Se requieren usuario_id y fecha."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            fecha = dt_date.fromisoformat(str(fecha_str))
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "Formato de fecha inválido. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+
+            try:
+                inspection = InspeccionAleatoriaDiaria.objects.select_for_update().get(
+                    usuario_id=int(usuario_id),
+                    fecha_programada=fecha,
+                    sucursal__isnull=True,
+                )
+            except InspeccionAleatoriaDiaria.DoesNotExist:
+                return Response(
+                    {"detail": "No se encontró la inspección para ese usuario y fecha."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA:
+                return Response(
+                    {"detail": "La inspección ya fue completada; no es necesario disculpar."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            inspection.disculpada = True
+            inspection.save(update_fields=["disculpada", "updated_at"])
+
+            # Mark the user's own inspection reminder as seen by the user
+            existing_payload = list(store.payload) if isinstance(store.payload, list) else []
+            insp_id_str = str(int(inspection.id))
+            user_id_str = str(int(usuario_id))
+            for rem in existing_payload:
+                if not isinstance(rem, dict):
+                    continue
+                ctx = rem.get("context") or {}
+                if (
+                    str(ctx.get("type") or "") == RANDOM_INSPECTION_CONTEXT_TYPE
+                    and str(ctx.get("id") or "") == insp_id_str
+                    and str(rem.get("kind") or "") == RANDOM_INSPECTION_KIND
+                ):
+                    completed_by = list(rem.get("completedBy") or [])
+                    if user_id_str not in completed_by:
+                        completed_by.append(user_id_str)
+                    rem["completedBy"] = sorted(completed_by)
+                    break
+
+            store.payload = _normalize_reminder_list(existing_payload)
+
+            # Refresh admin summary for that date
+            config = InspeccionAleatoriaConfiguracion.get_global()
+            hora_config = config.hora_recordatorio
+            time_str = (
+                f"{hora_config.hour:02d}:{hora_config.minute:02d}"
+                if hora_config is not None
+                else f"{RANDOM_INSPECTION_START_HOUR:02d}:00"
+            )
+            _upsert_random_inspection_admin_summary_reminder(
+                store,
+                fecha,
+                time_str=time_str,
+                reminder_date=fecha,
+            )
+
+            # Mark admin summary as completed if all users are now done/disculpada
+            admin_ids = sorted(r["id"] for r in _get_random_inspection_verify_recipients())
+            summary_id = f"insp-admin-summary-{fecha.isoformat()}"
+            for rem in store.payload:
+                if not isinstance(rem, dict):
+                    continue
+                if _normalize_id(rem.get("id")) == _normalize_id(summary_id):
+                    users = rem.get("context", {}).get("detalle_usuarios") or []
+                    all_done = all(u.get("completada") or u.get("disculpada") for u in users)
+                    if all_done:
+                        rem["completedBy"] = admin_ids
+                    else:
+                        rem["completedBy"] = []
+                    break
+
+            store.save(update_fields=["payload", "updated_at"])
+
+        return Response({"detail": "Disculpa aplicada correctamente."}, status=status.HTTP_200_OK)
 
 
 class RandomInspectionAdminSummaryAPIView(APIView):

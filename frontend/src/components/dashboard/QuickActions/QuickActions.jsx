@@ -434,6 +434,7 @@ function QuickActions({
   onOpenTransferRequestInSalidas,
   onOpenInventoryReviewSection,
   onOpenTransferIssuesSection,
+  onOpenSolicitudCliente,
   allowUrgentShield = true,
 }) {
   const wrapRef = useRef(null)
@@ -4455,6 +4456,7 @@ function QuickActions({
         onOpenTransferRequestInSalidas={onOpenTransferRequestInSalidas}
         onOpenRandomInspection={handleOpenRandomInspectionFromReminder}
         onOpenTransferIssuesSection={onOpenTransferIssuesSection}
+        onOpenSolicitudCliente={onOpenSolicitudCliente}
       />
 
       {isRandomInspectionModalOpen && (

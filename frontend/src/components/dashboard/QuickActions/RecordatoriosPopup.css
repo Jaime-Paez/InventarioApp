@@ -1676,6 +1676,41 @@
   font-weight: 500;
 }
 
+.recordatorios-popup__inspection-summary-item {
+  flex-wrap: wrap;
+}
+
+.recordatorios-popup__inspection-summary-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.recordatorios-popup__inspection-summary-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-error-text);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.recordatorios-popup__inspection-summary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.recordatorios-popup__inspection-summary-btn--secondary {
+  color: var(--color-text-secondary, currentColor);
+  font-weight: 500;
+  opacity: 0.8;
+}
+
 .recordatorios-popup__empty-list {
   margin: 0;
   padding: 10px;

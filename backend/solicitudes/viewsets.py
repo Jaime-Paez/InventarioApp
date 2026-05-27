@@ -614,20 +614,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                sucursales_stock = self._get_producto_stock_por_sucursal(producto_id)
-                stock_disponible = sum(item.get("cantidad", 0) for item in sucursales_stock)
-                if stock_disponible > 0:
-                    detalle_stock = self._format_stock_por_sucursal(sucursales_stock)
-                    return Response(
-                        {
-                            "productos": (
-                                f"Fila {index + 1}: no se puede solicitar '{producto.codigo}' porque "
-                                f"tiene stock disponible ({stock_disponible}) en: {detalle_stock}."
-                            )
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
                 producto_ids_en_lote.add(producto_id)
                 productos_normalizados.append(
                     {
