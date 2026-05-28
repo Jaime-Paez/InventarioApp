@@ -1467,7 +1467,7 @@ function SolicitudDetails({
     linkingCreatedProduct ||
     (isProductModalOpen && Boolean(selectedSolicitudId) && !productSolicitud)
   const groupTableGridTemplate =
-    'minmax(80px, 0.72fr) minmax(0, 1.24fr) minmax(110px, 0.82fr) minmax(0, 0.68fr) minmax(0, 1.04fr) minmax(52px, 0.3fr) 72px 100px'
+    'minmax(80px, 0.72fr) minmax(0, 1.24fr) minmax(0, 0.68fr) minmax(0, 1.04fr) minmax(52px, 0.3fr) 72px 100px'
   const selectedGroupItem = groupItems.find(
     (item) => String(item.id || '') === String(selectedSolicitudId || '')
   )
@@ -2234,7 +2234,6 @@ function SolicitudDetails({
                     >
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Codigo</span>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Nombre</span>
-                      <span style={{ whiteSpace: 'nowrap' }}>Casa comercial</span>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>OEM</span>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Comentario</span>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Cantidad</span>
@@ -2263,9 +2262,6 @@ function SolicitudDetails({
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.productoCodigo || undefined}>{item.productoCodigo || '-'}</span>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.productoNombre || undefined}>
                             {item.productoNombre || '-'}
-                          </span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.casaComercialNombre || undefined}>
-                            {item.casaComercialNombre || '-'}
                           </span>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.productoOems.length ? item.productoOems.join(', ') : undefined}>
                             {item.productoOems.length ? item.productoOems.join(', ') : '-'}
