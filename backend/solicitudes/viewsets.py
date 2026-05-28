@@ -150,6 +150,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         )
         .prefetch_related(
             "producto_solicitado__oem_relaciones__oem",
+            "producto__oem_productos__oem",
             "revisiones__casa_comercial",
         )
         .all()

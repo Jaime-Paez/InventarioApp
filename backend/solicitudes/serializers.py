@@ -186,9 +186,19 @@ class SucursalLiteSerializer(serializers.ModelSerializer):
 
 
 class ProductoLiteSerializer(serializers.ModelSerializer):
+    oem_codigos = serializers.SerializerMethodField()
+
     class Meta:
         model = Producto
-        fields = ["id", "codigo", "nombre"]
+        fields = ["id", "codigo", "nombre", "oem_codigos"]
+
+    def get_oem_codigos(self, obj):
+        codigos = []
+        for rel in obj.oem_productos.all():
+            codigo = normalize_text(getattr(getattr(rel, "oem", None), "codigo", ""))
+            if codigo:
+                codigos.append(codigo)
+        return codigos
 
 
 class ProductoSolicitadoLiteSerializer(serializers.ModelSerializer):

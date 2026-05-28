@@ -200,6 +200,9 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
             ? item?.producto_data?.codigo || ''
             : item?.producto_solicitado_data?.codigo || ''
         ).trim()
+        const oemCodigos = tabla === 'producto'
+          ? (Array.isArray(item?.producto_data?.oem_codigos) ? item.producto_data.oem_codigos.filter(Boolean) : [])
+          : (Array.isArray(item?.producto_solicitado_data?.oem_codigos) ? item.producto_solicitado_data.oem_codigos.filter(Boolean) : [])
         const productos =
           productoCodigo || productoSolicitadoNombre !== '-'
             ? [
@@ -208,9 +211,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
                   producto_nombre: productoSolicitadoNombre !== '-' ? productoSolicitadoNombre : '',
                   cantidad: item?.cantidad,
                   comentario: item?.comentario || '',
-                  oem: Array.isArray(item?.producto_solicitado_data?.oem_codigos)
-                    ? item.producto_solicitado_data.oem_codigos.filter(Boolean).join(', ')
-                    : '',
+                  oem: oemCodigos.join(', '),
                 },
               ]
             : []
@@ -227,6 +228,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           sucursal_nombre: sucursalNombre,
           producto_solicitado_nombre: productoSolicitadoNombre,
           producto_codigo: productoCodigo,
+          oem_codigos: oemCodigos,
           productos,
           revisiones: Array.isArray(item?.revisiones) ? item.revisiones : [],
           estado_counts: item?.estado_counts || null,
@@ -1827,19 +1829,42 @@ const handleResetTable = () => {
           )}
 
           {(statusFilter === 'aceptado' || statusFilter === 'archivado') && [
-            <Column key="fecha" field="fecha" header="Fecha" body={(r) => cellWithTooltip(r, 'fecha')} sortable className="column-max-min-width--small" style={{ minWidth: '90px' }} />,
-            <Column key="cliente_nombre" field="cliente_nombre" header="Cliente" body={clienteBodyTemplate} sortable className="column-max-min-width" style={{ minWidth: '120px' }} />,
-            <Column key="sucursal_nombre" field="sucursal_nombre" header="Sucursal" body={(r) => cellWithTooltip(r, 'sucursal_nombre')} sortable className="column-max-min-width" style={{ minWidth: '100px' }} />,
-            <Column key="producto_solicitado_nombre" field="producto_solicitado_nombre" header="Producto" body={(r) => cellWithTooltip(r, 'producto_solicitado_nombre')} sortable className="column-max-min-width" style={{ minWidth: '140px' }} />,
-            <Column key="oem" header="OEM" body={(r) => {
-              const oems = Array.isArray(r?.producto_solicitado_data?.oem_codigos) ? r.producto_solicitado_data.oem_codigos.filter(Boolean) : []
-              const text = oems.join(', ')
-              if (!text) return <span style={{ color: '#9ca3af' }}>-</span>
-              return <span className="cell-tooltip" data-pr-tooltip={text}>{text}</span>
-            }} className="column-max-min-width--small" style={{ minWidth: '100px' }} />,
-            <Column key="revisiones" header="Casas Comerciales" body={revisionesBodyTemplate} className="column-max-min-width" style={{ minWidth: '160px' }} />,
+            <Column key="producto_codigo" field="producto_codigo" header="Código JP" body={(r) => {
+              const code = r?.producto_codigo
+              if (!code) return <span style={{ color: '#9ca3af' }}>-</span>
+              return <span className="cell-tooltip" data-pr-tooltip={code}>{code}</span>
+            }} sortable className="column-max-min-width--small" style={{ minWidth: '100px' }} />,
+            <Column key="oem_codigos" header="OEMs" body={(r) => {
+              const oems = Array.isArray(r?.oem_codigos) ? r.oem_codigos : []
+              if (!oems.length) return <span style={{ color: '#9ca3af' }}>-</span>
+              if (oems.length === 1) return <span>{oems[0]}</span>
+              return (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span>{oems[0]}</span>
+                  <span className="cell-tooltip" data-pr-tooltip={oems.join('\n')} style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--color-primary)', cursor: 'default' }}>
+                    <i className="pi pi-eye" style={{ fontSize: '0.82rem' }} />
+                  </span>
+                </span>
+              )
+            }} style={{ minWidth: '110px' }} />,
+            <Column key="revisiones" header="Casas comerciales" body={(r) => {
+              const revs = Array.isArray(r?.revisiones) ? r.revisiones : []
+              if (!revs.length) return <span style={{ color: '#9ca3af' }}>-</span>
+              const fmt = (rev) => [rev?.casa_comercial_nombre || rev?.casa_comercial_codigo, rev?.referencia].filter(Boolean).join(' · ')
+              const first = fmt(revs[0])
+              if (revs.length === 1) return <span style={{ fontSize: '0.85rem' }}>{first || '-'}</span>
+              const all = revs.map(fmt).filter(Boolean).join('\n')
+              return (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.85rem' }}>
+                  <span>{first}</span>
+                  <span className="cell-tooltip" data-pr-tooltip={all} style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--color-primary)', cursor: 'default' }}>
+                    <i className="pi pi-eye" style={{ fontSize: '0.82rem' }} />
+                  </span>
+                </span>
+              )
+            }} style={{ minWidth: '160px' }} />,
             <Column key="cantidad" field="cantidad" header="Cantidad" body={(r) => <span>{r?.cantidad ?? '-'}</span>} sortable style={{ minWidth: '80px' }} />,
-            <Column key="comentario" field="comentario" header="Comentario" body={(r) => cellWithTooltip(r, 'comentario')} sortable className="column-max-min-width" style={{ minWidth: '120px' }} />,
+            <Column key="producto_solicitado_nombre" field="producto_solicitado_nombre" header="Nombre" body={(r) => cellWithTooltip(r, 'producto_solicitado_nombre')} sortable className="column-max-min-width" style={{ minWidth: '140px' }} />,
           ].filter(Boolean)}
         </DataTable>
 
