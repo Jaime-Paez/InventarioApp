@@ -1853,7 +1853,7 @@ function SolicitudDetails({
                   <p>
                     {revisarTarget.canAcceptWithoutReferences
                       ? 'Este producto ya existe en la base de datos. Puedes aceptarlo o archivarlo sin agregar referencias.'
-                      : 'Agrega una o varias referencias con su casa comercial. La tabla usa el mismo flujo de captura que Entradas y Salidas.'}
+                      : 'Agrega una o varias referencias con su casa comercial.'}
                   </p>
                 </div>
                 {!revisarTarget.canAcceptWithoutReferences && (
