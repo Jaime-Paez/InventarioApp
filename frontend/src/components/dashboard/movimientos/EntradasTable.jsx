@@ -14,7 +14,6 @@ import './EntradasTable.css'
 import '../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../common/useModalAnimation'
 import {
-  REMINDERS_SYNC_EVENT,
   REMINDERS_TRANSFER_NOTIFICATION_EVENT,
 } from '../common/reminders/remindersStorage'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -614,13 +613,11 @@ function EntradasTable({
     }
 
     window.addEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleReminderNotification)
-    window.addEventListener(REMINDERS_SYNC_EVENT, handleReminderNotification)
 
     return () => {
       notificationRefreshInFlightRef.current = false
       pendingNotificationRefreshRef.current = false
       window.removeEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, handleReminderNotification)
-      window.removeEventListener(REMINDERS_SYNC_EVENT, handleReminderNotification)
     }
   }, [isTabActive, normalizedCreateBranchId, token])
 

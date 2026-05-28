@@ -13,8 +13,10 @@ import { Info } from 'lucide-react'
 import CreateSolicitud from '../CreateSolicitud/CreateSolicitud'
 import SolicitudDetails from '../SolicitudDetails/SolicitudDetails'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
+import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import '../../admin/UsersTable/UsersTable.css'
 import '../../movimientos/TrasladosInconvenientesTable.css'
+import '../../movimientos/CreateSalida.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -2140,23 +2142,12 @@ const handleResetTable = () => {
               </p>
             </div>
             <div className="create-user__body" style={{ padding: '16px 20px' }}>
-              <div className="create-user__grid create-user__grid--two" style={{ gap: '12px' }}>
-                <label className="create-user__field create-user__field--full">
-                  <span>Nombre</span>
-                  <input type="text" readOnly value={basicProductData.nombre} />
-                </label>
-                {basicProductData.oem && (
-                  <label className="create-user__field create-user__field--full">
-                    <span>OEM</span>
-                    <input type="text" readOnly value={basicProductData.oem} />
-                  </label>
-                )}
-                {basicProductData.comentario && (
-                  <label className="create-user__field">
-                    <span>Comentario</span>
-                    <input type="text" readOnly value={basicProductData.comentario} />
-                  </label>
-                )}
+              <div className="create-salida__field-group create-salida__field-group--defined">
+                <div className="create-user__grid create-user__grid--two">
+                  <StaticFieldDisplay label="Nombre" value={basicProductData.nombre} fullWidth />
+                  <StaticFieldDisplay label="OEM" value={basicProductData.oem} fullWidth />
+                  <StaticFieldDisplay label="Comentario" value={basicProductData.comentario} fullWidth />
+                </div>
               </div>
               {basicProductData.revisiones.length > 0 && (
                 <div style={{ marginTop: '16px' }}>

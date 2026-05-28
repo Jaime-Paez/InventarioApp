@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, Info, Pencil } from 'lucide-react'
+import { Info } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import '../../movimientos/CreateSalida.css'
 import './SolicitudDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
+import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
 
@@ -1479,6 +1480,9 @@ function SolicitudDetails({
     solicitud?.codigo ||
     (solicitudId ? `Solicitud #${solicitudId}` : 'Detalle de solicitud')
   const allGroupItemsReviewed = groupItems.length > 0 && groupItems.every((item) => item.isReviewed)
+  const solicitudFormattedFecha = formData.fecha
+    ? new Date(formData.fecha + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: 'numeric' })
+    : ''
   const productModalTitle = [
     selectedGroupItem?.productoCodigo || productFormData.productoCodigo || 'Producto',
     selectedGroupItem?.productoNombre || productFormData.productoNombre || '',
@@ -2161,58 +2165,16 @@ function SolicitudDetails({
                     </div>
                   </div>
 
-                  <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field">
-                      <span>Codigo</span>
-                      <input value={formData.codigo || '-'} disabled />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Fecha</span>
-                      <input type="date" value={formData.fecha} disabled />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Sucursal</span>
-                      <input
-                        value={solicitud?.sucursal_data?.nombre || '-'}
-                        disabled
-                      />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Marca</span>
-                      <input
-                        name="marca"
-                        value={formData.marca}
-                        onChange={handleFormFieldChange}
-                        disabled={editorDisabled}
-                      />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Modelo</span>
-                      <input
-                        name="modelo"
-                        value={formData.modelo}
-                        onChange={handleFormFieldChange}
-                        disabled={editorDisabled}
-                      />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Motor</span>
-                      <input
-                        name="motor"
-                        value={formData.motor}
-                        onChange={handleFormFieldChange}
-                        disabled={editorDisabled}
-                      />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Año</span>
-                      <input
-                        name="anio"
-                        value={formData.anio}
-                        onChange={handleFormFieldChange}
-                        disabled={editorDisabled}
-                      />
-                    </label>
+                  <div className="create-salida__field-group create-salida__field-group--defined">
+                    <div className="create-user__grid create-user__grid--two">
+                      <StaticFieldDisplay label="Codigo" value={formData.codigo} />
+                      <StaticFieldDisplay label="Fecha" value={solicitudFormattedFecha} />
+                      <StaticFieldDisplay label="Sucursal" value={solicitud?.sucursal_data?.nombre} />
+                      <StaticFieldDisplay label="Marca" value={formData.marca} />
+                      <StaticFieldDisplay label="Modelo" value={formData.modelo} />
+                      <StaticFieldDisplay label="Motor" value={formData.motor} />
+                      <StaticFieldDisplay label="Año" value={formData.anio} />
+                    </div>
                   </div>
                 </section>
 
@@ -2316,62 +2278,15 @@ function SolicitudDetails({
                     <h4>Datos del cliente</h4>
                   </div>
                 </div>
-                <div className="create-user__grid create-user__grid--two">
-                  <label className="create-user__field">
-                    <span>Cedula/RUC</span>
-                    <input
-                      name="cedula_ruc"
-                      value={clienteData.cedula_ruc}
-                      onChange={handleClienteFieldChange}
-                      disabled={editorDisabled}
-                    />
-                  </label>
-                  <label className="create-user__field">
-                    <span>Nombres</span>
-                    <input
-                      name="nombres"
-                      value={clienteData.nombres}
-                      onChange={handleClienteFieldChange}
-                      disabled={editorDisabled}
-                    />
-                  </label>
-                  <label className="create-user__field">
-                    <span>Apellidos</span>
-                    <input
-                      name="apellidos"
-                      value={clienteData.apellidos}
-                      onChange={handleClienteFieldChange}
-                      disabled={editorDisabled}
-                    />
-                  </label>
-                  <label className="create-user__field">
-                    <span>Correo</span>
-                    <input
-                      type="email"
-                      name="correo"
-                      value={clienteData.correo}
-                      onChange={handleClienteFieldChange}
-                      disabled={editorDisabled}
-                    />
-                  </label>
-                  <label className="create-user__field">
-                    <span>Telefono</span>
-                    <input
-                      name="telefono"
-                      value={clienteData.telefono}
-                      onChange={handleClienteFieldChange}
-                      disabled={editorDisabled}
-                    />
-                  </label>
-                  <label className="create-user__field create-user__field--full">
-                    <span>Direccion</span>
-                    <input
-                      name="direccion"
-                      value={clienteData.direccion}
-                      onChange={handleClienteFieldChange}
-                      disabled={editorDisabled}
-                    />
-                  </label>
+                <div className="create-salida__field-group create-salida__field-group--defined">
+                  <div className="create-user__grid create-user__grid--two">
+                    <StaticFieldDisplay label="Cedula/RUC" value={clienteData.cedula_ruc} />
+                    <StaticFieldDisplay label="Nombres" value={clienteData.nombres} />
+                    <StaticFieldDisplay label="Apellidos" value={clienteData.apellidos} />
+                    <StaticFieldDisplay label="Correo" value={clienteData.correo} />
+                    <StaticFieldDisplay label="Telefono" value={clienteData.telefono} />
+                    <StaticFieldDisplay label="Direccion" value={clienteData.direccion} fullWidth />
+                  </div>
                 </div>
               </section>
             )}
@@ -2384,44 +2299,21 @@ function SolicitudDetails({
             <button
               type="button"
               className="create-user__action create-user__action--cancel"
-              onClick={isEditing ? handleCancelEdit : onClose}
-              disabled={loading || saving || deleteLoading}
+              onClick={onClose}
+              disabled={loading || deleteLoading}
             >
-              Cancelar
+              Cerrar
             </button>
-            {allowEdit && (
-              <button
-                type="button"
-                className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-                onClick={() => (isEditing ? handleCancelEdit() : setIsEditing(true))}
-                disabled={loading || saving || deleteLoading}
-              >
-                <span className="user-details__toggle-icon" aria-hidden="true">
-                  {isEditing ? <Eye size={14} /> : <Pencil size={14} />}
-                </span>
-                <span>{isEditing ? 'Solo lectura' : 'Editar'}</span>
-              </button>
-            )}
           </div>
           <div className="user-details__footer-right">
-            {allowDelete && isEditing && (
+            {allowDelete && (
               <button
                 type="button"
                 className="create-user__action user-details__delete"
                 onClick={() => setShowDeleteDialog(true)}
-                disabled={loading || saving || deleteLoading}
+                disabled={loading || deleteLoading}
               >
                 {deleteLoading ? 'Eliminando...' : 'Eliminar'}
-              </button>
-            )}
-            {isEditing && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--primary"
-                onClick={handleSave}
-                disabled={loading || saving || deleteLoading}
-              >
-                {saving ? 'Guardando...' : 'Guardar cambios'}
               </button>
             )}
           </div>

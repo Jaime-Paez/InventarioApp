@@ -2,6 +2,8 @@
 import { Eye, Info, Pencil } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
+import '../../movimientos/CreateSalida.css'
+import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import InventarioEditor from '../../inventario/InventarioEditor/InventarioEditor'
@@ -1341,7 +1343,61 @@ function ProductoDetails({
           </div>
 
           <div className="create-user__body">
-            {activeTab === 'general' && (
+            {activeTab === 'general' && onlyGeneralTab && (
+              <>
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div><h4>Datos del producto</h4></div>
+                  </div>
+                  <div className="create-salida__field-group create-salida__field-group--defined">
+                    <div className="create-user__grid create-user__grid--two">
+                      <StaticFieldDisplay label="Nombre" value={formData.nombre} />
+                      <StaticFieldDisplay label="Código" value={formData.codigo} />
+                      <StaticFieldDisplay label="Referencia" value={formData.referencia} />
+                      <StaticFieldDisplay label="Casa comercial" value={selectedCasa?.nombre} />
+                      <StaticFieldDisplay label="Original" value={formData.pieza_original ? 'Sí' : 'No'} />
+                    </div>
+                  </div>
+                </section>
+
+                {oemItems.length > 0 && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header"><h4>OEMs</h4></div>
+                    <div className="create-salida__field-group create-salida__field-group--defined">
+                      <div className="create-user__grid create-user__grid--two">
+                        <StaticFieldDisplay label="Códigos OEM" value={oemItems.map((o) => o.codigo).filter(Boolean).join(', ')} fullWidth />
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <h4>Datos comerciales del producto</h4>
+                  </div>
+                  <div className="create-salida__field-group create-salida__field-group--defined">
+                    <div className="create-user__grid create-user__grid--two">
+                      {showCostField && <StaticFieldDisplay label="Costo" value={formData.costo_minimo ? `$${formData.costo_minimo}` : ''} />}
+                      <StaticFieldDisplay label="Precio" value={formData.precio ? `$${formData.precio}` : ''} />
+                      <StaticFieldDisplay label="Precio con IVA" value={formatCurrency(precioConIva)} />
+                    </div>
+                  </div>
+                </section>
+
+                {formData.descripcion ? (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header"><h4>Descripción</h4></div>
+                    <div className="create-salida__field-group create-salida__field-group--defined">
+                      <div className="create-user__grid create-user__grid--two">
+                        <StaticFieldDisplay label="" value={formData.descripcion} fullWidth />
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
+              </>
+            )}
+
+            {activeTab === 'general' && !onlyGeneralTab && (
               <>
                 <section className="create-user__section">
                   <div className="create-user__section-header">
