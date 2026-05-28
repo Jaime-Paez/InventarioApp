@@ -8,6 +8,8 @@ import { OverlayPanel } from 'primereact/overlaypanel'
 import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
 
+import { Info } from 'lucide-react'
+
 import CreateSolicitud from '../CreateSolicitud/CreateSolicitud'
 import SolicitudDetails from '../SolicitudDetails/SolicitudDetails'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
@@ -129,8 +131,8 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const bulkModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const bulkSelectAbortRef = useRef(null)
   const bulkSelectCancelledRef = useRef(false)
-  const [sortField, setSortField] = useState(null)
-  const [sortOrder, setSortOrder] = useState(null)
+  const [sortField, setSortField] = useState('fecha')
+  const [sortOrder, setSortOrder] = useState(-1)
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
   const [productHoverCard, setProductHoverCard] = useState(null)
@@ -284,7 +286,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
     if (columnFilters) params.set('column_filters', JSON.stringify(columnFilters))
 
     const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, SOLICITUD_ORDERING_MAP)
-    if (ordering) params.set('ordering', ordering)
+    params.set('ordering', ordering || '-fecha')
 
     return `${API_URL}/solicitudes/solicitudes/?${params.toString()}`
   }, [normalizedCreateBranchId, statusFilter])
@@ -660,9 +662,20 @@ const handleResetTable = () => {
     })
   }, [fetchClients, filters, pageSize, sortField, sortOrder, normalizedCreateBranchId])
 
+  const fetchClientsRef = useRef(fetchClients)
+  const filtersRef = useRef(filters)
+  const sortFieldRef = useRef(sortField)
+  const sortOrderRef = useRef(sortOrder)
+  const pageSizeRef = useRef(pageSize)
+  useEffect(() => { fetchClientsRef.current = fetchClients }, [fetchClients])
+  useEffect(() => { filtersRef.current = filters }, [filters])
+  useEffect(() => { sortFieldRef.current = sortField }, [sortField])
+  useEffect(() => { sortOrderRef.current = sortOrder }, [sortOrder])
+  useEffect(() => { pageSizeRef.current = pageSize }, [pageSize])
+
   useEffect(() => {
     if (!didInitialSearchRef.current) return
-    if (!filters) return
+    if (!filtersRef.current) return
     const forcedBranchId = hasSpecificCreateBranch ? normalizedCreateBranchId : ''
     const nextCriteria = {
       ...(lastSearchRef.current || {
@@ -683,21 +696,13 @@ const handleResetTable = () => {
     setSelectedRows([])
     setPageFirst(0)
     setIsRefreshing(true)
-    fetchClients(nextCriteria, 1, pageSize, {
-      tableFilters: filters,
-      tableSortField: sortField,
-      tableSortOrder: sortOrder,
+    fetchClientsRef.current(nextCriteria, 1, pageSizeRef.current, {
+      tableFilters: filtersRef.current,
+      tableSortField: sortFieldRef.current,
+      tableSortOrder: sortOrderRef.current,
       branchContextId: normalizedCreateBranchId,
     })
-  }, [
-    fetchClients,
-    filters,
-    hasSpecificCreateBranch,
-    normalizedCreateBranchId,
-    pageSize,
-    sortField,
-    sortOrder,
-  ])
+  }, [hasSpecificCreateBranch, normalizedCreateBranchId])
 
 
   // ---------------- Row selection (Prime) ----------------
@@ -989,6 +994,15 @@ const handleResetTable = () => {
     )
   }
 
+  const displayClients = useMemo(() => {
+    if (statusFilter !== 'solicitado') return clients
+    return [...clients].sort((a, b) => {
+      const aPending = getSolicitudPendingMeta(a).isPending ? 0 : 1
+      const bPending = getSolicitudPendingMeta(b).isPending ? 0 : 1
+      return aPending - bPending
+    })
+  }, [clients, statusFilter, getSolicitudPendingMeta])
+
   const rowClassNameTemplate = (rowData) => {
     const classes = []
     if (isAdminUser && statusFilter === 'solicitado' && getSolicitudPendingMeta(rowData).isPending) {
@@ -1015,6 +1029,7 @@ const handleResetTable = () => {
 
   const [showProductoDetailsModal, setShowProductoDetailsModal] = useState(false)
   const [selectedProductoId, setSelectedProductoId] = useState(null)
+  const [selectedProductoCantidad, setSelectedProductoCantidad] = useState(null)
   const [showBasicProductModal, setShowBasicProductModal] = useState(false)
   const [basicProductData, setBasicProductData] = useState(null)
   const [basicModalPosition, setBasicModalPosition] = useState({ x: 12, y: 12 })
@@ -1023,11 +1038,10 @@ const handleResetTable = () => {
 
   useEffect(() => {
     if (!showBasicProductModal) return
-    const w = 560
-    const h = 420
+    const w = 480
     setBasicModalPosition({
       x: Math.max(12, (window.innerWidth - w) / 2),
-      y: Math.max(12, (window.innerHeight - h) / 2),
+      y: Math.max(12, window.innerHeight * 0.15),
     })
   }, [showBasicProductModal])
 
@@ -1095,6 +1109,7 @@ const handleResetTable = () => {
         const catalogProductId = rowData?.producto_id || rowData?.producto_data?.id
         if (catalogProductId) {
           setSelectedProductoId(catalogProductId)
+          setSelectedProductoCantidad(Number(rowData?.cantidad) || null)
           setShowProductoDetailsModal(true)
         }
       } else {
@@ -1671,7 +1686,7 @@ const handleResetTable = () => {
         )}
 
         <DataTable
-          value={clients}
+          value={displayClients}
           dataKey="id"
           header={header}
           className={`users-datatable users-datatable--compact${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
@@ -2065,11 +2080,13 @@ const handleResetTable = () => {
       <ProductoDetails
         open={showProductoDetailsModal}
         productoId={selectedProductoId}
-        onClose={() => { setShowProductoDetailsModal(false); setSelectedProductoId(null) }}
+        onClose={() => { setShowProductoDetailsModal(false); setSelectedProductoId(null); setSelectedProductoCantidad(null) }}
         token={token}
         currentUser={user}
         allowEdit={false}
         allowDelete={false}
+        onlyGeneralTab={true}
+        contextNotice={selectedProductoCantidad != null ? `Cantidad solicitada: ${selectedProductoCantidad}` : ''}
       />
 
       {showBasicProductModal && basicProductData && (
@@ -2082,7 +2099,7 @@ const handleResetTable = () => {
           <div
             className="create-user__modal"
             ref={basicModalRef}
-            style={{ top: basicModalPosition.y, left: basicModalPosition.x, width: 560, maxWidth: 'calc(100vw - 24px)' }}
+            style={{ top: basicModalPosition.y, left: basicModalPosition.x, width: 480, height: 'auto', maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100vh - 24px)', overflow: 'auto' }}
           >
             <header
               className="create-user__header"
@@ -2104,56 +2121,60 @@ const handleResetTable = () => {
                 </button>
               </div>
             </header>
-            <div className="create-user__content">
-              <div className="create-user__body">
-                <section className="create-user__section">
-                  <div className="create-user__grid create-user__grid--two" style={{ gap: '12px' }}>
-                    <label className="create-user__field create-user__field--full">
-                      <span>Nombre</span>
-                      <input type="text" readOnly value={basicProductData.nombre} />
-                    </label>
-                    {basicProductData.oem && (
-                      <label className="create-user__field create-user__field--full">
-                        <span>OEM</span>
-                        <input type="text" readOnly value={basicProductData.oem} />
-                      </label>
-                    )}
-                    {basicProductData.cantidad > 0 && (
-                      <label className="create-user__field">
-                        <span>Cantidad</span>
-                        <input type="text" readOnly value={basicProductData.cantidad} />
-                      </label>
-                    )}
-                    {basicProductData.comentario && (
-                      <label className="create-user__field">
-                        <span>Comentario</span>
-                        <input type="text" readOnly value={basicProductData.comentario} />
-                      </label>
-                    )}
-                  </div>
-                </section>
-                {basicProductData.revisiones.length > 0 && (
-                  <section className="create-user__section">
-                    <div className="create-user__section-header">
-                      <div>
-                        <h4>Casas comerciales / Referencias</h4>
-                      </div>
-                    </div>
-                    <div className="create-user__locations-table">
-                      <div className="create-user__locations-row create-user__locations-row--header" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                        <span>Casa comercial</span>
-                        <span>Referencia</span>
-                      </div>
-                      {basicProductData.revisiones.map((r, i) => (
-                        <div key={i} className="create-user__locations-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                          <span>{r?.casa_comercial_nombre || r?.casa_comercial_codigo || '-'}</span>
-                          <span>{r?.referencia || '-'}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
+            <div
+              style={{
+                margin: '14px 18px 0',
+                padding: '12px 14px',
+                borderRadius: '12px',
+                border: '1px solid color-mix(in srgb, var(--color-primary-dark) 28%, var(--color-border))',
+                background: 'color-mix(in srgb, var(--color-primary-dark) 8%, var(--modal-color))',
+                color: 'var(--color-text-primary)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+              }}
+            >
+              <Info size={18} style={{ flexShrink: 0, marginTop: '1px', color: 'var(--color-primary-dark)' }} />
+              <p style={{ margin: 0, fontWeight: 700, lineHeight: 1.3 }}>
+                Cantidad solicitada: {basicProductData.cantidad ?? '-'}
+              </p>
+            </div>
+            <div className="create-user__body" style={{ padding: '16px 20px' }}>
+              <div className="create-user__grid create-user__grid--two" style={{ gap: '12px' }}>
+                <label className="create-user__field create-user__field--full">
+                  <span>Nombre</span>
+                  <input type="text" readOnly value={basicProductData.nombre} />
+                </label>
+                {basicProductData.oem && (
+                  <label className="create-user__field create-user__field--full">
+                    <span>OEM</span>
+                    <input type="text" readOnly value={basicProductData.oem} />
+                  </label>
+                )}
+                {basicProductData.comentario && (
+                  <label className="create-user__field">
+                    <span>Comentario</span>
+                    <input type="text" readOnly value={basicProductData.comentario} />
+                  </label>
                 )}
               </div>
+              {basicProductData.revisiones.length > 0 && (
+                <div style={{ marginTop: '16px' }}>
+                  <p style={{ margin: '0 0 8px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>Casas comerciales / Referencias</p>
+                  <div className="create-user__locations-table">
+                    <div className="create-user__locations-row create-user__locations-row--header" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                      <span>Casa comercial</span>
+                      <span>Referencia</span>
+                    </div>
+                    {basicProductData.revisiones.map((r, i) => (
+                      <div key={i} className="create-user__locations-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                        <span>{r?.casa_comercial_nombre || r?.casa_comercial_codigo || '-'}</span>
+                        <span>{r?.referencia || '-'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="create-user__footer">
               <div className="user-details__footer-right">

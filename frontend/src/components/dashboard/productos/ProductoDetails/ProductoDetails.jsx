@@ -106,6 +106,7 @@ function ProductoDetails({
   showCostField = true,
   contextNotice = '',
   contextComment = '',
+  onlyGeneralTab = false,
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
@@ -1305,38 +1306,38 @@ function ProductoDetails({
             >
               General
             </button>
-            <button
+            {!onlyGeneralTab && <button
               type="button"
               className={`create-user__tab ${activeTab === 'ubicaciones' ? 'create-user__tab--active' : ''}`}
               onClick={() => setActiveTab('ubicaciones')}
               aria-selected={activeTab === 'ubicaciones'}
             >
               Ubicaciones
-            </button>
-            <button
+            </button>}
+            {!onlyGeneralTab && <button
               type="button"
               className={`create-user__tab ${activeTab === 'alternos' ? 'create-user__tab--active' : ''}`}
               onClick={() => setActiveTab('alternos')}
               aria-selected={activeTab === 'alternos'}
             >
               Alternos
-            </button>
-            <button
+            </button>}
+            {!onlyGeneralTab && <button
               type="button"
               className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
               onClick={() => setActiveTab('recordatorios')}
               aria-selected={activeTab === 'recordatorios'}
             >
               Recordatorios
-            </button>
-            <button
+            </button>}
+            {!onlyGeneralTab && <button
               type="button"
               className={`create-user__tab ${activeTab === 'calificaciones' ? 'create-user__tab--active' : ''}`}
               onClick={() => setActiveTab('calificaciones')}
               aria-selected={activeTab === 'calificaciones'}
             >
               Calificaciones
-            </button>
+            </button>}
           </div>
 
           <div className="create-user__body">
@@ -1590,7 +1591,6 @@ function ProductoDetails({
                   </div>
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripción</span>
                       <textarea
                         name="descripcion"
                         value={formData.descripcion}
