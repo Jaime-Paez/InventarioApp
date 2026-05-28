@@ -1040,6 +1040,61 @@ const handleResetTable = () => {
   const basicModalRef = useRef(null)
   const basicModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
 
+  const [oemHoverCard, setOemHoverCard] = useState(null)
+  const oemHoverHideTimeoutRef = useRef(null)
+  const clearOemHoverHideTimer = useCallback(() => {
+    if (!oemHoverHideTimeoutRef.current) return
+    clearTimeout(oemHoverHideTimeoutRef.current)
+    oemHoverHideTimeoutRef.current = null
+  }, [])
+  const hideOemHoverCard = useCallback(() => { clearOemHoverHideTimer(); setOemHoverCard(null) }, [clearOemHoverHideTimer])
+  const scheduleHideOemHoverCard = useCallback(() => {
+    clearOemHoverHideTimer()
+    oemHoverHideTimeoutRef.current = setTimeout(() => { oemHoverHideTimeoutRef.current = null; setOemHoverCard(null) }, 120)
+  }, [clearOemHoverHideTimer])
+  const showOemHoverCard = useCallback((event, rows) => {
+    if (!rows.length) { hideOemHoverCard(); return }
+    clearOemHoverHideTimer()
+    const rect = event?.currentTarget?.getBoundingClientRect?.()
+    if (!rect) return
+    const cardWidth = 220
+    let left = rect.right + 10
+    if (left + cardWidth > window.innerWidth - 12) left = Math.max(12, rect.left - cardWidth - 10)
+    const top = Math.min(Math.max(rect.top - 8, 12), Math.max(window.innerHeight - 260, 12))
+    setOemHoverCard({ left, top, rows })
+  }, [clearOemHoverHideTimer, hideOemHoverCard])
+
+  const [revHoverCard, setRevHoverCard] = useState(null)
+  const revHoverHideTimeoutRef = useRef(null)
+  const clearRevHoverHideTimer = useCallback(() => {
+    if (!revHoverHideTimeoutRef.current) return
+    clearTimeout(revHoverHideTimeoutRef.current)
+    revHoverHideTimeoutRef.current = null
+  }, [])
+  const hideRevHoverCard = useCallback(() => { clearRevHoverHideTimer(); setRevHoverCard(null) }, [clearRevHoverHideTimer])
+  const scheduleHideRevHoverCard = useCallback(() => {
+    clearRevHoverHideTimer()
+    revHoverHideTimeoutRef.current = setTimeout(() => { revHoverHideTimeoutRef.current = null; setRevHoverCard(null) }, 120)
+  }, [clearRevHoverHideTimer])
+  const showRevHoverCard = useCallback((event, rows) => {
+    if (!rows.length) { hideRevHoverCard(); return }
+    clearRevHoverHideTimer()
+    const rect = event?.currentTarget?.getBoundingClientRect?.()
+    if (!rect) return
+    const cardWidth = 280
+    let left = rect.right + 10
+    if (left + cardWidth > window.innerWidth - 12) left = Math.max(12, rect.left - cardWidth - 10)
+    const top = Math.min(Math.max(rect.top - 8, 12), Math.max(window.innerHeight - 260, 12))
+    setRevHoverCard({ left, top, rows })
+  }, [clearRevHoverHideTimer, hideRevHoverCard])
+
+  useEffect(() => () => { clearOemHoverHideTimer(); clearRevHoverHideTimer() }, [clearOemHoverHideTimer, clearRevHoverHideTimer])
+  useEffect(() => {
+    const hide = () => { hideOemHoverCard(); hideRevHoverCard() }
+    window.addEventListener('scroll', hide, true)
+    return () => window.removeEventListener('scroll', hide, true)
+  }, [hideOemHoverCard, hideRevHoverCard])
+
   useEffect(() => {
     if (!showBasicProductModal) return
     const w = 480
@@ -1836,37 +1891,101 @@ const handleResetTable = () => {
             }} sortable className="column-max-min-width--small" style={{ minWidth: '100px' }} />,
             <Column key="oem_codigos" header="OEMs" body={(r) => {
               const oems = Array.isArray(r?.oem_codigos) ? r.oem_codigos : []
-              if (!oems.length) return <span style={{ color: '#9ca3af' }}>-</span>
-              if (oems.length === 1) return <span>{oems[0]}</span>
+              if (!oems.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+              const label = oems.join(', ')
               return (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span>{oems[0]}</span>
-                  <span className="cell-tooltip" data-pr-tooltip={oems.join('\n')} style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--color-primary)', cursor: 'default' }}>
-                    <i className="pi pi-eye" style={{ fontSize: '0.82rem' }} />
-                  </span>
-                </span>
+                <div className="inventario-v2__location-cell">
+                  <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
+                  {oems.length > 1 && (
+                    <button
+                      type="button"
+                      className="inventario-v2__location-eye"
+                      aria-label="Ver todos los OEM"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onMouseEnter={(e) => showOemHoverCard(e, oems)}
+                      onMouseLeave={scheduleHideOemHoverCard}
+                      onFocus={(e) => showOemHoverCard(e, oems)}
+                      onBlur={scheduleHideOemHoverCard}
+                    >
+                      <i className="pi pi-eye" />
+                    </button>
+                  )}
+                </div>
               )
             }} style={{ minWidth: '110px' }} />,
             <Column key="revisiones" header="Casas comerciales" body={(r) => {
               const revs = Array.isArray(r?.revisiones) ? r.revisiones : []
-              if (!revs.length) return <span style={{ color: '#9ca3af' }}>-</span>
+              if (!revs.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
               const fmt = (rev) => [rev?.casa_comercial_nombre || rev?.casa_comercial_codigo, rev?.referencia].filter(Boolean).join(' · ')
-              const first = fmt(revs[0])
-              if (revs.length === 1) return <span style={{ fontSize: '0.85rem' }}>{first || '-'}</span>
-              const all = revs.map(fmt).filter(Boolean).join('\n')
+              const items = revs.map(fmt).filter(Boolean)
+              if (!items.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+              const label = items[0]
               return (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.85rem' }}>
-                  <span>{first}</span>
-                  <span className="cell-tooltip" data-pr-tooltip={all} style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--color-primary)', cursor: 'default' }}>
-                    <i className="pi pi-eye" style={{ fontSize: '0.82rem' }} />
-                  </span>
-                </span>
+                <div className="inventario-v2__location-cell">
+                  <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
+                  {items.length > 1 && (
+                    <button
+                      type="button"
+                      className="inventario-v2__location-eye"
+                      aria-label="Ver todas las casas comerciales"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onMouseEnter={(e) => showRevHoverCard(e, items)}
+                      onMouseLeave={scheduleHideRevHoverCard}
+                      onFocus={(e) => showRevHoverCard(e, items)}
+                      onBlur={scheduleHideRevHoverCard}
+                    >
+                      <i className="pi pi-eye" />
+                    </button>
+                  )}
+                </div>
               )
             }} style={{ minWidth: '160px' }} />,
             <Column key="cantidad" field="cantidad" header="Cantidad" body={(r) => <span>{r?.cantidad ?? '-'}</span>} sortable style={{ minWidth: '80px' }} />,
             <Column key="producto_solicitado_nombre" field="producto_solicitado_nombre" header="Nombre" body={(r) => cellWithTooltip(r, 'producto_solicitado_nombre')} sortable className="column-max-min-width" style={{ minWidth: '140px' }} />,
           ].filter(Boolean)}
         </DataTable>
+
+        {Array.isArray(oemHoverCard?.rows) && oemHoverCard.rows.length > 0 && (
+          <div
+            className="movimientos-table__product-hover-card inventario-v2__oem-hover-card"
+            role="tooltip"
+            style={{ top: oemHoverCard.top, left: oemHoverCard.left }}
+            onMouseEnter={clearOemHoverHideTimer}
+            onMouseLeave={scheduleHideOemHoverCard}
+          >
+            <div className="movimientos-table__product-hover-title">OEM</div>
+            <table className="movimientos-table__product-hover-table">
+              <thead><tr><th>Código</th></tr></thead>
+              <tbody>
+                {oemHoverCard.rows.map((code, i) => (
+                  <tr key={i}><td title={code}>{code}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {Array.isArray(revHoverCard?.rows) && revHoverCard.rows.length > 0 && (
+          <div
+            className="movimientos-table__product-hover-card inventario-v2__oem-hover-card"
+            role="tooltip"
+            style={{ top: revHoverCard.top, left: revHoverCard.left, minWidth: 280 }}
+            onMouseEnter={clearRevHoverHideTimer}
+            onMouseLeave={scheduleHideRevHoverCard}
+          >
+            <div className="movimientos-table__product-hover-title">Casas comerciales</div>
+            <table className="movimientos-table__product-hover-table">
+              <thead><tr><th>Casa · Referencia</th></tr></thead>
+              <tbody>
+                {revHoverCard.rows.map((text, i) => (
+                  <tr key={i}><td title={text}>{text}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
