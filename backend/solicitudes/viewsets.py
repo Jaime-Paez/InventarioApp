@@ -514,7 +514,30 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             getattr(solicitud, "sucursal_id", None),
             action_key="puede_actualizar",
         )
+
+        referencias_raw = request.data.get("referencias", [])
+        if not isinstance(referencias_raw, list):
+            return Response(
+                {"referencias": "Debe enviar una lista valida de referencias."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         with transaction.atomic():
+            RevisionReferencia.objects.filter(solicitud=solicitud).delete()
+            for item in referencias_raw:
+                casa_comercial_id = item.get("casa_comercial_id") or item.get("casa_comercial")
+                referencia = str(item.get("referencia") or "").strip()
+                casa_comercial = None
+                if casa_comercial_id:
+                    try:
+                        casa_comercial = CasaComercial.objects.get(pk=int(casa_comercial_id))
+                    except (CasaComercial.DoesNotExist, TypeError, ValueError):
+                        pass
+                RevisionReferencia.objects.create(
+                    solicitud=solicitud,
+                    casa_comercial=casa_comercial,
+                    referencia=referencia,
+                )
             solicitud.estado = Solicitud.Estado.ARCHIVADO
             solicitud.save(update_fields=["estado"])
 

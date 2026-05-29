@@ -1331,9 +1331,24 @@ function SolicitudDetails({
     setRevisarLoading(true)
     setRevisarError('')
     try {
+      const draftReferencia = String(revisarDraft.referencia || '').trim()
+      const preparedFilas = [
+        ...revisarFilas,
+        ...(
+          revisarDraft.casaComercialId || draftReferencia
+            ? [{ ...revisarDraft, referencia: draftReferencia }]
+            : []
+        ),
+      ]
+      const referencias = preparedFilas
+        .filter((f) => f.casaComercialId || String(f.referencia || '').trim())
+        .map((f) => ({
+          casa_comercial_id: f.casaComercialId ? Number(f.casaComercialId) : null,
+          referencia: String(f.referencia || '').trim(),
+        }))
       const res = await authFetch(
         `${API_URL}/solicitudes/solicitudes/${revisarTarget.id}/archivar/`,
-        { method: 'POST' },
+        { method: 'POST', body: JSON.stringify({ referencias }), headers: { 'Content-Type': 'application/json' } },
         token
       )
       if (!res.ok) {

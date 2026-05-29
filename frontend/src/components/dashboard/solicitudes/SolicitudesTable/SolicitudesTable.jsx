@@ -83,6 +83,24 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
+const buildRevisionExportRows = (rows, columns) => {
+  const shouldExpand = columns.some(
+    (col) => col.key === 'revision_casa' || col.key === 'revision_referencia'
+  )
+  if (!shouldExpand) return Array.isArray(rows) ? rows : []
+  return (Array.isArray(rows) ? rows : []).flatMap((row) => {
+    const revisions = Array.isArray(row?.revisiones) ? row.revisiones : []
+    if (!revisions.length) return [{ ...row, __export_revision: null }]
+    return revisions.map((rev) => ({
+      ...row,
+      __export_revision: {
+        casa: String(rev?.casa_comercial_nombre || rev?.casa_comercial_codigo || '').trim(),
+        referencia: String(rev?.referencia || '').trim(),
+      },
+    }))
+  })
+}
+
 function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '', pendingOpenClienteSolicitudId, onPendingOpenClienteSolicitudHandled }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
@@ -90,6 +108,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const _widthsClearedRef = useRef(null)
   if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('solicitudes-table-state') }
   const [tableResetKey, setTableResetKey] = useState(0)
+  const [columnReorderKey, setColumnReorderKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
@@ -577,7 +596,9 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
 const handleResetTable = () => {
     localStorage.removeItem('solicitudes-table-columns')
     localStorage.removeItem('solicitudes-table-state')
+    localStorage.removeItem('solicitudes-flat-table-columns')
     setSelectedColumns(columnsData)
+    setSelectedColumnsFlat(columnsDataFlat)
     clearFilter()
     setTableResetKey((k) => k + 1)
     clearTableLayouts(['solicitudes-table-columns', 'solicitudes-table-state'], token)
@@ -814,9 +835,26 @@ const handleResetTable = () => {
   const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
 
+  const columnsDataFlat = useMemo(() => [
+    { key: 'codigo', header: 'Solicitud' },
+    { key: 'fecha', header: 'Fecha' },
+    { key: 'producto_codigo', header: 'Código JP' },
+    { key: 'oem_codigos', header: 'OEMs' },
+    { key: 'revisiones', header: 'Casas comerciales' },
+    { key: 'cantidad', header: 'Cantidad' },
+    { key: 'producto_solicitado_nombre', header: 'Nombre' },
+  ], [])
+
+  const [selectedColumnsFlat, setSelectedColumnsFlat] = useState(columnsDataFlat)
+  const selectedColumnsFlatRef = useRef(selectedColumnsFlat)
+
   useEffect(() => {
     selectedColumnsRef.current = selectedColumns
   }, [selectedColumns])
+
+  useEffect(() => {
+    selectedColumnsFlatRef.current = selectedColumnsFlat
+  }, [selectedColumnsFlat])
 
   useEffect(() => {
     const stored = localStorage.getItem('solicitudes-table-columns')
@@ -839,6 +877,25 @@ const handleResetTable = () => {
     }
   }, [columnsData])
 
+  useEffect(() => {
+    const stored = localStorage.getItem('solicitudes-flat-table-columns')
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        const availableColumns = new Map(columnsDataFlat.map((c) => [c.key, c]))
+        const nextColumns = Array.isArray(parsed)
+          ? parsed.map((c) => availableColumns.get(c?.key)).filter(Boolean)
+          : []
+        setSelectedColumnsFlat(nextColumns.length ? nextColumns : columnsDataFlat)
+      } catch {
+        setSelectedColumnsFlat(columnsDataFlat)
+      }
+    }
+    return () => {
+      localStorage.setItem('solicitudes-flat-table-columns', JSON.stringify(selectedColumnsFlatRef.current))
+    }
+  }, [columnsDataFlat])
+
   const handleCheckboxChangeColumn = (column) => {
     if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
       setSelectedColumns(selectedColumns.filter((c) => c.nombrevar !== column.nombrevar))
@@ -849,8 +906,19 @@ const handleResetTable = () => {
 
   const handleOrderChange = (e) => {
     const columnOrder = e.columns.map((col) => col.props.field)
-    const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
-    setSelectedColumns(sorted)
+    if (statusFilter === 'solicitado') {
+      const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
+      if (sorted.length) {
+        setSelectedColumns(sorted)
+        setColumnReorderKey((k) => k + 1)
+      }
+    } else {
+      const sorted = columnOrder.map((field) => selectedColumnsFlat.find((c) => c.key === field)).filter(Boolean)
+      if (sorted.length) {
+        setSelectedColumnsFlat(sorted)
+        setColumnReorderKey((k) => k + 1)
+      }
+    }
   }
 
   const exportColumns = useMemo(
@@ -858,7 +926,7 @@ const handleResetTable = () => {
       if (col.nombrevar === 'producto_solicitado_nombre') {
         return [
           { key: 'producto_codigo', header: 'Código JP' },
-          { key: 'producto_nombre', header: 'Producto' },
+          { key: 'producto_nombre', header: 'Descripción' },
           { key: 'producto_oem', header: 'OEM' },
           { key: 'producto_cantidad', header: 'Cantidad' },
           { key: 'producto_comentario', header: 'Comentario' },
@@ -883,6 +951,32 @@ const handleResetTable = () => {
     return row?.[field] ?? ''
   }, [])
 
+  const exportColumnsFlat = useMemo(
+    () => selectedColumnsFlat.flatMap((col) => {
+      if (col.key === 'revisiones') {
+        return [
+          { key: 'revision_casa', header: 'Casa comercial' },
+          { key: 'revision_referencia', header: 'Referencia' },
+        ]
+      }
+      if (col.key === 'oem_codigos') {
+        return [{ key: 'oem_codigos_text', header: col.header }]
+      }
+      return [{ key: col.key, header: col.header }]
+    }),
+    [selectedColumnsFlat]
+  )
+
+  const getExportValueFlat = useCallback((row, field) => {
+    if (field === 'revision_casa')
+      return row?.__export_revision ? String(row.__export_revision?.casa || '').trim() || '-' : '-'
+    if (field === 'revision_referencia')
+      return row?.__export_revision ? String(row.__export_revision?.referencia || '').trim() || '-' : '-'
+    if (field === 'oem_codigos_text')
+      return Array.isArray(row?.oem_codigos) ? row.oem_codigos.filter(Boolean).join(', ') || '-' : '-'
+    return row?.[field] != null ? String(row[field]) : ''
+  }, [])
+
   const notifyExportWarning = useCallback((detail) => {
     toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail, life: 3000 })
   }, [])
@@ -893,7 +987,9 @@ const handleResetTable = () => {
   }, [clients, processedRows, selectedRows])
 
   const handleExportExcel = useCallback(async () => {
-    if (!exportColumns.length) {
+    const isFlat = statusFilter !== 'solicitado'
+    const cols = isFlat ? exportColumnsFlat : exportColumns
+    if (!cols.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
@@ -902,17 +998,29 @@ const handleResetTable = () => {
       notifyExportWarning('No hay registros para exportar.')
       return
     }
-    const rows = buildMovementProductExportRows(baseRows, exportColumns)
-    await exportToExcel({
-      rows,
-      columns: exportColumns,
-      valueGetter: getExportValue,
-      fileName: buildFileName('solicitudes'),
-    })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+    if (isFlat) {
+      const rows = buildRevisionExportRows(baseRows, cols)
+      await exportToExcel({
+        rows,
+        columns: cols,
+        valueGetter: getExportValueFlat,
+        fileName: buildFileName(statusFilter === 'archivado' ? 'archivados' : 'aceptados'),
+      })
+    } else {
+      const rows = buildMovementProductExportRows(baseRows, cols)
+      await exportToExcel({
+        rows,
+        columns: cols,
+        valueGetter: getExportValue,
+        fileName: buildFileName('solicitudes'),
+      })
+    }
+  }, [exportColumns, exportColumnsFlat, getExportValue, getExportValueFlat, getRowsToExport, notifyExportWarning, statusFilter])
 
   const handleExportPdf = useCallback(async () => {
-    if (!exportColumns.length) {
+    const isFlat = statusFilter !== 'solicitado'
+    const cols = isFlat ? exportColumnsFlat : exportColumns
+    if (!cols.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
@@ -921,15 +1029,26 @@ const handleResetTable = () => {
       notifyExportWarning('No hay registros para exportar.')
       return
     }
-    const rows = buildMovementProductExportRows(baseRows, exportColumns)
-    await exportToPdf({
-      rows,
-      columns: exportColumns,
-      valueGetter: getExportValue,
-      fileName: buildFileName('solicitudes'),
-      title: 'Reporte de solicitudes',
-    })
-  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+    if (isFlat) {
+      const rows = buildRevisionExportRows(baseRows, cols)
+      await exportToPdf({
+        rows,
+        columns: cols,
+        valueGetter: getExportValueFlat,
+        fileName: buildFileName(statusFilter === 'archivado' ? 'archivados' : 'aceptados'),
+        title: statusFilter === 'archivado' ? 'Reporte de archivados' : 'Reporte de aceptados',
+      })
+    } else {
+      const rows = buildMovementProductExportRows(baseRows, cols)
+      await exportToPdf({
+        rows,
+        columns: cols,
+        valueGetter: getExportValue,
+        fileName: buildFileName('solicitudes'),
+        title: 'Reporte de solicitudes',
+      })
+    }
+  }, [exportColumns, exportColumnsFlat, getExportValue, getExportValueFlat, getRowsToExport, notifyExportWarning, statusFilter])
 
   // ---------------- Body templates ----------------
   const solicitudProductBodyTemplate = (rowData) => {
@@ -1279,6 +1398,26 @@ const handleResetTable = () => {
       tableSortOrder: sortOrder,
       branchContextId: normalizedCreateBranchId,
       estadoFilter: nextFilter,
+    })
+  }
+
+  const handleViewOriginalSolicitud = (rowData) => {
+    const id = rowData?.id
+    if (id == null) return
+    setStatusFilter('solicitado')
+    setSelectedRows([])
+    setClients([])
+    setTotalRecords(0)
+    setPageFirst(0)
+    setSelectedId(id)
+    setShowDetailsModal(true)
+    setIsRefreshing(true)
+    fetchClients(lastSearchRef.current || initialSearchCriteria, 1, pageSize, {
+      tableFilters: filters,
+      tableSortField: sortField,
+      tableSortOrder: sortOrder,
+      branchContextId: normalizedCreateBranchId,
+      estadoFilter: 'solicitado',
     })
   }
 
@@ -1824,7 +1963,7 @@ const handleResetTable = () => {
           onColReorder={handleOrderChange}
           resizableColumns
           columnResizeMode="expand"
-          key={`${tableResetKey}-${statusFilter}`}
+          key={`${tableResetKey}-${statusFilter}-${columnReorderKey}`}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={rowClassNameTemplate}
@@ -1921,68 +2060,119 @@ const handleResetTable = () => {
             />
           )}
 
-          {(statusFilter === 'aceptado' || statusFilter === 'archivado') && [
-            <Column key="producto_codigo" field="producto_codigo" header="Código JP" body={(r) => {
-              const code = r?.producto_codigo
-              if (!code) return <span style={{ color: '#9ca3af' }}>-</span>
-              return <span className="cell-tooltip" data-pr-tooltip={code}>{code}</span>
-            }} sortable className="column-max-min-width--small" style={{ minWidth: '100px' }} />,
-            <Column key="oem_codigos" header="OEMs" body={(r) => {
-              const oems = Array.isArray(r?.oem_codigos) ? r.oem_codigos : []
-              if (!oems.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
-              const label = oems.join(', ')
-              return (
-                <div className="inventario-v2__location-cell">
-                  <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
-                  {oems.length > 1 && (
-                    <button
-                      type="button"
-                      className="inventario-v2__location-eye"
-                      aria-label="Ver todos los OEM"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onMouseEnter={(e) => showOemHoverCard(e, oems)}
-                      onMouseLeave={scheduleHideOemHoverCard}
-                      onFocus={(e) => showOemHoverCard(e, oems)}
-                      onBlur={scheduleHideOemHoverCard}
-                    >
-                      <i className="pi pi-eye" />
-                    </button>
-                  )}
-                </div>
-              )
-            }} style={{ minWidth: '110px' }} />,
-            <Column key="revisiones" header="Casas comerciales" body={(r) => {
-              const revs = Array.isArray(r?.revisiones) ? r.revisiones : []
-              if (!revs.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
-              const fmt = (rev) => [rev?.casa_comercial_nombre || rev?.casa_comercial_codigo, rev?.referencia].filter(Boolean).join(' · ')
-              const items = revs.map(fmt).filter(Boolean)
-              if (!items.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
-              const label = items[0]
-              return (
-                <div className="inventario-v2__location-cell">
-                  <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
-                  {items.length > 1 && (
-                    <button
-                      type="button"
-                      className="inventario-v2__location-eye"
-                      aria-label="Ver todas las casas comerciales"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onMouseEnter={(e) => showRevHoverCard(e, items)}
-                      onMouseLeave={scheduleHideRevHoverCard}
-                      onFocus={(e) => showRevHoverCard(e, items)}
-                      onBlur={scheduleHideRevHoverCard}
-                    >
-                      <i className="pi pi-eye" />
-                    </button>
-                  )}
-                </div>
-              )
-            }} style={{ minWidth: '160px' }} />,
-            <Column key="cantidad" field="cantidad" header="Cantidad" body={(r) => <span>{r?.cantidad ?? '-'}</span>} sortable style={{ minWidth: '80px' }} />,
-            <Column key="producto_solicitado_nombre" field="producto_solicitado_nombre" header="Nombre" body={(r) => cellWithTooltip(r, 'producto_solicitado_nombre')} sortable className="column-max-min-width" style={{ minWidth: '140px' }} />,
-          ].filter(Boolean)}
+          {(statusFilter === 'aceptado' || statusFilter === 'archivado') && selectedColumnsFlat.map((col) => {
+            switch (col.key) {
+              case 'codigo':
+                return (
+                  <Column key="codigo" field="codigo" header={col.header}
+                    body={(r) => cellWithTooltip(r, 'codigo')}
+                    sortable style={{ minWidth: '110px' }} />
+                )
+              case 'fecha':
+                return (
+                  <Column key="fecha" field="fecha" header={col.header}
+                    body={(r) => cellWithTooltip(r, 'fecha')}
+                    sortable style={{ minWidth: '100px' }} />
+                )
+              case 'producto_codigo':
+                return (
+                  <Column key="producto_codigo" field="producto_codigo" header={col.header} body={(r) => {
+                    const code = r?.producto_codigo
+                    if (!code) return <span style={{ color: '#9ca3af' }}>-</span>
+                    return <span className="cell-tooltip" data-pr-tooltip={code}>{code}</span>
+                  }} sortable className="column-max-min-width--small" style={{ minWidth: '100px' }} />
+                )
+              case 'oem_codigos':
+                return (
+                  <Column key="oem_codigos" header={col.header} body={(r) => {
+                    const oems = Array.isArray(r?.oem_codigos) ? r.oem_codigos : []
+                    if (!oems.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+                    const label = oems.join(', ')
+                    return (
+                      <div className="inventario-v2__location-cell">
+                        <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
+                        {oems.length > 1 && (
+                          <button type="button" className="inventario-v2__location-eye" aria-label="Ver todos los OEM"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onMouseEnter={(e) => showOemHoverCard(e, oems)}
+                            onMouseLeave={scheduleHideOemHoverCard}
+                            onFocus={(e) => showOemHoverCard(e, oems)}
+                            onBlur={scheduleHideOemHoverCard}
+                          >
+                            <i className="pi pi-eye" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  }} style={{ minWidth: '110px' }} />
+                )
+              case 'revisiones':
+                return (
+                  <Column key="revisiones" header={col.header} body={(r) => {
+                    const revs = Array.isArray(r?.revisiones) ? r.revisiones : []
+                    if (!revs.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+                    const fmt = (rev) => [rev?.casa_comercial_nombre || rev?.casa_comercial_codigo, rev?.referencia].filter(Boolean).join(' · ')
+                    const items = revs.map(fmt).filter(Boolean)
+                    if (!items.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+                    const label = items[0]
+                    return (
+                      <div className="inventario-v2__location-cell">
+                        <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
+                        {items.length > 1 && (
+                          <button type="button" className="inventario-v2__location-eye" aria-label="Ver todas las casas comerciales"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onMouseEnter={(e) => showRevHoverCard(e, items)}
+                            onMouseLeave={scheduleHideRevHoverCard}
+                            onFocus={(e) => showRevHoverCard(e, items)}
+                            onBlur={scheduleHideRevHoverCard}
+                          >
+                            <i className="pi pi-eye" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  }} style={{ minWidth: '160px' }} />
+                )
+              case 'cantidad':
+                return (
+                  <Column key="cantidad" field="cantidad" header={col.header}
+                    body={(r) => <span>{r?.cantidad ?? '-'}</span>}
+                    sortable style={{ minWidth: '80px' }} />
+                )
+              case 'producto_solicitado_nombre':
+                return (
+                  <Column key="producto_solicitado_nombre" field="producto_solicitado_nombre" header={col.header}
+                    body={(r) => cellWithTooltip(r, 'producto_solicitado_nombre')}
+                    sortable className="column-max-min-width" style={{ minWidth: '140px' }} />
+                )
+              default:
+                return null
+            }
+          }).filter(Boolean)}
+
+          {(statusFilter === 'aceptado' || statusFilter === 'archivado') && (
+            <Column
+              key="ver_solicitud"
+              header=""
+              reorderable={false}
+              resizable={false}
+              style={{ minWidth: '130px', width: '130px' }}
+              body={(rowData) => (
+                <Button
+                  type="button"
+                  label="Ver solicitud"
+                  className="users-topbtn transfer-issues-page__type-btn transfer-issues-page__type-btn--active"
+                  style={{ borderRadius: '999px' }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleViewOriginalSolicitud(rowData)
+                  }}
+                />
+              )}
+            />
+          )}
         </DataTable>
 
         {Array.isArray(oemHoverCard?.rows) && oemHoverCard.rows.length > 0 && (
