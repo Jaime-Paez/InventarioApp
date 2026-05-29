@@ -203,8 +203,16 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         const oemCodigos = tabla === 'producto'
           ? (Array.isArray(item?.producto_data?.oem_codigos) ? item.producto_data.oem_codigos.filter(Boolean) : [])
           : (Array.isArray(item?.producto_solicitado_data?.oem_codigos) ? item.producto_solicitado_data.oem_codigos.filter(Boolean) : [])
-        const productos =
-          productoCodigo || productoSolicitadoNombre !== '-'
+        const detallesRaw = Array.isArray(item?.detalles) ? item.detalles : null
+        const productos = detallesRaw
+          ? detallesRaw.map((d) => ({
+              producto_codigo: String(d?.producto_codigo || '').trim(),
+              producto_nombre: String(d?.producto_nombre || '').trim(),
+              cantidad: d?.cantidad,
+              comentario: String(d?.comentario || '').trim(),
+              oem: String(d?.oem || '').trim(),
+            }))
+          : productoCodigo || productoSolicitadoNombre !== '-'
             ? [
                 {
                   producto_codigo: productoCodigo,
@@ -235,22 +243,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         }
       })
 
-      // Merge productos for all items sharing the same grupo_codigo so the
-      // eye button on any row shows the complete group product list.
-      const grupoProductosMap = new Map()
-      mapped.forEach((item) => {
-        const gc = String(item?.grupo_codigo || '').trim()
-        if (!gc) return
-        if (!grupoProductosMap.has(gc)) grupoProductosMap.set(gc, [])
-        item.productos.forEach((p) => grupoProductosMap.get(gc).push(p))
-      })
-
-      return mapped.map((item) => {
-        const gc = String(item?.grupo_codigo || '').trim()
-        if (!gc) return item
-        const allProducts = grupoProductosMap.get(gc) || item.productos
-        return allProducts.length > 1 ? { ...item, productos: allProducts } : item
-      })
+      return mapped
     },
     []
   )

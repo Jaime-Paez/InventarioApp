@@ -816,6 +816,33 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             if row_estado in estado_counts:
                 estado_counts[row_estado] += 1
 
+        detalles = []
+        for row in sorted_rows:
+            tabla = str(getattr(row, "tabla", "") or "")
+            if tabla == Solicitud.Tabla.PRODUCTO:
+                producto = getattr(row, "producto", None)
+                codigo = str(getattr(producto, "codigo", "") or "").strip() if producto else ""
+                nombre = str(getattr(producto, "nombre", "") or "").strip() if producto else ""
+                oem_codigos = (
+                    list(producto.oem_productos.values_list("oem__codigo", flat=True))
+                    if producto else []
+                )
+            else:
+                ps = getattr(row, "producto_solicitado", None)
+                codigo = str(getattr(ps, "codigo", "") or "").strip() if ps else ""
+                nombre = str(getattr(ps, "nombre", "") or "").strip() if ps else ""
+                oem_codigos = (
+                    [str(r.oem.codigo) for r in ps.oem_relaciones.all() if getattr(r, "oem", None)]
+                    if ps else []
+                )
+            detalles.append({
+                "producto_codigo": codigo,
+                "producto_nombre": nombre,
+                "oem": ", ".join(filter(None, oem_codigos)),
+                "cantidad": int(getattr(row, "cantidad", 0) or 0),
+                "comentario": str(getattr(row, "comentario", "") or "").strip(),
+            })
+
         data["id"] = int(getattr(lead, "id", 0) or 0)
         data["codigo"] = str(data.get("codigo") or f"Solicitud #{lead.pk}").strip()
         data["grupo_codigo"] = str(getattr(lead, "grupo_codigo", "") or "").strip()
@@ -826,6 +853,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         data.pop("conseguido_label", None)
         data["detalle_count"] = len(sorted_rows)
         data["estado_counts"] = estado_counts
+        data["detalles"] = detalles
         return data
 
     @staticmethod
