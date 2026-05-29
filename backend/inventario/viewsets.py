@@ -7,7 +7,9 @@ from django.db.models import (
     CharField,
     IntegerField,
     Max,
+    OuterRef,
     Q,
+    Subquery,
     Sum,
     Value,
     When,
@@ -670,6 +672,8 @@ class InventarioViewSet(viewsets.ModelViewSet):
         for branch in branches:
             field_name = f"sucursal_{branch.id}"
             ordering_aliases[field_name] = field_name
+        for branch in branches:
+            ordering_aliases[f"ubicacion_sucursal_{branch.id}"] = f"ubicacion_sort_{branch.id}"
 
         allowed_fields = set(ordering_aliases.values())
         resolved = []
@@ -993,6 +997,29 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     )
                 }
             )
+
+        ordering_param = (request.query_params.get("ordering") or "").strip()
+        for branch in branches:
+            ub_field = f"ubicacion_sucursal_{branch.id}"
+            sort_field = f"ubicacion_sort_{branch.id}"
+            if ub_field in ordering_param:
+                aggregated_queryset = aggregated_queryset.annotate(
+                    **{
+                        sort_field: Subquery(
+                            Inventario.objects.filter(
+                                producto_id=OuterRef("id"),
+                                cantidad__gt=0,
+                                subdivision__division__bodega__sucursal_id=branch.id,
+                            )
+                            .order_by(
+                                "-cantidad",
+                                "subdivision__division__nombre",
+                                "subdivision__nombre",
+                            )
+                            .values("subdivision__nombre")[:1]
+                        )
+                    }
+                )
 
         aggregated_queryset = self._apply_total_range_filters(aggregated_queryset)
         filtered_column_filters = dict(column_filters)

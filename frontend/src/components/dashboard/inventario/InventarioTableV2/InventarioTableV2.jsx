@@ -267,6 +267,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     branchFields.forEach((field) => {
       orderingMap[field] = field
     })
+    branches.forEach((branch) => {
+      orderingMap[`ubicacion_sucursal_${branch.id}`] = `ubicacion_sucursal_${branch.id}`
+    })
     const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, orderingMap)
     if (ordering) params.set('ordering', ordering)
 
@@ -1204,6 +1207,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 key={`header_branch_location_${branch.id}`}
                 field={`ubicacion_sucursal_${branch.id}`}
                 header="Ubicacion"
+                sortable
                 reorderable={false}
                 className="column-max-min-width inventario-v2__location-col inventario-v2__branch-subheader"
                 style={{ width: '180px' }}
