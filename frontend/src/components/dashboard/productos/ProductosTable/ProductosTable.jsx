@@ -870,7 +870,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     const value = Number(rowData?.[field])
     if (!Number.isFinite(value)) return <span className="cell-tooltip">-</span>
     const text = value.toFixed(2)
-    const displayText = field === 'precio' || field === 'precio_con_iva' ? `$${text}` : text
+    const displayText = field === 'precio' || field === 'precio_con_iva' ? `$ ${text}` : text
     return (
       <span className="cell-tooltip" data-pr-tooltip={displayText}>
         {displayText}

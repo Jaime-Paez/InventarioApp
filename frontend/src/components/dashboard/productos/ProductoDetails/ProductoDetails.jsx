@@ -89,7 +89,7 @@ const DEFAULT_IVA_RATE = 0.15
 const formatCurrency = (value) => {
   const number = Number(value)
   if (!Number.isFinite(number)) return '-'
-  return `$${number.toFixed(2)}`
+  return `$ ${number.toFixed(2)}`
 }
 
 function ProductoDetails({
@@ -1377,8 +1377,8 @@ function ProductoDetails({
                   </div>
                   <div className="create-salida__field-group create-salida__field-group--defined">
                     <div className="create-user__grid create-user__grid--two">
-                      {showCostField && <StaticFieldDisplay label="Costo" value={formData.costo_minimo ? `$${formData.costo_minimo}` : ''} />}
-                      <StaticFieldDisplay label="Precio" value={formData.precio ? `$${formData.precio}` : ''} />
+                      {showCostField && <StaticFieldDisplay label="Costo" value={formData.costo_minimo ? `$ ${formData.costo_minimo}` : ''} />}
+                      <StaticFieldDisplay label="Precio" value={formData.precio ? `$ ${formData.precio}` : ''} />
                       <StaticFieldDisplay label="Precio con IVA" value={formatCurrency(precioConIva)} />
                     </div>
                   </div>
