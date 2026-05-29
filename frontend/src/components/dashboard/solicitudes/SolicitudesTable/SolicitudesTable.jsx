@@ -23,6 +23,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
 import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
+import { buildMovementProductExportRows } from '../../movimientos/movementTableProducts'
 import {
   buildPrimeColumnFiltersPayload,
   buildPrimeOrdering,
@@ -853,46 +854,74 @@ const handleResetTable = () => {
   }
 
   const exportColumns = useMemo(
-    () => selectedColumns.map((col) => ({ key: col.nombrevar, header: col.header })),
+    () => selectedColumns.flatMap((col) => {
+      if (col.nombrevar === 'producto_solicitado_nombre') {
+        return [
+          { key: 'producto_codigo', header: 'Código JP' },
+          { key: 'producto_nombre', header: 'Producto' },
+          { key: 'producto_oem', header: 'OEM' },
+          { key: 'producto_cantidad', header: 'Cantidad' },
+          { key: 'producto_comentario', header: 'Comentario' },
+        ]
+      }
+      return [{ key: col.nombrevar, header: col.header }]
+    }),
     [selectedColumns]
   )
 
-  const getExportValue = useCallback((row, field) => row?.[field] ?? '', [])
+  const getExportValue = useCallback((row, field) => {
+    if (field === 'producto_codigo')
+      return row?.__export_product ? String(row.__export_product?.producto_codigo || '').trim() || '-' : '-'
+    if (field === 'producto_nombre')
+      return row?.__export_product ? String(row.__export_product?.producto_nombre || '').trim() || '-' : '-'
+    if (field === 'producto_oem')
+      return row?.__export_product ? String(row.__export_product?.oem || '').trim() || '-' : '-'
+    if (field === 'producto_cantidad')
+      return row?.__export_product ? String(row.__export_product?.cantidad ?? '-') : '-'
+    if (field === 'producto_comentario')
+      return row?.__export_product ? String(row.__export_product?.comentario || '').trim() || '-' : '-'
+    return row?.[field] ?? ''
+  }, [])
 
   const notifyExportWarning = useCallback((detail) => {
     toast.current?.show({ severity: 'warn', summary: 'Sin datos', detail, life: 3000 })
   }, [])
+
+  const getRowsToExport = useCallback(() => {
+    if (selectedRows?.length) return selectedRows
+    return processedRows === null ? clients : processedRows
+  }, [clients, processedRows, selectedRows])
 
   const handleExportExcel = useCallback(async () => {
     if (!exportColumns.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const baseRows = processedRows === null ? clients : processedRows
-    if (!selectedRows?.length) {
-      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
+    const baseRows = getRowsToExport()
+    if (!baseRows.length) {
+      notifyExportWarning('No hay registros para exportar.')
       return
     }
-    const rows = selectedRows
+    const rows = buildMovementProductExportRows(baseRows, exportColumns)
     await exportToExcel({
       rows,
       columns: exportColumns,
       valueGetter: getExportValue,
       fileName: buildFileName('solicitudes'),
     })
-  }, [clients, exportColumns, getExportValue, notifyExportWarning, processedRows, selectedRows])
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
 
   const handleExportPdf = useCallback(async () => {
     if (!exportColumns.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const baseRows = processedRows === null ? clients : processedRows
-    if (!selectedRows?.length) {
-      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
+    const baseRows = getRowsToExport()
+    if (!baseRows.length) {
+      notifyExportWarning('No hay registros para exportar.')
       return
     }
-    const rows = selectedRows
+    const rows = buildMovementProductExportRows(baseRows, exportColumns)
     await exportToPdf({
       rows,
       columns: exportColumns,
@@ -900,7 +929,7 @@ const handleResetTable = () => {
       fileName: buildFileName('solicitudes'),
       title: 'Reporte de solicitudes',
     })
-  }, [clients, exportColumns, getExportValue, notifyExportWarning, processedRows, selectedRows])
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
 
   // ---------------- Body templates ----------------
   const solicitudProductBodyTemplate = (rowData) => {
@@ -1796,8 +1825,6 @@ const handleResetTable = () => {
           resizableColumns
           columnResizeMode="expand"
           key={`${tableResetKey}-${statusFilter}`}
-          stateStorage="local"
-          stateKey={statusFilter === 'solicitado' ? 'solicitudes-table-state' : undefined}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={rowClassNameTemplate}
@@ -1845,7 +1872,7 @@ const handleResetTable = () => {
             resizable={false}
           />
 
-          {statusFilter === 'solicitado' && selectedColumns.map((column, index) => {
+          {statusFilter === 'solicitado' && selectedColumns.map((column) => {
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
 
@@ -1870,7 +1897,7 @@ const handleResetTable = () => {
 
             return (
               <Column
-                key={index}
+                key={column.nombrevar}
                 field={column.nombrevar}
                 header={column.header}
                 body={bodyTemplate}

@@ -778,7 +778,10 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     "producto_solicitado",
                     "producto_solicitado__producto",
                 )
-                .prefetch_related("producto_solicitado__oem_relaciones__oem")
+                .prefetch_related(
+                    "producto_solicitado__oem_relaciones__oem",
+                    "producto__oem_productos__oem",
+                )
                 .filter(grupo_codigo__in=list(dict.fromkeys(requested_group_codes)))
                 .order_by("id")
             )
