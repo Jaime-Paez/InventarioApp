@@ -258,8 +258,23 @@
   transition: background 0.15s ease;
 }
 
-.create-solicitud__result-row:hover {
+.create-solicitud__result-row:hover:not(:disabled):not(.is-zero-stock) {
   background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.create-solicitud__result-row:disabled,
+.create-solicitud__result-row.is-zero-stock {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.create-solicitud__result-row.is-zero-stock:hover {
+  background: transparent;
+}
+
+.create-solicitud__result-row.is-zero-stock .result-stock {
+  color: var(--color-error, #dc2626);
+  font-weight: 700;
 }
 
 .create-solicitud__result-row.is-selected {

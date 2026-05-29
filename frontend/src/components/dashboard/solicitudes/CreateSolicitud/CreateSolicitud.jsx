@@ -591,7 +591,9 @@ function CreateSolicitud({
         if (!response.ok) throw new Error('No se pudieron cargar productos.')
         const data = await response.json()
         if (requestId !== referenciaSearchSeqRef.current) return
-        setReferenciaOptions(parseApiList(data))
+        const referenciaList = parseApiList(data)
+        referenciaList.sort((a, b) => (Number(b?.total_stock ?? 0) > 0 ? 1 : 0) - (Number(a?.total_stock ?? 0) > 0 ? 1 : 0))
+        setReferenciaOptions(referenciaList)
       } catch {
         if (requestId !== referenciaSearchSeqRef.current) return
         setReferenciaOptions([])
@@ -635,7 +637,9 @@ function CreateSolicitud({
         if (!response.ok) throw new Error('No se pudieron cargar productos.')
         const data = await response.json()
         if (requestId !== codigoSearchSeqRef.current) return
-        setCodigoOptions(parseApiList(data))
+        const codigoList = parseApiList(data)
+        codigoList.sort((a, b) => (Number(b?.total_stock ?? 0) > 0 ? 1 : 0) - (Number(a?.total_stock ?? 0) > 0 ? 1 : 0))
+        setCodigoOptions(codigoList)
       } catch {
         if (requestId !== codigoSearchSeqRef.current) return
         setCodigoOptions([])
@@ -678,7 +682,9 @@ function CreateSolicitud({
         if (!response.ok) throw new Error('No se pudieron cargar productos por OEM.')
         const data = await response.json()
         if (requestId !== oemSearchSeqRef.current) return
-        setOemOptions(parseApiList(data))
+        const oemList = parseApiList(data)
+        oemList.sort((a, b) => (Number(b?.total_stock ?? 0) > 0 ? 1 : 0) - (Number(a?.total_stock ?? 0) > 0 ? 1 : 0))
+        setOemOptions(oemList)
       } catch {
         if (requestId !== oemSearchSeqRef.current) return
         setOemOptions([])
@@ -1904,13 +1910,16 @@ function CreateSolicitud({
                                 const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
                                 const nombre = String(producto?.nombre || '').trim()
                                 const stock = Number(producto?.total_stock ?? 0)
+                                const isZeroStock = stock === 0
                                 return (
                                   <button
                                     key={`oem-opt-${producto.id}`}
                                     type="button"
-                                    className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
+                                    className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}${isZeroStock ? ' is-zero-stock' : ''}`}
                                     onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => handleProductoSelect(producto)}
+                                    onClick={() => { if (!isZeroStock) handleProductoSelect(producto) }}
+                                    disabled={isZeroStock}
+                                    title={isZeroStock ? 'Sin stock disponible' : undefined}
                                   >
                                     <span className="result-codigo">{codigo}</span>
                                     <span className="result-nombre">{nombre || '-'}</span>
@@ -1965,13 +1974,16 @@ function CreateSolicitud({
                                 const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
                                 const nombre = String(producto?.nombre || '').trim()
                                 const stock = Number(producto?.total_stock ?? 0)
+                                const isZeroStock = stock === 0
                                 return (
                                   <button
                                     key={`codigo-opt-${producto.id}`}
                                     type="button"
-                                    className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
+                                    className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}${isZeroStock ? ' is-zero-stock' : ''}`}
                                     onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => handleProductoSelect(producto)}
+                                    onClick={() => { if (!isZeroStock) handleProductoSelect(producto) }}
+                                    disabled={isZeroStock}
+                                    title={isZeroStock ? 'Sin stock disponible' : undefined}
                                   >
                                     <span className="result-codigo">{codigo}</span>
                                     <span className="result-nombre">{nombre || '-'}</span>

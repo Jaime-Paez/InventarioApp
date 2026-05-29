@@ -921,14 +921,20 @@ function CreateEntrada({
         if (!response.ok) throw new Error('No se pudieron cargar los productos.')
 
         const payload = await response.json()
-        setProductOptions(parseApiList(payload))
+        const list = parseApiList(payload)
+        list.sort((a, b) => {
+          const qa = Number(stockByProduct[String(a.id)] ?? 0)
+          const qb = Number(stockByProduct[String(b.id)] ?? 0)
+          return (qb > 0 ? 1 : 0) - (qa > 0 ? 1 : 0)
+        })
+        setProductOptions(list)
       } catch {
         setProductOptions([])
       } finally {
         setProductLoading(false)
       }
     },
-    [hasProductSourceBranch, token]
+    [hasProductSourceBranch, stockByProduct, token]
   )
 
   const searchClientes = useCallback(
@@ -3289,6 +3295,7 @@ function CreateEntrada({
                                   const stockEnSucursalProveedora = Number(
                                     stockByProduct[String(producto.id)] ?? 0
                                   )
+                                  const isZeroStock = showProveedorStockInfo && stockEnSucursalProveedora === 0
                                   const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
                                   const nombre = String(producto?.nombre || '').trim()
                                   const dispLabel = showProveedorStockInfo
@@ -3298,15 +3305,16 @@ function CreateEntrada({
                                     <button
                                       key={producto.id}
                                       type="button"
-                                      className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
+                                      className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}${isZeroStock ? ' is-zero-stock' : ''}`}
                                       onMouseDown={(event) => event.preventDefault()}
                                       onClick={(event) => {
                                         event.preventDefault()
                                         event.stopPropagation()
-                                        if (isAlreadyAdded) return
+                                        if (isAlreadyAdded || isZeroStock) return
                                         handleProductSelect(producto)
                                       }}
-                                      disabled={isAlreadyAdded}
+                                      disabled={isAlreadyAdded || isZeroStock}
+                                      title={isZeroStock ? 'Sin stock disponible' : isAlreadyAdded ? 'Ya agregado' : undefined}
                                     >
                                       <span className="result-codigo">{codigo}</span>
                                       <span className="result-nombre">{nombre || '-'}</span>

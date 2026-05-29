@@ -716,6 +716,11 @@ function EntradaDetails({
         if (isTraslado) {
           list = list.filter((producto) => getProductStockAllowance(String(producto?.id)) > 0)
         }
+        list.sort((a, b) => {
+          const qa = getProductStockAllowance(String(a?.id))
+          const qb = getProductStockAllowance(String(b?.id))
+          return (qb > 0 ? 1 : 0) - (qa > 0 ? 1 : 0)
+        })
 
         setProductOptions(list)
       } catch {

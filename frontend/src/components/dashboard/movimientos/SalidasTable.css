@@ -41,6 +41,16 @@
   flex-wrap: wrap;
 }
 
+.users-page__actions .salidas-type-filter {
+  padding-left: 12px;
+  margin-left: 2px;
+  border-left: 1.5px solid var(--color-border);
+}
+
+.dashboard-shell.dark .users-page__actions .salidas-type-filter {
+  border-left-color: var(--color-border-dark);
+}
+
 .salidas-type-filter__btn.p-button {
   border-radius: 5px;
   min-width: 92px;

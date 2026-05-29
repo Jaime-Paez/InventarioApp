@@ -1807,6 +1807,11 @@ function CreateSalida({
 
         const payload = await response.json()
         const list = parseApiList(payload)
+        list.sort((a, b) => {
+          const qa = Number(stockMap[String(a.id)] ?? 0)
+          const qb = Number(stockMap[String(b.id)] ?? 0)
+          return (qb > 0 ? 1 : 0) - (qa > 0 ? 1 : 0)
+        })
         setProductOptions(list)
       } catch {
         setProductOptions([])
@@ -3577,6 +3582,7 @@ function CreateSalida({
                                         handleProductSelect(producto)
                                       }}
                                       disabled={isAlreadyAdded || isZeroStock}
+                                      title={isZeroStock ? 'Sin stock disponible' : isAlreadyAdded ? 'Ya agregado' : undefined}
                                     >
                                       <span className="result-codigo">{codigo}</span>
                                       <span className="result-nombre">{nombre || '-'}</span>

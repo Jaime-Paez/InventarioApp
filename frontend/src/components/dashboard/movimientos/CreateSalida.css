@@ -745,6 +745,15 @@
   cursor: not-allowed;
 }
 
+.create-salida__result-row.is-zero-stock {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.create-salida__result-row.is-zero-stock:hover {
+  background: transparent;
+}
+
 .create-salida__result-row.is-zero-stock .result-stock {
   color: var(--color-error, #dc2626);
   font-weight: 700;

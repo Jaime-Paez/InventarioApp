@@ -615,6 +615,11 @@ function SalidaDetails({
             return available + originalQty > 0
           })
         }
+        list.sort((a, b) => {
+          const qa = Number(stockByProduct[String(a.id)] ?? 0) + Number(originalQuantityByProduct[String(a.id)] ?? 0)
+          const qb = Number(stockByProduct[String(b.id)] ?? 0) + Number(originalQuantityByProduct[String(b.id)] ?? 0)
+          return (qb > 0 ? 1 : 0) - (qa > 0 ? 1 : 0)
+        })
 
         setProductOptions(list)
       } catch {
