@@ -158,8 +158,8 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   }, [token])
 
   const normalizeList = useCallback(
-    (list) =>
-      list.map((item) => {
+    (list) => {
+      const mapped = list.map((item) => {
         const clienteNombre =
           item?.cliente_nombre ||
           item?.cliente_data?.nombre_completo ||
@@ -233,7 +233,25 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
           revisiones: Array.isArray(item?.revisiones) ? item.revisiones : [],
           estado_counts: item?.estado_counts || null,
         }
-      }),
+      })
+
+      // Merge productos for all items sharing the same grupo_codigo so the
+      // eye button on any row shows the complete group product list.
+      const grupoProductosMap = new Map()
+      mapped.forEach((item) => {
+        const gc = String(item?.grupo_codigo || '').trim()
+        if (!gc) return
+        if (!grupoProductosMap.has(gc)) grupoProductosMap.set(gc, [])
+        item.productos.forEach((p) => grupoProductosMap.get(gc).push(p))
+      })
+
+      return mapped.map((item) => {
+        const gc = String(item?.grupo_codigo || '').trim()
+        if (!gc) return item
+        const allProducts = grupoProductosMap.get(gc) || item.productos
+        return allProducts.length > 1 ? { ...item, productos: allProducts } : item
+      })
+    },
     []
   )
 

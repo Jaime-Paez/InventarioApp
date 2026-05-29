@@ -2189,61 +2189,39 @@ function SolicitudDetails({
                     </div>
                   </div>
 
-                  <div className="create-user__locations-table">
-                    <div
-                      className="create-user__locations-row create-user__locations-row--head"
-                      style={{ gridTemplateColumns: groupTableGridTemplate }}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Codigo</span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Nombre</span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>OEM</span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Comentario</span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Cantidad</span>
-                      <span style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Revisado</span>
-                      <span style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Acciones</span>
+                  <div className="create-user__locations-table create-solicitud-details__items-table">
+                    <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Codigo</span>
+                      <span>Nombre</span>
+                      <span>OEM</span>
+                      <span>Comentario</span>
+                      <span>Cantidad</span>
+                      <span>Revisado</span>
+                      <span>Acciones</span>
                     </div>
 
                     {groupItems.map((item) => (
                       <div
                         key={item.id}
-                        className="create-user__locations-row"
-                        style={{
-                          gridTemplateColumns: groupTableGridTemplate,
-                          width: '100%',
-                          maxWidth: '100%',
-                          boxSizing: 'border-box',
-                          alignItems: 'center',
-                        }}
+                        className="create-user__locations-row create-solicitud-details__items-row"
+                        onClick={() => !loading && !saving && !openingProductSelection && handleSelectGroupItem(item.id)}
+                        style={{ cursor: loading || saving || openingProductSelection ? 'wait' : 'pointer' }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => handleSelectGroupItem(item.id)}
-                          disabled={loading || saving || openingProductSelection}
-                          style={{ display: 'contents', cursor: loading || saving || openingProductSelection ? 'wait' : 'pointer', color: 'inherit', background: 'none', border: 'none', textAlign: 'left' }}
-                        >
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.productoCodigo || undefined}>{item.productoCodigo || '-'}</span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.productoNombre || undefined}>
-                            {item.productoNombre || '-'}
-                          </span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.productoOems.length ? item.productoOems.join(', ') : undefined}>
-                            {item.productoOems.length ? item.productoOems.join(', ') : '-'}
-                          </span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.comentario || undefined}>
-                            {item.comentario || '-'}
-                          </span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.cantidad || '-'}</span>
-                          <span
-                            aria-label={item.isReviewed ? 'Revisado' : 'Sin revisar'}
-                            style={{ display: 'flex', justifyContent: 'center' }}
-                          >
-                            <i
-                              className={`pi pi-${item.isReviewed ? 'check-circle' : 'times-circle'}`}
-                              style={{ color: item.isReviewed ? (item.isAccepted ? '#22c55e' : 'var(--color-error-text, #ef4444)') : '#9ca3af' }}
-                              aria-hidden="true"
-                            />
-                          </span>
-                        </button>
-                        <span style={{ display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
+                        <span title={item.productoCodigo || undefined}>{item.productoCodigo || '-'}</span>
+                        <span title={item.productoNombre || undefined}>{item.productoNombre || '-'}</span>
+                        <span title={item.productoOems.length ? item.productoOems.join(', ') : undefined}>
+                          {item.productoOems.length ? item.productoOems.join(', ') : '-'}
+                        </span>
+                        <span title={item.comentario || undefined}>{item.comentario || '-'}</span>
+                        <span>{item.cantidad || '-'}</span>
+                        <span aria-label={item.isReviewed ? 'Revisado' : 'Sin revisar'}>
+                          <i
+                            className={`pi pi-${item.isReviewed ? 'check-circle' : 'times-circle'}`}
+                            style={{ color: item.isReviewed ? (item.isAccepted ? '#22c55e' : 'var(--color-error-text, #ef4444)') : '#9ca3af' }}
+                            aria-hidden="true"
+                          />
+                        </span>
+                        <span onClick={(e) => e.stopPropagation()}>
                           {item.isReviewed ? (
                             <span style={{ fontSize: '0.75rem', color: item.estado === 'archivado' ? 'var(--color-error-text, #ef4444)' : '#22c55e', fontWeight: 600 }}>
                               {item.estado === 'archivado' ? 'Archivado' : 'Aceptado'}
