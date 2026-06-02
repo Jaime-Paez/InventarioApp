@@ -690,6 +690,26 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             except (InvalidOperation, ValueError):
                 pass
 
+        cliente_id_raw = (params.get("cliente_id") or "").strip()
+        if cliente_id_raw and cliente_id_raw.isdigit():
+            try:
+                cliente_obj = Cliente.objects.get(pk=int(cliente_id_raw))
+                cedula = str(cliente_obj.cedula_ruc or "").strip()
+                nombres = str(cliente_obj.nombres or "").strip()
+                apellidos = str(cliente_obj.apellidos or "").strip()
+                nombre_completo = f"{nombres} {apellidos}".strip()
+                cliente_q = Q()
+                if cedula:
+                    cliente_q |= Q(descripcion__icontains=cedula)
+                if nombre_completo:
+                    cliente_q |= Q(descripcion__icontains=nombre_completo)
+                if cliente_q:
+                    queryset = queryset.filter(Q(descripcion__istartswith="cliente:") & cliente_q)
+                else:
+                    queryset = queryset.none()
+            except Cliente.DoesNotExist:
+                queryset = queryset.none()
+
         funcional = self._resolve_funcional_value(params.get("funcional"))
         if funcional is True:
             queryset = queryset.filter(funcional=True)

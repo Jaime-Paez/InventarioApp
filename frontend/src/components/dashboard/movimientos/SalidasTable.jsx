@@ -125,6 +125,17 @@ const initialSearchCriteria = {
   sucursal_objetivo: '',
   total_min: '',
   total_max: '',
+  cliente_id: '',
+}
+
+const formatClienteLabel = (cliente) => {
+  if (!cliente) return ''
+  const cedula = String(cliente?.cedula_ruc || '').trim()
+  const nombres = String(cliente?.nombres || '').trim()
+  const apellidos = String(cliente?.apellidos || '').trim()
+  const nombre = `${nombres} ${apellidos}`.trim()
+  if (cedula && nombre) return `${cedula}: ${nombre}`
+  return cedula || nombre
 }
 
 const normId = (value) => (value == null ? null : String(value))
@@ -197,8 +208,19 @@ function SalidasTable({
   const [showSearchModal, setShowSearchModal] = useState(false)
   const [processedRows, setProcessedRows] = useState(null)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
-  const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
+  const [searchSize, setSearchSize] = useState({ width: 720, height: 560 })
+  const [clienteSearchQuery, setClienteSearchQuery] = useState('')
+  const [clienteOptions, setClienteOptions] = useState([])
+  const [clienteLoading, setClienteLoading] = useState(false)
+  const [selectedCliente, setSelectedCliente] = useState(null)
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false)
   const lastSearchRef = useRef({ ...initialSearchCriteria })
+  const searchModalRef = useRef(null)
+  const searchDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const searchSizeRef = useRef(searchSize)
+  const searchPositionRef = useRef(searchPosition)
+  const clienteDropdownRef = useRef(null)
+  const clienteSearchTimerRef = useRef(null)
   const SEARCH_PADDING = 12
   const normalizedCreateBranchIdRaw = String(createBranchId || '').trim()
   const normalizedCreateBranchId = (
@@ -318,6 +340,7 @@ function SalidasTable({
     addIfPresent('sucursal_objetivo', criteria?.sucursal_objetivo)
     addIfPresent('total_min', criteria?.total_min)
     addIfPresent('total_max', criteria?.total_max)
+    addIfPresent('cliente_id', criteria?.cliente_id)
 
     if (subtype && subtype !== 'all') {
       params.set('subtipo', subtype)
@@ -1114,6 +1137,80 @@ function SalidasTable({
     preloadSalidaCatalogs,
   ])
 
+  const searchClientes = useCallback(async (query) => {
+    const term = String(query ?? '').trim()
+    if (!term || term.length < 2 || !token) {
+      setClienteOptions([])
+      setClienteLoading(false)
+      return
+    }
+    setClienteLoading(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/buscar-cliente/?q=${encodeURIComponent(term)}&page_size=10`,
+        {},
+        token
+      )
+      if (!response.ok) throw new Error('Error al buscar clientes.')
+      const payload = await response.json().catch(() => ({}))
+      setClienteOptions(parseApiList(payload))
+    } catch {
+      setClienteOptions([])
+    } finally {
+      setClienteLoading(false)
+    }
+  }, [token])
+
+  useEffect(() => {
+    return () => { if (clienteSearchTimerRef.current) clearTimeout(clienteSearchTimerRef.current) }
+  }, [])
+
+  useEffect(() => {
+    if (!showSearchModal || !showClienteDropdown) return
+    const term = clienteSearchQuery.trim()
+    if (!term || term.length < 2) {
+      if (clienteSearchTimerRef.current) { clearTimeout(clienteSearchTimerRef.current); clienteSearchTimerRef.current = null }
+      setClienteOptions([])
+      setClienteLoading(false)
+      return
+    }
+    if (clienteSearchTimerRef.current) { clearTimeout(clienteSearchTimerRef.current); clienteSearchTimerRef.current = null }
+    clienteSearchTimerRef.current = setTimeout(() => { searchClientes(term) }, 320)
+    return () => {
+      if (clienteSearchTimerRef.current) { clearTimeout(clienteSearchTimerRef.current); clienteSearchTimerRef.current = null }
+    }
+  }, [clienteSearchQuery, showClienteDropdown, showSearchModal, searchClientes])
+
+  useEffect(() => {
+    if (!showClienteDropdown) return undefined
+    const handleClick = (event) => {
+      if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
+        setShowClienteDropdown(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [showClienteDropdown])
+
+  const handleClienteQueryChange = (event) => {
+    const value = event.target.value
+    setClienteSearchQuery(value)
+    setShowClienteDropdown(Boolean(value))
+    if (!value.trim()) {
+      setSelectedCliente(null)
+      setSearchCriteria((prev) => ({ ...prev, cliente_id: '' }))
+      setClienteOptions([])
+    }
+  }
+
+  const handleClienteSelect = (cliente) => {
+    const label = formatClienteLabel(cliente)
+    setSelectedCliente(cliente)
+    setClienteSearchQuery(label)
+    setSearchCriteria((prev) => ({ ...prev, cliente_id: String(cliente.id) }))
+    setShowClienteDropdown(false)
+  }
+
   const handleSearchInputChange = (event) => {
     const { name, value } = event.target
     setSearchCriteria((prev) => ({
@@ -1136,6 +1233,7 @@ function SalidasTable({
 
   const focusSearch = () => {
     setSearchCriteria({ ...lastSearchRef.current })
+    setClienteSearchQuery(lastSearchRef.current.cliente_id ? (selectedCliente ? formatClienteLabel(selectedCliente) : '') : '')
     setShowSearchModal(true)
   }
 
@@ -1238,13 +1336,48 @@ function SalidasTable({
   useLayoutEffect(() => {
     if (!showSearchModal) return
     const width = Math.min(720, Math.max(0, window.innerWidth - SEARCH_PADDING * 2))
-    const height = Math.min(520, Math.max(0, window.innerHeight - SEARCH_PADDING * 2))
+    const height = Math.min(560, Math.max(0, window.innerHeight - SEARCH_PADDING * 2))
     setSearchSize({ width, height })
     setSearchPosition({
       x: Math.max((window.innerWidth - width) / 2, SEARCH_PADDING),
       y: Math.max((window.innerHeight - height) / 2, SEARCH_PADDING),
     })
   }, [showSearchModal, SEARCH_PADDING])
+
+  useEffect(() => { searchSizeRef.current = searchSize }, [searchSize])
+  useEffect(() => { searchPositionRef.current = searchPosition }, [searchPosition])
+
+  useEffect(() => {
+    const handleMouseMove = (event) => {
+      if (!searchDrag.current.active) return
+      event.preventDefault()
+      const newX = event.clientX - searchDrag.current.offsetX
+      const newY = event.clientY - searchDrag.current.offsetY
+      const maxX = window.innerWidth - searchSizeRef.current.width - SEARCH_PADDING
+      const maxY = window.innerHeight - searchSizeRef.current.height - SEARCH_PADDING
+      setSearchPosition({
+        x: Math.min(Math.max(newX, SEARCH_PADDING), Math.max(maxX, SEARCH_PADDING)),
+        y: Math.min(Math.max(newY, SEARCH_PADDING), Math.max(maxY, SEARCH_PADDING)),
+      })
+    }
+    const handleMouseUp = () => { searchDrag.current.active = false }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [SEARCH_PADDING])
+
+  const handleSearchModalMouseDown = (event) => {
+    if (!searchModalRef.current) return
+    const rect = searchModalRef.current.getBoundingClientRect()
+    searchDrag.current = {
+      active: true,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+  }
 
   const header = (
     <div className="users-header">
@@ -1562,6 +1695,7 @@ function SalidasTable({
           style={{ padding: `${SEARCH_PADDING}px` }}
         >
           <div
+            ref={searchModalRef}
             className={`create-user__modal${isClosingSearchModal ? ' create-user__modal--closing' : ''}`}
             style={{
               top: searchPosition.y,
@@ -1572,7 +1706,7 @@ function SalidasTable({
               maxHeight: `calc(100vh - ${SEARCH_PADDING * 2}px)`,
             }}
           >
-            <header className="create-user__header">
+            <header className="create-user__header" onMouseDown={handleSearchModalMouseDown}>
               <div className="create-user__header-text">
                 <h3>Búsqueda avanzada de salidas</h3>
               </div>
@@ -1580,6 +1714,7 @@ function SalidasTable({
                 <button
                   type="button"
                   className="create-user__icon-button"
+                  onMouseDown={(event) => event.stopPropagation()}
                   onClick={() => setShowSearchModal(false)}
                   aria-label="Cerrar"
                 >
@@ -1710,6 +1845,54 @@ function SalidasTable({
                         onChange={handleSearchInputChange}
                       />
                     </label>
+
+                    <label className="create-user__field" style={{ gridColumn: '1 / -1' }}>
+                      <span>Cliente</span>
+                      <div className="create-user__dropdown" ref={clienteDropdownRef}>
+                        <input
+                          type="text"
+                          placeholder="Buscar por cédula o nombre"
+                          value={clienteSearchQuery}
+                          onChange={handleClienteQueryChange}
+                          onFocus={() => setShowClienteDropdown(Boolean(clienteSearchQuery))}
+                          autoComplete="off"
+                        />
+                        {showClienteDropdown && (
+                          <div className="create-user__dropdown-panel create-salida__cliente-panel">
+                            <div className="create-user__dropdown-results">
+                              {clienteLoading && <small className="muted">Buscando cliente...</small>}
+                              {!clienteLoading && !clienteSearchQuery.trim() && (
+                                <small className="muted">Escribe para buscar.</small>
+                              )}
+                              {!clienteLoading && clienteSearchQuery.trim() && clienteSearchQuery.trim().length < 2 && (
+                                <small className="muted">Escribe al menos 2 caracteres.</small>
+                              )}
+                              {!clienteLoading && clienteSearchQuery.trim().length >= 2 && !clienteOptions.length && (
+                                <small className="muted">Sin resultados.</small>
+                              )}
+                              {clienteOptions.map((cliente) => {
+                                const label = formatClienteLabel(cliente)
+                                const isSelected = String(selectedCliente?.id || '') === String(cliente?.id || '')
+                                return (
+                                  <button
+                                    key={cliente.id}
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => handleClienteSelect(cliente)}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>{label || `Cliente ${cliente.id}`}</strong>
+                                    </div>
+                                    {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </label>
                   </div>
                 </section>
               </div>
@@ -1719,7 +1902,13 @@ function SalidasTable({
                   <button
                     type="button"
                     className="create-user__action"
-                    onClick={() => setSearchCriteria(initialSearchCriteria)}
+                    onClick={() => {
+                      setSearchCriteria(initialSearchCriteria)
+                      setSelectedCliente(null)
+                      setClienteSearchQuery('')
+                      setClienteOptions([])
+                      setShowClienteDropdown(false)
+                    }}
                   >
                     Limpiar filtros
                   </button>

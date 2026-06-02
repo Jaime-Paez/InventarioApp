@@ -2234,6 +2234,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                   key={`branch_location_${branch.id}`}
                   field={locationField}
                   header={`Ubicacion ${branch.nombre}`}
+                  sortable
                   reorderable
                   className="column-max-min-width inventario-v2__location-col"
                   style={{ width: '180px' }}
