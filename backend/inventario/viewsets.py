@@ -14,7 +14,7 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Concat
 from django.utils.dateparse import parse_date
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -1016,7 +1016,16 @@ class InventarioViewSet(viewsets.ModelViewSet):
                                 "subdivision__division__nombre",
                                 "subdivision__nombre",
                             )
-                            .values("subdivision__nombre")[:1]
+                            .annotate(
+                                _full_label=Concat(
+                                    "subdivision__division__nombre",
+                                    Value(":"),
+                                    "subdivision__nombre",
+                                    output_field=CharField(),
+                                )
+                            )
+                            .values("_full_label")[:1],
+                            output_field=CharField(),
                         )
                     }
                 )
