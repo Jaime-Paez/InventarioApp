@@ -46,6 +46,10 @@ class CasaComercialViewSet(viewsets.ModelViewSet):
         if descripcion:
             queryset = queryset.filter(descripcion__icontains=descripcion)
 
+        tipo = (params.get("tipo") or "").strip()
+        if tipo:
+            queryset = queryset.filter(tipo=tipo)
+
         queryset = apply_column_filters(
             queryset,
             parse_column_filters(params.get("column_filters")),

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import StaticFieldDisplay from '../movimientos/StaticFieldDisplay'
 import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -9,6 +11,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersTable/UsersTable.css'
+import '../movimientos/CreateSalida.css'
 import './ImportacionesTable.css'
 
 const STATUS_CONFIG = {
@@ -51,6 +54,13 @@ const readErrorMessage = async (response, fallback) => {
   return visit(payload?.detail) || visit(payload) || fallback
 }
 
+const getFlagUrl = (code) => {
+  if (!code) return ''
+  const clean = String(code).trim().toLowerCase()
+  if (clean.length !== 2) return ''
+  return `https://flagsapi.com/${clean.toUpperCase()}/flat/64.png`
+}
+
 const formatCasaLabel = (casa) => {
   if (!casa) return ''
   const codigo = String(casa?.codigo || '').trim()
@@ -68,15 +78,20 @@ const formatProductLabel = (product) => {
 
 const MIN_WIDTH = 700
 const MIN_HEIGHT = 520
+const SELECTOR_WIDTH = 520
 const VIEWPORT_PADDING = 12
 
 function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
+  const [step, setStep] = useState('casa')
   const [nextCode, setNextCode] = useState('IMP-')
   const [selectedCasa, setSelectedCasa] = useState(null)
+  const [casaDraft, setCasaDraft] = useState(null)
   const [casaQuery, setCasaQuery] = useState('')
   const [casaOptions, setCasaOptions] = useState([])
   const [casaLoading, setCasaLoading] = useState(false)
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
+  const [activeTab, setActiveTab] = useState('general')
+  const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '1' })
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
   const [productLoading, setProductLoading] = useState(false)
@@ -85,7 +100,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   const [submitting, setSubmitting] = useState(false)
   const [localError, setLocalError] = useState('')
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
-  const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
+  const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: 'auto' })
 
   const modalRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
@@ -95,22 +110,84 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   const productTimerRef = useRef(null)
   const casaDropdownRef = useRef(null)
   const productDropdownRef = useRef(null)
+  const isFirstOpenRef = useRef(true)
+  const [casaPanelStyle, setCasaPanelStyle] = useState(null)
+  const [productPanelStyle, setProductPanelStyle] = useState(null)
 
   useEffect(() => { modalSizeRef.current = modalSize }, [modalSize])
   useEffect(() => { modalPositionRef.current = modalPosition }, [modalPosition])
 
   useLayoutEffect(() => {
-    if (!open) return
+    if (!showCasaDropdown || !casaDropdownRef.current) {
+      setCasaPanelStyle(null)
+      return
+    }
+    const rect = casaDropdownRef.current.getBoundingClientRect()
+    const panelMaxHeight = Math.min(260, window.innerHeight - rect.bottom - 8)
+    setCasaPanelStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      maxHeight: Math.max(panelMaxHeight, 120),
+      zIndex: 9999,
+    })
+  }, [showCasaDropdown, modalPosition])
+
+  useLayoutEffect(() => {
+    if (!showProductDropdown || !productDropdownRef.current) {
+      setProductPanelStyle(null)
+      return
+    }
+    const rect = productDropdownRef.current.getBoundingClientRect()
+    const panelMaxHeight = Math.min(280, window.innerHeight - rect.bottom - 8)
+    setProductPanelStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      maxHeight: Math.max(panelMaxHeight, 120),
+      zIndex: 9999,
+    })
+  }, [showProductDropdown, modalPosition])
+
+  useLayoutEffect(() => {
+    if (!open) {
+      isFirstOpenRef.current = true
+      return
+    }
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
     const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    const nextWidth = Math.min(MIN_WIDTH, availableWidth)
-    const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
-    setModalSize({ width: nextWidth, height: nextHeight })
-    setModalPosition({
-      x: Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING),
-      y: Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING),
-    })
-  }, [open])
+    const isSelectorStep = step === 'casa'
+
+    if (isSelectorStep) {
+      const nextWidth = Math.min(SELECTOR_WIDTH, availableWidth)
+      setModalSize({ width: nextWidth, height: 'auto' })
+      const measuredHeight = modalRef.current ? modalRef.current.offsetHeight : 300
+      const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
+      const centerY = Math.max((window.innerHeight - measuredHeight) / 2, VIEWPORT_PADDING)
+      if (isFirstOpenRef.current) {
+        isFirstOpenRef.current = false
+        setModalPosition({ x: centerX, y: centerY })
+      } else {
+        setModalPosition({ x: centerX, y: Math.min(Math.max(centerY, VIEWPORT_PADDING), availableHeight - measuredHeight + VIEWPORT_PADDING) })
+      }
+    } else {
+      const nextWidth = Math.min(MIN_WIDTH, availableWidth)
+      const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
+      const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
+      setModalSize({ width: nextWidth, height: nextHeight })
+      if (isFirstOpenRef.current) {
+        isFirstOpenRef.current = false
+        setModalPosition({ x: centerX, y: Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING) })
+      } else {
+        setModalPosition((prev) => ({
+          x: centerX,
+          y: Math.min(Math.max(prev.y, VIEWPORT_PADDING), Math.max(availableHeight - nextHeight + VIEWPORT_PADDING, VIEWPORT_PADDING)),
+        }))
+      }
+    }
+  }, [open, step, casaDraft])
 
   useEffect(() => {
     const handleMouseMove = (event) => {
@@ -118,8 +195,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
       event.preventDefault()
       const newX = event.clientX - modalDrag.current.offsetX
       const newY = event.clientY - modalDrag.current.offsetY
+      const modalHeight = modalRef.current
+        ? modalRef.current.offsetHeight
+        : (typeof modalSizeRef.current.height === 'number' ? modalSizeRef.current.height : 0)
       const maxX = window.innerWidth - modalSizeRef.current.width - VIEWPORT_PADDING
-      const maxY = window.innerHeight - modalSizeRef.current.height - VIEWPORT_PADDING
+      const maxY = window.innerHeight - modalHeight - VIEWPORT_PADDING
       setModalPosition({
         x: Math.min(Math.max(newX, VIEWPORT_PADDING), Math.max(maxX, VIEWPORT_PADDING)),
         y: Math.min(Math.max(newY, VIEWPORT_PADDING), Math.max(maxY, VIEWPORT_PADDING)),
@@ -148,8 +228,12 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   }, [onError])
 
   const reset = useCallback(() => {
+    setStep('casa')
+    setActiveTab('general')
+    setDetailDraft({ producto: null, cantidad: '1' })
     setNextCode('IMP-')
     setSelectedCasa(null)
+    setCasaDraft(null)
     setCasaQuery('')
     setCasaOptions([])
     setShowCasaDropdown(false)
@@ -159,6 +243,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
     setDetails([])
     setSubmitting(false)
     setLocalError('')
+    setModalSize({ width: SELECTOR_WIDTH, height: 'auto' })
   }, [])
 
   useEffect(() => {
@@ -183,8 +268,10 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   useEffect(() => {
     if (!open) return undefined
     const handleMouseDown = (event) => {
-      if (!casaDropdownRef.current?.contains(event.target)) setShowCasaDropdown(false)
-      if (!productDropdownRef.current?.contains(event.target)) setShowProductDropdown(false)
+      const inCasa = casaDropdownRef.current?.contains(event.target) || event.target.closest?.('[data-casa-portal]')
+      if (!inCasa) setShowCasaDropdown(false)
+      const inProduct = productDropdownRef.current?.contains(event.target) || event.target.closest?.('[data-product-portal]')
+      if (!inProduct) setShowProductDropdown(false)
     }
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') onClose?.()
@@ -201,8 +288,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
     if (!token) return
     setCasaLoading(true)
     const params = new URLSearchParams()
-    params.set('page_size', '8')
-    params.set('modulo', 'solicitudes')
+    params.set('page_size', '10')
+    params.set('tipo', 'importacion')
     if (term) params.set('search', term)
 
     authFetch(`${API_URL}/casa-comercial/casas/?${params.toString()}`, {}, token)
@@ -216,11 +303,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   }, [notifyError, token])
 
   useEffect(() => {
-    if (!open || !showCasaDropdown) return undefined
+    if (!open || (!showCasaDropdown && step !== 'casa')) return undefined
     if (casaTimerRef.current) clearTimeout(casaTimerRef.current)
     casaTimerRef.current = setTimeout(() => searchCasas(casaQuery.trim()), 280)
     return () => clearTimeout(casaTimerRef.current)
-  }, [casaQuery, open, searchCasas, showCasaDropdown])
+  }, [casaQuery, open, searchCasas, showCasaDropdown, step])
 
   const searchProducts = useCallback((term) => {
     if (!token) return
@@ -250,13 +337,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
     productTimerRef.current = setTimeout(() => searchProducts(productQuery.trim()), 280)
     return () => clearTimeout(productTimerRef.current)
   }, [open, productQuery, searchProducts, showProductDropdown])
-
-  const handleSelectCasa = (casa) => {
-    setSelectedCasa(casa)
-    setCasaQuery(formatCasaLabel(casa))
-    setShowCasaDropdown(false)
-    setLocalError('')
-  }
 
   const handleAddProduct = (product) => {
     if (details.some((d) => String(d.producto.id) === String(product.id))) {
@@ -346,6 +426,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
           left: modalPosition.x,
           width: modalSize.width,
           height: modalSize.height,
+          minWidth: 0,
+          minHeight: 0,
           maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
           maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
         }}
@@ -372,192 +454,341 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
           className="create-user__form"
           onSubmit={(e) => { e.preventDefault(); handleSubmit() }}
         >
-          <div className="create-user__body">
-
-            <section className="create-user__section">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">General</p>
-                  <h4>Información de la importación</h4>
+          {step === 'casa' ? (
+            <div className="create-salida__selector-shell" style={{ flex: 'none', overflow: 'visible' }}>
+              <section className="create-user__section create-salida__selector-card">
+                <div className="create-user__section-header">
+                  <div>
+                    <h4>Selecciona la casa comercial</h4>
+                  </div>
                 </div>
-              </div>
-
-              <div className="create-user__grid create-user__grid--two">
-                <label className="create-user__field">
-                  <span>Código</span>
-                  <input type="text" value={nextCode} readOnly />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Fecha</span>
-                  <input type="text" value={formatDate(todayISO())} readOnly />
-                </label>
-
-                <label className="create-user__field create-user__field--full">
-                  <span>Casa comercial</span>
-                  <div className="create-user__dropdown" ref={casaDropdownRef}>
-                    <button
-                      type="button"
-                      className={`create-user__dropdown-trigger${!selectedCasa ? ' create-salida__cliente-trigger--placeholder' : ''}`}
-                      onClick={() => {
-                        setShowCasaDropdown((v) => !v)
-                        if (!showCasaDropdown) searchCasas(casaQuery.trim())
-                      }}
+                <div className="create-salida__selector-inner">
+                  <div className="create-user__field create-salida__selector-field">
+                    <div
+                      className="create-user__dropdown"
+                      ref={casaDropdownRef}
+                      style={{ width: '100%' }}
                     >
-                      <span>{selectedCasa ? formatCasaLabel(selectedCasa) : 'Selecciona una casa comercial'}</span>
-                      <i className={`pi pi-chevron-${showCasaDropdown ? 'up' : 'down'}`} />
-                    </button>
-                    {showCasaDropdown && (
-                      <div className="create-user__dropdown-panel">
-                        <div className="create-user__dropdown-search">
-                          <i className="pi pi-search" />
-                          <input
-                            type="text"
-                            placeholder="Buscar casas comerciales"
-                            value={casaQuery}
-                            onChange={(e) => { setCasaQuery(e.target.value); setSelectedCasa(null) }}
-                            autoFocus
-                            autoComplete="off"
-                          />
-                        </div>
+                      <div
+                        className="create-user__dropdown-trigger"
+                        style={{ cursor: 'text', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }}
+                        onClick={() => setShowCasaDropdown(true)}
+                      >
+                        <i className="pi pi-search" style={{ color: 'var(--color-muted, #888)', flexShrink: 0 }} />
+                        <input
+                          type="text"
+                          placeholder="Busca por nombre, código o país..."
+                          value={casaQuery}
+                          onChange={(e) => {
+                            setCasaQuery(e.target.value)
+                            setCasaDraft(null)
+                            setShowCasaDropdown(true)
+                          }}
+                          onFocus={() => setShowCasaDropdown(true)}
+                          style={{ border: 'none', outline: 'none', flex: 1, background: 'transparent', fontSize: 'inherit', color: 'inherit' }}
+                          autoComplete="off"
+                          autoFocus
+                        />
+                        {casaLoading && <i className="pi pi-spin pi-spinner" style={{ flexShrink: 0 }} />}
+                      </div>
+                    </div>
+
+                    {showCasaDropdown && casaPanelStyle && createPortal(
+                      <div data-casa-portal className="create-user__dropdown-panel" style={casaPanelStyle}>
                         <div className="create-user__dropdown-results">
                           {casaLoading && <small className="muted">Buscando...</small>}
-                          {!casaLoading && !casaOptions.length && <small className="muted">Sin resultados.</small>}
+                          {!casaLoading && !casaOptions.length && (
+                            <small className="muted">
+                              {casaQuery.trim() ? 'Sin resultados.' : 'Escribe para buscar.'}
+                            </small>
+                          )}
                           {casaOptions.map((casa) => (
                             <button
                               key={casa.id}
                               type="button"
                               className="create-user__result-option"
                               onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => handleSelectCasa(casa)}
+                              onClick={() => {
+                                setCasaDraft(casa)
+                                setCasaQuery('')
+                                setShowCasaDropdown(false)
+                                setCasaOptions([])
+                              }}
                             >
                               <div className="create-user__result-info">
-                                <strong>{formatCasaLabel(casa)}</strong>
+                                <strong>{String(casa?.nombre || '').trim()}</strong>
                                 <small>
-                                  {casa.tipo === 'importacion' ? 'Importación' : 'Local'}
-                                  {casa.dias_entrega ? ` · ${casa.dias_entrega} días est.` : ''}
+                                  {[
+                                    String(casa?.codigo || '').trim(),
+                                    String(casa?.pais?.nombre || '').trim(),
+                                  ].filter(Boolean).join(' · ')}
                                 </small>
                               </div>
                             </button>
                           ))}
                         </div>
-                      </div>
+                      </div>,
+                      document.body
                     )}
                   </div>
-                </label>
 
-                <label className="create-user__field">
-                  <span>Días aproximados de entrega</span>
-                  <input
-                    type="text"
-                    value={selectedCasa?.dias_entrega != null ? `${selectedCasa.dias_entrega} días` : '-'}
-                    readOnly
-                  />
-                </label>
-              </div>
-            </section>
-
-            <section className="create-user__section">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">Productos</p>
-                  <h4>Agregar productos a importar</h4>
-                </div>
-              </div>
-
-              <label className="create-user__field">
-                <span>Buscar producto</span>
-                <div className="create-user__dropdown" ref={productDropdownRef}>
-                  <button
-                    type="button"
-                    className="create-user__dropdown-trigger create-salida__cliente-trigger--placeholder"
-                    onClick={() => {
-                      setShowProductDropdown((v) => !v)
-                      if (!showProductDropdown) searchProducts(productQuery.trim())
-                    }}
-                  >
-                    <span>Buscar y agregar productos</span>
-                    <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
-                  </button>
-                  {showProductDropdown && (
-                    <div className="create-user__dropdown-panel">
-                      <div className="create-user__dropdown-search">
-                        <i className="pi pi-search" />
-                        <input
-                          type="text"
-                          placeholder="Código, nombre o referencia"
-                          value={productQuery}
-                          onChange={(e) => setProductQuery(e.target.value)}
-                          autoFocus
-                          autoComplete="off"
+                  {casaDraft && (
+                    <div className="create-salida__field-group create-salida__field-group--defined" style={{ marginTop: '14px' }}>
+                      <div className="create-user__grid create-user__grid--two">
+                        <StaticFieldDisplay label="Código" value={casaDraft.codigo} />
+                        <StaticFieldDisplay label="Nombre" value={casaDraft.nombre} />
+                        <div className="create-user__field create-salida__static-field">
+                          <span>País</span>
+                          <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {(() => {
+                              const flagUrl = getFlagUrl(casaDraft.pais?.codigo_pais)
+                              return (
+                                <span className={`create-user__flag${flagUrl ? '' : ' is-empty'}`} aria-hidden="true" style={{ flexShrink: 0 }}>
+                                  {flagUrl ? <img src={flagUrl} alt="" /> : '□'}
+                                </span>
+                              )
+                            })()}
+                            {String(casaDraft.pais?.nombre || '—').trim()}
+                          </div>
+                        </div>
+                        <StaticFieldDisplay
+                          label="Días de entrega"
+                          value={casaDraft.dias_entrega != null ? `${casaDraft.dias_entrega} días` : ''}
                         />
-                      </div>
-                      <div className="create-user__dropdown-results">
-                        {productLoading && <small className="muted">Buscando...</small>}
-                        {!productLoading && !productOptions.length && <small className="muted">Sin resultados.</small>}
-                        {productOptions.map((product) => (
-                          <button
-                            key={product.id}
-                            type="button"
-                            className="create-user__result-option"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => handleAddProduct(product)}
-                          >
-                            <div className="create-user__result-info">
-                              <strong>{formatProductLabel(product)}</strong>
-                              <small>
-                                {(product.casas_comerciales || []).map((c) => c.nombre).filter(Boolean).join(', ') || 'Sin casa comercial'}
-                              </small>
-                            </div>
-                          </button>
-                        ))}
+                        {casaDraft.descripcion && (
+                          <StaticFieldDisplay label="Descripción" value={casaDraft.descripcion} fullWidth />
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
-              </label>
+              </section>
+            </div>
+          ) : (
+            <>
+              <div className="create-user__tabs create-salida__tabs" role="tablist">
+                <button
+                  type="button"
+                  className={`create-user__tab${activeTab === 'productos' ? ' create-user__tab--active' : ''}`}
+                  onClick={() => setActiveTab('productos')}
+                >
+                  Productos {details.length > 0 && `(${details.length})`}
+                </button>
+                <button
+                  type="button"
+                  className={`create-user__tab${activeTab === 'general' ? ' create-user__tab--active' : ''}`}
+                  onClick={() => setActiveTab('general')}
+                >
+                  General
+                </button>
+              </div>
 
-              {!details.length ? (
-                <p className="muted" style={{ padding: '10px 0', fontSize: '0.875rem' }}>
-                  Agrega los productos que deseas importar.
-                </p>
-              ) : (
-                <div className="create-salida__details">
-                  {details.map((item) => (
-                    <div key={item.producto.id} className="create-salida__detail-row">
-                      <div className="create-salida__detail-info">
-                        <strong>{item.producto.codigo}</strong>
-                        <span>{item.producto.nombre}</span>
+              <div className="create-user__content create-salida__content">
+                <div className="create-user__body">
+                  {activeTab === 'general' && (
+                    <section className="create-user__section">
+                      <div className="create-user__section-header">
+                        <div>
+                          <p className="create-user__eyebrow">General</p>
+                          <h4>Información de la importación</h4>
+                        </div>
                       </div>
-                      <div className="create-salida__detail-qty">
-                        <label>
-                          <span>Cant.</span>
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.cantidad}
-                            onChange={(e) => handleQuantityChange(item.producto.id, e.target.value)}
-                          />
-                        </label>
+                      <div className="create-salida__field-groups">
+                        <div className="create-salida__field-group create-salida__field-group--defined">
+                          <div className="create-user__grid create-user__grid--two">
+                            <StaticFieldDisplay label="Código" value={nextCode} />
+                            <StaticFieldDisplay label="Fecha" value={formatDate(todayISO())} />
+                            <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(selectedCasa)} fullWidth />
+                            <StaticFieldDisplay
+                              label="Días de entrega"
+                              value={selectedCasa?.dias_entrega != null ? `${selectedCasa.dias_entrega} días` : ''}
+                            />
+                            {selectedCasa?.pais?.nombre && (
+                              <div className="create-user__field create-salida__static-field">
+                                <span>País</span>
+                                <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {(() => {
+                                    const flagUrl = getFlagUrl(selectedCasa.pais?.codigo_pais)
+                                    return (
+                                      <span className={`create-user__flag${flagUrl ? '' : ' is-empty'}`} aria-hidden="true" style={{ flexShrink: 0 }}>
+                                        {flagUrl ? <img src={flagUrl} alt="" /> : '□'}
+                                      </span>
+                                    )
+                                  })()}
+                                  {String(selectedCasa.pais.nombre).trim()}
+                                </div>
+                              </div>
+                            )}
+                            {selectedCasa?.descripcion && (
+                              <StaticFieldDisplay label="Descripción" value={selectedCasa.descripcion} fullWidth />
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        className="create-salida__detail-remove"
-                        onClick={() => setDetails((prev) => prev.filter((d) => String(d.producto.id) !== String(item.producto.id)))}
-                        aria-label="Quitar producto"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                    </section>
+                  )}
+
+                  {activeTab === 'productos' && (
+                    <section className="create-user__section">
+                      <div className="create-user__section-header">
+                        <div>
+                          <p className="create-user__eyebrow">Productos</p>
+                          <h4>Listado de productos</h4>
+                        </div>
+                      </div>
+
+                      <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions">
+                        <div className="create-user__locations-row create-user__locations-row--head">
+                          <span>Código</span>
+                          <span>Nombre</span>
+                          <span>Cantidad</span>
+                          <span>Acciones</span>
+                        </div>
+
+                        <div className="create-user__locations-row create-user__locations-row--form">
+                          <span className="create-salida__product-picker create-salida__product-code-cell">
+                            <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
+                              <button
+                                type="button"
+                                className="create-user__dropdown-trigger"
+                                onClick={() => {
+                                  setShowProductDropdown((prev) => !prev)
+                                  if (!showProductDropdown) { setProductQuery(''); searchProducts('') }
+                                }}
+                              >
+                                <span>{detailDraft.producto ? String(detailDraft.producto.codigo || '').trim() : 'Selecciona un código'}</span>
+                                <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
+                              </button>
+
+                              {showProductDropdown && productPanelStyle && createPortal(
+                                <div data-product-portal className="create-user__dropdown-panel" style={productPanelStyle}>
+                                  <div className="create-user__dropdown-search">
+                                    <i className="pi pi-search" />
+                                    <input
+                                      type="text"
+                                      placeholder="Buscar código o nombre"
+                                      value={productQuery}
+                                      onChange={(e) => setProductQuery(e.target.value)}
+                                      autoFocus
+                                      autoComplete="off"
+                                    />
+                                  </div>
+                                  <div className="create-user__dropdown-results">
+                                    {productLoading && <small className="muted">Buscando productos...</small>}
+                                    {!productLoading && !productQuery.trim() && !productOptions.length && (
+                                      <small className="muted">Escribe para buscar.</small>
+                                    )}
+                                    {!productLoading && productQuery.trim() && !productOptions.length && (
+                                      <small className="muted">Sin resultados.</small>
+                                    )}
+                                    {productOptions.length > 0 && (
+                                      <div className="create-salida__results-header">
+                                        <span>Código</span>
+                                        <span>Nombre</span>
+                                        <span>Stock</span>
+                                      </div>
+                                    )}
+                                    {productOptions.map((product) => {
+                                      const isAlreadyAdded = details.some((d) => String(d.producto.id) === String(product.id))
+                                      const isSelected = String(detailDraft.producto?.id) === String(product.id)
+                                      return (
+                                        <button
+                                          key={product.id}
+                                          type="button"
+                                          className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() => {
+                                            setDetailDraft({ producto: product, cantidad: '1' })
+                                            setProductQuery('')
+                                            setShowProductDropdown(false)
+                                            setProductOptions([])
+                                          }}
+                                          disabled={isAlreadyAdded}
+                                          title={isAlreadyAdded ? 'Ya agregado' : undefined}
+                                        >
+                                          <span className="result-codigo">{String(product.codigo || '').trim()}</span>
+                                          <span className="result-nombre">{String(product.nombre || '').trim()}</span>
+                                          <span className="result-stock">{Number(product.total_stock ?? 0)}</span>
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>,
+                                document.body
+                              )}
+                            </div>
+                          </span>
+                          <span className="create-salida__product-name-cell">
+                            <span className="create-salida__table-static-value create-salida__table-static-value--name">
+                              {detailDraft.producto ? String(detailDraft.producto.nombre || '').trim() : '-'}
+                            </span>
+                          </span>
+                          <span>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={detailDraft.cantidad}
+                              onChange={(e) => setDetailDraft((prev) => ({ ...prev, cantidad: e.target.value }))}
+                              disabled={!detailDraft.producto}
+                            />
+                          </span>
+                          <span className="create-user__locations-cell create-user__locations-cell--action">
+                            <button
+                              type="button"
+                              className="create-user__ghost"
+                              disabled={!detailDraft.producto}
+                              onClick={() => {
+                                if (!detailDraft.producto) return
+                                handleAddProduct(detailDraft.producto)
+                                setDetailDraft({ producto: null, cantidad: '1' })
+                              }}
+                            >
+                              Agregar
+                            </button>
+                          </span>
+                        </div>
+
+                        {!details.length ? (
+                          <div className="create-user__locations-row create-user__locations-row--empty">
+                            <span>Sin productos agregados.</span>
+                          </div>
+                        ) : details.map((item) => (
+                          <div key={item.producto.id} className="create-user__locations-row">
+                            <span>{item.producto.codigo || '—'}</span>
+                            <span title={item.producto.nombre}>
+                              <span className="create-salida__product-name-text">{item.producto.nombre}</span>
+                            </span>
+                            <span>
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.cantidad}
+                                onChange={(e) => handleQuantityChange(item.producto.id, e.target.value)}
+                              />
+                            </span>
+                            <span className="create-user__locations-cell create-user__locations-cell--action">
+                              <button
+                                type="button"
+                                className="create-user__locations-remove"
+                                onClick={() => setDetails((prev) => prev.filter((d) => String(d.producto.id) !== String(item.producto.id)))}
+                              >
+                                x
+                              </button>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  {localError && (
+                    <p className="create-user__field-error" style={{ margin: '0 0 8px' }}>{localError}</p>
+                  )}
                 </div>
-              )}
-            </section>
-
-            {localError && (
-              <p className="create-user__field-error" style={{ margin: '0 0 8px' }}>{localError}</p>
-            )}
-          </div>
+              </div>
+            </>
+          )}
 
           <div className="create-user__footer">
             <div className="user-details__footer-left">
@@ -571,13 +802,28 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
               </button>
             </div>
             <div className="user-details__footer-right">
-              <button
-                type="submit"
-                className="create-user__action create-user__action--primary"
-                disabled={submitting}
-              >
-                {submitting ? 'Creando...' : 'Crear importación'}
-              </button>
+              {step === 'casa' ? (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  disabled={!casaDraft}
+                  onClick={() => {
+                    setSelectedCasa(casaDraft)
+                    setActiveTab('productos')
+                    setStep('form')
+                  }}
+                >
+                  Siguiente
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="create-user__action create-user__action--primary"
+                  disabled={submitting}
+                >
+                  {submitting ? 'Creando...' : 'Crear importación'}
+                </button>
+              )}
             </div>
           </div>
         </form>

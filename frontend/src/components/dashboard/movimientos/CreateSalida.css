@@ -96,6 +96,19 @@
   margin: 0 auto;
 }
 
+.create-salida__selector-hint {
+  max-width: 480px;
+  margin: 10px auto 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1.5px dashed var(--color-border, #d0d5dd);
+  background: var(--color-bg-subtle, #f8f9fb);
+  color: var(--color-text-secondary, #6b7280);
+  font-size: var(--font-size-sm, 0.85rem);
+  text-align: center;
+}
+
+
 .create-salida__selector-field > .create-salida__subtipo-selector > .create-salida__subtipo-selector-label {
   text-align: center;
 }

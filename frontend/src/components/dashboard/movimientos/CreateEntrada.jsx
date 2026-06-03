@@ -18,6 +18,8 @@ const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const SELECTOR_WIDTH = 520
 const SELECTOR_HEIGHT = 360
+const CASA_SELECTOR_HEIGHT_EMPTY = 210
+const CASA_SELECTOR_HEIGHT_FULL = 500
 const SELECTOR_MIN_WIDTH = 420
 const SELECTOR_MIN_HEIGHT = 340
 const VIEWPORT_PADDING = 12
@@ -372,12 +374,20 @@ function CreateEntrada({
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
   const [isResizingModal, setIsResizingModal] = useState(false)
+  const [selectedCasaComercial, setSelectedCasaComercial] = useState(null)
+  const [casaComercialDraft, setCasaComercialDraft] = useState(null)
+  const [casaComercialQuery, setCasaComercialQuery] = useState('')
+  const [casaComercialOptions, setCasaComercialOptions] = useState([])
+  const [casaComercialLoading, setCasaComercialLoading] = useState(false)
+  const [showCasaComercialDropdown, setShowCasaComercialDropdown] = useState(false)
   const modalRef = useRef(null)
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
   const clienteDropdownRef = useRef(null)
+  const casaComercialDropdownRef = useRef(null)
   const locationDropdownRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
+  const casaComercialTimerRef = useRef(null)
   const documentCheckTimerRef = useRef(null)
   const documentCheckSequenceRef = useRef(0)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
@@ -534,11 +544,13 @@ function CreateEntrada({
   const isDevolucion = selectedSubTipoName.includes('devol')
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
-  const isCompraEntrada = selectedSubTipoName.includes('compra') || selectedSubTipoName.includes('import')
+  const isImportacion = selectedSubTipoName.includes('import')
+  const isCompraEntrada = selectedSubTipoName.includes('compra') || isImportacion
   const isEditableEntryDate = !isTraslado && !isDevolucion
   const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
   const isSelectorStep = !formData.subTipoId
+  const isCasaComercialStep = Boolean(formData.subTipoId) && isImportacion && !selectedCasaComercial
   const requiresSucursalObjetivo = isTraslado
   const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
   const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
@@ -960,6 +972,28 @@ function CreateEntrada({
         setClienteOptions([])
       } finally {
         setClienteLoading(false)
+      }
+    },
+    [token]
+  )
+
+  const searchCasasComerciales = useCallback(
+    async (query) => {
+      if (!token) return
+      setCasaComercialLoading(true)
+      try {
+        const params = new URLSearchParams()
+        params.set('page_size', '10')
+        params.set('tipo', 'importacion')
+        if (query) params.set('search', query)
+        const response = await authFetch(`${API_URL}/casa-comercial/casas/?${params.toString()}`, {}, token)
+        if (!response.ok) throw new Error('No se pudieron cargar las casas comerciales.')
+        const payload = await response.json().catch(() => ({}))
+        setCasaComercialOptions(parseApiList(payload))
+      } catch {
+        setCasaComercialOptions([])
+      } finally {
+        setCasaComercialLoading(false)
       }
     },
     [token]
@@ -1544,6 +1578,12 @@ function CreateEntrada({
     setIsResizingModal(false)
     modalRestoreRef.current = null
     setError('')
+    setSelectedCasaComercial(null)
+    setCasaComercialDraft(null)
+    setCasaComercialQuery('')
+    setCasaComercialOptions([])
+    setCasaComercialLoading(false)
+    setShowCasaComercialDropdown(false)
     fetchCatalogs()
     fetchReminderUsers()
   }, [fetchCatalogs, fetchReminderUsers, normalizedPrefilledSucursalId, open])
@@ -1776,6 +1816,23 @@ function CreateEntrada({
   }, [clienteQuery, isVenta, open, searchClientes, showClienteDropdown])
 
   useEffect(() => {
+    if (!open || !isCasaComercialStep) return
+    if (casaComercialTimerRef.current) {
+      clearTimeout(casaComercialTimerRef.current)
+      casaComercialTimerRef.current = null
+    }
+    casaComercialTimerRef.current = setTimeout(() => {
+      searchCasasComerciales(casaComercialQuery.trim())
+    }, 320)
+    return () => {
+      if (casaComercialTimerRef.current) {
+        clearTimeout(casaComercialTimerRef.current)
+        casaComercialTimerRef.current = null
+      }
+    }
+  }, [casaComercialQuery, isCasaComercialStep, open, searchCasasComerciales])
+
+  useEffect(() => {
     if (!open) return
 
     const subTipoId = String(formData.subTipoId || '').trim()
@@ -1832,7 +1889,7 @@ function CreateEntrada({
   useEffect(() => {
     if (
       !open ||
-      (!showProductDropdown && !showClienteDropdown && !locationDropdownProductId && !locationDropdownField)
+      (!showProductDropdown && !showClienteDropdown && !showCasaComercialDropdown && !locationDropdownProductId && !locationDropdownField)
     ) {
       return undefined
     }
@@ -1842,6 +1899,9 @@ function CreateEntrada({
       }
       if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
         setShowClienteDropdown(false)
+      }
+      if (casaComercialDropdownRef.current && !casaComercialDropdownRef.current.contains(event.target)) {
+        setShowCasaComercialDropdown(false)
       }
       if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target)) {
         setLocationDropdownProductId('')
@@ -1854,7 +1914,7 @@ function CreateEntrada({
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
-  }, [locationDropdownField, locationDropdownProductId, open, showClienteDropdown, showProductDropdown])
+  }, [locationDropdownField, locationDropdownProductId, open, showCasaComercialDropdown, showClienteDropdown, showProductDropdown])
 
   useEffect(() => {
     if (activeTab !== 'cliente' && showClienteDropdown) {
@@ -1911,10 +1971,14 @@ function CreateEntrada({
 
   useLayoutEffect(() => {
     if (!open || isMaximized) return
-    const compactMode = isSelectorStep
+    const compactMode = isSelectorStep || isCasaComercialStep
     const { availableWidth, availableHeight, minWidth, minHeight } = getViewportMetrics(compactMode)
     const preferredWidth = compactMode ? SELECTOR_WIDTH : MIN_WIDTH
-    const preferredHeight = compactMode ? SELECTOR_HEIGHT : MIN_HEIGHT
+    const preferredHeight = compactMode
+      ? isCasaComercialStep
+        ? casaComercialDraft ? CASA_SELECTOR_HEIGHT_FULL : CASA_SELECTOR_HEIGHT_EMPTY
+        : SELECTOR_HEIGHT
+      : MIN_HEIGHT
     const width = Math.min(Math.max(preferredWidth, minWidth), availableWidth)
     const height = Math.min(Math.max(preferredHeight, minHeight), availableHeight)
     setModalSize({ width, height })
@@ -1922,7 +1986,7 @@ function CreateEntrada({
       x: Math.max((window.innerWidth - width) / 2, VIEWPORT_PADDING),
       y: Math.max((window.innerHeight - height) / 2, VIEWPORT_PADDING),
     })
-  }, [getViewportMetrics, isMaximized, isSelectorStep, open])
+  }, [getViewportMetrics, isMaximized, isSelectorStep, isCasaComercialStep, casaComercialDraft, open])
 
   const handleModalMouseDown = (event) => {
     const target = event?.target
@@ -1972,7 +2036,7 @@ function CreateEntrada({
     if (isMaximized) return
     event.preventDefault()
     event.stopPropagation()
-    const { minWidth, minHeight } = getViewportMetrics(isSelectorStep)
+    const { minWidth, minHeight } = getViewportMetrics(isSelectorStep || isCasaComercialStep)
     setIsResizingModal(true)
     modalResize.current = {
       active: true,
@@ -2034,7 +2098,7 @@ function CreateEntrada({
   useEffect(() => {
     if (!open) return undefined
     const handleWindowResize = () => {
-      const { minWidth, minHeight, availableWidth, availableHeight } = getViewportMetrics(isSelectorStep)
+      const { minWidth, minHeight, availableWidth, availableHeight } = getViewportMetrics(isSelectorStep || isCasaComercialStep)
 
       if (isMaximized) {
         setModalSize({ width: availableWidth, height: availableHeight })
@@ -2063,7 +2127,7 @@ function CreateEntrada({
 
     window.addEventListener('resize', handleWindowResize)
     return () => window.removeEventListener('resize', handleWindowResize)
-  }, [getViewportMetrics, isMaximized, isSelectorStep, open])
+  }, [getViewportMetrics, isMaximized, isSelectorStep, isCasaComercialStep, open])
 
   const toggleMaximize = () => {
     modalDrag.current.active = false
@@ -2120,6 +2184,11 @@ function CreateEntrada({
   }
 
   const handleSubTipoSelect = (subTipoId) => {
+    setSelectedCasaComercial(null)
+    setCasaComercialDraft(null)
+    setCasaComercialQuery('')
+    setCasaComercialOptions([])
+    setShowCasaComercialDropdown(false)
     handleChange({
       target: {
         name: 'subTipoId',
@@ -2862,7 +2931,7 @@ function CreateEntrada({
   const showGeneralTab = !showTabs || activeTab === 'general'
   const defaultHeaderTitle = 'Nueva entrada'
   const headerDocumentTitle = String(formData.no_documento || '').trim()
-  const headerTitle = !isSelectorStep && headerDocumentTitle ? headerDocumentTitle : defaultHeaderTitle
+  const headerTitle = !isSelectorStep && !isCasaComercialStep && headerDocumentTitle ? headerDocumentTitle : defaultHeaderTitle
 
   return (
     <div
@@ -2925,6 +2994,111 @@ function CreateEntrada({
                       disabled={loading}
                     />
                   </div>
+                </div>
+              </section>
+            </div>
+          ) : isCasaComercialStep ? (
+            <div className="create-salida__selector-shell">
+              <section className="create-user__section create-salida__selector-card">
+                <div className="create-user__section-header">
+                  <div>
+                    <h4>Selecciona la casa comercial</h4>
+                  </div>
+                </div>
+                <div className="create-salida__selector-inner">
+                  <div className="create-user__field create-salida__selector-field">
+                    <div
+                      className="create-user__dropdown"
+                      ref={casaComercialDropdownRef}
+                      style={{ width: '100%' }}
+                    >
+                      <div
+                        className="create-user__dropdown-trigger"
+                        style={{ cursor: 'text', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }}
+                        onClick={() => setShowCasaComercialDropdown(true)}
+                      >
+                        <i className="pi pi-search" style={{ color: 'var(--color-muted, #888)', flexShrink: 0 }} />
+                        <input
+                          type="text"
+                          placeholder="Busca por nombre, código o país..."
+                          value={casaComercialQuery}
+                          onChange={(event) => {
+                            setCasaComercialQuery(event.target.value)
+                            setCasaComercialDraft(null)
+                            setShowCasaComercialDropdown(true)
+                          }}
+                          onFocus={() => setShowCasaComercialDropdown(true)}
+                          style={{ border: 'none', outline: 'none', flex: 1, background: 'transparent', fontSize: 'inherit', color: 'inherit' }}
+                          autoComplete="off"
+                        />
+                        {casaComercialLoading && <i className="pi pi-spin pi-spinner" style={{ flexShrink: 0 }} />}
+                      </div>
+
+                      {showCasaComercialDropdown && (
+                        <div className="create-user__dropdown-panel" style={{ top: '100%', left: 0, right: 0 }}>
+                          <div className="create-user__dropdown-results">
+                            {casaComercialLoading && <small className="muted">Buscando...</small>}
+                            {!casaComercialLoading && !casaComercialOptions.length && (
+                              <small className="muted">
+                                {casaComercialQuery.trim() ? 'Sin resultados.' : 'Escribe para buscar.'}
+                              </small>
+                            )}
+                            {casaComercialOptions.map((casa) => (
+                              <button
+                                key={`casa-option-${casa.id}`}
+                                type="button"
+                                className="create-user__result-option"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => {
+                                  setCasaComercialDraft(casa)
+                                  setCasaComercialQuery('')
+                                  setShowCasaComercialDropdown(false)
+                                  setCasaComercialOptions([])
+                                }}
+                              >
+                                <div className="create-user__result-info">
+                                  <strong>{String(casa?.nombre || '').trim()}</strong>
+                                  <small>
+                                    {[
+                                      String(casa?.codigo || '').trim(),
+                                      String(casa?.pais?.nombre || '').trim(),
+                                    ].filter(Boolean).join(' · ')}
+                                  </small>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {casaComercialDraft ? (
+                    <div className="create-salida__field-group create-salida__field-group--defined" style={{ marginTop: '14px' }}>
+                      <div className="create-user__grid create-user__grid--two">
+                        <StaticFieldDisplay label="Nombre" value={casaComercialDraft.nombre} fullWidth />
+                        <StaticFieldDisplay label="Código" value={casaComercialDraft.codigo} />
+                        <StaticFieldDisplay label="País" value={casaComercialDraft.pais?.nombre} />
+                        <StaticFieldDisplay
+                          label="Días de entrega"
+                          value={casaComercialDraft.dias_entrega != null ? `${casaComercialDraft.dias_entrega} días` : ''}
+                        />
+                        {casaComercialDraft.telefono && (
+                          <StaticFieldDisplay label="Teléfono" value={casaComercialDraft.telefono} />
+                        )}
+                        {casaComercialDraft.correo && (
+                          <StaticFieldDisplay label="Correo" value={casaComercialDraft.correo} />
+                        )}
+                        {casaComercialDraft.descripcion && (
+                          <StaticFieldDisplay label="Descripción" value={casaComercialDraft.descripcion} fullWidth />
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="create-salida__selector-hint">
+                      Pasa el cursor sobre un resultado para ver más detalles.
+                    </p>
+                  )}
                 </div>
               </section>
             </div>
@@ -3772,12 +3946,30 @@ function CreateEntrada({
             <button
               type="button"
               className="create-user__action create-user__action--cancel"
-              onClick={onClose}
+              onClick={isCasaComercialStep
+                ? () => {
+                    setFormData((prev) => ({ ...prev, subTipoId: '' }))
+                    setSelectedCasaComercial(null)
+                    setCasaComercialDraft(null)
+                    setCasaComercialQuery('')
+                    setCasaComercialOptions([])
+                    setShowCasaComercialDropdown(false)
+                  }
+                : onClose}
               disabled={loading || checkingLocationCoverage}
             >
-              Cancelar
+              {isCasaComercialStep ? 'Atrás' : 'Cancelar'}
             </button>
-            {formData.subTipoId && (
+            {isCasaComercialStep ? (
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                disabled={!casaComercialDraft}
+                onClick={() => setSelectedCasaComercial(casaComercialDraft)}
+              >
+                Siguiente
+              </button>
+            ) : formData.subTipoId && (
               <button
                 type="submit"
                 className="create-user__action create-user__action--primary"
