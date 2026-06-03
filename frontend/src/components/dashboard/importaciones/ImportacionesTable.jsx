@@ -79,7 +79,10 @@ const formatProductLabel = (product) => {
 const MIN_WIDTH = 700
 const MIN_HEIGHT = 520
 const SELECTOR_WIDTH = 520
+const SELECTOR_HEIGHT_EMPTY = 'auto'
+const SELECTOR_HEIGHT_FULL = 'auto'
 const VIEWPORT_PADDING = 12
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
 function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   const [step, setStep] = useState('casa')
@@ -91,7 +94,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   const [casaLoading, setCasaLoading] = useState(false)
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
-  const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '1' })
+  const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '' })
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
   const [productLoading, setProductLoading] = useState(false)
@@ -100,7 +103,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   const [submitting, setSubmitting] = useState(false)
   const [localError, setLocalError] = useState('')
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
-  const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: 'auto' })
+  const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
 
   const modalRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
@@ -141,11 +144,13 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
     }
     const rect = productDropdownRef.current.getBoundingClientRect()
     const panelMaxHeight = Math.min(280, window.innerHeight - rect.bottom - 8)
+    const panelWidth = Math.min(Math.max(rect.width, 520), window.innerWidth - VIEWPORT_PADDING * 2)
+    const panelLeft = clamp(rect.left, VIEWPORT_PADDING, Math.max(window.innerWidth - panelWidth - VIEWPORT_PADDING, VIEWPORT_PADDING))
     setProductPanelStyle({
       position: 'fixed',
       top: rect.bottom + 4,
-      left: rect.left,
-      width: rect.width,
+      left: panelLeft,
+      width: panelWidth,
       maxHeight: Math.max(panelMaxHeight, 120),
       zIndex: 9999,
     })
@@ -162,15 +167,23 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
 
     if (isSelectorStep) {
       const nextWidth = Math.min(SELECTOR_WIDTH, availableWidth)
-      setModalSize({ width: nextWidth, height: 'auto' })
-      const measuredHeight = modalRef.current ? modalRef.current.offsetHeight : 300
+      const preferredHeight = casaDraft ? SELECTOR_HEIGHT_FULL : SELECTOR_HEIGHT_EMPTY
+      const measuredHeight = modalRef.current?.offsetHeight || (casaDraft ? 420 : 190)
+      const nextHeight = typeof preferredHeight === 'number'
+        ? Math.min(preferredHeight, availableHeight)
+        : preferredHeight
+      const boundsHeight = typeof nextHeight === 'number' ? nextHeight : Math.min(measuredHeight, availableHeight)
+      setModalSize({ width: nextWidth, height: nextHeight })
       const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
-      const centerY = Math.max((window.innerHeight - measuredHeight) / 2, VIEWPORT_PADDING)
+      const centerY = Math.max((window.innerHeight - boundsHeight) / 2, VIEWPORT_PADDING)
       if (isFirstOpenRef.current) {
         isFirstOpenRef.current = false
         setModalPosition({ x: centerX, y: centerY })
       } else {
-        setModalPosition({ x: centerX, y: Math.min(Math.max(centerY, VIEWPORT_PADDING), availableHeight - measuredHeight + VIEWPORT_PADDING) })
+        setModalPosition((prev) => ({
+          x: centerX,
+          y: clamp(prev.y, VIEWPORT_PADDING, Math.max(window.innerHeight - boundsHeight - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+        }))
       }
     } else {
       const nextWidth = Math.min(MIN_WIDTH, availableWidth)
@@ -195,14 +208,14 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
       event.preventDefault()
       const newX = event.clientX - modalDrag.current.offsetX
       const newY = event.clientY - modalDrag.current.offsetY
-      const modalHeight = modalRef.current
-        ? modalRef.current.offsetHeight
-        : (typeof modalSizeRef.current.height === 'number' ? modalSizeRef.current.height : 0)
-      const maxX = window.innerWidth - modalSizeRef.current.width - VIEWPORT_PADDING
-      const maxY = window.innerHeight - modalHeight - VIEWPORT_PADDING
+      const maxX = Math.max(window.innerWidth - modalSizeRef.current.width - VIEWPORT_PADDING, VIEWPORT_PADDING)
+      const modalHeight = typeof modalSizeRef.current.height === 'number'
+        ? modalSizeRef.current.height
+        : (modalRef.current?.offsetHeight || 0)
+      const maxY = Math.max(window.innerHeight - modalHeight - VIEWPORT_PADDING, VIEWPORT_PADDING)
       setModalPosition({
-        x: Math.min(Math.max(newX, VIEWPORT_PADDING), Math.max(maxX, VIEWPORT_PADDING)),
-        y: Math.min(Math.max(newY, VIEWPORT_PADDING), Math.max(maxY, VIEWPORT_PADDING)),
+        x: clamp(newX, VIEWPORT_PADDING, maxX),
+        y: clamp(newY, VIEWPORT_PADDING, maxY),
       })
     }
     const handleMouseUp = () => { modalDrag.current.active = false }
@@ -230,7 +243,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   const reset = useCallback(() => {
     setStep('casa')
     setActiveTab('general')
-    setDetailDraft({ producto: null, cantidad: '1' })
+    setDetailDraft({ producto: null, cantidad: '' })
     setNextCode('IMP-')
     setSelectedCasa(null)
     setCasaDraft(null)
@@ -243,7 +256,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
     setDetails([])
     setSubmitting(false)
     setLocalError('')
-    setModalSize({ width: SELECTOR_WIDTH, height: 'auto' })
+    setModalSize({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
   }, [])
 
   useEffect(() => {
@@ -338,7 +351,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
     return () => clearTimeout(productTimerRef.current)
   }, [open, productQuery, searchProducts, showProductDropdown])
 
-  const handleAddProduct = (product) => {
+  const handleAddProduct = (product, cantidad = '') => {
     if (details.some((d) => String(d.producto.id) === String(product.id))) {
       setLocalError('Este producto ya fue agregado.')
       return
@@ -347,7 +360,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
       ...prev,
       {
         producto: product,
-        cantidad: '1',
+        cantidad,
       },
     ])
     setProductQuery('')
@@ -373,7 +386,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
       return
     }
     if (!details.length) {
-      notifyError('Agrega al menos un producto a la importacion.')
+      setLocalError('')
       return
     }
     const normalizedDetails = details.map((item) => ({
@@ -420,7 +433,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
     >
       <div
         ref={modalRef}
-        className="create-user__modal"
+        className={`create-user__modal${step === 'casa' ? ' importaciones-modal--selector' : ''}`}
         style={{
           top: modalPosition.y,
           left: modalPosition.x,
@@ -451,7 +464,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
         </header>
 
         <form
-          className="create-user__form"
+          className={`create-user__form${step === 'casa' ? ' importaciones-modal__selector-form' : ''}`}
           onSubmit={(e) => { e.preventDefault(); handleSubmit() }}
         >
           {step === 'casa' ? (
@@ -637,10 +650,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                         </div>
                       </div>
 
-                      <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions">
+                      <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table">
                         <div className="create-user__locations-row create-user__locations-row--head">
                           <span>Código</span>
                           <span>Nombre</span>
+                          <span>OEM</span>
                           <span>Cantidad</span>
                           <span>Acciones</span>
                         </div>
@@ -698,7 +712,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                                           className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
                                           onMouseDown={(e) => e.preventDefault()}
                                           onClick={() => {
-                                            setDetailDraft({ producto: product, cantidad: '1' })
+                                            setDetailDraft({ producto: product, cantidad: '' })
                                             setProductQuery('')
                                             setShowProductDropdown(false)
                                             setProductOptions([])
@@ -723,6 +737,9 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                               {detailDraft.producto ? String(detailDraft.producto.nombre || '').trim() : '-'}
                             </span>
                           </span>
+                          <span className="create-salida__table-static-value">
+                            {detailDraft.producto ? String(detailDraft.producto.oem || detailDraft.producto.referencia || '').trim() || '-' : '-'}
+                          </span>
                           <span>
                             <input
                               type="number"
@@ -740,8 +757,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                               disabled={!detailDraft.producto}
                               onClick={() => {
                                 if (!detailDraft.producto) return
-                                handleAddProduct(detailDraft.producto)
-                                setDetailDraft({ producto: null, cantidad: '1' })
+                                handleAddProduct(detailDraft.producto, detailDraft.cantidad)
+                                setDetailDraft({ producto: null, cantidad: '' })
                               }}
                             >
                               Agregar
@@ -759,6 +776,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                             <span title={item.producto.nombre}>
                               <span className="create-salida__product-name-text">{item.producto.nombre}</span>
                             </span>
+                            <span>{String(item.producto.oem || item.producto.referencia || '').trim() || '-'}</span>
                             <span>
                               <input
                                 type="number"

@@ -138,6 +138,19 @@
   overflow: visible;
 }
 
+.importaciones-modal--selector {
+  overflow: visible;
+}
+
+.importaciones-modal__selector-form {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.importaciones-modal__selector-form .create-salida__selector-shell {
+  padding-bottom: 14px;
+}
+
 .importaciones-modal__overlay {
   z-index: 1500;
 }
@@ -214,6 +227,26 @@
 
 .importaciones-modal__product-panel {
   max-height: 300px;
+}
+
+.importaciones-modal__products-table .create-user__locations-row {
+  grid-template-columns: minmax(120px, 0.95fr) minmax(180px, 1.55fr) minmax(120px, 1fr) minmax(76px, 0.55fr) minmax(82px, 0.45fr);
+}
+
+.importaciones-modal__products-table .create-user__locations-cell--action,
+.importaciones-modal__products-table .create-user__locations-row > span:last-child {
+  justify-content: center;
+  text-align: center;
+}
+
+.importaciones-modal__products-table .create-user__ghost {
+  min-width: 64px;
+  padding-inline: 10px;
+}
+
+.importaciones-modal__products-table .create-user__locations-remove {
+  width: 28px;
+  height: 28px;
 }
 
 .importaciones-modal__details {
