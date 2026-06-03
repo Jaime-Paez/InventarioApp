@@ -6,17 +6,40 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
   const [hasOverflow, setHasOverflow] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
-  const dragState = useRef({ active: false, startX: 0, scrollLeft: 0, dragged: false })
-  const DRAG_THRESHOLD = 6
+  const [isScrollDragging, setIsScrollDragging] = useState(false)
+  const scrollDragState = useRef({ active: false, startX: 0, scrollLeft: 0, dragged: false })
+  const SCROLL_DRAG_THRESHOLD = 6
+
+  // Local tab order — synced with openTabs when tabs are added/removed
+  const [tabOrder, setTabOrder] = useState(openTabs)
+  useEffect(() => {
+    setTabOrder((prev) => {
+      const prevSet = new Set(prev)
+      const nextSet = new Set(openTabs)
+      const filtered = prev.filter((t) => nextSet.has(t))
+      const added = openTabs.filter((t) => !prevSet.has(t))
+      return [...filtered, ...added]
+    })
+  }, [openTabs])
+
+  // Tab reorder drag
+  const [draggingTabIndex, setDraggingTabIndex] = useState(-1)
+  const [dropIndex, setDropIndex] = useState(-1)
+  const dropIndexRef = useRef(-1)
+  const tabDragState = useRef({ active: false, dragging: false, tabIndex: -1, startX: 0, startY: 0 })
+  const tabWasDraggedRef = useRef(false)
+  const tabSlotWidthRef = useRef(110) // measured on drag start
+
+  // Ghost element — position updated via direct DOM to avoid per-pixel re-renders
+  const [ghostInfo, setGhostInfo] = useState(null) // { top, initLeft, width, height, label }
+  const ghostRef = useRef(null)
+  const ghostOffsetX = useRef(0)
 
   const updateScrollControls = useCallback(() => {
     const element = listRef.current
     if (!element) return
-
     const { scrollLeft, clientWidth, scrollWidth } = element
     const overflow = scrollWidth > clientWidth + 1
-
     setHasOverflow(overflow)
     setCanScrollLeft(overflow && scrollLeft > 0)
     setCanScrollRight(overflow && scrollLeft + clientWidth < scrollWidth - 1)
@@ -24,7 +47,7 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
 
   useEffect(() => {
     updateScrollControls()
-  }, [openTabs, updateScrollControls])
+  }, [tabOrder, updateScrollControls])
 
   useEffect(() => {
     const element = listRef.current
@@ -32,22 +55,105 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
 
     const handleResize = () => updateScrollControls()
     const handleScroll = () => updateScrollControls()
+
     const handleMouseMove = (event) => {
-      if (!dragState.current.active) return
-      const dx = event.clientX - dragState.current.startX
-      if (!dragState.current.dragged && Math.abs(dx) < DRAG_THRESHOLD) return
-      if (!dragState.current.dragged) {
-        dragState.current.dragged = true
-        setIsDragging(true)
+      // Tab reorder drag takes priority over scroll drag
+      if (tabDragState.current.active) {
+        const dx = event.clientX - tabDragState.current.startX
+        const dy = event.clientY - tabDragState.current.startY
+
+        if (!tabDragState.current.dragging && Math.hypot(dx, dy) < 5) return
+
+        if (!tabDragState.current.dragging) {
+          // Drag threshold exceeded — start the drag
+          tabDragState.current.dragging = true
+          const tabs = Array.from(element.querySelectorAll('.workspace__tab'))
+          const sourceTab = tabs[tabDragState.current.tabIndex]
+          if (sourceTab) {
+            const rect = sourceTab.getBoundingClientRect()
+            // Measure real slot width (tab width + gap)
+            const nextTab = tabs[tabDragState.current.tabIndex + 1]
+            tabSlotWidthRef.current = nextTab
+              ? nextTab.getBoundingClientRect().left - rect.left
+              : rect.width + 10
+            ghostOffsetX.current = tabDragState.current.startX - rect.left
+            setGhostInfo({
+              initLeft: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: rect.height,
+              label: tabDragState.current.label,
+            })
+          }
+          setDraggingTabIndex(tabDragState.current.tabIndex)
+          dropIndexRef.current = tabDragState.current.tabIndex
+          setDropIndex(tabDragState.current.tabIndex)
+        }
+
+        // Move ghost via direct DOM for performance
+        if (ghostRef.current) {
+          ghostRef.current.style.left = `${event.clientX - ghostOffsetX.current}px`
+        }
+
+        // Determine drop index by ghost center relative to tab midpoints
+        const ghostCenter = event.clientX - ghostOffsetX.current + tabSlotWidthRef.current / 2
+        const tabs = Array.from(element.querySelectorAll('.workspace__tab'))
+        let over = tabs.length - 1
+        for (let i = 0; i < tabs.length; i++) {
+          const rect = tabs[i].getBoundingClientRect()
+          if (ghostCenter < rect.left + rect.width / 2) {
+            over = i
+            break
+          }
+        }
+        if (over !== dropIndexRef.current) {
+          dropIndexRef.current = over
+          setDropIndex(over)
+        }
+        return
       }
-      element.scrollLeft = dragState.current.scrollLeft - dx
+
+      // Scroll drag (background)
+      if (!scrollDragState.current.active) return
+      const dx = event.clientX - scrollDragState.current.startX
+      if (!scrollDragState.current.dragged && Math.abs(dx) < SCROLL_DRAG_THRESHOLD) return
+      if (!scrollDragState.current.dragged) {
+        scrollDragState.current.dragged = true
+        setIsScrollDragging(true)
+      }
+      element.scrollLeft = scrollDragState.current.scrollLeft - dx
       event.preventDefault()
     }
+
     const handleMouseUp = () => {
-      if (!dragState.current.active) return
-      dragState.current.active = false
-      dragState.current.dragged = false
-      setIsDragging(false)
+      if (tabDragState.current.active) {
+        const wasDragging = tabDragState.current.dragging
+        if (wasDragging) {
+          const from = tabDragState.current.tabIndex
+          const to = dropIndexRef.current >= 0 ? dropIndexRef.current : from
+          if (from !== to) {
+            setTabOrder((prev) => {
+              const next = [...prev]
+              const [moved] = next.splice(from, 1)
+              next.splice(to, 0, moved)
+              return next
+            })
+          }
+          tabWasDraggedRef.current = true
+          setTimeout(() => { tabWasDraggedRef.current = false }, 0)
+        }
+        tabDragState.current = { active: false, dragging: false, tabIndex: -1, startX: 0, startY: 0 }
+        dropIndexRef.current = -1
+        setDraggingTabIndex(-1)
+        setDropIndex(-1)
+        setGhostInfo(null)
+        return
+      }
+
+      if (!scrollDragState.current.active) return
+      scrollDragState.current.active = false
+      scrollDragState.current.dragged = false
+      setIsScrollDragging(false)
     }
 
     window.addEventListener('resize', handleResize)
@@ -65,12 +171,9 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
 
   useEffect(() => {
     const element = listRef.current
-
     if (!element || typeof ResizeObserver === 'undefined') return undefined
-
     const resizeObserver = new ResizeObserver(() => updateScrollControls())
     resizeObserver.observe(element)
-
     return () => resizeObserver.disconnect()
   }, [updateScrollControls])
 
@@ -84,31 +187,21 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   const scrollTabs = (direction) => {
     const element = listRef.current
     if (!element) return
-
     const tabs = Array.from(element.querySelectorAll('.workspace__tab'))
     if (!tabs.length) return
-
     const containerRect = element.getBoundingClientRect()
     const THRESHOLD = 4
     let newScrollLeft
-
     if (direction === 'right') {
-      // First tab at least partially outside the right edge
-      const target = tabs.find(
-        (tab) => tab.getBoundingClientRect().right > containerRect.right - THRESHOLD
-      )
+      const target = tabs.find((tab) => tab.getBoundingClientRect().right > containerRect.right - THRESHOLD)
       if (!target) return
       newScrollLeft = element.scrollLeft + (target.getBoundingClientRect().left - containerRect.left)
     } else {
-      // Last tab at least partially outside the left edge
-      const leftHidden = tabs.filter(
-        (tab) => tab.getBoundingClientRect().left < containerRect.left + THRESHOLD
-      )
+      const leftHidden = tabs.filter((tab) => tab.getBoundingClientRect().left < containerRect.left + THRESHOLD)
       if (!leftHidden.length) return
       const target = leftHidden[leftHidden.length - 1]
       newScrollLeft = element.scrollLeft + (target.getBoundingClientRect().left - containerRect.left)
     }
-
     element.scrollTo({ left: Math.max(0, newScrollLeft), behavior: 'smooth' })
   }
 
@@ -121,17 +214,32 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
     }
   }
 
-  const handleMouseDown = (event) => {
+  const handleListMouseDown = (event) => {
     if (event.button !== 0) return
+    if (event.target.closest('.workspace__tab')) return
     const element = listRef.current
     if (!element) return
-    dragState.current = {
-      active: true,
-      startX: event.clientX,
-      scrollLeft: element.scrollLeft,
-      dragged: false,
-    }
-    setIsDragging(false)
+    scrollDragState.current = { active: true, startX: event.clientX, scrollLeft: element.scrollLeft, dragged: false }
+    setIsScrollDragging(false)
+  }
+
+  const handleTabMouseDown = (event, index, label) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    tabDragState.current = { active: true, dragging: false, tabIndex: index, startX: event.clientX, startY: event.clientY, label }
+  }
+
+  const isDraggingAny = draggingTabIndex >= 0
+  const slotWidth = tabSlotWidthRef.current
+
+  // Calculate translateX for each tab to create the sliding-gap effect
+  const getTabTranslate = (index) => {
+    if (!isDraggingAny || index === draggingTabIndex) return 0
+    const from = draggingTabIndex
+    const to = dropIndex
+    if (from < to && index > from && index <= to) return -slotWidth
+    if (from > to && index >= to && index < from) return slotWidth
+    return 0
   }
 
   return (
@@ -150,23 +258,39 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
 
       <div className="workspace__tablist-wrapper">
         <div
-          className={`workspace__tablist${isDragging ? ' is-dragging' : ''}`}
+          className={`workspace__tablist${isScrollDragging ? ' is-dragging' : ''}`}
           ref={listRef}
           role="tablist"
           aria-label="Pestañas del panel"
           onWheel={handleWheel}
-          onMouseDown={handleMouseDown}
+          onMouseDown={handleListMouseDown}
         >
-          {openTabs.map((tab) => {
+          {tabOrder.map((tab, index) => {
             const isActive = tab === activeItem
+            const isSource = index === draggingTabIndex
+            const translate = getTabTranslate(index)
+
             return (
               <button
                 key={tab}
                 type="button"
-                className={`workspace__tab ${isActive ? 'active' : ''}`}
+                className={[
+                  'workspace__tab',
+                  isActive ? 'active' : '',
+                  isSource ? 'is-tab-source' : '',
+                ].filter(Boolean).join(' ')}
+                style={
+                  isDraggingAny
+                    ? { transform: `translateX(${translate}px)`, transition: isSource ? 'none' : 'transform 0.15s ease' }
+                    : undefined
+                }
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => onSelectTab(tab)}
+                onMouseDown={(e) => handleTabMouseDown(e, index, tab)}
+                onClick={() => {
+                  if (tabWasDraggedRef.current) return
+                  onSelectTab(tab)
+                }}
               >
                 <span className="workspace__tab-label">{tab}</span>
                 <span
@@ -196,6 +320,27 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
         >
           ›
         </button>
+      )}
+
+      {/* Ghost tab — follows the cursor exactly like a browser tab */}
+      {ghostInfo && (
+        <div
+          ref={ghostRef}
+          className={`workspace__tab workspace__tab-ghost${activeItem === ghostInfo.label ? ' active' : ''}`}
+          style={{
+            position: 'fixed',
+            left: `${ghostInfo.initLeft}px`,
+            top: `${ghostInfo.top}px`,
+            width: `${ghostInfo.width}px`,
+            height: `${ghostInfo.height}px`,
+            pointerEvents: 'none',
+            zIndex: 9999,
+          }}
+          aria-hidden="true"
+        >
+          <span className="workspace__tab-label">{ghostInfo.label}</span>
+          <span className="workspace__tab-close">×</span>
+        </div>
       )}
     </section>
   )

@@ -598,6 +598,8 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
+  const globalSearchDebounceRef = useRef(null)
   const [filters, setFilters] = useState({
     global: { value: null, matchMode: FilterMatchMode.CONTAINS },
   })
@@ -650,8 +652,13 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
   const handleGlobalFilterChange = (event) => {
     const value = event.target.value
     setGlobalFilterValue(value)
-    setFilters({ global: { value: value || null, matchMode: FilterMatchMode.CONTAINS } })
     setPageFirst(0)
+    if (globalSearchDebounceRef.current) clearTimeout(globalSearchDebounceRef.current)
+    setIsGlobalSearchPending(true)
+    globalSearchDebounceRef.current = setTimeout(() => {
+      setFilters({ global: { value: value || null, matchMode: FilterMatchMode.CONTAINS } })
+      setIsGlobalSearchPending(false)
+    }, 350)
   }
 
   const handleStatusChange = (nextStatus) => {
@@ -672,7 +679,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isGlobalSearchPending ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
         <button
           className="rounded-icon-btn"

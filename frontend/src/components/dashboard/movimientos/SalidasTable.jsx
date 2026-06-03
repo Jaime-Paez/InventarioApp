@@ -193,6 +193,8 @@ function SalidasTable({
   const [sortOrder, setSortOrder] = useState(null)
   const [filters, setFilters] = useState(() => createInitialFilters())
   const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
+  const globalSearchSeqRef = useRef(0)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -712,11 +714,16 @@ function SalidasTable({
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
+    const seq = globalSearchSeqRef.current + 1
+    globalSearchSeqRef.current = seq
+    setIsGlobalSearchPending(true)
     globalSearchDebounceRef.current = setTimeout(() => {
       refreshData({
         page: 1,
         tableFilters: nextFilters,
         globalSearchValue: value || '',
+      }).finally(() => {
+        if (globalSearchSeqRef.current === seq) setIsGlobalSearchPending(false)
       })
     }, 450)
   }
@@ -1401,7 +1408,7 @@ function SalidasTable({
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isGlobalSearchPending ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
 
         <button
@@ -1478,7 +1485,7 @@ function SalidasTable({
       </div>
 
       <div className="users-table users-table--card" ref={tableWrapperRef}>
-        {loading && (
+        {loading && !isGlobalSearchPending && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
@@ -1497,7 +1504,7 @@ function SalidasTable({
           value={movimientos}
           dataKey="id"
           header={header}
-          className={`users-datatable${loading ? ' users-datatable--loading-content' : ''}`}
+          className={`users-datatable${loading && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines

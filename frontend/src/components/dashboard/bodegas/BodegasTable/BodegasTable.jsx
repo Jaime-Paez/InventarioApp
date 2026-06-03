@@ -55,6 +55,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   const [allWarehouses, setAllWarehouses] = useState([])
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
   const [error, setError] = useState(null)
 
   const normalizeList = useCallback((list) => {
@@ -183,9 +184,9 @@ function BodegasTable({ token, onSelect, moduleActions }) {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
-    setIsRefreshing(true)
+    setIsGlobalSearchPending(true)
     globalSearchDebounceRef.current = setTimeout(() => {
-      fetchWarehouses(value)
+      fetchWarehouses(value).finally(() => setIsGlobalSearchPending(false))
     }, 500)
   }
 
@@ -557,7 +558,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isGlobalSearchPending ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
@@ -780,7 +781,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
           </div>
         ) : (
           <>
-        {(loading || isRefreshing) && (
+        {(loading || isRefreshing) && !isGlobalSearchPending && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
@@ -799,7 +800,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
           value={warehouses}
           dataKey="id"
           header={header}
-          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
+          className={`users-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage="No se encontraron bodegas"
           showGridlines

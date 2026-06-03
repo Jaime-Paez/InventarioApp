@@ -139,6 +139,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const [pageSize, setPageSize] = useState(25)
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
   const [error, setError] = useState(null)
   const [sucursales, setSucursales] = useState([])
   const [showBulkSelectConfirm, setShowBulkSelectConfirm] = useState(false)
@@ -1439,7 +1440,7 @@ const handleResetTable = () => {
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isGlobalSearchPending ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
@@ -1657,13 +1658,13 @@ const handleResetTable = () => {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
-    setIsRefreshing(true)
+    setIsGlobalSearchPending(true)
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchClients(lastSearchRef.current, 1, pageSize, {
         tableFilters: nextFilters,
         tableSortField: sortField,
         tableSortOrder: sortOrder,
-      })
+      }).finally(() => setIsGlobalSearchPending(false))
     }, 500)
   }
 
@@ -1908,7 +1909,7 @@ const handleResetTable = () => {
           </div>
         ) : (
           <>
-        {(loading || isRefreshing) && (
+        {(loading || isRefreshing) && !isGlobalSearchPending && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
@@ -1927,7 +1928,7 @@ const handleResetTable = () => {
           value={displayClients}
           dataKey="id"
           header={header}
-          className={`users-datatable users-datatable--compact${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
+          className={`users-datatable users-datatable--compact${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines

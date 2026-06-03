@@ -108,6 +108,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   // ---------------- Filters ----------------
   const [filters, setFilters] = useState(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
+  const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
   const globalSearchDebounceRef = useRef(null)
 
   useEffect(
@@ -173,9 +174,9 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
-    setIsRefreshing(true)
+    setIsGlobalSearchPending(true)
     globalSearchDebounceRef.current = setTimeout(() => {
-      fetchBranches(value)
+      fetchBranches(value).finally(() => setIsGlobalSearchPending(false))
     }, 500)
   }
 
@@ -550,7 +551,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isGlobalSearchPending ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
@@ -773,7 +774,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
           </div>
         ) : (
           <>
-        {(loading || isRefreshing) && (
+        {(loading || isRefreshing) && !isGlobalSearchPending && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
@@ -792,7 +793,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
           value={branches}
           dataKey="id"
           header={header}
-          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
+          className={`users-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage="No se encontraron sucursales"
           showGridlines

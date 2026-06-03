@@ -43,6 +43,22 @@
   pointer-events: none;
 }
 
+/* Source tab — becomes a dim placeholder while ghost follows cursor */
+.workspace__tab.is-tab-source {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* Ghost — fixed-position clone that follows the cursor */
+.workspace__tab-ghost {
+  display: inline-flex;
+  cursor: grabbing !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.18);
+  transform: scale(1.04);
+  opacity: 1 !important;
+  user-select: none;
+}
+
 .workspace__tab {
   border: none;
   outline: none;

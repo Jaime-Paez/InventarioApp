@@ -81,6 +81,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   const [pageSize, setPageSize] = useState(25)
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
   const [error, setError] = useState(null)
   const [sortField, setSortField] = useState(null)
   const [sortOrder, setSortOrder] = useState(null)
@@ -643,7 +644,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isGlobalSearchPending ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
@@ -880,13 +881,13 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
-    setIsRefreshing(true)
+    setIsGlobalSearchPending(true)
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchCompanies(lastSearchRef.current, 1, pageSize, {
         tableFilters: nextFilters,
         tableSortField: sortField,
         tableSortOrder: sortOrder,
-      })
+      }).finally(() => setIsGlobalSearchPending(false))
     }, 500)
   }
 
@@ -958,7 +959,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
           </div>
         ) : (
           <>
-        {(loading || isRefreshing) && (
+        {(loading || isRefreshing) && !isGlobalSearchPending && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
@@ -977,7 +978,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
           value={companies}
           dataKey="id"
           header={header}
-          className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
+          className={`users-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines
