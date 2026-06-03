@@ -1836,6 +1836,18 @@ button.create-user__locations-row {
   border-color: var(--color-border);
 }
 
+.create-user__result-tag.is-added {
+  background: transparent;
+  color: var(--color-text-secondary, #9ca3af);
+  border: 1px solid currentColor;
+  opacity: 0.7;
+}
+
+.create-user__result-option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .create-user__orderlist-wrapper {
   display: flex;
   flex-direction: column;

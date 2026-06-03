@@ -259,6 +259,10 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   }
 
   const handleAddProduct = (product) => {
+    if (details.some((d) => String(d.producto.id) === String(product.id))) {
+      setLocalError('Este producto ya fue agregado.')
+      return
+    }
     setDetails((prev) => [
       ...prev,
       {

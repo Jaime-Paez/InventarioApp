@@ -2202,7 +2202,7 @@ function CreateEntrada({
   const handleProductSelect = (producto) => {
     if (!producto?.id) return
     const normalizedProductId = String(producto.id || '').trim()
-    if (!isCompraEntrada && detailProductIdSet.has(normalizedProductId)) {
+    if (detailProductIdSet.has(normalizedProductId)) {
       setDetailError('Este producto ya fue agregado al detalle.')
       return
     }
@@ -2235,7 +2235,7 @@ function CreateEntrada({
       setDetailError('Selecciona un producto.')
       return
     }
-    if (!isCompraEntrada && detailProductIdSet.has(productoId)) {
+    if (detailProductIdSet.has(productoId)) {
       setDetailError('Este producto ya fue agregado al detalle.')
       return
     }
@@ -3291,7 +3291,7 @@ function CreateEntrada({
                                   const normalizedProductId = String(producto.id || '').trim()
                                   const isSelected =
                                     normalizedProductId === String(detailDraft.productoId || '').trim()
-                                  const isAlreadyAdded = !isCompraEntrada && detailProductIdSet.has(normalizedProductId)
+                                  const isAlreadyAdded = detailProductIdSet.has(normalizedProductId)
                                   const stockEnSucursalProveedora = Number(
                                     stockByProduct[String(producto.id)] ?? 0
                                   )
@@ -3300,7 +3300,7 @@ function CreateEntrada({
                                   const nombre = String(producto?.nombre || '').trim()
                                   const dispLabel = showProveedorStockInfo
                                     ? String(Math.max(0, Math.trunc(stockEnSucursalProveedora)))
-                                    : '-'
+                                    : String(Number(producto?.total_stock ?? 0))
                                   return (
                                     <button
                                       key={producto.id}

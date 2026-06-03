@@ -3568,7 +3568,7 @@ function CreateSalida({
                                   const nombre = String(producto?.nombre || '').trim()
                                   const dispLabel = requiresStockValidation
                                     ? String(Number.isFinite(available) ? available : 0)
-                                    : '-'
+                                    : String(Number(producto?.total_stock ?? 0))
                                   return (
                                     <button
                                       key={producto.id}

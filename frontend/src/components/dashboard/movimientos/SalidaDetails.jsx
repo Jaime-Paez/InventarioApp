@@ -561,6 +561,11 @@ function SalidaDetails({
     [detailDraft.productoId, productos]
   )
 
+  const detailProductIdSet = useMemo(
+    () => new Set(details.map((d) => String(d?.productoId || '').trim()).filter(Boolean)),
+    [details]
+  )
+
   const originalQuantityByProduct = useMemo(() => {
     const map = {}
     const sourceDetails = Array.isArray(originalData?.detalles) ? originalData.detalles : []
@@ -1484,6 +1489,10 @@ function SalidaDetails({
 
   const handleProductSelect = (producto) => {
     if (!isEditing || lineItemsReadOnly || !producto?.id) return
+    if (detailProductIdSet.has(String(producto.id).trim())) {
+      setDetailError('Este producto ya fue agregado al detalle.')
+      return
+    }
     const productPrice = resolveProductPrice(producto)
     setDetailError('')
     setDetailDraft((prev) => ({
@@ -1515,6 +1524,10 @@ function SalidaDetails({
     }
     if (!productoId) {
       setDetailError('Selecciona un producto.')
+      return
+    }
+    if (detailProductIdSet.has(productoId)) {
+      setDetailError('Este producto ya fue agregado al detalle.')
       return
     }
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
@@ -2096,6 +2109,7 @@ function SalidaDetails({
                                 )}
                                 {productOptions.map((producto) => {
                                   const isSelected = String(producto.id) === String(detailDraft.productoId)
+                                  const isAlreadyAdded = detailProductIdSet.has(String(producto.id).trim())
                                   const available = Number(stockByProduct[String(producto.id)] ?? 0)
                                   return (
                                     <button
@@ -2106,18 +2120,22 @@ function SalidaDetails({
                                       onClick={(event) => {
                                         event.preventDefault()
                                         event.stopPropagation()
+                                        if (isAlreadyAdded) return
                                         handleProductSelect(producto)
                                       }}
+                                      disabled={isAlreadyAdded}
+                                      title={isAlreadyAdded ? 'Ya agregado' : undefined}
                                     >
                                       <div className="create-user__result-info">
                                         <strong>{formatProductoOptionLabel(producto)}</strong>
                                         <small>
                                           {requiresStockValidation
                                             ? `Disponible: ${available}`
-                                            : `ID: ${producto.id}`}
+                                            : `Stock: ${Number(producto?.total_stock ?? 0)}`}
                                         </small>
                                       </div>
                                       {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
+                                      {isAlreadyAdded && <span className="create-user__result-tag is-added">Ya agregado</span>}
                                     </button>
                                   )
                                 })}
