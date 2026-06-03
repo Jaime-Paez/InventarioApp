@@ -43,6 +43,7 @@ const COMPANY_ORDERING_MAP = {
   telefono: 'telefono',
   correo: 'correo',
   descripcion: 'descripcion',
+  dias_entrega: 'dias_entrega',
 }
 const isCheckboxSelection = (event) => {
   if (event?.type === 'checkbox') return true
@@ -443,6 +444,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
       { nombrevar: 'pais_nombre', header: 'País', filterPlaceholder: 'Buscar por país' },
       { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
       { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
+      { nombrevar: 'dias_entrega', header: 'Días aproximados de entrega', filterPlaceholder: 'Buscar por días' },
       { nombrevar: 'descripcion', header: 'Descripción', filterPlaceholder: 'Buscar por descripción' },
     ],
     []
@@ -1048,6 +1050,12 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
             switch (column.nombrevar) {
               case 'nombre':
                 bodyTemplate = (rowData) => nombreBodyTemplate(rowData)
+                break
+              case 'dias_entrega':
+                bodyTemplate = (rowData) => {
+                  const val = rowData?.dias_entrega
+                  return val != null ? `${val} d` : '-'
+                }
                 break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)

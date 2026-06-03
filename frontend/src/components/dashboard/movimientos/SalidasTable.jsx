@@ -12,6 +12,7 @@ import CreateSalida from './CreateSalida'
 import SalidaDetails from './SalidaDetails'
 import './SalidasTable.css'
 import '../admin/UsersTable/UsersTable.css'
+import '../solicitudes/CreateSolicitud/CreateSolicitud.css'
 import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
 import { clearTableLayouts } from '../../../utils/tableLayoutSync'
@@ -125,7 +126,7 @@ const initialSearchCriteria = {
   sucursal_objetivo: '',
   total_min: '',
   total_max: '',
-  cliente_id: '',
+  cliente_texto: '',
 }
 
 const formatClienteLabel = (cliente) => {
@@ -209,7 +210,7 @@ function SalidasTable({
   const [processedRows, setProcessedRows] = useState(null)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 560 })
-  const [clienteSearchQuery, setClienteSearchQuery] = useState('')
+  const [clienteQuery, setClienteQuery] = useState('')
   const [clienteOptions, setClienteOptions] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
   const [selectedCliente, setSelectedCliente] = useState(null)
@@ -340,7 +341,7 @@ function SalidasTable({
     addIfPresent('sucursal_objetivo', criteria?.sucursal_objetivo)
     addIfPresent('total_min', criteria?.total_min)
     addIfPresent('total_max', criteria?.total_max)
-    addIfPresent('cliente_id', criteria?.cliente_id)
+    addIfPresent('cliente_texto', criteria?.cliente_texto)
 
     if (subtype && subtype !== 'all') {
       params.set('subtipo', subtype)
@@ -1166,8 +1167,8 @@ function SalidasTable({
   }, [])
 
   useEffect(() => {
-    if (!showSearchModal || !showClienteDropdown) return
-    const term = clienteSearchQuery.trim()
+    if (!showClienteDropdown) return
+    const term = clienteQuery.trim()
     if (!term || term.length < 2) {
       if (clienteSearchTimerRef.current) { clearTimeout(clienteSearchTimerRef.current); clienteSearchTimerRef.current = null }
       setClienteOptions([])
@@ -1179,7 +1180,7 @@ function SalidasTable({
     return () => {
       if (clienteSearchTimerRef.current) { clearTimeout(clienteSearchTimerRef.current); clienteSearchTimerRef.current = null }
     }
-  }, [clienteSearchQuery, showClienteDropdown, showSearchModal, searchClientes])
+  }, [clienteQuery, showClienteDropdown, searchClientes])
 
   useEffect(() => {
     if (!showClienteDropdown) return undefined
@@ -1192,22 +1193,31 @@ function SalidasTable({
     return () => window.removeEventListener('mousedown', handleClick)
   }, [showClienteDropdown])
 
+  const handleClienteDropdownToggle = () => {
+    setShowClienteDropdown((prev) => {
+      const next = !prev
+      if (next) {
+        setClienteQuery('')
+        setClienteOptions([])
+        setClienteLoading(false)
+      }
+      return next
+    })
+  }
+
   const handleClienteQueryChange = (event) => {
     const value = event.target.value
-    setClienteSearchQuery(value)
-    setShowClienteDropdown(Boolean(value))
+    setClienteQuery(value)
     if (!value.trim()) {
       setSelectedCliente(null)
-      setSearchCriteria((prev) => ({ ...prev, cliente_id: '' }))
-      setClienteOptions([])
+      setSearchCriteria((prev) => ({ ...prev, cliente_texto: '' }))
     }
   }
 
   const handleClienteSelect = (cliente) => {
-    const label = formatClienteLabel(cliente)
     setSelectedCliente(cliente)
-    setClienteSearchQuery(label)
-    setSearchCriteria((prev) => ({ ...prev, cliente_id: String(cliente.id) }))
+    const texto = String(cliente.cedula_ruc || cliente.nombre_completo || '').trim()
+    setSearchCriteria((prev) => ({ ...prev, cliente_texto: texto }))
     setShowClienteDropdown(false)
   }
 
@@ -1233,7 +1243,8 @@ function SalidasTable({
 
   const focusSearch = () => {
     setSearchCriteria({ ...lastSearchRef.current })
-    setClienteSearchQuery(lastSearchRef.current.cliente_id ? (selectedCliente ? formatClienteLabel(selectedCliente) : '') : '')
+    setClienteQuery('')
+    setShowClienteDropdown(false)
     setShowSearchModal(true)
   }
 
@@ -1696,7 +1707,7 @@ function SalidasTable({
         >
           <div
             ref={searchModalRef}
-            className={`create-user__modal${isClosingSearchModal ? ' create-user__modal--closing' : ''}`}
+            className={`create-user__modal salidas-search-modal${isClosingSearchModal ? ' create-user__modal--closing' : ''}`}
             style={{
               top: searchPosition.y,
               left: searchPosition.x,
@@ -1848,26 +1859,39 @@ function SalidasTable({
 
                     <label className="create-user__field" style={{ gridColumn: '1 / -1' }}>
                       <span>Cliente</span>
-                      <div className="create-user__dropdown" ref={clienteDropdownRef}>
-                        <input
-                          type="text"
-                          placeholder="Buscar por cédula o nombre"
-                          value={clienteSearchQuery}
-                          onChange={handleClienteQueryChange}
-                          onFocus={() => setShowClienteDropdown(Boolean(clienteSearchQuery))}
-                          autoComplete="off"
-                        />
+                      <div className="create-user__dropdown create-solicitud__cliente-dropdown" ref={clienteDropdownRef}>
+                        <button
+                          type="button"
+                          className={`create-user__dropdown-trigger${!selectedCliente ? ' create-solicitud__cliente-trigger--placeholder' : ''}`}
+                          onClick={handleClienteDropdownToggle}
+                          aria-haspopup="listbox"
+                          aria-expanded={showClienteDropdown}
+                        >
+                          <span>{selectedCliente ? formatClienteLabel(selectedCliente) : 'Selecciona un cliente'}</span>
+                          <i className={`pi pi-chevron-${showClienteDropdown ? 'up' : 'down'}`} />
+                        </button>
                         {showClienteDropdown && (
-                          <div className="create-user__dropdown-panel create-salida__cliente-panel">
+                          <div className="create-user__dropdown-panel create-solicitud__cliente-panel">
+                            <div className="create-user__dropdown-search">
+                              <i className="pi pi-search" />
+                              <input
+                                type="text"
+                                placeholder="Buscar por cédula o nombre"
+                                value={clienteQuery}
+                                onChange={handleClienteQueryChange}
+                                autoComplete="off"
+                                autoFocus
+                              />
+                            </div>
                             <div className="create-user__dropdown-results">
                               {clienteLoading && <small className="muted">Buscando cliente...</small>}
-                              {!clienteLoading && !clienteSearchQuery.trim() && (
+                              {!clienteLoading && !clienteQuery.trim() && (
                                 <small className="muted">Escribe para buscar.</small>
                               )}
-                              {!clienteLoading && clienteSearchQuery.trim() && clienteSearchQuery.trim().length < 2 && (
+                              {!clienteLoading && clienteQuery.trim() && clienteQuery.trim().length < 2 && (
                                 <small className="muted">Escribe al menos 2 caracteres.</small>
                               )}
-                              {!clienteLoading && clienteSearchQuery.trim().length >= 2 && !clienteOptions.length && (
+                              {!clienteLoading && clienteQuery.trim().length >= 2 && !clienteOptions.length && (
                                 <small className="muted">Sin resultados.</small>
                               )}
                               {clienteOptions.map((cliente) => {
@@ -1883,6 +1907,7 @@ function SalidasTable({
                                   >
                                     <div className="create-user__result-info">
                                       <strong>{label || `Cliente ${cliente.id}`}</strong>
+                                      <small>ID: {cliente.id}</small>
                                     </div>
                                     {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
                                   </button>
@@ -1905,7 +1930,7 @@ function SalidasTable({
                     onClick={() => {
                       setSearchCriteria(initialSearchCriteria)
                       setSelectedCliente(null)
-                      setClienteSearchQuery('')
+                      setClienteQuery('')
                       setClienteOptions([])
                       setShowClienteDropdown(false)
                     }}

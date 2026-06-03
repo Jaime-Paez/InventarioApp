@@ -113,6 +113,7 @@ INSTALLED_APPS = [
     "casa_comercial",
     "productos",
     "movimientos",
+    "importaciones",
     "usuarios",
     "solicitudes",
     "app",

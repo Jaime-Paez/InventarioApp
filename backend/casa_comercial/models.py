@@ -26,6 +26,11 @@ class CasaComercial(models.Model):
     )
     telefono = models.CharField(max_length=30, blank=True)
     correo = models.EmailField(blank=True)
+    dias_entrega = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Días aproximados que tarda la casa comercial en entregar mercadería.",
+    )
 
     class Meta:
         ordering = ["nombre"]

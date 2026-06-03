@@ -111,6 +111,7 @@ class CasaComercialSerializer(serializers.ModelSerializer):
             "correo",
             "pais",
             "pais_id",
+            "dias_entrega",
         ]
         extra_kwargs = {
             "codigo": {"required": False, "allow_blank": True},

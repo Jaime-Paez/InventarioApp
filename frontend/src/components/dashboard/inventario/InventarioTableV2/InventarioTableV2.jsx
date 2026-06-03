@@ -1184,7 +1184,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             sortable
             reorderable={false}
             rowSpan={2}
-            className="column-max-min-width--small inventario-v2__header-span"
+            className="column-max-min-width--small inventario-v2__header-span inventario-v2__total-col"
             style={{ minWidth: '32px' }}
           />
         </Row>
@@ -2251,7 +2251,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             header="Total"
             sortable
             reorderable
-            className="column-max-min-width--small"
+            className="column-max-min-width--small inventario-v2__total-col"
+            headerClassName="column-max-min-width--small inventario-v2__total-col"
             style={{ minWidth: '32px' }}
             body={(rowData) => quantityBody(rowData, 'total_general')}
           />

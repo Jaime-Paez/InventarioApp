@@ -345,6 +345,17 @@
   color: var(--color-text-dark);
 }
 
+.quick-actions__receive-dialog.dark .quick-actions__receive-search input {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border-dark);
+  color: var(--color-text-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-search-clear,
+.quick-actions__receive-dialog.dark .quick-actions__receive-search-count {
+  color: var(--color-text-dark);
+}
+
 .quick-actions__receive-dialog.dark .quick-actions__receive-item-head strong,
 .quick-actions__receive-dialog.dark .quick-actions__receive-item-expected strong {
   color: var(--color-text-title-dark);
@@ -816,9 +827,165 @@
 .quick-actions__receive-stage-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.quick-actions__receive-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+  flex-wrap: wrap;
+}
+
+.quick-actions__receive-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.quick-actions__receive-search input {
+  width: 100%;
+  padding: 7px 32px 7px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.quick-actions__receive-search input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.quick-actions__receive-search-clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--color-text-secondary);
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.quick-actions__receive-search-clear:hover {
+  color: var(--color-text);
+}
+
+.quick-actions__receive-search-count {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.quick-actions__receive-empty-filter {
+  padding: 24px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.quick-actions__receive-sort {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.quick-actions__receive-sort-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.quick-actions__receive-sort-trigger:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.quick-actions__receive-sort-trigger--active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.quick-actions__receive-sort-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  min-width: 190px;
+  background: var(--modal-color, var(--color-surface));
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.quick-actions__receive-sort-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.quick-actions__receive-sort-option:hover {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.quick-actions__receive-sort-option--selected {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-sort-trigger {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border-dark);
+  color: var(--color-text-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-sort-trigger--active {
+  border-color: var(--color-primary-dark);
+  color: var(--color-primary-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-sort-panel {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-sort-option {
+  color: var(--color-text-dark);
 }
 
 .quick-actions__receive-stage-stats {

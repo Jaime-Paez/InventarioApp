@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Bell, Loader2, Moon, Search, SunMedium, X } from 'lucide-react'
+import { ArrowUpDown, Bell, Check, ChevronDown, Loader2, Moon, Search, SunMedium, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { Toast } from 'primereact/toast'
 import './QuickActions.css'
@@ -494,6 +494,10 @@ function QuickActions({
   const [receiveShipmentError, setReceiveShipmentError] = useState('')
   const [receiveShipmentShowErrors, setReceiveShipmentShowErrors] = useState(false)
   const [receiveShipmentShowSummary, setReceiveShipmentShowSummary] = useState(false)
+  const [receiveShipmentFilter, setReceiveShipmentFilter] = useState('')
+  const [receiveShipmentSort, setReceiveShipmentSort] = useState('default')
+  const [receiveShipmentSortOpen, setReceiveShipmentSortOpen] = useState(false)
+  const receiveSortDropdownRef = useRef(null)
   const [activeRandomInspection, setActiveRandomInspection] = useState(null)
   const [randomInspectionDraftByItemId, setRandomInspectionDraftByItemId] = useState({})
   const [randomInspectionMode, setRandomInspectionMode] = useState('review')
@@ -2094,6 +2098,36 @@ function QuickActions({
       })
   }, [receiveShipmentDraftByProductId])
 
+  const filteredReceiveShipmentRows = useMemo(() => {
+    const term = receiveShipmentFilter.trim().toLowerCase()
+    const filtered = term
+      ? receiveShipmentRows.filter((row) => {
+          const code = String(row?.producto_codigo || '').toLowerCase()
+          const name = String(row?.producto_nombre || '').toLowerCase()
+          return code.includes(term) || name.includes(term)
+        })
+      : [...receiveShipmentRows]
+
+    if (receiveShipmentSort === 'bodega_first') {
+      filtered.sort((a, b) => {
+        const aHas = Boolean(a?.location_draft_bodega_id)
+        const bHas = Boolean(b?.location_draft_bodega_id)
+        if (aHas === bHas) return 0
+        return aHas ? -1 : 1
+      })
+    } else if (receiveShipmentSort === 'codigo') {
+      filtered.sort((a, b) =>
+        String(a?.producto_codigo || '').localeCompare(String(b?.producto_codigo || ''))
+      )
+    } else if (receiveShipmentSort === 'nombre') {
+      filtered.sort((a, b) =>
+        String(a?.producto_nombre || '').localeCompare(String(b?.producto_nombre || ''))
+      )
+    }
+
+    return filtered
+  }, [receiveShipmentRows, receiveShipmentFilter, receiveShipmentSort])
+
   const receiveShipmentSourceBranchName = useMemo(
     () => String(activeInTransitShipment?.sucursal_proveedora || 'Sucursal proveedora').trim(),
     [activeInTransitShipment]
@@ -2699,7 +2733,21 @@ function QuickActions({
     setReceiveShipmentShowErrors(false)
     setReceiveShipmentSubmitting(false)
     setReceiveShipmentShowSummary(false)
+    setReceiveShipmentFilter('')
+    setReceiveShipmentSort('default')
+    setReceiveShipmentSortOpen(false)
   }, [])
+
+  useEffect(() => {
+    if (!receiveShipmentSortOpen) return undefined
+    const handleClick = (event) => {
+      if (receiveSortDropdownRef.current && !receiveSortDropdownRef.current.contains(event.target)) {
+        setReceiveShipmentSortOpen(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [receiveShipmentSortOpen])
 
   useEffect(() => {
     const shipmentId = normalizeId(activeInTransitShipment?.id)
@@ -5039,7 +5087,11 @@ function QuickActions({
                       <div className="quick-actions__receive-stage-stats">
                         <span className="quick-actions__receive-stage-stat">
                           Productos
-                          <strong>{receiveShipmentRows.length}</strong>
+                          <strong>
+                            {receiveShipmentFilter.trim()
+                              ? `${filteredReceiveShipmentRows.length}/${receiveShipmentRows.length}`
+                              : receiveShipmentRows.length}
+                          </strong>
                         </span>
                         <span className="quick-actions__receive-stage-stat">
                           Revisados
@@ -5052,6 +5104,75 @@ function QuickActions({
                       </div>
                     </div>
                   </article>
+
+                  <div className="quick-actions__receive-search-bar">
+                    <div className="quick-actions__receive-search">
+                      <input
+                        type="text"
+                        placeholder="Buscar por código o descripción..."
+                        value={receiveShipmentFilter}
+                        onChange={(event) => setReceiveShipmentFilter(event.target.value)}
+                      />
+                      {receiveShipmentFilter && (
+                        <button
+                          type="button"
+                          className="quick-actions__receive-search-clear"
+                          onClick={() => setReceiveShipmentFilter('')}
+                          aria-label="Limpiar búsqueda"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    {receiveShipmentFilter.trim() && (
+                      <span className="quick-actions__receive-search-count">
+                        {filteredReceiveShipmentRows.length} de {receiveShipmentRows.length}
+                      </span>
+                    )}
+                    <div className="quick-actions__receive-sort" ref={receiveSortDropdownRef}>
+                      <button
+                        type="button"
+                        className={`quick-actions__receive-sort-trigger${receiveShipmentSort !== 'default' ? ' quick-actions__receive-sort-trigger--active' : ''}`}
+                        onClick={() => setReceiveShipmentSortOpen((prev) => !prev)}
+                        aria-haspopup="listbox"
+                        aria-expanded={receiveShipmentSortOpen}
+                      >
+                        <ArrowUpDown size={14} />
+                        <span>
+                          {receiveShipmentSort === 'bodega_first' && 'Con bodega primero'}
+                          {receiveShipmentSort === 'codigo' && 'Código A–Z'}
+                          {receiveShipmentSort === 'nombre' && 'Nombre A–Z'}
+                          {receiveShipmentSort === 'default' && 'Ordenar'}
+                        </span>
+                        <ChevronDown size={12} />
+                      </button>
+                      {receiveShipmentSortOpen && (
+                        <div className="quick-actions__receive-sort-panel" role="listbox">
+                          {[
+                            { value: 'default', label: 'Orden original' },
+                            { value: 'bodega_first', label: 'Con bodega primero' },
+                            { value: 'codigo', label: 'Código A–Z' },
+                            { value: 'nombre', label: 'Nombre A–Z' },
+                          ].map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              role="option"
+                              aria-selected={receiveShipmentSort === option.value}
+                              className={`quick-actions__receive-sort-option${receiveShipmentSort === option.value ? ' quick-actions__receive-sort-option--selected' : ''}`}
+                              onClick={() => {
+                                setReceiveShipmentSort(option.value)
+                                setReceiveShipmentSortOpen(false)
+                              }}
+                            >
+                              {option.label}
+                              {receiveShipmentSort === option.value && <Check size={13} />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   <div className="quick-actions__receive-list">
                     <div className="quick-actions__receive-list-header" aria-hidden="true">
@@ -5071,7 +5192,12 @@ function QuickActions({
                       </span>
                       <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--check" />
                     </div>
-                    {receiveShipmentRows.map((row, index) => {
+                    {filteredReceiveShipmentRows.length === 0 && receiveShipmentFilter.trim() && (
+                      <div className="quick-actions__receive-empty-filter">
+                        <span>Sin resultados para "<strong>{receiveShipmentFilter.trim()}</strong>"</span>
+                      </div>
+                    )}
+                    {filteredReceiveShipmentRows.map((row, index) => {
                       const rowProductId = normalizeId(row?.producto_id)
                       const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
                       const sentQty = toPositiveInt(row?.cantidad_enviada, 0)

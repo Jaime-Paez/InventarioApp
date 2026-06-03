@@ -17,6 +17,7 @@ const emptyForm = {
   paisId: '',
   telefono: '',
   correo: '',
+  dias_entrega: '',
 }
 
 const getFlagUrl = (code) => {
@@ -103,6 +104,7 @@ function CasaComercialDetails({
     paisId: data?.pais?.id ?? '',
     telefono: data?.telefono ?? '',
     correo: data?.correo ?? '',
+    dias_entrega: data?.dias_entrega != null ? String(data.dias_entrega) : '',
   })
 
   const handleChange = (event) => {
@@ -295,6 +297,7 @@ function CasaComercialDetails({
       telefono: formData.telefono.trim(),
       correo: formData.correo.trim(),
       pais_id: formData.paisId ? Number(formData.paisId) : null,
+      dias_entrega: formData.dias_entrega !== '' ? Number(formData.dias_entrega) : null,
     }
 
     if (!payload.nombre) {
@@ -728,6 +731,19 @@ function CasaComercialDetails({
                     name="correo"
                     type="email"
                     value={formData.correo}
+                    onChange={handleChange}
+                    disabled={editorDisabled}
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Días aproximados de entrega</span>
+                  <input
+                    name="dias_entrega"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={formData.dias_entrega}
                     onChange={handleChange}
                     disabled={editorDisabled}
                   />

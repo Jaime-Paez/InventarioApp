@@ -10,6 +10,7 @@ import CasasComercialesTable from '../casasComerciales/CasasComercialesTable/Cas
 import ClientesTable from '../clientes/ClientesTable/ClientesTable'
 import ProductosTable from '../productos/ProductosTable/ProductosTable'
 import SolicitudesTable from '../solicitudes/SolicitudesTable/SolicitudesTable'
+import ImportacionesTable from '../importaciones/ImportacionesTable'
 import Configuracion from '../configuracion/Configuracion/Configuracion'
 import InventarioTable from '../inventario/InventarioTableV2/InventarioTableV2'
 import EntradasTable from '../movimientos/EntradasTable'
@@ -55,7 +56,10 @@ const MODULE_KEY_BY_TAB = {
   Bodegas: 'sucursales_bodegas',
   'Casas comerciales': 'proveedores_casas',
   Productos: 'productos',
+  Importaciones: 'solicitudes',
+  'En proceso': 'solicitudes',
   'En camino': 'solicitudes',
+  Importadas: 'solicitudes',
   Solicitudes: 'solicitudes',
   Clientes: 'clientes',
   Entradas: 'movimientos_entradas',
@@ -65,18 +69,6 @@ const MODULE_KEY_BY_TAB = {
 }
 const ALL_BRANCH_OPTION_ID = 'all'
 const ALL_BRANCH_OPTION = { id: ALL_BRANCH_OPTION_ID, nombre: 'Todas' }
-
-function ProductosEnCaminoPlaceholder() {
-  return (
-    <div className="workspace__coming-soon">
-      <span className="workspace__coming-soon-badge">Importaciones</span>
-      <h2 className="workspace__coming-soon-title">Próximamente</h2>
-      <p className="workspace__coming-soon-copy">
-        En camino quedará disponible en una siguiente etapa.
-      </p>
-    </div>
-  )
-}
 
 function Workspace({
   activeItem,
@@ -143,7 +135,10 @@ function Workspace({
     Bodegas: BodegasTable,
     'Casas comerciales': CasasComercialesTable,
     Productos: ProductosTable,
-    'En camino': ProductosEnCaminoPlaceholder,
+    Importaciones: ImportacionesTable,
+    'En proceso': ImportacionesTable,
+    'En camino': ImportacionesTable,
+    Importadas: ImportacionesTable,
     Solicitudes: SolicitudesTable,
     Clientes: ClientesTable,
     Entradas: EntradasTable,
@@ -485,6 +480,13 @@ function Workspace({
       <TabComponent
         token={token}
         user={user}
+        status={
+          tab === 'En proceso'
+            ? 'en_proceso'
+            : tab === 'Importadas'
+              ? 'importada'
+              : undefined
+        }
         isTabActive={
           tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ||
           tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY

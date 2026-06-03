@@ -14,6 +14,8 @@ import {
   ClipboardCheck,
   ScrollText,
   PackagePlus,
+  Truck,
+  Hand,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -45,7 +47,8 @@ export const MENU_STRUCTURE = [
     label: 'Importaciones',
     icon: PackagePlus,
     children: [
-      { label: 'En camino', icon: Box, moduleKey: 'solicitudes' },
+      { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
+      { label: 'En camino', icon: Truck, moduleKey: 'solicitudes' },
     ],
   },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },

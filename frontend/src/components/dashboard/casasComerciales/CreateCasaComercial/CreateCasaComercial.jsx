@@ -15,6 +15,7 @@ const initialForm = {
   paisId: '',
   telefono: '',
   correo: '',
+  dias_entrega: '',
 }
 
 const getFlagUrl = (code) => {
@@ -333,6 +334,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
       telefono: formData.telefono.trim(),
       correo: formData.correo.trim(),
       pais_id: formData.paisId ? Number(formData.paisId) : null,
+      dias_entrega: formData.dias_entrega !== '' ? Number(formData.dias_entrega) : null,
     }
 
     if (!payload.nombre) {
@@ -715,6 +717,19 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                     type="email"
                     placeholder="correo@empresa.com"
                     value={formData.correo}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Días aproximados de entrega</span>
+                  <input
+                    name="dias_entrega"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={formData.dias_entrega}
                     onChange={handleChange}
                     disabled={loading}
                   />

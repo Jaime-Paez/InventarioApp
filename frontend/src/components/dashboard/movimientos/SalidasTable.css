@@ -1,3 +1,13 @@
+.salidas-search-modal .create-solicitud__cliente-panel {
+  top: auto;
+  bottom: calc(100% + 6px);
+  max-height: 260px;
+}
+
+.salidas-search-modal .create-solicitud__cliente-panel .create-user__dropdown-results {
+  max-height: 180px;
+}
+
 .salidas-garantia-pendiente-chip {
   display: inline-flex;
   align-items: center;
