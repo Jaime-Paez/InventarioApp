@@ -45,7 +45,6 @@ const PRODUCT_FILTER_DEFAULT_MODES = {
 const PRODUCT_ORDERING_MAP = {
   codigo: 'codigo',
   nombre: 'nombre',
-  pieza_original_label: 'pieza_original',
   costo_minimo: 'costo_minimo',
   precio: 'precio',
   precio_con_iva: 'precio_con_iva_backend',
@@ -137,7 +136,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
           ...product,
           casa_comercial_nombre: firstHouseName,
           casas_comerciales_nombres: houses.map((house) => house?.nombre).filter(Boolean).join(', '),
-          pieza_original_label: product?.pieza_original ? 'Si' : 'No',
           precio_con_iva: Number.isFinite(Number(product?.precio))
             ? Number(product.precio) * (1 + ivaRate)
             : null,
@@ -169,7 +167,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     addIfPresent('oem', criteria?.oem)
     addIfPresent('descripcion', criteria?.descripcion)
     addIfPresent('casa_comercial', criteria?.casa_comercial)
-    addIfPresent('pieza_original', criteria?.pieza_original)
     if (canSeeCost) {
       addIfPresent('costo_minimo', criteria?.costo_minimo)
     }
@@ -455,7 +452,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const handleResetTable = () => {
     localStorage.removeItem('productos-table-columns')
     localStorage.removeItem('productos-table-state')
-    setSelectedColumns(visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label'))
+    setSelectedColumns(visibleColumnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
     clearTableLayouts(['productos-table-columns', 'productos-table-state'], token)
@@ -468,7 +465,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     oem: '',
     descripcion: '',
     casa_comercial: '',
-    pieza_original: '',
     costo_minimo: '',
     precio: '',
     fecha_creacion: '',
@@ -682,7 +678,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     () => [
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
-      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
       { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
@@ -697,9 +692,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     [canSeeCost, columnsData]
   )
 
-  const [selectedColumns, setSelectedColumns] = useState(() =>
-    visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label')
-  )
+  const [selectedColumns, setSelectedColumns] = useState(() => visibleColumnsData)
   const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
 
@@ -725,7 +718,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       setSelectedColumns(
         visibleColumns.length
           ? visibleColumns
-          : visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label')
+          : visibleColumnsData
       )
     }
     return () => {
@@ -774,8 +767,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const getExportValue = useCallback(
     (row, field) => {
       switch (field) {
-        case 'pieza_original_label':
-          return row?.pieza_original ? 'Si' : 'No'
         case 'casa_comercial_nombre':
           return row?.casa_comercial_nombre ?? row?.casas_comerciales_nombres ?? ''
         case 'precio':
@@ -853,15 +844,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     return (
       <span className="cell-tooltip" data-pr-tooltip={code}>
         {code}
-      </span>
-    )
-  }
-
-  const piezaOriginalBodyTemplate = (rowData) => {
-    const isOriginal = Boolean(rowData?.pieza_original)
-    return (
-      <span style={{ display: 'flex', justifyContent: 'center' }}>
-        <i className={`pi pi-${isOriginal ? 'check-circle' : 'times-circle'}`} style={{ color: isOriginal ? '#22c55e' : '#9ca3af' }} />
       </span>
     )
   }
@@ -1537,7 +1519,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
             'nombre',
             'oem_codes',
             'descripcion',
-            'pieza_original_label',
             'precio',
             'precio_con_iva',
             ...(canSeeCost ? ['costo_minimo'] : []),
@@ -1624,10 +1605,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                 break
               case 'nombre':
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                break
-              case 'pieza_original_label':
-                bodyTemplate = (rowData) => piezaOriginalBodyTemplate(rowData)
-                className = 'column-max-min-width--small'
                 break
               case 'precio':
               case 'precio_con_iva':
@@ -2004,20 +1981,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                           </div>
                         )}
                       </div>
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Original</span>
-                      <select
-                        name="pieza_original"
-                        value={searchCriteria.pieza_original}
-                        onChange={handleSearchInputChange}
-                        className={!searchCriteria.pieza_original ? 'is-placeholder' : undefined}
-                      >
-                        <option value="">Todos</option>
-                        <option value="true">Si</option>
-                        <option value="false">No</option>
-                      </select>
                     </label>
 
                     {canSeeCost && (

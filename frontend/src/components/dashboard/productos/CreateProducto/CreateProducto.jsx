@@ -13,7 +13,6 @@ const initialForm = {
   nombre: '',
   descripcion: '',
   referencia: '',
-  pieza_original: false,
   costo_minimo: '',
   precio: '',
   casasIds: [],
@@ -775,14 +774,7 @@ function CreateProducto({
   }, [position])
 
   const handleChange = (event) => {
-    const { name, value, type, checked } = event.target
-    if (name === 'pieza_original') {
-      setFormData((prev) => ({
-        ...prev,
-        pieza_original: type === 'checkbox' ? checked : value === 'true',
-      }))
-      return
-    }
+    const { name, value } = event.target
     if (name === 'codigo') {
       const normalizedCode = toUpperProductCode(value)
       setFormData((prev) => ({
@@ -1376,7 +1368,6 @@ function CreateProducto({
       nombre: formData.nombre.trim(),
       descripcion: formData.descripcion.trim(),
       referencia: formData.referencia.trim(),
-      pieza_original: Boolean(formData.pieza_original),
       costo_minimo: parseNumber(formData.costo_minimo),
       precio: parseNumber(formData.precio),
       casas_comerciales_ids: (formData.casasIds || []).map((id) => Number(id)),
@@ -1860,19 +1851,6 @@ function CreateProducto({
                       />
                     </label>
 
-                    <div className="create-user__pieza-original-wrapper create-user__field--full">
-                      <span className="create-user__pieza-original-label">Original</span>
-                      <label className="create-user__pieza-original">
-                        <input
-                          name="pieza_original"
-                          type="checkbox"
-                          checked={Boolean(formData.pieza_original)}
-                          onChange={handleChange}
-                          disabled={loading}
-                        />
-                        <span>Marcar cuando la pieza es original.</span>
-                      </label>
-                    </div>
                   </div>
                 </section>
 

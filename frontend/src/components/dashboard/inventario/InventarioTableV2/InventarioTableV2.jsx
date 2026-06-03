@@ -70,7 +70,6 @@ const INVENTARIO_V2_FILTER_FIELDS = [
   'referencia',
   'oem_codes',
   'casa_comercial_nombre',
-  'pieza_original_label',
   'costo_minimo',
   'precio',
   'precio_con_iva',
@@ -82,7 +81,6 @@ const INVENTARIO_V2_FILTER_DEFAULT_MODES = {
   referencia: FilterMatchMode.STARTS_WITH,
   oem_codes: FilterMatchMode.STARTS_WITH,
   casa_comercial_nombre: FilterMatchMode.STARTS_WITH,
-  pieza_original_label: FilterMatchMode.STARTS_WITH,
   costo_minimo: FilterMatchMode.EQUALS,
   precio: FilterMatchMode.EQUALS,
   precio_con_iva: FilterMatchMode.EQUALS,
@@ -91,7 +89,6 @@ const INVENTARIO_V2_FILTER_DEFAULT_MODES = {
 const INVENTARIO_V2_ORDERING_MAP = {
   codigo: 'codigo',
   nombre: 'nombre',
-  pieza_original_label: 'pieza_original',
   costo_minimo: 'costo_minimo',
   precio: 'precio',
   precio_con_iva: 'precio_con_iva_backend',
@@ -198,7 +195,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           ...product,
           casa_comercial_nombre: firstHouseName,
           casas_comerciales_nombres: casasNombres,
-          pieza_original_label: product?.pieza_original ? 'Si' : 'No',
           precio_con_iva: Number.isFinite(Number(product?.precio))
             ? Number(product.precio) * (1 + ivaRate)
             : null,
@@ -237,7 +233,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     addIfPresent('oem', criteria?.oem)
     addIfPresent('descripcion', criteria?.descripcion)
     addIfPresent('casa_comercial', criteria?.casa_comercial)
-    addIfPresent('pieza_original', criteria?.pieza_original)
     if (canSeeCost) {
       addIfPresent('costo_minimo', criteria?.costo_minimo)
     }
@@ -578,7 +573,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     localStorage.removeItem('inventario-v2-table-state-v2')
     localStorage.removeItem('inventario-v2-table-state')
     localStorage.removeItem(INVENTARIO_TABLE_LAYOUT_STATE_KEY)
-    setSelectedColumns(visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label'))
+    setSelectedColumns(visibleColumnsData)
     setSelectedBranchColumns(branchColumnsData.map((column) => column.nombrevar))
     clearFilter()
     setTableResetKey((k) => k + 1)
@@ -602,7 +597,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     oem: '',
     descripcion: '',
     casa_comercial: '',
-    pieza_original: '',
     costo_minimo: '',
     precio: '',
     fecha_creacion: '',
@@ -1099,10 +1093,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         case 'nombre':
           bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
           break
-        case 'pieza_original_label':
-          bodyTemplate = (rowData) => piezaOriginalBodyTemplate(rowData)
-          className = 'column-max-min-width--small'
-          break
         case 'precio':
         case 'precio_con_iva':
         case 'costo_minimo':
@@ -1225,7 +1215,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     () => [
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
-      { nombrevar: 'pieza_original_label', header: 'Original', filterPlaceholder: 'Si/No' },
       { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
       { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
@@ -1254,9 +1243,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     [branches]
   )
 
-  const [selectedColumns, setSelectedColumns] = useState(() =>
-    visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label')
-  )
+  const [selectedColumns, setSelectedColumns] = useState(() => visibleColumnsData)
   const [selectedBranchColumns, setSelectedBranchColumns] = useState([])
   const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
@@ -1306,7 +1293,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       setSelectedColumns(
         visibleColumns.length
           ? visibleColumns
-          : visibleColumnsData.filter((c) => c.nombrevar !== 'pieza_original_label')
+          : visibleColumnsData
       )
     }
     return () => {
@@ -1376,8 +1363,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const getExportValue = useCallback(
     (row, field) => {
       switch (field) {
-        case 'pieza_original_label':
-          return row?.pieza_original ? 'Si' : 'No'
         case 'casa_comercial_nombre':
           return row?.casa_comercial_nombre ?? row?.casas_comerciales_nombres ?? ''
         case 'precio':
@@ -1460,15 +1445,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     return (
       <span className="cell-tooltip" data-pr-tooltip={code}>
         {code}
-      </span>
-    )
-  }
-
-  const piezaOriginalBodyTemplate = (rowData) => {
-    const isOriginal = Boolean(rowData?.pieza_original)
-    return (
-      <span style={{ display: 'flex', justifyContent: 'center' }}>
-        <i className={`pi pi-${isOriginal ? 'check-circle' : 'times-circle'}`} style={{ color: isOriginal ? '#22c55e' : '#9ca3af' }} />
       </span>
     )
   }
@@ -2002,7 +1978,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     'nombre',
     'oem_codes',
     'descripcion',
-    'pieza_original_label',
     'precio',
     'precio_con_iva',
     ...(canSeeCost ? ['costo_minimo'] : []),
@@ -2166,10 +2141,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 break
               case 'nombre':
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
-                break
-              case 'pieza_original_label':
-                bodyTemplate = (rowData) => piezaOriginalBodyTemplate(rowData)
-                className = 'column-max-min-width--small'
                 break
               case 'precio':
               case 'precio_con_iva':
@@ -2659,20 +2630,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                           </div>
                         )}
                       </div>
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Original</span>
-                      <select
-                        name="pieza_original"
-                        value={searchCriteria.pieza_original}
-                        onChange={handleSearchInputChange}
-                        className={!searchCriteria.pieza_original ? 'is-placeholder' : undefined}
-                      >
-                        <option value="">Todos</option>
-                        <option value="true">Si</option>
-                        <option value="false">No</option>
-                      </select>
                     </label>
 
                     {canSeeCost && (

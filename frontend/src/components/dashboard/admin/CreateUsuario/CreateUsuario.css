@@ -1043,55 +1043,6 @@
   opacity: 0.74;
 }
 
-/* Pieza-original: standalone wrapper (NOT create-user__field) so field input
-   CSS rules never reach the checkbox */
-.create-user__pieza-original-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: inherit;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 10px 14px;
-}
-
-.create-user__pieza-original-label {
-  font-size: var(--font-size-base);
-  font-weight: 700;
-  color: var(--color-text-primary);
-  opacity: 0.75;
-}
-
-.dashboard-shell.dark .create-user__pieza-original-label {
-  color: var(--color-button-primary);
-  opacity: 0.78;
-}
-
-.create-user__pieza-original {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  color: inherit;
-  font-size: var(--font-size-base);
-}
-
-.create-user__pieza-original input[type='checkbox'] {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  accent-color: var(--color-primary-dark);
-  cursor: pointer;
-}
-
-.create-user__pieza-original > span {
-  opacity: 0.7;
-}
-
-.dashboard-shell.dark .create-user__pieza-original {
-  border-color: var(--color-border);
-  color: var(--color-text-dark);
-}
 
 /* Error */
 .create-user__error {

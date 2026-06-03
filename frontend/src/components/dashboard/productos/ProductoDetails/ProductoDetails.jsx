@@ -20,7 +20,6 @@ const emptyForm = {
   codigo: '',
   nombre: '',
   descripcion: '',
-  pieza_original: false,
   costo_minimo: '',
   precio: '',
   casasIds: [],
@@ -219,7 +218,6 @@ function ProductoDetails({
     nombre: data?.nombre ?? '',
     descripcion: data?.descripcion ?? '',
     referencia: data?.referencia ?? '',
-    pieza_original: Boolean(data?.pieza_original),
     costo_minimo: formatMoneyFromValue(data?.costo_minimo),
     precio: formatMoneyFromValue(data?.precio),
     casasIds: Array.isArray(data?.casas_comerciales) ? data.casas_comerciales.map((casa) => String(casa.id)) : [],
@@ -554,14 +552,7 @@ function ProductoDetails({
 
   const handleChange = (event) => {
     if (!isEditing) return
-    const { name, value, type, checked } = event.target
-    if (name === 'pieza_original') {
-      setFormData((prev) => ({
-        ...prev,
-        pieza_original: type === 'checkbox' ? checked : value === 'true',
-      }))
-      return
-    }
+    const { name, value } = event.target
     if (name === 'precio' || name === 'costo_minimo') {
       setFormData((prev) => ({
         ...prev,
@@ -892,7 +883,6 @@ function ProductoDetails({
       nombre: formData.nombre.trim(),
       descripcion: formData.descripcion.trim(),
       referencia: formData.referencia.trim(),
-      pieza_original: Boolean(formData.pieza_original),
       costo_minimo: parseNumber(formData.costo_minimo),
       precio: parseNumber(formData.precio),
       casas_comerciales_ids: (formData.casasIds || []).map((id) => Number(id)),
@@ -1355,7 +1345,6 @@ function ProductoDetails({
                       <StaticFieldDisplay label="Código" value={formData.codigo} />
                       <StaticFieldDisplay label="Referencia" value={formData.referencia} />
                       <StaticFieldDisplay label="Casa comercial" value={selectedCasa?.nombre} />
-                      <StaticFieldDisplay label="Original" value={formData.pieza_original ? 'Sí' : 'No'} />
                     </div>
                   </div>
                 </section>
@@ -1505,19 +1494,6 @@ function ProductoDetails({
                       </div>
                     </label>
 
-                    <div className="create-user__pieza-original-wrapper">
-                      <span className="create-user__pieza-original-label">Original</span>
-                      <label className="create-user__pieza-original">
-                        <input
-                          name="pieza_original"
-                          type="checkbox"
-                          checked={Boolean(formData.pieza_original)}
-                          onChange={handleChange}
-                          disabled={editorDisabled}
-                        />
-                        <span>Marcar cuando la pieza es original.</span>
-                      </label>
-                    </div>
                   </div>
                 </section>
 

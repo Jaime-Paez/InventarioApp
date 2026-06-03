@@ -57,7 +57,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
         "codigo",
         "descripcion",
         "casas_comerciales__nombre",
-        "pieza_original",
         "costo_minimo",
         "precio",
         "precio_con_iva_backend",
@@ -95,11 +94,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
             .values("total")[:1]
         )
         queryset = queryset.annotate(
-            pieza_original_label_text=Case(
-                When(pieza_original=True, then=Value("Si")),
-                default=Value("No"),
-                output_field=CharField(),
-            ),
             precio_con_iva_backend=ExpressionWrapper(
                 F("precio") * Value(factor),
                 output_field=DecimalField(max_digits=16, decimal_places=4),
@@ -134,12 +128,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
         if oem:
             queryset = queryset.filter(oem_productos__oem__codigo__icontains=oem)
 
-        pieza_original = (params.get("pieza_original") or "").strip().lower()
-        if pieza_original in {"true", "1", "si", "sí"}:
-            queryset = queryset.filter(pieza_original=True)
-        elif pieza_original in {"false", "0", "no"}:
-            queryset = queryset.filter(pieza_original=False)
-
         costo_minimo = (params.get("costo_minimo") or "").strip()
         if costo_minimo:
             try:
@@ -166,7 +154,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
             {
                 "codigo": "codigo",
                 "nombre": "nombre",
-                "pieza_original_label": "pieza_original_label_text",
                 "costo_minimo": {"lookup": "costo_minimo", "type": "number"},
                 "precio": {"lookup": "precio", "type": "number"},
                 "precio_con_iva": {"lookup": "precio_con_iva_backend", "type": "number"},

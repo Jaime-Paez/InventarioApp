@@ -20,10 +20,8 @@ class ProductoAdmin(admin.ModelAdmin):
         "codigo",
         "nombre",
         "mostrar_casas_comerciales",
-        "pieza_original",
     )
     list_filter = (
-        "pieza_original",
         ("casas_comerciales", admin.RelatedOnlyFieldListFilter),
     )
     search_fields = (

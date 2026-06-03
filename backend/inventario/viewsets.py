@@ -450,7 +450,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
     ordering_fields = [
         "producto__codigo",
         "producto__nombre",
-        "producto__pieza_original",
         "producto__costo_minimo",
         "producto__precio",
         "cantidad",
@@ -542,12 +541,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
         oem = (params.get("oem") or "").strip()
         if oem:
             product_queryset = product_queryset.filter(oem_productos__oem__codigo__icontains=oem)
-
-        pieza_original = (params.get("pieza_original") or "").strip().lower()
-        if pieza_original in {"true", "1", "si", "sí"}:
-            product_queryset = product_queryset.filter(pieza_original=True)
-        elif pieza_original in {"false", "0", "no"}:
-            product_queryset = product_queryset.filter(pieza_original=False)
 
         costo_minimo = (params.get("costo_minimo") or "").strip()
         if costo_minimo:
@@ -657,13 +650,11 @@ class InventarioViewSet(viewsets.ModelViewSet):
         ordering_aliases = {
             "producto__codigo": "codigo",
             "producto__nombre": "nombre",
-            "producto__pieza_original": "pieza_original_num",
             "producto__costo_minimo": "costo_minimo",
             "producto__precio": "precio",
             "cantidad": "total_general",
             "codigo": "codigo",
             "nombre": "nombre",
-            "pieza_original_label": "pieza_original_label_text",
             "costo_minimo": "costo_minimo",
             "precio": "precio",
             "precio_con_iva": "precio",
@@ -858,7 +849,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
             if product_id <= 0:
                 continue
             meta = product_meta.get(product_id, {})
-            piece_original = bool(int(row.get("pieza_original_num") or 0))
             item = {
                 "id": product_id,
                 "producto_id": product_id,
@@ -866,8 +856,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "nombre": row.get("nombre") or "",
                 "descripcion": row.get("descripcion") or "",
                 "referencia": row.get("referencia") or "",
-                "pieza_original": piece_original,
-                "pieza_original_label": "Si" if piece_original else "No",
                 "casa_comercial_nombre": meta.get("casa_comercial_nombre") or "",
                 "casas_comerciales_nombres": meta.get("casas_comerciales_nombres") or "",
                 "costo_minimo": row.get("costo_minimo"),
@@ -947,17 +935,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
             nombre=Max("nombre"),
             descripcion=Max("descripcion"),
             referencia=Max("referencia"),
-            pieza_original_num=Coalesce(
-                Max(
-                    Case(
-                        When(pieza_original=True, then=Value(1)),
-                        default=Value(0),
-                        output_field=IntegerField(),
-                    )
-                ),
-                Value(0),
-                output_field=IntegerField(),
-            ),
             costo_minimo=Max("costo_minimo"),
             precio=Max("precio"),
             creado_en=Max("creado_en"),
@@ -973,14 +950,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
             ),
             )
         )
-        aggregated_queryset = aggregated_queryset.annotate(
-            pieza_original_label_text=Case(
-                When(pieza_original_num__gte=1, then=Value("Si")),
-                default=Value("No"),
-                output_field=CharField(),
-            )
-        )
-
         for branch in branches:
             field_name = f"sucursal_{branch.id}"
             aggregated_queryset = aggregated_queryset.annotate(
@@ -1039,7 +1008,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
         field_map = {
             "codigo": "codigo",
             "nombre": "nombre",
-            "pieza_original_label": "pieza_original_label_text",
             "costo_minimo": {"lookup": "costo_minimo", "type": "number"},
             "precio": {"lookup": "precio", "type": "number"},
             "precio_con_iva": {"lookup": "precio", "type": "number"},
@@ -1089,13 +1057,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(
                     subdivision__division__bodega__sucursal_id__in=sorted(allowed)
                 )
-        queryset = queryset.annotate(
-            pieza_original_label_text=Case(
-                When(producto__pieza_original=True, then=Value("Si")),
-                default=Value("No"),
-                output_field=CharField(),
-            )
-        )
         params = self.request.query_params
         needs_distinct = bool((params.get("search") or "").strip())
 
@@ -1134,12 +1095,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
         if oem:
             needs_distinct = True
             queryset = queryset.filter(producto__oem_productos__oem__codigo__icontains=oem)
-
-        pieza_original = (params.get("pieza_original") or "").strip().lower()
-        if pieza_original in {"true", "1", "si", "sí"}:
-            queryset = queryset.filter(producto__pieza_original=True)
-        elif pieza_original in {"false", "0", "no"}:
-            queryset = queryset.filter(producto__pieza_original=False)
 
         costo_minimo = (params.get("costo_minimo") or "").strip()
         if costo_minimo:
@@ -1185,7 +1140,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
             {
                 "codigo": "producto__codigo",
                 "nombre": "producto__nombre",
-                "pieza_original_label": "pieza_original_label_text",
                 "casa_comercial_nombre": "producto__casas_comerciales__nombre",
                 "costo_minimo": {"lookup": "producto__costo_minimo", "type": "number"},
                 "precio": {"lookup": "producto__precio", "type": "number"},

@@ -116,7 +116,6 @@ class InventarioSerializer(serializers.ModelSerializer):
             "codigo": producto.codigo,
             "nombre": producto.nombre,
             "descripcion": producto.descripcion,
-            "pieza_original": bool(producto.pieza_original),
             "costo_minimo": producto.costo_minimo,
             "precio": producto.precio,
             "creado_en": producto.creado_en,

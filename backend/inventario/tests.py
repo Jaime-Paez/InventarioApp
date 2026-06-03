@@ -158,7 +158,6 @@ class InventarioTableLocationPayloadTests(TestCase):
                 "nombre": self.producto.nombre,
                 "descripcion": self.producto.descripcion,
                 "referencia": self.producto.referencia,
-                "pieza_original_num": 0,
                 "costo_minimo": None,
                 "precio": self.producto.precio,
                 "creado_en": self.producto.creado_en,
