@@ -388,7 +388,19 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     let cancelled = false
     authFetch(`${API_URL}/solicitudes/solicitudes/aceptados-por-casa/?casa_comercial_id=${selectedCasa.id}`, {}, token)
       .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((payload) => { if (!cancelled) setAceptadosItems(parseApiList(payload)) })
+      .then((payload) => {
+        if (!cancelled) {
+          const loaded = parseApiList(payload)
+          setAceptadosItems(loaded)
+          setAceptadosSelected(new Set(
+            loaded
+              .filter((item) => item.producto_id
+                ? alreadyAddedIds.has(String(item.producto_id))
+                : alreadyAddedSolIds.has(String(item.solicitud_id)))
+              .map((item) => item.solicitud_id)
+          ))
+        }
+      })
       .catch(() => { if (!cancelled) setAceptadosItems([]) })
       .finally(() => { if (!cancelled) setAceptadosLoading(false) })
     return () => { cancelled = true }
@@ -574,15 +586,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     )
   }, [aceptadosItems, aceptadosSearch])
 
-  const selectableAceptados = useMemo(
-    () => filteredAceptados.filter((item) => {
-      if (item.producto_id) return !alreadyAddedIds.has(String(item.producto_id))
-      return !alreadyAddedSolIds.has(String(item.solicitud_id))
-    }),
-    [filteredAceptados, alreadyAddedIds, alreadyAddedSolIds]
-  )
-
-  const allSelectableSelected = selectableAceptados.length > 0 && selectableAceptados.every((item) => aceptadosSelected.has(item.solicitud_id))
+  const allSelectableSelected = filteredAceptados.length > 0 && filteredAceptados.every((item) => aceptadosSelected.has(item.solicitud_id))
 
   const handleToggleAceptado = (solId) => {
     setAceptadosSelected((prev) => {
@@ -597,13 +601,30 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     if (allSelectableSelected) {
       setAceptadosSelected(new Set())
     } else {
-      setAceptadosSelected(new Set(selectableAceptados.map((i) => i.solicitud_id)))
+      setAceptadosSelected(new Set(filteredAceptados.map((i) => i.solicitud_id)))
     }
   }
 
   const handleConfirmAceptados = () => {
-    const selected = filteredAceptados.filter((item) => aceptadosSelected.has(item.solicitud_id))
-    handleAddFromAceptados(selected)
+    const toRemove = aceptadosItems.filter((item) => {
+      const wasAdded = item.producto_id
+        ? alreadyAddedIds.has(String(item.producto_id))
+        : alreadyAddedSolIds.has(String(item.solicitud_id))
+      return wasAdded && !aceptadosSelected.has(item.solicitud_id)
+    })
+    const toAdd = aceptadosItems.filter((item) => {
+      const wasAdded = item.producto_id
+        ? alreadyAddedIds.has(String(item.producto_id))
+        : alreadyAddedSolIds.has(String(item.solicitud_id))
+      return !wasAdded && aceptadosSelected.has(item.solicitud_id)
+    })
+    if (toRemove.length > 0) {
+      setDetails((prev) => prev.filter((d) => {
+        if (d.producto?.id) return !toRemove.some((r) => r.producto_id && String(r.producto_id) === String(d.producto.id))
+        return !toRemove.some((r) => !r.producto_id && String(r.solicitud_id) === String(d._solId))
+      }))
+    }
+    if (toAdd.length > 0) handleAddFromAceptados(toAdd)
     setShowAceptadosView(false)
   }
 
@@ -1123,7 +1144,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
               <div className="create-user__locations-table importaciones-aceptados__table">
                 <div className="create-user__locations-row create-user__locations-row--head">
                   <span>
-                    <input type="checkbox" checked={allSelectableSelected} disabled={selectableAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
+                    <input type="checkbox" checked={allSelectableSelected} disabled={filteredAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
                   </span>
                   <span>Solicitud</span>
                   <span>Código JP</span>
@@ -1142,18 +1163,17 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                 )}
                 {!aceptadosLoading && filteredAceptados.map((item) => {
                   const noProducto = !item.producto_id
-                  const isAlreadyAdded = noProducto ? alreadyAddedSolIds.has(String(item.solicitud_id)) : alreadyAddedIds.has(String(item.producto_id))
                   const isSelected = aceptadosSelected.has(item.solicitud_id)
                   const oemText = (item.oem_codigos || []).join(', ') || '-'
                   return (
                     <div
                       key={item.solicitud_id}
                       className={`create-user__locations-row importaciones-aceptados__row${isSelected ? ' importaciones-aceptados__row--selected' : ''}${noProducto ? ' importaciones-aceptados__row--no-catalogo' : ''}`}
-                      style={{ cursor: isAlreadyAdded ? 'default' : 'pointer', opacity: isAlreadyAdded ? 0.45 : 1 }}
-                      onClick={() => { if (!isAlreadyAdded) handleToggleAceptado(item.solicitud_id) }}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => handleToggleAceptado(item.solicitud_id)}
                     >
                       <span>
-                        <input type="checkbox" checked={isSelected} disabled={isAlreadyAdded} onChange={() => handleToggleAceptado(item.solicitud_id)} onClick={(e) => e.stopPropagation()} style={{ cursor: isAlreadyAdded ? 'default' : 'pointer' }} />
+                        <input type="checkbox" checked={isSelected} onChange={() => handleToggleAceptado(item.solicitud_id)} onClick={(e) => e.stopPropagation()} style={{ cursor: 'pointer' }} />
                       </span>
                       <span style={{ fontSize: '0.79rem', color: 'var(--color-muted, #888)' }}>
                         <span className="imp-cell-text">{item.solicitud_codigo || '-'}</span>
@@ -1204,8 +1224,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [aceptadosSelected, setAceptadosSelected] = useState(new Set())
   const [aceptadosSearch, setAceptadosSearch] = useState('')
   const [aceptadosCount, setAceptadosCount] = useState(null)
-  const [borradorImps, setBorradorImps] = useState([])
-  const [borradorPopup, setBorradorPopup] = useState(null)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
@@ -1214,7 +1232,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalSizeRef = useRef(modalSize)
   const productTimerRef = useRef(null)
-  const borradorPopupTimerRef = useRef(null)
   const productDropdownRef = useRef(null)
   const isFirstOpenRef = useRef(true)
   const [productPanelStyle, setProductPanelStyle] = useState(null)
@@ -1328,19 +1345,21 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     let cancelled = false
     authFetch(`${API_URL}/solicitudes/solicitudes/aceptados-por-casa/?casa_comercial_id=${selectedCasa.id}`, {}, token)
       .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((payload) => { if (!cancelled) setAceptadosItems(parseApiList(payload)) })
+      .then((payload) => {
+        if (!cancelled) {
+          const loaded = parseApiList(payload)
+          setAceptadosItems(loaded)
+          setAceptadosSelected(new Set(
+            loaded
+              .filter((item) => item.producto_id
+                ? alreadyAddedIds.has(String(item.producto_id))
+                : alreadyAddedSolIds.has(String(item.solicitud_id)))
+              .map((item) => item.solicitud_id)
+          ))
+        }
+      })
       .catch(() => { if (!cancelled) setAceptadosItems([]) })
       .finally(() => { if (!cancelled) setAceptadosLoading(false) })
-    return () => { cancelled = true }
-  }, [showAceptadosView, selectedCasa?.id, token])
-
-  useEffect(() => {
-    if (!showAceptadosView || !selectedCasa?.id || !token) { setBorradorImps([]); return undefined }
-    let cancelled = false
-    authFetch(`${API_URL}/importaciones/importaciones/?estado=borrador&casa_comercial_id=${selectedCasa.id}&page_size=200`, {}, token)
-      .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((payload) => { if (!cancelled) setBorradorImps(parseApiList(payload)) })
-      .catch(() => { if (!cancelled) setBorradorImps([]) })
     return () => { cancelled = true }
   }, [showAceptadosView, selectedCasa?.id, token])
 
@@ -1449,25 +1468,35 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     )
   }, [aceptadosItems, aceptadosSearch])
 
-  const selectableAceptados = useMemo(
-    () => filteredAceptados.filter((item) => {
-      if (item.producto_id) return !alreadyAddedIds.has(String(item.producto_id))
-      return !alreadyAddedSolIds.has(String(item.solicitud_id))
-    }),
-    [filteredAceptados, alreadyAddedIds, alreadyAddedSolIds]
-  )
-
-  const allSelectableSelected = selectableAceptados.length > 0 && selectableAceptados.every((item) => aceptadosSelected.has(item.solicitud_id))
+  const allSelectableSelected = filteredAceptados.length > 0 && filteredAceptados.every((item) => aceptadosSelected.has(item.solicitud_id))
 
   const handleToggleAceptado = (solId) => {
     setAceptadosSelected((prev) => { const next = new Set(prev); if (next.has(solId)) next.delete(solId); else next.add(solId); return next })
   }
   const handleToggleAllAceptados = () => {
     if (allSelectableSelected) setAceptadosSelected(new Set())
-    else setAceptadosSelected(new Set(selectableAceptados.map((i) => i.solicitud_id)))
+    else setAceptadosSelected(new Set(filteredAceptados.map((i) => i.solicitud_id)))
   }
   const handleConfirmAceptados = () => {
-    handleAddFromAceptados(filteredAceptados.filter((item) => aceptadosSelected.has(item.solicitud_id)))
+    const toRemove = aceptadosItems.filter((item) => {
+      const wasAdded = item.producto_id
+        ? alreadyAddedIds.has(String(item.producto_id))
+        : alreadyAddedSolIds.has(String(item.solicitud_id))
+      return wasAdded && !aceptadosSelected.has(item.solicitud_id)
+    })
+    const toAdd = aceptadosItems.filter((item) => {
+      const wasAdded = item.producto_id
+        ? alreadyAddedIds.has(String(item.producto_id))
+        : alreadyAddedSolIds.has(String(item.solicitud_id))
+      return !wasAdded && aceptadosSelected.has(item.solicitud_id)
+    })
+    if (toRemove.length > 0) {
+      setDetails((prev) => prev.filter((d) => {
+        if (d.producto?.id) return !toRemove.some((r) => r.producto_id && String(r.producto_id) === String(d.producto.id))
+        return !toRemove.some((r) => !r.producto_id && String(r.solicitud_id) === String(d._solId))
+      }))
+    }
+    if (toAdd.length > 0) handleAddFromAceptados(toAdd)
     setShowAceptadosView(false)
   }
   const handleAddFromAceptados = useCallback((aceptados) => {
@@ -1507,44 +1536,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       return next
     })
   }, [])
-
-  const borradorProductMap = useMemo(() => {
-    const byId = {}
-    const byNombre = {}
-    for (const bImp of borradorImps) {
-      if (imp?.id && bImp.id === imp.id) continue
-      for (const d of (bImp.detalles || [])) {
-        if (d.producto?.id) {
-          const pid = String(d.producto.id)
-          if (!byId[pid]) byId[pid] = []
-          if (!byId[pid].some((x) => x.id === bImp.id)) byId[pid].push(bImp)
-        } else {
-          const key = String(d.nombre || '').trim().toLowerCase()
-          if (key) {
-            if (!byNombre[key]) byNombre[key] = []
-            if (!byNombre[key].some((x) => x.id === bImp.id)) byNombre[key].push(bImp)
-          }
-        }
-      }
-    }
-    return (item) => {
-      if (item.producto_id) return byId[String(item.producto_id)] || []
-      const key = String(item.nombre || '').trim().toLowerCase()
-      return key ? (byNombre[key] || []) : []
-    }
-  }, [borradorImps, imp?.id])
-
-  const showBorradorPopup = (event, imps) => {
-    if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current)
-    const rect = event.currentTarget.getBoundingClientRect()
-    let left = rect.right + 8
-    if (left + 220 > window.innerWidth - 8) left = Math.max(8, rect.left - 220 - 8)
-    setBorradorPopup({ top: Math.min(rect.top - 4, window.innerHeight - 120), left, imps })
-  }
-  const hideBorradorPopup = () => {
-    borradorPopupTimerRef.current = setTimeout(() => setBorradorPopup(null), 150)
-  }
-  const cancelHideBorradorPopup = () => { if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current) }
 
   if (!open || !imp) return null
 
@@ -1824,7 +1815,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 <div className="create-user__locations-table importaciones-aceptados__table">
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>
-                      <input type="checkbox" checked={allSelectableSelected} disabled={selectableAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
+                      <input type="checkbox" checked={allSelectableSelected} disabled={filteredAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
                     </span>
                     <span>Solicitud</span><span>Código JP</span><span>Nombre</span><span>OEMs</span><span>Cant.</span>
                   </div>
@@ -1838,18 +1829,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                   )}
                   {!aceptadosLoading && filteredAceptados.map((item) => {
                     const noProducto = !item.producto_id
-                    const isAlreadyAdded = noProducto ? alreadyAddedSolIds.has(String(item.solicitud_id)) : alreadyAddedIds.has(String(item.producto_id))
                     const isSelected = aceptadosSelected.has(item.solicitud_id)
                     const oemText = (item.oem_codigos || []).join(', ') || '-'
                     return (
                       <div
                         key={item.solicitud_id}
                         className={`create-user__locations-row importaciones-aceptados__row${isSelected ? ' importaciones-aceptados__row--selected' : ''}${noProducto ? ' importaciones-aceptados__row--no-catalogo' : ''}`}
-                        style={{ cursor: isAlreadyAdded ? 'default' : 'pointer', opacity: isAlreadyAdded ? 0.45 : 1 }}
-                        onClick={() => { if (!isAlreadyAdded) handleToggleAceptado(item.solicitud_id) }}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => handleToggleAceptado(item.solicitud_id)}
                       >
                         <span>
-                          <input type="checkbox" checked={isSelected} disabled={isAlreadyAdded} onChange={() => handleToggleAceptado(item.solicitud_id)} onClick={(e) => e.stopPropagation()} style={{ cursor: isAlreadyAdded ? 'default' : 'pointer' }} />
+                          <input type="checkbox" checked={isSelected} onChange={() => handleToggleAceptado(item.solicitud_id)} onClick={(e) => e.stopPropagation()} style={{ cursor: 'pointer' }} />
                         </span>
                         <span style={{ fontSize: '0.79rem', color: 'var(--color-muted, #888)' }}>
                           <span className="imp-cell-text">{item.solicitud_codigo || '-'}</span>
@@ -1879,27 +1869,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           document.body
         )}
       </div>
-      {borradorPopup && createPortal(
-        <div
-          className="imp-borrador-popup"
-          style={{ top: borradorPopup.top, left: borradorPopup.left }}
-          onMouseEnter={cancelHideBorradorPopup}
-          onMouseLeave={hideBorradorPopup}
-        >
-          {borradorPopup.imps.map((bImp) => (
-            <button
-              key={bImp.id}
-              type="button"
-              className="imp-borrador-popup__item"
-              onClick={() => { setBorradorPopup(null); setShowAceptadosView(false); onOpenBorrador?.(bImp) }}
-            >
-              <i className="pi pi-file-edit" style={{ fontSize: '0.72rem', opacity: 0.6 }} />
-              {bImp.codigo}
-            </button>
-          ))}
-        </div>,
-        document.body
-      )}
     </>
   )
 }
