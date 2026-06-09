@@ -187,10 +187,11 @@ class SucursalLiteSerializer(serializers.ModelSerializer):
 
 class ProductoLiteSerializer(serializers.ModelSerializer):
     oem_codigos = serializers.SerializerMethodField()
+    casas_comerciales = CasaComercialLiteSerializer(many=True, read_only=True)
 
     class Meta:
         model = Producto
-        fields = ["id", "codigo", "nombre", "oem_codigos"]
+        fields = ["id", "codigo", "nombre", "oem_codigos", "casas_comerciales"]
 
     def get_oem_codigos(self, obj):
         codigos = []

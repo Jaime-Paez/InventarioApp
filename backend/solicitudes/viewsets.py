@@ -151,6 +151,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
         .prefetch_related(
             "producto_solicitado__oem_relaciones__oem",
             "producto__oem_productos__oem",
+            "producto__casas_comerciales",
             "revisiones__casa_comercial",
         )
         .all()
@@ -774,6 +775,106 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=False, methods=["get"], url_path="aceptados-por-casa")
+    def aceptados_por_casa(self, request):
+        raw_id = (request.query_params.get("casa_comercial_id") or "").strip()
+        if not raw_id:
+            return Response(
+                {"detail": "Debe enviar casa_comercial_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            casa_id = int(raw_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "casa_comercial_id invalido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        q_producto = Q(
+            tabla=Solicitud.Tabla.PRODUCTO,
+            producto__casas_comerciales__id=casa_id,
+        )
+        q_solicitado = Q(
+            tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,
+        ) & (
+            Q(producto_solicitado__casa_comercial_id=casa_id)
+            | Q(revisiones__casa_comercial_id=casa_id)
+        )
+
+        queryset = (
+            Solicitud.objects.select_related(
+                "producto",
+                "producto_solicitado",
+                "producto_solicitado__producto",
+            )
+            .prefetch_related(
+                "producto__oem_productos__oem",
+                "producto_solicitado__producto__oem_productos__oem",
+                "producto_solicitado__oem_relaciones__oem",
+            )
+            .filter(estado=Solicitud.Estado.REVISADO)
+            .filter(q_producto | q_solicitado)
+            .distinct()
+            .order_by("codigo", "id")
+        )
+        queryset = apply_sucursal_scope(
+            queryset,
+            request.user,
+            RolPermiso.Modulos.SOLICITUDES,
+            "sucursal_id",
+            action_key="puede_leer",
+        )
+
+        results = []
+        for sol in queryset:
+            if sol.tabla == Solicitud.Tabla.PRODUCTO:
+                producto = sol.producto
+                if not producto:
+                    continue
+                producto_id = producto.id
+                codigo = str(producto.codigo or "").strip()
+                nombre = str(producto.nombre or "").strip()
+                oem_codigos = [
+                    str(r.oem.codigo)
+                    for r in producto.oem_productos.all()
+                    if getattr(r, "oem", None)
+                ]
+            else:
+                ps = sol.producto_solicitado
+                if not ps:
+                    continue
+                if ps.producto_id and ps.producto:
+                    producto_id = ps.producto_id
+                    codigo = str(getattr(ps.producto, "codigo", "") or ps.codigo or "").strip()
+                    nombre = str(getattr(ps.producto, "nombre", "") or ps.nombre or "").strip()
+                    oem_codigos = [
+                        str(r.oem.codigo)
+                        for r in ps.producto.oem_productos.all()
+                        if getattr(r, "oem", None)
+                    ]
+                else:
+                    producto_id = None
+                    codigo = str(ps.codigo or "").strip()
+                    nombre = str(ps.nombre or "").strip()
+                    oem_codigos = [
+                        str(r.oem.codigo)
+                        for r in ps.oem_relaciones.all()
+                        if getattr(r, "oem", None)
+                    ]
+
+            results.append({
+                "solicitud_id": sol.id,
+                "solicitud_codigo": str(sol.codigo or "").strip(),
+                "producto_id": producto_id,
+                "codigo": codigo,
+                "nombre": nombre,
+                "oem_codigos": oem_codigos,
+                "cantidad": int(sol.cantidad or 0),
+            })
+
+        return Response({"count": len(results), "results": results})
+
     def _build_grouped_list_payload(self, queryset):
         filtered_rows = list(queryset)
         if not filtered_rows:
@@ -804,6 +905,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 .prefetch_related(
                     "producto_solicitado__oem_relaciones__oem",
                     "producto__oem_productos__oem",
+                    "producto__casas_comerciales",
                 )
                 .filter(grupo_codigo__in=list(dict.fromkeys(requested_group_codes)))
                 .order_by("id")

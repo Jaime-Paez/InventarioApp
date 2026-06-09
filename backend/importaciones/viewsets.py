@@ -36,8 +36,19 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         estado = str(self.request.query_params.get("estado") or "").strip()
         if estado:
             queryset = queryset.filter(estado=estado)
+        casa_comercial_id = str(self.request.query_params.get("casa_comercial_id") or "").strip()
+        if casa_comercial_id:
+            queryset = queryset.filter(casa_comercial_id=casa_comercial_id)
         return queryset
 
     @action(detail=False, methods=["get"], url_path="next-code")
     def next_code(self, request):
-        return Response({"codigo": generate_next_importacion_code()}, status=status.HTTP_200_OK)
+        from casa_comercial.models import CasaComercial
+        casa_id = request.query_params.get("casa_id")
+        casa = None
+        if casa_id:
+            try:
+                casa = CasaComercial.objects.get(pk=casa_id)
+            except CasaComercial.DoesNotExist:
+                pass
+        return Response({"codigo": generate_next_importacion_code(casa)}, status=status.HTTP_200_OK)

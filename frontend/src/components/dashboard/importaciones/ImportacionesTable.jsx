@@ -9,15 +9,25 @@ import { Button } from 'primereact/button'
 import { PackagePlus, Plus, Search, Trash2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
+import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersTable/UsersTable.css'
 import '../movimientos/CreateSalida.css'
 import './ImportacionesTable.css'
 
 const STATUS_CONFIG = {
-  en_proceso: { label: 'En proceso', empty: 'No hay importaciones en proceso.' },
+  borrador: { label: 'Borrador', empty: 'No hay importaciones en borrador.' },
   en_camino: { label: 'En camino', empty: 'No hay importaciones en camino.' },
   importada: { label: 'Importadas', empty: 'No hay importaciones importadas.' },
+}
+
+const IMP_HOVER_WIDTH = 560
+const IMP_HOVER_MARGIN = 12
+
+const STATUS_BADGE = {
+  borrador: { label: 'Borrador', color: '#64748b', bg: 'rgba(100,116,139,0.1)' },
+  en_camino: { label: 'En camino', color: '#d97706', bg: 'rgba(217,119,6,0.1)' },
+  importada: { label: 'Importada', color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
 }
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
@@ -84,7 +94,77 @@ const SELECTOR_HEIGHT_FULL = 'auto'
 const VIEWPORT_PADDING = 12
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
-function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
+function ImportacionDetailsModal({ imp, onClose }) {
+  if (!imp) return null
+  const detalles = imp.detalles || []
+  const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
+  return createPortal(
+    <div
+      className="imp-aceptados-popup__overlay"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="imp-aceptados-popup__dialog" style={{ width: 'min(680px, calc(100vw - 32px))', height: 'auto', maxHeight: 'min(82vh, 640px)' }}>
+        <header className="imp-aceptados-popup__header">
+          <div>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {imp.codigo}
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: badge.bg, color: badge.color }}>{badge.label}</span>
+            </h3>
+            <p>{imp.casa_nombre || imp.casa_comercial?.nombre || '-'}</p>
+          </div>
+          <button type="button" className="imp-aceptados-popup__close" onClick={onClose}><i className="pi pi-times" /></button>
+        </header>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, padding: '12px 20px', borderBottom: '1px solid color-mix(in srgb, var(--border-color,rgba(148,163,184,0.35)) 75%, transparent)', flexShrink: 0 }}>
+          {[
+            { label: 'Fecha', value: imp.fecha || '-' },
+            { label: 'Días estimados', value: imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : '-' },
+            { label: 'Total productos', value: imp.total_productos ?? detalles.length },
+          ].map(({ label, value }) => (
+            <div key={label}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--color-muted,#64748b)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>{label}</div>
+              <div style={{ fontWeight: 600 }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ flex: 1, overflow: 'auto', padding: '12px 20px' }}>
+          <div className="create-user__locations-table" style={{ borderRadius: 8, overflow: 'hidden', background: 'var(--surface-section,#f8fafc)' }}>
+            <div className="create-user__locations-row create-user__locations-row--head" style={{ gridTemplateColumns: 'minmax(90px,0.7fr) minmax(160px,1.6fr) minmax(110px,1fr) 60px' }}>
+              <span>Código</span><span>Nombre</span><span>OEM</span><span style={{ justifyContent: 'center' }}>Cant.</span>
+            </div>
+            {!detalles.length ? (
+              <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
+            ) : detalles.map((d, i) => {
+              const sinCat = !d.producto?.id
+              const codigo = d.producto?.codigo || d.codigo || '-'
+              const nombre = d.producto?.nombre || d.nombre || '-'
+              const oem = d.producto?.oem || d.oem || '-'
+              return (
+                <div key={d.id ?? i} className={`create-user__locations-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: 'minmax(90px,0.7fr) minmax(160px,1.6fr) minmax(110px,1fr) 60px' }}>
+                  <span title={codigo} style={{ overflow: 'hidden' }}>
+                    <span className="imp-cell-text">{codigo}</span>
+                    {sinCat && <span className="importaciones-aceptados__no-catalogo-badge" style={{ marginLeft: 4 }}>Sin catálogo</span>}
+                  </span>
+                  <span title={nombre} style={{ overflow: 'hidden' }}><span className="imp-cell-text">{nombre}</span></span>
+                  <span title={oem} style={{ overflow: 'hidden' }}><span className="imp-cell-text">{oem}</span></span>
+                  <span style={{ justifyContent: 'center', fontWeight: 600 }}>{d.cantidad}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="imp-aceptados-popup__footer" style={{ justifyContent: 'flex-end' }}>
+          <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOpenBorrador }) {
   const [step, setStep] = useState('casa')
   const [nextCode, setNextCode] = useState('IMP-')
   const [selectedCasa, setSelectedCasa] = useState(null)
@@ -101,21 +181,37 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [details, setDetails] = useState([])
   const [submitting, setSubmitting] = useState(false)
-  const [localError, setLocalError] = useState('')
+  const [invalidQtyKeys, setInvalidQtyKeys] = useState(new Set())
+  const [showAceptadosView, setShowAceptadosView] = useState(false)
+  const [aceptadosItems, setAceptadosItems] = useState([])
+  const [aceptadosLoading, setAceptadosLoading] = useState(false)
+  const [aceptadosSelected, setAceptadosSelected] = useState(new Set())
+  const [aceptadosSearch, setAceptadosSearch] = useState('')
+  const [aceptadosCount, setAceptadosCount] = useState(null)
+  const [borradorImps, setBorradorImps] = useState([])
+  const [borradorPopup, setBorradorPopup] = useState(null)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
 
   const modalRef = useRef(null)
+  const toastRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalSizeRef = useRef(modalSize)
   const modalPositionRef = useRef(modalPosition)
   const casaTimerRef = useRef(null)
   const productTimerRef = useRef(null)
+  const borradorPopupTimerRef = useRef(null)
   const casaDropdownRef = useRef(null)
   const productDropdownRef = useRef(null)
   const isFirstOpenRef = useRef(true)
   const [casaPanelStyle, setCasaPanelStyle] = useState(null)
   const [productPanelStyle, setProductPanelStyle] = useState(null)
+  const detailDraftQuantity = Number(detailDraft.cantidad)
+  const canAddDetailDraft = Boolean(
+    detailDraft.producto &&
+    Number.isFinite(detailDraftQuantity) &&
+    detailDraftQuantity > 0
+  )
 
   useEffect(() => { modalSizeRef.current = modalSize }, [modalSize])
   useEffect(() => { modalPositionRef.current = modalPosition }, [modalPosition])
@@ -178,27 +274,18 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
       const centerY = Math.max((window.innerHeight - boundsHeight) / 2, VIEWPORT_PADDING)
       if (isFirstOpenRef.current) {
         isFirstOpenRef.current = false
-        setModalPosition({ x: centerX, y: centerY })
-      } else {
-        setModalPosition((prev) => ({
-          x: centerX,
-          y: clamp(prev.y, VIEWPORT_PADDING, Math.max(window.innerHeight - boundsHeight - VIEWPORT_PADDING, VIEWPORT_PADDING)),
-        }))
       }
+      setModalPosition({ x: centerX, y: centerY })
     } else {
       const nextWidth = Math.min(MIN_WIDTH, availableWidth)
       const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
       const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
+      const centerY = Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING)
       setModalSize({ width: nextWidth, height: nextHeight })
       if (isFirstOpenRef.current) {
         isFirstOpenRef.current = false
-        setModalPosition({ x: centerX, y: Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING) })
-      } else {
-        setModalPosition((prev) => ({
-          x: centerX,
-          y: Math.min(Math.max(prev.y, VIEWPORT_PADDING), Math.max(availableHeight - nextHeight + VIEWPORT_PADDING, VIEWPORT_PADDING)),
-        }))
       }
+      setModalPosition({ x: centerX, y: centerY })
     }
   }, [open, step, casaDraft])
 
@@ -236,9 +323,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   const notifyError = useCallback((message) => {
     const clean = String(message || '').trim()
     if (!clean) return
-    setLocalError(clean)
-    onError?.(clean)
-  }, [onError])
+    toastRef.current?.show({ severity: 'error', summary: 'Error', detail: clean, life: 4000 })
+  }, [])
 
   const reset = useCallback(() => {
     setStep('casa')
@@ -255,7 +341,13 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
     setShowProductDropdown(false)
     setDetails([])
     setSubmitting(false)
-    setLocalError('')
+    setInvalidQtyKeys(new Set())
+    setShowAceptadosView(false)
+    setAceptadosItems([])
+    setAceptadosLoading(false)
+    setAceptadosSelected(new Set())
+    setAceptadosSearch('')
+    setAceptadosCount(null)
     setModalSize({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
   }, [])
 
@@ -277,6 +369,43 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
       })
     return () => { cancelled = true }
   }, [open, token])
+
+  useEffect(() => {
+    if (!selectedCasa?.id || !token) {
+      setAceptadosCount(null)
+      return undefined
+    }
+    let cancelled = false
+    authFetch(`${API_URL}/solicitudes/solicitudes/aceptados-por-casa/?casa_comercial_id=${selectedCasa.id}`, {}, token)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((payload) => { if (!cancelled) setAceptadosCount(parseApiList(payload).length) })
+      .catch(() => { if (!cancelled) setAceptadosCount(null) })
+    return () => { cancelled = true }
+  }, [selectedCasa?.id, token])
+
+  useEffect(() => {
+    if (!showAceptadosView || !selectedCasa?.id || !token) return undefined
+    setAceptadosSelected(new Set())
+    setAceptadosSearch('')
+    setAceptadosLoading(true)
+    let cancelled = false
+    authFetch(`${API_URL}/solicitudes/solicitudes/aceptados-por-casa/?casa_comercial_id=${selectedCasa.id}`, {}, token)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((payload) => { if (!cancelled) setAceptadosItems(parseApiList(payload)) })
+      .catch(() => { if (!cancelled) setAceptadosItems([]) })
+      .finally(() => { if (!cancelled) setAceptadosLoading(false) })
+    return () => { cancelled = true }
+  }, [showAceptadosView, selectedCasa?.id, token])
+
+  useEffect(() => {
+    if (!showAceptadosView || !selectedCasa?.id || !token) { setBorradorImps([]); return undefined }
+    let cancelled = false
+    authFetch(`${API_URL}/importaciones/importaciones/?estado=borrador&casa_comercial_id=${selectedCasa.id}&page_size=200`, {}, token)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((payload) => { if (!cancelled) setBorradorImps(parseApiList(payload)) })
+      .catch(() => { if (!cancelled) setBorradorImps([]) })
+    return () => { cancelled = true }
+  }, [showAceptadosView, selectedCasa?.id, token])
 
   useEffect(() => {
     if (!open) return undefined
@@ -337,7 +466,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
         return response.json()
       })
       .then((payload) => {
-        const selectedIds = new Set(details.map((item) => String(item.producto.id)))
+        const selectedIds = new Set(details.filter((item) => item.producto?.id).map((item) => String(item.producto.id)))
         setProductOptions(parseApiList(payload).filter((product) => !selectedIds.has(String(product.id))))
       })
       .catch((error) => notifyError(error.message))
@@ -352,32 +481,39 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
   }, [open, productQuery, searchProducts, showProductDropdown])
 
   const handleAddProduct = (product, cantidad = '') => {
-    if (details.some((d) => String(d.producto.id) === String(product.id))) {
-      setLocalError('Este producto ya fue agregado.')
+    const normalizedQuantity = Number(cantidad)
+    if (!Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) {
+      return
+    }
+    if (details.some((d) => d.producto?.id && String(d.producto.id) === String(product.id))) {
+      toastRef.current?.show({ severity: 'warn', summary: 'Advertencia', detail: 'Este producto ya fue agregado.', life: 3000 })
       return
     }
     setDetails((prev) => [
       ...prev,
       {
+        _key: String(product.id),
         producto: product,
-        cantidad,
+        cantidad: String(cantidad).trim(),
       },
     ])
     setProductQuery('')
     setProductOptions([])
     setShowProductDropdown(false)
-    setLocalError('')
   }
 
-  const handleQuantityChange = (productId, value) => {
+  const handleQuantityChange = (_key, value) => {
     const clean = String(value || '').replace(/[^\d]/g, '')
     setDetails((prev) =>
       prev.map((item) =>
-        String(item.producto.id) === String(productId)
+        item._key === _key
           ? { ...item, cantidad: clean }
           : item
       )
     )
+    if (invalidQtyKeys.has(_key)) {
+      setInvalidQtyKeys((prev) => { const next = new Set(prev); next.delete(_key); return next })
+    }
   }
 
   const handleSubmit = async () => {
@@ -389,12 +525,20 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
       setLocalError('')
       return
     }
-    const normalizedDetails = details.map((item) => ({
-      producto_id: item.producto.id,
-      cantidad: Number(item.cantidad || 0),
-    }))
-    if (normalizedDetails.some((item) => !Number.isFinite(item.cantidad) || item.cantidad <= 0)) {
-      notifyError('Todas las cantidades deben ser mayores a cero.')
+    const normalizedDetails = details.map((item) => {
+      if (item.producto?.id) {
+        return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0) }
+      }
+      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0) }
+    })
+    const badKeys = new Set(
+      details
+        .filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 })
+        .map((item) => item._key)
+    )
+    if (badKeys.size > 0) {
+      setInvalidQtyKeys(badKeys)
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Todas las cantidades deben ser mayores a cero.', life: 4000 })
       return
     }
 
@@ -422,9 +566,144 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
     }
   }
 
+  const alreadyAddedIds = useMemo(
+    () => new Set(details.filter((d) => d.producto?.id).map((d) => String(d.producto.id))),
+    [details]
+  )
+
+  const alreadyAddedSolIds = useMemo(
+    () => new Set(details.filter((d) => !d.producto?.id && d._solId).map((d) => String(d._solId))),
+    [details]
+  )
+
+  const filteredAceptados = useMemo(() => {
+    const q = aceptadosSearch.trim().toLowerCase()
+    if (!q) return aceptadosItems
+    return aceptadosItems.filter((item) =>
+      String(item.codigo || '').toLowerCase().includes(q) ||
+      String(item.nombre || '').toLowerCase().includes(q) ||
+      String(item.solicitud_codigo || '').toLowerCase().includes(q) ||
+      (item.oem_codigos || []).some((oem) => String(oem).toLowerCase().includes(q))
+    )
+  }, [aceptadosItems, aceptadosSearch])
+
+  const selectableAceptados = useMemo(
+    () => filteredAceptados.filter((item) => {
+      if (item.producto_id) return !alreadyAddedIds.has(String(item.producto_id))
+      return !alreadyAddedSolIds.has(String(item.solicitud_id))
+    }),
+    [filteredAceptados, alreadyAddedIds, alreadyAddedSolIds]
+  )
+
+  const allSelectableSelected = selectableAceptados.length > 0 && selectableAceptados.every((item) => aceptadosSelected.has(item.solicitud_id))
+
+  const handleToggleAceptado = (solId) => {
+    setAceptadosSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(solId)) next.delete(solId)
+      else next.add(solId)
+      return next
+    })
+  }
+
+  const handleToggleAllAceptados = () => {
+    if (allSelectableSelected) {
+      setAceptadosSelected(new Set())
+    } else {
+      setAceptadosSelected(new Set(selectableAceptados.map((i) => i.solicitud_id)))
+    }
+  }
+
+  const handleConfirmAceptados = () => {
+    const selected = filteredAceptados.filter((item) => aceptadosSelected.has(item.solicitud_id))
+    handleAddFromAceptados(selected)
+    setShowAceptadosView(false)
+  }
+
+  const handleAddFromAceptados = useCallback((aceptados) => {
+    setDetails((prev) => {
+      const next = [...prev]
+      for (const item of aceptados) {
+        if (item.producto_id) {
+          const pid = String(item.producto_id)
+          const existingIdx = next.findIndex((d) => d._key === pid)
+          if (existingIdx >= 0) {
+            const merged = { ...next[existingIdx] }
+            merged.cantidad = String(Number(merged.cantidad || 0) + Number(item.cantidad || 0))
+            next[existingIdx] = merged
+          } else {
+            next.push({
+              _key: pid,
+              producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', ') },
+              cantidad: String(item.cantidad || ''),
+            })
+          }
+        } else {
+          const solKey = 'sol_' + item.solicitud_id
+          const existingIdx = next.findIndex((d) => d._key === solKey)
+          if (existingIdx >= 0) {
+            const merged = { ...next[existingIdx] }
+            merged.cantidad = String(Number(merged.cantidad || 0) + Number(item.cantidad || 0))
+            next[existingIdx] = merged
+          } else {
+            next.push({
+              _key: solKey,
+              _solId: item.solicitud_id,
+              producto: null,
+              codigo: item.codigo || '',
+              nombre: item.nombre || '',
+              oem: (item.oem_codigos || []).join(', '),
+              cantidad: String(item.cantidad || ''),
+            })
+          }
+        }
+      }
+      return next
+    })
+  }, [])
+
+  const borradorProductMap = useMemo(() => {
+    const byId = {}
+    const byNombre = {}
+    for (const bImp of borradorImps) {
+      for (const d of (bImp.detalles || [])) {
+        if (d.producto?.id) {
+          const pid = String(d.producto.id)
+          if (!byId[pid]) byId[pid] = []
+          if (!byId[pid].some((x) => x.id === bImp.id)) byId[pid].push(bImp)
+        } else {
+          const key = String(d.nombre || '').trim().toLowerCase()
+          if (key) {
+            if (!byNombre[key]) byNombre[key] = []
+            if (!byNombre[key].some((x) => x.id === bImp.id)) byNombre[key].push(bImp)
+          }
+        }
+      }
+    }
+    return (item) => {
+      if (item.producto_id) return byId[String(item.producto_id)] || []
+      const key = String(item.nombre || '').trim().toLowerCase()
+      return key ? (byNombre[key] || []) : []
+    }
+  }, [borradorImps])
+
+  const showBorradorPopup = (event, imps) => {
+    if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    let left = rect.right + 8
+    if (left + 220 > window.innerWidth - 8) left = Math.max(8, rect.left - 220 - 8)
+    setBorradorPopup({ top: Math.min(rect.top - 4, window.innerHeight - 120), left, imps })
+  }
+  const hideBorradorPopup = () => {
+    borradorPopupTimerRef.current = setTimeout(() => setBorradorPopup(null), 150)
+  }
+  const cancelHideBorradorPopup = () => { if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current) }
+
   if (!open) return null
 
   return (
+    <>
+    <Toast ref={toastRef} baseZIndex={12100} />
     <div
       className="create-user__overlay"
       role="dialog"
@@ -465,6 +744,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
 
         <form
           className={`create-user__form${step === 'casa' ? ' importaciones-modal__selector-form' : ''}`}
+          noValidate
           onSubmit={(e) => { e.preventDefault(); handleSubmit() }}
         >
           {step === 'casa' ? (
@@ -500,7 +780,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                           onFocus={() => setShowCasaDropdown(true)}
                           style={{ border: 'none', outline: 'none', flex: 1, background: 'transparent', fontSize: 'inherit', color: 'inherit' }}
                           autoComplete="off"
-                          autoFocus
                         />
                         {casaLoading && <i className="pi pi-spin pi-spinner" style={{ flexShrink: 0 }} />}
                       </div>
@@ -641,13 +920,24 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                     </section>
                   )}
 
-                  {activeTab === 'productos' && (
+                  {activeTab === 'productos' && !showAceptadosView && (
                     <section className="create-user__section">
                       <div className="create-user__section-header">
                         <div>
                           <p className="create-user__eyebrow">Productos</p>
                           <h4>Listado de productos</h4>
                         </div>
+                        <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
+                          <button
+                            type="button"
+                            className="create-user__ghost"
+                            onClick={() => setShowAceptadosView(true)}
+                            style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                            disabled={aceptadosCount === 0}
+                          >
+                            + Aceptados de solicitudes
+                          </button>
+                        </span>
                       </div>
 
                       <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table">
@@ -703,7 +993,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                                       </div>
                                     )}
                                     {productOptions.map((product) => {
-                                      const isAlreadyAdded = details.some((d) => String(d.producto.id) === String(product.id))
+                                      const isAlreadyAdded = details.some((d) => d.producto?.id && String(d.producto.id) === String(product.id))
                                       const isSelected = String(detailDraft.producto?.id) === String(product.id)
                                       return (
                                         <button
@@ -754,9 +1044,9 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                             <button
                               type="button"
                               className="create-user__ghost"
-                              disabled={!detailDraft.producto}
+                              disabled={!canAddDetailDraft}
                               onClick={() => {
-                                if (!detailDraft.producto) return
+                                if (!canAddDetailDraft) return
                                 handleAddProduct(detailDraft.producto, detailDraft.cantidad)
                                 setDetailDraft({ producto: null, cantidad: '' })
                               }}
@@ -770,39 +1060,45 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                           <div className="create-user__locations-row create-user__locations-row--empty">
                             <span>Sin productos agregados.</span>
                           </div>
-                        ) : details.map((item) => (
-                          <div key={item.producto.id} className="create-user__locations-row">
-                            <span>{item.producto.codigo || '—'}</span>
-                            <span title={item.producto.nombre}>
-                              <span className="create-salida__product-name-text">{item.producto.nombre}</span>
-                            </span>
-                            <span>{String(item.producto.oem || item.producto.referencia || '').trim() || '-'}</span>
-                            <span>
-                              <input
-                                type="number"
-                                min="1"
-                                value={item.cantidad}
-                                onChange={(e) => handleQuantityChange(item.producto.id, e.target.value)}
-                              />
-                            </span>
-                            <span className="create-user__locations-cell create-user__locations-cell--action">
-                              <button
-                                type="button"
-                                className="create-user__locations-remove"
-                                onClick={() => setDetails((prev) => prev.filter((d) => String(d.producto.id) !== String(item.producto.id)))}
-                              >
-                                x
-                              </button>
-                            </span>
-                          </div>
-                        ))}
+                        ) : details.map((item) => {
+                          const sinCatalogo = !item.producto?.id
+                          const codigo = item.producto?.codigo || item.codigo || '—'
+                          const nombre = item.producto?.nombre || item.nombre || ''
+                          const oem = String(item.producto?.oem || item.oem || item.producto?.referencia || '').trim() || '-'
+                          return (
+                            <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
+                              <span>
+                                {codigo}
+                                {sinCatalogo && <span className="importaciones-aceptados__no-catalogo-badge" style={{ marginLeft: 6 }}>Sin catálogo</span>}
+                              </span>
+                              <span title={nombre}>
+                                <span className="create-salida__product-name-text">{nombre}</span>
+                              </span>
+                              <span>{oem}</span>
+                              <span>
+                                <input
+                                  type="number"
+                                  value={item.cantidad}
+                                  onChange={(e) => handleQuantityChange(item._key, e.target.value)}
+                                  style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
+                                />
+                              </span>
+                              <span className="create-user__locations-cell create-user__locations-cell--action">
+                                <button
+                                  type="button"
+                                  className="create-user__locations-remove"
+                                  onClick={() => setDetails((prev) => prev.filter((d) => d._key !== item._key))}
+                                >
+                                  x
+                                </button>
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
                     </section>
                   )}
 
-                  {localError && (
-                    <p className="create-user__field-error" style={{ margin: '0 0 8px' }}>{localError}</p>
-                  )}
                 </div>
               </div>
             </>
@@ -839,18 +1135,895 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError }) {
                   className="create-user__action create-user__action--primary"
                   disabled={submitting}
                 >
-                  {submitting ? 'Creando...' : 'Crear importación'}
+                  {submitting ? 'Guardando...' : 'Guardar proceso'}
                 </button>
               )}
             </div>
           </div>
         </form>
       </div>
+
+      {showAceptadosView && createPortal(
+        <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAceptadosView(false) }}>
+          <div className="imp-aceptados-popup__dialog">
+            <header className="imp-aceptados-popup__header">
+              <div>
+                <h3>Aceptados de solicitudes</h3>
+                {selectedCasa?.nombre && (
+                  <p>{formatCasaLabel(selectedCasa)}</p>
+                )}
+              </div>
+              <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowAceptadosView(false)} aria-label="Cerrar">
+                <i className="pi pi-times" />
+              </button>
+            </header>
+
+            <div className="imp-aceptados-popup__search">
+              <i className="pi pi-search" />
+              <input
+                type="text"
+                placeholder="Buscar por código, nombre, OEM o solicitud..."
+                value={aceptadosSearch}
+                onChange={(e) => setAceptadosSearch(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="imp-aceptados-popup__body">
+              <div className="create-user__locations-table importaciones-aceptados__table">
+                <div className="create-user__locations-row create-user__locations-row--head">
+                  <span>
+                    <input type="checkbox" checked={allSelectableSelected} disabled={selectableAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
+                  </span>
+                  <span>Solicitud</span>
+                  <span>Código JP</span>
+                  <span>Nombre</span>
+                  <span>OEMs</span>
+                  <span>Cant.</span>
+                  <span>Borradores</span>
+                </div>
+
+                {aceptadosLoading && (
+                  <div className="create-user__locations-row create-user__locations-row--empty"><span>Cargando...</span></div>
+                )}
+                {!aceptadosLoading && filteredAceptados.length === 0 && (
+                  <div className="create-user__locations-row create-user__locations-row--empty">
+                    <span>{aceptadosItems.length === 0 ? 'No hay productos aceptados.' : 'Sin resultados.'}</span>
+                  </div>
+                )}
+                {!aceptadosLoading && filteredAceptados.map((item) => {
+                  const noProducto = !item.producto_id
+                  const isAlreadyAdded = noProducto ? alreadyAddedSolIds.has(String(item.solicitud_id)) : alreadyAddedIds.has(String(item.producto_id))
+                  const isSelected = aceptadosSelected.has(item.solicitud_id)
+                  const oemText = (item.oem_codigos || []).join(', ') || '-'
+                  const borradorUsage = borradorProductMap(item)
+                  const inBorrador = borradorUsage.length > 0
+                  return (
+                    <div
+                      key={item.solicitud_id}
+                      className={`create-user__locations-row importaciones-aceptados__row${isSelected ? ' importaciones-aceptados__row--selected' : ''}${noProducto ? ' importaciones-aceptados__row--no-catalogo' : ''}${inBorrador ? ' importaciones-aceptados__row--in-borrador' : ''}`}
+                      style={{ cursor: isAlreadyAdded ? 'default' : 'pointer', opacity: isAlreadyAdded ? 0.45 : 1 }}
+                      onClick={() => { if (!isAlreadyAdded) handleToggleAceptado(item.solicitud_id) }}
+                    >
+                      <span>
+                        <input type="checkbox" checked={isSelected} disabled={isAlreadyAdded} onChange={() => handleToggleAceptado(item.solicitud_id)} onClick={(e) => e.stopPropagation()} style={{ cursor: isAlreadyAdded ? 'default' : 'pointer' }} />
+                      </span>
+                      <span style={{ fontSize: '0.79rem', color: 'var(--color-muted, #888)' }}>
+                        <span className="imp-cell-text">{item.solicitud_codigo || '-'}</span>
+                      </span>
+                      <span>
+                        <span className="imp-cell-text">
+                          {item.codigo || '-'}
+                          {noProducto && <span className="importaciones-aceptados__no-catalogo-badge" title="Sin producto en catálogo">Sin catálogo</span>}
+                        </span>
+                      </span>
+                      <span title={item.nombre}><span className="imp-cell-text">{item.nombre || '-'}</span></span>
+                      <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{oemText}</span></span>
+                      <span>{item.cantidad ?? '-'}</span>
+                      <span style={{ gap: 4 }}>
+                        {inBorrador ? (
+                          <>
+                            <span style={{ fontSize: '0.72rem', color: '#92400e', whiteSpace: 'nowrap' }}>
+                              {borradorUsage.length === 1 ? '1 borrador' : `${borradorUsage.length} borradores`}
+                            </span>
+                            <button
+                              type="button"
+                              className="movimientos-table__product-eye"
+                              onMouseEnter={(e) => { e.stopPropagation(); showBorradorPopup(e, borradorUsage) }}
+                              onMouseLeave={hideBorradorPopup}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <i className="pi pi-eye" />
+                            </button>
+                          </>
+                        ) : (
+                          <span style={{ color: '#9ca3af' }}>-</span>
+                        )}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="imp-aceptados-popup__footer">
+              <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowAceptadosView(false)}>Regresar</button>
+              <button type="button" className="create-user__action create-user__action--primary" disabled={aceptadosSelected.size === 0} onClick={handleConfirmAceptados}>
+                {aceptadosSelected.size > 0 ? `Agregar (${aceptadosSelected.size})` : 'Agregar'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
+    {borradorPopup && createPortal(
+      <div
+        className="imp-borrador-popup"
+        style={{ top: borradorPopup.top, left: borradorPopup.left }}
+        onMouseEnter={cancelHideBorradorPopup}
+        onMouseLeave={hideBorradorPopup}
+      >
+        {borradorPopup.imps.map((bImp) => (
+          <button
+            key={bImp.id}
+            type="button"
+            className="imp-borrador-popup__item"
+            onClick={() => { setBorradorPopup(null); setShowAceptadosView(false); onOpenBorrador?.(bImp) }}
+          >
+            <i className="pi pi-file-edit" style={{ fontSize: '0.72rem', opacity: 0.6 }} />
+            {bImp.codigo}
+          </button>
+        ))}
+      </div>,
+      document.body
+    )}
+    </>
   )
 }
 
-function ImportacionesTable({ token, moduleActions, status: statusProp, onError }) {
+function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrador }) {
+  const [activeTab, setActiveTab] = useState('productos')
+  const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '' })
+  const [productQuery, setProductQuery] = useState('')
+  const [productOptions, setProductOptions] = useState([])
+  const [productLoading, setProductLoading] = useState(false)
+  const [showProductDropdown, setShowProductDropdown] = useState(false)
+  const [details, setDetails] = useState([])
+  const [submitting, setSubmitting] = useState(false)
+  const [invalidQtyKeys, setInvalidQtyKeys] = useState(new Set())
+  const [showAceptadosView, setShowAceptadosView] = useState(false)
+  const [aceptadosItems, setAceptadosItems] = useState([])
+  const [aceptadosLoading, setAceptadosLoading] = useState(false)
+  const [aceptadosSelected, setAceptadosSelected] = useState(new Set())
+  const [aceptadosSearch, setAceptadosSearch] = useState('')
+  const [aceptadosCount, setAceptadosCount] = useState(null)
+  const [borradorImps, setBorradorImps] = useState([])
+  const [borradorPopup, setBorradorPopup] = useState(null)
+  const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
+  const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
+
+  const modalRef = useRef(null)
+  const toastRef = useRef(null)
+  const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const modalSizeRef = useRef(modalSize)
+  const productTimerRef = useRef(null)
+  const borradorPopupTimerRef = useRef(null)
+  const productDropdownRef = useRef(null)
+  const isFirstOpenRef = useRef(true)
+  const [productPanelStyle, setProductPanelStyle] = useState(null)
+
+  const selectedCasa = imp?.casa_comercial || null
+  const detailDraftQuantity = Number(detailDraft.cantidad)
+  const canAddDetailDraft = Boolean(
+    detailDraft.producto && Number.isFinite(detailDraftQuantity) && detailDraftQuantity > 0
+  )
+
+  useEffect(() => { modalSizeRef.current = modalSize }, [modalSize])
+
+  useLayoutEffect(() => {
+    if (!open) { isFirstOpenRef.current = true; return }
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+    const nextWidth = Math.min(MIN_WIDTH, availableWidth)
+    const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
+    const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
+    const centerY = Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING)
+    setModalSize({ width: nextWidth, height: nextHeight })
+    if (isFirstOpenRef.current) isFirstOpenRef.current = false
+    setModalPosition({ x: centerX, y: centerY })
+  }, [open])
+
+  useLayoutEffect(() => {
+    if (!showProductDropdown || !productDropdownRef.current) { setProductPanelStyle(null); return }
+    const rect = productDropdownRef.current.getBoundingClientRect()
+    const panelMaxHeight = Math.min(280, window.innerHeight - rect.bottom - 8)
+    const panelWidth = Math.min(Math.max(rect.width, 520), window.innerWidth - VIEWPORT_PADDING * 2)
+    const panelLeft = clamp(rect.left, VIEWPORT_PADDING, Math.max(window.innerWidth - panelWidth - VIEWPORT_PADDING, VIEWPORT_PADDING))
+    setProductPanelStyle({
+      position: 'fixed', top: rect.bottom + 4, left: panelLeft, width: panelWidth,
+      maxHeight: Math.max(panelMaxHeight, 120), zIndex: 9999,
+    })
+  }, [showProductDropdown, modalPosition])
+
+  useEffect(() => {
+    const handleMouseMove = (event) => {
+      if (!modalDrag.current.active) return
+      event.preventDefault()
+      const newX = event.clientX - modalDrag.current.offsetX
+      const newY = event.clientY - modalDrag.current.offsetY
+      const maxX = Math.max(window.innerWidth - modalSizeRef.current.width - VIEWPORT_PADDING, VIEWPORT_PADDING)
+      const modalHeight = typeof modalSizeRef.current.height === 'number'
+        ? modalSizeRef.current.height : (modalRef.current?.offsetHeight || 0)
+      const maxY = Math.max(window.innerHeight - modalHeight - VIEWPORT_PADDING, VIEWPORT_PADDING)
+      setModalPosition({ x: clamp(newX, VIEWPORT_PADDING, maxX), y: clamp(newY, VIEWPORT_PADDING, maxY) })
+    }
+    const handleMouseUp = () => { modalDrag.current.active = false }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp) }
+  }, [])
+
+  const handleModalMouseDown = (event) => {
+    if (!modalRef.current) return
+    const rect = modalRef.current.getBoundingClientRect()
+    modalDrag.current = { active: true, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top }
+  }
+
+  useEffect(() => {
+    if (!open || !imp) return
+    const loaded = (imp.detalles || []).map((d, i) => {
+      if (d.producto?.id) {
+        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || '') }
+      }
+      return {
+        _key: 'sc_' + (d.id ?? i), producto: null,
+        codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '',
+        cantidad: String(d.cantidad || ''),
+      }
+    })
+    setDetails(loaded)
+    setDetailDraft({ producto: null, cantidad: '' })
+    setActiveTab('productos')
+    setInvalidQtyKeys(new Set())
+    setShowAceptadosView(false)
+    setAceptadosItems([])
+    setAceptadosSelected(new Set())
+    setAceptadosSearch('')
+  }, [open, imp])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const handleMouseDown = (event) => {
+      const inProduct = productDropdownRef.current?.contains(event.target) || event.target.closest?.('[data-product-portal-edit]')
+      if (!inProduct) setShowProductDropdown(false)
+    }
+    const handleKeyDown = (event) => { if (event.key === 'Escape') onClose?.() }
+    document.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => { document.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('keydown', handleKeyDown) }
+  }, [open, onClose])
+
+  useEffect(() => {
+    if (!selectedCasa?.id || !token || !open) { setAceptadosCount(null); return undefined }
+    let cancelled = false
+    authFetch(`${API_URL}/solicitudes/solicitudes/aceptados-por-casa/?casa_comercial_id=${selectedCasa.id}`, {}, token)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((payload) => { if (!cancelled) setAceptadosCount(parseApiList(payload).length) })
+      .catch(() => { if (!cancelled) setAceptadosCount(null) })
+    return () => { cancelled = true }
+  }, [open, selectedCasa?.id, token])
+
+  useEffect(() => {
+    if (!showAceptadosView || !selectedCasa?.id || !token) return undefined
+    setAceptadosSelected(new Set())
+    setAceptadosSearch('')
+    setAceptadosLoading(true)
+    let cancelled = false
+    authFetch(`${API_URL}/solicitudes/solicitudes/aceptados-por-casa/?casa_comercial_id=${selectedCasa.id}`, {}, token)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((payload) => { if (!cancelled) setAceptadosItems(parseApiList(payload)) })
+      .catch(() => { if (!cancelled) setAceptadosItems([]) })
+      .finally(() => { if (!cancelled) setAceptadosLoading(false) })
+    return () => { cancelled = true }
+  }, [showAceptadosView, selectedCasa?.id, token])
+
+  useEffect(() => {
+    if (!showAceptadosView || !selectedCasa?.id || !token) { setBorradorImps([]); return undefined }
+    let cancelled = false
+    authFetch(`${API_URL}/importaciones/importaciones/?estado=borrador&casa_comercial_id=${selectedCasa.id}&page_size=200`, {}, token)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((payload) => { if (!cancelled) setBorradorImps(parseApiList(payload)) })
+      .catch(() => { if (!cancelled) setBorradorImps([]) })
+    return () => { cancelled = true }
+  }, [showAceptadosView, selectedCasa?.id, token])
+
+  const searchProducts = useCallback((term) => {
+    if (!token) return
+    setProductLoading(true)
+    const params = new URLSearchParams()
+    params.set('page_size', '10')
+    params.set('modulo', 'solicitudes')
+    if (term) params.set('search', term)
+    if (selectedCasa?.nombre) params.set('casa_comercial', selectedCasa.nombre)
+    authFetch(`${API_URL}/productos/listado/?${params.toString()}`, {}, token)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudieron cargar los productos.'))
+        return response.json()
+      })
+      .then((payload) => {
+        const selectedIds = new Set(details.filter((item) => item.producto?.id).map((item) => String(item.producto.id)))
+        setProductOptions(parseApiList(payload).filter((product) => !selectedIds.has(String(product.id))))
+      })
+      .catch((error) => toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 }))
+      .finally(() => setProductLoading(false))
+  }, [details, selectedCasa, token])
+
+  useEffect(() => {
+    if (!open || !showProductDropdown) return undefined
+    if (productTimerRef.current) clearTimeout(productTimerRef.current)
+    productTimerRef.current = setTimeout(() => searchProducts(productQuery.trim()), 280)
+    return () => clearTimeout(productTimerRef.current)
+  }, [open, productQuery, searchProducts, showProductDropdown])
+
+  const handleAddProduct = (product, cantidad = '') => {
+    const n = Number(cantidad)
+    if (!Number.isFinite(n) || n <= 0) return
+    if (details.some((d) => d.producto?.id && String(d.producto.id) === String(product.id))) {
+      toastRef.current?.show({ severity: 'warn', summary: 'Advertencia', detail: 'Este producto ya fue agregado.', life: 3000 })
+      return
+    }
+    setDetails((prev) => [...prev, { _key: String(product.id), producto: product, cantidad: String(cantidad).trim() }])
+    setProductQuery('')
+    setProductOptions([])
+    setShowProductDropdown(false)
+    setDetailDraft({ producto: null, cantidad: '' })
+  }
+
+  const handleQuantityChange = (_key, value) => {
+    const clean = String(value || '').replace(/[^\d]/g, '')
+    setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, cantidad: clean } : item))
+    if (invalidQtyKeys.has(_key)) {
+      setInvalidQtyKeys((prev) => { const next = new Set(prev); next.delete(_key); return next })
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!details.length) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Agrega al menos un producto.', life: 4000 })
+      return
+    }
+    const badKeys = new Set(
+      details.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 }).map((item) => item._key)
+    )
+    if (badKeys.size > 0) {
+      setInvalidQtyKeys(badKeys)
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Todas las cantidades deben ser mayores a cero.', life: 4000 })
+      return
+    }
+    const normalizedDetails = details.map((item) => {
+      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0) }
+      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0) }
+    })
+    setSubmitting(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/`,
+        { method: 'PATCH', body: JSON.stringify({ detalles: normalizedDetails }) },
+        token
+      )
+      if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo guardar la importación.'))
+      const payload = await response.json()
+      onSaved?.(payload)
+      onClose?.()
+    } catch (error) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const alreadyAddedIds = useMemo(
+    () => new Set(details.filter((d) => d.producto?.id).map((d) => String(d.producto.id))),
+    [details]
+  )
+  const alreadyAddedSolIds = useMemo(
+    () => new Set(details.filter((d) => !d.producto?.id && d._solId).map((d) => String(d._solId))),
+    [details]
+  )
+
+  const filteredAceptados = useMemo(() => {
+    const q = aceptadosSearch.trim().toLowerCase()
+    if (!q) return aceptadosItems
+    return aceptadosItems.filter((item) =>
+      String(item.codigo || '').toLowerCase().includes(q) ||
+      String(item.nombre || '').toLowerCase().includes(q) ||
+      String(item.solicitud_codigo || '').toLowerCase().includes(q) ||
+      (item.oem_codigos || []).some((oem) => String(oem).toLowerCase().includes(q))
+    )
+  }, [aceptadosItems, aceptadosSearch])
+
+  const selectableAceptados = useMemo(
+    () => filteredAceptados.filter((item) => {
+      if (item.producto_id) return !alreadyAddedIds.has(String(item.producto_id))
+      return !alreadyAddedSolIds.has(String(item.solicitud_id))
+    }),
+    [filteredAceptados, alreadyAddedIds, alreadyAddedSolIds]
+  )
+
+  const allSelectableSelected = selectableAceptados.length > 0 && selectableAceptados.every((item) => aceptadosSelected.has(item.solicitud_id))
+
+  const handleToggleAceptado = (solId) => {
+    setAceptadosSelected((prev) => { const next = new Set(prev); if (next.has(solId)) next.delete(solId); else next.add(solId); return next })
+  }
+  const handleToggleAllAceptados = () => {
+    if (allSelectableSelected) setAceptadosSelected(new Set())
+    else setAceptadosSelected(new Set(selectableAceptados.map((i) => i.solicitud_id)))
+  }
+  const handleConfirmAceptados = () => {
+    handleAddFromAceptados(filteredAceptados.filter((item) => aceptadosSelected.has(item.solicitud_id)))
+    setShowAceptadosView(false)
+  }
+  const handleAddFromAceptados = useCallback((aceptados) => {
+    setDetails((prev) => {
+      const next = [...prev]
+      for (const item of aceptados) {
+        if (item.producto_id) {
+          const pid = String(item.producto_id)
+          const idx = next.findIndex((d) => d._key === pid)
+          if (idx >= 0) {
+            const merged = { ...next[idx] }
+            merged.cantidad = String(Number(merged.cantidad || 0) + Number(item.cantidad || 0))
+            next[idx] = merged
+          } else {
+            next.push({
+              _key: pid,
+              producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', ') },
+              cantidad: String(item.cantidad || ''),
+            })
+          }
+        } else {
+          const solKey = 'sol_' + item.solicitud_id
+          const idx = next.findIndex((d) => d._key === solKey)
+          if (idx >= 0) {
+            const merged = { ...next[idx] }
+            merged.cantidad = String(Number(merged.cantidad || 0) + Number(item.cantidad || 0))
+            next[idx] = merged
+          } else {
+            next.push({
+              _key: solKey, _solId: item.solicitud_id, producto: null,
+              codigo: item.codigo || '', nombre: item.nombre || '',
+              oem: (item.oem_codigos || []).join(', '), cantidad: String(item.cantidad || ''),
+            })
+          }
+        }
+      }
+      return next
+    })
+  }, [])
+
+  const borradorProductMap = useMemo(() => {
+    const byId = {}
+    const byNombre = {}
+    for (const bImp of borradorImps) {
+      if (imp?.id && bImp.id === imp.id) continue
+      for (const d of (bImp.detalles || [])) {
+        if (d.producto?.id) {
+          const pid = String(d.producto.id)
+          if (!byId[pid]) byId[pid] = []
+          if (!byId[pid].some((x) => x.id === bImp.id)) byId[pid].push(bImp)
+        } else {
+          const key = String(d.nombre || '').trim().toLowerCase()
+          if (key) {
+            if (!byNombre[key]) byNombre[key] = []
+            if (!byNombre[key].some((x) => x.id === bImp.id)) byNombre[key].push(bImp)
+          }
+        }
+      }
+    }
+    return (item) => {
+      if (item.producto_id) return byId[String(item.producto_id)] || []
+      const key = String(item.nombre || '').trim().toLowerCase()
+      return key ? (byNombre[key] || []) : []
+    }
+  }, [borradorImps, imp?.id])
+
+  const showBorradorPopup = (event, imps) => {
+    if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    let left = rect.right + 8
+    if (left + 220 > window.innerWidth - 8) left = Math.max(8, rect.left - 220 - 8)
+    setBorradorPopup({ top: Math.min(rect.top - 4, window.innerHeight - 120), left, imps })
+  }
+  const hideBorradorPopup = () => {
+    borradorPopupTimerRef.current = setTimeout(() => setBorradorPopup(null), 150)
+  }
+  const cancelHideBorradorPopup = () => { if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current) }
+
+  if (!open || !imp) return null
+
+  return (
+    <>
+      <Toast ref={toastRef} baseZIndex={12100} />
+      <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: `${VIEWPORT_PADDING}px` }}>
+        <div
+          ref={modalRef}
+          className="create-user__modal"
+          style={{
+            top: modalPosition.y, left: modalPosition.x,
+            width: modalSize.width, height: modalSize.height,
+            minWidth: 0, minHeight: 0,
+            maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
+            maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+          }}
+        >
+          <header className="create-user__header" onMouseDown={handleModalMouseDown}>
+            <div className="create-user__header-text">
+              <h3>
+                Editar importación
+                <span style={{ fontWeight: 400, fontSize: '0.88em', opacity: 0.6, marginLeft: 8 }}>{imp.codigo}</span>
+              </h3>
+            </div>
+            <div className="create-user__header-actions">
+              <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} disabled={submitting} aria-label="Cerrar">
+                <i className="pi pi-times" aria-hidden="true" />
+              </button>
+            </div>
+          </header>
+
+          <form className="create-user__form" noValidate onSubmit={(e) => { e.preventDefault(); handleSubmit() }}>
+            <div className="create-user__tabs create-salida__tabs" role="tablist">
+              <button type="button" className={`create-user__tab${activeTab === 'productos' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('productos')}>
+                Productos {details.length > 0 && `(${details.length})`}
+              </button>
+              <button type="button" className={`create-user__tab${activeTab === 'general' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('general')}>
+                General
+              </button>
+            </div>
+
+            <div className="create-user__content create-salida__content">
+              <div className="create-user__body">
+                {activeTab === 'general' && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <p className="create-user__eyebrow">General</p>
+                        <h4>Información de la importación</h4>
+                      </div>
+                    </div>
+                    <div className="create-salida__field-groups">
+                      <div className="create-salida__field-group create-salida__field-group--defined">
+                        <div className="create-user__grid create-user__grid--two">
+                          <StaticFieldDisplay label="Código" value={imp.codigo} />
+                          <StaticFieldDisplay label="Fecha" value={imp.fecha || '-'} />
+                          <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(selectedCasa)} fullWidth />
+                          <StaticFieldDisplay
+                            label="Días de entrega"
+                            value={imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : ''}
+                          />
+                          {selectedCasa?.pais?.nombre && (
+                            <div className="create-user__field create-salida__static-field">
+                              <span>País</span>
+                              <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {(() => {
+                                  const flagUrl = getFlagUrl(selectedCasa.pais?.codigo_pais)
+                                  return (
+                                    <span className={`create-user__flag${flagUrl ? '' : ' is-empty'}`} aria-hidden="true" style={{ flexShrink: 0 }}>
+                                      {flagUrl ? <img src={flagUrl} alt="" /> : '□'}
+                                    </span>
+                                  )
+                                })()}
+                                {String(selectedCasa.pais.nombre).trim()}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {activeTab === 'productos' && !showAceptadosView && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <p className="create-user__eyebrow">Productos</p>
+                        <h4>Listado de productos</h4>
+                      </div>
+                      <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={() => setShowAceptadosView(true)}
+                          style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                          disabled={aceptadosCount === 0}
+                        >
+                          + Aceptados de solicitudes
+                        </button>
+                      </span>
+                    </div>
+
+                    <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table">
+                      <div className="create-user__locations-row create-user__locations-row--head">
+                        <span>Código</span><span>Nombre</span><span>OEM</span><span>Cantidad</span><span>Acciones</span>
+                      </div>
+
+                      <div className="create-user__locations-row create-user__locations-row--form">
+                        <span className="create-salida__product-picker create-salida__product-code-cell">
+                          <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
+                            <button
+                              type="button"
+                              className="create-user__dropdown-trigger"
+                              onClick={() => {
+                                setShowProductDropdown((prev) => !prev)
+                                if (!showProductDropdown) { setProductQuery(''); searchProducts('') }
+                              }}
+                            >
+                              <span>{detailDraft.producto ? String(detailDraft.producto.codigo || '').trim() : 'Selecciona un código'}</span>
+                              <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
+                            </button>
+                            {showProductDropdown && productPanelStyle && createPortal(
+                              <div data-product-portal-edit className="create-user__dropdown-panel" style={productPanelStyle}>
+                                <div className="create-user__dropdown-search">
+                                  <i className="pi pi-search" />
+                                  <input
+                                    type="text"
+                                    placeholder="Buscar código o nombre"
+                                    value={productQuery}
+                                    onChange={(e) => setProductQuery(e.target.value)}
+                                    autoFocus
+                                    autoComplete="off"
+                                  />
+                                </div>
+                                <div className="create-user__dropdown-results">
+                                  {productLoading && <small className="muted">Buscando productos...</small>}
+                                  {!productLoading && !productQuery.trim() && !productOptions.length && <small className="muted">Escribe para buscar.</small>}
+                                  {!productLoading && productQuery.trim() && !productOptions.length && <small className="muted">Sin resultados.</small>}
+                                  {productOptions.length > 0 && (
+                                    <div className="create-salida__results-header">
+                                      <span>Código</span><span>Nombre</span><span>Stock</span>
+                                    </div>
+                                  )}
+                                  {productOptions.map((product) => {
+                                    const isAlreadyAdded = details.some((d) => d.producto?.id && String(d.producto.id) === String(product.id))
+                                    const isSelected = String(detailDraft.producto?.id) === String(product.id)
+                                    return (
+                                      <button
+                                        key={product.id}
+                                        type="button"
+                                        className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={() => { setDetailDraft({ producto: product, cantidad: '' }); setProductQuery(''); setShowProductDropdown(false); setProductOptions([]) }}
+                                        disabled={isAlreadyAdded}
+                                        title={isAlreadyAdded ? 'Ya agregado' : undefined}
+                                      >
+                                        <span className="result-codigo">{String(product.codigo || '').trim()}</span>
+                                        <span className="result-nombre">{String(product.nombre || '').trim()}</span>
+                                        <span className="result-stock">{Number(product.total_stock ?? 0)}</span>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>,
+                              document.body
+                            )}
+                          </div>
+                        </span>
+                        <span className="create-salida__product-name-cell">
+                          <span className="create-salida__table-static-value create-salida__table-static-value--name">
+                            {detailDraft.producto ? String(detailDraft.producto.nombre || '').trim() : '-'}
+                          </span>
+                        </span>
+                        <span className="create-salida__table-static-value">
+                          {detailDraft.producto ? String(detailDraft.producto.oem || detailDraft.producto.referencia || '').trim() || '-' : '-'}
+                        </span>
+                        <span>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={detailDraft.cantidad}
+                            onChange={(e) => setDetailDraft((prev) => ({ ...prev, cantidad: e.target.value }))}
+                            disabled={!detailDraft.producto}
+                          />
+                        </span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__ghost"
+                            disabled={!canAddDetailDraft}
+                            onClick={() => { if (!canAddDetailDraft) return; handleAddProduct(detailDraft.producto, detailDraft.cantidad); setDetailDraft({ producto: null, cantidad: '' }) }}
+                          >
+                            Agregar
+                          </button>
+                        </span>
+                      </div>
+
+                      {!details.length ? (
+                        <div className="create-user__locations-row create-user__locations-row--empty"><span>Sin productos agregados.</span></div>
+                      ) : details.map((item) => {
+                        const sinCatalogo = !item.producto?.id
+                        const codigo = item.producto?.codigo || item.codigo || '—'
+                        const nombre = item.producto?.nombre || item.nombre || ''
+                        const oem = String(item.producto?.oem || item.oem || item.producto?.referencia || '').trim() || '-'
+                        return (
+                          <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
+                            <span>
+                              {codigo}
+                              {sinCatalogo && <span className="importaciones-aceptados__no-catalogo-badge" style={{ marginLeft: 6 }}>Sin catálogo</span>}
+                            </span>
+                            <span title={nombre}><span className="create-salida__product-name-text">{nombre}</span></span>
+                            <span>{oem}</span>
+                            <span>
+                              <input
+                                type="number"
+                                value={item.cantidad}
+                                onChange={(e) => handleQuantityChange(item._key, e.target.value)}
+                                style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
+                              />
+                            </span>
+                            <span className="create-user__locations-cell create-user__locations-cell--action">
+                              <button
+                                type="button"
+                                className="create-user__locations-remove"
+                                onClick={() => setDetails((prev) => prev.filter((d) => d._key !== item._key))}
+                              >
+                                x
+                              </button>
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )}
+              </div>
+            </div>
+
+            <div className="create-user__footer">
+              <div className="user-details__footer-left">
+                <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={submitting}>
+                  Cancelar
+                </button>
+              </div>
+              <div className="user-details__footer-right">
+                <button type="submit" className="create-user__action create-user__action--primary" disabled={submitting}>
+                  {submitting ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        {showAceptadosView && createPortal(
+          <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAceptadosView(false) }}>
+            <div className="imp-aceptados-popup__dialog">
+              <header className="imp-aceptados-popup__header">
+                <div>
+                  <h3>Aceptados de solicitudes</h3>
+                  {selectedCasa?.nombre && <p>{formatCasaLabel(selectedCasa)}</p>}
+                </div>
+                <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowAceptadosView(false)} aria-label="Cerrar">
+                  <i className="pi pi-times" />
+                </button>
+              </header>
+              <div className="imp-aceptados-popup__search">
+                <i className="pi pi-search" />
+                <input
+                  type="text"
+                  placeholder="Buscar por código, nombre, OEM o solicitud..."
+                  value={aceptadosSearch}
+                  onChange={(e) => setAceptadosSearch(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="imp-aceptados-popup__body">
+                <div className="create-user__locations-table importaciones-aceptados__table">
+                  <div className="create-user__locations-row create-user__locations-row--head">
+                    <span>
+                      <input type="checkbox" checked={allSelectableSelected} disabled={selectableAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
+                    </span>
+                    <span>Solicitud</span><span>Código JP</span><span>Nombre</span><span>OEMs</span><span>Cant.</span><span>Borradores</span>
+                  </div>
+                  {aceptadosLoading && (
+                    <div className="create-user__locations-row create-user__locations-row--empty"><span>Cargando...</span></div>
+                  )}
+                  {!aceptadosLoading && filteredAceptados.length === 0 && (
+                    <div className="create-user__locations-row create-user__locations-row--empty">
+                      <span>{aceptadosItems.length === 0 ? 'No hay productos aceptados.' : 'Sin resultados.'}</span>
+                    </div>
+                  )}
+                  {!aceptadosLoading && filteredAceptados.map((item) => {
+                    const noProducto = !item.producto_id
+                    const isAlreadyAdded = noProducto ? alreadyAddedSolIds.has(String(item.solicitud_id)) : alreadyAddedIds.has(String(item.producto_id))
+                    const isSelected = aceptadosSelected.has(item.solicitud_id)
+                    const oemText = (item.oem_codigos || []).join(', ') || '-'
+                    const borradorUsage = borradorProductMap(item)
+                    const inBorrador = borradorUsage.length > 0
+                    return (
+                      <div
+                        key={item.solicitud_id}
+                        className={`create-user__locations-row importaciones-aceptados__row${isSelected ? ' importaciones-aceptados__row--selected' : ''}${noProducto ? ' importaciones-aceptados__row--no-catalogo' : ''}${inBorrador ? ' importaciones-aceptados__row--in-borrador' : ''}`}
+                        style={{ cursor: isAlreadyAdded ? 'default' : 'pointer', opacity: isAlreadyAdded ? 0.45 : 1 }}
+                        onClick={() => { if (!isAlreadyAdded) handleToggleAceptado(item.solicitud_id) }}
+                      >
+                        <span>
+                          <input type="checkbox" checked={isSelected} disabled={isAlreadyAdded} onChange={() => handleToggleAceptado(item.solicitud_id)} onClick={(e) => e.stopPropagation()} style={{ cursor: isAlreadyAdded ? 'default' : 'pointer' }} />
+                        </span>
+                        <span style={{ fontSize: '0.79rem', color: 'var(--color-muted, #888)' }}>
+                          <span className="imp-cell-text">{item.solicitud_codigo || '-'}</span>
+                        </span>
+                        <span>
+                          <span className="imp-cell-text">
+                            {item.codigo || '-'}
+                            {noProducto && <span className="importaciones-aceptados__no-catalogo-badge" title="Sin producto en catálogo">Sin catálogo</span>}
+                          </span>
+                        </span>
+                        <span title={item.nombre}><span className="imp-cell-text">{item.nombre || '-'}</span></span>
+                        <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{oemText}</span></span>
+                        <span>{item.cantidad ?? '-'}</span>
+                        <span style={{ gap: 4 }}>
+                          {inBorrador ? (
+                            <>
+                              <span style={{ fontSize: '0.72rem', color: '#92400e', whiteSpace: 'nowrap' }}>
+                                {borradorUsage.length === 1 ? '1 borrador' : `${borradorUsage.length} borradores`}
+                              </span>
+                              <button
+                                type="button"
+                                className="movimientos-table__product-eye"
+                                onMouseEnter={(e) => { e.stopPropagation(); showBorradorPopup(e, borradorUsage) }}
+                                onMouseLeave={hideBorradorPopup}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <i className="pi pi-eye" />
+                              </button>
+                            </>
+                          ) : (
+                            <span style={{ color: '#9ca3af' }}>-</span>
+                          )}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="imp-aceptados-popup__footer">
+                <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowAceptadosView(false)}>Regresar</button>
+                <button type="button" className="create-user__action create-user__action--primary" disabled={aceptadosSelected.size === 0} onClick={handleConfirmAceptados}>
+                  {aceptadosSelected.size > 0 ? `Agregar (${aceptadosSelected.size})` : 'Agregar'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+      </div>
+      {borradorPopup && createPortal(
+        <div
+          className="imp-borrador-popup"
+          style={{ top: borradorPopup.top, left: borradorPopup.left }}
+          onMouseEnter={cancelHideBorradorPopup}
+          onMouseLeave={hideBorradorPopup}
+        >
+          {borradorPopup.imps.map((bImp) => (
+            <button
+              key={bImp.id}
+              type="button"
+              className="imp-borrador-popup__item"
+              onClick={() => { setBorradorPopup(null); setShowAceptadosView(false); onOpenBorrador?.(bImp) }}
+            >
+              <i className="pi pi-file-edit" style={{ fontSize: '0.72rem', opacity: 0.6 }} />
+              {bImp.codigo}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
+function ImportacionesTable({ token, moduleActions, status: statusProp, onError, pendingOpenBorradorData, onPendingOpenBorradorHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
   const _widthsClearedRef = useRef(null)
@@ -859,12 +2032,26 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
     clearSavedColumnWidths('importaciones-table-state')
   }
 
-  const [activeStatus, setActiveStatus] = useState('en_proceso')
+  const [activeStatus, setActiveStatus] = useState('borrador')
   const status = statusProp || activeStatus
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [selectedImp, setSelectedImp] = useState(null)
+  const [showImpDetails, setShowImpDetails] = useState(false)
+  const [editImp, setEditImp] = useState(null)
+  const [showEditImp, setShowEditImp] = useState(false)
+
+  useEffect(() => {
+    if (!pendingOpenBorradorData) return
+    setEditImp(pendingOpenBorradorData)
+    setShowEditImp(true)
+    onPendingOpenBorradorHandled?.()
+  }, [pendingOpenBorradorData]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [productHoverCard, setProductHoverCard] = useState(null)
+  const productHoverHideTimerRef = useRef(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
   const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
   const globalSearchDebounceRef = useRef(null)
@@ -878,14 +2065,22 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
   const canCreate = moduleActions?.puede_crear !== false
 
   const normalizeList = useCallback((list) =>
-    list.map((item) => ({
-      ...item,
-      casa_nombre: item?.casa_comercial?.nombre ?? '-',
-      productos_resumen: (item?.detalles || [])
-        .slice(0, 3)
-        .map((d) => `${d.producto?.codigo || 'Prod'} x${d.cantidad}`)
-        .join(', ') + ((item?.detalles || []).length > 3 ? ` +${item.detalles.length - 3}` : ''),
-    }))
+    list.map((item) => {
+      const detalles = item?.detalles || []
+      const productos = detalles.map((d) => ({
+        codigo: d.producto?.codigo || d.codigo || '-',
+        nombre: d.producto?.nombre || d.nombre || '-',
+        oem: d.producto?.oem || d.oem || '-',
+        cantidad: d.cantidad ?? 0,
+        sinCatalogo: !d.producto?.id,
+      }))
+      return {
+        ...item,
+        casa_nombre: item?.casa_comercial?.nombre ?? '-',
+        productos_resumen: detalles.slice(0, 3).map((d) => `${d.producto?.codigo || d.codigo || 'Prod'} x${d.cantidad}`).join(', ') + (detalles.length > 3 ? ` +${detalles.length - 3}` : ''),
+        productos,
+      }
+    })
   , [])
 
   const fetchItems = useCallback(async () => {
@@ -934,6 +2129,141 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
     setActiveStatus(nextStatus)
   }
 
+  const clearProductHoverTimer = useCallback(() => {
+    if (!productHoverHideTimerRef.current) return
+    clearTimeout(productHoverHideTimerRef.current)
+    productHoverHideTimerRef.current = null
+  }, [])
+
+  const hideProductHoverCard = useCallback(() => {
+    clearProductHoverTimer()
+    setProductHoverCard(null)
+  }, [clearProductHoverTimer])
+
+  const scheduleHideProductHoverCard = useCallback(() => {
+    clearProductHoverTimer()
+    productHoverHideTimerRef.current = setTimeout(() => {
+      productHoverHideTimerRef.current = null
+      setProductHoverCard(null)
+    }, 120)
+  }, [clearProductHoverTimer])
+
+  const showProductHoverCard = useCallback((event, productos) => {
+    const list = Array.isArray(productos) ? productos : []
+    if (!list.length) { hideProductHoverCard(); return }
+    clearProductHoverTimer()
+    const rect = event?.currentTarget?.getBoundingClientRect?.()
+    if (!rect) return
+    let left = rect.right + 10
+    if (left + IMP_HOVER_WIDTH > window.innerWidth - IMP_HOVER_MARGIN) {
+      left = Math.max(IMP_HOVER_MARGIN, rect.left - IMP_HOVER_WIDTH - 10)
+    }
+    const top = Math.min(Math.max(rect.top - 8, IMP_HOVER_MARGIN), Math.max(window.innerHeight - 320, IMP_HOVER_MARGIN))
+    setProductHoverCard({ left, top, productos: list })
+  }, [clearProductHoverTimer, hideProductHoverCard])
+
+  useEffect(() => () => clearProductHoverTimer(), [clearProductHoverTimer])
+  useEffect(() => {
+    const handler = () => hideProductHoverCard()
+    window.addEventListener('scroll', handler, true)
+    return () => window.removeEventListener('scroll', handler, true)
+  }, [hideProductHoverCard])
+
+  const importacionProductBodyTemplate = useCallback((rowData) => {
+    const productos = Array.isArray(rowData?.productos) ? rowData.productos : []
+    if (!productos.length) return <span style={{ color: '#9ca3af' }}>-</span>
+    const visible = productos.slice(0, 3)
+    const hasMore = productos.length > 3
+    const codesText = visible.map((p) => p.oem || p.codigo).join(', ') + (hasMore ? '...' : '')
+    return (
+      <div className="movimientos-table__product-cell">
+        <div className="movimientos-table__product-lines">
+          <span className="movimientos-table__product-main" title={codesText}>{codesText}</span>
+        </div>
+        <button
+          type="button"
+          className="movimientos-table__product-eye"
+          aria-label="Ver productos"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseEnter={(e) => showProductHoverCard(e, productos)}
+          onMouseLeave={scheduleHideProductHoverCard}
+          onFocus={(e) => showProductHoverCard(e, productos)}
+          onBlur={scheduleHideProductHoverCard}
+        >
+          <i className="pi pi-eye" />
+        </button>
+      </div>
+    )
+  }, [showProductHoverCard, scheduleHideProductHoverCard])
+
+  const estadoBodyTemplate = useCallback((rowData) => {
+    const badge = STATUS_BADGE[rowData?.estado] || { label: rowData?.estado || '-', color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
+    return (
+      <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.color, whiteSpace: 'nowrap' }}>
+        {badge.label}
+      </span>
+    )
+  }, [])
+
+  const exportColumns = [
+    { key: 'codigo', header: 'Importación' },
+    { key: 'fecha', header: 'Fecha' },
+    { key: 'casa_nombre', header: 'Casa comercial' },
+    { key: 'estado_label', header: 'Estado' },
+    { key: 'dias_entrega_estimados', header: 'Días estimados' },
+    { key: 'prod_codigo', header: 'Código' },
+    { key: 'prod_nombre', header: 'Nombre' },
+    { key: 'prod_oem', header: 'OEM' },
+    { key: 'prod_cantidad', header: 'Cantidad' },
+  ]
+
+  const buildExportRows = useCallback((rows) => {
+    const result = []
+    for (const row of rows) {
+      const productos = row.productos || []
+      const base = { ...row, estado_label: STATUS_BADGE[row.estado]?.label || row.estado || '' }
+      if (!productos.length) {
+        result.push(base)
+      } else {
+        for (const p of productos) {
+          result.push({ ...base, prod_codigo: p.codigo, prod_nombre: p.nombre, prod_oem: p.oem, prod_cantidad: p.cantidad })
+        }
+      }
+    }
+    return result
+  }, [])
+
+  const getExportValue = useCallback((row, key) => row?.[key] ?? '', [])
+
+  const handleExportExcel = useCallback(async () => {
+    const rows = buildExportRows(items)
+    await exportToExcel({ rows, columns: exportColumns, valueGetter: getExportValue, fileName: buildFileName('importaciones') })
+  }, [buildExportRows, getExportValue, items])
+
+  const handleExportPdf = useCallback(async () => {
+    const rows = buildExportRows(items)
+    await exportToPdf({ rows, columns: exportColumns, valueGetter: getExportValue, fileName: buildFileName('importaciones'), title: 'Reporte de importaciones' })
+  }, [buildExportRows, getExportValue, items])
+
+  const handleOpenBorrador = useCallback((borradorData) => {
+    setShowCreate(false)
+    setEditImp(borradorData)
+    setShowEditImp(true)
+  }, [])
+
+  const handleRowDoubleClick = useCallback((event) => {
+    const rowData = event?.data
+    if (!rowData) return
+    if (rowData.estado === 'borrador') {
+      setEditImp(rowData)
+      setShowEditImp(true)
+    } else {
+      setSelectedImp(rowData)
+      setShowImpDetails(true)
+    }
+  }, [])
+
   const emptyMessage = loading ? ' ' : (error || statusConfig.empty)
 
   const header = (
@@ -961,6 +2291,12 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
       </div>
       <div className="users-header__right">
         <span className="users-header__count">Reg. {items.length}</span>
+        <button className="rounded-icon-btn" type="button" onClick={handleExportExcel} title="Exportar Excel" disabled={!items.length}>
+          <i className="pi pi-file-excel" />
+        </button>
+        <button className="rounded-icon-btn" type="button" onClick={handleExportPdf} title="Exportar PDF" disabled={!items.length}>
+          <i className="pi pi-file-pdf" />
+        </button>
       </div>
     </div>
   )
@@ -987,7 +2323,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
           {!statusProp && (
             <div className="transfer-issues-page__type-filter" role="group" aria-label="Filtro de estado">
               {[
-                { key: 'en_proceso', label: 'En proceso' },
+                { key: 'borrador', label: 'Borradores' },
                 { key: 'en_camino', label: 'En camino' },
                 { key: 'importada', label: 'Importadas' },
               ].map((option) => (
@@ -1041,6 +2377,8 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
           reorderableColumns
           resizableColumns
           columnResizeMode="expand"
+          onRowDoubleClick={handleRowDoubleClick}
+          rowClassName={() => ({ 'p-selectable-row': true })}
         >
           <Column
             field="codigo"
@@ -1057,7 +2395,6 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
             reorderable
             className="column-max-min-width"
             style={{ minWidth: '100px' }}
-            body={(row) => formatDate(row.fecha)}
           />
           <Column
             field="casa_nombre"
@@ -1068,32 +2405,86 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
             style={{ minWidth: '150px' }}
           />
           <Column
-            field="dias_entrega_estimados"
-            header="Días estimados"
+            field="estado"
+            header="Estado"
             sortable
             reorderable
             className="column-max-min-width"
-            style={{ minWidth: '120px' }}
+            style={{ minWidth: '110px' }}
+            body={estadoBodyTemplate}
+          />
+          <Column
+            field="dias_entrega_estimados"
+            header="Días est."
+            sortable
+            reorderable
+            className="column-max-min-width"
+            style={{ minWidth: '90px' }}
             body={(row) => (row.dias_entrega_estimados != null ? `${row.dias_entrega_estimados} d` : '-')}
           />
           <Column
-            field="total_productos"
-            header="Productos"
-            sortable
-            reorderable
-            className="column-max-min-width"
-            style={{ minWidth: '80px' }}
-            body={(row) => row.total_productos ?? (row.detalles?.length ?? 0)}
-          />
-          <Column
             field="productos_resumen"
-            header="Detalle"
+            header="Productos"
             reorderable
             className="column-max-min-width"
-            style={{ minWidth: '200px' }}
+            style={{ minWidth: '180px' }}
+            body={importacionProductBodyTemplate}
           />
         </DataTable>
       </div>
+
+      <ImportacionDetailsModal
+        imp={showImpDetails ? selectedImp : null}
+        onClose={() => setShowImpDetails(false)}
+      />
+
+      {Array.isArray(productHoverCard?.productos) && productHoverCard.productos.length > 0 && createPortal(
+        <div
+          className="movimientos-table__product-hover-card movimientos-table__product-hover-card--wide"
+          role="tooltip"
+          style={{ top: productHoverCard.top, left: productHoverCard.left, width: IMP_HOVER_WIDTH }}
+          onMouseEnter={clearProductHoverTimer}
+          onMouseLeave={scheduleHideProductHoverCard}
+        >
+          <div className="movimientos-table__product-hover-title">Productos</div>
+          <table className="movimientos-table__product-hover-table" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <colgroup>
+              <col style={{ width: '100px' }} />
+              <col />
+              <col style={{ width: '120px' }} />
+              <col style={{ width: '52px' }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>OEM</th>
+                <th className="movimientos-table__product-hover-qty">Cant.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {productHoverCard.productos.map((p, i) => (
+                <tr key={i}>
+                  <td title={p.codigo}>{p.codigo}</td>
+                  <td title={p.nombre}>{p.nombre}</td>
+                  <td title={p.oem}>{p.oem}</td>
+                  <td className="movimientos-table__product-hover-qty">{p.cantidad}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+        document.body
+      )}
+
+      <EditImportacionModal
+        open={showEditImp}
+        imp={editImp}
+        token={token}
+        onClose={() => setShowEditImp(false)}
+        onSaved={() => { setShowEditImp(false); fetchItems() }}
+        onOpenBorrador={handleOpenBorrador}
+      />
 
       <CreateImportacionModal
         open={showCreate}
@@ -1102,8 +2493,13 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError 
         onError={onError}
         onCreated={() => {
           setShowCreate(false)
-          setActiveStatus('en_proceso')
+          if (status === 'borrador') {
+            fetchItems()
+          } else {
+            setActiveStatus('borrador')
+          }
         }}
+        onOpenBorrador={handleOpenBorrador}
       />
     </div>
   )

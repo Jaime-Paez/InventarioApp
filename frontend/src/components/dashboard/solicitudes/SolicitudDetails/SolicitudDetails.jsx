@@ -16,7 +16,7 @@ const MIN_HEIGHT = 520
 const PRODUCT_MODAL_MIN_WIDTH = 680
 const PRODUCT_MODAL_MIN_HEIGHT = 460
 const REVIEW_MODAL_WIDTH = 760
-const REVIEW_MODAL_HEIGHT = 520
+const REVIEW_MODAL_HEIGHT = 640
 const VIEWPORT_PADDING = 12
 
 const emptyForm = {
@@ -155,9 +155,9 @@ const buildFormData = (solicitud) => {
     productoDescripcion: String(
       tabla === 'producto' ? productoCatalogo?.descripcion || '' : productoSolicitado?.descripcion || ''
     ),
-    productoOems: Array.isArray(productoSolicitado?.oem_codigos)
-      ? productoSolicitado.oem_codigos.join(', ')
-      : '',
+    productoOems: tabla === 'producto'
+      ? (Array.isArray(productoCatalogo?.oem_codigos) ? productoCatalogo.oem_codigos.join(', ') : '')
+      : (Array.isArray(productoSolicitado?.oem_codigos) ? productoSolicitado.oem_codigos.join(', ') : ''),
   }
 }
 
@@ -202,9 +202,9 @@ const buildGroupItem = (solicitud) => {
         ? productoSolicitado?.casa_comercial_data?.nombre || productoSolicitado?.casa_comercial_nombre || ''
         : ''
     ),
-    productoOems: Array.isArray(productoSolicitado?.oem_codigos)
-      ? productoSolicitado.oem_codigos
-      : [],
+    productoOems: tabla === 'producto'
+      ? (Array.isArray(productoCatalogo?.oem_codigos) ? productoCatalogo.oem_codigos : [])
+      : (Array.isArray(productoSolicitado?.oem_codigos) ? productoSolicitado.oem_codigos : []),
     cantidad: Number(solicitud?.cantidad || 0),
     comentario: String(solicitud?.comentario || ''),
     catalogProductId,
@@ -297,6 +297,10 @@ function SolicitudDetails({
   const [revisarCasasLoading, setRevisarCasasLoading] = useState(false)
   const [showRevisarCasaDropdown, setShowRevisarCasaDropdown] = useState(false)
   const [revisarCasaQuery, setRevisarCasaQuery] = useState('')
+  const [revisarOemProducts, setRevisarOemProducts] = useState([])
+  const [revisarOemProductsLoading, setRevisarOemProductsLoading] = useState(false)
+  const [oemTableHover, setOemTableHover] = useState(null)
+  const oemTableHoverTimerRef = useRef(null)
   const [activeTab, setActiveTab] = useState('productos')
   const [isEditing, setIsEditing] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -1160,6 +1164,9 @@ function SolicitudDetails({
     setRevisarCasasOptions([])
     setRevisarCasasLoading(false)
     setRevisarError('')
+    setRevisarOemProducts([])
+    setRevisarOemProductsLoading(false)
+    setOemTableHover(null)
     if (updatedSolicitud?.id) {
       setGroupItems((prev) =>
         prev.map((item) =>
@@ -1178,6 +1185,7 @@ function SolicitudDetails({
       id: item.id,
       nombre: item.productoNombre,
       canAcceptWithoutReferences,
+      oems: item.productoOems || [],
     })
     setRevisarFilas([])
     setRevisarDraft(createEmptyRevisarDraft())
@@ -1200,6 +1208,9 @@ function SolicitudDetails({
     setRevisarCasaQuery('')
     setRevisarCasasOptions([])
     setRevisarCasasLoading(false)
+    setRevisarOemProducts([])
+    setRevisarOemProductsLoading(false)
+    setOemTableHover(null)
   }
 
   const handleRevisarCasaSelect = (casaOption) => {
@@ -1374,6 +1385,9 @@ function SolicitudDetails({
     setRevisarCasasOptions([])
     setRevisarCasasLoading(false)
     setRevisarError('')
+    setRevisarOemProducts([])
+    setRevisarOemProductsLoading(false)
+    setOemTableHover(null)
     if (updatedSolicitud?.id) {
       setGroupItems((prev) =>
         prev.map((item) =>
@@ -1462,6 +1476,49 @@ function SolicitudDetails({
       }
     }
   }, [isRevisarModalOpen, open, revisarCasaQuery, showRevisarCasaDropdown, token])
+
+  useEffect(() => {
+    if (!isRevisarModalOpen || !revisarTarget?.canAcceptWithoutReferences) {
+      setRevisarOemProducts([])
+      setRevisarOemProductsLoading(false)
+      return
+    }
+    const oems = revisarTarget.oems || []
+    if (!oems.length || !token) {
+      setRevisarOemProducts([])
+      return
+    }
+    setRevisarOemProductsLoading(true)
+    let cancelled = false
+    authFetch(
+      `${API_URL}/productos/listado/?oem=${encodeURIComponent(oems[0])}&page_size=20`,
+      {},
+      token
+    )
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((payload) => {
+        if (!cancelled) setRevisarOemProducts(Array.isArray(payload) ? payload : (payload?.results || []))
+      })
+      .catch(() => { if (!cancelled) setRevisarOemProducts([]) })
+      .finally(() => { if (!cancelled) setRevisarOemProductsLoading(false) })
+    return () => { cancelled = true }
+  }, [isRevisarModalOpen, revisarTarget, token])
+
+  const showOemTableHover = useCallback((event, items, label) => {
+    if (!items.length) return
+    if (oemTableHoverTimerRef.current) clearTimeout(oemTableHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    setOemTableHover({ top: rect.bottom + 4, left: rect.left, items, label })
+  }, [])
+
+  const hideOemTableHover = useCallback(() => {
+    if (oemTableHoverTimerRef.current) clearTimeout(oemTableHoverTimerRef.current)
+    oemTableHoverTimerRef.current = setTimeout(() => { oemTableHoverTimerRef.current = null; setOemTableHover(null) }, 120)
+  }, [])
+
+  const clearOemTableHoverTimer = useCallback(() => {
+    if (oemTableHoverTimerRef.current) { clearTimeout(oemTableHoverTimerRef.current); oemTableHoverTimerRef.current = null }
+  }, [])
 
   useEffect(() => {
     if (!showRevisarCasaDropdown) return
@@ -1867,12 +1924,84 @@ function SolicitudDetails({
                   </span>
                   <p>
                     {revisarTarget.canAcceptWithoutReferences
-                      ? 'Este producto ya existe en la base de datos. Puedes aceptarlo o archivarlo sin agregar referencias.'
+                      ? 'Este producto ya existe en el catálogo. Puedes agregar nuevas referencias de casas comerciales si es necesario, o aceptarlo directamente.'
                       : 'Agrega una o varias referencias con su casa comercial.'}
                   </p>
                 </div>
-                {!revisarTarget.canAcceptWithoutReferences && (
-                  <div className="create-user__locations-table create-salida__products-table create-solicitud-details__review-table">
+
+                {revisarTarget.canAcceptWithoutReferences && (
+                  <div className="create-solicitud-details__oem-section">
+                    <span className="create-solicitud-details__oem-section-label">Productos en catálogo con este OEM</span>
+                    {revisarOemProductsLoading && <small className="muted" style={{ padding: '6px 0' }}>Cargando...</small>}
+                    {!revisarOemProductsLoading && revisarOemProducts.length === 0 && (
+                      <small className="muted" style={{ padding: '6px 0' }}>Sin resultados.</small>
+                    )}
+                    {!revisarOemProductsLoading && revisarOemProducts.length > 0 && (
+                      <div className="create-user__locations-table create-solicitud-details__oem-table">
+                        <div className="create-user__locations-row create-user__locations-row--head">
+                          <span>Código</span>
+                          <span>Nombre</span>
+                          <span>Referencia</span>
+                          <span>OEM</span>
+                          <span>Casas comerciales</span>
+                        </div>
+                        {revisarOemProducts.map((prod) => {
+                          const casasList = (prod.casas_comerciales || []).map((c) => c.nombre).filter(Boolean)
+                          const casasLabel = casasList[0] || '-'
+                          const oemList = (prod.oem_productos || []).map((r) => r?.oem?.codigo || '').filter(Boolean)
+                          const oemLabel = oemList[0] || '-'
+                          return (
+                            <div key={prod.id} className="create-user__locations-row">
+                              <span>{prod.codigo || '-'}</span>
+                              <span title={prod.nombre}>
+                                <span className="create-salida__table-static-value create-salida__table-static-value--name">{prod.nombre || '-'}</span>
+                              </span>
+                              <span>{prod.referencia || '-'}</span>
+                              <span>
+                                <div className="create-solicitud-details__oem-cell">
+                                  <span className="create-salida__table-static-value" title={oemLabel}>{oemLabel}</span>
+                                  {oemList.length > 1 && (
+                                    <button
+                                      type="button"
+                                      className="create-solicitud-details__eye-btn"
+                                      aria-label="Ver todos los OEM"
+                                      onMouseEnter={(e) => showOemTableHover(e, oemList, 'OEM')}
+                                      onMouseLeave={hideOemTableHover}
+                                      onFocus={(e) => showOemTableHover(e, oemList, 'OEM')}
+                                      onBlur={hideOemTableHover}
+                                    >
+                                      <i className="pi pi-eye" aria-hidden="true" />
+                                    </button>
+                                  )}
+                                </div>
+                              </span>
+                              <span>
+                                <div className="create-solicitud-details__oem-cell">
+                                  <span className="create-salida__table-static-value create-salida__table-static-value--name" title={casasLabel}>{casasLabel}</span>
+                                  {casasList.length > 1 && (
+                                    <button
+                                      type="button"
+                                      className="create-solicitud-details__eye-btn"
+                                      aria-label="Ver todas las casas comerciales"
+                                      onMouseEnter={(e) => showOemTableHover(e, casasList, 'Casas comerciales')}
+                                      onMouseLeave={hideOemTableHover}
+                                      onFocus={(e) => showOemTableHover(e, casasList, 'Casas comerciales')}
+                                      onBlur={hideOemTableHover}
+                                    >
+                                      <i className="pi pi-eye" aria-hidden="true" />
+                                    </button>
+                                  )}
+                                </div>
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="create-user__locations-table create-salida__products-table create-solicitud-details__review-table">
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Casa comercial</span>
                       <span>Referencia</span>
@@ -2036,7 +2165,6 @@ function SolicitudDetails({
                       )
                     })}
                   </div>
-                )}
               </div>
 
               {revisarError && (
@@ -2081,6 +2209,21 @@ function SolicitudDetails({
       </div>
     </div>
   ) : null
+
+  const oemTableHoverPortal = oemTableHover && createPortal(
+    <div
+      className="create-solicitud-details__oem-hover-card"
+      style={{ top: oemTableHover.top, left: oemTableHover.left }}
+      onMouseEnter={clearOemTableHoverTimer}
+      onMouseLeave={hideOemTableHover}
+    >
+      <div className="create-solicitud-details__oem-hover-title">{oemTableHover.label}</div>
+      {oemTableHover.items.map((item, i) => (
+        <div key={i} className="create-solicitud-details__oem-hover-row">{item}</div>
+      ))}
+    </div>,
+    document.body
+  )
 
   return (
     <>
@@ -2206,9 +2349,9 @@ function SolicitudDetails({
 
                   <div className="create-user__locations-table create-solicitud-details__items-table">
                     <div className="create-user__locations-row create-user__locations-row--head">
-                      <span>Codigo</span>
-                      <span>Nombre</span>
                       <span>OEM</span>
+                      <span>Nombre</span>
+                      <span>Código</span>
                       <span>Comentario</span>
                       <span>Cantidad</span>
                       <span>Revisado</span>
@@ -2222,12 +2365,18 @@ function SolicitudDetails({
                         onClick={() => !loading && !saving && !openingProductSelection && handleSelectGroupItem(item.id)}
                         style={{ cursor: loading || saving || openingProductSelection ? 'wait' : 'pointer' }}
                       >
-                        <span title={item.productoCodigo || undefined}>{item.productoCodigo || '-'}</span>
-                        <span title={item.productoNombre || undefined}>{item.productoNombre || '-'}</span>
-                        <span title={item.productoOems.length ? item.productoOems.join(', ') : undefined}>
-                          {item.productoOems.length ? item.productoOems.join(', ') : '-'}
+                        <span title={item.productoOems.length ? item.productoOems.join(', ') : (item.productoCodigo || undefined)}>
+                          <span className="create-solicitud-details__cell-text">{item.productoOems.length ? item.productoOems.join(', ') : (item.productoCodigo || '-')}</span>
                         </span>
-                        <span title={item.comentario || undefined}>{item.comentario || '-'}</span>
+                        <span title={item.productoNombre || undefined}>
+                          <span className="create-solicitud-details__cell-text">{item.productoNombre || '-'}</span>
+                        </span>
+                        <span title={item.productoCodigo || undefined}>
+                          <span className="create-solicitud-details__cell-text">{item.productoCodigo || '-'}</span>
+                        </span>
+                        <span title={item.comentario || undefined}>
+                          <span className="create-solicitud-details__cell-text">{item.comentario || '-'}</span>
+                        </span>
                         <span>{item.cantidad || '-'}</span>
                         <span aria-label={item.isReviewed ? 'Revisado' : 'Sin revisar'}>
                           <i
@@ -2356,6 +2505,7 @@ function SolicitudDetails({
       {catalogProductModal && (canUsePortal ? createPortal(catalogProductModal, document.body) : catalogProductModal)}
       {createProductModal && (canUsePortal ? createPortal(createProductModal, document.body) : createProductModal)}
       {revisarModalOverlay && (canUsePortal ? createPortal(revisarModalOverlay, document.body) : revisarModalOverlay)}
+      {oemTableHoverPortal}
     </>
   )
 }

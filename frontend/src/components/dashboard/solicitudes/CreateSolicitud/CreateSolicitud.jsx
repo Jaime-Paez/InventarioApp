@@ -784,11 +784,6 @@ function CreateSolicitud({
           setShowCodigoDropdown(false)
         }
       }
-      if (showOemDropdown) {
-        if (!oemDropdownRef.current?.contains(event.target) && !oemPanelRef.current?.contains(event.target)) {
-          setShowOemDropdown(false)
-        }
-      }
       if (showCasaComercialDropdown) {
         if (!casaComercialDropdownRef.current || !casaComercialDropdownRef.current.contains(event.target)) {
           setShowCasaComercialDropdown(false)
@@ -1133,9 +1128,8 @@ function CreateSolicitud({
     }
 
     if (name === 'oems') {
-      const shouldShow = String(normalizedValue || '').trim().length >= 1
-      setShowOemDropdown(shouldShow)
-      if (!shouldShow) setOemOptions([])
+      setShowOemDropdown(false)
+      setOemOptions([])
     }
 
     if (shouldDetachSelectedProduct) {
@@ -1166,7 +1160,7 @@ function CreateSolicitud({
       referencia,
       codigo,
       nombre,
-      oems: oems.join(', '),
+      oems: prev.oems ? prev.oems : oems.join(', '),
       casaComercialId: firstCasa ? String(firstCasa.id) : '',
       casaComercialNombre: firstCasa ? String(firstCasa.nombre || '').trim() : '',
       cantidad: prev.cantidad || '1',
@@ -1268,19 +1262,24 @@ function CreateSolicitud({
     }
 
     const parsedOems = parseOemInput(oemInput)
-    if (parsedOems.length === 1) {
+    if (parsedOems.length >= 1) {
       const oemCode = parsedOems[0]
       const response = await authFetch(
-        `${API_URL}/productos/listado/?oem=${encodeURIComponent(oemCode)}&page_size=3`,
+        `${API_URL}/productos/listado/?oem=${encodeURIComponent(oemCode)}&page_size=10`,
         {},
         token
       )
       if (response.ok) {
         const data = await response.json()
-        const exactMatches = parseApiList(data).filter((item) =>
+        const matches = parseApiList(data).filter((item) =>
           extractProductoOems(item).some((value) => normalizeString(value) === normalizeString(oemCode))
         )
-        if (exactMatches.length === 1) return exactMatches[0]
+        if (matches.length >= 1) {
+          const sorted = [...matches].sort((a, b) =>
+            (Number(b?.total_stock ?? 0) > 0 ? 1 : 0) - (Number(a?.total_stock ?? 0) > 0 ? 1 : 0)
+          )
+          return sorted[0]
+        }
       }
     }
 
@@ -1310,7 +1309,7 @@ function CreateSolicitud({
       } catch {
         // Ignora errores silenciosamente para no interrumpir la escritura.
       }
-    }, 320)
+    }, 80)
 
     return () => {
       cancelled = true
@@ -1861,7 +1860,6 @@ function CreateSolicitud({
                   >
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>OEM</span>
-                      <span>Código JP</span>
                       <span>Descripción</span>
                       <span>Comentario</span>
                       <span>Cantidad</span>
@@ -1870,130 +1868,15 @@ function CreateSolicitud({
 
                     <div className="create-user__locations-row create-user__locations-row--form">
                       <span>
-                        <div className="create-solicitud__inline-dropdown" ref={oemDropdownRef}>
-                          <input
-                            name="oems"
-                            type="text"
-                            placeholder="OEM1, OEM2"
-                            value={productoDraft.oems}
-                            onChange={handleProductoDraftChange}
-                            onFocus={() => {
-                              const hasTerm = String(oemSearchTerm || '').trim().length >= 1
-                              setShowOemDropdown(hasTerm)
-                            }}
-                            disabled={loading}
-                            autoComplete="off"
-                          />
-                          <InlinePanel anchorRef={oemDropdownRef} panelRef={oemPanelRef} open={showOemDropdown} className="create-solicitud__inline-panel create-solicitud__inline-panel--wide">
-                            <div className="create-solicitud__inline-results">
-                              {oemLoading && <small className="muted">Buscando por OEM...</small>}
-                              {!oemLoading && String(oemSearchTerm || '').trim().length < 2 && (
-                                <small className="muted">Escribe al menos 2 caracteres.</small>
-                              )}
-                              {!oemLoading &&
-                                String(oemSearchTerm || '').trim().length >= 2 &&
-                                !oemOptions.length && (
-                                  <small className="muted">
-                                    Sin coincidencias. Puedes escribir un OEM nuevo.
-                                  </small>
-                                )}
-                              {oemOptions.length > 0 && (
-                                <div className="create-solicitud__results-header">
-                                  <span>Código</span>
-                                  <span>Nombre</span>
-                                  <span>Disponible</span>
-                                </div>
-                              )}
-                              {oemOptions.map((producto) => {
-                                const isSelected =
-                                  String(selectedDraftProducto?.id || '') === String(producto.id)
-                                const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
-                                const nombre = String(producto?.nombre || '').trim()
-                                const stock = Number(producto?.total_stock ?? 0)
-                                const isZeroStock = stock === 0
-                                return (
-                                  <button
-                                    key={`oem-opt-${producto.id}`}
-                                    type="button"
-                                    className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}${isZeroStock ? ' is-zero-stock' : ''}`}
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => { if (!isZeroStock) handleProductoSelect(producto) }}
-                                    disabled={isZeroStock}
-                                    title={isZeroStock ? 'Sin stock disponible' : undefined}
-                                  >
-                                    <span className="result-codigo">{codigo}</span>
-                                    <span className="result-nombre">{nombre || '-'}</span>
-                                    <span className="result-stock">{stock}</span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </InlinePanel>
-                        </div>
-                      </span>
-
-                      <span>
-                        <div className="create-solicitud__inline-dropdown" ref={codigoDropdownRef}>
-                          <input
-                            className={productoCodigoInvalid ? 'create-solicitud__input--invalid' : ''}
-                            name="codigo"
-                            type="text"
-                            placeholder="Código JP"
-                            value={productoDraft.codigo}
-                            onChange={handleProductoDraftChange}
-                            onFocus={() => {
-                              const hasTerm = String(productoDraft.codigo || '').trim().length >= 1
-                              setShowCodigoDropdown(hasTerm)
-                            }}
-                            disabled={loading}
-                            autoComplete="off"
-                          />
-                          <InlinePanel anchorRef={codigoDropdownRef} panelRef={codigoPanelRef} open={showCodigoDropdown} className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
-                            <div className="create-solicitud__inline-results">
-                              {codigoLoading && <small className="muted">Buscando...</small>}
-                              {!codigoLoading && String(productoDraft.codigo || '').trim().length < 2 && (
-                                <small className="muted">Escribe al menos 2 caracteres.</small>
-                              )}
-                              {!codigoLoading &&
-                                String(productoDraft.codigo || '').trim().length >= 2 &&
-                                !codigoOptions.length && (
-                                  <small className="muted">
-                                    Sin coincidencias. Puedes agregar como producto nuevo.
-                                  </small>
-                                )}
-                              {codigoOptions.length > 0 && (
-                                <div className="create-solicitud__results-header">
-                                  <span>Código</span>
-                                  <span>Nombre</span>
-                                  <span>Disponible</span>
-                                </div>
-                              )}
-                              {codigoOptions.map((producto) => {
-                                const isSelected =
-                                  String(selectedDraftProducto?.id || '') === String(producto.id)
-                                const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
-                                const nombre = String(producto?.nombre || '').trim()
-                                const stock = Number(producto?.total_stock ?? 0)
-                                const isZeroStock = stock === 0
-                                return (
-                                  <button
-                                    key={`codigo-opt-${producto.id}`}
-                                    type="button"
-                                    className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}${isZeroStock ? ' is-zero-stock' : ''}`}
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => { if (!isZeroStock) handleProductoSelect(producto) }}
-                                    disabled={isZeroStock}
-                                    title={isZeroStock ? 'Sin stock disponible' : undefined}
-                                  >
-                                    <span className="result-codigo">{codigo}</span>
-                                    <span className="result-nombre">{nombre || '-'}</span>
-                                    <span className="result-stock">{stock}</span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </InlinePanel>
-                        </div>
+                        <input
+                          name="oems"
+                          type="text"
+                          placeholder="OEM"
+                          value={productoDraft.oems}
+                          onChange={handleProductoDraftChange}
+                          disabled={loading}
+                          autoComplete="off"
+                        />
                       </span>
 
                       <span>
@@ -2054,7 +1937,6 @@ function CreateSolicitud({
                     {productos.map((item) => (
                       <div key={item.uid} className="create-user__locations-row">
                         <span>{item.oems?.length ? item.oems.join(', ') : '-'}</span>
-                        <span>{item.codigo || '-'}</span>
                         <span>{item.nombre || '-'}</span>
                         <span>{item.comentario || '-'}</span>
                         <span className="create-solicitud__quantity-cell">{item.cantidad}</span>

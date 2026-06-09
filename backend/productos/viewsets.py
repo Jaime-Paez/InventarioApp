@@ -298,6 +298,34 @@ class OEMProductoViewSet(viewsets.ModelViewSet):
     ]
     ordering_fields = ["producto__nombre", "oem__codigo"]
 
+    def _get_alterno_group(self, producto):
+        forward_ids = set(
+            ProductoAlterno.objects.filter(producto=producto)
+            .values_list("alterno_id", flat=True)
+        )
+        backward_ids = set(
+            ProductoAlterno.objects.filter(alterno=producto)
+            .values_list("producto_id", flat=True)
+        )
+        all_ids = forward_ids | backward_ids
+        if not all_ids:
+            return []
+        return list(Producto.objects.filter(id__in=all_ids))
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        for alterno in self._get_alterno_group(instance.producto):
+            OEMProducto.objects.get_or_create(producto=alterno, oem=instance.oem)
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        oem = instance.oem
+        producto = instance.producto
+        instance.delete()
+        for alterno in self._get_alterno_group(producto):
+            OEMProducto.objects.filter(producto=alterno, oem=oem).delete()
+
 
 class ProductoAlternoViewSet(viewsets.ModelViewSet):
     queryset = (

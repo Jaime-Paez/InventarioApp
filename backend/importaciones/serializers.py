@@ -1,7 +1,7 @@
 import re
 
 from django.db import transaction
-from django.db.models import Max
+
 from rest_framework import serializers
 
 from casa_comercial.models import CasaComercial
@@ -12,20 +12,21 @@ from productos.serializers import ProductoSerializer
 from .models import Importacion, ImportacionDetalle
 
 
-def generate_next_importacion_code():
-    last_codes = Importacion.objects.filter(codigo__startswith="IMP-").values_list("codigo", flat=True)
+def generate_next_importacion_code(casa=None):
+    casa_code = str(getattr(casa, "codigo", "") or "").strip().upper()
+    prefix = f"IMP-{casa_code}-" if casa_code else "IMP-"
+    last_codes = Importacion.objects.filter(codigo__startswith=prefix).values_list("codigo", flat=True)
     max_number = 0
+    pattern = re.compile(r"^" + re.escape(prefix) + r"(\d+)$")
     for code in last_codes:
-        match = re.match(r"^IMP-(\d+)$", str(code or "").strip())
+        match = pattern.match(str(code or "").strip())
         if match:
             max_number = max(max_number, int(match.group(1)))
-
-    max_id = Importacion.objects.aggregate(max_id=Max("id")).get("max_id") or 0
-    next_number = max(max_number, int(max_id)) + 1
-    candidate = f"IMP-{next_number}"
+    next_number = max_number + 1
+    candidate = f"{prefix}{next_number}"
     while Importacion.objects.filter(codigo=candidate).exists():
         next_number += 1
-        candidate = f"IMP-{next_number}"
+        candidate = f"{prefix}{next_number}"
     return candidate
 
 
@@ -35,11 +36,21 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
         source="producto",
         queryset=Producto.objects.all(),
         write_only=True,
+        required=False,
+        allow_null=True,
     )
 
     class Meta:
         model = ImportacionDetalle
-        fields = ["id", "producto", "producto_id", "cantidad"]
+        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "cantidad"]
+
+    def validate(self, data):
+        producto = data.get("producto")
+        codigo = str(data.get("codigo") or "").strip()
+        nombre = str(data.get("nombre") or "").strip()
+        if not producto and not codigo and not nombre:
+            raise serializers.ValidationError("Se requiere producto o código/nombre.")
+        return data
 
     def validate_cantidad(self, value):
         if int(value or 0) <= 0:
@@ -98,11 +109,34 @@ class ImportacionSerializer(serializers.ModelSerializer):
         return value
 
     @transaction.atomic
+    def update(self, instance, validated_data):
+        detalles_data = validated_data.pop("detalles", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if detalles_data is not None:
+            instance.detalles.all().delete()
+            ImportacionDetalle.objects.bulk_create([
+                ImportacionDetalle(
+                    importacion=instance,
+                    producto=item.get("producto"),
+                    codigo=str(item.get("codigo") or ""),
+                    nombre=str(item.get("nombre") or ""),
+                    oem=str(item.get("oem") or ""),
+                    cantidad=item["cantidad"],
+                )
+                for item in detalles_data
+            ])
+            if hasattr(instance, "_prefetched_objects_cache"):
+                instance._prefetched_objects_cache.pop("detalles", None)
+        return instance
+
+    @transaction.atomic
     def create(self, validated_data):
         detalles_data = validated_data.pop("detalles", [])
         casa = validated_data.get("casa_comercial")
-        validated_data["codigo"] = generate_next_importacion_code()
-        validated_data["estado"] = Importacion.ESTADO_EN_PROCESO
+        validated_data["codigo"] = generate_next_importacion_code(casa)
+        validated_data["estado"] = Importacion.ESTADO_BORRADOR
         validated_data["dias_entrega_estimados"] = getattr(casa, "dias_entrega", None)
 
         request = self.context.get("request")
@@ -114,7 +148,10 @@ class ImportacionSerializer(serializers.ModelSerializer):
             [
                 ImportacionDetalle(
                     importacion=importacion,
-                    producto=item["producto"],
+                    producto=item.get("producto"),
+                    codigo=str(item.get("codigo") or ""),
+                    nombre=str(item.get("nombre") or ""),
+                    oem=str(item.get("oem") or ""),
                     cantidad=item["cantidad"],
                 )
                 for item in detalles_data

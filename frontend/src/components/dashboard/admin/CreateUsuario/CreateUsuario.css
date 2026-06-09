@@ -1347,7 +1347,15 @@
 }
 
 .create-user__locations-table--alternos .create-user__locations-row {
-  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1.15fr) minmax(0, 1.45fr) 88px;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1.15fr) minmax(0, 1.45fr) 76px;
+}
+
+.create-user__locations-table--alternos .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > span {
+  padding: 5px 8px;
+}
+
+.create-user__locations-table--alternos .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > span:not(.create-user__locations-cell--action) {
+  justify-content: flex-start;
 }
 
 .create-user__locations-table--alternos {

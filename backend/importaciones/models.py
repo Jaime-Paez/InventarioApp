@@ -7,17 +7,17 @@ from productos.models import Producto
 
 
 class Importacion(models.Model):
-    ESTADO_EN_PROCESO = "en_proceso"
+    ESTADO_BORRADOR = "borrador"
     ESTADO_EN_CAMINO = "en_camino"
     ESTADO_IMPORTADA = "importada"
     ESTADO_CHOICES = [
-        (ESTADO_EN_PROCESO, "En proceso"),
+        (ESTADO_BORRADOR, "Borrador"),
         (ESTADO_EN_CAMINO, "En camino"),
         (ESTADO_IMPORTADA, "Importada"),
     ]
 
     codigo = models.CharField(max_length=30, unique=True)
-    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_EN_PROCESO)
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_BORRADOR)
     fecha = models.DateField(default=timezone.localdate)
     casa_comercial = models.ForeignKey(
         CasaComercial,
@@ -54,14 +54,19 @@ class ImportacionDetalle(models.Model):
         Producto,
         on_delete=models.PROTECT,
         related_name="detalles_importacion",
+        null=True,
+        blank=True,
     )
+    codigo = models.CharField(max_length=150, blank=True, default="")
+    nombre = models.CharField(max_length=255, blank=True, default="")
+    oem = models.CharField(max_length=500, blank=True, default="")
     cantidad = models.PositiveIntegerField(default=1)
 
     class Meta:
         ordering = ["id"]
-        unique_together = ("importacion", "producto")
         verbose_name = "Detalle de importacion"
         verbose_name_plural = "Detalles de importacion"
 
     def __str__(self):
-        return f"{self.importacion.codigo} - {self.producto.codigo}"
+        label = self.producto.codigo if self.producto_id else (self.codigo or self.nombre or "sin catálogo")
+        return f"{self.importacion.codigo} - {label}"

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -101,7 +102,7 @@ const buildRevisionExportRows = (rows, columns) => {
   })
 }
 
-function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '', pendingOpenClienteSolicitudId, onPendingOpenClienteSolicitudHandled }) {
+function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '', pendingOpenClienteSolicitudId, onPendingOpenClienteSolicitudHandled, onOpenImportacionBorrador }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
@@ -133,6 +134,64 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   )
 
   const [statusFilter, setStatusFilter] = useState('solicitado')
+
+  // ---- Borrador indicators (aceptados tab) ----
+  const [borradorImps, setBorradorImps] = useState([])
+  const [borradorPopup, setBorradorPopup] = useState(null)
+  const borradorPopupTimerRef = useRef(null)
+
+  useEffect(() => {
+    if (statusFilter !== 'aceptado' || !token) { setBorradorImps([]); return }
+    let cancelled = false
+    authFetch(`${API_URL}/importaciones/importaciones/?estado=borrador&page_size=500`, {}, token)
+      .then((data) => {
+        if (!cancelled) setBorradorImps(Array.isArray(data?.results) ? data.results : [])
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [statusFilter, token])
+
+  const borradorProductMap = useMemo(() => {
+    const byId = {}
+    const byNombre = {}
+    for (const bImp of borradorImps) {
+      for (const d of (bImp.detalles || [])) {
+        if (d.producto?.id) {
+          const pid = String(d.producto.id)
+          if (!byId[pid]) byId[pid] = []
+          if (!byId[pid].some((x) => x.id === bImp.id)) byId[pid].push(bImp)
+        } else {
+          const key = String(d.nombre || '').trim().toLowerCase()
+          if (key) {
+            if (!byNombre[key]) byNombre[key] = []
+            if (!byNombre[key].some((x) => x.id === bImp.id)) byNombre[key].push(bImp)
+          }
+        }
+      }
+    }
+    return (row) => {
+      const pid = row?.producto_id ?? row?.producto_data?.id
+      if (pid) return byId[String(pid)] || []
+      const key = String(row?.producto_solicitado_nombre || '').trim().toLowerCase()
+      return key ? (byNombre[key] || []) : []
+    }
+  }, [borradorImps])
+
+  const showBorradorPopupSol = (event, imps) => {
+    if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    let left = rect.right + 8
+    if (left + 220 > window.innerWidth - 8) left = Math.max(8, rect.left - 220 - 8)
+    setBorradorPopup({ top: Math.min(rect.top - 4, window.innerHeight - 120), left, imps })
+  }
+  const hideBorradorPopupSol = () => {
+    borradorPopupTimerRef.current = setTimeout(() => setBorradorPopup(null), 150)
+  }
+  const cancelHideBorradorPopupSol = () => {
+    if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current)
+  }
+  // ---- /Borrador indicators ----
+
   const [clients, setClients] = useState([])
   const [totalRecords, setTotalRecords] = useState(0)
   const [pageFirst, setPageFirst] = useState(0)
@@ -1054,15 +1113,18 @@ const handleResetTable = () => {
   // ---------------- Body templates ----------------
   const solicitudProductBodyTemplate = (rowData) => {
     const products = Array.isArray(rowData?.productos) ? rowData.productos : []
-    const codigo = String(rowData?.producto_codigo || '').trim() || '-'
     if (!products.length) {
       return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
     }
+    const oems = products.map((p) => String(p?.oem || '').trim()).filter(Boolean)
+    const visible = oems.slice(0, 3)
+    const hasMore = oems.length > 3
+    const oemText = visible.join(', ') + (hasMore ? '...' : '') || '-'
     return (
       <div className="movimientos-table__product-cell">
         <div className="movimientos-table__product-lines">
-          <span className="cell-tooltip movimientos-table__product-main" data-pr-tooltip={codigo}>
-            {codigo}
+          <span className="cell-tooltip movimientos-table__product-main" data-pr-tooltip={oemText}>
+            {oemText}
           </span>
         </div>
         <button
@@ -1171,6 +1233,9 @@ const handleResetTable = () => {
     const classes = []
     if (isAdminUser && statusFilter === 'solicitado' && getSolicitudPendingMeta(rowData).isPending) {
       classes.push('transfer-issues-row--pendiente')
+    }
+    if (statusFilter === 'aceptado' && borradorProductMap(rowData).length > 0) {
+      classes.push('sol-row--in-borrador')
     }
     if (selectedRowIds.includes(normId(rowData?.id))) {
       classes.push('selected-row-shadow')
@@ -2112,6 +2177,33 @@ const handleResetTable = () => {
                 return (
                   <Column key="revisiones" header={col.header} body={(r) => {
                     const revs = Array.isArray(r?.revisiones) ? r.revisiones : []
+
+                    // Fallback for existing products (tabla=producto) that have no revision references
+                    if (!revs.length && r?.tabla === 'producto') {
+                      const casas = Array.isArray(r?.producto_data?.casas_comerciales) ? r.producto_data.casas_comerciales : []
+                      const casaItems = casas.map(c => String(c?.nombre || c?.codigo || '').trim()).filter(Boolean)
+                      if (casaItems.length) {
+                        const label = casaItems[0]
+                        return (
+                          <div className="inventario-v2__location-cell">
+                            <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
+                            {casaItems.length > 1 && (
+                              <button type="button" className="inventario-v2__location-eye" aria-label="Ver todas las casas comerciales"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onMouseEnter={(e) => showRevHoverCard(e, casaItems)}
+                                onMouseLeave={scheduleHideRevHoverCard}
+                                onFocus={(e) => showRevHoverCard(e, casaItems)}
+                                onBlur={scheduleHideRevHoverCard}
+                              >
+                                <i className="pi pi-eye" />
+                              </button>
+                            )}
+                          </div>
+                        )
+                      }
+                    }
+
                     if (!revs.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
                     const fmt = (rev) => [rev?.casa_comercial_nombre || rev?.casa_comercial_codigo, rev?.referencia].filter(Boolean).join(' · ')
                     const items = revs.map(fmt).filter(Boolean)
@@ -2153,6 +2245,36 @@ const handleResetTable = () => {
             }
           }).filter(Boolean)}
 
+          {statusFilter === 'aceptado' && (
+            <Column
+              key="borrador_indicator"
+              header="Borrador"
+              reorderable={false}
+              resizable={false}
+              style={{ minWidth: '120px', width: '120px' }}
+              body={(rowData) => {
+                const usage = borradorProductMap(rowData)
+                if (!usage.length) return null
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '0.72rem', color: '#92400e', whiteSpace: 'nowrap' }}>
+                      {usage.length === 1 ? '1 borrador' : `${usage.length} borradores`}
+                    </span>
+                    <button
+                      type="button"
+                      className="movimientos-table__product-eye"
+                      onMouseEnter={(e) => { e.stopPropagation(); showBorradorPopupSol(e, usage) }}
+                      onMouseLeave={hideBorradorPopupSol}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <i className="pi pi-eye" />
+                    </button>
+                  </div>
+                )
+              }}
+            />
+          )}
+
           {(statusFilter === 'aceptado' || statusFilter === 'archivado') && (
             <Column
               key="ver_solicitud"
@@ -2175,6 +2297,30 @@ const handleResetTable = () => {
             />
           )}
         </DataTable>
+
+        {borradorPopup && createPortal(
+          <div
+            className="sol-borrador-popup"
+            style={{ position: 'fixed', top: borradorPopup.top, left: borradorPopup.left }}
+            onMouseEnter={cancelHideBorradorPopupSol}
+            onMouseLeave={hideBorradorPopupSol}
+          >
+            {borradorPopup.imps.map((bImp) => (
+              <button
+                key={bImp.id}
+                className="sol-borrador-popup__item"
+                onClick={() => {
+                  setBorradorPopup(null)
+                  onOpenImportacionBorrador?.(bImp)
+                }}
+              >
+                <i className="pi pi-file-edit" />
+                {bImp.codigo}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
 
         {Array.isArray(oemHoverCard?.rows) && oemHoverCard.rows.length > 0 && (
           <div

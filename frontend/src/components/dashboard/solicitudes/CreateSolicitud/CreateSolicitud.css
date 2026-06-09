@@ -1,10 +1,9 @@
 .create-solicitud__products-table {
-  overflow: visible;
+  overflow: hidden;
 }
 
 .create-solicitud__products-table .create-user__locations-row {
   grid-template-columns:
-    minmax(60px, 0.6fr)
     minmax(70px, 0.7fr)
     minmax(100px, 1.2fr)
     minmax(80px, 0.9fr)
@@ -611,8 +610,8 @@
   border-left-color: var(--color-border-dark);
 }
 
-.create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty):not(.create-user__locations-row--head) > span:nth-child(3),
-.create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty):not(.create-user__locations-row--head) > span:nth-child(4) {
+.create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty):not(.create-user__locations-row--head) > span:nth-child(2),
+.create-solicitud__products-table .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty):not(.create-user__locations-row--head) > span:nth-child(3) {
   justify-content: flex-start;
 }
 
@@ -635,7 +634,6 @@
   .create-solicitud__products-table .create-user__locations-row {
     grid-template-columns:
       minmax(50px, 0.5fr)
-      minmax(50px, 0.5fr)
       minmax(80px, 1fr)
       minmax(70px, 0.8fr)
       minmax(50px, 0.55fr)
@@ -646,7 +644,6 @@
 @media (max-width: 920px) {
   .create-solicitud__products-table .create-user__locations-row {
     grid-template-columns:
-      minmax(46px, 0.48fr)
       minmax(46px, 0.48fr)
       minmax(72px, 0.95fr)
       minmax(60px, 0.7fr)

@@ -913,8 +913,15 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         left = Math.max(OEM_HOVER_CARD_MARGIN, rect.left - OEM_HOVER_CARD_WIDTH - 10)
       }
 
-      const maxTop = Math.max(window.innerHeight - 260, OEM_HOVER_CARD_MARGIN)
-      const top = Math.min(Math.max(rect.top - 8, OEM_HOVER_CARD_MARGIN), maxTop)
+      const estimatedHeight = Math.min(
+        80 + codes.length * 29,
+        window.innerHeight - 2 * OEM_HOVER_CARD_MARGIN
+      )
+      let top = rect.top - 8
+      if (top + estimatedHeight > window.innerHeight - OEM_HOVER_CARD_MARGIN) {
+        top = window.innerHeight - OEM_HOVER_CARD_MARGIN - estimatedHeight
+      }
+      top = Math.max(OEM_HOVER_CARD_MARGIN, top)
 
       setOemHoverCard({ left, top, codes })
     },

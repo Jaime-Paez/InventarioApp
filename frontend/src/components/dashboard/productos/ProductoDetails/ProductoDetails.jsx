@@ -142,7 +142,9 @@ function ProductoDetails({
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
+  const [navHistory, setNavHistory] = useState([])
 
+  const resolvedProductoId = navHistory.length > 0 ? navHistory[navHistory.length - 1] : productoId
   const resolvedInventoryContext = inventoryContext ?? localInventoryContext
   const hasExternalInventoryContext = Boolean(inventoryContext)
 
@@ -290,7 +292,7 @@ function ProductoDetails({
   )
 
   const fetchProducto = useCallback(async () => {
-    if (!productoId) return
+    if (!resolvedProductoId) return
     if (!hasExternalInventoryContext) {
       setInventoryLoading(true)
       setLocalInventoryContext(null)
@@ -299,7 +301,7 @@ function ProductoDetails({
     try {
       const includeInventoryContext = hasExternalInventoryContext ? '0' : '1'
       const response = await authFetch(
-        `${API_URL}/productos/listado/${productoId}/?include_inventory_context=${includeInventoryContext}`,
+        `${API_URL}/productos/listado/${resolvedProductoId}/?include_inventory_context=${includeInventoryContext}`,
         {},
         token
       )
@@ -355,7 +357,7 @@ function ProductoDetails({
       }
       setLoadingData(false)
     }
-  }, [buildInventoryContextFromProducto, enrichAlternativas, hasExternalInventoryContext, notifyError, token, productoId])
+  }, [buildInventoryContextFromProducto, enrichAlternativas, hasExternalInventoryContext, notifyError, token, resolvedProductoId])
 
   const searchSuppliers = useCallback(
     async (query) => {
@@ -398,8 +400,8 @@ function ProductoDetails({
         if (!response.ok) throw new Error('No se pudieron cargar los productos.')
         const data = await response.json()
         let list = parseApiList(data)
-        if (productoId) {
-          list = list.filter((item) => String(item?.id) !== String(productoId))
+        if (resolvedProductoId) {
+          list = list.filter((item) => String(item?.id) !== String(resolvedProductoId))
         }
         setAlternoOptions(list)
       } catch (err) {
@@ -408,7 +410,7 @@ function ProductoDetails({
         setAlternoLoading(false)
       }
     },
-    [notifyError, productoId, token]
+    [notifyError, resolvedProductoId, token]
   )
 
   const fetchIvaConfig = useCallback(async () => {
@@ -475,6 +477,7 @@ function ProductoDetails({
     if (!open) {
       setLocalInventoryContext(null)
       setInventoryLoading(false)
+      setNavHistory([])
       return
     }
     if (inventoryContext) {
@@ -1230,10 +1233,22 @@ function ProductoDetails({
             <h3>
               {formData.codigo && formData.nombre
                 ? `${formData.codigo}: ${formData.nombre}`
-                : (formData.codigo || formData.nombre || (productoId ? `Producto #${productoId}` : 'Producto'))}
+                : (formData.codigo || formData.nombre || (resolvedProductoId ? `Producto #${resolvedProductoId}` : 'Producto'))}
             </h3>
           </div>
           <div className="create-user__header-actions">
+            {navHistory.length > 0 && (
+              <button
+                type="button"
+                className="create-user__icon-button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => setNavHistory((prev) => prev.slice(0, -1))}
+                aria-label="Volver al producto anterior"
+                title="Volver al producto anterior"
+              >
+                <i className="pi pi-arrow-left" aria-hidden="true" />
+              </button>
+            )}
             <button
               type="button"
               className="create-user__icon-button create-user__icon-button--maximize"
@@ -1745,8 +1760,17 @@ function ProductoDetails({
                     <div key={`${alterno.id}-${index}`} className="create-user__locations-row">
                       <span>{alterno.codigo || '-'}</span>
                       <span>{alterno.nombre || 'Sin nombre'}</span>
-                      <span>{alterno.descripcion || '-'}</span>
+                      <span title={alterno.descripcion || ''}>{alterno.descripcion || '-'}</span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__icon-button"
+                          onClick={() => setNavHistory((prev) => [...prev, alterno.id])}
+                          aria-label={`Ver ${alterno.codigo}`}
+                          title={`Ver ${alterno.codigo}`}
+                        >
+                          <i className="pi pi-arrow-right" aria-hidden="true" />
+                        </button>
                         <button
                           type="button"
                           className="create-user__locations-remove"

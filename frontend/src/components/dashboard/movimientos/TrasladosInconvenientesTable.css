@@ -149,6 +149,59 @@
   background: color-mix(in srgb, #ef4444 18%, var(--table-color-hover)) !important;
 }
 
+.users-datatable .p-datatable-tbody > tr.sol-row--in-borrador > td {
+  background: color-mix(in srgb, #f59e0b 10%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #d97706 22%, transparent) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.sol-row--in-borrador:hover > td {
+  background: color-mix(in srgb, #f59e0b 18%, var(--table-color-hover)) !important;
+}
+
+.sol-borrador-popup {
+  position: fixed;
+  z-index: 9999;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.13);
+  padding: 4px 0;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.sol-borrador-popup__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--text-color, #1f2937);
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.sol-borrador-popup__item:hover {
+  background: var(--hover-bg, #f3f4f6);
+}
+
+[data-theme='dark'] .sol-borrador-popup {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+[data-theme='dark'] .sol-borrador-popup__item {
+  color: #e2e8f0;
+}
+
+[data-theme='dark'] .sol-borrador-popup__item:hover {
+  background: #334155;
+}
+
 .transfer-issues-details__meta {
   margin: 0 0 8px;
 }

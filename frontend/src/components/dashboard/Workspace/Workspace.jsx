@@ -111,6 +111,12 @@ function Workspace({
   const [pendingTransferEntradaRequest, setPendingTransferEntradaRequest] = useState(null)
   const [pendingOpenIssueId, setPendingOpenIssueId] = useState(null)
   const [pendingOpenClienteSolicitudId, setPendingOpenClienteSolicitudId] = useState(null)
+  const [pendingOpenBorradorData, setPendingOpenBorradorData] = useState(null)
+
+  const handleOpenImportacionBorrador = useCallback((borradorData) => {
+    onSelectTab?.('Importaciones')
+    setPendingOpenBorradorData(borradorData)
+  }, [onSelectTab])
 
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
@@ -520,6 +526,15 @@ function Workspace({
         }
         onPendingOpenClienteSolicitudHandled={
           tab === 'Solicitudes' ? handlePendingOpenClienteSolicitudHandled : undefined
+        }
+        onOpenImportacionBorrador={
+          tab === 'Solicitudes' ? handleOpenImportacionBorrador : undefined
+        }
+        pendingOpenBorradorData={
+          tab === 'Importaciones' ? pendingOpenBorradorData : null
+        }
+        onPendingOpenBorradorHandled={
+          tab === 'Importaciones' ? () => setPendingOpenBorradorData(null) : undefined
         }
       />
     )
