@@ -141,13 +141,12 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const borradorPopupTimerRef = useRef(null)
 
   useEffect(() => {
-    if (statusFilter !== 'aceptado' || !token) { setBorradorImps([]); return }
+    if (statusFilter !== 'aceptado' || !token) { setBorradorImps([]); return undefined }
     let cancelled = false
     authFetch(`${API_URL}/importaciones/importaciones/?estado=borrador&page_size=500`, {}, token)
-      .then((data) => {
-        if (!cancelled) setBorradorImps(Array.isArray(data?.results) ? data.results : [])
-      })
-      .catch(() => {})
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((payload) => { if (!cancelled) setBorradorImps(Array.isArray(payload?.results) ? payload.results : []) })
+      .catch(() => { if (!cancelled) setBorradorImps([]) })
     return () => { cancelled = true }
   }, [statusFilter, token])
 
