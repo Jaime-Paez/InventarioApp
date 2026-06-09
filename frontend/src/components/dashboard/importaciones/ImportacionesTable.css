@@ -499,7 +499,7 @@
 }
 
 .importaciones-aceptados__table .create-user__locations-row {
-  grid-template-columns: 38px minmax(80px, 0.6fr) minmax(90px, 0.7fr) minmax(150px, 1.5fr) minmax(100px, 0.9fr) minmax(50px, 0.3fr) minmax(90px, 0.7fr);
+  grid-template-columns: 38px minmax(80px, 0.6fr) minmax(90px, 0.7fr) minmax(150px, 1.5fr) minmax(100px, 0.9fr) minmax(50px, 0.3fr);
   align-items: center;
 }
 

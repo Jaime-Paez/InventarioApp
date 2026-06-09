@@ -112,11 +112,16 @@ function Workspace({
   const [pendingOpenIssueId, setPendingOpenIssueId] = useState(null)
   const [pendingOpenClienteSolicitudId, setPendingOpenClienteSolicitudId] = useState(null)
   const [pendingOpenBorradorData, setPendingOpenBorradorData] = useState(null)
+  const [pendingOpenBorradorTab, setPendingOpenBorradorTab] = useState(null)
 
   const handleOpenImportacionBorrador = useCallback((borradorData) => {
-    onSelectTab?.('Importaciones')
+    // Tabs that show borradores (no fixed statusProp). Prefer whichever is already open.
+    const borradorCapableTabs = ['En camino', 'Importaciones']
+    const targetTab = openTabs.find((t) => borradorCapableTabs.includes(t)) || 'En camino'
+    onSelectTab?.(targetTab)
     setPendingOpenBorradorData(borradorData)
-  }, [onSelectTab])
+    setPendingOpenBorradorTab(targetTab)
+  }, [onSelectTab, openTabs])
 
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
     .filter(Boolean)
@@ -531,10 +536,12 @@ function Workspace({
           tab === 'Solicitudes' ? handleOpenImportacionBorrador : undefined
         }
         pendingOpenBorradorData={
-          tab === 'Importaciones' ? pendingOpenBorradorData : null
+          tab === pendingOpenBorradorTab ? pendingOpenBorradorData : null
         }
         onPendingOpenBorradorHandled={
-          tab === 'Importaciones' ? () => setPendingOpenBorradorData(null) : undefined
+          tab === pendingOpenBorradorTab
+            ? () => { setPendingOpenBorradorData(null); setPendingOpenBorradorTab(null) }
+            : undefined
         }
       />
     )

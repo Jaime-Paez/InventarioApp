@@ -188,8 +188,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const [aceptadosSelected, setAceptadosSelected] = useState(new Set())
   const [aceptadosSearch, setAceptadosSearch] = useState('')
   const [aceptadosCount, setAceptadosCount] = useState(null)
-  const [borradorImps, setBorradorImps] = useState([])
-  const [borradorPopup, setBorradorPopup] = useState(null)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
 
@@ -200,7 +198,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const modalPositionRef = useRef(modalPosition)
   const casaTimerRef = useRef(null)
   const productTimerRef = useRef(null)
-  const borradorPopupTimerRef = useRef(null)
   const casaDropdownRef = useRef(null)
   const productDropdownRef = useRef(null)
   const isFirstOpenRef = useRef(true)
@@ -394,16 +391,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       .then((payload) => { if (!cancelled) setAceptadosItems(parseApiList(payload)) })
       .catch(() => { if (!cancelled) setAceptadosItems([]) })
       .finally(() => { if (!cancelled) setAceptadosLoading(false) })
-    return () => { cancelled = true }
-  }, [showAceptadosView, selectedCasa?.id, token])
-
-  useEffect(() => {
-    if (!showAceptadosView || !selectedCasa?.id || !token) { setBorradorImps([]); return undefined }
-    let cancelled = false
-    authFetch(`${API_URL}/importaciones/importaciones/?estado=borrador&casa_comercial_id=${selectedCasa.id}&page_size=200`, {}, token)
-      .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((payload) => { if (!cancelled) setBorradorImps(parseApiList(payload)) })
-      .catch(() => { if (!cancelled) setBorradorImps([]) })
     return () => { cancelled = true }
   }, [showAceptadosView, selectedCasa?.id, token])
 
@@ -662,43 +649,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     })
   }, [])
 
-  const borradorProductMap = useMemo(() => {
-    const byId = {}
-    const byNombre = {}
-    for (const bImp of borradorImps) {
-      for (const d of (bImp.detalles || [])) {
-        if (d.producto?.id) {
-          const pid = String(d.producto.id)
-          if (!byId[pid]) byId[pid] = []
-          if (!byId[pid].some((x) => x.id === bImp.id)) byId[pid].push(bImp)
-        } else {
-          const key = String(d.nombre || '').trim().toLowerCase()
-          if (key) {
-            if (!byNombre[key]) byNombre[key] = []
-            if (!byNombre[key].some((x) => x.id === bImp.id)) byNombre[key].push(bImp)
-          }
-        }
-      }
-    }
-    return (item) => {
-      if (item.producto_id) return byId[String(item.producto_id)] || []
-      const key = String(item.nombre || '').trim().toLowerCase()
-      return key ? (byNombre[key] || []) : []
-    }
-  }, [borradorImps])
-
-  const showBorradorPopup = (event, imps) => {
-    if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current)
-    const rect = event.currentTarget.getBoundingClientRect()
-    let left = rect.right + 8
-    if (left + 220 > window.innerWidth - 8) left = Math.max(8, rect.left - 220 - 8)
-    setBorradorPopup({ top: Math.min(rect.top - 4, window.innerHeight - 120), left, imps })
-  }
-  const hideBorradorPopup = () => {
-    borradorPopupTimerRef.current = setTimeout(() => setBorradorPopup(null), 150)
-  }
-  const cancelHideBorradorPopup = () => { if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current) }
-
   if (!open) return null
 
   return (
@@ -726,7 +676,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       >
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
           <div className="create-user__header-text">
-            <h3>Nueva importación</h3>
+            <h3>Crear borrador</h3>
           </div>
           <div className="create-user__header-actions">
             <button
@@ -1180,7 +1130,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   <span>Nombre</span>
                   <span>OEMs</span>
                   <span>Cant.</span>
-                  <span>Borradores</span>
                 </div>
 
                 {aceptadosLoading && (
@@ -1196,12 +1145,10 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   const isAlreadyAdded = noProducto ? alreadyAddedSolIds.has(String(item.solicitud_id)) : alreadyAddedIds.has(String(item.producto_id))
                   const isSelected = aceptadosSelected.has(item.solicitud_id)
                   const oemText = (item.oem_codigos || []).join(', ') || '-'
-                  const borradorUsage = borradorProductMap(item)
-                  const inBorrador = borradorUsage.length > 0
                   return (
                     <div
                       key={item.solicitud_id}
-                      className={`create-user__locations-row importaciones-aceptados__row${isSelected ? ' importaciones-aceptados__row--selected' : ''}${noProducto ? ' importaciones-aceptados__row--no-catalogo' : ''}${inBorrador ? ' importaciones-aceptados__row--in-borrador' : ''}`}
+                      className={`create-user__locations-row importaciones-aceptados__row${isSelected ? ' importaciones-aceptados__row--selected' : ''}${noProducto ? ' importaciones-aceptados__row--no-catalogo' : ''}`}
                       style={{ cursor: isAlreadyAdded ? 'default' : 'pointer', opacity: isAlreadyAdded ? 0.45 : 1 }}
                       onClick={() => { if (!isAlreadyAdded) handleToggleAceptado(item.solicitud_id) }}
                     >
@@ -1220,26 +1167,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                       <span title={item.nombre}><span className="imp-cell-text">{item.nombre || '-'}</span></span>
                       <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{oemText}</span></span>
                       <span>{item.cantidad ?? '-'}</span>
-                      <span style={{ gap: 4 }}>
-                        {inBorrador ? (
-                          <>
-                            <span style={{ fontSize: '0.72rem', color: '#92400e', whiteSpace: 'nowrap' }}>
-                              {borradorUsage.length === 1 ? '1 borrador' : `${borradorUsage.length} borradores`}
-                            </span>
-                            <button
-                              type="button"
-                              className="movimientos-table__product-eye"
-                              onMouseEnter={(e) => { e.stopPropagation(); showBorradorPopup(e, borradorUsage) }}
-                              onMouseLeave={hideBorradorPopup}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <i className="pi pi-eye" />
-                            </button>
-                          </>
-                        ) : (
-                          <span style={{ color: '#9ca3af' }}>-</span>
-                        )}
-                      </span>
                     </div>
                   )
                 })}
@@ -1257,27 +1184,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
         document.body
       )}
     </div>
-    {borradorPopup && createPortal(
-      <div
-        className="imp-borrador-popup"
-        style={{ top: borradorPopup.top, left: borradorPopup.left }}
-        onMouseEnter={cancelHideBorradorPopup}
-        onMouseLeave={hideBorradorPopup}
-      >
-        {borradorPopup.imps.map((bImp) => (
-          <button
-            key={bImp.id}
-            type="button"
-            className="imp-borrador-popup__item"
-            onClick={() => { setBorradorPopup(null); setShowAceptadosView(false); onOpenBorrador?.(bImp) }}
-          >
-            <i className="pi pi-file-edit" style={{ fontSize: '0.72rem', opacity: 0.6 }} />
-            {bImp.codigo}
-          </button>
-        ))}
-      </div>,
-      document.body
-    )}
     </>
   )
 }
@@ -1659,10 +1565,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         >
           <header className="create-user__header" onMouseDown={handleModalMouseDown}>
             <div className="create-user__header-text">
-              <h3>
-                Editar importación
-                <span style={{ fontWeight: 400, fontSize: '0.88em', opacity: 0.6, marginLeft: 8 }}>{imp.codigo}</span>
-              </h3>
+              <h3>Borrador: {imp.codigo}</h3>
             </div>
             <div className="create-user__header-actions">
               <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} disabled={submitting} aria-label="Cerrar">
@@ -1923,7 +1826,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <span>
                       <input type="checkbox" checked={allSelectableSelected} disabled={selectableAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
                     </span>
-                    <span>Solicitud</span><span>Código JP</span><span>Nombre</span><span>OEMs</span><span>Cant.</span><span>Borradores</span>
+                    <span>Solicitud</span><span>Código JP</span><span>Nombre</span><span>OEMs</span><span>Cant.</span>
                   </div>
                   {aceptadosLoading && (
                     <div className="create-user__locations-row create-user__locations-row--empty"><span>Cargando...</span></div>
@@ -1938,12 +1841,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     const isAlreadyAdded = noProducto ? alreadyAddedSolIds.has(String(item.solicitud_id)) : alreadyAddedIds.has(String(item.producto_id))
                     const isSelected = aceptadosSelected.has(item.solicitud_id)
                     const oemText = (item.oem_codigos || []).join(', ') || '-'
-                    const borradorUsage = borradorProductMap(item)
-                    const inBorrador = borradorUsage.length > 0
                     return (
                       <div
                         key={item.solicitud_id}
-                        className={`create-user__locations-row importaciones-aceptados__row${isSelected ? ' importaciones-aceptados__row--selected' : ''}${noProducto ? ' importaciones-aceptados__row--no-catalogo' : ''}${inBorrador ? ' importaciones-aceptados__row--in-borrador' : ''}`}
+                        className={`create-user__locations-row importaciones-aceptados__row${isSelected ? ' importaciones-aceptados__row--selected' : ''}${noProducto ? ' importaciones-aceptados__row--no-catalogo' : ''}`}
                         style={{ cursor: isAlreadyAdded ? 'default' : 'pointer', opacity: isAlreadyAdded ? 0.45 : 1 }}
                         onClick={() => { if (!isAlreadyAdded) handleToggleAceptado(item.solicitud_id) }}
                       >
@@ -1962,26 +1863,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         <span title={item.nombre}><span className="imp-cell-text">{item.nombre || '-'}</span></span>
                         <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{oemText}</span></span>
                         <span>{item.cantidad ?? '-'}</span>
-                        <span style={{ gap: 4 }}>
-                          {inBorrador ? (
-                            <>
-                              <span style={{ fontSize: '0.72rem', color: '#92400e', whiteSpace: 'nowrap' }}>
-                                {borradorUsage.length === 1 ? '1 borrador' : `${borradorUsage.length} borradores`}
-                              </span>
-                              <button
-                                type="button"
-                                className="movimientos-table__product-eye"
-                                onMouseEnter={(e) => { e.stopPropagation(); showBorradorPopup(e, borradorUsage) }}
-                                onMouseLeave={hideBorradorPopup}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <i className="pi pi-eye" />
-                              </button>
-                            </>
-                          ) : (
-                            <span style={{ color: '#9ca3af' }}>-</span>
-                          )}
-                        </span>
                       </div>
                     )
                   })}

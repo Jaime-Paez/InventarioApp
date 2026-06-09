@@ -169,9 +169,13 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       }
     }
     return (row) => {
-      const pid = row?.producto_id ?? row?.producto_data?.id
+      const pid = row?.producto_data?.id
       if (pid) return byId[String(pid)] || []
-      const key = String(row?.producto_solicitado_nombre || '').trim().toLowerCase()
+      // flat=1 response uses producto_solicitado_data.nombre; grouped uses producto_solicitado_nombre
+      const nombre = row?.producto_solicitado_data?.nombre
+        || row?.producto_solicitado_nombre
+        || ''
+      const key = String(nombre).trim().toLowerCase()
       return key ? (byNombre[key] || []) : []
     }
   }, [borradorImps])
@@ -2250,18 +2254,19 @@ const handleResetTable = () => {
               header="Borrador"
               reorderable={false}
               resizable={false}
-              style={{ minWidth: '120px', width: '120px' }}
+              style={{ minWidth: '130px', width: '130px' }}
               body={(rowData) => {
                 const usage = borradorProductMap(rowData)
                 if (!usage.length) return null
                 return (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: '0.72rem', color: '#92400e', whiteSpace: 'nowrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span style={{ whiteSpace: 'nowrap' }}>
                       {usage.length === 1 ? '1 borrador' : `${usage.length} borradores`}
                     </span>
                     <button
                       type="button"
                       className="movimientos-table__product-eye"
+                      style={{ marginLeft: 'auto', flexShrink: 0 }}
                       onMouseEnter={(e) => { e.stopPropagation(); showBorradorPopupSol(e, usage) }}
                       onMouseLeave={hideBorradorPopupSol}
                       onClick={(e) => e.stopPropagation()}
