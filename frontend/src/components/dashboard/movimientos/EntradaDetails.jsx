@@ -274,6 +274,7 @@ function EntradaDetails({
   resubmittingTransfer = false,
 }) {
   const [formData, setFormData] = useState(emptyForm)
+  const [rawApiEstadoNombre, setRawApiEstadoNombre] = useState('')
   const [originalData, setOriginalData] = useState(null)
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -560,10 +561,14 @@ function EntradaDetails({
       !estadoMatchesRejected &&
       !estadoMatchesAccepted)
   const isSentSolicitud = isTraslado && estadoMatchesSent
-  const isPendingSolicitudRibbon = isTraslado && estadoMatchesPending
-  const isRejectedSolicitudRibbon = isTraslado && estadoMatchesRejected
-  const isAcceptedSolicitudRibbon = isTraslado && estadoMatchesAccepted
-  const isSentSolicitudRibbon = isSentSolicitud
+  const estadoMatchesReceived =
+    (normalizedSelectedEstadoName.includes('recib') || normalizedSelectedEstadoName.includes('parcial')) &&
+    !estadoMatchesPending && !estadoMatchesRejected && !estadoMatchesAccepted && !estadoMatchesSent
+  const isPendingSolicitudRibbon = estadoMatchesPending
+  const isRejectedSolicitudRibbon = estadoMatchesRejected
+  const isAcceptedSolicitudRibbon = estadoMatchesAccepted
+  const isSentSolicitudRibbon = estadoMatchesSent
+  const isReceivedRibbon = estadoMatchesReceived
   const canEditTrasladoState = !isTraslado || estadoMatchesPending || estadoMatchesRejected
   const isReadOnlyMode = Boolean(
     readOnly ||
@@ -1125,6 +1130,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       })
 
       setFormData(normalized.form)
+      setRawApiEstadoNombre(String(salidaData?.estado_movimiento || ''))
       setClienteQuery(String(normalized.form?.cliente || ''))
       setSelectedCliente(null)
       setClienteForm(normalized.clienteForm || initialClienteForm)
@@ -1186,6 +1192,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       clienteSearchTimerRef.current = null
     }
     setFormData(emptyForm)
+    setRawApiEstadoNombre('')
     setDetails([])
     setDetailDraft(initialDetail)
     setDetailError('')
@@ -2278,24 +2285,20 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     isPendingSolicitudRibbon ||
     isRejectedSolicitudRibbon ||
     isAcceptedSolicitudRibbon ||
-    isSentSolicitudRibbon
-  const solicitudRibbonLabel = isRejectedSolicitudRibbon
-    ? 'Solicitud rechazada'
-    : (isAcceptedSolicitudRibbon ? 'Solicitud aceptada' : (isSentSolicitudRibbon ? 'Solicitud enviada' : 'Solicitud pendiente'))
-  const solicitudRibbonTitle = isRejectedSolicitudRibbon
-    ? 'Solicitud rechazada por la sucursal proveedora'
-    : (
-      isAcceptedSolicitudRibbon
-        ? 'Solicitud aceptada por la sucursal proveedora'
-        : (isSentSolicitudRibbon ? 'Solicitud en estado de envio (traslado).' : 'Solicitud esperando a ser aceptada')
-    )
-  const solicitudRibbonDisplayLabel = isRejectedSolicitudRibbon
-    ? 'Solicitud\nrechazada'
-    : (
-      isAcceptedSolicitudRibbon
-        ? 'Solicitud\naceptada'
-        : (isSentSolicitudRibbon ? 'Solicitud\nenviada' : 'Solicitud\npendiente')
-    )
+    isSentSolicitudRibbon ||
+    isReceivedRibbon
+  const _ribbonStateLabel = rawApiEstadoNombre || selectedEstadoName || ''
+  const solicitudRibbonLabel = isTraslado
+    ? (isRejectedSolicitudRibbon ? 'Solicitud rechazada' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada' : isSentSolicitudRibbon ? 'Solicitud enviada' : 'Solicitud pendiente')
+    : _ribbonStateLabel
+  const solicitudRibbonTitle = isTraslado
+    ? (isRejectedSolicitudRibbon ? 'Solicitud rechazada por la sucursal proveedora' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada por la sucursal proveedora' : isSentSolicitudRibbon ? 'Solicitud en estado de envio (traslado).' : 'Solicitud esperando a ser aceptada')
+    : _ribbonStateLabel
+  const solicitudRibbonDisplayLabel = isReceivedRibbon
+    ? _ribbonStateLabel.replace(' ', '\n')
+    : isTraslado
+      ? (isRejectedSolicitudRibbon ? 'Solicitud\nrechazada' : isAcceptedSolicitudRibbon ? 'Solicitud\naceptada' : isSentSolicitudRibbon ? 'Solicitud\nenviada' : 'Solicitud\npendiente')
+      : _ribbonStateLabel.replace(' ', '\n')
   const solicitudRejectionReason = String(previewData?.motivo_rechazo || '').trim()
   const resolvedSolicitudRejectionReason = (
     solicitudRejectionReason || 'Sin motivo de rechazo registrado.'
@@ -2420,15 +2423,13 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
             className={`entrada-details__pending-ribbon${
               isRejectedSolicitudRibbon
                 ? ' entrada-details__pending-ribbon--rejected'
-                : (
-                  isAcceptedSolicitudRibbon
-                    ? ' entrada-details__pending-ribbon--accepted'
-                    : (
-                      isSentSolicitudRibbon
-                        ? ' entrada-details__pending-ribbon--sent'
-                        : ' entrada-details__pending-ribbon--pending'
-                    )
-                )
+                : isAcceptedSolicitudRibbon
+                  ? ' entrada-details__pending-ribbon--accepted'
+                  : isSentSolicitudRibbon
+                    ? ' entrada-details__pending-ribbon--sent'
+                    : isReceivedRibbon
+                      ? ' entrada-details__pending-ribbon--received'
+                      : ' entrada-details__pending-ribbon--pending'
             }`}
             aria-label={solicitudRibbonLabel}
             title={solicitudRibbonTitle}

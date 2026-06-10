@@ -517,7 +517,8 @@ function Workspace({
         }
         isTabActive={
           tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ||
-          tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY
+          tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY ||
+          tab === 'Importaciones' || tab === 'En proceso' || tab === 'En camino' || tab === 'Importadas'
             ? isActive
             : undefined
         }

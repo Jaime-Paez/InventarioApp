@@ -218,7 +218,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       <Toast ref={toastRef} />
       <div
         className={`quick-actions__receive-overlay ${mode}`}
-        style={{ zIndex: 1406 }}
+        style={{ zIndex: 2100 }}
         onMouseDown={(e) => { if (e.target === e.currentTarget && !submitting) onClose() }}
       >
         <div
@@ -348,7 +348,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         return createPortal(
           <div
             className={`quick-actions__receive-overlay ${mode}`}
-            style={{ zIndex: 1407 }}
+            style={{ zIndex: 2200 }}
             onMouseDown={(e) => { if (e.target === e.currentTarget && !formSaving) setEditingId(null) }}
           >
             <div
@@ -420,9 +420,48 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   )
 }
 
+const DETAILS_VIEWPORT_PADDING = 12
+
 function ImportacionDetailsModal({ imp, token, onClose, onSaved }) {
   const [showReceive, setShowReceive] = useState(false)
+  const [activeTab, setActiveTab] = useState('productos')
   const toastRef = useRef(null)
+  const modalRef = useRef(null)
+  const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const [position, setPosition] = useState(() => {
+    const w = Math.min(680, window.innerWidth - 56)
+    const h = Math.min(700, window.innerHeight * 0.88)
+    return {
+      x: Math.max((window.innerWidth - w) / 2, DETAILS_VIEWPORT_PADDING + 28),
+      y: Math.max((window.innerHeight - h) / 2, DETAILS_VIEWPORT_PADDING),
+    }
+  })
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!dragData.current.active) return
+      e.preventDefault()
+      const modalW = modalRef.current?.offsetWidth || 680
+      const modalH = modalRef.current?.offsetHeight || 600
+      setPosition({
+        x: Math.min(Math.max(e.clientX - dragData.current.offsetX, DETAILS_VIEWPORT_PADDING + 28), window.innerWidth - modalW - DETAILS_VIEWPORT_PADDING),
+        y: Math.min(Math.max(e.clientY - dragData.current.offsetY, DETAILS_VIEWPORT_PADDING), window.innerHeight - modalH - DETAILS_VIEWPORT_PADDING),
+      })
+    }
+    const handleMouseUp = () => { dragData.current.active = false }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
+  const handleHeaderMouseDown = (e) => {
+    if (!modalRef.current) return
+    const rect = modalRef.current.getBoundingClientRect()
+    dragData.current = { active: true, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top }
+  }
 
   if (!imp) return null
   const detalles = imp.detalles || []
@@ -442,109 +481,171 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved }) {
     return { pct, elapsedDays, totalDays, remaining }
   })()
 
+  const ribbonClass = imp.estado === 'importada'
+    ? 'entrada-details__pending-ribbon--accepted'
+    : imp.estado === 'en_camino'
+      ? 'entrada-details__pending-ribbon--pending'
+      : ''
+  const ribbonLabel = imp.estado === 'importada' ? 'Importada' : imp.estado === 'en_camino' ? 'En\ncamino' : badge.label
+
   const modal = createPortal(
-    <div
-      className="imp-aceptados-popup__overlay"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
+    <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: '16px' }}>
       <Toast ref={toastRef} />
-      <div className="imp-aceptados-popup__dialog" style={{ width: 'min(680px, calc(100vw - 32px))', height: 'auto', maxHeight: 'min(88vh, 700px)' }}>
-        <header className="imp-aceptados-popup__header">
-          <div>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {imp.codigo}
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: badge.bg, color: badge.color }}>{badge.label}</span>
-            </h3>
-            <p>{imp.casa_nombre || imp.casa_comercial?.nombre || '-'}</p>
-          </div>
-          <button type="button" className="imp-aceptados-popup__close" onClick={onClose}><i className="pi pi-times" /></button>
-        </header>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, padding: '12px 20px', borderBottom: '1px solid color-mix(in srgb, var(--border-color,rgba(148,163,184,0.35)) 75%, transparent)', flexShrink: 0 }}>
-          {[
-            { label: 'Fecha importación', value: imp.fecha_importacion || imp.fecha || '-' },
-            { label: 'Días estimados', value: imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : '-' },
-            { label: 'Total productos', value: imp.total_productos ?? detalles.length },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--color-muted,#64748b)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>{label}</div>
-              <div style={{ fontWeight: 600 }}>{value}</div>
-            </div>
-          ))}
+      <div
+        ref={modalRef}
+        className="create-user__modal create-salida__modal entrada-details__modal--pending"
+        style={{
+          top: position.y,
+          left: position.x,
+          width: 'min(720px, calc(100vw - 32px))',
+          height: 'auto',
+          maxHeight: 'min(88vh, 720px)',
+          minWidth: 0,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <div className={`entrada-details__pending-ribbon${ribbonClass ? ` ${ribbonClass}` : ''}`}>
+          <span className="entrada-details__pending-ribbon-label">{ribbonLabel}</span>
         </div>
-
-        {imp.numero_factura && (
-          <div style={{ padding: '10px 20px', borderBottom: '1px solid color-mix(in srgb, var(--border-color,rgba(148,163,184,0.35)) 75%, transparent)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--color-muted,#64748b)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Factura</span>
-            <span style={{ fontWeight: 600 }}>{imp.numero_factura}</span>
-          </div>
-        )}
-
-        {progressInfo && (
-          <div className="imp-details__progress" style={{ padding: '12px 20px', borderBottom: '1px solid color-mix(in srgb, var(--border-color,rgba(148,163,184,0.35)) 75%, transparent)', flexShrink: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--color-muted,#64748b)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Progreso de entrega</span>
-              <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                {progressInfo.pct < 100
-                  ? `${progressInfo.elapsedDays} / ${progressInfo.totalDays} días — faltan ${progressInfo.remaining} día${progressInfo.remaining === 1 ? '' : 's'}`
-                  : `${progressInfo.elapsedDays} días transcurridos`}
-              </span>
+          <header className="create-user__header" onMouseDown={handleHeaderMouseDown}>
+            <div className="create-user__header-text">
+              <h3>{imp.codigo}</h3>
             </div>
-            <div className="imp-details__progress-track">
-              <div
-                className={`imp-details__progress-fill${progressInfo.pct >= 100 ? ' imp-details__progress-fill--late' : ''}`}
-                style={{ width: `${progressInfo.pct}%` }}
-              />
+            <div className="create-user__header-actions">
+              <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} aria-label="Cerrar">
+                <i className="pi pi-times" />
+              </button>
             </div>
-            <div style={{ textAlign: 'right', fontSize: '0.75rem', marginTop: 4, fontWeight: 600, color: progressInfo.pct >= 100 ? '#ef4444' : 'var(--color-muted,#64748b)' }}>
-              {progressInfo.pct}%
-            </div>
-          </div>
-        )}
+          </header>
 
-        <div style={{ flex: 1, overflow: 'auto', padding: '12px 20px' }}>
-          <div className="create-user__locations-table" style={{ borderRadius: 8, overflow: 'hidden' }}>
-            <div className="create-user__locations-row create-user__locations-row--head" style={{ gridTemplateColumns: 'minmax(90px,0.7fr) minmax(160px,1.6fr) minmax(110px,1fr) 60px' }}>
-              <span>Código</span><span>Nombre</span><span>OEM</span><span style={{ justifyContent: 'center' }}>Cant.</span>
-            </div>
-            {!detalles.length ? (
-              <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
-            ) : detalles.map((d, i) => {
-              const sinCat = !d.producto?.id
-              const codigo = d.producto?.codigo || d.codigo || '-'
-              const nombre = d.producto?.nombre || d.nombre || '-'
-              const oem = d.producto?.oem || d.oem || '-'
-              return (
-                <div key={d.id ?? i} className={`create-user__locations-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: 'minmax(90px,0.7fr) minmax(160px,1.6fr) minmax(110px,1fr) 60px' }}>
-                  <span title={codigo} style={{ overflow: 'hidden' }}>
-                    <span className="imp-cell-text">{codigo}</span>
-                    {sinCat && <span className="importaciones-aceptados__no-catalogo-badge" style={{ marginLeft: 4 }}>Sin catálogo</span>}
-                  </span>
-                  <span title={nombre} style={{ overflow: 'hidden' }}><span className="imp-cell-text">{nombre}</span></span>
-                  <span title={oem} style={{ overflow: 'hidden' }}><span className="imp-cell-text">{oem}</span></span>
-                  <span style={{ justifyContent: 'center', fontWeight: 600 }}>{d.cantidad}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="imp-aceptados-popup__footer" style={{ justifyContent: 'space-between' }}>
-          <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
-          {imp.estado === 'en_camino' && (
-            <button
-              type="button"
-              className="create-user__action create-user__action--primary"
-              onClick={() => setShowReceive(true)}
-            >
-              Llegó importación
+          <div className="create-user__tabs create-salida__tabs" role="tablist">
+            <button type="button" className={`create-user__tab${activeTab === 'general' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('general')}>
+              General
             </button>
-          )}
+            <button type="button" className={`create-user__tab${activeTab === 'productos' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('productos')}>
+              Productos {detalles.length > 0 && `(${detalles.length})`}
+            </button>
+          </div>
+
+          <div className="create-user__content create-salida__content">
+            <div className="create-user__body">
+
+              {activeTab === 'general' && (
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">General</p>
+                      <h4>Información de la importación</h4>
+                    </div>
+                  </div>
+                  <div className="create-salida__field-groups">
+                    <div className="create-salida__field-group create-salida__field-group--defined">
+                      <div className="create-user__grid create-user__grid--two">
+                        <StaticFieldDisplay label="Código" value={imp.codigo} />
+                        <StaticFieldDisplay label="Fecha importación" value={imp.fecha_importacion || imp.fecha || '-'} />
+                        <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(imp.casa_comercial)} fullWidth />
+                        <StaticFieldDisplay label="Días estimados" value={imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : '-'} />
+                        {imp.numero_factura && <StaticFieldDisplay label="Factura" value={imp.numero_factura} />}
+                        {imp.casa_comercial?.pais?.nombre && (
+                          <div className="create-user__field create-salida__static-field">
+                            <span>País</span>
+                            <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {(() => {
+                                const flagUrl = getFlagUrl(imp.casa_comercial.pais?.codigo_pais)
+                                return (
+                                  <span className={`create-user__flag${flagUrl ? '' : ' is-empty'}`} aria-hidden="true" style={{ flexShrink: 0 }}>
+                                    {flagUrl ? <img src={flagUrl} alt="" /> : '□'}
+                                  </span>
+                                )
+                              })()}
+                              {String(imp.casa_comercial.pais.nombre).trim()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {activeTab === 'productos' && (
+                <section className="create-user__section">
+                  {progressInfo && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                        <p className="create-user__eyebrow" style={{ margin: 0 }}>Progreso de entrega</p>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                          {progressInfo.pct < 100
+                            ? `${progressInfo.elapsedDays} / ${progressInfo.totalDays} días — faltan ${progressInfo.remaining} día${progressInfo.remaining === 1 ? '' : 's'}`
+                            : `${progressInfo.elapsedDays} días transcurridos`}
+                        </span>
+                      </div>
+                      <div className="imp-details__progress-track">
+                        <div
+                          className={`imp-details__progress-fill${progressInfo.pct >= 100 ? ' imp-details__progress-fill--late' : ''}`}
+                          style={{ width: `${progressInfo.pct}%` }}
+                        />
+                      </div>
+                      <div style={{ textAlign: 'right', fontSize: '0.75rem', marginTop: 4, fontWeight: 600, color: progressInfo.pct >= 100 ? '#ef4444' : 'var(--color-muted,#64748b)' }}>
+                        {progressInfo.pct}%
+                      </div>
+                    </div>
+                  )}
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Productos</p>
+                      <h4>Listado de productos</h4>
+                    </div>
+                  </div>
+                  <div className="create-user__locations-table" style={{ borderRadius: 8, overflow: 'hidden' }}>
+                    <div className="create-user__locations-row create-user__locations-row--head" style={{ gridTemplateColumns: 'minmax(90px,0.7fr) minmax(160px,1.6fr) minmax(110px,1fr) 60px' }}>
+                      <span>Código</span><span>Nombre</span><span>OEM</span><span style={{ justifyContent: 'center' }}>Cant.</span>
+                    </div>
+                    {!detalles.length ? (
+                      <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
+                    ) : detalles.map((d, i) => {
+                      const sinCat = !d.producto?.id
+                      const codigo = d.producto?.codigo || d.codigo || '-'
+                      const nombre = d.producto?.nombre || d.nombre || '-'
+                      const oem = d.producto?.oem || d.oem || '-'
+                      return (
+                        <div key={d.id ?? i} className={`create-user__locations-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: 'minmax(90px,0.7fr) minmax(160px,1.6fr) minmax(110px,1fr) 60px' }}>
+                          <span title={codigo} style={{ overflow: 'hidden' }}>
+                            <span className="imp-cell-text">{codigo}</span>
+                            {sinCat && <span className="importaciones-aceptados__no-catalogo-badge" style={{ marginLeft: 4 }}>Sin catálogo</span>}
+                          </span>
+                          <span title={nombre} style={{ overflow: 'hidden' }}><span className="imp-cell-text">{nombre}</span></span>
+                          <span title={oem} style={{ overflow: 'hidden' }}><span className="imp-cell-text">{oem}</span></span>
+                          <span style={{ justifyContent: 'center', fontWeight: 600 }}>{d.cantidad}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+
+            </div>
+          </div>
+
+          <div className="create-user__footer">
+            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
+            {imp.estado === 'en_camino' && (
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={() => setShowReceive(true)}
+              >
+                Llegó importación
+              </button>
+            )}
+          </div>
         </div>
-      </div>
     </div>,
     getPortalRoot()
   )
+
 
   return (
     <>
@@ -2430,7 +2531,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   )
 }
 
-function ImportacionesTable({ token, moduleActions, status: statusProp, onError, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled }) {
+function ImportacionesTable({ token, moduleActions, status: statusProp, isTabActive, onError, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
   const _widthsClearedRef = useRef(null)
@@ -2543,6 +2644,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError,
   const handleStatusChange = (nextStatus) => {
     if (nextStatus === status) return
     setActiveStatus(nextStatus)
+    setShowImpDetails(false)
   }
 
   const clearProductHoverTimer = useCallback(() => {
@@ -2850,7 +2952,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError,
       </div>
 
       <ImportacionDetailsModal
-        imp={showImpDetails ? selectedImp : null}
+        imp={showImpDetails && isTabActive !== false ? selectedImp : null}
         token={token}
         onClose={() => setShowImpDetails(false)}
         onSaved={() => { setShowImpDetails(false); fetchItems() }}
