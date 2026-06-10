@@ -19,6 +19,8 @@ import '../../admin/UsersTable/UsersTable.css'
 import '../../movimientos/TrasladosInconvenientesTable.css'
 import '../../movimientos/CreateSalida.css'
 
+const getPortalRoot = () => document.querySelector('.dashboard-shell') || document.body
+
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
@@ -102,7 +104,7 @@ const buildRevisionExportRows = (rows, columns) => {
   })
 }
 
-function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '', pendingOpenClienteSolicitudId, onPendingOpenClienteSolicitudHandled, onOpenImportacionBorrador }) {
+function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId = '', pendingOpenClienteSolicitudId, onPendingOpenClienteSolicitudHandled, onOpenImportacionBorrador, onOpenImportacionDetails }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
@@ -151,10 +153,16 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   }, [statusFilter, token])
 
   const borradorProductMap = useMemo(() => {
+    const bySolicitudId = {}
     const byId = {}
     const byNombre = {}
     for (const bImp of borradorImps) {
       for (const d of (bImp.detalles || [])) {
+        if (d.solicitud_id) {
+          const sid = String(d.solicitud_id)
+          if (!bySolicitudId[sid]) bySolicitudId[sid] = []
+          if (!bySolicitudId[sid].some((x) => x.id === bImp.id)) bySolicitudId[sid].push(bImp)
+        }
         if (d.producto?.id) {
           const pid = String(d.producto.id)
           if (!byId[pid]) byId[pid] = []
@@ -169,9 +177,10 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       }
     }
     return (row) => {
+      const sid = String(row?.id || '')
+      if (sid && bySolicitudId[sid]) return bySolicitudId[sid]
       const pid = row?.producto_data?.id
       if (pid) return byId[String(pid)] || []
-      // flat=1 response uses producto_solicitado_data.nombre; grouped uses producto_solicitado_nombre
       const nombre = row?.producto_solicitado_data?.nombre
         || row?.producto_solicitado_nombre
         || ''
@@ -351,6 +360,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
     } else if (estadoFilter === 'aceptado') {
       params.set('estado', 'revisado')
       params.set('flat', '1')
+      params.set('exclude_importados', '1')
     } else if (estadoFilter === 'archivado') {
       params.set('estado', 'archivado')
       params.set('flat', '1')
@@ -715,6 +725,30 @@ const handleResetTable = () => {
     }))
   }
 
+  const [importadosItems, setImportadosItems] = useState([])
+  const [importadosLoading, setImportadosLoading] = useState(false)
+  const [importadosFilter, setImportadosFilter] = useState('')
+  const [importadosFilters, setImportadosFilters] = useState({ global: { value: null, matchMode: FilterMatchMode.CONTAINS } })
+
+  const fetchImportados = useCallback(async () => {
+    setImportadosLoading(true)
+    try {
+      const resp = await authFetch(`${API_URL}/solicitudes/solicitudes/importados/`, {}, token)
+      if (!resp.ok) throw new Error('Error cargando importados')
+      const data = await resp.json()
+      setImportadosItems(data.results || [])
+    } catch {
+      setImportadosItems([])
+    } finally {
+      setImportadosLoading(false)
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (statusFilter !== 'importado') return
+    fetchImportados()
+  }, [statusFilter, fetchImportados])
+
   const handleStatusFilterChange = (nextFilter) => {
     if (nextFilter === statusFilter) return
     setStatusFilter(nextFilter)
@@ -722,6 +756,7 @@ const handleResetTable = () => {
     setClients([])
     setTotalRecords(0)
     setPageFirst(0)
+    if (nextFilter === 'importado') return
     setIsRefreshing(true)
     fetchClients(lastSearchRef.current, 1, pageSize, {
       tableFilters: filters,
@@ -1237,8 +1272,12 @@ const handleResetTable = () => {
     if (isAdminUser && statusFilter === 'solicitado' && getSolicitudPendingMeta(rowData).isPending) {
       classes.push('transfer-issues-row--pendiente')
     }
-    if (statusFilter === 'aceptado' && borradorProductMap(rowData).length > 0) {
-      classes.push('sol-row--in-borrador')
+    if (statusFilter === 'aceptado') {
+      if (borradorProductMap(rowData).length > 0) {
+        classes.push('sol-row--in-borrador')
+      } else {
+        classes.push('sol-row--no-borrador')
+      }
     }
     if (selectedRowIds.includes(normId(rowData?.id))) {
       classes.push('selected-row-shadow')
@@ -1435,6 +1474,7 @@ const handleResetTable = () => {
   const handleCloseDetailsModal = () => {
     setShowDetailsModal(false)
     pendingRefreshAfterCloseRef.current = false
+    refreshData()
   }
 
   const handleDeleted = () => {
@@ -1944,6 +1984,7 @@ const handleResetTable = () => {
             {[
               { key: 'solicitado', label: 'Solicitudes' },
               { key: 'aceptado', label: 'Aceptados' },
+              { key: 'importado', label: 'Importados' },
               { key: 'archivado', label: 'Archivados' },
             ].map((option) => (
               <Button
@@ -1959,7 +2000,99 @@ const handleResetTable = () => {
       </div>
 
       <div className="users-table users-table--card users-table--compact" ref={tableWrapperRef}>
-        {!hasSearched ? (
+        {statusFilter === 'importado' ? (
+          <>
+            {importadosLoading && (
+              <div className="spinner-container spinner-container--table"><div className="spinner" /></div>
+            )}
+            <DataTable
+              value={importadosItems}
+              dataKey="detalle_id"
+              className={`users-datatable users-datatable--compact${importadosLoading ? ' users-datatable--loading-content' : ''}`}
+              emptyMessage="No hay productos importados."
+              showGridlines
+              size="small"
+              scrollable
+              scrollHeight="flex"
+              paginator
+              rows={25}
+              rowsPerPageOptions={[10, 25, 50]}
+              rowClassName={(r) => r.importacion_estado === 'en_camino' ? 'importados-row--en-camino' : 'importados-row--importada'}
+              filters={importadosFilters}
+              globalFilterFields={['solicitud_codigo', 'codigo', 'nombre', 'oem', 'importacion_codigo', 'importacion_casa']}
+              header={
+                <div className="users-header">
+                  <div className="users-header__left">
+                    <div className="search-input-container">
+                      <input
+                        type="text"
+                        value={importadosFilter}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setImportadosFilter(val)
+                          setImportadosFilters({ global: { value: val || null, matchMode: FilterMatchMode.CONTAINS } })
+                        }}
+                        className="search-input"
+                        placeholder="Buscar en tabla"
+                      />
+                      <i className="pi pi-search search-input-icon" />
+                    </div>
+                    <button className="rounded-icon-btn" type="button" onClick={fetchImportados} disabled={importadosLoading} title="Recargar">
+                      <i className="pi pi-refresh" />
+                    </button>
+                    <button className="rounded-icon-btn" type="button" onClick={() => { setImportadosFilter(''); setImportadosFilters({ global: { value: null, matchMode: FilterMatchMode.CONTAINS } }) }} title="Limpiar filtros">
+                      <i className="pi pi-filter-slash" />
+                    </button>
+                  </div>
+                  <div className="users-header__right">
+                    <span className="users-header__count">Reg. {importadosItems.length}</span>
+                  </div>
+                </div>
+              }
+            >
+              <Column field="fecha" header="Fecha" sortable style={{ minWidth: '100px' }} />
+              <Column field="solicitud_codigo" header="Solicitud" sortable style={{ minWidth: '100px' }} />
+              <Column field="codigo" header="Código JP" sortable style={{ minWidth: '100px' }}
+                body={(r) => r.codigo || '-'} />
+              <Column field="nombre" header="Nombre" sortable style={{ minWidth: '180px' }}
+                body={(r) => <span title={r.nombre}>{r.nombre || '-'}</span>} />
+              <Column field="oem" header="OEM" style={{ minWidth: '110px' }}
+                body={(r) => r.oem || '-'} />
+              <Column field="cantidad" header="Cantidad" sortable style={{ minWidth: '80px' }} />
+              <Column
+                header="Importación"
+                sortable
+                sortField="importacion_codigo"
+                style={{ minWidth: '170px' }}
+                body={(r) => {
+                  const isEnCamino = r.importacion_estado === 'en_camino'
+                  const color = isEnCamino ? '#d97706' : '#16a34a'
+                  const bg = isEnCamino ? 'rgba(217,119,6,0.1)' : 'rgba(22,163,74,0.1)'
+                  const label = isEnCamino ? 'En camino' : 'Importada'
+                  return (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>{r.importacion_codigo}</span>
+                      <span style={{ fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: bg, color, whiteSpace: 'nowrap' }}>{label}</span>
+                    </span>
+                  )
+                }}
+              />
+              <Column
+                header=""
+                style={{ minWidth: '130px', width: '130px' }}
+                body={(r) => (
+                  <Button
+                    type="button"
+                    label="Ver importación"
+                    className="users-topbtn transfer-issues-page__type-btn transfer-issues-page__type-btn--active"
+                    style={{ borderRadius: '999px' }}
+                    onClick={(e) => { e.stopPropagation(); onOpenImportacionDetails?.(r.importacion_id, r.importacion_estado) }}
+                  />
+                )}
+              />
+            </DataTable>
+          </>
+        ) : !hasSearched ? (
           <div className="users-search-empty-state">
             <div className="users-search-empty-state__content">
               <h2 className="users-search-empty-state__title">Solicitudes</h2>
@@ -2254,10 +2387,14 @@ const handleResetTable = () => {
               header="Borrador"
               reorderable={false}
               resizable={false}
-              style={{ minWidth: '130px', width: '130px' }}
+              style={{ minWidth: '190px', width: '190px' }}
               body={(rowData) => {
                 const usage = borradorProductMap(rowData)
-                if (!usage.length) return null
+                if (!usage.length) return (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-muted,#64748b)', fontStyle: 'italic' }}>
+                    Aún no se crea un borrador
+                  </span>
+                )
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                     <span style={{ whiteSpace: 'nowrap' }}>
@@ -2323,7 +2460,7 @@ const handleResetTable = () => {
               </button>
             ))}
           </div>,
-          document.body
+          getPortalRoot()
         )}
 
         {Array.isArray(oemHoverCard?.rows) && oemHoverCard.rows.length > 0 && (

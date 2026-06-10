@@ -1572,9 +1572,9 @@ button.create-user__locations-row {
 
 .dashboard-shell.dark .create-user__locations-row--form select,
 .dashboard-shell.dark .create-user__locations-row--form input {
-  background: var(--color-surface-darker);
-  color: var(--color-text-dark);
-  border-color: var(--color-border);
+  background: var(--color-surface-darker) !important;
+  color: var(--color-text-dark) !important;
+  border-color: var(--color-border) !important;
 }
 
 .dashboard-shell.dark .create-user__locations-row--form select:disabled,
@@ -1783,6 +1783,14 @@ button.create-user__locations-row {
 .dashboard-shell.dark .create-user__dropdown-results {
   background: var(--color-surface-darker);
   border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .create-user__result-option {
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .create-user__result-info small {
+  color: var(--color-text-dark);
 }
 
 .create-user__result-option {

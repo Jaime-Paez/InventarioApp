@@ -6,14 +6,19 @@ import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
 import { Button } from 'primereact/button'
-import { PackagePlus, Plus, Search, Trash2 } from 'lucide-react'
+import { Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
+import { Checkbox } from 'primereact/checkbox'
 import { API_URL, authFetch } from '../../../utils/api'
 import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import '../admin/CreateUsuario/CreateUsuario.css'
+import '../admin/UsersDetails/UsersDetails.css'
 import '../admin/UsersTable/UsersTable.css'
 import '../movimientos/CreateSalida.css'
+import '../QuickActions/QuickActions.css'
 import './ImportacionesTable.css'
+
+const getPortalRoot = () => document.querySelector('.dashboard-shell') || getPortalRoot()
 
 const STATUS_CONFIG = {
   borrador: { label: 'Borrador', empty: 'No hay importaciones en borrador.' },
@@ -94,16 +99,356 @@ const SELECTOR_HEIGHT_FULL = 'auto'
 const VIEWPORT_PADDING = 12
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
-function ImportacionDetailsModal({ imp, onClose }) {
+function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
+  const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
+  const mode = isDark ? 'dark' : 'light'
+  const toastRef = useRef(null)
+
+  const [rows, setRows] = useState(() =>
+    (imp.detalles || []).map(d => ({
+      id: d.id,
+      codigo: d.producto?.codigo || d.codigo || '',
+      nombre: d.producto?.nombre || d.nombre || '',
+      oem: d.producto?.oem || d.oem || '',
+      cantidad: d.cantidad,
+      sinCat: !d.producto?.id,
+      checked: false,
+      newProducto: null,
+    }))
+  )
+  const [filter, setFilter] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [showErrors, setShowErrors] = useState(false)
+
+  const [editingId, setEditingId] = useState(null)
+  const [form, setForm] = useState({ codigo: '', nombre: '', precio: '', costo_minimo: '', descripcion: '' })
+  const [formErrors, setFormErrors] = useState({})
+  const [formSaving, setFormSaving] = useState(false)
+
+  const toggleRow = useCallback((id) => {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, checked: !r.checked } : r))
+  }, [])
+  const toggleAll = useCallback((checked) => {
+    setRows(prev => prev.map(r => ({ ...r, checked })))
+  }, [])
+
+  const filteredRows = useMemo(() => {
+    const q = filter.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter(r => [r.codigo, r.nombre, r.oem].some(v => String(v || '').toLowerCase().includes(q)))
+  }, [rows, filter])
+
+  const checkedCount = rows.filter(r => r.checked).length
+  const allChecked = checkedCount === rows.length && rows.length > 0
+  const someChecked = checkedCount > 0 && checkedCount < rows.length
+  const sinCatRows = rows.filter(r => r.sinCat)
+  const sinCatFilled = sinCatRows.filter(r => r.newProducto !== null).length
+  const canConfirm = allChecked && sinCatFilled === sinCatRows.length
+
+  const openProductForm = (row) => {
+    setEditingId(row.id)
+    setForm({ codigo: row.codigo || '', nombre: row.nombre || '', precio: '', costo_minimo: '', descripcion: '' })
+    setFormErrors({})
+  }
+
+  const saveProductForm = async () => {
+    const errs = {}
+    if (!form.codigo.trim()) errs.codigo = 'Requerido'
+    if (!form.nombre.trim()) errs.nombre = 'Requerido'
+    if (!form.precio || isNaN(parseFloat(form.precio))) errs.precio = 'Requerido'
+    if (Object.keys(errs).length) { setFormErrors(errs); return }
+    const casaId = imp.casa_comercial?.id
+    if (!casaId) { setFormErrors({ _general: 'La importación no tiene casa comercial asignada.' }); return }
+
+    setFormSaving(true)
+    try {
+      const payload = {
+        codigo: form.codigo.trim(),
+        nombre: form.nombre.trim(),
+        precio: parseFloat(form.precio),
+        casas_comerciales_ids: [casaId],
+      }
+      if (form.costo_minimo) payload.costo_minimo = parseFloat(form.costo_minimo)
+      if (form.descripcion.trim()) payload.descripcion = form.descripcion.trim()
+
+      const resp = await authFetch(`${API_URL}/productos/productos/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, token)
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}))
+        const fe = {}
+        Object.entries(typeof data === 'object' && data !== null ? data : {}).forEach(([k, v]) => {
+          fe[k] = Array.isArray(v) ? v.join(' ') : String(v)
+        })
+        setFormErrors(Object.keys(fe).length ? fe : { _general: 'Error al crear el producto.' })
+        return
+      }
+      const created = await resp.json()
+      setRows(prev => prev.map(r => r.id === editingId ? { ...r, newProducto: created, checked: true } : r))
+      setEditingId(null)
+    } catch (e) {
+      setFormErrors({ _general: e.message || 'Error al crear el producto.' })
+    } finally {
+      setFormSaving(false)
+    }
+  }
+
+  const handleConfirm = async () => {
+    if (!canConfirm) { setShowErrors(true); return }
+    setSubmitting(true)
+    try {
+      const resp = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/marcar-llegada/`,
+        { method: 'POST' },
+        token
+      )
+      if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo marcar la llegada.'))
+      onConfirmed?.(await resp.json())
+    } catch (e) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return createPortal(
+    <>
+      <Toast ref={toastRef} />
+      <div
+        className={`quick-actions__receive-overlay ${mode}`}
+        style={{ zIndex: 1406 }}
+        onMouseDown={(e) => { if (e.target === e.currentTarget && !submitting) onClose() }}
+      >
+        <div
+          className={`quick-actions__receive-dialog ${mode}`}
+          style={{ width: 'min(640px, calc(100vw - 24px))', gridTemplateRows: 'auto 1fr auto' }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <header className="quick-actions__receive-head">
+            <div>
+              <h4>{imp.codigo}</h4>
+              <p>{imp.casa_comercial?.nombre || '-'} · Recepción de productos</p>
+            </div>
+            <button type="button" className="quick-actions__receive-close" onClick={onClose} disabled={submitting}>
+              <X size={16} />
+            </button>
+          </header>
+
+          <div className="quick-actions__receive-body">
+            <div className="quick-actions__receive-stage-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <label className="quick-actions__receive-check quick-actions__receive-check--bulk">
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  ref={(el) => { if (el) el.indeterminate = someChecked }}
+                  onChange={(e) => toggleAll(e.target.checked)}
+                  disabled={submitting}
+                />
+                <span>Marcar todo revisado</span>
+              </label>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <span className="quick-actions__receive-stage-stat">Productos <strong>{rows.length}</strong></span>
+                <span className="quick-actions__receive-stage-stat">Revisados <strong>{checkedCount}</strong></span>
+                {sinCatRows.length > 0 && (
+                  <span className="quick-actions__receive-stage-stat">Datos <strong>{sinCatFilled}/{sinCatRows.length}</strong></span>
+                )}
+              </div>
+            </div>
+
+            <div className="quick-actions__receive-search-bar">
+              <div className="quick-actions__receive-search">
+                <input
+                  type="text"
+                  placeholder="Buscar por código o nombre..."
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                />
+                {filter && (
+                  <button type="button" className="quick-actions__receive-search-clear" onClick={() => setFilter('')}>×</button>
+                )}
+              </div>
+            </div>
+
+            <div className="quick-actions__receive-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filteredRows.map((row) => {
+                const needsData = row.sinCat && !row.newProducto
+                const isReady = row.checked && !needsData
+                const hasError = showErrors && (!row.checked || needsData)
+                return (
+                  <article
+                    key={row.id}
+                    className={`quick-actions__receive-item${row.checked ? ' is-reviewed' : ''}${isReady ? ' is-ready' : ' is-pending'}${hasError ? ' has-validation-error' : ''}`}
+                  >
+                    <div className="quick-actions__receive-item-head quick-actions__receive-item-head--check">
+                      <div className="quick-actions__receive-item-title">
+                        <strong>{row.codigo || '-'}</strong>
+                        <p className="quick-actions__receive-item-name">{row.nombre || '-'}</p>
+                        {row.oem && <p className="quick-actions__receive-item-name" style={{ fontSize: '0.8rem' }}>OEM: {row.oem}</p>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexShrink: 0 }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.82rem', background: 'color-mix(in srgb, var(--color-primary) 10%, var(--color-surface))', border: '1px solid color-mix(in srgb, var(--color-primary) 20%, var(--color-border))', borderRadius: 999, padding: '2px 10px' }}>
+                          {row.cantidad} uds
+                        </span>
+                        {row.sinCat && (
+                          row.newProducto
+                            ? <span className="quick-actions__receive-item-badge is-ready">Datos listos</span>
+                            : (
+                              <button
+                                type="button"
+                                className="quick-actions__receive-btn"
+                                style={{ background: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.4)', color: '#b45309', fontWeight: 700, padding: '0 12px', minHeight: 30, fontSize: '0.875rem' }}
+                                onClick={() => openProductForm(row)}
+                                disabled={submitting}
+                              >
+                                Completar datos
+                              </button>
+                            )
+                        )}
+                        <label className="quick-actions__receive-check quick-actions__receive-check--row" style={{ cursor: needsData ? 'not-allowed' : 'pointer' }}>
+                          <Checkbox
+                            binary
+                            checked={row.checked}
+                            onChange={() => { if (!needsData) toggleRow(row.id) }}
+                            disabled={submitting || needsData}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    {hasError && (
+                      <p style={{ color: '#dc2626', fontSize: '0.8rem', margin: '4px 0 0' }}>
+                        {needsData ? 'Completa los datos del producto antes de confirmar.' : 'Confirma haber revisado este producto.'}
+                      </p>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="quick-actions__receive-actions">
+            <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={onClose} disabled={submitting}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className={`quick-actions__receive-btn${canConfirm ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
+              onClick={handleConfirm}
+              disabled={submitting}
+            >
+              {submitting ? 'Confirmando...' : 'Confirmar llegada'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {editingId !== null && (() => {
+        const row = rows.find(r => r.id === editingId)
+        return createPortal(
+          <div
+            className={`quick-actions__receive-overlay ${mode}`}
+            style={{ zIndex: 1407 }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget && !formSaving) setEditingId(null) }}
+          >
+            <div
+              className={`quick-actions__receive-dialog ${mode}`}
+              style={{ width: 'min(520px, calc(100vw - 24px))', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto' }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <header className="quick-actions__receive-head">
+                <div>
+                  <h4>Completar datos del producto</h4>
+                  <p>{row?.nombre || row?.codigo || 'Sin catálogo'}</p>
+                </div>
+                <button type="button" className="quick-actions__receive-close" onClick={() => setEditingId(null)} disabled={formSaving}>
+                  <X size={16} />
+                </button>
+              </header>
+
+              <div className="quick-actions__receive-body" style={{ padding: '16px 20px' }}>
+                {formErrors._general && (
+                  <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: 12 }}>{formErrors._general}</p>
+                )}
+                <div className="create-user__grid create-user__grid--two">
+                  <label className={`create-user__field create-user__field--required${formErrors.nombre ? ' create-user__field--invalid' : ''}`}>
+                    <span>Nombre</span>
+                    <input type="text" value={form.nombre} onChange={(e) => setForm(f => ({ ...f, nombre: e.target.value }))} />
+                    {formErrors.nombre && <small style={{ color: '#dc2626' }}>{formErrors.nombre}</small>}
+                  </label>
+                  <label className={`create-user__field create-user__field--required${formErrors.codigo ? ' create-user__field--invalid' : ''}`}>
+                    <span>Código JP</span>
+                    <input type="text" value={form.codigo} onChange={(e) => setForm(f => ({ ...f, codigo: e.target.value }))} />
+                    {formErrors.codigo && <small style={{ color: '#dc2626' }}>{formErrors.codigo}</small>}
+                  </label>
+                  <label className={`create-user__field create-user__field--required${formErrors.precio ? ' create-user__field--invalid' : ''}`}>
+                    <span>Precio</span>
+                    <input type="number" min="0" step="0.01" placeholder="0.00" value={form.precio} onChange={(e) => setForm(f => ({ ...f, precio: e.target.value }))} />
+                    {formErrors.precio && <small style={{ color: '#dc2626' }}>{formErrors.precio}</small>}
+                  </label>
+                  <label className="create-user__field">
+                    <span>Costo mínimo</span>
+                    <input type="number" min="0" step="0.01" placeholder="0.00" value={form.costo_minimo} onChange={(e) => setForm(f => ({ ...f, costo_minimo: e.target.value }))} />
+                  </label>
+                  <label className="create-user__field create-user__field--full">
+                    <span>Descripción</span>
+                    <input type="text" placeholder="Opcional" value={form.descripcion} onChange={(e) => setForm(f => ({ ...f, descripcion: e.target.value }))} />
+                  </label>
+                </div>
+                {imp.casa_comercial && (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--color-muted,#64748b)', marginTop: 14 }}>
+                    Casa comercial: <strong>{imp.casa_comercial.nombre}</strong> (asignada automáticamente)
+                  </p>
+                )}
+              </div>
+
+              <div className="quick-actions__receive-actions">
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setEditingId(null)} disabled={formSaving}>
+                  Cancelar
+                </button>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={saveProductForm} disabled={formSaving}>
+                  {formSaving ? 'Guardando...' : 'Crear producto'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          getPortalRoot()
+        )
+      })()}
+    </>,
+    getPortalRoot()
+  )
+}
+
+function ImportacionDetailsModal({ imp, token, onClose, onSaved }) {
+  const [showReceive, setShowReceive] = useState(false)
+  const toastRef = useRef(null)
+
   if (!imp) return null
   const detalles = imp.detalles || []
   const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
-  return createPortal(
+
+  const progressInfo = (() => {
+    const startDate = imp.fecha_importacion || imp.fecha
+    if (imp.estado !== 'en_camino' || !startDate || !imp.dias_entrega_estimados) return null
+    const start = new Date(startDate)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const elapsedMs = today - start
+    const elapsedDays = Math.max(0, Math.floor(elapsedMs / 86400000))
+    const totalDays = imp.dias_entrega_estimados
+    const pct = Math.min(100, Math.round((elapsedDays / totalDays) * 100))
+    const remaining = Math.max(0, totalDays - elapsedDays)
+    return { pct, elapsedDays, totalDays, remaining }
+  })()
+
+  const modal = createPortal(
     <div
       className="imp-aceptados-popup__overlay"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="imp-aceptados-popup__dialog" style={{ width: 'min(680px, calc(100vw - 32px))', height: 'auto', maxHeight: 'min(82vh, 640px)' }}>
+      <Toast ref={toastRef} />
+      <div className="imp-aceptados-popup__dialog" style={{ width: 'min(680px, calc(100vw - 32px))', height: 'auto', maxHeight: 'min(88vh, 700px)' }}>
         <header className="imp-aceptados-popup__header">
           <div>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -117,7 +462,7 @@ function ImportacionDetailsModal({ imp, onClose }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, padding: '12px 20px', borderBottom: '1px solid color-mix(in srgb, var(--border-color,rgba(148,163,184,0.35)) 75%, transparent)', flexShrink: 0 }}>
           {[
-            { label: 'Fecha', value: imp.fecha || '-' },
+            { label: 'Fecha importación', value: imp.fecha_importacion || imp.fecha || '-' },
             { label: 'Días estimados', value: imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : '-' },
             { label: 'Total productos', value: imp.total_productos ?? detalles.length },
           ].map(({ label, value }) => (
@@ -128,8 +473,37 @@ function ImportacionDetailsModal({ imp, onClose }) {
           ))}
         </div>
 
+        {imp.numero_factura && (
+          <div style={{ padding: '10px 20px', borderBottom: '1px solid color-mix(in srgb, var(--border-color,rgba(148,163,184,0.35)) 75%, transparent)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-muted,#64748b)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Factura</span>
+            <span style={{ fontWeight: 600 }}>{imp.numero_factura}</span>
+          </div>
+        )}
+
+        {progressInfo && (
+          <div className="imp-details__progress" style={{ padding: '12px 20px', borderBottom: '1px solid color-mix(in srgb, var(--border-color,rgba(148,163,184,0.35)) 75%, transparent)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-muted,#64748b)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Progreso de entrega</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                {progressInfo.pct < 100
+                  ? `${progressInfo.elapsedDays} / ${progressInfo.totalDays} días — faltan ${progressInfo.remaining} día${progressInfo.remaining === 1 ? '' : 's'}`
+                  : `${progressInfo.elapsedDays} días transcurridos`}
+              </span>
+            </div>
+            <div className="imp-details__progress-track">
+              <div
+                className={`imp-details__progress-fill${progressInfo.pct >= 100 ? ' imp-details__progress-fill--late' : ''}`}
+                style={{ width: `${progressInfo.pct}%` }}
+              />
+            </div>
+            <div style={{ textAlign: 'right', fontSize: '0.75rem', marginTop: 4, fontWeight: 600, color: progressInfo.pct >= 100 ? '#ef4444' : 'var(--color-muted,#64748b)' }}>
+              {progressInfo.pct}%
+            </div>
+          </div>
+        )}
+
         <div style={{ flex: 1, overflow: 'auto', padding: '12px 20px' }}>
-          <div className="create-user__locations-table" style={{ borderRadius: 8, overflow: 'hidden', background: 'var(--surface-section,#f8fafc)' }}>
+          <div className="create-user__locations-table" style={{ borderRadius: 8, overflow: 'hidden' }}>
             <div className="create-user__locations-row create-user__locations-row--head" style={{ gridTemplateColumns: 'minmax(90px,0.7fr) minmax(160px,1.6fr) minmax(110px,1fr) 60px' }}>
               <span>Código</span><span>Nombre</span><span>OEM</span><span style={{ justifyContent: 'center' }}>Cant.</span>
             </div>
@@ -155,12 +529,35 @@ function ImportacionDetailsModal({ imp, onClose }) {
           </div>
         </div>
 
-        <div className="imp-aceptados-popup__footer" style={{ justifyContent: 'flex-end' }}>
+        <div className="imp-aceptados-popup__footer" style={{ justifyContent: 'space-between' }}>
           <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
+          {imp.estado === 'en_camino' && (
+            <button
+              type="button"
+              className="create-user__action create-user__action--primary"
+              onClick={() => setShowReceive(true)}
+            >
+              Llegó importación
+            </button>
+          )}
         </div>
       </div>
     </div>,
-    document.body
+    getPortalRoot()
+  )
+
+  return (
+    <>
+      {modal}
+      {showReceive && (
+        <ImportacionReceiveModal
+          imp={imp}
+          token={token}
+          onClose={() => setShowReceive(false)}
+          onConfirmed={(payload) => { onSaved?.(payload); onClose?.() }}
+        />
+      )}
+    </>
   )
 }
 
@@ -525,10 +922,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       return
     }
     const normalizedDetails = details.map((item) => {
+      const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
       if (item.producto?.id) {
-        return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0) }
+        return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), ...solId }
       }
-      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0) }
+      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), ...solId }
     })
     const badKeys = new Set(
       details
@@ -791,7 +1189,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           ))}
                         </div>
                       </div>,
-                      document.body
+                      getPortalRoot()
                     )}
                   </div>
 
@@ -989,7 +1387,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                                     })}
                                   </div>
                                 </div>,
-                                document.body
+                                getPortalRoot()
                               )}
                             </div>
                           </span>
@@ -1201,7 +1599,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
             </div>
           </div>
         </div>,
-        document.body
+        getPortalRoot()
       )}
     </div>
     </>
@@ -1209,7 +1607,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
 }
 
 function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrador }) {
-  const [activeTab, setActiveTab] = useState('productos')
+  const [activeTab, setActiveTab] = useState('general')
   const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '' })
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
@@ -1224,6 +1622,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [aceptadosSelected, setAceptadosSelected] = useState(new Set())
   const [aceptadosSearch, setAceptadosSearch] = useState('')
   const [aceptadosCount, setAceptadosCount] = useState(null)
+  const [showImportarModal, setShowImportarModal] = useState(false)
+  const [facturaInput, setFacturaInput] = useState('')
+  const [importarSubmitting, setImportarSubmitting] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
 
@@ -1296,18 +1699,19 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   useEffect(() => {
     if (!open || !imp) return
     const loaded = (imp.detalles || []).map((d, i) => {
+      const solId = d.solicitud_id ? String(d.solicitud_id) : null
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || '') }
+        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), _solId: solId }
       }
       return {
         _key: 'sc_' + (d.id ?? i), producto: null,
         codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '',
-        cantidad: String(d.cantidad || ''),
+        cantidad: String(d.cantidad || ''), _solId: solId,
       }
     })
     setDetails(loaded)
     setDetailDraft({ producto: null, cantidad: '' })
-    setActiveTab('productos')
+    setActiveTab('general')
     setInvalidQtyKeys(new Set())
     setShowAceptadosView(false)
     setAceptadosItems([])
@@ -1427,8 +1831,9 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       return
     }
     const normalizedDetails = details.map((item) => {
-      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0) }
-      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0) }
+      const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
+      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), ...solId }
+      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), ...solId }
     })
     setSubmitting(true)
     try {
@@ -1445,6 +1850,47 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleImportar = async () => {
+    const factura = facturaInput.trim()
+    if (!factura) return
+    setImportarSubmitting(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/importar/`,
+        { method: 'POST', body: JSON.stringify({ numero_factura: factura }) },
+        token
+      )
+      if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo generar la importación.'))
+      const payload = await response.json()
+      setShowImportarModal(false)
+      onSaved?.(payload)
+      onClose?.()
+    } catch (error) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 })
+    } finally {
+      setImportarSubmitting(false)
+    }
+  }
+
+  const handleDeleteBorrador = async () => {
+    setDeleteSubmitting(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/`,
+        { method: 'DELETE' },
+        token
+      )
+      if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo eliminar el borrador.'))
+      setShowDeleteModal(false)
+      onSaved?.()
+      onClose?.()
+    } catch (error) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 })
+    } finally {
+      setDeleteSubmitting(false)
     }
   }
 
@@ -1567,11 +2013,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
           <form className="create-user__form" noValidate onSubmit={(e) => { e.preventDefault(); handleSubmit() }}>
             <div className="create-user__tabs create-salida__tabs" role="tablist">
-              <button type="button" className={`create-user__tab${activeTab === 'productos' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('productos')}>
-                Productos {details.length > 0 && `(${details.length})`}
-              </button>
               <button type="button" className={`create-user__tab${activeTab === 'general' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('general')}>
                 General
+              </button>
+              <button type="button" className={`create-user__tab${activeTab === 'productos' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('productos')}>
+                Productos {details.length > 0 && `(${details.length})`}
               </button>
             </div>
 
@@ -1699,7 +2145,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                   })}
                                 </div>
                               </div>,
-                              document.body
+                              getPortalRoot()
                             )}
                           </div>
                         </span>
@@ -1776,18 +2222,129 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
             <div className="create-user__footer">
               <div className="user-details__footer-left">
-                <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={submitting}>
+                <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={submitting || importarSubmitting || deleteSubmitting}>
                   Cancelar
                 </button>
+                {imp?.estado === 'borrador' && (
+                  <button
+                    type="button"
+                    className="create-user__action user-details__delete"
+                    disabled={submitting || importarSubmitting || deleteSubmitting}
+                    onClick={() => setShowDeleteModal(true)}
+                  >
+                    Eliminar
+                  </button>
+                )}
               </div>
               <div className="user-details__footer-right">
-                <button type="submit" className="create-user__action create-user__action--primary" disabled={submitting}>
+                <button
+                  type="button"
+                  className="create-user__action imp-importar-btn"
+                  disabled={submitting || importarSubmitting || deleteSubmitting}
+                  onClick={() => { setFacturaInput(''); setShowImportarModal(true) }}
+                >
+                  Importar
+                </button>
+                <button type="submit" className="create-user__action create-user__action--primary" disabled={submitting || importarSubmitting || deleteSubmitting}>
                   {submitting ? 'Guardando...' : 'Guardar cambios'}
                 </button>
               </div>
             </div>
           </form>
         </div>
+
+        {showImportarModal && createPortal(
+          <div className="imp-importar-modal__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && !importarSubmitting) setShowImportarModal(false) }}>
+            <div className="imp-importar-modal__dialog">
+              <header className="imp-importar-modal__header">
+                <i className="pi pi-send" />
+                <h3>Estás por generar una importación</h3>
+              </header>
+              <div className="imp-importar-modal__body">
+                <div className="imp-importar-modal__info">
+                  <div className="imp-importar-modal__info-row">
+                    <span>Casa comercial</span>
+                    <strong>{imp.casa_comercial?.nombre || '-'}</strong>
+                  </div>
+                  <div className="imp-importar-modal__info-row">
+                    <span>Tiempo estimado de entrega</span>
+                    <strong>
+                      {imp.casa_comercial?.dias_entrega
+                        ? `${imp.casa_comercial.dias_entrega} día${imp.casa_comercial.dias_entrega === 1 ? '' : 's'}`
+                        : 'No especificado'}
+                    </strong>
+                  </div>
+                </div>
+                <div className="imp-importar-modal__field">
+                  <label htmlFor="imp-factura-input">Número de factura</label>
+                  <input
+                    id="imp-factura-input"
+                    type="text"
+                    className="imp-importar-modal__input"
+                    placeholder="Ej: FAC-2024-001"
+                    value={facturaInput}
+                    onChange={(e) => setFacturaInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && facturaInput.trim()) handleImportar() }}
+                    autoFocus
+                    disabled={importarSubmitting}
+                  />
+                </div>
+              </div>
+              <div className="imp-importar-modal__footer">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={() => setShowImportarModal(false)}
+                  disabled={importarSubmitting}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action imp-importar-btn"
+                  onClick={handleImportar}
+                  disabled={!facturaInput.trim() || importarSubmitting}
+                >
+                  {importarSubmitting ? 'Importando...' : 'Importar'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          getPortalRoot()
+        )}
+
+        {showDeleteModal && createPortal(
+          <div className="user-details__confirm-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && !deleteSubmitting) setShowDeleteModal(false) }}>
+            <div className="user-details__confirm-dialog">
+              <div className="user-details__confirm-icon">
+                <Info size={18} />
+              </div>
+              <div className="user-details__confirm-content">
+                <h4>Eliminar borrador</h4>
+                <p>¿Estás seguro que quieres eliminar el borrador <strong>{imp?.codigo}</strong>? Esta acción no se puede deshacer.</p>
+              </div>
+              <div className="user-details__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={deleteSubmitting}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action user-details__confirm-danger"
+                  onClick={handleDeleteBorrador}
+                  disabled={deleteSubmitting}
+                >
+                  {deleteSubmitting ? 'Eliminando...' : 'Eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          getPortalRoot()
+        )}
 
         {showAceptadosView && createPortal(
           <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAceptadosView(false) }}>
@@ -1866,14 +2423,14 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
               </div>
             </div>
           </div>,
-          document.body
+          getPortalRoot()
         )}
       </div>
     </>
   )
 }
 
-function ImportacionesTable({ token, moduleActions, status: statusProp, onError, pendingOpenBorradorData, onPendingOpenBorradorHandled }) {
+function ImportacionesTable({ token, moduleActions, status: statusProp, onError, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
   const _widthsClearedRef = useRef(null)
@@ -1899,6 +2456,15 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError,
     setShowEditImp(true)
     onPendingOpenBorradorHandled?.()
   }, [pendingOpenBorradorData]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!pendingOpenDetailsId || !token) return
+    if (pendingOpenDetailsStatus && !statusProp) setActiveStatus(pendingOpenDetailsStatus)
+    authFetch(`${API_URL}/importaciones/importaciones/${pendingOpenDetailsId}/`, {}, token)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((data) => { setSelectedImp(data); setShowImpDetails(true); onPendingOpenDetailsHandled?.() })
+      .catch(() => { onPendingOpenDetailsHandled?.() })
+  }, [pendingOpenDetailsId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [productHoverCard, setProductHoverCard] = useState(null)
   const productHoverHideTimerRef = useRef(null)
@@ -2050,7 +2616,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError,
   const estadoBodyTemplate = useCallback((rowData) => {
     const badge = STATUS_BADGE[rowData?.estado] || { label: rowData?.estado || '-', color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
     return (
-      <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.color, whiteSpace: 'nowrap' }}>
+      <span style={{ fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.color, whiteSpace: 'nowrap' }}>
         {badge.label}
       </span>
     )
@@ -2228,7 +2794,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError,
           resizableColumns
           columnResizeMode="expand"
           onRowDoubleClick={handleRowDoubleClick}
-          rowClassName={() => ({ 'p-selectable-row': true })}
+          rowClassName={(rowData) => ({ 'p-selectable-row': true, 'imp-row--borrador': rowData.estado === 'borrador' })}
         >
           <Column
             field="codigo"
@@ -2285,7 +2851,9 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError,
 
       <ImportacionDetailsModal
         imp={showImpDetails ? selectedImp : null}
+        token={token}
         onClose={() => setShowImpDetails(false)}
+        onSaved={() => { setShowImpDetails(false); fetchItems() }}
       />
 
       {Array.isArray(productHoverCard?.productos) && productHoverCard.productos.length > 0 && createPortal(
@@ -2324,7 +2892,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, onError,
             </tbody>
           </table>
         </div>,
-        document.body
+        getPortalRoot()
       )}
 
       <EditImportacionModal

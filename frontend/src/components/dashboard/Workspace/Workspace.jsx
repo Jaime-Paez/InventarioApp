@@ -113,6 +113,9 @@ function Workspace({
   const [pendingOpenClienteSolicitudId, setPendingOpenClienteSolicitudId] = useState(null)
   const [pendingOpenBorradorData, setPendingOpenBorradorData] = useState(null)
   const [pendingOpenBorradorTab, setPendingOpenBorradorTab] = useState(null)
+  const [pendingOpenDetailsId, setPendingOpenDetailsId] = useState(null)
+  const [pendingOpenDetailsTab, setPendingOpenDetailsTab] = useState(null)
+  const [pendingOpenDetailsStatus, setPendingOpenDetailsStatus] = useState(null)
 
   const handleOpenImportacionBorrador = useCallback((borradorData) => {
     // Tabs that show borradores (no fixed statusProp). Prefer whichever is already open.
@@ -121,6 +124,20 @@ function Workspace({
     onSelectTab?.(targetTab)
     setPendingOpenBorradorData(borradorData)
     setPendingOpenBorradorTab(targetTab)
+  }, [onSelectTab, openTabs])
+
+  const handleOpenImportacionDetails = useCallback((importacionId, estado) => {
+    const tabByEstado = {
+      en_camino: 'En camino',
+      importada: 'Importadas',
+      borrador: 'Importaciones',
+    }
+    const preferredTab = tabByEstado[estado] || 'En camino'
+    const targetTab = openTabs.includes(preferredTab) ? preferredTab : preferredTab
+    onSelectTab?.(targetTab)
+    setPendingOpenDetailsId(importacionId)
+    setPendingOpenDetailsTab(targetTab)
+    setPendingOpenDetailsStatus(estado || null)
   }, [onSelectTab, openTabs])
 
   const username = [user?.nombre || user?.first_name, user?.apellido || user?.last_name]
@@ -535,12 +552,26 @@ function Workspace({
         onOpenImportacionBorrador={
           tab === 'Solicitudes' ? handleOpenImportacionBorrador : undefined
         }
+        onOpenImportacionDetails={
+          tab === 'Solicitudes' ? handleOpenImportacionDetails : undefined
+        }
         pendingOpenBorradorData={
           tab === pendingOpenBorradorTab ? pendingOpenBorradorData : null
         }
         onPendingOpenBorradorHandled={
           tab === pendingOpenBorradorTab
             ? () => { setPendingOpenBorradorData(null); setPendingOpenBorradorTab(null) }
+            : undefined
+        }
+        pendingOpenDetailsId={
+          tab === pendingOpenDetailsTab ? pendingOpenDetailsId : null
+        }
+        pendingOpenDetailsStatus={
+          tab === pendingOpenDetailsTab ? pendingOpenDetailsStatus : null
+        }
+        onPendingOpenDetailsHandled={
+          tab === pendingOpenDetailsTab
+            ? () => { setPendingOpenDetailsId(null); setPendingOpenDetailsTab(null); setPendingOpenDetailsStatus(null) }
             : undefined
         }
       />

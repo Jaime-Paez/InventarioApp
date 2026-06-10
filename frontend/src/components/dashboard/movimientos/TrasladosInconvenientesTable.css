@@ -149,13 +149,67 @@
   background: color-mix(in srgb, #ef4444 18%, var(--table-color-hover)) !important;
 }
 
-.users-datatable .p-datatable-tbody > tr.sol-row--in-borrador > td {
+/* Aceptados: no borrador yet → amber */
+.users-datatable .p-datatable-tbody > tr.sol-row--no-borrador > td {
   background: color-mix(in srgb, #f59e0b 10%, var(--table-color)) !important;
   border-bottom-color: color-mix(in srgb, #d97706 22%, transparent) !important;
 }
-
-.users-datatable .p-datatable-tbody > tr.sol-row--in-borrador:hover > td {
+.users-datatable .p-datatable-tbody > tr.sol-row--no-borrador:hover > td {
   background: color-mix(in srgb, #f59e0b 18%, var(--table-color-hover)) !important;
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.sol-row--no-borrador > td {
+  background: color-mix(in srgb, #f59e0b 14%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #f59e0b 30%, var(--color-border-dark)) !important;
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.sol-row--no-borrador:hover > td {
+  background: color-mix(in srgb, #f59e0b 22%, var(--table-color-dark-hover)) !important;
+}
+
+/* Aceptados: already in a borrador → blue */
+.users-datatable .p-datatable-tbody > tr.sol-row--in-borrador > td {
+  background: color-mix(in srgb, #3b82f6 8%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #3b82f6 20%, transparent) !important;
+}
+.users-datatable .p-datatable-tbody > tr.sol-row--in-borrador:hover > td {
+  background: color-mix(in srgb, #3b82f6 15%, var(--table-color-hover)) !important;
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.sol-row--in-borrador > td {
+  background: color-mix(in srgb, #3b82f6 12%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #3b82f6 28%, var(--color-border-dark)) !important;
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.sol-row--in-borrador:hover > td {
+  background: color-mix(in srgb, #3b82f6 20%, var(--table-color-dark-hover)) !important;
+}
+
+/* Importados tab row tints */
+.users-datatable .p-datatable-tbody > tr.importados-row--en-camino > td {
+  background: color-mix(in srgb, #f59e0b 10%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #d97706 22%, transparent) !important;
+}
+.users-datatable .p-datatable-tbody > tr.importados-row--en-camino:hover > td {
+  background: color-mix(in srgb, #f59e0b 18%, var(--table-color-hover)) !important;
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.importados-row--en-camino > td {
+  background: color-mix(in srgb, #f59e0b 14%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #f59e0b 30%, var(--color-border-dark)) !important;
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.importados-row--en-camino:hover > td {
+  background: color-mix(in srgb, #f59e0b 22%, var(--table-color-dark-hover)) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.importados-row--importada > td {
+  background: color-mix(in srgb, #3b82f6 8%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #3b82f6 20%, transparent) !important;
+}
+.users-datatable .p-datatable-tbody > tr.importados-row--importada:hover > td {
+  background: color-mix(in srgb, #3b82f6 15%, var(--table-color-hover)) !important;
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.importados-row--importada > td {
+  background: color-mix(in srgb, #3b82f6 12%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #3b82f6 28%, var(--color-border-dark)) !important;
+}
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.importados-row--importada:hover > td {
+  background: color-mix(in srgb, #3b82f6 20%, var(--table-color-dark-hover)) !important;
 }
 
 .sol-borrador-popup {
@@ -189,17 +243,17 @@
   background: var(--hover-bg, #f3f4f6);
 }
 
-[data-theme='dark'] .sol-borrador-popup {
-  background: #1e293b;
-  border-color: #334155;
+.dashboard-shell.dark .sol-borrador-popup {
+  background: var(--table-color-dark);
+  border-color: var(--color-border-dark);
 }
 
-[data-theme='dark'] .sol-borrador-popup__item {
-  color: #e2e8f0;
+.dashboard-shell.dark .sol-borrador-popup__item {
+  color: var(--color-text-dark);
 }
 
-[data-theme='dark'] .sol-borrador-popup__item:hover {
-  background: #334155;
+.dashboard-shell.dark .sol-borrador-popup__item:hover {
+  background: var(--table-color-dark-hover);
 }
 
 .transfer-issues-details__meta {

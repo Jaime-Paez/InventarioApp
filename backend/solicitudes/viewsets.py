@@ -263,6 +263,15 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             if estados:
                 queryset = queryset.filter(estado__in=estados)
 
+        if params.get("exclude_importados", "").strip() in ("1", "true"):
+            from importaciones.models import Importacion
+            queryset = queryset.exclude(
+                importacion_detalles__importacion__estado__in=[
+                    Importacion.ESTADO_EN_CAMINO,
+                    Importacion.ESTADO_IMPORTADA,
+                ]
+            )
+
         conseguido = self._parse_bool_param(params.get("conseguido"))
         if conseguido is True:
             queryset = queryset.filter(
@@ -815,6 +824,9 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             )
             .filter(estado=Solicitud.Estado.REVISADO)
             .filter(q_producto | q_solicitado)
+            .exclude(
+                importacion_detalles__importacion__estado__in=["en_camino", "importada"]
+            )
             .distinct()
             .order_by("codigo", "id")
         )
@@ -871,6 +883,47 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 "nombre": nombre,
                 "oem_codigos": oem_codigos,
                 "cantidad": int(sol.cantidad or 0),
+            })
+
+        return Response({"count": len(results), "results": results})
+
+    @action(detail=False, methods=["get"], url_path="importados")
+    def importados(self, request):
+        from importaciones.models import Importacion, ImportacionDetalle
+
+        detalles = (
+            ImportacionDetalle.objects.filter(
+                solicitud__isnull=False,
+                importacion__estado__in=[Importacion.ESTADO_EN_CAMINO, Importacion.ESTADO_IMPORTADA],
+            )
+            .select_related(
+                "solicitud",
+                "importacion",
+                "importacion__casa_comercial",
+                "producto",
+            )
+            .order_by("-importacion__id", "id")
+        )
+
+        results = []
+        for d in detalles:
+            sol = d.solicitud
+            imp = d.importacion
+            results.append({
+                "detalle_id": d.id,
+                "solicitud_id": sol.id,
+                "solicitud_codigo": str(sol.codigo or sol.grupo_codigo or "").strip(),
+                "nombre": (d.producto.nombre if d.producto_id and d.producto else None) or d.nombre or "",
+                "codigo": (d.producto.codigo if d.producto_id and d.producto else None) or d.codigo or "",
+                "oem": (d.producto.oem if d.producto_id and d.producto else None) or d.oem or "",
+                "cantidad": d.cantidad,
+                "fecha": str(sol.fecha),
+                "importacion_id": imp.id,
+                "importacion_codigo": imp.codigo,
+                "importacion_estado": imp.estado,
+                "importacion_fecha": str(imp.fecha_importacion or imp.fecha or ""),
+                "importacion_casa": imp.casa_comercial.nombre if imp.casa_comercial else "",
+                "importacion_numero_factura": imp.numero_factura or "",
             })
 
         return Response({"count": len(results), "results": results})

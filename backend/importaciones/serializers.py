@@ -8,6 +8,7 @@ from casa_comercial.models import CasaComercial
 from casa_comercial.serializers import CasaComercialSerializer
 from productos.models import Producto
 from productos.serializers import ProductoSerializer
+from solicitudes.models import Solicitud
 
 from .models import Importacion, ImportacionDetalle
 
@@ -39,10 +40,17 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    solicitud_id = serializers.PrimaryKeyRelatedField(
+        source="solicitud",
+        queryset=Solicitud.objects.all(),
+        write_only=False,
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = ImportacionDetalle
-        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "cantidad"]
+        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "cantidad", "solicitud_id"]
 
     def validate(self, data):
         producto = data.get("producto")
@@ -78,6 +86,9 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "casa_comercial",
             "casa_comercial_id",
             "dias_entrega_estimados",
+            "numero_factura",
+            "fecha_importacion",
+            "dias_reales_entrega",
             "detalles",
             "total_productos",
             "creado_en",
@@ -89,6 +100,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "estado",
             "fecha",
             "dias_entrega_estimados",
+            "fecha_importacion",
+            "dias_reales_entrega",
             "total_productos",
             "creado_en",
             "actualizado_en",
@@ -124,6 +137,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     nombre=str(item.get("nombre") or ""),
                     oem=str(item.get("oem") or ""),
                     cantidad=item["cantidad"],
+                    solicitud=item.get("solicitud"),
                 )
                 for item in detalles_data
             ])
@@ -153,6 +167,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     nombre=str(item.get("nombre") or ""),
                     oem=str(item.get("oem") or ""),
                     cantidad=item["cantidad"],
+                    solicitud=item.get("solicitud"),
                 )
                 for item in detalles_data
             ]

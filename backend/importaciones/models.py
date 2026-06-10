@@ -25,6 +25,9 @@ class Importacion(models.Model):
         related_name="importaciones",
     )
     dias_entrega_estimados = models.PositiveSmallIntegerField(null=True, blank=True)
+    numero_factura = models.CharField(max_length=100, blank=True, default="")
+    fecha_importacion = models.DateField(null=True, blank=True)
+    dias_reales_entrega = models.PositiveSmallIntegerField(null=True, blank=True)
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -61,6 +64,13 @@ class ImportacionDetalle(models.Model):
     nombre = models.CharField(max_length=255, blank=True, default="")
     oem = models.CharField(max_length=500, blank=True, default="")
     cantidad = models.PositiveIntegerField(default=1)
+    solicitud = models.ForeignKey(
+        "solicitudes.Solicitud",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="importacion_detalles",
+    )
 
     class Meta:
         ordering = ["id"]
