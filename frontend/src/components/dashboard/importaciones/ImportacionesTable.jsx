@@ -104,18 +104,26 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const mode = isDark ? 'dark' : 'light'
   const toastRef = useRef(null)
 
-  const [rows, setRows] = useState(() =>
-    (imp.detalles || []).map(d => ({
+  const storageKey = `imp-receive-${imp.id}`
+  // IDs de ítems que eran sinCat al abrir el modal (fijo, no cambia con el fetch fresco)
+  const [originalSinCatIds] = useState(() =>
+    new Set((imp.detalles || []).filter(d => !d.producto?.id).map(d => d.id))
+  )
+
+  const [rows, setRows] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem(`imp-receive-${imp.id}`) || 'null')
+    const checkedIds = new Set(saved?.checkedIds || [])
+    return (imp.detalles || []).map(d => ({
       id: d.id,
       codigo: d.producto?.codigo || d.codigo || '',
       nombre: d.producto?.nombre || d.nombre || '',
       oem: d.producto?.oem || d.oem || '',
       cantidad: d.cantidad,
       sinCat: !d.producto?.id,
-      checked: false,
+      checked: checkedIds.has(d.id),
       newProducto: null,
     }))
-  )
+  })
   const [filter, setFilter] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
@@ -124,6 +132,39 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [form, setForm] = useState({ codigo: '', nombre: '', precio: '', costo_minimo: '', descripcion: '' })
   const [formErrors, setFormErrors] = useState({})
   const [formSaving, setFormSaving] = useState(false)
+  const [loadingData, setLoadingData] = useState(true)
+  const [step, setStep] = useState(1)
+  const [sucursales, setSucursales] = useState([])
+  const [loadingSucursales, setLoadingSucursales] = useState(false)
+  const [distribution, setDistribution] = useState({})
+
+  // Fetch fresh importacion data on mount so already-linked products are reflected
+  useEffect(() => {
+    authFetch(`${API_URL}/importaciones/importaciones/${imp.id}/`, {}, token)
+      .then(r => r.ok ? r.json() : null)
+      .then(fresh => {
+        if (!fresh?.detalles) return
+        const saved = JSON.parse(localStorage.getItem(storageKey) || 'null')
+        const checkedIds = new Set(saved?.checkedIds || [])
+        setRows(fresh.detalles.map(d => ({
+          id: d.id,
+          codigo: d.producto?.codigo || d.codigo || '',
+          nombre: d.producto?.nombre || d.nombre || '',
+          oem: d.producto?.oem || d.oem || '',
+          cantidad: d.cantidad,
+          sinCat: !d.producto?.id,
+          checked: checkedIds.has(d.id),
+          newProducto: null,
+        })))
+      })
+      .catch(() => {})
+      .finally(() => setLoadingData(false))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const checkedIds = rows.filter(r => r.checked).map(r => r.id)
+    localStorage.setItem(storageKey, JSON.stringify({ checkedIds }))
+  }, [rows, storageKey])
 
   const toggleRow = useCallback((id) => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, checked: !r.checked } : r))
@@ -144,6 +185,14 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const sinCatRows = rows.filter(r => r.sinCat)
   const sinCatFilled = sinCatRows.filter(r => r.newProducto !== null).length
   const canConfirm = allChecked && sinCatFilled === sinCatRows.length
+  // Todos los ítems que originalmente no tenían producto (incluye los ya vinculados en sesiones anteriores)
+  const step1Rows = rows.filter(r => originalSinCatIds.has(r.id))
+  const step1Pending = step1Rows.filter(r => r.sinCat && !r.newProducto)
+  const canGoNext = step1Pending.length === 0
+  const canFinish = !loadingSucursales && sucursales.length > 0 && rows.every(row => {
+    const assigned = Object.values(distribution[row.id] || {}).reduce((s, v) => s + (parseInt(v) || 0), 0)
+    return assigned === row.cantidad
+  })
 
   const openProductForm = (row) => {
     setEditingId(row.id)
@@ -171,13 +220,35 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       if (form.costo_minimo) payload.costo_minimo = parseFloat(form.costo_minimo)
       if (form.descripcion.trim()) payload.descripcion = form.descripcion.trim()
 
-      const resp = await authFetch(`${API_URL}/productos/productos/`, {
+      const resp = await authFetch(`${API_URL}/productos/listado/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }, token)
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}))
+        // Si el código ya existe, buscar el producto y linkarlo en vez de fallar
+        const codigoErr = Array.isArray(data?.codigo) ? data.codigo.join(' ') : String(data?.codigo || '')
+        if (codigoErr.toLowerCase().includes('ya existe')) {
+          try {
+            const searchResp = await authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(form.codigo.trim())}`, {}, token)
+            if (searchResp.ok) {
+              const searchData = await searchResp.json()
+              const results = searchData?.results ?? searchData ?? []
+              const existing = Array.isArray(results) && results.find(p => p.codigo?.toLowerCase() === form.codigo.trim().toLowerCase())
+              if (existing) {
+                await authFetch(
+                  `${API_URL}/importaciones/importaciones/${imp.id}/detalles/${editingId}/`,
+                  { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: existing.id }) },
+                  token
+                )
+                setRows(prev => prev.map(r => r.id === editingId ? { ...r, newProducto: existing } : r))
+                setEditingId(null)
+                return
+              }
+            }
+          } catch {}
+        }
         const fe = {}
         Object.entries(typeof data === 'object' && data !== null ? data : {}).forEach(([k, v]) => {
           fe[k] = Array.isArray(v) ? v.join(' ') : String(v)
@@ -186,7 +257,13 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         return
       }
       const created = await resp.json()
-      setRows(prev => prev.map(r => r.id === editingId ? { ...r, newProducto: created, checked: true } : r))
+      // Persist the product link on the detalle so progress survives modal close/reopen
+      authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/detalles/${editingId}/`,
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: created.id }) },
+        token
+      ).catch(() => {})
+      setRows(prev => prev.map(r => r.id === editingId ? { ...r, newProducto: created } : r))
       setEditingId(null)
     } catch (e) {
       setFormErrors({ _general: e.message || 'Error al crear el producto.' })
@@ -195,16 +272,45 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     }
   }
 
+  const enterStep3 = async () => {
+    setStep(3)
+    setLoadingSucursales(true)
+    try {
+      const resp = await authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token)
+      const data = resp.ok ? await resp.json() : []
+      const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+      setSucursales(list)
+      setDistribution(prev => {
+        const next = {}
+        rows.forEach(row => {
+          next[row.id] = {}
+          list.forEach(suc => { next[row.id][suc.id] = prev[row.id]?.[suc.id] ?? '' })
+        })
+        return next
+      })
+    } catch {
+      setSucursales([])
+    } finally {
+      setLoadingSucursales(false)
+    }
+  }
+
   const handleConfirm = async () => {
-    if (!canConfirm) { setShowErrors(true); return }
+    if (!canFinish) { setShowErrors(true); return }
     setSubmitting(true)
     try {
+      const distribuciones = rows.flatMap(row =>
+        Object.entries(distribution[row.id] || {})
+          .filter(([, v]) => parseInt(v) > 0)
+          .map(([sucursalId, qty]) => ({ detalle_id: row.id, sucursal_id: parseInt(sucursalId), cantidad: parseInt(qty) }))
+      )
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/marcar-llegada/`,
-        { method: 'POST' },
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones }) },
         token
       )
       if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo marcar la llegada.'))
+      localStorage.removeItem(storageKey)
       onConfirmed?.(await resp.json())
     } catch (e) {
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 })
@@ -223,7 +329,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       >
         <div
           className={`quick-actions__receive-dialog ${mode}`}
-          style={{ width: 'min(640px, calc(100vw - 24px))', gridTemplateRows: 'auto 1fr auto' }}
+          style={{ width: 'min(640px, 90vw)', gridTemplateRows: 'auto 1fr auto' }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <header className="quick-actions__receive-head">
@@ -236,110 +342,249 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
             </button>
           </header>
 
+          {/* Step indicator */}
+          {!loadingData && (
+            <div style={{ padding: '12px 20px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {[1,2,3].map(n => (
+                  <div key={n} style={{ flex: 1, height: 3, borderRadius: 2, background: step >= n ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #e2e8f0)', transition: 'background .3s' }} />
+                ))}
+              </div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+                Paso {step} de 3 — {step === 1 ? 'Productos nuevos' : step === 2 ? 'Revisión de llegada' : 'Distribución a sucursales'}
+              </span>
+            </div>
+          )}
+
           <div className="quick-actions__receive-body">
-            <div className="quick-actions__receive-stage-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <label className="quick-actions__receive-check quick-actions__receive-check--bulk">
-                <input
-                  type="checkbox"
-                  checked={allChecked}
-                  ref={(el) => { if (el) el.indeterminate = someChecked }}
-                  onChange={(e) => toggleAll(e.target.checked)}
-                  disabled={submitting}
-                />
-                <span>Marcar todo revisado</span>
-              </label>
-              <div style={{ display: 'flex', gap: 16 }}>
-                <span className="quick-actions__receive-stage-stat">Productos <strong>{rows.length}</strong></span>
-                <span className="quick-actions__receive-stage-stat">Revisados <strong>{checkedCount}</strong></span>
-                {sinCatRows.length > 0 && (
-                  <span className="quick-actions__receive-stage-stat">Datos <strong>{sinCatFilled}/{sinCatRows.length}</strong></span>
-                )}
+            {loadingData ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: 12 }}>
+                <svg style={{ animation: 'spin 0.8s linear infinite', width: 22, height: 22, flexShrink: 0 }} viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.2" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>Cargando productos...</span>
               </div>
-            </div>
-
-            <div className="quick-actions__receive-search-bar">
-              <div className="quick-actions__receive-search">
-                <input
-                  type="text"
-                  placeholder="Buscar por código o nombre..."
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                />
-                {filter && (
-                  <button type="button" className="quick-actions__receive-search-clear" onClick={() => setFilter('')}>×</button>
-                )}
-              </div>
-            </div>
-
-            <div className="quick-actions__receive-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {filteredRows.map((row) => {
-                const needsData = row.sinCat && !row.newProducto
-                const isReady = row.checked && !needsData
-                const hasError = showErrors && (!row.checked || needsData)
-                return (
-                  <article
-                    key={row.id}
-                    className={`quick-actions__receive-item${row.checked ? ' is-reviewed' : ''}${isReady ? ' is-ready' : ' is-pending'}${hasError ? ' has-validation-error' : ''}`}
-                  >
-                    <div className="quick-actions__receive-item-head quick-actions__receive-item-head--check">
-                      <div className="quick-actions__receive-item-title">
-                        <strong>{row.codigo || '-'}</strong>
-                        <p className="quick-actions__receive-item-name">{row.nombre || '-'}</p>
-                        {row.oem && <p className="quick-actions__receive-item-name" style={{ fontSize: '0.8rem' }}>OEM: {row.oem}</p>}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexShrink: 0 }}>
-                        <span style={{ fontWeight: 600, fontSize: '0.82rem', background: 'color-mix(in srgb, var(--color-primary) 10%, var(--color-surface))', border: '1px solid color-mix(in srgb, var(--color-primary) 20%, var(--color-border))', borderRadius: 999, padding: '2px 10px' }}>
-                          {row.cantidad} uds
-                        </span>
-                        {row.sinCat && (
-                          row.newProducto
-                            ? <span className="quick-actions__receive-item-badge is-ready">Datos listos</span>
-                            : (
-                              <button
-                                type="button"
-                                className="quick-actions__receive-btn"
-                                style={{ background: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.4)', color: '#b45309', fontWeight: 700, padding: '0 12px', minHeight: 30, fontSize: '0.875rem' }}
-                                onClick={() => openProductForm(row)}
-                                disabled={submitting}
-                              >
-                                Completar datos
-                              </button>
-                            )
-                        )}
-                        <label className="quick-actions__receive-check quick-actions__receive-check--row" style={{ cursor: needsData ? 'not-allowed' : 'pointer' }}>
-                          <Checkbox
-                            binary
-                            checked={row.checked}
-                            onChange={() => { if (!needsData) toggleRow(row.id) }}
-                            disabled={submitting || needsData}
-                          />
-                        </label>
-                      </div>
+            ) : step === 1 ? (
+              /* ── PASO 1: registrar productos sin catálogo ── */
+              <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
+                <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
+                  <div className="quick-actions__receive-stage-copy">
+                    <p className="quick-actions__receive-stage-kicker">Paso 1 — Productos nuevos</p>
+                    <h5>Registra los productos que no están en el catálogo</h5>
+                    <p className="quick-actions__receive-stage-name">
+                      Estos ítems llegaron en esta importación pero aún no tienen un producto asignado. Completa sus datos antes de continuar.
+                    </p>
+                  </div>
+                  {step1Rows.length > 0 && (
+                    <div className="quick-actions__receive-stage-stats" style={{ marginTop: 10 }}>
+                      <span className="quick-actions__receive-stage-stat">Pendientes <strong>{step1Pending.length}</strong></span>
+                      <span className="quick-actions__receive-stage-stat">Completados <strong>{step1Rows.length - step1Pending.length}</strong></span>
                     </div>
-                    {hasError && (
-                      <p style={{ color: '#dc2626', fontSize: '0.8rem', margin: '4px 0 0' }}>
-                        {needsData ? 'Completa los datos del producto antes de confirmar.' : 'Confirma haber revisado este producto.'}
-                      </p>
+                  )}
+                </article>
+
+                {step1Rows.length === 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '40px 20px', textAlign: 'center' }}>
+                    <svg viewBox="0 0 24 24" fill="none" style={{ width: 40, height: 40, color: 'var(--color-success, #16a34a)' }}>
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                      <path d="M7.5 12l3 3 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <p style={{ fontWeight: 600, fontSize: '0.95rem' }}>Todos los productos ya están en el catálogo</p>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>Puedes continuar al siguiente paso.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 16px 8px' }}>
+                    {step1Rows.map(row => {
+                      const isDone = !row.sinCat || row.newProducto
+                      const productCode = row.newProducto?.codigo || (!row.sinCat ? row.codigo : null)
+                      return (
+                        <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: isDone ? 'var(--color-success-bg, #f0fdf4)' : 'var(--color-surface, #f8fafc)', border: `1px solid ${isDone ? 'var(--color-success-border, #bbf7d0)' : 'var(--color-border, #e2e8f0)'}`, borderRadius: 10, padding: '10px 14px', transition: 'background .2s, border-color .2s' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.nombre || row.codigo || '-'}</div>
+                            {row.nombre && row.codigo && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{row.codigo}</div>}
+                          </div>
+                          {isDone ? (
+                            <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--color-success, #16a34a)', whiteSpace: 'nowrap' }}>
+                              {productCode}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="quick-actions__receive-btn quick-actions__receive-btn--primary"
+                              style={{ fontSize: '0.8rem', minHeight: 30, padding: '0 12px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                              onClick={() => openProductForm(row)}
+                            >
+                              Completar datos
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : step === 2 ? (
+              /* ── PASO 2: verificar cantidades recibidas ── */
+              <div
+                className="quick-actions__receive-step quick-actions__receive-step--list"
+                style={{ '--receive-list-locations-column': 'minmax(120px, 1.1fr)', '--receive-list-received-column': '0px' }}
+              >
+                <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
+                  <div className="quick-actions__receive-stage-head">
+                    <div className="quick-actions__receive-stage-copy">
+                      <p className="quick-actions__receive-stage-kicker">Paso 2 — Revisión de llegada</p>
+                      <h5>Confirma los productos recibidos</h5>
+                      <p className="quick-actions__receive-stage-name">Marca cada producto cuando confirmes físicamente haberlo recibido.</p>
+                    </div>
+                    <div className="quick-actions__receive-stage-toolbar">
+                      <label className="quick-actions__receive-check quick-actions__receive-check--bulk">
+                        <input type="checkbox" checked={allChecked} ref={(el) => { if (el) el.indeterminate = someChecked }} onChange={(e) => toggleAll(e.target.checked)} />
+                        <span>Marcar todo</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="quick-actions__receive-stage-meta quick-actions__receive-stage-meta--split">
+                    {imp.casa_comercial?.nombre && (
+                      <div className="quick-actions__receive-stage-meta-block">
+                        <small className="quick-actions__receive-destination-label">Casa comercial</small>
+                        <strong>{imp.casa_comercial.nombre}</strong>
+                      </div>
                     )}
-                  </article>
-                )
-              })}
-            </div>
+                    <div className="quick-actions__receive-stage-stats">
+                      <span className="quick-actions__receive-stage-stat">Productos <strong>{rows.length}</strong></span>
+                      <span className="quick-actions__receive-stage-stat">Revisados <strong>{checkedCount}</strong></span>
+                    </div>
+                  </div>
+                </article>
+
+                <div className="quick-actions__receive-search-bar">
+                  <div className="quick-actions__receive-search">
+                    <input type="text" placeholder="Buscar por código o nombre..." value={filter} onChange={(e) => setFilter(e.target.value)} />
+                    {filter && <button type="button" className="quick-actions__receive-search-clear" onClick={() => setFilter('')}>×</button>}
+                  </div>
+                </div>
+
+                <div className="quick-actions__receive-list">
+                  {filteredRows.map((row) => {
+                    const hasError = showErrors && !row.checked
+                    return (
+                      <article key={row.id} className={`quick-actions__receive-item${row.checked ? ' is-reviewed is-ready' : ' is-pending'}${hasError ? ' has-validation-error' : ''}`}>
+                        <div className="quick-actions__receive-item-head quick-actions__receive-item-head--check">
+                          <label className="quick-actions__receive-check quick-actions__receive-check--row">
+                            <Checkbox binary checked={row.checked} onChange={() => toggleRow(row.id)} disabled={submitting} />
+                          </label>
+                          <div className="quick-actions__receive-item-title">
+                            <small className="quick-actions__receive-col-label">Producto</small>
+                            <strong>{row.codigo || '-'}</strong>
+                            {row.nombre && <p className="quick-actions__receive-item-name">{row.nombre}</p>}
+                          </div>
+                        </div>
+                        <div className="quick-actions__receive-location-row quick-actions__receive-location-row--review" style={{ gridTemplateColumns: '1fr', alignSelf: 'start', paddingTop: 2 }}>
+                          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', display: 'block', paddingTop: 6 }}>
+                            {row.newProducto?.codigo || row.oem || '—'}
+                          </span>
+                        </div>
+                        <div className="quick-actions__receive-item-meta">
+                          <span>Cantidad<strong>{row.cantidad}</strong></span>
+                        </div>
+                        {hasError && (
+                          <p className="quick-actions__receive-item-hint quick-actions__receive-item-hint--warning">Confirma haber revisado este producto.</p>
+                        )}
+                      </article>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* ── PASO 3: distribución a sucursales ── */
+              <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
+                <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
+                  <div className="quick-actions__receive-stage-copy">
+                    <p className="quick-actions__receive-stage-kicker">Paso 3 — Distribución</p>
+                    <h5>Envía los productos a las sucursales</h5>
+                    <p className="quick-actions__receive-stage-name">Indica cuántas unidades de cada producto van a cada sucursal. El total debe coincidir con la cantidad recibida.</p>
+                  </div>
+                  {!loadingSucursales && sucursales.length > 0 && (
+                    <div className="quick-actions__receive-stage-stats" style={{ marginTop: 10 }}>
+                      <span className="quick-actions__receive-stage-stat">Productos <strong>{rows.length}</strong></span>
+                      <span className="quick-actions__receive-stage-stat">Listos <strong>{rows.filter(row => Object.values(distribution[row.id] || {}).reduce((s, v) => s + (parseInt(v) || 0), 0) === row.cantidad).length}</strong></span>
+                    </div>
+                  )}
+                </article>
+
+                {loadingSucursales ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0', gap: 12 }}>
+                    <svg style={{ animation: 'spin 0.8s linear infinite', width: 20, height: 20, flexShrink: 0 }} viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.2" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                    <span style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Cargando sucursales...</span>
+                  </div>
+                ) : sucursales.length === 0 ? (
+                  <div style={{ padding: '32px 20px', textAlign: 'center' }}>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>No hay sucursales disponibles.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 16px 8px' }}>
+                    {rows.map(row => {
+                      const rowDist = distribution[row.id] || {}
+                      const assigned = Object.values(rowDist).reduce((s, v) => s + (parseInt(v) || 0), 0)
+                      const isComplete = assigned === row.cantidad
+                      const isOver = assigned > row.cantidad
+                      return (
+                        <div key={row.id} style={{ background: isComplete ? 'var(--color-success-bg, #f0fdf4)' : 'var(--color-surface, #f8fafc)', border: `1px solid ${isOver ? '#fca5a5' : isComplete ? 'var(--color-success-border, #bbf7d0)' : 'var(--color-border, #e2e8f0)'}`, borderRadius: 10, padding: '12px 14px', transition: 'background .2s, border-color .2s' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.nombre || row.codigo || '-'}</div>
+                              {row.nombre && row.codigo && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{row.codigo}</div>}
+                            </div>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, marginLeft: 12, flexShrink: 0, color: isOver ? '#dc2626' : isComplete ? 'var(--color-success, #16a34a)' : 'var(--color-text-secondary)' }}>
+                              {assigned}/{row.cantidad}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {sucursales.map(suc => (
+                              <label key={suc.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <span style={{ flex: 1, fontSize: '0.8rem', color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{suc.nombre}</span>
+                                <input
+                                  type="number" min="0" max={row.cantidad}
+                                  value={rowDist[suc.id] ?? ''}
+                                  onChange={(e) => setDistribution(prev => ({ ...prev, [row.id]: { ...(prev[row.id] || {}), [suc.id]: e.target.value } }))}
+                                  style={{ width: 70, textAlign: 'center', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, padding: '4px 8px', fontSize: '0.85rem', background: 'var(--modal-color, #fff)', color: 'inherit' }}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="quick-actions__receive-actions">
-            <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={onClose} disabled={submitting}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className={`quick-actions__receive-btn${canConfirm ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
-              onClick={handleConfirm}
-              disabled={submitting}
-            >
-              {submitting ? 'Confirmando...' : 'Confirmar llegada'}
-            </button>
-          </div>
+          <footer className="quick-actions__receive-actions">
+            {step === 1 ? (
+              <>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={onClose}>Cancelar</button>
+                <button type="button" className={`quick-actions__receive-btn${canGoNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={() => setStep(2)} disabled={loadingData || !canGoNext}>Siguiente</button>
+              </>
+            ) : step === 2 ? (
+              <>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)}>Atrás</button>
+                <button type="button" className={`quick-actions__receive-btn${allChecked ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep3} disabled={!allChecked}>Siguiente</button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
+                <button type="button" className={`quick-actions__receive-btn${canFinish ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={handleConfirm} disabled={submitting || !canFinish}>
+                  {submitting ? 'Confirmando...' : 'Confirmar llegada'}
+                </button>
+              </>
+            )}
+          </footer>
         </div>
       </div>
 
@@ -353,7 +598,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           >
             <div
               className={`quick-actions__receive-dialog ${mode}`}
-              style={{ width: 'min(520px, calc(100vw - 24px))', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto' }}
+              style={{ width: 'min(520px, 90vw)', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <header className="quick-actions__receive-head">

@@ -10,8 +10,13 @@ from rest_framework.response import Response
 
 from usuarios.permissions import SolicitudesModulePermission
 
-from .models import Importacion
-from .serializers import ImportacionSerializer, generate_next_importacion_code
+from django.db.models import F
+
+from inventario.models import Inventario, SubDivision
+from productos.models import Producto
+
+from .models import Importacion, ImportacionDetalle
+from .serializers import ImportacionDetalleSerializer, ImportacionSerializer, generate_next_importacion_code
 
 
 class ImportacionViewSet(viewsets.ModelViewSet):
@@ -127,6 +132,32 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 instance.casa_comercial.dias_entrega = nuevo_promedio
                 instance.casa_comercial.save(update_fields=["dias_entrega"])
 
+        # Distribute to sucursales
+        for dist in request.data.get("distribuciones", []):
+            try:
+                detalle_id = dist.get("detalle_id")
+                sucursal_id = dist.get("sucursal_id")
+                cantidad = int(dist.get("cantidad") or 0)
+                if cantidad <= 0 or not detalle_id or not sucursal_id:
+                    continue
+                detalle = instance.detalles.select_related("producto").get(pk=detalle_id)
+                if not detalle.producto_id:
+                    continue
+                subdivision = SubDivision.objects.filter(
+                    division__bodega__sucursal_id=sucursal_id
+                ).first()
+                if not subdivision:
+                    continue
+                inv, _ = Inventario.objects.get_or_create(
+                    producto_id=detalle.producto_id,
+                    subdivision=subdivision,
+                    referencia="",
+                    defaults={"cantidad": 0},
+                )
+                Inventario.objects.filter(pk=inv.pk).update(cantidad=F("cantidad") + cantidad)
+            except Exception:
+                continue
+
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
@@ -135,6 +166,25 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import ValidationError
             raise ValidationError("Solo se pueden eliminar importaciones en estado borrador.")
         instance.delete()
+
+    @transaction.atomic
+    @action(detail=True, methods=["patch"], url_path=r"detalles/(?P<detalle_id>\d+)")
+    def patch_detalle(self, request, pk=None, detalle_id=None):
+        instance = self.get_object()
+        try:
+            detalle = instance.detalles.get(pk=detalle_id)
+        except ImportacionDetalle.DoesNotExist:
+            return Response({"detail": "Detalle no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        producto_id = request.data.get("producto_id")
+        if producto_id is not None:
+            try:
+                producto = Producto.objects.get(pk=producto_id)
+            except Producto.DoesNotExist:
+                return Response({"detail": "Producto no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+            detalle.producto = producto
+            detalle.save(update_fields=["producto"])
+        serializer = ImportacionDetalleSerializer(detalle)
+        return Response(serializer.data)
 
     @action(detail=False, methods=["get"], url_path="next-code")
     def next_code(self, request):

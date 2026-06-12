@@ -188,6 +188,8 @@ function App() {
     window.clearTimeout(logoutTimeoutRef.current)
     window.clearTimeout(loginReturnTimeoutRef.current)
 
+    try { sessionStorage.clear() } catch { /* no-op */ }
+
     setLogoutTransitioning(true)
 
     loginReturnTimeoutRef.current = window.setTimeout(() => {

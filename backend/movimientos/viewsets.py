@@ -2834,7 +2834,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         )
 
         allowed_recipient_ids = self._get_transfer_decision_reminder_recipient_ids(solicitud.id)
-        if allowed_recipient_ids:
+        if allowed_recipient_ids and not is_app_admin(request.user):
             current_user_id = str(getattr(request.user, "id", "") or "").strip()
             if not current_user_id or current_user_id not in allowed_recipient_ids:
                 return Response(

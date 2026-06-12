@@ -2375,7 +2375,8 @@ function SalidaDetails({
                     entityId={salidaId}
                     isOpen={open}
                     entityLabel={modalTitle}
-                    canCreateReminder={allowEdit && isEditing}
+                    canCreateReminder={false}
+                    showCreateButton={false}
                     transferSolicitudId={transferSolicitudId}
                     onError={notifyError}
                   />

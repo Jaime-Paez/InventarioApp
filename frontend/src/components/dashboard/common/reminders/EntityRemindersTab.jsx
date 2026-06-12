@@ -238,6 +238,7 @@ function EntityRemindersTab({
   entityId,
   entityLabel,
   canCreateReminder = true,
+  showCreateButton = true,
   isOpen = true,
   transferSolicitudId = '',
   onError,
@@ -775,20 +776,22 @@ function EntityRemindersTab({
           <p className="create-user__eyebrow">Recordatorios</p>
           <h4>{contextName ? `Recordatorios de ${contextName}` : 'Recordatorios'}</h4>
         </div>
-        <button
-          type="button"
-          className="create-user__action create-user__action--primary entity-reminders__toggle"
-          onClick={() => {
-            if (!canCreateReminder) return
-            setSubmitError('')
-            setActiveView((prev) => (prev === 'create' ? 'list' : 'create'))
-          }}
-          disabled={!reminderContext || !canCreateReminder}
-          title={!canCreateReminder ? 'No tienes permiso para crear recordatorios.' : undefined}
-        >
-          {activeView === 'create' && canCreateReminder ? <Minus size={14} /> : <Plus size={14} />}
-          {activeView === 'create' && canCreateReminder ? 'Ocultar formulario' : 'Anadir recordatorio'}
-        </button>
+        {showCreateButton && (
+          <button
+            type="button"
+            className="create-user__action create-user__action--primary entity-reminders__toggle"
+            onClick={() => {
+              if (!canCreateReminder) return
+              setSubmitError('')
+              setActiveView((prev) => (prev === 'create' ? 'list' : 'create'))
+            }}
+            disabled={!reminderContext || !canCreateReminder}
+            title={!canCreateReminder ? 'No tienes permiso para crear recordatorios.' : undefined}
+          >
+            {activeView === 'create' && canCreateReminder ? <Minus size={14} /> : <Plus size={14} />}
+            {activeView === 'create' && canCreateReminder ? 'Ocultar formulario' : 'Anadir recordatorio'}
+          </button>
+        )}
       </div>
 
       {activeView === 'create' ? (

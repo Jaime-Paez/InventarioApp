@@ -937,8 +937,12 @@ function QuickActions({
   )
 
   const pendingRemindersForCurrentUser = useMemo(
-    () => reminders.filter((reminder) => isReminderPendingForCurrentUser(reminder, currentUserIds)),
-    [reminders, currentUserIds]
+    () => reminders.filter((reminder) => {
+      if (!isReminderPendingForCurrentUser(reminder, currentUserIds)) return false
+      if (isSpecialTransferDecisionReminder(reminder) && isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)) return false
+      return true
+    }),
+    [reminders, currentUserIds, currentUserName]
   )
 
   const fallbackInTransitShipments = useMemo(() => {
