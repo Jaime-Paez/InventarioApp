@@ -1,5 +1,7 @@
 import statistics
+from uuid import uuid4
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
@@ -9,13 +11,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from usuarios.permissions import SolicitudesModulePermission
+from usuarios.utils import is_app_admin
 
 from django.db.models import F
 
+from app.models import ReminderState
 from inventario.models import Inventario, SubDivision
 from productos.models import Producto
 
-from .models import Importacion, ImportacionDetalle
+from .models import Importacion, ImportacionDetalle, ImportacionEnvio, ImportacionEnvioDetalle
 from .serializers import ImportacionDetalleSerializer, ImportacionSerializer, generate_next_importacion_code
 
 
@@ -132,34 +136,250 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 instance.casa_comercial.dias_entrega = nuevo_promedio
                 instance.casa_comercial.save(update_fields=["dias_entrega"])
 
-        # Distribute to sucursales
+        # Group distributions by sucursal and create ImportacionEnvio records
+        envios_by_sucursal = {}
         for dist in request.data.get("distribuciones", []):
             try:
                 detalle_id = dist.get("detalle_id")
-                sucursal_id = dist.get("sucursal_id")
+                sucursal_id = int(dist.get("sucursal_id") or 0)
                 cantidad = int(dist.get("cantidad") or 0)
                 if cantidad <= 0 or not detalle_id or not sucursal_id:
                     continue
                 detalle = instance.detalles.select_related("producto").get(pk=detalle_id)
                 if not detalle.producto_id:
                     continue
-                subdivision = SubDivision.objects.filter(
-                    division__bodega__sucursal_id=sucursal_id
-                ).first()
-                if not subdivision:
-                    continue
-                inv, _ = Inventario.objects.get_or_create(
-                    producto_id=detalle.producto_id,
-                    subdivision=subdivision,
-                    referencia="",
-                    defaults={"cantidad": 0},
+                envios_by_sucursal.setdefault(sucursal_id, []).append(
+                    {"producto_id": detalle.producto_id, "cantidad": cantidad}
                 )
-                Inventario.objects.filter(pk=inv.pk).update(cantidad=F("cantidad") + cantidad)
             except Exception:
                 continue
 
+        for sucursal_id, items in envios_by_sucursal.items():
+            envio = ImportacionEnvio.objects.create(
+                importacion=instance,
+                sucursal_id=sucursal_id,
+            )
+            ImportacionEnvioDetalle.objects.bulk_create([
+                ImportacionEnvioDetalle(
+                    envio=envio,
+                    producto_id=item["producto_id"],
+                    cantidad=item["cantidad"],
+                )
+                for item in items
+            ])
+
+        # Create reminders for selected recipients per sucursal
+        for dest in request.data.get("destinatarios_por_sucursal", []):
+            sucursal_id = dest.get("sucursal_id")
+            user_ids = dest.get("user_ids", [])
+            if user_ids and sucursal_id:
+                self._create_importacion_reminder(instance, sucursal_id, user_ids, request.user)
+
+        # Single reminder to all admins automatically
+        User = get_user_model()
+        admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]
+        if admin_ids:
+            self._create_importacion_reminder(instance, None, admin_ids, request.user)
+
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+
+    def _create_importacion_reminder(self, importacion, sucursal_id, user_ids, actor_user):
+        User = get_user_model()
+        recipient_users = User.objects.filter(id__in=user_ids, is_active=True)
+        recipients = [
+            {"id": str(u.pk), "name": f"{u.first_name} {u.last_name}".strip() or u.username}
+            for u in recipient_users
+        ]
+        if not recipients:
+            return
+
+        actor_name = f"{actor_user.first_name} {actor_user.last_name}".strip() or actor_user.username
+        actor = {"id": str(actor_user.pk), "name": actor_name}
+        now = timezone.localtime(timezone.now())
+        created_at = timezone.now().isoformat()
+        label = f"Importación {importacion.codigo}"
+        description = (
+            f"La {label} ha sido recibida y está siendo distribuida."
+            if sucursal_id is None
+            else f"Hay un envío en camino de {label} hacia tu sucursal."
+        )
+
+        reminder = {
+            "id": str(uuid4()),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M"),
+            "description": description,
+            "creator": actor,
+            "recipients": recipients,
+            "context": {
+                "type": "importacion",
+                "id": str(importacion.pk),
+                "label": label,
+                "sucursal_destino_id": str(sucursal_id) if sucursal_id is not None else "",
+            },
+            "kind": "recordatorio_general",
+            "createdAt": created_at,
+            "decision": {"status": "enviado", "reason": "", "by": actor, "at": created_at, "assignedRecipients": []},
+            "transferHistory": [{"stage": "enviado", "label": "Enviado", "description": description, "at": created_at, "actor": actor}],
+            "completedBy": [],
+        }
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            payload = store.payload if isinstance(store.payload, list) else []
+            payload.insert(0, reminder)
+            store.payload = payload
+            store.save(update_fields=["payload", "updated_at"])
+
+    @action(detail=False, methods=["get"], url_path="envios-pendientes")
+    def envios_pendientes(self, request):
+        if is_app_admin(request.user):
+            qs = ImportacionEnvio.objects.filter(estado=ImportacionEnvio.ESTADO_PENDIENTE)
+        else:
+            sucursal_ids = list(
+                request.user.asignaciones.values_list("sucursal_id", flat=True)
+            )
+            qs = ImportacionEnvio.objects.filter(
+                estado=ImportacionEnvio.ESTADO_PENDIENTE,
+                sucursal_id__in=sucursal_ids,
+            )
+
+        qs = qs.select_related("importacion", "sucursal").prefetch_related(
+            "detalles__producto"
+        ).order_by("-fecha", "-id")
+
+        payload = []
+        for envio in qs:
+            detalles_payload = [
+                {
+                    "detalle_id": int(d.id),
+                    "producto_id": int(d.producto_id),
+                    "producto_codigo": str(getattr(d.producto, "codigo", "") or "").strip(),
+                    "producto_nombre": str(getattr(d.producto, "nombre", "") or "").strip(),
+                    "cantidad_enviada": int(d.cantidad or 0),
+                    "valor": 0,
+                }
+                for d in envio.detalles.all()
+            ]
+            payload.append({
+                "id": int(envio.id),
+                "envio_id": int(envio.id),
+                "no_documento": str(envio.importacion.codigo or "").strip(),
+                "fecha": envio.fecha,
+                "sucursal_solicitante_id": int(envio.sucursal_id),
+                "sucursal_solicitante": str(getattr(envio.sucursal, "nombre", "") or "").strip(),
+                "sucursal_proveedora_id": None,
+                "sucursal_proveedora": "Importación",
+                "movimiento_salida_id": None,
+                "movimiento_entrada_id": None,
+                "estado_entrada": "Pendiente",
+                "descripcion": f"Envío de Importación {envio.importacion.codigo}",
+                "detalles": detalles_payload,
+                "inconvenientes_pendientes": 0,
+                "_source": "importacion",
+            })
+
+        return Response(payload, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/confirmar-recepcion")
+    def confirmar_recepcion_envio(self, request, envio_id=None):
+        try:
+            envio = (
+                ImportacionEnvio.objects.select_related("importacion", "sucursal")
+                .prefetch_related("detalles__producto")
+                .get(pk=envio_id, estado=ImportacionEnvio.ESTADO_PENDIENTE)
+            )
+        except ImportacionEnvio.DoesNotExist:
+            return Response(
+                {"detail": "Envío no encontrado o ya recibido."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        items = request.data.get("items")
+        if not isinstance(items, list) or not items:
+            return Response(
+                {"detail": "Debes enviar la lista de productos en `items`."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        detalles_by_producto = {int(d.producto_id): d for d in envio.detalles.all()}
+        seen_product_ids = set()
+        for raw_item in items:
+            try:
+                product_id = int(raw_item.get("producto_id"))
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "Cada item debe tener producto_id válido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if product_id in seen_product_ids:
+                return Response(
+                    {"detail": "No puedes repetir el mismo producto."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            seen_product_ids.add(product_id)
+            if product_id not in detalles_by_producto:
+                return Response(
+                    {"detail": f"El producto {product_id} no pertenece a este envío."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        with transaction.atomic():
+            envio_locked = ImportacionEnvio.objects.select_for_update().get(pk=envio.pk)
+            if envio_locked.estado != ImportacionEnvio.ESTADO_PENDIENTE:
+                return Response(
+                    {"detail": "El envío ya fue recibido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            for raw_item in items:
+                product_id = int(raw_item.get("producto_id"))
+                cantidad_recibida = int(raw_item.get("cantidad_recibida") or 0)
+                ubicaciones_raw = raw_item.get("ubicaciones") or []
+
+                if isinstance(ubicaciones_raw, list) and ubicaciones_raw:
+                    for ub in ubicaciones_raw:
+                        subdivision_id = int(ub.get("subdivision_id") or 0)
+                        qty = int(ub.get("cantidad") or 0)
+                        if subdivision_id and qty > 0:
+                            inv, _ = Inventario.objects.get_or_create(
+                                producto_id=product_id,
+                                subdivision_id=subdivision_id,
+                                referencia="",
+                                defaults={"cantidad": 0},
+                            )
+                            Inventario.objects.filter(pk=inv.pk).update(cantidad=F("cantidad") + qty)
+                elif cantidad_recibida > 0:
+                    subdivision = SubDivision.objects.filter(
+                        division__bodega__sucursal_id=envio.sucursal_id
+                    ).first()
+                    if subdivision:
+                        inv, _ = Inventario.objects.get_or_create(
+                            producto_id=product_id,
+                            subdivision=subdivision,
+                            referencia="",
+                            defaults={"cantidad": 0},
+                        )
+                        Inventario.objects.filter(pk=inv.pk).update(
+                            cantidad=F("cantidad") + cantidad_recibida
+                        )
+
+            envio_locked.estado = ImportacionEnvio.ESTADO_RECIBIDO
+            envio_locked.fecha_recepcion = timezone.localdate()
+            envio_locked.recibido_por = request.user
+            envio_locked.save(update_fields=["estado", "fecha_recepcion", "recibido_por"])
+
+        User = get_user_model()
+        admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]
+        if admin_ids:
+            self._create_importacion_reminder(envio.importacion, None, admin_ids, request.user)
+
+        return Response(
+            {"detail": "Recepción registrada correctamente.", "recordatorio_enviado": bool(admin_ids)},
+            status=status.HTTP_200_OK,
+        )
 
     def perform_destroy(self, instance):
         if instance.estado != Importacion.ESTADO_BORRADOR:

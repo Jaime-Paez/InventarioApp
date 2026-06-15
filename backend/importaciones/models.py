@@ -80,3 +80,63 @@ class ImportacionDetalle(models.Model):
     def __str__(self):
         label = self.producto.codigo if self.producto_id else (self.codigo or self.nombre or "sin catálogo")
         return f"{self.importacion.codigo} - {label}"
+
+
+class ImportacionEnvio(models.Model):
+    ESTADO_PENDIENTE = "pendiente"
+    ESTADO_RECIBIDO = "recibido"
+    ESTADO_CHOICES = [
+        (ESTADO_PENDIENTE, "Pendiente"),
+        (ESTADO_RECIBIDO, "Recibido"),
+    ]
+
+    importacion = models.ForeignKey(
+        Importacion,
+        on_delete=models.CASCADE,
+        related_name="envios",
+    )
+    sucursal = models.ForeignKey(
+        "inventario.Sucursal",
+        on_delete=models.PROTECT,
+        related_name="importacion_envios",
+    )
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_PENDIENTE)
+    fecha = models.DateField(default=timezone.localdate)
+    fecha_recepcion = models.DateField(null=True, blank=True)
+    recibido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="importacion_envios_recibidos",
+    )
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+        verbose_name = "Envío de importación"
+        verbose_name_plural = "Envíos de importación"
+
+    def __str__(self):
+        return f"Envío {self.importacion.codigo} → {self.sucursal.nombre}"
+
+
+class ImportacionEnvioDetalle(models.Model):
+    envio = models.ForeignKey(
+        ImportacionEnvio,
+        on_delete=models.CASCADE,
+        related_name="detalles",
+    )
+    producto = models.ForeignKey(
+        Producto,
+        on_delete=models.PROTECT,
+        related_name="importacion_envio_detalles",
+    )
+    cantidad = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Detalle de envío de importación"
+        verbose_name_plural = "Detalles de envío de importación"
+
+    def __str__(self):
+        return f"{self.envio} - {self.producto.codigo}"

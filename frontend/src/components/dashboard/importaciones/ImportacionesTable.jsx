@@ -133,10 +133,19 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [formErrors, setFormErrors] = useState({})
   const [formSaving, setFormSaving] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem(`imp-receive-${imp.id}`) || 'null')
+    return saved?.step || 1
+  })
   const [sucursales, setSucursales] = useState([])
   const [loadingSucursales, setLoadingSucursales] = useState(false)
-  const [distribution, setDistribution] = useState({})
+  const [distribution, setDistribution] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem(`imp-receive-${imp.id}`) || 'null')
+    return saved?.distribution || {}
+  })
+  const [allUsers, setAllUsers] = useState([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
+  const [recipientsBySucursal, setRecipientsBySucursal] = useState({})
 
   // Fetch fresh importacion data on mount so already-linked products are reflected
   useEffect(() => {
@@ -161,10 +170,30 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       .finally(() => setLoadingData(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-load sucursales if modal is restored at step 3 or 4
+  useEffect(() => {
+    if (step < 3 || loadingSucursales || sucursales.length > 0) return
+    setLoadingSucursales(true)
+    authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+        setSucursales(list)
+      })
+      .catch(() => {})
+      .finally(() => setLoadingSucursales(false))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-load users if modal is restored at step 4
+  useEffect(() => {
+    if (step !== 4 || allUsers.length > 0) return
+    enterStep4()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const checkedIds = rows.filter(r => r.checked).map(r => r.id)
-    localStorage.setItem(storageKey, JSON.stringify({ checkedIds }))
-  }, [rows, storageKey])
+    localStorage.setItem(storageKey, JSON.stringify({ checkedIds, step, distribution }))
+  }, [rows, step, distribution, storageKey])
 
   const toggleRow = useCallback((id) => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, checked: !r.checked } : r))
@@ -194,6 +223,24 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     return assigned === row.cantidad
   })
 
+  const sucursalesWithDistribution = useMemo(() =>
+    sucursales
+      .map(suc => ({
+        ...suc,
+        items: rows
+          .filter(row => parseInt(distribution[row.id]?.[suc.id]) > 0)
+          .map(row => ({ ...row, qty: parseInt(distribution[row.id][suc.id]) })),
+      }))
+      .filter(suc => suc.items.length > 0),
+    [sucursales, rows, distribution]
+  )
+
+  const canConfirmStep4 = useMemo(() =>
+    sucursalesWithDistribution.length > 0 &&
+    sucursalesWithDistribution.every(suc => (recipientsBySucursal[suc.id] || []).length > 0),
+    [sucursalesWithDistribution, recipientsBySucursal]
+  )
+
   const openProductForm = (row) => {
     setEditingId(row.id)
     setForm({ codigo: row.codigo || '', nombre: row.nombre || '', precio: '', costo_minimo: '', descripcion: '' })
@@ -205,6 +252,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     if (!form.codigo.trim()) errs.codigo = 'Requerido'
     if (!form.nombre.trim()) errs.nombre = 'Requerido'
     if (!form.precio || isNaN(parseFloat(form.precio))) errs.precio = 'Requerido'
+    if (form.costo_minimo && !isNaN(parseFloat(form.costo_minimo)) && !isNaN(parseFloat(form.precio)) && parseFloat(form.precio) <= parseFloat(form.costo_minimo)) errs.precio = 'El precio debe ser mayor al costo'
     if (Object.keys(errs).length) { setFormErrors(errs); return }
     const casaId = imp.casa_comercial?.id
     if (!casaId) { setFormErrors({ _general: 'La importación no tiene casa comercial asignada.' }); return }
@@ -295,6 +343,45 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     }
   }
 
+  const enterStep4 = async () => {
+    setStep(4)
+    if (allUsers.length > 0) return
+    setLoadingUsers(true)
+    try {
+      const collected = []
+      let url = `${API_URL}/usuarios/listado/destinatarios/?page_size=200`
+      while (url) {
+        const resp = await authFetch(url, {}, token)
+        if (!resp.ok) break
+        const data = await resp.json().catch(() => ({}))
+        const items = Array.isArray(data) ? data : (data.results || [])
+        collected.push(...items)
+        url = Array.isArray(data) ? null : (data.next || null)
+      }
+      setAllUsers(collected.map(u => ({
+        id: u.id,
+        name: [u.nombres || u.nombre, u.apellidos || u.apellido].filter(Boolean).join(' ').trim() || u.correo || 'Usuario',
+        es_admin: Boolean(u.es_administrador),
+        sucursales_ids: (u.sucursales || []).map(s => s.id),
+        entradas_sucursales_ids: (u.sucursales_por_modulo || [])
+          .filter(scope => scope.modulo === 'movimientos_entradas')
+          .flatMap(scope => scope.sucursales_ids || []),
+        puede_entradas: (u.permisos_resumen || []).some(p =>
+          p.modulo === 'movimientos_entradas' && (p.puede_crear || p.puede_actualizar || p.puede_leer)
+        ),
+      })))
+    } catch {}
+    setLoadingUsers(false)
+  }
+
+  const toggleRecipient = useCallback((sucursalId, userId) => {
+    setRecipientsBySucursal(prev => {
+      const current = prev[sucursalId] || []
+      const has = current.includes(userId)
+      return { ...prev, [sucursalId]: has ? current.filter(id => id !== userId) : [...current, userId] }
+    })
+  }, [])
+
   const handleConfirm = async () => {
     if (!canFinish) { setShowErrors(true); return }
     setSubmitting(true)
@@ -304,9 +391,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           .filter(([, v]) => parseInt(v) > 0)
           .map(([sucursalId, qty]) => ({ detalle_id: row.id, sucursal_id: parseInt(sucursalId), cantidad: parseInt(qty) }))
       )
+      const destinatarios_por_sucursal = Object.entries(recipientsBySucursal)
+        .filter(([, ids]) => ids.length > 0)
+        .map(([sucursalId, ids]) => ({ sucursal_id: parseInt(sucursalId), user_ids: ids }))
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/marcar-llegada/`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones }) },
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones, destinatarios_por_sucursal }) },
         token
       )
       if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo marcar la llegada.'))
@@ -329,7 +419,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       >
         <div
           className={`quick-actions__receive-dialog ${mode}`}
-          style={{ width: 'min(640px, 90vw)', gridTemplateRows: 'auto 1fr auto' }}
+          style={{ width: step === 3 ? 'min(860px, 95vw)' : step === 4 ? 'min(700px, 95vw)' : 'min(640px, 90vw)', gridTemplateRows: 'auto 1fr auto', transition: 'width .25s' }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <header className="quick-actions__receive-head">
@@ -346,12 +436,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           {!loadingData && (
             <div style={{ padding: '12px 20px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', gap: 5 }}>
-                {[1,2,3].map(n => (
+                {[1,2,3,4].map(n => (
                   <div key={n} style={{ flex: 1, height: 3, borderRadius: 2, background: step >= n ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #e2e8f0)', transition: 'background .3s' }} />
                 ))}
               </div>
               <span style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
-                Paso {step} de 3 — {step === 1 ? 'Productos nuevos' : step === 2 ? 'Revisión de llegada' : 'Distribución a sucursales'}
+                Paso {step} de 4 — {step === 1 ? 'Productos nuevos' : step === 2 ? 'Revisión de llegada' : step === 3 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
               </span>
             </div>
           )}
@@ -496,7 +586,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   })}
                 </div>
               </div>
-            ) : (
+            ) : step === 3 ? (
               /* ── PASO 3: distribución a sucursales ── */
               <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
@@ -526,36 +616,103 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>No hay sucursales disponibles.</p>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 16px 8px' }}>
-                    {rows.map(row => {
-                      const rowDist = distribution[row.id] || {}
-                      const assigned = Object.values(rowDist).reduce((s, v) => s + (parseInt(v) || 0), 0)
-                      const isComplete = assigned === row.cantidad
-                      const isOver = assigned > row.cantidad
+                  <div style={{ overflowX: 'auto', padding: '4px 16px 8px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid var(--color-border, #e2e8f0)' }}>
+                          <th style={{ textAlign: 'left', padding: '6px 12px 8px 0', fontWeight: 600, color: 'var(--color-text-secondary)', minWidth: 140 }}>Producto</th>
+                          <th style={{ textAlign: 'center', padding: '6px 8px 8px', fontWeight: 600, color: 'var(--color-text-secondary)', width: 60, whiteSpace: 'nowrap' }}>Total</th>
+                          {sucursales.map(suc => (
+                            <th key={suc.id} style={{ textAlign: 'center', padding: '6px 6px 8px', fontWeight: 600, color: 'var(--color-text-secondary)', width: 72 }}>
+                              <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }} title={suc.nombre}>{suc.nombre}</span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row, i) => {
+                          const rowDist = distribution[row.id] || {}
+                          const assigned = Object.values(rowDist).reduce((s, v) => s + (parseInt(v) || 0), 0)
+                          const isComplete = assigned === row.cantidad
+                          const isOver = assigned > row.cantidad
+                          return (
+                            <tr key={row.id} style={{ borderBottom: i < rows.length - 1 ? '1px solid var(--color-border, #e2e8f0)' : 'none', background: isComplete ? 'rgba(22,163,74,0.05)' : 'transparent', transition: 'background .2s' }}>
+                              <td style={{ padding: '10px 12px 10px 0', verticalAlign: 'middle' }}>
+                                <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{row.nombre || row.codigo || '-'}</div>
+                                {row.nombre && row.codigo && <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>{row.codigo}</div>}
+                              </td>
+                              <td style={{ textAlign: 'center', padding: '10px 8px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: isOver ? '#dc2626' : isComplete ? '#16a34a' : 'var(--color-text-secondary)' }}>{assigned}/{row.cantidad}</span>
+                              </td>
+                              {sucursales.map(suc => (
+                                <td key={suc.id} style={{ textAlign: 'center', padding: '8px 6px', verticalAlign: 'middle' }}>
+                                  <input
+                                    type="number" min="0" max={row.cantidad}
+                                    value={rowDist[suc.id] ?? ''}
+                                    disabled={(isComplete || isOver) && !(parseInt(rowDist[suc.id]) > 0)}
+                                    onChange={(e) => setDistribution(prev => ({ ...prev, [row.id]: { ...(prev[row.id] || {}), [suc.id]: e.target.value } }))}
+                                    style={{ width: 60, textAlign: 'center', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, padding: '4px 6px', fontSize: '0.85rem', background: (isComplete || isOver) && !(parseInt(rowDist[suc.id]) > 0) ? 'var(--color-surface, #f8fafc)' : 'var(--modal-color, #fff)', color: 'inherit', cursor: (isComplete || isOver) && !(parseInt(rowDist[suc.id]) > 0) ? 'not-allowed' : 'text', opacity: (isComplete || isOver) && !(parseInt(rowDist[suc.id]) > 0) ? 0.4 : 1 }}
+                                  />
+                                </td>
+                              ))}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── PASO 4: destinatarios por sucursal ── */
+              <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
+                <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
+                  <div className="quick-actions__receive-stage-copy">
+                    <p className="quick-actions__receive-stage-kicker">Paso 4 — Destinatarios del envío</p>
+                    <h5>¿Quién recibirá cada envío?</h5>
+                    <p className="quick-actions__receive-stage-name">Selecciona los usuarios que recibirán la notificación del envío en camino para cada sucursal. Este paso es opcional.</p>
+                  </div>
+                </article>
+
+                {loadingUsers ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0', gap: 12 }}>
+                    <svg style={{ animation: 'spin 0.8s linear infinite', width: 20, height: 20, flexShrink: 0 }} viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.2" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                    <span style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Cargando usuarios...</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 16px 8px' }}>
+                    {sucursalesWithDistribution.map(suc => {
+                      const usersForSuc = allUsers.filter(u => {
+                          if (u.es_admin) return false
+                          if (!u.puede_entradas) return false
+                          return u.entradas_sucursales_ids.includes(suc.id) || u.sucursales_ids.includes(suc.id)
+                        })
+                      const selectedIds = recipientsBySucursal[suc.id] || []
                       return (
-                        <div key={row.id} style={{ background: isComplete ? 'var(--color-success-bg, #f0fdf4)' : 'var(--color-surface, #f8fafc)', border: `1px solid ${isOver ? '#fca5a5' : isComplete ? 'var(--color-success-border, #bbf7d0)' : 'var(--color-border, #e2e8f0)'}`, borderRadius: 10, padding: '12px 14px', transition: 'background .2s, border-color .2s' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.nombre || row.codigo || '-'}</div>
-                              {row.nombre && row.codigo && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{row.codigo}</div>}
-                            </div>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 700, marginLeft: 12, flexShrink: 0, color: isOver ? '#dc2626' : isComplete ? 'var(--color-success, #16a34a)' : 'var(--color-text-secondary)' }}>
-                              {assigned}/{row.cantidad}
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {sucursales.map(suc => (
-                              <label key={suc.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <span style={{ flex: 1, fontSize: '0.8rem', color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{suc.nombre}</span>
-                                <input
-                                  type="number" min="0" max={row.cantidad}
-                                  value={rowDist[suc.id] ?? ''}
-                                  onChange={(e) => setDistribution(prev => ({ ...prev, [row.id]: { ...(prev[row.id] || {}), [suc.id]: e.target.value } }))}
-                                  style={{ width: 70, textAlign: 'center', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, padding: '4px 8px', fontSize: '0.85rem', background: 'var(--modal-color, #fff)', color: 'inherit' }}
-                                />
-                              </label>
+                        <div key={suc.id} style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '12px 14px' }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 8 }}>{suc.nombre}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                            {suc.items.map(item => (
+                              <span key={item.id} style={{ fontSize: '0.75rem', background: 'var(--color-primary-light, #dbeafe)', color: 'var(--color-primary, #2563eb)', borderRadius: 4, padding: '2px 8px', fontWeight: 500 }}>
+                                {item.nombre || item.codigo} · {item.qty} u.
+                              </span>
                             ))}
                           </div>
+                          {usersForSuc.length === 0 ? (
+                            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: 0 }}>No hay destinatarios disponibles para esta sucursal.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                              {usersForSuc.map(u => (
+                                <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.82rem' }}>
+                                  <input type="checkbox" checked={selectedIds.includes(u.id)} onChange={() => toggleRecipient(suc.id, u.id)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                                  <span>{u.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -576,11 +733,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)}>Atrás</button>
                 <button type="button" className={`quick-actions__receive-btn${allChecked ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep3} disabled={!allChecked}>Siguiente</button>
               </>
-            ) : (
+            ) : step === 3 ? (
               <>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
-                <button type="button" className={`quick-actions__receive-btn${canFinish ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={handleConfirm} disabled={submitting || !canFinish}>
-                  {submitting ? 'Confirmando...' : 'Confirmar llegada'}
+                <button type="button" className={`quick-actions__receive-btn${canFinish ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep4} disabled={!canFinish}>Siguiente</button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(3)} disabled={submitting}>Atrás</button>
+                <button type="button" className={`quick-actions__receive-btn${canConfirmStep4 ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={handleConfirm} disabled={submitting || !canConfirmStep4}>
+                  {submitting ? 'Confirmando...' : 'Confirmar llegada y enviar a sucursales'}
                 </button>
               </>
             )}
@@ -632,7 +794,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     {formErrors.precio && <small style={{ color: '#dc2626' }}>{formErrors.precio}</small>}
                   </label>
                   <label className="create-user__field">
-                    <span>Costo mínimo</span>
+                    <span>Costo</span>
                     <input type="number" min="0" step="0.01" placeholder="0.00" value={form.costo_minimo} onChange={(e) => setForm(f => ({ ...f, costo_minimo: e.target.value }))} />
                   </label>
                   <label className="create-user__field create-user__field--full">
@@ -904,6 +1066,158 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved }) {
         />
       )}
     </>
+  )
+}
+
+function ImportacionExcelModal({ token, onClose, onCreated }) {
+  const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
+  const mode = isDark ? 'dark' : 'light'
+  const [sucursales, setSucursales] = useState([])
+  const [downloading, setDownloading] = useState(false)
+
+  useEffect(() => {
+    authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+        setSucursales(list)
+      })
+      .catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDownloadTemplate = async () => {
+    setDownloading(true)
+    try {
+      const XLSXStyle = (await import('xlsx-js-style')).default
+      const sucursalHeaders = sucursales.map(s => s.nombre.toUpperCase())
+      const headers = ['CODIGO JP', 'REFERENCIA', 'DESCRIPCIÓN', 'CANTIDAD', 'PVP', ...sucursalHeaders]
+      const colCount = headers.length
+      const lastCol = XLSXStyle.utils.encode_col(colCount - 1)
+
+      const headerStyle = {
+        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+        fill: { fgColor: { rgb: '1A1A2E' }, patternType: 'solid' },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: '2563EB' } },
+          bottom: { style: 'medium', color: { rgb: '2563EB' } },
+          left: { style: 'thin', color: { rgb: '2563EB' } },
+          right: { style: 'thin', color: { rgb: '2563EB' } },
+        },
+      }
+
+      const ROWS = 2000
+      const borderStyle = { style: 'thin', color: { rgb: 'DBEAFE' } }
+      const border = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
+      const rowStyleEven = { fill: { fgColor: { rgb: 'EFF6FF' }, patternType: 'solid' }, alignment: { vertical: 'center' }, border }
+      const rowStyleOdd  = { fill: { fgColor: { rgb: 'FFFFFF' }, patternType: 'solid' }, alignment: { vertical: 'center' }, border }
+
+      const aoa = [headers, ...Array.from({ length: ROWS }, () => Array(colCount).fill(''))]
+      const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
+
+      // Header styles
+      headers.forEach((_, ci) => {
+        const ref = XLSXStyle.utils.encode_cell({ r: 0, c: ci })
+        if (worksheet[ref]) worksheet[ref].s = headerStyle
+      })
+
+      // Alternating row styles — empty cells need to be explicitly set
+      for (let ri = 1; ri <= ROWS; ri++) {
+        const s = ri % 2 === 0 ? rowStyleEven : rowStyleOdd
+        for (let ci = 0; ci < colCount; ci++) {
+          const ref = XLSXStyle.utils.encode_cell({ r: ri, c: ci })
+          if (!worksheet[ref]) worksheet[ref] = { t: 's', v: '' }
+          worksheet[ref].s = s
+        }
+      }
+
+      worksheet['!cols'] = [
+        { wch: 14 }, { wch: 16 }, { wch: 32 }, { wch: 11 }, { wch: 10 },
+        ...sucursales.map(() => ({ wch: 13 })),
+      ]
+      worksheet['!rows'] = [{ hpt: 22 }]
+
+      const workbook = XLSXStyle.utils.book_new()
+      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Importación')
+      const out = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = 'plantilla-importacion.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(link.href)
+    } catch (e) { console.error(e) }
+    setDownloading(false)
+  }
+
+  return createPortal(
+    <div
+      className={`quick-actions__receive-overlay ${mode}`}
+      style={{ zIndex: 2100 }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div
+        className={`quick-actions__receive-dialog ${mode}`}
+        style={{ width: 'min(520px, 92vw)', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto' }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <header className="quick-actions__receive-head">
+          <div>
+            <h4>Importar desde Excel</h4>
+            <p>Crea una importación subiendo un archivo Excel con el formato correcto.</p>
+          </div>
+          <button type="button" className="quick-actions__receive-close" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="quick-actions__receive-body" style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Paso 1: Descargar plantilla */}
+          <div style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '16px 18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--color-primary, #2563eb)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, flexShrink: 0 }}>1</span>
+              <strong style={{ fontSize: '0.9rem' }}>Descarga la plantilla</strong>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginBottom: 14, marginLeft: 34 }}>
+              La plantilla incluye las columnas requeridas y una columna por cada sucursal para la distribución.
+            </p>
+            <div style={{ marginLeft: 34 }}>
+              <button
+                type="button"
+                className="p-button users-topbtn"
+                disabled={downloading || sucursales.length === 0}
+                onClick={handleDownloadTemplate}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem', background: '#16a34a', border: '1px solid #16a34a', borderRadius: 5, padding: '6px 14px', color: '#fff' }}
+              >
+                <i className="pi pi-download" />
+                <span>{downloading ? 'Descargando...' : 'Descargar plantilla'}</span>
+              </button>
+              {sucursales.length > 0 && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: 8 }}>
+                  Columnas: CODIGO JP, REFERENCIA, DESCRIPCIÓN, CANTIDAD, PVP{sucursales.map(s => `, ${s.nombre.toUpperCase()}`).join('')}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Paso 2: Subir archivo */}
+          <div style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '16px 18px', opacity: 0.5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--color-border, #e2e8f0)', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, flexShrink: 0 }}>2</span>
+              <strong style={{ fontSize: '0.9rem' }}>Sube el archivo completado</strong>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginTop: 8, marginLeft: 34 }}>Próximamente disponible.</p>
+          </div>
+        </div>
+
+        <footer className="quick-actions__receive-actions">
+          <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={onClose}>Cerrar</button>
+        </footer>
+      </div>
+    </div>,
+    document.querySelector('.dashboard-shell') || document.body
   )
 }
 
@@ -2791,6 +3105,9 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [showExcelImport, setShowExcelImport] = useState(false)
+  const [showCreateMenu, setShowCreateMenu] = useState(false)
+  const createMenuRef = useRef(null)
   const [selectedImp, setSelectedImp] = useState(null)
   const [showImpDetails, setShowImpDetails] = useState(false)
   const [editImp, setEditImp] = useState(null)
@@ -2802,6 +3119,13 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     setShowEditImp(true)
     onPendingOpenBorradorHandled?.()
   }, [pendingOpenBorradorData]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!showCreateMenu) return
+    const handler = (e) => { if (!createMenuRef.current?.contains(e.target)) setShowCreateMenu(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showCreateMenu])
 
   useEffect(() => {
     if (!pendingOpenDetailsId || !token) return
@@ -3075,13 +3399,43 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       <div className="users-page__top">
         <div className="users-page__actions">
           {canCreate && (
-            <Button
-              label="Crear"
-              icon="pi pi-plus"
-              className="users-topbtn users-topbtn--create"
-              onClick={() => setShowCreate(true)}
-              type="button"
-            />
+            <div style={{ position: 'relative' }} ref={createMenuRef}>
+              <button
+                type="button"
+                className="p-button users-topbtn users-topbtn--create"
+                onClick={() => setShowCreateMenu(p => !p)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem', fontWeight: 400 }}
+              >
+                <i className="pi pi-plus p-button-icon" />
+                <span className="p-button-label">Crear</span>
+                <i className="pi pi-chevron-down" style={{ fontSize: '0.65rem', opacity: 0.75 }} />
+              </button>
+              {showCreateMenu && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 500, background: 'var(--modal-color, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 210, overflow: 'hidden' }}>
+                  <button
+                    type="button"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    onClick={() => { setShowCreate(true); setShowCreateMenu(false) }}
+                  >
+                    <i className="pi pi-file-edit" style={{ color: 'var(--color-primary, #2563eb)' }} />
+                    <span>Crear borrador</span>
+                  </button>
+                  <div style={{ height: 1, background: 'var(--color-border, #e2e8f0)', margin: '0 10px' }} />
+                  <button
+                    type="button"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    onClick={() => { setShowExcelImport(true); setShowCreateMenu(false) }}
+                  >
+                    <i className="pi pi-file-excel" style={{ color: '#16a34a' }} />
+                    <span>Importar desde Excel</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           {!statusProp && (
             <div className="transfer-issues-page__type-filter" role="group" aria-label="Filtro de estado">
@@ -3266,6 +3620,14 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         }}
         onOpenBorrador={handleOpenBorrador}
       />
+
+      {showExcelImport && (
+        <ImportacionExcelModal
+          token={token}
+          onClose={() => setShowExcelImport(false)}
+          onCreated={() => { setShowExcelImport(false); fetchItems() }}
+        />
+      )}
     </div>
   )
 }

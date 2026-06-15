@@ -698,19 +698,25 @@ function QuickActions({
     if (!silent) setInTransitShipmentsLoading(true)
 
     try {
-      const response = await authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/envios-en-camino/?page_size=200`,
-        {},
-        token
-      )
-      if (!response.ok) {
+      const [trasladoResponse, importacionResponse] = await Promise.all([
+        authFetch(`${API_URL}/movimientos/movimiento_inventario/envios-en-camino/?page_size=200`, {}, token),
+        authFetch(`${API_URL}/importaciones/importaciones/envios-pendientes/?page_size=200`, {}, token),
+      ])
+
+      if (!trasladoResponse.ok) {
         throw new Error('No se pudieron cargar los envíos en camino.')
       }
 
-      const payload = await response.json().catch(() => ({}))
-      const rows = parseApiList(payload)
-        .filter((shipment) => shouldIncludeInTransitShipment(shipment))
-        .sort((a, b) => {
+      const trasladoPayload = await trasladoResponse.json().catch(() => ({}))
+      const trasladoRows = parseApiList(trasladoPayload).filter((s) => shouldIncludeInTransitShipment(s))
+
+      const importacionRows = importacionResponse.ok
+        ? parseApiList(await importacionResponse.json().catch(() => ({}))).filter(
+            (s) => shouldIncludeInTransitShipment(s)
+          )
+        : []
+
+      const rows = [...trasladoRows, ...importacionRows].sort((a, b) => {
         const dateA = parseEntityTimestamp(a?.fecha, a?.created_at, a?.updated_at)
         const dateB = parseEntityTimestamp(b?.fecha, b?.created_at, b?.updated_at)
         if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
@@ -4124,10 +4130,12 @@ function QuickActions({
       setReceiveShipmentError('')
       setReceiveShipmentSubmitting(true)
       try {
+        const isImportacionEnvio = activeInTransitShipment?._source === 'importacion'
+        const confirmUrl = isImportacionEnvio
+          ? `${API_URL}/importaciones/importaciones/envios/${encodeURIComponent(normalizeId(activeInTransitShipment?.envio_id))}/confirmar-recepcion/`
+          : `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(normalizeId(activeInTransitShipment?.id))}/confirmar-recepcion/`
         const response = await authFetch(
-          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(
-            normalizeId(activeInTransitShipment?.id)
-          )}/confirmar-recepcion/`,
+          confirmUrl,
           {
             method: 'POST',
             body: JSON.stringify({
