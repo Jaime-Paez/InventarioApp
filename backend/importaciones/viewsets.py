@@ -27,6 +27,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
     serializer_class = ImportacionSerializer
     permission_classes = [IsAuthenticated, SolicitudesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    def get_permissions(self):
+        if self.action in ("envios_pendientes", "confirmar_recepcion_envio"):
+            return [IsAuthenticated()]
+        return super().get_permissions()
     search_fields = [
         "codigo",
         "casa_comercial__nombre",
