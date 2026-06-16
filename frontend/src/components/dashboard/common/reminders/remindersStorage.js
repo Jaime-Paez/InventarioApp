@@ -910,7 +910,7 @@ export const isReminderPendingForCurrentUser = (reminder, userIdSet) => {
   if (isTransferResponseReminder) return true
 
   if (isSpecialReminderResolved(reminder)) return false
-  if (isSpecialTransferDecisionReminder(reminder)) return true
+  if (isSpecialTransferDecisionReminder(reminder)) return isTransferDecisionAllowedForUser(reminder, userIdSet)
 
   // All other unseen reminders stay pending indefinitely — no expiry
   return true

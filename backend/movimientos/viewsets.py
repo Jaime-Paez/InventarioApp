@@ -1131,11 +1131,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         User = get_user_model()
         candidate_users = User.objects.filter(
-            is_active=True
-        ).filter(
-            Q(preferencia_operativa__es_administrador=True)
-            | Q(is_superuser=True)
-            | Q(id__in=sorted(scoped_user_ids | assigned_user_ids))
+            is_active=True,
+            id__in=sorted(scoped_user_ids | assigned_user_ids),
+        ).exclude(
+            Q(preferencia_operativa__es_administrador=True) | Q(is_superuser=True)
         ).order_by("id")
 
         recipients = []
