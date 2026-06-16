@@ -91,7 +91,7 @@ const formatProductLabel = (product) => {
   return [codigo, nombre, referencia ? `Ref. ${referencia}` : ''].filter(Boolean).join(' - ')
 }
 
-const MIN_WIDTH = 840
+const MIN_WIDTH = 660
 const MIN_HEIGHT = 520
 const SELECTOR_WIDTH = 520
 const SELECTOR_HEIGHT_EMPTY = 'auto'

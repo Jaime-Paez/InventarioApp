@@ -14,6 +14,123 @@
   border-color: var(--sidebar-color-border-strong);
 }
 
+/* ── Admin sidebar ─────────────────────────────────────────────── */
+.sidebar--admin {
+  background: #2e7d32;
+  color: #fff;
+}
+
+.dashboard-shell.dark .sidebar--admin {
+  background: #1b5e20;
+  color: #fff;
+}
+
+/* Collapse button */
+.sidebar--admin .sidebar__collapse {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.sidebar--admin .sidebar__collapse:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Brand divider */
+.sidebar--admin .brand-divider {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* Section label */
+.sidebar--admin .sidebar__section {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Nav links */
+.sidebar--admin .sidebar__link,
+.sidebar--admin .sidebar__link:hover,
+.sidebar--admin .sidebar__link:focus-visible,
+.sidebar--admin .sidebar__link:active,
+.sidebar--admin .sidebar__link.active,
+.sidebar--admin .sidebar__link.open {
+  color: #fff;
+}
+.sidebar--admin .sidebar__link:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.sidebar--admin .sidebar__link.active {
+  background: rgba(255, 255, 255, 0.2);
+}
+.sidebar--admin .sidebar__link.active::after,
+.dashboard-shell.dark .sidebar--admin .sidebar__link.active::after,
+.dashboard-shell.light .sidebar--admin .sidebar__link.active::after {
+  background: rgba(255, 255, 255, 0.08);
+}
+.sidebar--admin .sidebar__link.open:hover,
+.sidebar--admin .sidebar__link.open:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Bullets */
+.sidebar--admin .sidebar__bullet,
+.dashboard-shell.dark .sidebar--admin .sidebar__bullet {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* Submenu */
+.sidebar--admin .sidebar__submenu.open,
+.dashboard-shell.dark .sidebar--admin .sidebar__submenu.open {
+  background: rgba(0, 0, 0, 0.18);
+}
+.sidebar--admin .sidebar__sublink {
+  color: rgba(255, 255, 255, 0.82);
+}
+.sidebar--admin .sidebar__link.open + .sidebar__submenu .sidebar__sublink,
+.sidebar--admin .sidebar__submenu.open .sidebar__sublink {
+  color: rgba(255, 255, 255, 0.82);
+}
+.sidebar--admin .sidebar__sublink:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.sidebar--admin .sidebar__sublink.active,
+.dashboard-shell.dark .sidebar--admin .sidebar__sublink.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.sidebar--admin .sidebar__sublink.active::after,
+.dashboard-shell.dark .sidebar--admin .sidebar__sublink.active::after,
+.dashboard-shell.light .sidebar--admin .sidebar__sublink.active::after {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Avatar */
+.sidebar--admin .sidebar__avatar,
+.dashboard-shell.dark .sidebar--admin .sidebar__avatar {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+/* User role text */
+.sidebar--admin .sidebar__user-role {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* Action buttons (Configuración, etc.) */
+.sidebar--admin .sidebar__action {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.sidebar--admin .sidebar__action:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.sidebar--admin .sidebar__action.active,
+.dashboard-shell.dark .sidebar--admin .sidebar__action.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.sidebar--admin .sidebar__action.active:hover,
+.dashboard-shell.dark .sidebar--admin .sidebar__action.active:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 .sidebar--hidden {
   transform: translateX(-105%);
   opacity: 0;

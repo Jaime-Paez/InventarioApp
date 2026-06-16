@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import './Sidebar.css'
 import { Settings, PanelLeftClose, Layers } from 'lucide-react'
 import { MENU_STRUCTURE, filterMenuByPermissions } from '../menuConfig'
+import kavaDark from '../../../assets/login/kava(dark).png'
+import jpaezDark from '../../../assets/login/jpaez(dark).png'
 
 function Sidebar({
   activeItem,
@@ -66,11 +68,11 @@ function Sidebar({
   const profileMenuId = 'sidebar-profile-menu'
 
   return (
-    <aside className={`sidebar ${isOpen ? '' : 'sidebar--hidden'}`}>
+    <aside className={`sidebar ${isOpen ? '' : 'sidebar--hidden'}${canAccessConfiguration ? ' sidebar--admin' : ''}`}>
       <div className="sidebar__brand">
-        <img src={brandLogo} alt="Logo Kava" className="sidebar__brand-logo" />
+        <img src={canAccessConfiguration ? kavaDark : brandLogo} alt="Logo Kava" className="sidebar__brand-logo" />
         <span className="brand-divider" aria-hidden />
-        <img src={partnerLogo} alt="Logo JPaez" className="sidebar__partner-logo" />
+        <img src={canAccessConfiguration ? jpaezDark : partnerLogo} alt="Logo JPaez" className="sidebar__partner-logo" />
       </div>
 
       <nav className="sidebar__nav">

@@ -242,7 +242,15 @@
 }
 
 .importaciones-modal__products-table .create-user__locations-row {
-  grid-template-columns: minmax(110px, 0.9fr) minmax(160px, 1.4fr) minmax(100px, 0.85fr) minmax(100px, 0.85fr) minmax(80px, 0.6fr) minmax(70px, 0.5fr) minmax(76px, 0.4fr);
+  grid-template-columns:
+    minmax(108px, 1.18fr)
+    minmax(116px, 1.32fr)
+    minmax(50px, 0.54fr)
+    minmax(50px, 0.54fr)
+    minmax(58px, 0.56fr)
+    minmax(58px, 0.56fr)
+    minmax(72px, 0.68fr);
+  min-width: 0;
 }
 
 .importaciones-modal__products-table,
@@ -255,6 +263,10 @@
 .dashboard-shell.dark .importaciones-modal__products-table,
 .dashboard-shell.dark .importaciones-modal__products-table:has(.create-salida__product-dropdown .create-user__dropdown-panel) {
   background: var(--table-color-dark);
+}
+
+.importaciones-modal__products-table .create-user__locations-row > span {
+  min-width: 0;
 }
 
 .importaciones-modal__products-table .create-user__locations-cell--action,
