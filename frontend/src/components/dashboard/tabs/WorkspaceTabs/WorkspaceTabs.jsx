@@ -239,7 +239,6 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   const handleTabMouseDown = (event, index, label) => {
     if (event.button !== 0) return
     event.stopPropagation()
-    event.preventDefault()
     const startX = event.clientX
     const startY = event.clientY
 
