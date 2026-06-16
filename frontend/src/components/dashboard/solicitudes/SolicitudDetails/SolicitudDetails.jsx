@@ -1508,12 +1508,15 @@ function SolicitudDetails({
     if (!items.length) return
     if (oemTableHoverTimerRef.current) clearTimeout(oemTableHoverTimerRef.current)
     const rect = event.currentTarget.getBoundingClientRect()
-    setOemTableHover({ top: rect.bottom + 4, left: rect.left, items, label })
+    oemTableHoverTimerRef.current = setTimeout(() => {
+      oemTableHoverTimerRef.current = null
+      setOemTableHover({ top: rect.bottom + 4, left: rect.left, items, label })
+    }, 500)
   }, [])
 
   const hideOemTableHover = useCallback(() => {
-    if (oemTableHoverTimerRef.current) clearTimeout(oemTableHoverTimerRef.current)
-    oemTableHoverTimerRef.current = setTimeout(() => { oemTableHoverTimerRef.current = null; setOemTableHover(null) }, 120)
+    if (oemTableHoverTimerRef.current) { clearTimeout(oemTableHoverTimerRef.current); oemTableHoverTimerRef.current = null }
+    setOemTableHover(null)
   }, [])
 
   const clearOemTableHoverTimer = useCallback(() => {
