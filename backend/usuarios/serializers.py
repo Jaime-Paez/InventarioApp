@@ -138,6 +138,15 @@ def build_sucursal_scope_payload(scopes):
         normalized_flags["puede_crear_importacion"] = bool(
             getattr(scope, "puede_crear_importacion", False)
         )
+        normalized_flags["puede_crear_traslado"] = bool(
+            getattr(scope, "puede_crear_traslado", False)
+        )
+        normalized_flags["puede_crear_devolucion"] = bool(
+            getattr(scope, "puede_crear_devolucion", False)
+        )
+        normalized_flags["puede_crear_venta"] = bool(
+            getattr(scope, "puede_crear_venta", False)
+        )
 
         grouped.setdefault(modulo, {})
         grouped[modulo][branch_id] = normalized_flags
@@ -243,15 +252,19 @@ class ModuloSucursalActionSerializer(serializers.Serializer):
     puede_eliminar = serializers.BooleanField(required=False, default=False)
     puede_crear_compra_local = serializers.BooleanField(required=False, default=False)
     puede_crear_importacion = serializers.BooleanField(required=False, default=False)
+    puede_crear_traslado = serializers.BooleanField(required=False, default=False)
+    puede_crear_devolucion = serializers.BooleanField(required=False, default=False)
+    puede_crear_venta = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         flags = normalize_scope_action_flags(attrs)
+        subtype_keys = ("puede_crear_compra_local", "puede_crear_importacion", "puede_crear_traslado", "puede_crear_devolucion", "puede_crear_venta")
         if not flags.get("puede_crear"):
-            flags["puede_crear_compra_local"] = False
-            flags["puede_crear_importacion"] = False
+            for key in subtype_keys:
+                flags[key] = False
         else:
-            flags["puede_crear_compra_local"] = bool(attrs.get("puede_crear_compra_local", False))
-            flags["puede_crear_importacion"] = bool(attrs.get("puede_crear_importacion", False))
+            for key in subtype_keys:
+                flags[key] = bool(attrs.get(key, False))
         return {
             "sucursal_id": attrs["sucursal_id"],
             **flags,
@@ -529,12 +542,13 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 flags = normalize_scope_action_flags(action_scope)
                 if not any(flags.values()):
                     continue
+                subtype_keys = ("puede_crear_compra_local", "puede_crear_importacion", "puede_crear_traslado", "puede_crear_devolucion", "puede_crear_venta")
                 if not flags.get("puede_crear"):
-                    flags["puede_crear_compra_local"] = False
-                    flags["puede_crear_importacion"] = False
+                    for key in subtype_keys:
+                        flags[key] = False
                 else:
-                    flags["puede_crear_compra_local"] = bool(action_scope.get("puede_crear_compra_local", False))
-                    flags["puede_crear_importacion"] = bool(action_scope.get("puede_crear_importacion", False))
+                    for key in subtype_keys:
+                        flags[key] = bool(action_scope.get(key, False))
                 action_map[branch_id] = flags
 
             if action_map:

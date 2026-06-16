@@ -21,6 +21,7 @@ const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'solicitudes',
 ])
 const ENTRADAS_MODULE_KEY = 'movimientos_entradas'
+const SALIDAS_MODULE_KEY = 'movimientos_salidas'
 const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
 
 const isActionAllowedForModule = (moduleKey, actionKey) =>
@@ -203,10 +204,18 @@ const serializeModuleBranchMatrix = (matrix, allowedModules = []) => {
           const normalizedEntry = applyPermissionDependencies(modulo, rawEntry)
           if (!hasAnyAllowedActionEnabled(modulo, normalizedEntry)) return null
           const entry = { sucursal_id: normalizedBranchId, ...normalizedEntry }
-          if (normalizeModuleKey(modulo) === ENTRADAS_MODULE_KEY) {
-            const canCreate = Boolean(normalizedEntry.puede_crear)
+          const normalizedModKey = normalizeModuleKey(modulo)
+          const canCreate = Boolean(normalizedEntry.puede_crear)
+          if (normalizedModKey === ENTRADAS_MODULE_KEY) {
             entry.puede_crear_compra_local = canCreate ? Boolean(rawEntry?.puede_crear_compra_local ?? false) : false
             entry.puede_crear_importacion = canCreate ? Boolean(rawEntry?.puede_crear_importacion ?? false) : false
+            entry.puede_crear_traslado = canCreate ? Boolean(rawEntry?.puede_crear_traslado ?? false) : false
+            entry.puede_crear_devolucion = canCreate ? Boolean(rawEntry?.puede_crear_devolucion ?? false) : false
+          }
+          if (normalizedModKey === SALIDAS_MODULE_KEY) {
+            entry.puede_crear_venta = canCreate ? Boolean(rawEntry?.puede_crear_venta ?? false) : false
+            entry.puede_crear_traslado = canCreate ? Boolean(rawEntry?.puede_crear_traslado ?? false) : false
+            entry.puede_crear_devolucion = canCreate ? Boolean(rawEntry?.puede_crear_devolucion ?? false) : false
           }
           return entry
         })
@@ -483,6 +492,26 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       return {
         ...prev,
         [ENTRADAS_MODULE_KEY]: {
+          ...moduleScopes,
+          [branchKey]: { ...current, [subtypeKey]: !current[subtypeKey] },
+        },
+      }
+    })
+  }
+
+  const toggleSalidasSubtype = (subtypeKey) => {
+    if (isAdministrator) return
+    const normalizedBranchId = normalizeBranchId(selectedBranchId)
+    if (!normalizedBranchId) return
+    setModuleBranchMatrix((prev) => {
+      const moduleScopes = prev[SALIDAS_MODULE_KEY]
+      if (!moduleScopes || typeof moduleScopes !== 'object') return prev
+      const branchKey = String(normalizedBranchId)
+      const current = moduleScopes[branchKey]
+      if (!current || !current.puede_crear) return prev
+      return {
+        ...prev,
+        [SALIDAS_MODULE_KEY]: {
           ...moduleScopes,
           [branchKey]: { ...current, [subtypeKey]: !current[subtypeKey] },
         },
@@ -932,6 +961,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
               onClick={() => {
                 setActiveTab('general')
                 setShowPermissionsPopup(false)
+                setSelectedBranchId(null)
               }}
               role="tab"
               aria-selected={activeTab === 'general'}
@@ -944,6 +974,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
               onClick={() => {
                 setActiveTab('accesos')
                 setShowPermissionsPopup(false)
+                setSelectedBranchId(null)
               }}
               role="tab"
               aria-selected={activeTab === 'accesos'}
@@ -1207,7 +1238,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
             role="dialog"
             aria-modal="true"
             aria-label={`Permisos de ${selectedBranch.nombre}`}
-            onClick={() => setShowPermissionsPopup(false)}
+            onClick={() => { setShowPermissionsPopup(false); setSelectedBranchId(null) }}
           >
             <div className="create-user__permissions-popup" onClick={(event) => event.stopPropagation()}>
               <div className="create-user__permissions-popup-head">
@@ -1218,7 +1249,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                 <button
                   type="button"
                   className="create-user__icon-button"
-                  onClick={() => setShowPermissionsPopup(false)}
+                  onClick={() => { setShowPermissionsPopup(false); setSelectedBranchId(null) }}
                   aria-label="Cerrar permisos"
                 >
                   <i className="pi pi-times" aria-hidden="true" />
@@ -1259,34 +1290,76 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                   {branchPermissionOptions.map((module) => renderPermissionRow(module))}
                 </div>
 
-                {branchPermissionOptions.some((m) => normalizeModuleKey(m?.key) === ENTRADAS_MODULE_KEY) && (() => {
+                {(() => {
                   const normalizedBranchId = normalizeBranchId(selectedBranchId)
+                  const hasEntradas = branchPermissionOptions.some((m) => normalizeModuleKey(m?.key) === ENTRADAS_MODULE_KEY)
+                  const hasSalidas = branchPermissionOptions.some((m) => normalizeModuleKey(m?.key) === SALIDAS_MODULE_KEY)
+                  if (!hasEntradas && !hasSalidas) return null
+
                   const entradasEntry = getBranchPermissionEntry(moduleBranchMatrix, ENTRADAS_MODULE_KEY, normalizedBranchId)
-                  const canCreate = isAdministrator || Boolean(entradasEntry?.puede_crear)
-                  const subtypeDisabled = loading || permissionsLoading || branchesLoading || isAdministrator || !canCreate
-                  const subtypes = [
+                  const salidasEntry = getBranchPermissionEntry(moduleBranchMatrix, SALIDAS_MODULE_KEY, normalizedBranchId)
+                  const entradasCanCreate = isAdministrator || Boolean(entradasEntry?.puede_crear)
+                  const salidasCanCreate = isAdministrator || Boolean(salidasEntry?.puede_crear)
+                  const baseDisabled = loading || permissionsLoading || branchesLoading || isAdministrator
+
+                  const entradasSubtypes = [
                     { key: 'puede_crear_compra_local', label: 'Compras locales' },
                     { key: 'puede_crear_importacion', label: 'Importaciones' },
+                    { key: 'puede_crear_traslado', label: 'Traslados' },
+                    { key: 'puede_crear_devolucion', label: 'Devoluciones' },
                   ]
+                  const salidasSubtypes = [
+                    { key: 'puede_crear_venta', label: 'Ventas' },
+                    { key: 'puede_crear_traslado', label: 'Traslados' },
+                    { key: 'puede_crear_devolucion', label: 'Devoluciones' },
+                  ]
+
                   return (
-                    <div className="create-user__entrada-subtypes">
-                      <p className="create-user__entrada-subtypes-label">Tipos de entrada permitidos para crear</p>
-                      <div className="create-user__entrada-subtypes-options">
-                        {subtypes.map(({ key, label }) => {
-                          const checked = isAdministrator ? true : Boolean(entradasEntry?.[key] ?? false)
-                          return (
-                            <label key={key} className={`create-user__subtype-option${subtypeDisabled ? ' create-user__subtype-option--disabled' : ''}`}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleEntradasSubtype(key)}
-                                disabled={subtypeDisabled}
-                              />
-                              <span>{label}</span>
-                            </label>
-                          )
-                        })}
-                      </div>
+                    <div className="create-user__subtypes-row">
+                      {hasEntradas && (
+                        <div className="create-user__entrada-subtypes">
+                          <p className="create-user__entrada-subtypes-label">Tipos de entrada permitidos para crear</p>
+                          <div className="create-user__entrada-subtypes-options">
+                            {entradasSubtypes.map(({ key, label }) => {
+                              const checked = isAdministrator ? true : Boolean(entradasEntry?.[key] ?? false)
+                              const disabled = baseDisabled || !entradasCanCreate
+                              return (
+                                <label key={key} className={`create-user__subtype-option${disabled ? ' create-user__subtype-option--disabled' : ''}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleEntradasSubtype(key)}
+                                    disabled={disabled}
+                                  />
+                                  <span>{label}</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {hasSalidas && (
+                        <div className="create-user__entrada-subtypes">
+                          <p className="create-user__entrada-subtypes-label">Tipos de salida permitidos para crear</p>
+                          <div className="create-user__entrada-subtypes-options">
+                            {salidasSubtypes.map(({ key, label }) => {
+                              const checked = isAdministrator ? true : Boolean(salidasEntry?.[key] ?? false)
+                              const disabled = baseDisabled || !salidasCanCreate
+                              return (
+                                <label key={key} className={`create-user__subtype-option${disabled ? ' create-user__subtype-option--disabled' : ''}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleSalidasSubtype(key)}
+                                    disabled={disabled}
+                                  />
+                                  <span>{label}</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })()}

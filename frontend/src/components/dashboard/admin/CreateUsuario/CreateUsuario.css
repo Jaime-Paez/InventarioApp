@@ -903,6 +903,37 @@
   min-height: 0;
 }
 
+.create-user__subtypes-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.dashboard-shell.dark .create-user__subtypes-row {
+  border-top-color: var(--color-border);
+}
+
+.create-user__subtypes-row .create-user__entrada-subtypes {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.create-user__subtypes-row .create-user__entrada-subtypes-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+.dashboard-shell.dark .create-user__subtypes-row .create-user__entrada-subtypes {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+}
+
 .create-user__entrada-subtypes {
   padding: 12px 16px 14px;
   border-top: 1px solid var(--color-border-light);

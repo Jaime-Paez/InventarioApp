@@ -18,6 +18,9 @@ SCOPE_ACTION_KEYS = (
 SCOPE_SUBTYPE_KEYS = (
     "puede_crear_compra_local",
     "puede_crear_importacion",
+    "puede_crear_traslado",
+    "puede_crear_devolucion",
+    "puede_crear_venta",
 )
 
 
@@ -383,6 +386,9 @@ def build_sucursal_scope_summary(usuario):
         "puede_eliminar",
         "puede_crear_compra_local",
         "puede_crear_importacion",
+        "puede_crear_traslado",
+        "puede_crear_devolucion",
+        "puede_crear_venta",
     )
     for row in rows:
         modulo = row.get("modulo")

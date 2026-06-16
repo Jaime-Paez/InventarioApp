@@ -161,6 +161,9 @@ class UsuarioModuloSucursal(models.Model):
     puede_eliminar = models.BooleanField(default=True)
     puede_crear_compra_local = models.BooleanField(default=False)
     puede_crear_importacion = models.BooleanField(default=False)
+    puede_crear_traslado = models.BooleanField(default=False)
+    puede_crear_devolucion = models.BooleanField(default=False)
+    puede_crear_venta = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Alcance de sucursal por modulo"
@@ -185,6 +188,9 @@ class UsuarioModuloSucursal(models.Model):
         if not self.puede_crear:
             self.puede_crear_compra_local = False
             self.puede_crear_importacion = False
+            self.puede_crear_traslado = False
+            self.puede_crear_devolucion = False
+            self.puede_crear_venta = False
 
         if not any(
             (
