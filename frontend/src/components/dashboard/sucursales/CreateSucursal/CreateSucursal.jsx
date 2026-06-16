@@ -6,7 +6,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 const MAP_ZOOM = 16
 const MIN_WIDTH = 650
-const MIN_HEIGHT = 500
+const MIN_HEIGHT = 720
 const VIEWPORT_PADDING = 12
 
 const initialForm = {

@@ -154,13 +154,9 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const safeHeight = useMemo(() => Math.max(heightMeters || 0, 0), [heightMeters])
   const planStyle = useMemo(() => {
     if (!safeWidth || !safeHeight) return undefined
-    const ratio = safeWidth / safeHeight
     return {
       aspectRatio: `${safeWidth} / ${safeHeight}`,
       width: '100%',
-      maxWidth: `min(100%, calc(${PLAN_MAX_HEIGHT} * ${ratio}))`,
-      maxHeight: PLAN_MAX_HEIGHT,
-      minHeight: 0,
     }
   }, [safeWidth, safeHeight])
   const [selectedId, setSelectedId] = useState(null)

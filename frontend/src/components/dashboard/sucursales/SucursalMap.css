@@ -1,12 +1,26 @@
+.create-user__body:has(.sucursal-map__canvas) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.create-user__body:has(.sucursal-map__canvas) .create-user__section {
+  flex: 1;
+  min-height: 0;
+}
+
 .sucursal-map__container {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
 }
 
 .sucursal-map__canvas {
   width: 100%;
-  min-height: 160px;
+  flex: 1;
+  min-height: 400px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   overflow: hidden;
