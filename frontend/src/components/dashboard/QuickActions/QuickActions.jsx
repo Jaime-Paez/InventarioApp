@@ -363,6 +363,11 @@ const extractTransferDocumentNumber = (value) => {
 
 const isResolvedTransferResponseReminder = (reminder) => {
   const contextType = normalizeReminderContextType(reminder?.context?.type)
+
+  if (contextType === 'importacion') {
+    return getReminderDecisionStatus(reminder) === 'enviado'
+  }
+
   if (contextType !== 'solicitud_traslado') return false
   if (isSpecialTransferDecisionReminder(reminder)) return false
 
