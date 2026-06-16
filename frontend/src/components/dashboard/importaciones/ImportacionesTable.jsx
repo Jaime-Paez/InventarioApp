@@ -21,7 +21,7 @@ import './ImportacionesTable.css'
 const getPortalRoot = () => document.querySelector('.dashboard-shell') || getPortalRoot()
 
 const STATUS_CONFIG = {
-  borrador: { label: 'Borrador', empty: 'No hay importaciones en borrador.' },
+  borrador: { label: 'Sugerencia', empty: 'No hay importaciones en sugerencia.' },
   en_camino: { label: 'En camino', empty: 'No hay importaciones en camino.' },
   importada: { label: 'Importadas', empty: 'No hay importaciones importadas.' },
 }
@@ -30,7 +30,7 @@ const IMP_HOVER_WIDTH = 560
 const IMP_HOVER_MARGIN = 12
 
 const STATUS_BADGE = {
-  borrador: { label: 'Borrador', color: '#64748b', bg: 'rgba(100,116,139,0.1)' },
+  borrador: { label: 'Sugerencia', color: '#64748b', bg: 'rgba(100,116,139,0.1)' },
   en_camino: { label: 'En camino', color: '#d97706', bg: 'rgba(217,119,6,0.1)' },
   importada: { label: 'Importada', color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
 }
@@ -91,7 +91,7 @@ const formatProductLabel = (product) => {
   return [codigo, nombre, referencia ? `Ref. ${referencia}` : ''].filter(Boolean).join(' - ')
 }
 
-const MIN_WIDTH = 700
+const MIN_WIDTH = 840
 const MIN_HEIGHT = 520
 const SELECTOR_WIDTH = 520
 const SELECTOR_HEIGHT_EMPTY = 'auto'
@@ -1492,6 +1492,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalSizeRef = useRef(modalSize)
   const modalPositionRef = useRef(modalPosition)
+  const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const casaTimerRef = useRef(null)
   const productTimerRef = useRef(null)
   const casaDropdownRef = useRef(null)
@@ -1607,10 +1608,58 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     }
   }, [])
 
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+      const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+      setModalSize((prev) => {
+        const width = clamp(prev.width, MIN_WIDTH, availableWidth)
+        const height = clamp(prev.height, MIN_HEIGHT, availableHeight)
+        setModalPosition((prevPos) => ({
+          x: clamp(prevPos.x, VIEWPORT_PADDING, Math.max(window.innerWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+          y: clamp(prevPos.y, VIEWPORT_PADDING, Math.max(window.innerHeight - height - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+        }))
+        return { width, height }
+      })
+    }
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
+  }, [])
+
   const handleModalMouseDown = (event) => {
     if (!modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
     modalDrag.current = { active: true, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top }
+  }
+
+  const handleResizeMouseDown = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    resizeData.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: modalSizeRef.current.width,
+      startHeight: modalSizeRef.current.height,
+    }
+    const handleResizeMove = (moveEvent) => {
+      if (!resizeData.current.active) return
+      const deltaX = moveEvent.clientX - resizeData.current.startX
+      const deltaY = moveEvent.clientY - resizeData.current.startY
+      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - modalPositionRef.current.x - VIEWPORT_PADDING)
+      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - modalPositionRef.current.y - VIEWPORT_PADDING)
+      setModalSize({
+        width: clamp(resizeData.current.startWidth + deltaX, MIN_WIDTH, maxWidth),
+        height: clamp(resizeData.current.startHeight + deltaY, MIN_HEIGHT, maxHeight),
+      })
+    }
+    const handleResizeUp = () => {
+      resizeData.current.active = false
+      window.removeEventListener('mousemove', handleResizeMove)
+      window.removeEventListener('mouseup', handleResizeUp)
+    }
+    window.addEventListener('mousemove', handleResizeMove)
+    window.addEventListener('mouseup', handleResizeUp)
   }
 
   const notifyError = useCallback((message) => {
@@ -1986,8 +2035,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
           left: modalPosition.x,
           width: modalSize.width,
           height: modalSize.height,
-          minWidth: 0,
-          minHeight: 0,
+          minWidth: step === 'casa' ? undefined : MIN_WIDTH,
+          minHeight: step === 'casa' ? undefined : MIN_HEIGHT,
           maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
           maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
         }}
@@ -2213,6 +2262,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           <span>Código</span>
                           <span>Nombre</span>
                           <span>OEM</span>
+                          <span>Referencia</span>
+                          <span>Precio</span>
                           <span>Cantidad</span>
                           <span>Acciones</span>
                         </div>
@@ -2298,6 +2349,12 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           <span className="create-salida__table-static-value">
                             {detailDraft.producto ? String(detailDraft.producto.oem || detailDraft.producto.referencia || '').trim() || '-' : '-'}
                           </span>
+                          <span className="create-salida__table-static-value">
+                            {detailDraft.producto ? String(detailDraft.producto.referencia || '').trim() || '-' : '-'}
+                          </span>
+                          <span className="create-salida__table-static-value">
+                            {detailDraft.producto?.precio != null ? `$${Number(detailDraft.producto.precio).toFixed(2)}` : '-'}
+                          </span>
                           <span>
                             <input
                               type="number"
@@ -2333,6 +2390,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           const codigo = item.producto?.codigo || item.codigo || '—'
                           const nombre = item.producto?.nombre || item.nombre || ''
                           const oem = String(item.producto?.oem || item.oem || item.producto?.referencia || '').trim() || '-'
+                          const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
+                          const precio = item.producto?.precio != null ? `$${Number(item.producto.precio).toFixed(2)}` : '-'
                           return (
                             <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
                               <span>
@@ -2343,6 +2402,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                                 <span className="create-salida__product-name-text">{nombre}</span>
                               </span>
                               <span>{oem}</span>
+                              <span>{referencia}</span>
+                              <span>{precio}</span>
                               <span>
                                 <input
                                   type="number"
@@ -2409,6 +2470,14 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
             </div>
           </div>
         </form>
+        {step !== 'casa' && (
+          <button
+            type="button"
+            aria-label="Cambiar tamaño de ventana"
+            className="create-user__resize-handle"
+            onMouseDown={handleResizeMouseDown}
+          />
+        )}
       </div>
 
       {showAceptadosView && createPortal(
@@ -2533,6 +2602,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const toastRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalSizeRef = useRef(modalSize)
+  const modalPositionRef = useRef(modalPosition)
+  const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const productTimerRef = useRef(null)
   const productDropdownRef = useRef(null)
   const isFirstOpenRef = useRef(true)
@@ -2545,6 +2616,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   )
 
   useEffect(() => { modalSizeRef.current = modalSize }, [modalSize])
+  useEffect(() => { modalPositionRef.current = modalPosition }, [modalPosition])
 
   useLayoutEffect(() => {
     if (!open) { isFirstOpenRef.current = true; return }
@@ -2589,10 +2661,58 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp) }
   }, [])
 
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+      const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+      setModalSize((prev) => {
+        const width = clamp(prev.width, MIN_WIDTH, availableWidth)
+        const height = clamp(prev.height, MIN_HEIGHT, availableHeight)
+        setModalPosition((prevPos) => ({
+          x: clamp(prevPos.x, VIEWPORT_PADDING, Math.max(window.innerWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+          y: clamp(prevPos.y, VIEWPORT_PADDING, Math.max(window.innerHeight - height - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+        }))
+        return { width, height }
+      })
+    }
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
+  }, [])
+
   const handleModalMouseDown = (event) => {
     if (!modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
     modalDrag.current = { active: true, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top }
+  }
+
+  const handleResizeMouseDown = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    resizeData.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: modalSizeRef.current.width,
+      startHeight: modalSizeRef.current.height,
+    }
+    const handleResizeMove = (moveEvent) => {
+      if (!resizeData.current.active) return
+      const deltaX = moveEvent.clientX - resizeData.current.startX
+      const deltaY = moveEvent.clientY - resizeData.current.startY
+      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - modalPositionRef.current.x - VIEWPORT_PADDING)
+      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - modalPositionRef.current.y - VIEWPORT_PADDING)
+      setModalSize({
+        width: clamp(resizeData.current.startWidth + deltaX, MIN_WIDTH, maxWidth),
+        height: clamp(resizeData.current.startHeight + deltaY, MIN_HEIGHT, maxHeight),
+      })
+    }
+    const handleResizeUp = () => {
+      resizeData.current.active = false
+      window.removeEventListener('mousemove', handleResizeMove)
+      window.removeEventListener('mouseup', handleResizeUp)
+    }
+    window.addEventListener('mousemove', handleResizeMove)
+    window.addEventListener('mouseup', handleResizeUp)
   }
 
   useEffect(() => {
@@ -2782,7 +2902,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         { method: 'DELETE' },
         token
       )
-      if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo eliminar el borrador.'))
+      if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo eliminar la sugerencia.'))
       setShowDeleteModal(false)
       onSaved?.()
       onClose?.()
@@ -2894,14 +3014,14 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           style={{
             top: modalPosition.y, left: modalPosition.x,
             width: modalSize.width, height: modalSize.height,
-            minWidth: 0, minHeight: 0,
+            minWidth: MIN_WIDTH, minHeight: MIN_HEIGHT,
             maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
             maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
           }}
         >
           <header className="create-user__header" onMouseDown={handleModalMouseDown}>
             <div className="create-user__header-text">
-              <h3>Borrador: {imp.codigo}</h3>
+              <h3>Sugerencia: {imp.codigo}</h3>
             </div>
             <div className="create-user__header-actions">
               <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} disabled={submitting} aria-label="Cerrar">
@@ -2984,7 +3104,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
                     <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table">
                       <div className="create-user__locations-row create-user__locations-row--head">
-                        <span>Código</span><span>Nombre</span><span>OEM</span><span>Cantidad</span><span>Acciones</span>
+                        <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span><span>Acciones</span>
                       </div>
 
                       <div className="create-user__locations-row create-user__locations-row--form">
@@ -3056,6 +3176,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         <span className="create-salida__table-static-value">
                           {detailDraft.producto ? String(detailDraft.producto.oem || detailDraft.producto.referencia || '').trim() || '-' : '-'}
                         </span>
+                        <span className="create-salida__table-static-value">
+                          {detailDraft.producto ? String(detailDraft.producto.referencia || '').trim() || '-' : '-'}
+                        </span>
+                        <span className="create-salida__table-static-value">
+                          {detailDraft.producto?.precio != null ? `$${Number(detailDraft.producto.precio).toFixed(2)}` : '-'}
+                        </span>
                         <span>
                           <input
                             type="number"
@@ -3085,6 +3211,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         const codigo = item.producto?.codigo || item.codigo || '—'
                         const nombre = item.producto?.nombre || item.nombre || ''
                         const oem = String(item.producto?.oem || item.oem || item.producto?.referencia || '').trim() || '-'
+                        const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
+                        const precio = item.producto?.precio != null ? `$${Number(item.producto.precio).toFixed(2)}` : '-'
                         return (
                           <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
                             <span>
@@ -3093,6 +3221,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             </span>
                             <span title={nombre}><span className="create-salida__product-name-text">{nombre}</span></span>
                             <span>{oem}</span>
+                            <span>{referencia}</span>
+                            <span>{precio}</span>
                             <span>
                               <input
                                 type="number"
@@ -3150,6 +3280,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
               </div>
             </div>
           </form>
+          <button
+            type="button"
+            aria-label="Cambiar tamaño de ventana"
+            className="create-user__resize-handle"
+            onMouseDown={handleResizeMouseDown}
+          />
         </div>
 
         {showImportarModal && createPortal(
@@ -3219,8 +3355,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 <Info size={18} />
               </div>
               <div className="user-details__confirm-content">
-                <h4>Eliminar borrador</h4>
-                <p>¿Estás seguro que quieres eliminar el borrador <strong>{imp?.codigo}</strong>? Esta acción no se puede deshacer.</p>
+                <h4>Eliminar sugerencia</h4>
+                <p>¿Estás seguro que quieres eliminar la sugerencia <strong>{imp?.codigo}</strong>? Esta acción no se puede deshacer.</p>
               </div>
               <div className="user-details__confirm-actions">
                 <button
