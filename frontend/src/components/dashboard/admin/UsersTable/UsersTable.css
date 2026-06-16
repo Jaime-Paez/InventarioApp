@@ -1160,6 +1160,7 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
 .movimientos-table__product-hover-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .movimientos-table__product-hover-table th,
@@ -1175,11 +1176,19 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
 
 .movimientos-table__product-hover-table th:first-child,
 .movimientos-table__product-hover-table td:first-child {
+  width: 92px;
   padding-left: 0;
+}
+
+.movimientos-table__product-hover-table th:nth-child(2),
+.movimientos-table__product-hover-table td:nth-child(2) {
+  width: auto;
+  max-width: 0;
 }
 
 .movimientos-table__product-hover-table th:last-child,
 .movimientos-table__product-hover-table td:last-child {
+  width: 76px;
   padding-right: 0;
 }
 

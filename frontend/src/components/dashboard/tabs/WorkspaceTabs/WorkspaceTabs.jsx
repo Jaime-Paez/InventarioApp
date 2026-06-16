@@ -27,8 +27,10 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   const [dropIndex, setDropIndex] = useState(-1)
   const dropIndexRef = useRef(-1)
   const tabDragState = useRef({ active: false, dragging: false, tabIndex: -1, startX: 0, startY: 0 })
+  const tabDragHoldTimerRef = useRef(null)
   const tabWasDraggedRef = useRef(false)
   const tabSlotWidthRef = useRef(110) // measured on drag start
+  const TAB_DRAG_HOLD_MS = 180
 
   // Ghost element — position updated via direct DOM to avoid per-pixel re-renders
   const [ghostInfo, setGhostInfo] = useState(null) // { top, initLeft, width, height, label }
@@ -48,6 +50,12 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   useEffect(() => {
     updateScrollControls()
   }, [tabOrder, updateScrollControls])
+
+  useEffect(() => () => {
+    if (tabDragHoldTimerRef.current) {
+      clearTimeout(tabDragHoldTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     const element = listRef.current
@@ -126,6 +134,11 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
     }
 
     const handleMouseUp = () => {
+      if (tabDragHoldTimerRef.current) {
+        clearTimeout(tabDragHoldTimerRef.current)
+        tabDragHoldTimerRef.current = null
+      }
+
       if (tabDragState.current.active) {
         const wasDragging = tabDragState.current.dragging
         if (wasDragging) {
@@ -227,7 +240,23 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
     if (event.button !== 0) return
     event.stopPropagation()
     event.preventDefault()
-    tabDragState.current = { active: true, dragging: false, tabIndex: index, startX: event.clientX, startY: event.clientY, label }
+    const startX = event.clientX
+    const startY = event.clientY
+
+    if (tabDragHoldTimerRef.current) {
+      clearTimeout(tabDragHoldTimerRef.current)
+    }
+
+    tabDragState.current = { active: false, dragging: false, tabIndex: index, startX, startY, label }
+    tabDragHoldTimerRef.current = setTimeout(() => {
+      tabDragState.current = {
+        ...tabDragState.current,
+        active: true,
+        startX,
+        startY,
+      }
+      tabDragHoldTimerRef.current = null
+    }, TAB_DRAG_HOLD_MS)
   }
 
   const isDraggingAny = draggingTabIndex >= 0
@@ -299,6 +328,9 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
                   role="button"
                   aria-label={`Cerrar ${tab}`}
                   className="workspace__tab-close"
+                  onMouseDown={(event) => {
+                    event.stopPropagation()
+                  }}
                   onClick={(event) => {
                     event.stopPropagation()
                     onCloseTab(tab)
