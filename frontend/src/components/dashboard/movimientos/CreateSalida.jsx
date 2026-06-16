@@ -6,6 +6,7 @@ import '../clientes/CreateCliente/CreateCliente.css'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
+import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import {
@@ -347,6 +348,7 @@ function CreateSalida({
   const [details, setDetails] = useState([])
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
+  const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [productDropdownDirection, setProductDropdownDirection] = useState('up')
   const [productDropdownMaxHeight, setProductDropdownMaxHeight] = useState(null)
@@ -3666,7 +3668,10 @@ function CreateSalida({
                     {details.map((detail) => (
                       <div key={detail.uid} className="create-user__locations-row">
                         <span>{detail.productoCodigo || '-'}</span>
-                        <span title={detail.productoNombre || undefined}>
+                        <span
+                          onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Nombre')}
+                          onMouseLeave={hideHover}
+                        >
                           <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
                         </span>
                         <span>{detail.cantidad}</span>
@@ -4335,6 +4340,7 @@ function CreateSalida({
           onMouseDown={handleResizeMouseDown}
         />
       </div>
+      {cellHoverPortal}
     </div>
   )
 }

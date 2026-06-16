@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
+import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import {
@@ -336,6 +338,7 @@ function CreateEntrada({
   const [details, setDetails] = useState([])
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
+  const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [productDropdownDirection, setProductDropdownDirection] = useState('up')
   const [productDropdownMaxHeight, setProductDropdownMaxHeight] = useState(null)
@@ -3580,7 +3583,10 @@ function CreateEntrada({
                               </small>
                             )}
                           </span>
-                          <span title={detail.productoNombre || undefined}>
+                          <span
+                            onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Nombre')}
+                            onMouseLeave={hideHover}
+                          >
                             <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
                           </span>
                           <span>{detail.cantidad}</span>
@@ -4396,6 +4402,7 @@ function CreateEntrada({
           onMouseDown={handleResizeMouseDown}
         />
       </div>
+      {cellHoverPortal}
     </div>
   )
 }

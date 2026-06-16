@@ -1618,3 +1618,51 @@
   cursor: pointer;
   flex-shrink: 0;
 }
+
+/* Shared table cell hover card */
+.table-cell-hover-card {
+  position: fixed;
+  z-index: 11000;
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.28));
+  border-radius: 10px;
+  padding: 12px 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
+  min-width: 200px;
+  max-width: 400px;
+  pointer-events: none;
+}
+
+.table-cell-hover-card__title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-primary, #3b82f6);
+  margin-bottom: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
+}
+
+.table-cell-hover-card__row {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  padding: 2px 0;
+  color: var(--color-text, #1e293b);
+  overflow-wrap: anywhere;
+}
+
+.dashboard-shell.dark .table-cell-hover-card {
+  background: var(--surface-dark, #1e293b);
+  border-color: rgba(148, 163, 184, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.dashboard-shell.dark .table-cell-hover-card__title {
+  color: #7dd3fc;
+  border-bottom-color: rgba(148, 163, 184, 0.15);
+}
+
+.dashboard-shell.dark .table-cell-hover-card__row {
+  color: #e2e8f0;
+}

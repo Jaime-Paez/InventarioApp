@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Eye, Pencil } from 'lucide-react'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
+import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import StaticFieldDisplay from './StaticFieldDisplay'
 
@@ -292,6 +294,7 @@ function EntradaDetails({
   const [estadosProducto, setEstadosProducto] = useState([])
 
   const [details, setDetails] = useState([])
+  const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
   const [showProductDropdown, setShowProductDropdown] = useState(false)
@@ -2763,7 +2766,10 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                                 </small>
                               )}
                             </span>
-                          <span title={detail.productoNombre || undefined}>
+                          <span
+                            onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Nombre')}
+                            onMouseLeave={hideHover}
+                          >
                             <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
                           </span>
                           <span>
@@ -3118,6 +3124,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
           onMouseDown={handleResizeMouseDown}
         />
       </div>
+      {cellHoverPortal}
     </div>
   )
 }

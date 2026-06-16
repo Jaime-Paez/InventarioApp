@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Eye, Pencil } from 'lucide-react'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import useModalAnimation from '../common/useModalAnimation'
+import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import { normalizeId } from '../common/reminders/remindersStorage'
 import StaticFieldDisplay from './StaticFieldDisplay'
@@ -304,6 +306,7 @@ function SalidaDetails({
 
   const [details, setDetails] = useState([])
   const [detailDraft, setDetailDraft] = useState(initialDetail)
+  const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [detailError, setDetailError] = useState('')
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [productDropdownDirection, setProductDropdownDirection] = useState('down')
@@ -2191,7 +2194,10 @@ function SalidaDetails({
                     {details.map((detail) => (
                       <div key={detail.uid} className="create-user__locations-row">
                         <span>{detail.productoCodigo || '-'}</span>
-                        <span title={detail.productoNombre || undefined}>
+                        <span
+                          onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Nombre')}
+                          onMouseLeave={hideHover}
+                        >
                           <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
                         </span>
                         <span>{detail.cantidad}</span>
@@ -2509,6 +2515,7 @@ function SalidaDetails({
           onMouseDown={handleResizeMouseDown}
         />
       </div>
+      {cellHoverPortal}
     </div>
   )
 }
