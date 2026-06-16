@@ -111,6 +111,8 @@ const normalizeModuleScopeActions = (rawScopes) => {
         puede_actualizar: Boolean(entry?.puede_actualizar),
         puede_crear_compra_local: Boolean(entry?.puede_crear_compra_local),
         puede_crear_importacion: Boolean(entry?.puede_crear_importacion),
+        puede_crear_traslado: Boolean(entry?.puede_crear_traslado),
+        puede_crear_devolucion: Boolean(entry?.puede_crear_devolucion),
       }
     })
 
@@ -510,6 +512,8 @@ function CreateEntrada({
           if (currentUserEntradasSubtypeActions) {
             if (isImport) blocked = !currentUserEntradasSubtypeActions.puede_crear_importacion
             else if (isCompra) blocked = !currentUserEntradasSubtypeActions.puede_crear_compra_local
+            else if (normalizedName.includes('trasl')) blocked = !currentUserEntradasSubtypeActions.puede_crear_traslado
+            else if (normalizedName.includes('devol')) blocked = !currentUserEntradasSubtypeActions.puede_crear_devolucion
           }
 
           return {

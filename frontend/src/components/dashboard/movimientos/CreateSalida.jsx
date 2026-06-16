@@ -114,6 +114,9 @@ const normalizeModuleScopeActions = (rawScopes) => {
       branchActions[branchId] = {
         puede_crear: Boolean(entry?.puede_crear),
         puede_actualizar: Boolean(entry?.puede_actualizar),
+        puede_crear_venta: Boolean(entry?.puede_crear_venta),
+        puede_crear_traslado: Boolean(entry?.puede_crear_traslado),
+        puede_crear_devolucion: Boolean(entry?.puede_crear_devolucion),
       }
     })
     if (Object.keys(branchActions).length) scopes[moduleKey] = branchActions
@@ -468,6 +471,14 @@ function CreateSalida({
     [subTipos, salidaTipoId]
   )
 
+  const currentUserSalidasSubtypeActions = useMemo(() => {
+    if (isCurrentUserAdmin) return null
+    const branchId = normalizeReminderId(prefilledSucursalId || formData.sucursalId)
+    if (!branchId) return null
+    const actions = normalizeModuleScopeActions(currentUser?.sucursales_por_modulo)
+    return actions?.['movimientos_salidas']?.[branchId] ?? null
+  }, [isCurrentUserAdmin, prefilledSucursalId, formData.sucursalId, currentUser])
+
   const selectedSubTipo = useMemo(
     () => subTiposSalida.find((sub) => String(sub.id) === String(formData.subTipoId)),
     [subTiposSalida, formData.subTipoId]
@@ -495,6 +506,13 @@ function CreateSalida({
             order = 2
           }
 
+          let blocked = false
+          if (currentUserSalidasSubtypeActions) {
+            if (normalizedName.includes('vent')) blocked = !currentUserSalidasSubtypeActions.puede_crear_venta
+            else if (normalizedName.includes('trasl')) blocked = !currentUserSalidasSubtypeActions.puede_crear_traslado
+            else if (normalizedName.includes('devol')) blocked = !currentUserSalidasSubtypeActions.puede_crear_devolucion
+          }
+
           return {
             value: String(subTipo?.id || ''),
             label,
@@ -508,10 +526,11 @@ function CreateSalida({
                   : 'branch',
             order,
             index,
+            blocked,
           }
         })
         .sort((first, second) => first.order - second.order || first.index - second.index),
-    [subTiposSalida]
+    [subTiposSalida, currentUserSalidasSubtypeActions]
   )
   const selectedSubTipoLabel = useMemo(
     () =>
