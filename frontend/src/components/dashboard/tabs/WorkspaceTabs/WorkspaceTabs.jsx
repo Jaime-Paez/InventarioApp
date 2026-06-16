@@ -226,6 +226,7 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   const handleTabMouseDown = (event, index, label) => {
     if (event.button !== 0) return
     event.stopPropagation()
+    event.preventDefault()
     tabDragState.current = { active: true, dragging: false, tabIndex: index, startX: event.clientX, startY: event.clientY, label }
   }
 
@@ -243,7 +244,7 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   }
 
   return (
-    <section className="workspace__tabs">
+    <section className={`workspace__tabs${isDraggingAny ? ' is-tab-dragging' : ''}`}>
       {hasOverflow && (
         <button
           type="button"
@@ -274,6 +275,7 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
               <button
                 key={tab}
                 type="button"
+                draggable={false}
                 className={[
                   'workspace__tab',
                   isActive ? 'active' : '',

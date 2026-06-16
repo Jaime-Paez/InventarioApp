@@ -1813,6 +1813,10 @@
   gap: 10px;
 }
 
+.recordatorios-popup__decision-grid--3col {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .recordatorios-popup__decision-grid label {
   display: grid;
   gap: 4px;

@@ -2315,7 +2315,7 @@ function SolicitudDetails({
 
             {!loading && solicitud && activeTab === 'productos' && (
               <>
-                <section className="create-user__section">
+                <section className="create-user__section create-solicitud-details__general-section">
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Solicitud</p>
@@ -2323,20 +2323,16 @@ function SolicitudDetails({
                     </div>
                   </div>
 
-                  <div className="create-salida__field-group create-salida__field-group--defined">
-                    <div className="create-user__grid create-user__grid--two">
+                  <div className="create-salida__field-group create-salida__field-group--defined create-solicitud-details__general-card">
+                    <div className="create-user__grid create-solicitud-details__general-grid">
                       <StaticFieldDisplay label="Codigo" value={formData.codigo} />
                       <StaticFieldDisplay label="Fecha" value={solicitudFormattedFecha} />
                       <StaticFieldDisplay label="Sucursal" value={solicitud?.sucursal_data?.nombre} />
-                      <StaticFieldDisplay label="Marca" value={formData.marca} />
-                      <StaticFieldDisplay label="Modelo" value={formData.modelo} />
-                      <StaticFieldDisplay label="Motor" value={formData.motor} />
-                      <StaticFieldDisplay label="Año" value={formData.anio} />
                     </div>
                   </div>
                 </section>
 
-                <section className="create-user__section">
+                <section className="create-user__section create-solicitud-details__products-section">
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Detalle</p>
@@ -2428,6 +2424,19 @@ function SolicitudDetails({
                     <StaticFieldDisplay label="Correo" value={clienteData.correo} />
                     <StaticFieldDisplay label="Telefono" value={clienteData.telefono} />
                     <StaticFieldDisplay label="Direccion" value={clienteData.direccion} fullWidth />
+                  </div>
+                </div>
+                <div className="create-salida__field-group create-salida__field-group--defined">
+                  <div className="create-user__section-header create-solicitud-details__subsection-header">
+                    <div>
+                      <h4>Vehiculo</h4>
+                    </div>
+                  </div>
+                  <div className="create-user__grid create-solicitud-details__vehicle-grid">
+                    <StaticFieldDisplay label="Marca" value={formData.marca} />
+                    <StaticFieldDisplay label="Modelo" value={formData.modelo} />
+                    <StaticFieldDisplay label="Motor" value={formData.motor} />
+                    <StaticFieldDisplay label="Año" value={formData.anio} />
                   </div>
                 </div>
               </section>

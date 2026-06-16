@@ -43,6 +43,12 @@
   pointer-events: none;
 }
 
+.workspace__tabs.is-tab-dragging,
+.workspace__tabs.is-tab-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
 /* Source tab — becomes a dim placeholder while ghost follows cursor */
 .workspace__tab.is-tab-source {
   opacity: 0.25;
@@ -68,12 +74,14 @@
   border-radius: 10px;
   display: inline-flex;
   align-items: center;
-  cursor: pointer;
+  cursor: grab;
   transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
   width: 100px;
   flex: 0 0 100px;
   min-width: 0;
   opacity: 0.8;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .workspace__tab:hover,

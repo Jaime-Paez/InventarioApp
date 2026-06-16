@@ -35,6 +35,29 @@ from .serializers import (
 )
 
 
+def get_alterno_group_ids(producto_id):
+    pending = {producto_id}
+    visited = set()
+
+    while pending:
+        current_id = pending.pop()
+        if current_id in visited:
+            continue
+        visited.add(current_id)
+
+        forward_ids = set(
+            ProductoAlterno.objects.filter(producto_id=current_id)
+            .values_list("alterno_id", flat=True)
+        )
+        backward_ids = set(
+            ProductoAlterno.objects.filter(alterno_id=current_id)
+            .values_list("producto_id", flat=True)
+        )
+        pending.update((forward_ids | backward_ids) - visited)
+
+    return visited
+
+
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = (
         Producto.objects.prefetch_related("casas_comerciales", "oem_productos__oem")
@@ -298,33 +321,18 @@ class OEMProductoViewSet(viewsets.ModelViewSet):
     ]
     ordering_fields = ["producto__nombre", "oem__codigo"]
 
-    def _get_alterno_group(self, producto):
-        forward_ids = set(
-            ProductoAlterno.objects.filter(producto=producto)
-            .values_list("alterno_id", flat=True)
-        )
-        backward_ids = set(
-            ProductoAlterno.objects.filter(alterno=producto)
-            .values_list("producto_id", flat=True)
-        )
-        all_ids = forward_ids | backward_ids
-        if not all_ids:
-            return []
-        return list(Producto.objects.filter(id__in=all_ids))
-
     @transaction.atomic
     def perform_create(self, serializer):
         instance = serializer.save()
-        for alterno in self._get_alterno_group(instance.producto):
-            OEMProducto.objects.get_or_create(producto=alterno, oem=instance.oem)
+        for producto_id in get_alterno_group_ids(instance.producto_id):
+            OEMProducto.objects.get_or_create(producto_id=producto_id, oem=instance.oem)
 
     @transaction.atomic
     def perform_destroy(self, instance):
         oem = instance.oem
-        producto = instance.producto
+        group_ids = get_alterno_group_ids(instance.producto_id)
         instance.delete()
-        for alterno in self._get_alterno_group(producto):
-            OEMProducto.objects.filter(producto=alterno, oem=oem).delete()
+        OEMProducto.objects.filter(producto_id__in=group_ids, oem=oem).delete()
 
 
 class ProductoAlternoViewSet(viewsets.ModelViewSet):
@@ -343,3 +351,48 @@ class ProductoAlternoViewSet(viewsets.ModelViewSet):
         "alterno__nombre",
     ]
     ordering_fields = ["producto__nombre", "alterno__nombre"]
+
+    def _sync_group_oems(self, producto_ids):
+        product_ids = {int(product_id) for product_id in producto_ids if product_id}
+        if not product_ids:
+            return
+
+        oem_ids = set(
+            OEMProducto.objects.filter(producto_id__in=product_ids)
+            .values_list("oem_id", flat=True)
+        )
+        if not oem_ids:
+            return
+
+        existing_pairs = set(
+            OEMProducto.objects.filter(producto_id__in=product_ids, oem_id__in=oem_ids)
+            .values_list("producto_id", "oem_id")
+        )
+        missing = [
+            OEMProducto(producto_id=producto_id, oem_id=oem_id)
+            for producto_id in product_ids
+            for oem_id in oem_ids
+            if (producto_id, oem_id) not in existing_pairs
+        ]
+        if missing:
+            OEMProducto.objects.bulk_create(missing, ignore_conflicts=True)
+
+    def perform_create(self, serializer):
+        with transaction.atomic():
+            instance = serializer.save()
+            if instance.producto_id == instance.alterno_id:
+                raise ValidationError({"detail": "Un producto no puede ser alterno de si mismo."})
+            ProductoAlterno.objects.get_or_create(
+                producto_id=instance.alterno_id,
+                alterno_id=instance.producto_id,
+                defaults={"notas": instance.notas},
+            )
+            group_ids = get_alterno_group_ids(instance.producto_id)
+            self._sync_group_oems(group_ids)
+
+    def perform_destroy(self, instance):
+        with transaction.atomic():
+            producto_id = instance.producto_id
+            alterno_id = instance.alterno_id
+            instance.delete()
+            ProductoAlterno.objects.filter(producto_id=alterno_id, alterno_id=producto_id).delete()

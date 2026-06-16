@@ -340,7 +340,8 @@
   flex: 1;
   min-height: 0;
   overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto !important;
+  -webkit-overflow-scrolling: auto;
 }
 
 /* Prime usa column en flex-scrollable y genera espacio muerto inferior en varias tablas. */
@@ -372,7 +373,36 @@
 .users-datatable .p-datatable-scrollable-footer {
   background: transparent;
   overflow-x: auto !important;
-  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto !important;
+  -webkit-overflow-scrolling: auto;
+}
+
+.users-datatable,
+.users-datatable *,
+.users-table,
+.users-table * {
+  scroll-behavior: auto !important;
+}
+
+.users-datatable .p-datatable-wrapper,
+.users-datatable .p-datatable-scrollable-wrapper,
+.users-datatable .p-datatable-scrollable-view,
+.users-datatable .p-datatable-scrollable-body,
+.users-datatable .p-datatable-scrollable-header,
+.users-datatable .p-datatable-scrollable-footer,
+.users-datatable .p-datatable-table,
+.users-datatable .p-datatable-thead,
+.users-datatable .p-datatable-thead > tr,
+.users-datatable .p-datatable-thead > tr > th,
+.users-datatable .p-column-header-content,
+.users-datatable .p-column-title,
+.users-datatable th.p-sortable-column,
+.users-datatable th.p-sortable-column .p-sortable-column-icon,
+.users-datatable .p-datatable-tbody,
+.users-datatable .p-datatable-tbody > tr,
+.users-datatable .p-datatable-tbody > tr > td {
+  animation: none !important;
+  transition: none !important;
 }
 
 .users-datatable .p-datatable-table {

@@ -3613,12 +3613,18 @@ function RecordatoriosPopup({
               <header className="recordatorios-popup__decision-head">
                 <div>
                   <h4 className="recordatorios-popup__decision-title">
-                    {activeDecisionIsGarantia ? 'Solicitud de Garantía' : 'Traslado'}
+                    {activeDecisionIsGarantia ? 'Solicitud de Garantía' : (
+                      <>
+                        Traslado
+                        {getTransferContextPresentation(activeDecisionReminder).reference && (
+                          <>: {getTransferContextPresentation(activeDecisionReminder).reference}</>
+                        )}
+                      </>
+                    )}
                     {Boolean(activeDecisionReminder?.context?.urgente) && (
                       <span className="recordatorios-popup__urgente-dot recordatorios-popup__urgente-dot--decision" aria-hidden="true">!</span>
                     )}
                   </h4>
-                  <p>{formatReminderContext(activeDecisionReminder) || (activeDecisionIsGarantia ? 'Detalle de la garantia' : 'Detalle del traslado')}</p>
                 </div>
                 <button
                   type="button"
@@ -3640,11 +3646,7 @@ function RecordatoriosPopup({
 
                 {!decisionLoading && (
                   <>
-                    <div className="recordatorios-popup__decision-grid">
-                      <label>
-                        <span>Documento</span>
-                        <strong>{decisionDetail?.no_documento || '-'}</strong>
-                      </label>
+                    <div className={`recordatorios-popup__decision-grid${activeDecisionIsGarantia ? '' : ' recordatorios-popup__decision-grid--3col'}`}>
                       <label>
                         <span>Fecha</span>
                         <strong>{decisionDetail?.fecha || '-'}</strong>
@@ -3667,11 +3669,6 @@ function RecordatoriosPopup({
                         </>
                       )}
                     </div>
-
-                    <label className="recordatorios-popup__decision-description">
-                      <span>Descripción</span>
-                      <p>{String(decisionDetail?.descripcion || '').trim() || '-'}</p>
-                    </label>
 
                     <div className="recordatorios-popup__decision-table-wrap">
                       <table className="recordatorios-popup__decision-table">
@@ -3698,6 +3695,11 @@ function RecordatoriosPopup({
                         </tbody>
                       </table>
                     </div>
+
+                    <label className="recordatorios-popup__decision-description">
+                      <span>Descripción</span>
+                      <p>{String(decisionDetail?.descripcion || '').trim() || '-'}</p>
+                    </label>
                   </>
                 )}
 
@@ -3725,14 +3727,6 @@ function RecordatoriosPopup({
                     </button>
                   </div>
                 )}
-                <button
-                  type="button"
-                  className="recordatorios-popup__decision-close-link"
-                  onClick={closeDecisionPanel}
-                  disabled={decisionSubmitting}
-                >
-                  Cerrar
-                </button>
               </div>
 
               {isRejectReasonModalOpen && (

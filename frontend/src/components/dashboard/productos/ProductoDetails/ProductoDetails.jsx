@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Eye, Info, Pencil } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
@@ -137,6 +138,7 @@ function ProductoDetails({
   const [isEditing, setIsEditing] = useState(false)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [pendingAlternoSync, setPendingAlternoSync] = useState(null)
   const [localInventoryContext, setLocalInventoryContext] = useState(null)
   const [inventoryLoading, setInventoryLoading] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -151,6 +153,8 @@ function ProductoDetails({
   const modalRef = useRef(null)
   const casaDropdownRef = useRef(null)
   const alternoDropdownRef = useRef(null)
+  const alternoDropdownTriggerRef = useRef(null)
+  const alternoDropdownPanelRef = useRef(null)
   const inventarioEditorRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
@@ -158,6 +162,7 @@ function ProductoDetails({
   const positionRef = useRef(position)
   const restoreRef = useRef(null)
   const lastNotifiedErrorRef = useRef({ message: '', at: 0 })
+  const [alternoDropdownStyle, setAlternoDropdownStyle] = useState(null)
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
   const getViewportMetrics = () => {
@@ -170,6 +175,31 @@ function ProductoDetails({
       minHeight: Math.min(MIN_HEIGHT, availableHeight),
     }
   }
+
+  const updateAlternoDropdownPosition = useCallback(() => {
+    const trigger = alternoDropdownTriggerRef.current
+    if (!trigger) return
+
+    const rect = trigger.getBoundingClientRect()
+    const margin = 8
+    const width = Math.min(Math.max(rect.width, 280), window.innerWidth - margin * 2)
+    const left = Math.min(Math.max(rect.left, margin), window.innerWidth - width - margin)
+    const spaceBelow = window.innerHeight - rect.bottom - margin
+    const spaceAbove = rect.top - margin
+    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow
+    const availableHeight = openUp ? spaceAbove : spaceBelow
+    const maxHeight = Math.max(160, Math.min(360, availableHeight - 6))
+
+    setAlternoDropdownStyle({
+      position: 'fixed',
+      top: openUp ? Math.max(margin, rect.top - maxHeight - 6) : rect.bottom + 6,
+      left,
+      right: 'auto',
+      width,
+      maxHeight,
+      zIndex: 3200,
+    })
+  }, [])
 
   const notifyError = useCallback(
     (message) => {
@@ -342,6 +372,7 @@ function ProductoDetails({
       setShowAlternoDropdown(false)
       setAlternoDraft(null)
       setAlternoError('')
+      setPendingAlternoSync(null)
       setIsEditing(false)
       if (!hasExternalInventoryContext) {
         setLocalInventoryContext(buildInventoryContextFromProducto(data))
@@ -466,6 +497,7 @@ function ProductoDetails({
     setShowAlternoDropdown(false)
     setAlternoDraft(null)
     setAlternoError('')
+    setPendingAlternoSync(null)
     setShowCasaDropdown(false)
     setIsMaximized(false)
     restoreRef.current = null
@@ -525,13 +557,33 @@ function ProductoDetails({
       if (showCasaDropdown && casaDropdownRef.current && !casaDropdownRef.current.contains(event.target)) {
         setShowCasaDropdown(false)
       }
-      if (showAlternoDropdown && alternoDropdownRef.current && !alternoDropdownRef.current.contains(event.target)) {
+      if (
+        showAlternoDropdown &&
+        alternoDropdownRef.current &&
+        !alternoDropdownRef.current.contains(event.target) &&
+        !alternoDropdownPanelRef.current?.contains(event.target)
+      ) {
         setShowAlternoDropdown(false)
       }
     }
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
   }, [showCasaDropdown, showAlternoDropdown])
+
+  useLayoutEffect(() => {
+    if (!showAlternoDropdown) {
+      setAlternoDropdownStyle(null)
+      return undefined
+    }
+
+    updateAlternoDropdownPosition()
+    window.addEventListener('resize', updateAlternoDropdownPosition)
+    window.addEventListener('scroll', updateAlternoDropdownPosition, true)
+    return () => {
+      window.removeEventListener('resize', updateAlternoDropdownPosition)
+      window.removeEventListener('scroll', updateAlternoDropdownPosition, true)
+    }
+  }, [showAlternoDropdown, updateAlternoDropdownPosition])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -587,6 +639,58 @@ function ProductoDetails({
     [alternativas]
   )
 
+  const normalizeOemCode = (value) => String(value ?? '').trim().toLowerCase()
+
+  const normalizeOemItems = (items) => {
+    const byCode = new Map()
+    ;(Array.isArray(items) ? items : []).forEach((item) => {
+      const oem = item?.oem || item
+      const codigo = String(oem?.codigo ?? item?.codigo ?? '').trim()
+      const key = normalizeOemCode(codigo)
+      if (!key || byCode.has(key)) return
+      byCode.set(key, {
+        relationId: item?.relationId ?? item?.id ?? null,
+        oemId: oem?.id ?? item?.oemId ?? item?.oem_id ?? null,
+        codigo,
+      })
+    })
+    return Array.from(byCode.values())
+  }
+
+  const mergeOemItems = (itemsToMerge) => {
+    const incoming = normalizeOemItems(itemsToMerge)
+    if (!incoming.length) return
+    setOemItems((prev) => {
+      const byCode = new Map()
+      normalizeOemItems(prev).forEach((item) => {
+        byCode.set(normalizeOemCode(item.codigo), item)
+      })
+      incoming.forEach((item) => {
+        const key = normalizeOemCode(item.codigo)
+        if (!byCode.has(key)) byCode.set(key, item)
+      })
+      return Array.from(byCode.values())
+    })
+  }
+
+  const buildAlternoOemPreview = (product) => {
+    const currentOems = normalizeOemItems(oemItems)
+    const alternoOems = normalizeOemItems(product?.oem_productos || product?.oems || product?.oemItems)
+    const currentKeys = new Set(currentOems.map((item) => normalizeOemCode(item.codigo)))
+    const alternoKeys = new Set(alternoOems.map((item) => normalizeOemCode(item.codigo)))
+    const currentOnly = currentOems.filter((item) => !alternoKeys.has(normalizeOemCode(item.codigo)))
+    const alternoOnly = alternoOems.filter((item) => !currentKeys.has(normalizeOemCode(item.codigo)))
+
+    return {
+      currentOems,
+      alternoOems,
+      currentOnly,
+      alternoOnly,
+      union: normalizeOemItems([...currentOems, ...alternoOems]),
+      hasMismatch: currentOnly.length > 0 || alternoOnly.length > 0,
+    }
+  }
+
   const handleAlternoSelect = (product) => {
     if (!isEditing || !product) return
     setAlternoDraft({
@@ -594,12 +698,13 @@ function ProductoDetails({
       codigo: product.codigo,
       nombre: product.nombre,
       descripcion: product.descripcion,
+      oem_productos: product.oem_productos,
     })
     setAlternoError('')
     setShowAlternoDropdown(false)
   }
 
-  const handleAddAlterno = (product) => {
+  const handleAddAlterno = (product, options = {}) => {
     if (!isEditing || !product) return false
     const id = String(product.id)
     if (!id) return false
@@ -614,8 +719,12 @@ function ProductoDetails({
         codigo: product.codigo,
         nombre: product.nombre,
         descripcion: product.descripcion,
+        oem_productos: product.oem_productos,
       },
     ])
+    if (options.mergeOems) {
+      mergeOemItems(options.mergeOems)
+    }
     setAlternoError('')
     return true
   }
@@ -626,8 +735,28 @@ function ProductoDetails({
       setAlternoError('Selecciona un producto alterno.')
       return
     }
-    const added = handleAddAlterno(alternoDraft)
+    const preview = buildAlternoOemPreview(alternoDraft)
+    if (preview.hasMismatch) {
+      setPendingAlternoSync({
+        product: alternoDraft,
+        ...preview,
+      })
+      return
+    }
+
+    const added = handleAddAlterno(alternoDraft, { mergeOems: preview.union })
     if (!added) return
+    setAlternoDraft(null)
+    setAlternoQuery('')
+    setAlternoOptions([])
+    setShowAlternoDropdown(false)
+  }
+
+  const handleConfirmAlternoSync = () => {
+    if (!pendingAlternoSync?.product) return
+    const added = handleAddAlterno(pendingAlternoSync.product, { mergeOems: pendingAlternoSync.union })
+    if (!added) return
+    setPendingAlternoSync(null)
     setAlternoDraft(null)
     setAlternoQuery('')
     setAlternoOptions([])
@@ -642,7 +771,6 @@ function ProductoDetails({
     setAlternoError('')
   }
 
-  const normalizeOemCode = (value) => String(value ?? '').trim().toLowerCase()
   const oemCodeSet = useMemo(
     () => new Set(oemItems.map((item) => normalizeOemCode(item?.codigo)).filter(Boolean)),
     [oemItems]
@@ -877,7 +1005,7 @@ function ProductoDetails({
 
   const handleSave = async () => {
     if (!allowEdit) return
-    if (!isEditing || saving || !productoId) return
+    if (!isEditing || saving || !resolvedProductoId) return
     setSubmitAttempted(true)
     setSaving(true)
 
@@ -917,7 +1045,7 @@ function ProductoDetails({
 
     try {
       const response = await authFetch(
-        `${API_URL}/productos/listado/${productoId}/`,
+        `${API_URL}/productos/listado/${resolvedProductoId}/`,
         {
           method: 'PUT',
           body: JSON.stringify(payload),
@@ -964,12 +1092,12 @@ function ProductoDetails({
         await inventarioEditorRef.current.save()
       }
       try {
-        await syncAlternos(productoId, data?.codigo || payload.codigo)
+        await syncAlternos(resolvedProductoId, data?.codigo || payload.codigo)
       } catch (alternosError) {
         notifyError(alternosError?.message || 'No se pudieron actualizar los alternos.')
       }
       try {
-        await syncOems(productoId, data?.codigo || payload.codigo)
+        await syncOems(resolvedProductoId, data?.codigo || payload.codigo)
       } catch (oemsError) {
         notifyError(oemsError?.message || 'No se pudieron actualizar los OEMs.')
       }
@@ -985,11 +1113,11 @@ function ProductoDetails({
 
   const handleDelete = async () => {
     if (!allowDelete) return
-    if (!isEditing || deleteLoading || !productoId) return
+    if (!isEditing || deleteLoading || !resolvedProductoId) return
     setDeleteLoading(true)
     try {
       const response = await authFetch(
-        `${API_URL}/productos/listado/${productoId}/`,
+        `${API_URL}/productos/listado/${resolvedProductoId}/`,
         { method: 'DELETE' },
         token
       )
@@ -1215,6 +1343,63 @@ function ProductoDetails({
   const editorDisabled = saving || loadingData || !isEditing
   const precioInvalid = submitAttempted && isEditing && parseNumber(formData.precio) === null
   const casaInvalid = submitAttempted && isEditing && !(Array.isArray(formData.casasIds) && formData.casasIds.length)
+  const alternoDropdownPanel = showAlternoDropdown && alternoDropdownStyle
+    ? createPortal(
+        <div
+          className="create-user__dropdown-panel create-user__dropdown-panel--portal"
+          ref={alternoDropdownPanelRef}
+          style={alternoDropdownStyle}
+        >
+          <div className="create-user__dropdown-search">
+            <i className="pi pi-search" />
+            <input
+              type="text"
+              placeholder="Buscar productos"
+              value={alternoQuery}
+              onChange={(event) => setAlternoQuery(event.target.value)}
+              disabled={editorDisabled}
+              autoFocus
+            />
+          </div>
+
+          <div className="create-user__dropdown-results">
+            {alternoLoading && <small className="muted">Buscando productos...</small>}
+            {!alternoLoading && !alternoQuery.trim() && (
+              <small className="muted">Escribe para buscar productos.</small>
+            )}
+            {!alternoLoading && alternoQuery.trim() && !alternoOptions.length && (
+              <small className="muted">Sin resultados.</small>
+            )}
+            {alternoOptions.map((product) => {
+              const isSelected = alternoIdSet.has(String(product?.id))
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  className="create-user__result-option"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handleAlternoSelect(product)
+                  }}
+                  disabled={isSelected || editorDisabled}
+                >
+                  <div className="create-user__result-info">
+                    <strong>{product.nombre || 'Sin nombre'}</strong>
+                    <small>{product.codigo ? `Código: ${product.codigo}` : `ID: ${product.id}`}</small>
+                  </div>
+                  <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
+                    {isSelected ? 'Agregado' : 'Seleccionar'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>,
+        document.body
+      )
+    : null
 
   return (
     <div
@@ -1673,6 +1858,7 @@ function ProductoDetails({
                         <div className="create-user__dropdown" ref={alternoDropdownRef}>
                           <button
                             type="button"
+                            ref={alternoDropdownTriggerRef}
                             className="create-user__dropdown-trigger"
                             onClick={() => {
                               if (editorDisabled) return
@@ -1684,56 +1870,6 @@ function ProductoDetails({
                             <span>{alternoDraft?.nombre || 'Selecciona un producto alterno'}</span>
                             <i className={`pi pi-chevron-${showAlternoDropdown ? 'up' : 'down'}`} />
                           </button>
-
-                          {showAlternoDropdown && (
-                            <div className="create-user__dropdown-panel">
-                              <div className="create-user__dropdown-search">
-                                <i className="pi pi-search" />
-                                <input
-                                  type="text"
-                                  placeholder="Buscar productos"
-                                  value={alternoQuery}
-                                  onChange={(event) => setAlternoQuery(event.target.value)}
-                                  disabled={editorDisabled}
-                                />
-                              </div>
-
-                              <div className="create-user__dropdown-results">
-                                {alternoLoading && <small className="muted">Buscando productos...</small>}
-                                {!alternoLoading && !alternoQuery.trim() && (
-                                  <small className="muted">Escribe para buscar productos.</small>
-                                )}
-                                {!alternoLoading && alternoQuery.trim() && !alternoOptions.length && (
-                                  <small className="muted">Sin resultados.</small>
-                                )}
-                                {alternoOptions.map((product) => {
-                                  const isSelected = alternoIdSet.has(String(product?.id))
-                                  return (
-                                    <button
-                                      key={product.id}
-                                      type="button"
-                                      className="create-user__result-option"
-                                      onMouseDown={(event) => event.preventDefault()}
-                                      onClick={(event) => {
-                                        event.preventDefault()
-                                        event.stopPropagation()
-                                        handleAlternoSelect(product)
-                                      }}
-                                      disabled={isSelected || editorDisabled}
-                                    >
-                                      <div className="create-user__result-info">
-                                        <strong>{product.nombre || 'Sin nombre'}</strong>
-                                        <small>{product.codigo ? `Código: ${product.codigo}` : `ID: ${product.id}`}</small>
-                                      </div>
-                                      <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
-                                        {isSelected ? 'Agregado' : 'Seleccionar'}
-                                      </span>
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
                         </div>
                       </span>
                       <span>{alternoDraft?.descripcion || '-'}</span>
@@ -1910,6 +2046,78 @@ function ProductoDetails({
           onMouseDown={handleResizeMouseDown}
         />
       </div>
+
+      {alternoDropdownPanel}
+
+      {pendingAlternoSync && (
+        <div className="user-details__confirm-overlay">
+          <div className="user-details__confirm-dialog" style={{ width: 'min(560px, 92vw)', alignItems: 'flex-start' }}>
+            <div className="user-details__confirm-icon">
+              <Info size={18} />
+            </div>
+            <div className="user-details__confirm-content" style={{ width: '100%' }}>
+              <h4>Sincronizar OEMs del alterno</h4>
+              <p>
+                Los alternos deben compartir los mismos OEMs. Al agregar {pendingAlternoSync.product?.codigo || 'este producto'},
+                se completarán los códigos faltantes entre ambos productos.
+              </p>
+              <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px' }}>
+                  <strong style={{ display: 'block', fontSize: '0.84rem', marginBottom: 6 }}>
+                    {formData.codigo || 'Producto actual'} recibirá
+                  </strong>
+                  {pendingAlternoSync.alternoOnly.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {pendingAlternoSync.alternoOnly.map((item) => (
+                        <span key={`current-receives-${item.codigo}`} className="create-user__result-tag">
+                          {item.codigo}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <small className="muted">No recibirá OEMs nuevos.</small>
+                  )}
+                </div>
+
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px' }}>
+                  <strong style={{ display: 'block', fontSize: '0.84rem', marginBottom: 6 }}>
+                    {pendingAlternoSync.product?.codigo || 'Alterno'} recibirá
+                  </strong>
+                  {pendingAlternoSync.currentOnly.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {pendingAlternoSync.currentOnly.map((item) => (
+                        <span key={`alterno-receives-${item.codigo}`} className="create-user__result-tag">
+                          {item.codigo}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <small className="muted">No recibirá OEMs nuevos.</small>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="user-details__confirm-actions" style={{ width: '100%' }}>
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={() => setPendingAlternoSync(null)}
+                disabled={saving}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={handleConfirmAlternoSync}
+                disabled={saving}
+              >
+                Agregar y sincronizar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {allowDelete && showDeleteDialog && (
         <div className="user-details__confirm-overlay">

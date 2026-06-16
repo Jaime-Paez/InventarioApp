@@ -4,6 +4,40 @@
   gap: 14px;
 }
 
+.create-solicitud-details__general-card {
+  padding: 12px 14px;
+}
+
+.create-solicitud-details__general-section {
+  padding-bottom: 2px;
+  gap: 10px;
+}
+
+.create-solicitud-details__general-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+.create-solicitud-details__products-section {
+  padding-bottom: 0;
+  gap: 8px;
+  margin-top: -2px;
+}
+
+.create-solicitud-details__subsection-header {
+  padding-bottom: 8px;
+  margin-bottom: 0;
+}
+
+.create-solicitud-details__subsection-header h4 {
+  margin: 0;
+}
+
+.create-solicitud-details__vehicle-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
 .create-solicitud-details__review-helper {
   display: flex;
   flex-direction: column;
@@ -175,6 +209,14 @@
 }
 
 @media (max-width: 960px) {
+  .create-solicitud-details__general-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .create-solicitud-details__vehicle-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .create-solicitud-details__review-table .create-user__locations-row {
     grid-template-columns:
       minmax(170px, 1.18fr)
@@ -228,5 +270,15 @@
       minmax(44px, 0.26fr)
       60px
       88px;
+  }
+}
+
+@media (max-width: 640px) {
+  .create-solicitud-details__general-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .create-solicitud-details__vehicle-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

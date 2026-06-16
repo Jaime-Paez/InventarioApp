@@ -237,6 +237,88 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             store.payload = payload
             store.save(update_fields=["payload", "updated_at"])
 
+    @action(detail=False, methods=["post"], url_path="parse-excel")
+    def parse_excel(self, request):
+        import openpyxl
+        file = request.FILES.get("file")
+        if not file:
+            return Response({"detail": "No se envió ningún archivo."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+            ws = wb.active
+        except Exception:
+            return Response({"detail": "No se pudo leer el archivo. Asegúrate de que sea un .xlsx válido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        all_rows = list(ws.iter_rows(values_only=True))
+        if not all_rows:
+            return Response({"detail": "El archivo está vacío."}, status=status.HTTP_400_BAD_REQUEST)
+
+        header = [str(h or "").strip().upper() for h in all_rows[0]]
+        sucursal_col_names = header[5:] if len(header) > 5 else []
+
+        from inventario.models import Sucursal as SucursalModel
+        suc_by_name = {s.nombre.strip().upper(): s.id for s in SucursalModel.objects.all()}
+        sucursal_col_ids = [suc_by_name.get(name) for name in sucursal_col_names]
+
+        def safe_str(val):
+            return str(val or "").strip()
+
+        def safe_int(val):
+            try:
+                return int(float(val))
+            except (TypeError, ValueError):
+                return 0
+
+        def safe_float(val):
+            try:
+                return float(val or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        parsed = []
+        for row in all_rows[1:]:
+            if all(cell is None or str(cell).strip() == "" for cell in (row[:5] if len(row) >= 5 else row)):
+                continue
+            codigo = safe_str(row[0]) if len(row) > 0 else ""
+            referencia = safe_str(row[1]) if len(row) > 1 else ""
+            descripcion = safe_str(row[2]) if len(row) > 2 else ""
+            cantidad = safe_int(row[3]) if len(row) > 3 else 0
+            pvp = safe_float(row[4]) if len(row) > 4 else 0.0
+            if not codigo and not descripcion:
+                continue
+            if cantidad <= 0:
+                continue
+
+            matched = None
+            if codigo:
+                matched = Producto.objects.filter(codigo__iexact=codigo).first()
+
+            suc_quantities = {}
+            for col_offset, suc_id in enumerate(sucursal_col_ids):
+                col_idx = 5 + col_offset
+                if suc_id is None or col_idx >= len(row):
+                    continue
+                qty = safe_int(row[col_idx])
+                if qty > 0:
+                    suc_quantities[str(suc_id)] = qty
+
+            parsed.append({
+                "codigo": codigo,
+                "referencia": referencia,
+                "descripcion": descripcion,
+                "cantidad": cantidad,
+                "pvp": round(pvp, 2),
+                "matched_producto_id": matched.id if matched else None,
+                "matched_producto_codigo": matched.codigo if matched else None,
+                "matched_producto_nombre": matched.nombre if matched else None,
+                "sucursal_quantities": suc_quantities,
+            })
+
+        if not parsed:
+            return Response({"detail": "No se encontraron filas con datos válidos (cantidad > 0)."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"rows": parsed, "total": len(parsed)}, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=["get"], url_path="envios-pendientes")
     def envios_pendientes(self, request):
         if is_app_admin(request.user):

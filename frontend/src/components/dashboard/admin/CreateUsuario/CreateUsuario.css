@@ -399,10 +399,6 @@
   padding: 0 0 4px;
 }
 
-.create-user__section + .create-user__section {
-  padding-top: 20px;
-}
-
 .dashboard-shell.dark .create-user__section-header {
   border-bottom-color: var(--color-border);
 }
