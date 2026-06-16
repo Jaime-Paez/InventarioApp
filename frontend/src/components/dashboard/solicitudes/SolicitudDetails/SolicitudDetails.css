@@ -1,7 +1,7 @@
 .create-solicitud-details__review-layout {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .create-solicitud-details__general-card {
@@ -9,8 +9,8 @@
 }
 
 .create-solicitud-details__general-section {
-  padding-bottom: 2px;
-  gap: 10px;
+  padding-bottom: 0;
+  gap: 8px;
 }
 
 .create-solicitud-details__general-grid {
@@ -21,7 +21,14 @@
 .create-solicitud-details__products-section {
   padding-bottom: 0;
   gap: 8px;
-  margin-top: -2px;
+  margin-top: 0;
+}
+
+.create-solicitud-details__cell-tip {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  cursor: default;
 }
 
 .create-solicitud-details__subsection-header {
@@ -124,26 +131,30 @@
 .create-solicitud-details__oem-hover-card {
   position: fixed;
   z-index: 11000;
-  background: var(--surface-card, #fff);
-  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.35));
-  border-radius: 8px;
-  padding: 8px 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  min-width: 140px;
-  max-width: 280px;
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.28));
+  border-radius: 10px;
+  padding: 12px 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
+  min-width: 200px;
+  max-width: 400px;
+  pointer-events: none;
 }
 
 .create-solicitud-details__oem-hover-title {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-secondary, #64748b);
-  margin-bottom: 6px;
+  letter-spacing: 0.06em;
+  color: var(--color-primary, #3b82f6);
+  margin-bottom: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
 }
 
 .create-solicitud-details__oem-hover-row {
-  font-size: 0.85rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
   padding: 2px 0;
   color: var(--color-text, #1e293b);
   overflow-wrap: anywhere;
@@ -151,7 +162,13 @@
 
 .dashboard-shell.dark .create-solicitud-details__oem-hover-card {
   background: var(--surface-dark, #1e293b);
-  border-color: rgba(148, 163, 184, 0.2);
+  border-color: rgba(148, 163, 184, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.dashboard-shell.dark .create-solicitud-details__oem-hover-title {
+  color: #7dd3fc;
+  border-bottom-color: rgba(148, 163, 184, 0.15);
 }
 
 .dashboard-shell.dark .create-solicitud-details__oem-hover-row {

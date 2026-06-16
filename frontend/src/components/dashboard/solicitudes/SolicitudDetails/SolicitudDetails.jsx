@@ -2314,7 +2314,7 @@ function SolicitudDetails({
             )}
 
             {!loading && solicitud && activeTab === 'productos' && (
-              <>
+              <div className="create-solicitud-details__review-layout">
                 <section className="create-user__section create-solicitud-details__general-section">
                   <div className="create-user__section-header">
                     <div>
@@ -2361,16 +2361,32 @@ function SolicitudDetails({
                         onClick={() => !loading && !saving && !openingProductSelection && handleSelectGroupItem(item.id)}
                         style={{ cursor: loading || saving || openingProductSelection ? 'wait' : 'pointer' }}
                       >
-                        <span title={item.productoOems.length ? item.productoOems.join(', ') : (item.productoCodigo || undefined)}>
+                        <span
+                          className="create-solicitud-details__cell-tip"
+                          onMouseEnter={(e) => showOemTableHover(e, [item.productoOems.length ? item.productoOems.join(', ') : item.productoCodigo].filter(Boolean), 'OEM / Código')}
+                          onMouseLeave={hideOemTableHover}
+                        >
                           <span className="create-solicitud-details__cell-text">{item.productoOems.length ? item.productoOems.join(', ') : (item.productoCodigo || '-')}</span>
                         </span>
-                        <span title={item.productoNombre || undefined}>
+                        <span
+                          className="create-solicitud-details__cell-tip"
+                          onMouseEnter={(e) => showOemTableHover(e, [item.productoNombre].filter(Boolean), 'Nombre')}
+                          onMouseLeave={hideOemTableHover}
+                        >
                           <span className="create-solicitud-details__cell-text">{item.productoNombre || '-'}</span>
                         </span>
-                        <span title={item.productoCodigo || undefined}>
+                        <span
+                          className="create-solicitud-details__cell-tip"
+                          onMouseEnter={(e) => showOemTableHover(e, [item.productoCodigo].filter(Boolean), 'Código')}
+                          onMouseLeave={hideOemTableHover}
+                        >
                           <span className="create-solicitud-details__cell-text">{item.productoCodigo || '-'}</span>
                         </span>
-                        <span title={item.comentario || undefined}>
+                        <span
+                          className="create-solicitud-details__cell-tip"
+                          onMouseEnter={(e) => showOemTableHover(e, [item.comentario].filter(Boolean), 'Comentario')}
+                          onMouseLeave={hideOemTableHover}
+                        >
                           <span className="create-solicitud-details__cell-text">{item.comentario || '-'}</span>
                         </span>
                         <span>{item.cantidad || '-'}</span>
@@ -2403,9 +2419,7 @@ function SolicitudDetails({
                     ))}
                   </div>
                 </section>
-
-
-              </>
+              </div>
             )}
 
             {!loading && solicitud && activeTab === 'cliente' && (
