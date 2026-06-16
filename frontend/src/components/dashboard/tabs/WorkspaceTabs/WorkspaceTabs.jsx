@@ -180,7 +180,7 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [updateScrollControls])
+  }, [updateScrollControls, openTabs.length])
 
   useEffect(() => {
     const element = listRef.current
@@ -188,7 +188,7 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
     const resizeObserver = new ResizeObserver(() => updateScrollControls())
     resizeObserver.observe(element)
     return () => resizeObserver.disconnect()
-  }, [updateScrollControls])
+  }, [updateScrollControls, openTabs.length])
 
   useEffect(() => {
     const activeTab = listRef.current?.querySelector('.workspace__tab.active')
