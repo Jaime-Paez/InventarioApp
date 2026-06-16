@@ -471,6 +471,8 @@ function CreateSalida({
     [subTipos, salidaTipoId]
   )
 
+  const isCurrentUserAdmin = useMemo(() => Boolean(currentUser?.es_administrador), [currentUser])
+
   const currentUserSalidasSubtypeActions = useMemo(() => {
     if (isCurrentUserAdmin) return null
     const branchId = normalizeReminderId(prefilledSucursalId || formData.sucursalId)
@@ -1004,7 +1006,6 @@ function CreateSalida({
   const currentCreatorId = useMemo(() => normalizeReminderId(extractUserId(currentUser)), [currentUser])
   const currentCreatorName = useMemo(() => formatCurrentUserName(currentUser), [currentUser])
   const currentCreatorEmail = String(currentUser?.correo || currentUser?.email || '').trim()
-  const isCurrentUserAdmin = useMemo(() => Boolean(currentUser?.es_administrador), [currentUser])
 
   const resolveProviderReminderRecipients = useCallback(
     async (providerBranchId) => {
