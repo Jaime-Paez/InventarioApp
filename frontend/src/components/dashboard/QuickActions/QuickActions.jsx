@@ -3829,6 +3829,8 @@ function QuickActions({
     setRandomInspectionError('')
     if (isRandomInspectionSummaryVisible) {
       setRandomInspectionShowSummary(false)
+      setRandomInspectionStepIndex(0)
+      void saveInspectionDraftToBackend(0)
       return
     }
     const prevStep = Math.max(0, activeRandomInspectionStepIndex - 1)
