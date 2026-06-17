@@ -147,6 +147,12 @@ def build_sucursal_scope_payload(scopes):
         normalized_flags["puede_crear_venta"] = bool(
             getattr(scope, "puede_crear_venta", False)
         )
+        normalized_flags["puede_importar"] = bool(
+            getattr(scope, "puede_importar", False)
+        )
+        normalized_flags["puede_marcar_llegada"] = bool(
+            getattr(scope, "puede_marcar_llegada", False)
+        )
 
         grouped.setdefault(modulo, {})
         grouped[modulo][branch_id] = normalized_flags
@@ -255,10 +261,20 @@ class ModuloSucursalActionSerializer(serializers.Serializer):
     puede_crear_traslado = serializers.BooleanField(required=False, default=False)
     puede_crear_devolucion = serializers.BooleanField(required=False, default=False)
     puede_crear_venta = serializers.BooleanField(required=False, default=False)
+    puede_importar = serializers.BooleanField(required=False, default=False)
+    puede_marcar_llegada = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         flags = normalize_scope_action_flags(attrs)
-        subtype_keys = ("puede_crear_compra_local", "puede_crear_importacion", "puede_crear_traslado", "puede_crear_devolucion", "puede_crear_venta")
+        subtype_keys = (
+            "puede_crear_compra_local",
+            "puede_crear_importacion",
+            "puede_crear_traslado",
+            "puede_crear_devolucion",
+            "puede_crear_venta",
+            "puede_importar",
+            "puede_marcar_llegada",
+        )
         if not flags.get("puede_crear"):
             for key in subtype_keys:
                 flags[key] = False
@@ -542,7 +558,15 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 flags = normalize_scope_action_flags(action_scope)
                 if not any(flags.values()):
                     continue
-                subtype_keys = ("puede_crear_compra_local", "puede_crear_importacion", "puede_crear_traslado", "puede_crear_devolucion", "puede_crear_venta")
+                subtype_keys = (
+                    "puede_crear_compra_local",
+                    "puede_crear_importacion",
+                    "puede_crear_traslado",
+                    "puede_crear_devolucion",
+                    "puede_crear_venta",
+                    "puede_importar",
+                    "puede_marcar_llegada",
+                )
                 if not flags.get("puede_crear"):
                     for key in subtype_keys:
                         flags[key] = False

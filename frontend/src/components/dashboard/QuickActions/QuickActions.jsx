@@ -361,13 +361,12 @@ const extractTransferDocumentNumber = (value) => {
   return match ? String(match[1] || '').trim() : ''
 }
 
+const isImportacionEnviadoReminder = (reminder) =>
+  normalizeReminderContextType(reminder?.context?.type) === 'importacion' &&
+  getReminderDecisionStatus(reminder) === 'enviado'
+
 const isResolvedTransferResponseReminder = (reminder) => {
   const contextType = normalizeReminderContextType(reminder?.context?.type)
-
-  if (contextType === 'importacion') {
-    return getReminderDecisionStatus(reminder) === 'enviado'
-  }
-
   if (contextType !== 'solicitud_traslado') return false
   if (isSpecialTransferDecisionReminder(reminder)) return false
 
@@ -1023,6 +1022,7 @@ function QuickActions({
         if (isRandomInspectionReminder(reminder)) return false
         if (isResolvedTransferResponseReminder(reminder)) return false
         if (isSpecialTransferDecisionReminder(reminder)) return false
+        if (isImportacionEnviadoReminder(reminder)) return false
         return true
       }),
     [pendingRemindersForCurrentUser]

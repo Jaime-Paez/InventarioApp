@@ -800,9 +800,9 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        q_producto = Q(
-            tabla=Solicitud.Tabla.PRODUCTO,
-            producto__casas_comerciales__id=casa_id,
+        q_producto = Q(tabla=Solicitud.Tabla.PRODUCTO) & (
+            Q(producto__casas_comerciales__id=casa_id)
+            | Q(revisiones__casa_comercial_id=casa_id)
         )
         q_solicitado = Q(
             tabla=Solicitud.Tabla.PRODUCTO_SOLICITADO,

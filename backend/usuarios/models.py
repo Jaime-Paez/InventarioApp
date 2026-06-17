@@ -43,6 +43,7 @@ class RolPermiso(models.Model):
         PROVEEDORES_CASAS = "proveedores_casas", "Proveedores - Casas comerciales"
         SOLICITUDES = "solicitudes", "Solicitudes"
         CLIENTES = "clientes", "Clientes"
+        IMPORTACIONES = "importaciones", "Importaciones"
         USUARIOS = "usuarios", "Administrar"
         CONFIGURACION = "configuracion", "Configuraciones"
 
@@ -104,6 +105,7 @@ MODULOS_CON_ALCANCE_SUCURSAL = (
     RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
     RolPermiso.Modulos.PRODUCTOS,
     RolPermiso.Modulos.SOLICITUDES,
+    RolPermiso.Modulos.IMPORTACIONES,
 )
 MODULOS_CON_ALCANCE_SUCURSAL_CHOICES = tuple(
     (key, label)
@@ -164,6 +166,8 @@ class UsuarioModuloSucursal(models.Model):
     puede_crear_traslado = models.BooleanField(default=False)
     puede_crear_devolucion = models.BooleanField(default=False)
     puede_crear_venta = models.BooleanField(default=False)
+    puede_importar = models.BooleanField(default=False)
+    puede_marcar_llegada = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Alcance de sucursal por modulo"
@@ -191,6 +195,8 @@ class UsuarioModuloSucursal(models.Model):
             self.puede_crear_traslado = False
             self.puede_crear_devolucion = False
             self.puede_crear_venta = False
+            self.puede_importar = False
+            self.puede_marcar_llegada = False
 
         if not any(
             (

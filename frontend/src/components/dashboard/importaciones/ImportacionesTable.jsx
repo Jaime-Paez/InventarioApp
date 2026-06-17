@@ -829,7 +829,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
 const DETAILS_VIEWPORT_PADDING = 12
 
-function ImportacionDetailsModal({ imp, token, onClose, onSaved }) {
+function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }) {
+  const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
   const [showReceive, setShowReceive] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const toastRef = useRef(null)
@@ -1038,7 +1039,7 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved }) {
 
           <div className="create-user__footer">
             <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
-            {imp.estado === 'en_camino' && (
+            {imp.estado === 'en_camino' && canMarcarLlegada && (
               <button
                 type="button"
                 className="create-user__action create-user__action--primary"
@@ -2574,7 +2575,10 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   )
 }
 
-function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrador }) {
+function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrador, moduleActions }) {
+  const canEdit = moduleActions?.puede_actualizar !== false
+  const canDelete = moduleActions?.puede_eliminar !== false
+  const canImportar = moduleActions?.puede_importar === true
   const [activeTab, setActiveTab] = useState('general')
   const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '' })
   const [productQuery, setProductQuery] = useState('')
@@ -3254,7 +3258,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={submitting || importarSubmitting || deleteSubmitting}>
                   Cancelar
                 </button>
-                {imp?.estado === 'borrador' && (
+                {imp?.estado === 'borrador' && canDelete && (
                   <button
                     type="button"
                     className="create-user__action user-details__delete"
@@ -3266,17 +3270,21 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 )}
               </div>
               <div className="user-details__footer-right">
-                <button
-                  type="button"
-                  className="create-user__action imp-importar-btn"
-                  disabled={submitting || importarSubmitting || deleteSubmitting}
-                  onClick={() => { setFacturaInput(''); setShowImportarModal(true) }}
-                >
-                  Importar
-                </button>
-                <button type="submit" className="create-user__action create-user__action--primary" disabled={submitting || importarSubmitting || deleteSubmitting}>
-                  {submitting ? 'Guardando...' : 'Guardar cambios'}
-                </button>
+                {canImportar && (
+                  <button
+                    type="button"
+                    className="create-user__action imp-importar-btn"
+                    disabled={submitting || importarSubmitting || deleteSubmitting}
+                    onClick={() => { setFacturaInput(''); setShowImportarModal(true) }}
+                  >
+                    Importar
+                  </button>
+                )}
+                {canEdit && (
+                  <button type="submit" className="create-user__action create-user__action--primary" disabled={submitting || importarSubmitting || deleteSubmitting}>
+                    {submitting ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                )}
               </div>
             </div>
           </form>
@@ -3930,6 +3938,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         token={token}
         onClose={() => setShowImpDetails(false)}
         onSaved={() => { setShowImpDetails(false); fetchItems() }}
+        moduleActions={moduleActions}
       />
 
       {Array.isArray(productHoverCard?.productos) && productHoverCard.productos.length > 0 && createPortal(
@@ -3978,6 +3987,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         onClose={() => setShowEditImp(false)}
         onSaved={() => { setShowEditImp(false); fetchItems() }}
         onOpenBorrador={handleOpenBorrador}
+        moduleActions={moduleActions}
       />
 
       <CreateImportacionModal

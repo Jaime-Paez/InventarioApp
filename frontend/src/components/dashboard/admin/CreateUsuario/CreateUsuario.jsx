@@ -19,9 +19,11 @@ const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'movimientos_salidas',
   'productos',
   'solicitudes',
+  'importaciones',
 ])
 const ENTRADAS_MODULE_KEY = 'movimientos_entradas'
 const SALIDAS_MODULE_KEY = 'movimientos_salidas'
+const IMPORTACIONES_MODULE_KEY = 'importaciones'
 const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
 
 const isActionAllowedForModule = (moduleKey, actionKey) =>
@@ -216,6 +218,10 @@ const serializeModuleBranchMatrix = (matrix, allowedModules = []) => {
             entry.puede_crear_venta = canCreate ? Boolean(rawEntry?.puede_crear_venta ?? false) : false
             entry.puede_crear_traslado = canCreate ? Boolean(rawEntry?.puede_crear_traslado ?? false) : false
             entry.puede_crear_devolucion = canCreate ? Boolean(rawEntry?.puede_crear_devolucion ?? false) : false
+          }
+          if (normalizedModKey === IMPORTACIONES_MODULE_KEY) {
+            entry.puede_importar = canCreate ? Boolean(rawEntry?.puede_importar ?? false) : false
+            entry.puede_marcar_llegada = canCreate ? Boolean(rawEntry?.puede_marcar_llegada ?? false) : false
           }
           return entry
         })
@@ -512,6 +518,26 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       return {
         ...prev,
         [SALIDAS_MODULE_KEY]: {
+          ...moduleScopes,
+          [branchKey]: { ...current, [subtypeKey]: !current[subtypeKey] },
+        },
+      }
+    })
+  }
+
+  const toggleImportacionesSubtype = (subtypeKey) => {
+    if (isAdministrator) return
+    const normalizedBranchId = normalizeBranchId(selectedBranchId)
+    if (!normalizedBranchId) return
+    setModuleBranchMatrix((prev) => {
+      const moduleScopes = prev[IMPORTACIONES_MODULE_KEY]
+      if (!moduleScopes || typeof moduleScopes !== 'object') return prev
+      const branchKey = String(normalizedBranchId)
+      const current = moduleScopes[branchKey]
+      if (!current || !current.puede_crear) return prev
+      return {
+        ...prev,
+        [IMPORTACIONES_MODULE_KEY]: {
           ...moduleScopes,
           [branchKey]: { ...current, [subtypeKey]: !current[subtypeKey] },
         },
@@ -1294,12 +1320,15 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                   const normalizedBranchId = normalizeBranchId(selectedBranchId)
                   const hasEntradas = branchPermissionOptions.some((m) => normalizeModuleKey(m?.key) === ENTRADAS_MODULE_KEY)
                   const hasSalidas = branchPermissionOptions.some((m) => normalizeModuleKey(m?.key) === SALIDAS_MODULE_KEY)
-                  if (!hasEntradas && !hasSalidas) return null
+                  const hasImportaciones = branchPermissionOptions.some((m) => normalizeModuleKey(m?.key) === IMPORTACIONES_MODULE_KEY)
+                  if (!hasEntradas && !hasSalidas && !hasImportaciones) return null
 
                   const entradasEntry = getBranchPermissionEntry(moduleBranchMatrix, ENTRADAS_MODULE_KEY, normalizedBranchId)
                   const salidasEntry = getBranchPermissionEntry(moduleBranchMatrix, SALIDAS_MODULE_KEY, normalizedBranchId)
+                  const importacionesEntry = getBranchPermissionEntry(moduleBranchMatrix, IMPORTACIONES_MODULE_KEY, normalizedBranchId)
                   const entradasCanCreate = isAdministrator || Boolean(entradasEntry?.puede_crear)
                   const salidasCanCreate = isAdministrator || Boolean(salidasEntry?.puede_crear)
+                  const importacionesCanCreate = isAdministrator || Boolean(importacionesEntry?.puede_crear)
                   const baseDisabled = loading || permissionsLoading || branchesLoading || isAdministrator
 
                   const entradasSubtypes = [
@@ -1312,6 +1341,10 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                     { key: 'puede_crear_venta', label: 'Ventas' },
                     { key: 'puede_crear_traslado', label: 'Traslados' },
                     { key: 'puede_crear_devolucion', label: 'Devoluciones' },
+                  ]
+                  const importacionesSubtypes = [
+                    { key: 'puede_importar', label: 'Enviar a en camino' },
+                    { key: 'puede_marcar_llegada', label: 'Marcar llegada' },
                   ]
 
                   return (
@@ -1351,6 +1384,28 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                                     type="checkbox"
                                     checked={checked}
                                     onChange={() => toggleSalidasSubtype(key)}
+                                    disabled={disabled}
+                                  />
+                                  <span>{label}</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {hasImportaciones && (
+                        <div className="create-user__entrada-subtypes">
+                          <p className="create-user__entrada-subtypes-label">Acciones de importación permitidas</p>
+                          <div className="create-user__entrada-subtypes-options">
+                            {importacionesSubtypes.map(({ key, label }) => {
+                              const checked = isAdministrator ? true : Boolean(importacionesEntry?.[key] ?? false)
+                              const disabled = baseDisabled || !importacionesCanCreate
+                              return (
+                                <label key={key} className={`create-user__subtype-option${disabled ? ' create-user__subtype-option--disabled' : ''}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleImportacionesSubtype(key)}
                                     disabled={disabled}
                                   />
                                   <span>{label}</span>

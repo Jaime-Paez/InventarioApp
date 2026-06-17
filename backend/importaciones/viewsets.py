@@ -10,7 +10,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from usuarios.permissions import SolicitudesModulePermission
+from usuarios.models import RolPermiso, UsuarioModuloSucursal
+from usuarios.permissions import ImportacionesModulePermission
+from usuarios.sucursal_scope import get_allowed_sucursal_ids, get_readable_sucursal_ids
 from usuarios.utils import is_app_admin
 
 from django.db.models import F
@@ -25,13 +27,24 @@ from .serializers import ImportacionDetalleSerializer, ImportacionSerializer, ge
 
 class ImportacionViewSet(viewsets.ModelViewSet):
     serializer_class = ImportacionSerializer
-    permission_classes = [IsAuthenticated, SolicitudesModulePermission]
+    permission_classes = [IsAuthenticated, ImportacionesModulePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
 
     def get_permissions(self):
         if self.action in ("envios_pendientes", "confirmar_recepcion_envio"):
             return [IsAuthenticated()]
         return super().get_permissions()
+
+    def _check_specific_importacion_permission(self, request, flag_name):
+        """Verifica un permiso específico de importaciones (puede_importar, puede_marcar_llegada)."""
+        if is_app_admin(request.user):
+            return True
+        return UsuarioModuloSucursal.objects.filter(
+            usuario=request.user,
+            modulo=RolPermiso.Modulos.IMPORTACIONES,
+            **{flag_name: True},
+        ).exists()
+
     search_fields = [
         "codigo",
         "casa_comercial__nombre",
@@ -63,6 +76,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="importar")
     def importar(self, request, pk=None):
+        if not self._check_specific_importacion_permission(request, "puede_importar"):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta acción."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         instance = self.get_object()
         if instance.estado != Importacion.ESTADO_BORRADOR:
             return Response(
@@ -111,6 +129,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="marcar-llegada")
     def marcar_llegada(self, request, pk=None):
+        if not self._check_specific_importacion_permission(request, "puede_marcar_llegada"):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta acción."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         instance = self.get_object()
         if instance.estado != Importacion.ESTADO_EN_CAMINO:
             return Response(
@@ -324,13 +347,18 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if is_app_admin(request.user):
             qs = ImportacionEnvio.objects.filter(estado=ImportacionEnvio.ESTADO_PENDIENTE)
         else:
-            sucursal_ids = list(
-                request.user.asignaciones.values_list("sucursal_id", flat=True)
+            allowed_ids = get_readable_sucursal_ids(
+                request.user, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS
             )
-            qs = ImportacionEnvio.objects.filter(
-                estado=ImportacionEnvio.ESTADO_PENDIENTE,
-                sucursal_id__in=sucursal_ids,
-            )
+            if allowed_ids is None:
+                qs = ImportacionEnvio.objects.filter(estado=ImportacionEnvio.ESTADO_PENDIENTE)
+            elif not allowed_ids:
+                qs = ImportacionEnvio.objects.none()
+            else:
+                qs = ImportacionEnvio.objects.filter(
+                    estado=ImportacionEnvio.ESTADO_PENDIENTE,
+                    sucursal_id__in=allowed_ids,
+                )
 
         qs = qs.select_related("importacion", "sucursal").prefetch_related(
             "detalles__producto"

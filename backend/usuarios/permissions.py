@@ -312,6 +312,10 @@ class ProveedoresCatalogosDependentReadPermission(ModulePermission):
         return [self.module_key]
 
 
+class ImportacionesModulePermission(ModulePermission):
+    module_key = RolPermiso.Modulos.IMPORTACIONES
+
+
 class SolicitudesModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.SOLICITUDES
 

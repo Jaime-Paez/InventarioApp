@@ -48,7 +48,7 @@ export const MENU_STRUCTURE = [
     icon: PackagePlus,
     children: [
       { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
-      { label: 'En camino', icon: Truck, moduleKey: 'solicitudes' },
+      { label: 'En camino', icon: Truck, moduleKey: 'importaciones' },
     ],
   },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
@@ -69,6 +69,7 @@ const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'movimientos_inconvenientes',
   'productos',
   'solicitudes',
+  'importaciones',
 ])
 
 const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
@@ -170,6 +171,8 @@ const getScopedModuleActions = (moduleKey, moduleScopes) => {
     puede_leer: false,
     puede_actualizar: false,
     puede_eliminar: false,
+    puede_importar: false,
+    puede_marcar_llegada: false,
   }
 
   if (
@@ -195,6 +198,8 @@ const getScopedModuleActions = (moduleKey, moduleScopes) => {
         )
         acc.puede_actualizar = acc.puede_actualizar || Boolean(entry?.puede_actualizar)
         acc.puede_eliminar = acc.puede_eliminar || Boolean(entry?.puede_eliminar)
+        acc.puede_importar = acc.puede_importar || Boolean(entry?.puede_importar)
+        acc.puede_marcar_llegada = acc.puede_marcar_llegada || Boolean(entry?.puede_marcar_llegada)
       })
       return acc
     }
@@ -214,6 +219,8 @@ export const getModuleActions = (moduleKey, permissionIndex, moduleScopes = null
       puede_leer: true,
       puede_actualizar: true,
       puede_eliminar: true,
+      puede_importar: true,
+      puede_marcar_llegada: true,
     }
   }
 
@@ -224,6 +231,8 @@ export const getModuleActions = (moduleKey, permissionIndex, moduleScopes = null
     puede_leer: Boolean(permiso?.puede_leer) || Boolean(scopedActions?.puede_leer),
     puede_actualizar: Boolean(permiso?.puede_actualizar) || Boolean(scopedActions?.puede_actualizar),
     puede_eliminar: Boolean(permiso?.puede_eliminar) || Boolean(scopedActions?.puede_eliminar),
+    puede_importar: Boolean(scopedActions?.puede_importar),
+    puede_marcar_llegada: Boolean(scopedActions?.puede_marcar_llegada),
   }
 }
 
