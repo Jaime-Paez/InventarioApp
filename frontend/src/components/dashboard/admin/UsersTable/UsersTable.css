@@ -953,6 +953,16 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
   vertical-align: middle;
 }
 
+/* PrimeReact always renders an empty <span class="p-column-title"> even in selection
+   columns. Our global flex:1 1 0 rule on .p-column-title makes that span consume all
+   remaining space and pushes the checkbox to the right. Hide it so justify-content:center
+   can actually center the checkbox. */
+.users-datatable .p-datatable-thead > tr > th.p-selection-column .p-column-title,
+.users-datatable .p-datatable-thead > tr > th.row-selection-column .p-column-title,
+.users-datatable .p-datatable-thead > tr > th:has(> .p-column-header-content .p-checkbox) .p-column-title {
+  display: none;
+}
+
 .row-selection-click-block {
   display: flex;
   align-items: center;
