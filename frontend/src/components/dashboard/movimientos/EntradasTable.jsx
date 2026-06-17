@@ -18,7 +18,7 @@ import {
 } from '../common/reminders/remindersStorage'
 import { API_URL, authFetch } from '../../../utils/api'
 import { clearTableLayouts } from '../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -157,8 +157,7 @@ function EntradasTable({
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('entradas-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('entradas-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const preloadEntradaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
@@ -1442,8 +1441,9 @@ function EntradasTable({
           resizableColumns
           columnResizeMode="expand"
           key={tableResetKey}
-          stateStorage="local"
-          stateKey="entradas-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           filters={filters}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={[

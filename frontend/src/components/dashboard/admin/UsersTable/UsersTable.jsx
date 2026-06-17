@@ -16,7 +16,7 @@ import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
 const formatFullName = (u) =>
   [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || '-'
@@ -45,8 +45,7 @@ function UsersTable({
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('usuarios-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('usuarios-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -152,18 +151,7 @@ function UsersTable({
     if (!preserveSearch) setGlobalFilterValue('')
   }
 
-  const USERS_TABLE_STATE_KEY = 'usuarios-table-state-v2'
-
   useEffect(() => {
-    const savedState = sessionStorage.getItem(USERS_TABLE_STATE_KEY)
-    if (savedState) {
-      const parsed = JSON.parse(savedState)
-      if (parsed?.filters) {
-        setFilters(parsed.filters)
-        if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
-        return
-      }
-    }
     initFilters()
   }, [])
 
@@ -891,8 +879,9 @@ function UsersTable({
           resizableColumns
           columnResizeMode="expand"
           key={tableResetKey}
-          stateStorage="local"
-          stateKey="usuarios-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}

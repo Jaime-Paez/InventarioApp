@@ -15,7 +15,7 @@ import '../../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -63,8 +63,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('clientes-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('clientes-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -285,45 +284,8 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   }
 
   useEffect(() => {
-    try {
-      const savedState = sessionStorage.getItem('clientes-table-state')
-      if (savedState) {
-        const parsed = JSON.parse(savedState)
-        if (parsed?.filters) {
-          setFilters(parsed.filters)
-          setGlobalFilterValue(getPrimeGlobalFilterValue(parsed.filters))
-          const nextSortField = parsed?.sortField || null
-          const parsedSortOrder = Number(parsed?.sortOrder)
-          const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
-          setSortField(nextSortField)
-          setSortOrder(nextSortOrder)
-          return
-        }
-      }
-    } catch {
-      try {
-        sessionStorage.removeItem('clientes-table-state')
-      } catch {
-        // no-op
-      }
-    }
     initFilters()
   }, [])
-
-  useEffect(() => {
-    if (!filters) return
-    const payload = JSON.stringify({ filters, sortField, sortOrder })
-    try {
-      sessionStorage.setItem('clientes-table-state', payload)
-    } catch {
-      try {
-        sessionStorage.removeItem('clientes-table-state')
-        sessionStorage.setItem('clientes-table-state', payload)
-      } catch {
-        // no-op
-      }
-    }
-  }, [filters, sortField, sortOrder])
 
   const clearFilter = async () => {
     if (globalSearchDebounceRef.current) {
@@ -1188,8 +1150,9 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
           resizableColumns
           columnResizeMode="expand"
           key={tableResetKey}
-          stateStorage="local"
-          stateKey="clientes-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}

@@ -23,7 +23,7 @@ import {
 } from '../../../../utils/primeTableQuery'
 import { moduleHasAnyAction } from '../../menuConfig'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -68,8 +68,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
   const oemHoverHideTimeoutRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('productos-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('productos-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -380,51 +379,8 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   }
 
   useEffect(() => {
-    try {
-      const savedState = sessionStorage.getItem('productos-table-state')
-      if (savedState) {
-        const parsed = JSON.parse(savedState)
-        if (parsed?.filters) {
-          const nextFilters = { ...parsed.filters }
-          if (nextFilters.casas_comerciales_count && !nextFilters.casa_comercial_nombre) {
-            nextFilters.casa_comercial_nombre = nextFilters.casas_comerciales_count
-          }
-          delete nextFilters.casas_comerciales_count
-          setFilters(nextFilters)
-          const restoredGlobal = String(parsed?.globalFilterValue ?? getPrimeGlobalFilterValue(nextFilters) ?? '')
-          setGlobalFilterValue(restoredGlobal)
-          const nextSortField = parsed?.sortField || null
-          const parsedSortOrder = Number(parsed?.sortOrder)
-          const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
-          setSortField(nextSortField)
-          setSortOrder(nextSortOrder)
-          return
-        }
-      }
-    } catch {
-      try {
-        sessionStorage.removeItem('productos-table-state')
-      } catch {
-        // no-op
-      }
-    }
     initFilters()
   }, [])
-
-  useEffect(() => {
-    if (!filters) return
-    const payload = JSON.stringify({ filters, sortField, sortOrder, globalFilterValue })
-    try {
-      sessionStorage.setItem('productos-table-state', payload)
-    } catch {
-      try {
-        sessionStorage.removeItem('productos-table-state')
-        sessionStorage.setItem('productos-table-state', payload)
-      } catch {
-        // no-op
-      }
-    }
-  }, [filters, sortField, sortOrder, globalFilterValue])
 
   const clearFilter = async () => {
     if (globalSearchDebounceRef.current) {
@@ -1492,8 +1448,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
           dataKey="id"
           header={header}
           className={`users-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}`}
-          stateStorage="local"
-          stateKey="productos-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines

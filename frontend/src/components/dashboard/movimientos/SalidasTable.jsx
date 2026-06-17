@@ -16,7 +16,7 @@ import '../solicitudes/CreateSolicitud/CreateSolicitud.css'
 import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
 import { clearTableLayouts } from '../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -164,8 +164,7 @@ function SalidasTable({
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('salidas-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('salidas-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const preloadSalidaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
@@ -1528,8 +1527,9 @@ function SalidasTable({
           resizableColumns
           columnResizeMode="expand"
           key={tableResetKey}
-          stateStorage="local"
-          stateKey="salidas-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           filters={filters}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={[

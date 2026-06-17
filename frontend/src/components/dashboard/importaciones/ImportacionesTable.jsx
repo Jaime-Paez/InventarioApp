@@ -9,7 +9,7 @@ import { Button } from 'primereact/button'
 import { Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { API_URL, authFetch } from '../../../utils/api'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
@@ -3476,11 +3476,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 function ImportacionesTable({ token, moduleActions, status: statusProp, isTabActive, onError, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) {
-    _widthsClearedRef.current = true
-    clearSavedColumnWidths('importaciones-table-state')
-  }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('importaciones-table-state'), [])
 
   const [activeStatus, setActiveStatus] = useState('borrador')
   const status = statusProp || activeStatus
@@ -3858,8 +3854,9 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           dataKey="id"
           header={header}
           className={`users-datatable users-datatable--compact${loading ? ' users-datatable--loading-content' : ''}`}
-          stateStorage="local"
-          stateKey="importaciones-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines

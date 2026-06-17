@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
@@ -10,7 +10,7 @@ import './AuditoriaTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
 const ACCION_COLORS = {
   creacion: '#22c55e',
@@ -50,8 +50,7 @@ function AuditoriaTable({ token }) {
   const toast = useRef(null)
   const opRef = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('auditoria-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('auditoria-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const selectedColumnsRef = useRef(columnsData)
 
@@ -445,8 +444,9 @@ function AuditoriaTable({ token }) {
           key={tableResetKey}
           resizableColumns
           columnResizeMode="fit"
-          stateStorage="local"
-          stateKey="auditoria-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
         >
           {selectedColumns.map((col) => (
             <Column

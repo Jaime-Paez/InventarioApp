@@ -11,7 +11,7 @@ import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { fetchRemindersFromBackend } from '../common/reminders/remindersStorage'
 import { clearTableLayouts } from '../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import useModalAnimation from '../common/useModalAnimation'
 import '../admin/CreateUsuario/CreateUsuario.css'
@@ -118,8 +118,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('traslados-inconvenientes-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('traslados-inconvenientes-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const quickSearchInputRef = useRef(null)
   const clickTimerRef = useRef(null)
@@ -1834,8 +1833,9 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
           }}
           resizableColumns
           columnResizeMode="expand"
-          stateStorage="local"
-          stateKey="traslados-inconvenientes-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
         >
           <Column
             selectionMode="multiple"

@@ -15,7 +15,7 @@ import '../../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (v) => (v == null ? null : String(v))
@@ -32,8 +32,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('sucursales-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('sucursales-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -128,15 +127,6 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   }
 
   useEffect(() => {
-    const savedState = sessionStorage.getItem('sucursales-table-state')
-    if (savedState) {
-      const parsed = JSON.parse(savedState)
-      if (parsed?.filters) {
-        setFilters(parsed.filters)
-        if (parsed.filters?.global?.value) setGlobalFilterValue(parsed.filters.global.value)
-        return
-      }
-    }
     initFilters()
   }, [])
 
@@ -809,8 +799,9 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'direccion', 'latitud', 'longitud']}
           key={tableResetKey}
-          stateStorage="local"
-          stateKey="sucursales-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns

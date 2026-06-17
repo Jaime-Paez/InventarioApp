@@ -15,7 +15,7 @@ import '../../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import { getModuleActions } from '../../menuConfig'
 import {
@@ -57,8 +57,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('casas-comerciales-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('casas-comerciales-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -288,45 +287,8 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   }
 
   useEffect(() => {
-    try {
-      const savedState = sessionStorage.getItem('casas-comerciales-table-state')
-      if (savedState) {
-        const parsed = JSON.parse(savedState)
-        if (parsed?.filters) {
-          setFilters(parsed.filters)
-          setGlobalFilterValue(getPrimeGlobalFilterValue(parsed.filters))
-          const nextSortField = parsed?.sortField || null
-          const parsedSortOrder = Number(parsed?.sortOrder)
-          const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
-          setSortField(nextSortField)
-          setSortOrder(nextSortOrder)
-          return
-        }
-      }
-    } catch {
-      try {
-        sessionStorage.removeItem('casas-comerciales-table-state')
-      } catch {
-        // no-op
-      }
-    }
     initFilters()
   }, [])
-
-  useEffect(() => {
-    if (!filters) return
-    const payload = JSON.stringify({ filters, sortField, sortOrder })
-    try {
-      sessionStorage.setItem('casas-comerciales-table-state', payload)
-    } catch {
-      try {
-        sessionStorage.removeItem('casas-comerciales-table-state')
-        sessionStorage.setItem('casas-comerciales-table-state', payload)
-      } catch {
-        // no-op
-      }
-    }
-  }, [filters, sortField, sortOrder])
 
   const clearFilter = async () => {
     if (globalSearchDebounceRef.current) {
@@ -1005,8 +967,9 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
           resizableColumns
           columnResizeMode="expand"
           key={tableResetKey}
-          stateStorage="local"
-          stateKey="casas-comerciales-table-state"
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}

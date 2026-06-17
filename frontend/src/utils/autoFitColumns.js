@@ -4,14 +4,53 @@
  * PrimeReact v10 manages column widths via CSS injection using:
  *   [data-pc-name="datatable"][pr_id_N] > ... > th:nth-child(N) { width: Xpx !important }
  *
- * "Natural layout" = no forced widths = browser distributes columns across available space.
- * This is the desired default state. clearSavedColumnWidths() + autoFitTableColumns()
- * together restore it both on mount and when the reset button is clicked.
+ * Use makeWidthStateHandlers() to create customSaveState / customRestoreState handlers
+ * that persist ONLY column widths (never filters or sort state).
  */
 
 /**
+ * Creates { save, restore } handlers for DataTable stateStorage="custom".
+ * Only persists columnWidths and tableWidth — never filters, sort, or selection.
+ * The storageKey must match /-table-state/i so tableLayoutSync picks it up.
+ *
+ * @param {string} storageKey - localStorage key (e.g. "productos-table-state")
+ */
+export const makeWidthStateHandlers = (storageKey) => {
+  const save = (state) => {
+    if (!storageKey || typeof localStorage === 'undefined') return
+    try {
+      const entry = {}
+      if (state?.columnWidths != null) entry.columnWidths = state.columnWidths
+      if (state?.tableWidth != null) entry.tableWidth = state.tableWidth
+      if (Object.keys(entry).length > 0) {
+        localStorage.setItem(storageKey, JSON.stringify(entry))
+      } else {
+        localStorage.removeItem(storageKey)
+      }
+    } catch {}
+  }
+
+  const restore = () => {
+    if (!storageKey || typeof localStorage === 'undefined') return null
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      const entry = {}
+      if (parsed?.columnWidths != null) entry.columnWidths = parsed.columnWidths
+      if (parsed?.tableWidth != null) entry.tableWidth = parsed.tableWidth
+      return Object.keys(entry).length > 0 ? entry : null
+    } catch {
+      return null
+    }
+  }
+
+  return { save, restore }
+}
+
+/**
  * Strips saved column widths from a DataTable's localStorage state entry.
- * Call this synchronously during component initialization (before PrimeReact reads the state).
+ * Used by autoFitTableColumns to clear widths on auto-fit / reset.
  */
 export const clearSavedColumnWidths = (stateKey) => {
   if (!stateKey || typeof localStorage === 'undefined') return
@@ -22,7 +61,11 @@ export const clearSavedColumnWidths = (stateKey) => {
     if (state.columnWidths !== undefined || state.tableWidth !== undefined) {
       delete state.columnWidths
       delete state.tableWidth
-      localStorage.setItem(stateKey, JSON.stringify(state))
+      if (Object.keys(state).length === 0) {
+        localStorage.removeItem(stateKey)
+      } else {
+        localStorage.setItem(stateKey, JSON.stringify(state))
+      }
     }
   } catch {}
 }
@@ -32,7 +75,7 @@ export const clearSavedColumnWidths = (stateKey) => {
  * Clears PrimeReact's injected width CSS and removes the saved widths from localStorage.
  *
  * @param {HTMLElement} wrapperEl - The div wrapping the DataTable (ref target)
- * @param {string|null} stateKey  - The DataTable's stateKey prop value (to clear localStorage)
+ * @param {string|null} stateKey  - localStorage key used for column widths
  */
 export const autoFitTableColumns = (wrapperEl, stateKey = null) => {
   if (!wrapperEl || typeof window === 'undefined') return
@@ -60,6 +103,6 @@ export const autoFitTableColumns = (wrapperEl, stateKey = null) => {
     tableEl.style.minWidth = ''
   }
 
-  // Also clear saved widths so the next mount starts clean too
+  // Clear saved widths so the next mount starts clean
   if (stateKey) clearSavedColumnWidths(stateKey)
 }

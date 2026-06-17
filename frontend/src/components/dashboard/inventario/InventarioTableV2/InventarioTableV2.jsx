@@ -26,7 +26,7 @@ import {
 } from '../../../../utils/primeTableQuery'
 import { moduleHasAnyAction } from '../../menuConfig'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -114,8 +114,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const tableWrapperRef = useRef(null)
   const locationHoverHideTimeoutRef = useRef(null)
   const oemHoverHideTimeoutRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths(INVENTARIO_TABLE_LAYOUT_STATE_KEY) }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers(INVENTARIO_TABLE_LAYOUT_STATE_KEY), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -492,55 +491,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   }, [])
 
   useEffect(() => {
-    try {
-      const savedState = sessionStorage.getItem(INVENTARIO_TABLE_FILTER_STATE_KEY)
-      if (savedState) {
-        const parsed = JSON.parse(savedState)
-        if (parsed?.filters) {
-          const nextFilters = { ...parsed.filters }
-          if (nextFilters.casas_comerciales_count && !nextFilters.casa_comercial_nombre) {
-            nextFilters.casa_comercial_nombre = nextFilters.casas_comerciales_count
-          }
-          delete nextFilters.casas_comerciales_count
-          nextFilters.global = { value: null, matchMode: FilterMatchMode.CONTAINS }
-          setFilters(nextFilters)
-          setGlobalFilterValue('')
-          const nextSortField = parsed?.sortField || null
-          const parsedSortOrder = Number(parsed?.sortOrder)
-          const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
-          setSortField(nextSortField)
-          setSortOrder(nextSortOrder)
-          return
-        }
-      }
-    } catch {
-      try {
-        sessionStorage.removeItem(INVENTARIO_TABLE_FILTER_STATE_KEY)
-      } catch {
-        // no-op
-      }
-    }
     initFilters()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!filters) return
-    const persistedFilters = {
-      ...filters,
-      global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-    }
-    const payload = JSON.stringify({ filters: persistedFilters, sortField, sortOrder })
-    try {
-      sessionStorage.setItem(INVENTARIO_TABLE_FILTER_STATE_KEY, payload)
-    } catch {
-      try {
-        sessionStorage.removeItem(INVENTARIO_TABLE_FILTER_STATE_KEY)
-        sessionStorage.setItem(INVENTARIO_TABLE_FILTER_STATE_KEY, payload)
-      } catch {
-        // no-op
-      }
-    }
-  }, [filters, sortField, sortOrder])
 
   const clearFilter = async () => {
     if (globalSearchDebounceRef.current) {
@@ -2048,8 +2000,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           dataKey="id"
           header={header}
           className={`users-datatable inventario-v2-datatable${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}${isGlobalSearchPending ? ' inventario-v2-datatable--pending' : ''}`}
-          stateStorage="local"
-          stateKey={INVENTARIO_TABLE_LAYOUT_STATE_KEY}
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines

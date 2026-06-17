@@ -24,7 +24,7 @@ const getPortalRoot = () => document.querySelector('.dashboard-shell') || docume
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
-import { autoFitTableColumns, clearSavedColumnWidths } from '../../../../utils/autoFitColumns'
+import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import { buildMovementProductExportRows } from '../../movimientos/movementTableProducts'
 import {
@@ -108,8 +108,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const _widthsClearedRef = useRef(null)
-  if (_widthsClearedRef.current === null) { _widthsClearedRef.current = true; clearSavedColumnWidths('solicitudes-table-state') }
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('solicitudes-table-state'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const [columnReorderKey, setColumnReorderKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
@@ -550,45 +549,8 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   }
 
   useEffect(() => {
-    try {
-      const savedState = sessionStorage.getItem('solicitudes-table-state')
-      if (savedState) {
-        const parsed = JSON.parse(savedState)
-        if (parsed?.filters) {
-          setFilters(parsed.filters)
-          setGlobalFilterValue(getPrimeGlobalFilterValue(parsed.filters))
-          const nextSortField = parsed?.sortField || null
-          const parsedSortOrder = Number(parsed?.sortOrder)
-          const nextSortOrder = parsedSortOrder === 1 || parsedSortOrder === -1 ? parsedSortOrder : null
-          setSortField(nextSortField)
-          setSortOrder(nextSortOrder)
-          return
-        }
-      }
-    } catch {
-      try {
-        sessionStorage.removeItem('solicitudes-table-state')
-      } catch {
-        // no-op
-      }
-    }
     initFilters()
   }, [])
-
-  useEffect(() => {
-    if (!filters) return
-    const payload = JSON.stringify({ filters, sortField, sortOrder })
-    try {
-      sessionStorage.setItem('solicitudes-table-state', payload)
-    } catch {
-      try {
-        sessionStorage.removeItem('solicitudes-table-state')
-        sessionStorage.setItem('solicitudes-table-state', payload)
-      } catch {
-        // no-op
-      }
-    }
-  }, [filters, sortField, sortOrder])
 
   const clearFilter = async () => {
     if (globalSearchDebounceRef.current) {
@@ -2161,6 +2123,9 @@ const handleResetTable = () => {
             'sucursal_nombre',
             'producto_solicitado_nombre',
           ]}
+          stateStorage="custom"
+          customSaveState={widthHandlers.save}
+          customRestoreState={widthHandlers.restore}
           reorderableColumns
           onColReorder={handleOrderChange}
           resizableColumns
