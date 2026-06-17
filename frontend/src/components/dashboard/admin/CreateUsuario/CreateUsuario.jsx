@@ -24,6 +24,8 @@ const BRANCH_SCOPED_MODULE_KEYS = new Set([
 const ENTRADAS_MODULE_KEY = 'movimientos_entradas'
 const SALIDAS_MODULE_KEY = 'movimientos_salidas'
 const IMPORTACIONES_MODULE_KEY = 'importaciones'
+const SOLICITUDES_MODULE_KEY = 'solicitudes'
+const DEFAULT_FULL_ACCESS_MODULES = [SOLICITUDES_MODULE_KEY, IMPORTACIONES_MODULE_KEY]
 const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
 
 const isActionAllowedForModule = (moduleKey, actionKey) =>
@@ -433,6 +435,34 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       return normalizeBranchId(branches?.[0]?.id)
     })
   }, [isAdministrator, permissionOptions, branchScopedModules, branches])
+
+  useEffect(() => {
+    if (isAdministrator) return
+    if (!permissionOptions.length || !branches.length || !branchScopedModules.length) return
+    const eligible = DEFAULT_FULL_ACCESS_MODULES.filter((k) => branchScopedModules.includes(k))
+    if (!eligible.length) return
+    setModuleBranchMatrix((prev) => {
+      const next = { ...prev }
+      eligible.forEach((modKey) => {
+        if (next[modKey]) return
+        next[modKey] = {}
+        branches.forEach((branch) => {
+          const branchId = normalizeBranchId(branch.id)
+          if (!branchId) return
+          next[modKey][branchId] = {
+            puede_crear: true,
+            puede_leer: true,
+            puede_actualizar: true,
+            puede_eliminar: true,
+            ...(modKey === IMPORTACIONES_MODULE_KEY
+              ? { puede_importar: true, puede_marcar_llegada: true }
+              : {}),
+          }
+        })
+      })
+      return next
+    })
+  }, [isAdministrator, permissionOptions, branches, branchScopedModules])
 
   const togglePermissionForBranch = (moduleKey, actionKey) => {
     if (isAdministrator) return

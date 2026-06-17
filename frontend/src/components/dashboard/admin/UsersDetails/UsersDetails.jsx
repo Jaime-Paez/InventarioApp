@@ -1178,7 +1178,7 @@ function UsersDetails({
 
   if (!shouldRender) return null
 
-  return (
+  return createPortal(
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true">
       <div
         className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
@@ -1782,7 +1782,8 @@ function UsersDetails({
           onMouseDown={handleResizeMouseDown}
         />
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

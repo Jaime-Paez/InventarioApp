@@ -246,10 +246,14 @@ export const moduleHasAllActions = (moduleKey, permissionIndex, actionKeys = MOD
   return actionKeys.every((key) => Boolean(actions?.[key]))
 }
 
-const hasPermissionForTarget = (moduleKey, permissionIndex) => {
+const hasPermissionForTarget = (moduleKey, permissionIndex, moduleScopeAccessIndex = null) => {
   if (!permissionIndex || !moduleKey) return true
   const permiso = permissionIndex.get(moduleKey)
-  return Boolean(permiso?.puede_leer)
+  if (Boolean(permiso?.puede_leer)) return true
+  if (BRANCH_SCOPED_MODULE_KEYS.has(moduleKey) && moduleScopeAccessIndex !== null) {
+    return Boolean(moduleScopeAccessIndex?.get(moduleKey))
+  }
+  return false
 }
 
 const hasBranchScopeAccessForTarget = (moduleKey, moduleScopeAccessIndex) => {
@@ -272,7 +276,7 @@ export const itemHasAccess = (
     return item.children.some((child) => itemHasAccess(child, permissionIndex, moduleScopeAccessIndex, isAdministrator))
   }
   return (
-    hasPermissionForTarget(item.moduleKey, permissionIndex) &&
+    hasPermissionForTarget(item.moduleKey, permissionIndex, moduleScopeAccessIndex) &&
     hasBranchScopeAccessForTarget(item.moduleKey, moduleScopeAccessIndex)
   )
 }
@@ -320,7 +324,7 @@ export const labelHasAccess = (
     if (!standaloneRule) return true
     if (standaloneRule.requiresAdmin && !isAdministrator) return false
     return (
-      hasPermissionForTarget(standaloneRule.moduleKey, permissionIndex) &&
+      hasPermissionForTarget(standaloneRule.moduleKey, permissionIndex, moduleScopeAccessIndex) &&
       hasBranchScopeAccessForTarget(standaloneRule.moduleKey, moduleScopeAccessIndex)
     )
   }
