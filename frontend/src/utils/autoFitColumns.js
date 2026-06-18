@@ -10,8 +10,12 @@
 
 /**
  * Creates { save, restore } handlers for DataTable stateStorage="custom".
- * Only persists columnWidths and tableWidth — never filters, sort, or selection.
+ * Persists columnWidths, tableWidth, first, and rows — never filters, sort, or selection.
  * The storageKey must match /-table-state/i so tableLayoutSync picks it up.
+ *
+ * NOTE: first and rows must be included in the restore result so PrimeReact does not call
+ * setFirstState(undefined) / setRowsState(undefined) when the restored object is non-empty,
+ * which would silently break pagination and show 0 rows.
  *
  * @param {string} storageKey - localStorage key (e.g. "productos-table-state")
  */
@@ -22,6 +26,8 @@ export const makeWidthStateHandlers = (storageKey) => {
       const entry = {}
       if (state?.columnWidths != null) entry.columnWidths = state.columnWidths
       if (state?.tableWidth != null) entry.tableWidth = state.tableWidth
+      if (state?.first != null) entry.first = state.first
+      if (state?.rows != null) entry.rows = state.rows
       if (Object.keys(entry).length > 0) {
         localStorage.setItem(storageKey, JSON.stringify(entry))
       } else {
@@ -39,7 +45,16 @@ export const makeWidthStateHandlers = (storageKey) => {
       const entry = {}
       if (parsed?.columnWidths != null) entry.columnWidths = parsed.columnWidths
       if (parsed?.tableWidth != null) entry.tableWidth = parsed.tableWidth
-      return Object.keys(entry).length > 0 ? entry : null
+      if (parsed?.first != null) entry.first = parsed.first
+      if (parsed?.rows != null) entry.rows = parsed.rows
+      if (Object.keys(entry).length > 0) {
+        return {
+          ...entry,
+          first: parsed?.first ?? 0,
+          rows: parsed?.rows ?? 25,
+        }
+      }
+      return null
     } catch {
       return null
     }
