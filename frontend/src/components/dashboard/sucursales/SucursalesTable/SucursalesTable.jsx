@@ -32,7 +32,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('sucursales-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('sucursales-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -140,17 +140,17 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'sucursales-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'sucursales-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('sucursales-table-columns')
-    localStorage.removeItem('sucursales-table-state')
-    sessionStorage.removeItem('sucursales-table-state')
+    localStorage.removeItem('sucursales-table-state-v2')
+    sessionStorage.removeItem('sucursales-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['sucursales-table-columns', 'sucursales-table-state'], token)
+    clearTableLayouts(['sucursales-table-columns', 'sucursales-table-state-v2'], token)
     opColumns.current?.hide()
   }
 

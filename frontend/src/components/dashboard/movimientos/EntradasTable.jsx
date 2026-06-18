@@ -157,7 +157,7 @@ function EntradasTable({
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('entradas-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('entradas-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const preloadEntradaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
@@ -654,16 +654,16 @@ function EntradasTable({
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'entradas-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'entradas-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('entradas-table-columns')
-    localStorage.removeItem('entradas-table-state')
+    localStorage.removeItem('entradas-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['entradas-table-columns', 'entradas-table-state'], token)
+    clearTableLayouts(['entradas-table-columns', 'entradas-table-state-v2'], token)
     opColumns.current?.hide()
   }
 

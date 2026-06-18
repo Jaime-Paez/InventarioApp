@@ -57,7 +57,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('casas-comerciales-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('casas-comerciales-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -308,16 +308,16 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'casas-comerciales-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'casas-comerciales-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('casas-comerciales-table-columns')
-    localStorage.removeItem('casas-comerciales-table-state')
+    localStorage.removeItem('casas-comerciales-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['casas-comerciales-table-columns', 'casas-comerciales-table-state'], token)
+    clearTableLayouts(['casas-comerciales-table-columns', 'casas-comerciales-table-state-v2'], token)
     opColumns.current?.hide()
   }
 

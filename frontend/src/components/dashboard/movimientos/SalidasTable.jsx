@@ -164,7 +164,7 @@ function SalidasTable({
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('salidas-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('salidas-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const preloadSalidaCatalogsPromiseRef = useRef(null)
   const globalSearchDebounceRef = useRef(null)
@@ -688,16 +688,16 @@ function SalidasTable({
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'salidas-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'salidas-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('salidas-table-columns')
-    localStorage.removeItem('salidas-table-state')
+    localStorage.removeItem('salidas-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['salidas-table-columns', 'salidas-table-state'], token)
+    clearTableLayouts(['salidas-table-columns', 'salidas-table-state-v2'], token)
     opColumns.current?.hide()
   }
 

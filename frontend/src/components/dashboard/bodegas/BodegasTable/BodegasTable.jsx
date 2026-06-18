@@ -33,7 +33,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('bodegas-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('bodegas-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -150,17 +150,17 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'bodegas-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'bodegas-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('bodegas-table-columns')
-    localStorage.removeItem('bodegas-table-state')
-    sessionStorage.removeItem('bodegas-table-state')
+    localStorage.removeItem('bodegas-table-state-v2')
+    sessionStorage.removeItem('bodegas-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['bodegas-table-columns', 'bodegas-table-state'], token)
+    clearTableLayouts(['bodegas-table-columns', 'bodegas-table-state-v2'], token)
     opColumns.current?.hide()
   }
 

@@ -50,7 +50,7 @@ function AuditoriaTable({ token }) {
   const toast = useRef(null)
   const opRef = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('auditoria-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('auditoria-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const selectedColumnsRef = useRef(columnsData)
 
@@ -187,16 +187,16 @@ function AuditoriaTable({ token }) {
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'auditoria-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'auditoria-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('auditoria-table-columns')
-    localStorage.removeItem('auditoria-table-state')
+    localStorage.removeItem('auditoria-table-state-v2')
     setSelectedColumns(columnsData)
     handleClearAll()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['auditoria-table-columns', 'auditoria-table-state'], token)
+    clearTableLayouts(['auditoria-table-columns', 'auditoria-table-state-v2'], token)
     opRef.current?.hide()
   }
 

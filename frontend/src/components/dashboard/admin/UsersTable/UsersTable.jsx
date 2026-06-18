@@ -45,7 +45,7 @@ function UsersTable({
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('usuarios-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('usuarios-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -176,16 +176,16 @@ function UsersTable({
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'usuarios-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'usuarios-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('usuarios-table-columns')
-    localStorage.removeItem('usuarios-table-state')
+    localStorage.removeItem('usuarios-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['usuarios-table-columns', 'usuarios-table-state'], token)
+    clearTableLayouts(['usuarios-table-columns', 'usuarios-table-state-v2'], token)
     opColumns.current?.hide()
   }
 

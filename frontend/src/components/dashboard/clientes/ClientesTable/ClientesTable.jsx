@@ -63,7 +63,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('clientes-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('clientes-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -305,16 +305,16 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'clientes-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'clientes-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('clientes-table-columns')
-    localStorage.removeItem('clientes-table-state')
+    localStorage.removeItem('clientes-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['clientes-table-columns', 'clientes-table-state'], token)
+    clearTableLayouts(['clientes-table-columns', 'clientes-table-state-v2'], token)
     opColumns.current?.hide()
   }
 

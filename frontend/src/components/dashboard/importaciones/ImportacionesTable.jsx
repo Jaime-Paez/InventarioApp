@@ -3476,7 +3476,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 function ImportacionesTable({ token, moduleActions, status: statusProp, isTabActive, onError, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('importaciones-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('importaciones-table-state-v2'), [])
 
   const [activeStatus, setActiveStatus] = useState('borrador')
   const status = statusProp || activeStatus

@@ -33,7 +33,7 @@ const BULK_SELECT_CONFIRM_THRESHOLD = 1000
 const DEFAULT_IVA_RATE = 0.15
 const INVENTARIO_TABLE_COLUMNS_STORAGE_KEY = 'inventario-v2-table-columns-v2'
 const INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY = 'inventario-v2-table-columns-branch-v2'
-const INVENTARIO_TABLE_LAYOUT_STATE_KEY = 'inventario-v2-table-state-v3'
+const INVENTARIO_TABLE_LAYOUT_STATE_KEY = 'inventario-v2-table-state-v4'
 const INVENTARIO_TABLE_FILTER_STATE_KEY = 'inventario-v2-table-state'
 const LOCATION_HOVER_CARD_WIDTH = 420
 const LOCATION_HOVER_CARD_MARGIN = 12
@@ -523,6 +523,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     localStorage.removeItem('inventario-v2-table-columns-branch-v1')
     localStorage.removeItem(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY)
     localStorage.removeItem('inventario-v2-table-state-v2')
+    localStorage.removeItem('inventario-v2-table-state-v3')
     localStorage.removeItem('inventario-v2-table-state')
     localStorage.removeItem(INVENTARIO_TABLE_LAYOUT_STATE_KEY)
     setSelectedColumns(visibleColumnsData)
@@ -536,6 +537,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY,
         'inventario-v2-table-state',
         'inventario-v2-table-state-v2',
+        'inventario-v2-table-state-v3',
         INVENTARIO_TABLE_LAYOUT_STATE_KEY,
       ],
       token

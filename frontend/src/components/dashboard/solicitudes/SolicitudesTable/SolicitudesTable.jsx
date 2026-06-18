@@ -108,7 +108,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('solicitudes-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('solicitudes-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const [columnReorderKey, setColumnReorderKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
@@ -570,7 +570,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'solicitudes-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'solicitudes-table-state-v2')
   }, [])
 
   const clearProductHoverHideTimer = useCallback(() => {
@@ -630,13 +630,13 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
 
 const handleResetTable = () => {
     localStorage.removeItem('solicitudes-table-columns')
-    localStorage.removeItem('solicitudes-table-state')
+    localStorage.removeItem('solicitudes-table-state-v2')
     localStorage.removeItem('solicitudes-flat-table-columns')
     setSelectedColumns(columnsData)
     setSelectedColumnsFlat(columnsDataFlat)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['solicitudes-table-columns', 'solicitudes-table-state'], token)
+    clearTableLayouts(['solicitudes-table-columns', 'solicitudes-table-state-v2'], token)
     opColumns.current?.hide()
   }
 

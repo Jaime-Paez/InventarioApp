@@ -68,7 +68,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
   const oemHoverHideTimeoutRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('productos-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('productos-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
@@ -402,16 +402,16 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   }
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'productos-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'productos-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('productos-table-columns')
-    localStorage.removeItem('productos-table-state')
+    localStorage.removeItem('productos-table-state-v2')
     setSelectedColumns(visibleColumnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['productos-table-columns', 'productos-table-state'], token)
+    clearTableLayouts(['productos-table-columns', 'productos-table-state-v2'], token)
     opColumns.current?.hide()
   }
 

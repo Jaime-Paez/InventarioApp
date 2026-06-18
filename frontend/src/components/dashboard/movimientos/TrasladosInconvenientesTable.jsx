@@ -118,7 +118,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('traslados-inconvenientes-table-state'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('traslados-inconvenientes-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const quickSearchInputRef = useRef(null)
   const clickTimerRef = useRef(null)
@@ -1181,16 +1181,16 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   }, [])
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'traslados-inconvenientes-table-state')
+    autoFitTableColumns(tableWrapperRef.current, 'traslados-inconvenientes-table-state-v2')
   }, [])
 
   const handleResetTable = () => {
     localStorage.removeItem('traslados-inconvenientes-columns')
-    localStorage.removeItem('traslados-inconvenientes-table-state')
+    localStorage.removeItem('traslados-inconvenientes-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['traslados-inconvenientes-columns', 'traslados-inconvenientes-table-state'], token)
+    clearTableLayouts(['traslados-inconvenientes-columns', 'traslados-inconvenientes-table-state-v2'], token)
     opColumns.current?.hide()
   }
 
