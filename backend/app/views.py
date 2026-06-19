@@ -1318,11 +1318,15 @@ def _ensure_daily_random_inspection_for_user(user, store):
     return inspection, changed_payload
 
 
-def _ensure_admin_summary_for_yesterday(user, store):
-    """If user can verify inspections, upsert yesterday's admin summary into the store."""
+def _ensure_all_admin_summaries(user, store):
+    """
+    Refresh every admin summary reminder in the store from DB.
+    Covers: today, yesterday, and any other dates already present in the payload.
+    This ensures completions/disculpadas from any day are reflected on next fetch.
+    """
     if not _can_verify_random_inspection(user):
         return False
-    yesterday = timezone.localdate() - timedelta(days=1)
+
     config = InspeccionAleatoriaConfiguracion.get_global()
     hora_config = config.hora_recordatorio
     time_str = (
@@ -1330,12 +1334,31 @@ def _ensure_admin_summary_for_yesterday(user, store):
         if hora_config is not None
         else f"{RANDOM_INSPECTION_START_HOUR:02d}:00"
     )
-    return _upsert_random_inspection_admin_summary_reminder(
-        store,
-        yesterday,
-        time_str=time_str,
-        reminder_date=yesterday,
-    )
+
+    today = timezone.localdate()
+    yesterday = today - timedelta(days=1)
+
+    # Collect all dates that already have an admin summary in the store
+    dates_to_refresh = {today, yesterday}
+    existing_payload = store.payload if isinstance(store.payload, list) else []
+    for item in existing_payload:
+        if not isinstance(item, dict):
+            continue
+        if _normalize_id(item.get("kind")) == RANDOM_INSPECTION_ADMIN_SUMMARY_KIND:
+            raw_date = str(item.get("date") or "").strip()
+            if raw_date:
+                try:
+                    from datetime import date as _date
+                    dates_to_refresh.add(_date.fromisoformat(raw_date))
+                except ValueError:
+                    pass
+
+    changed = False
+    for d in sorted(dates_to_refresh):
+        changed = _upsert_random_inspection_admin_summary_reminder(
+            store, d, time_str=time_str, reminder_date=d,
+        ) or changed
+    return changed
 
 
 def _serialize_random_inspection_item(item):
@@ -1999,7 +2022,7 @@ class ReminderStateAPIView(APIView):
                 request.user,
                 store,
             )
-            summary_changed = _ensure_admin_summary_for_yesterday(request.user, store)
+            summary_changed = _ensure_all_admin_summaries(request.user, store)
             payload_changed = payload_changed or inspection_payload_changed or summary_changed
 
             if payload_changed:
@@ -2669,14 +2692,11 @@ class RandomInspectionAdminExcuseAPIView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            if inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA:
-                return Response(
-                    {"detail": "La inspección ya fue completada; no es necesario disculpar."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            already_completed = inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA
 
-            inspection.disculpada = True
-            inspection.save(update_fields=["disculpada", "updated_at"])
+            if not already_completed:
+                inspection.disculpada = True
+                inspection.save(update_fields=["disculpada", "updated_at"])
 
             # Mark the user's own inspection reminder as seen by the user
             existing_payload = list(store.payload) if isinstance(store.payload, list) else []
