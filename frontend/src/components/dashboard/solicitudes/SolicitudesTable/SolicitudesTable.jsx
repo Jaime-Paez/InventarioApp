@@ -136,7 +136,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
 
   const [statusFilter, setStatusFilter] = useState('solicitado')
 
-  // ---- Borrador indicators (aceptados tab) ----
+  // ---- Sugerencia indicators (aceptados tab) ----
   const [borradorImps, setBorradorImps] = useState([])
   const [borradorPopup, setBorradorPopup] = useState(null)
   const borradorPopupTimerRef = useRef(null)
@@ -201,7 +201,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const cancelHideBorradorPopupSol = () => {
     if (borradorPopupTimerRef.current) clearTimeout(borradorPopupTimerRef.current)
   }
-  // ---- /Borrador indicators ----
+  // ---- /Sugerencia indicators ----
 
   const [clients, setClients] = useState([])
   const [totalRecords, setTotalRecords] = useState(0)
@@ -2349,7 +2349,7 @@ const handleResetTable = () => {
           {statusFilter === 'aceptado' && (
             <Column
               key="borrador_indicator"
-              header="Borrador"
+              header="Sugerencia"
               reorderable={false}
               resizable={false}
               style={{ minWidth: '190px', width: '190px' }}
@@ -2357,13 +2357,13 @@ const handleResetTable = () => {
                 const usage = borradorProductMap(rowData)
                 if (!usage.length) return (
                   <span style={{ fontSize: '0.75rem', color: 'var(--color-muted,#64748b)', fontStyle: 'italic' }}>
-                    Aún no se crea un borrador
+                    Aún no se crea una sugerencia
                   </span>
                 )
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                     <span style={{ whiteSpace: 'nowrap' }}>
-                      {usage.length === 1 ? '1 borrador' : `${usage.length} borradores`}
+                      {usage.length === 1 ? '1 sugerencia' : `${usage.length} sugerencias`}
                     </span>
                     <button
                       type="button"
@@ -2380,6 +2380,7 @@ const handleResetTable = () => {
               }}
             />
           )}
+
 
           {(statusFilter === 'aceptado' || statusFilter === 'archivado') && (
             <Column
@@ -2427,6 +2428,7 @@ const handleResetTable = () => {
           </div>,
           getPortalRoot()
         )}
+
 
         {Array.isArray(oemHoverCard?.rows) && oemHoverCard.rows.length > 0 && (
           <div

@@ -2641,6 +2641,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
           } else {
             next.push({
               _key: pid,
+              _solId: item.solicitud_id,
               producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', ') },
               cantidad: String(item.cantidad || ''),
             })
@@ -3634,6 +3635,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           } else {
             next.push({
               _key: pid,
+              _solId: item.solicitud_id,
               producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', ') },
               cantidad: String(item.cantidad || ''),
             })
