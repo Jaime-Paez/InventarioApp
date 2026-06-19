@@ -4017,8 +4017,8 @@ function RecordatoriosPopup({
                 </div>
               </div>
 
-              <footer className="recordatorios-popup__detail-footer">
-                {isTransferIssueReminder(activeDetailReminder) && activeDetailReminderStatus?.label === 'Pendiente' && (
+              {isTransferIssueReminder(activeDetailReminder) && activeDetailReminderStatus?.label === 'Pendiente' && (
+                <footer className="recordatorios-popup__detail-footer">
                   <button
                     type="button"
                     className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
@@ -4031,15 +4031,8 @@ function RecordatoriosPopup({
                       ? 'Abriendo...'
                       : 'Resolver inconveniente'}
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="recordatorios-popup__decision-close-link"
-                  onClick={() => setActiveDetailReminderId('')}
-                >
-                  Cerrar
-                </button>
-              </footer>
+                </footer>
+              )}
             </div>
           </div>
         )}
