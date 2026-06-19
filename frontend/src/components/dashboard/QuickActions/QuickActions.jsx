@@ -1007,12 +1007,21 @@ function QuickActions({
   const canOpenInTransitShipments = canViewInTransitShipments || fallbackInTransitShipments.length > 0
 
   const hasPendingReminder = useMemo(
-    () => pendingRemindersForCurrentUser.length > 0,
+    () => pendingRemindersForCurrentUser.some(
+      (reminder) =>
+        !isResolvedTransferResponseReminder(reminder) &&
+        !isImportacionEnviadoReminder(reminder)
+    ),
     [pendingRemindersForCurrentUser]
   )
 
   const pendingReminderDotCount = useMemo(
-    () => Math.min(pendingRemindersForCurrentUser.length, 3),
+    () => Math.min(
+      pendingRemindersForCurrentUser.filter(
+        (r) => !isResolvedTransferResponseReminder(r) && !isImportacionEnviadoReminder(r)
+      ).length,
+      3
+    ),
     [pendingRemindersForCurrentUser]
   )
 
