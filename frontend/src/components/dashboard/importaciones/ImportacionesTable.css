@@ -142,6 +142,8 @@
 
 .importaciones-modal--selector {
   overflow: hidden;
+  height: auto !important;
+  min-height: 0 !important;
 }
 
 .importaciones-modal--selector .create-user__header {
