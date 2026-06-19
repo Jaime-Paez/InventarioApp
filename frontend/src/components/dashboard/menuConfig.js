@@ -226,13 +226,16 @@ export const getModuleActions = (moduleKey, permissionIndex, moduleScopes = null
 
   const permiso = permissionIndex.get(moduleKey)
   const scopedActions = getScopedModuleActions(moduleKey, moduleScopes)
+  // moduleScopes === null signals an admin user (backend returns null for admins).
+  // Scoped-only flags must be granted unconditionally in that case.
+  const isAdminContext = moduleScopes === null
   return {
     puede_crear: Boolean(permiso?.puede_crear) || Boolean(scopedActions?.puede_crear),
     puede_leer: Boolean(permiso?.puede_leer) || Boolean(scopedActions?.puede_leer),
     puede_actualizar: Boolean(permiso?.puede_actualizar) || Boolean(scopedActions?.puede_actualizar),
     puede_eliminar: Boolean(permiso?.puede_eliminar) || Boolean(scopedActions?.puede_eliminar),
-    puede_importar: Boolean(scopedActions?.puede_importar),
-    puede_marcar_llegada: Boolean(scopedActions?.puede_marcar_llegada),
+    puede_importar: isAdminContext || Boolean(scopedActions?.puede_importar),
+    puede_marcar_llegada: isAdminContext || Boolean(scopedActions?.puede_marcar_llegada),
   }
 }
 
