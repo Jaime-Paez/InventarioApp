@@ -140,6 +140,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const [borradorImps, setBorradorImps] = useState([])
   const [borradorPopup, setBorradorPopup] = useState(null)
   const borradorPopupTimerRef = useRef(null)
+  const [borradorImpsRefreshKey, setBorradorImpsRefreshKey] = useState(0)
 
   useEffect(() => {
     if (statusFilter !== 'aceptado' || !token) { setBorradorImps([]); return undefined }
@@ -149,7 +150,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
       .then((payload) => { if (!cancelled) setBorradorImps(Array.isArray(payload?.results) ? payload.results : []) })
       .catch(() => { if (!cancelled) setBorradorImps([]) })
     return () => { cancelled = true }
-  }, [statusFilter, token])
+  }, [statusFilter, token, borradorImpsRefreshKey])
 
   const borradorProductMap = useMemo(() => {
     const bySolicitudId = {}
@@ -431,6 +432,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         setTotalRecords(count)
         setPageFirst(Math.max(0, (page - 1) * rows))
         setPageSize(rows)
+        if (estadoFilter === 'aceptado') setBorradorImpsRefreshKey((k) => k + 1)
         return normalized
       } catch (err) {
         const msg = err?.message || 'Ocurrió un error al cargar las solicitudes.'

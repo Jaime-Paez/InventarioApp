@@ -16,12 +16,12 @@
 
 /* ── Admin sidebar ─────────────────────────────────────────────── */
 .sidebar--admin {
-  background: #2e7d32;
+  background: #004570;
   color: #fff;
 }
 
 .dashboard-shell.dark .sidebar--admin {
-  background: #1b5e20;
+  background: #003858;
   color: #fff;
 }
 
