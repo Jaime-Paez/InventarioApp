@@ -823,6 +823,7 @@ function RecordatoriosPopup({
   const [openingTransferReminderId, setOpeningTransferReminderId] = useState('')
   const [openingInspectionReminderId, setOpeningInspectionReminderId] = useState('')
   const [discusingUserId, setDiscusingUserId] = useState('')
+  const [discusingAllKey, setDiscusingAllKey] = useState('')
   const [highlightedReminderId, setHighlightedReminderId] = useState('')
   const [pendingScrollReminderId, setPendingScrollReminderId] = useState('')
   const [transferLifecycleBySolicitudId, setTransferLifecycleBySolicitudId] = useState({})
@@ -2665,6 +2666,40 @@ function RecordatoriosPopup({
     [discusingUserId, notifyError, onApplyRemindersUpdate, token]
   )
 
+  const handleDisculparTodos = useCallback(
+    async (reminder) => {
+      const fecha = reminder?.context?.id
+      if (!fecha) return
+      if (discusingAllKey === fecha) return
+      const pendingUsers = (reminder?.context?.detalle_usuarios || []).filter(
+        (u) => !u.completada && !u.disculpada
+      )
+      if (!pendingUsers.length) return
+      setDiscusingAllKey(fecha)
+      try {
+        for (const u of pendingUsers) {
+          const res = await authFetch(`${API_URL}/recordatorios/inspeccion-aleatoria/admin/disculpar/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usuario_id: u.id, fecha }),
+          })
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            notifyError(data?.detail || 'No se pudo aplicar la disculpa.')
+            break
+          }
+        }
+        const updated = await fetchRemindersFromBackend(token)
+        if (updated) onApplyRemindersUpdate?.(updated)
+      } catch {
+        notifyError('Error al aplicar la disculpa.')
+      } finally {
+        setDiscusingAllKey('')
+      }
+    },
+    [discusingAllKey, notifyError, onApplyRemindersUpdate, token]
+  )
+
   const handleOpenTransferInTransit = useCallback(
     async (reminder) => {
       if (typeof onOpenTransferRequestInTransit !== 'function') return false
@@ -3284,8 +3319,6 @@ function RecordatoriosPopup({
                                 <ul className="recordatorios-popup__inspection-summary-list">
                                   {reminder.context.detalle_usuarios.map((u) => {
                                     const isDone = u.completada || u.disculpada
-                                    const discuseKey = `${u.id}:${reminder?.context?.id}`
-                                    const isDiscusing = discusingUserId === discuseKey
                                     return (
                                       <li
                                         key={u.id}
@@ -3293,27 +3326,6 @@ function RecordatoriosPopup({
                                       >
                                         <span className="recordatorios-popup__inspection-summary-icon">{isDone ? '✓' : '✗'}</span>
                                         <span className="recordatorios-popup__inspection-summary-name">{u.name}</span>
-                                        {!isDone && (
-                                          <span className="recordatorios-popup__inspection-summary-actions">
-                                            <button
-                                              type="button"
-                                              className="recordatorios-popup__inspection-summary-btn"
-                                              onClick={(e) => { e.stopPropagation(); void handleDisculpar(reminder, u.id) }}
-                                              disabled={!!discusingUserId}
-                                            >
-                                              {isDiscusing ? '...' : 'Disculpar'}
-                                            </button>
-                                            {typeof onOpenUserInspectionConfig === 'function' && (
-                                              <button
-                                                type="button"
-                                                className="recordatorios-popup__inspection-summary-btn recordatorios-popup__inspection-summary-btn--secondary"
-                                                onClick={(e) => { e.stopPropagation(); onOpenUserInspectionConfig(u.id) }}
-                                              >
-                                                Editar asignación
-                                              </button>
-                                            )}
-                                          </span>
-                                        )}
                                       </li>
                                     )
                                   })}
@@ -3556,7 +3568,25 @@ function RecordatoriosPopup({
                                       )}
                                   </button>
                                 ) : isAdminSummaryReminder ? (
-                                  null
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                      onClick={() => setActiveDetailReminderId(String(reminder?.id || ''))}
+                                    >
+                                      Ver inspecciones
+                                    </button>
+                                    {(reminder?.context?.detalle_usuarios || []).some((u) => !u.completada && !u.disculpada) && (
+                                      <button
+                                        type="button"
+                                        className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                        onClick={(e) => { e.stopPropagation(); void handleDisculparTodos(reminder) }}
+                                        disabled={discusingAllKey === reminder?.context?.id || !!discusingUserId}
+                                      >
+                                        {discusingAllKey === reminder?.context?.id ? '...' : 'Dejar pasar a todos'}
+                                      </button>
+                                    )}
+                                  </>
                                 ) : canOpenTransferIssueAction ? (
                                   <button
                                     type="button"
@@ -3789,8 +3819,11 @@ function RecordatoriosPopup({
             <div className="recordatorios-popup__detail-card" onMouseDown={(e) => e.stopPropagation()}>
               <header className="recordatorios-popup__detail-head">
                 <div>
-                  <h4>{formatReminderContext(activeDetailReminder)}</h4>
-                  <p>{formatTimelineFullDate(formatDateKey(activeDetailReminder?.date))}</p>
+                  <h4>{isRandomInspectionAdminSummaryReminder(activeDetailReminder) ? 'Resumen de inspecciones' : formatReminderContext(activeDetailReminder)}</h4>
+                  <p>
+                    {formatTimelineFullDate(formatDateKey(activeDetailReminder?.date))}
+                    {isRandomInspectionAdminSummaryReminder(activeDetailReminder) && ` · ${formatReminderTimeLabel(activeDetailReminder)}`}
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -3803,24 +3836,72 @@ function RecordatoriosPopup({
               </header>
 
               <div className="recordatorios-popup__detail-body">
-                <div className="recordatorios-popup__detail-row">
-                  <span>Hora</span>
-                  <strong>{formatReminderTimeLabel(activeDetailReminder)}</strong>
-                </div>
+                {!isRandomInspectionAdminSummaryReminder(activeDetailReminder) && (
+                  <div className="recordatorios-popup__detail-row">
+                    <span>Hora</span>
+                    <strong>{formatReminderTimeLabel(activeDetailReminder)}</strong>
+                  </div>
+                )}
 
-                <div className="recordatorios-popup__detail-row">
-                  <span>Estado</span>
-                  {activeDetailReminderStatus && (
-                    <span className={`recordatorios-popup__status recordatorios-popup__status--${activeDetailReminderStatus.className}`}>
-                      {activeDetailReminderStatus.label}
-                    </span>
-                  )}
-                </div>
+                {!isRandomInspectionAdminSummaryReminder(activeDetailReminder) && (
+                  <div className="recordatorios-popup__detail-row">
+                    <span>Estado</span>
+                    {activeDetailReminderStatus && (
+                      <span className={`recordatorios-popup__status recordatorios-popup__status--${activeDetailReminderStatus.className}`}>
+                        {activeDetailReminderStatus.label}
+                      </span>
+                    )}
+                  </div>
+                )}
 
-                <div className="recordatorios-popup__detail-description">
-                  <span>Descripción</span>
-                  <p>{activeDetailReminderDescription}</p>
-                </div>
+                {!isRandomInspectionAdminSummaryReminder(activeDetailReminder) && (
+                  <div className="recordatorios-popup__detail-description">
+                    <span>Descripción</span>
+                    <p>{activeDetailReminderDescription}</p>
+                  </div>
+                )}
+
+                {isRandomInspectionAdminSummaryReminder(activeDetailReminder) && Array.isArray(activeDetailReminder?.context?.detalle_usuarios) && activeDetailReminder.context.detalle_usuarios.length > 0 && (
+                  <div className="recordatorios-popup__inspection-detail-wrap">
+                    <table className="recordatorios-popup__inspection-detail-table">
+                      <thead>
+                        <tr>
+                          <th className="recordatorios-popup__inspection-detail-th-estado">Estado</th>
+                          <th className="recordatorios-popup__inspection-detail-th-usuario">Usuario</th>
+                          <th className="recordatorios-popup__inspection-detail-th-accion">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeDetailReminder.context.detalle_usuarios.map((u) => {
+                          const isDone = u.completada || u.disculpada
+                          const discuseKey = `${u.id}:${activeDetailReminder?.context?.id}`
+                          const isDiscusing = discusingUserId === discuseKey
+                          return (
+                            <tr
+                              key={u.id}
+                              className={`recordatorios-popup__inspection-detail-tr${isDone ? ' recordatorios-popup__inspection-detail-tr--done' : ' recordatorios-popup__inspection-detail-tr--pending'}`}
+                            >
+                              <td className="recordatorios-popup__inspection-detail-td-icon">{isDone ? '✓' : '✗'}</td>
+                              <td className="recordatorios-popup__inspection-detail-td-name">{u.name}</td>
+                              <td className="recordatorios-popup__inspection-detail-td-action">
+                                {!isDone && (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__inspection-summary-btn"
+                                    onClick={() => void handleDisculpar(activeDetailReminder, u.id)}
+                                    disabled={!!discusingUserId}
+                                  >
+                                    {isDiscusing ? '...' : 'Dejar pasar'}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
                 {activeDetailIsTransferIssue && activeDetailIssuesLoading && (
                   <div className="recordatorios-popup__detail-history">

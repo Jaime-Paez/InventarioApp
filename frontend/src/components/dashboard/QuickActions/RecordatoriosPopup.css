@@ -1711,6 +1711,93 @@
   opacity: 0.8;
 }
 
+.recordatorios-popup__inspection-detail-wrap {
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.recordatorios-popup__inspection-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.recordatorios-popup__inspection-detail-table thead tr {
+  background: color-mix(in srgb, var(--color-border) 30%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.recordatorios-popup__inspection-detail-th-estado,
+.recordatorios-popup__inspection-detail-th-usuario,
+.recordatorios-popup__inspection-detail-th-accion {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, currentColor 58%, transparent);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.recordatorios-popup__inspection-detail-th-estado {
+  width: 60px;
+  text-align: center;
+}
+
+.recordatorios-popup__inspection-detail-th-accion {
+  width: 110px;
+  text-align: right;
+}
+
+.recordatorios-popup__inspection-detail-tr {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 45%, transparent);
+}
+
+.recordatorios-popup__inspection-detail-tr:last-child {
+  border-bottom: none;
+}
+
+.recordatorios-popup__inspection-detail-td-icon {
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px 10px;
+  vertical-align: middle;
+  text-align: center;
+  width: 60px;
+}
+
+.recordatorios-popup__inspection-detail-tr--done .recordatorios-popup__inspection-detail-td-icon {
+  color: var(--color-success-text);
+}
+
+.recordatorios-popup__inspection-detail-tr--pending .recordatorios-popup__inspection-detail-td-icon {
+  color: var(--color-error-text);
+}
+
+.recordatorios-popup__inspection-detail-td-name {
+  font-size: 14px;
+  font-weight: 500;
+  padding: 12px 10px;
+  vertical-align: middle;
+}
+
+.recordatorios-popup__inspection-detail-tr--done .recordatorios-popup__inspection-detail-td-name {
+  color: color-mix(in srgb, currentColor 55%, transparent);
+  font-weight: 400;
+}
+
+.recordatorios-popup__inspection-detail-td-action {
+  text-align: right;
+  padding: 12px 10px;
+  vertical-align: middle;
+  width: 110px;
+}
+
+.recordatorios-popup__inspection-detail-td-action .recordatorios-popup__inspection-summary-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
 .recordatorios-popup__empty-list {
   margin: 0;
   padding: 10px;
