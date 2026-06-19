@@ -1451,7 +1451,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
               </div>
             </div>
           </div>,
-          document.querySelector('.dashboard-shell') || document.body
+          document.body
         )}
 
         <button
