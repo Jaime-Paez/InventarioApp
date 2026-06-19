@@ -1075,19 +1075,27 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   const mode = isDark ? 'dark' : 'light'
   const toastRef = useRef(null)
 
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState('casa')
   const [downloading, setDownloading] = useState(false)
 
-  // Step 2
-  const fileInputRef = useRef(null)
-  const [selectedFile, setSelectedFile] = useState(null)
-  const [dragOver, setDragOver] = useState(false)
+  // Casa step
+  const [casaDraft, setCasaDraft] = useState(null)
   const [selectedCasa, setSelectedCasa] = useState(null)
   const [casaQuery, setCasaQuery] = useState('')
   const [casaOptions, setCasaOptions] = useState([])
   const [casaLoading, setCasaLoading] = useState(false)
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const casaTimerRef = useRef(null)
+  const casaModalRef = useRef(null)
+  const casaModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const [casaModalPos, setCasaModalPos] = useState({ x: 0, y: 0 })
+  const casaDropdownRef = useRef(null)
+  const [casaPanelStyle, setCasaPanelStyle] = useState(null)
+
+  // Step 2: file upload
+  const fileInputRef = useRef(null)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState('')
 
@@ -1096,13 +1104,68 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
+  useLayoutEffect(() => {
+    if (step !== 'casa') return
+    const w = Math.min(SELECTOR_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
+    const h = casaModalRef.current?.offsetHeight || (casaDraft ? 380 : 200)
+    setCasaModalPos({
+      x: Math.max((window.innerWidth - w) / 2, VIEWPORT_PADDING),
+      y: Math.max((window.innerHeight - h) / 2, VIEWPORT_PADDING),
+    })
+  }, [step, casaDraft])
+
+  useLayoutEffect(() => {
+    if (!showCasaDropdown || !casaDropdownRef.current) { setCasaPanelStyle(null); return }
+    const rect = casaDropdownRef.current.getBoundingClientRect()
+    setCasaPanelStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      maxHeight: Math.min(260, window.innerHeight - rect.bottom - 8),
+      zIndex: 9999,
+    })
+  }, [showCasaDropdown, casaModalPos])
+
   useEffect(() => {
-    if (!casaQuery.trim()) { setCasaOptions([]); return }
+    const handleMove = (e) => {
+      if (!casaModalDrag.current.active) return
+      e.preventDefault()
+      const w = casaModalRef.current?.offsetWidth || SELECTOR_WIDTH
+      const h = casaModalRef.current?.offsetHeight || 200
+      setCasaModalPos({
+        x: Math.min(Math.max(e.clientX - casaModalDrag.current.offsetX, VIEWPORT_PADDING), window.innerWidth - w - VIEWPORT_PADDING),
+        y: Math.min(Math.max(e.clientY - casaModalDrag.current.offsetY, VIEWPORT_PADDING), window.innerHeight - h - VIEWPORT_PADDING),
+      })
+    }
+    const handleUp = () => { casaModalDrag.current.active = false }
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+    return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp) }
+  }, [])
+
+  useEffect(() => {
+    const handleMouseDown = (e) => {
+      const inCasa = casaDropdownRef.current?.contains(e.target) || e.target.closest?.('[data-casa-portal]')
+      if (!inCasa) setShowCasaDropdown(false)
+    }
+    const handleKeyDown = (e) => { if (e.key === 'Escape') onClose?.() }
+    document.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
+  useEffect(() => {
+    if (!showCasaDropdown && step !== 'casa') return
     clearTimeout(casaTimerRef.current)
     setCasaLoading(true)
     casaTimerRef.current = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ search: casaQuery, page_size: '10', tipo: 'importacion' })
+        const params = new URLSearchParams({ page_size: '10', tipo: 'importacion' })
+        if (casaQuery.trim()) params.set('search', casaQuery.trim())
         const resp = await authFetch(`${API_URL}/casa-comercial/casas/?${params}`, {}, token)
         const data = resp.ok ? await resp.json().catch(() => ({})) : {}
         setCasaOptions(Array.isArray(data.results) ? data.results : [])
@@ -1110,7 +1173,13 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
       setCasaLoading(false)
     }, 280)
     return () => clearTimeout(casaTimerRef.current)
-  }, [casaQuery, token])
+  }, [casaQuery, token, showCasaDropdown, step])
+
+  const handleCasaHeaderMouseDown = (e) => {
+    if (!casaModalRef.current) return
+    const rect = casaModalRef.current.getBoundingClientRect()
+    casaModalDrag.current = { active: true, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top }
+  }
 
   const handleDownloadTemplate = async () => {
     setDownloading(true)
@@ -1231,6 +1300,149 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
 
   const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa los productos'
+  const portalRoot = document.querySelector('.dashboard-shell') || document.body
+
+  if (step === 'casa') {
+    return createPortal(
+      <>
+        <Toast ref={toastRef} />
+        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ zIndex: 2100 }}>
+          <div
+            ref={casaModalRef}
+            className="create-user__modal importaciones-modal--selector"
+            style={{ top: casaModalPos.y, left: casaModalPos.x, width: SELECTOR_WIDTH }}
+          >
+            <header className="create-user__header" onMouseDown={handleCasaHeaderMouseDown}>
+              <div className="create-user__header-text">
+                <h3>Sugerencia desde Excel</h3>
+              </div>
+              <div className="create-user__header-actions">
+                <button
+                  type="button"
+                  className="create-user__icon-button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={onClose}
+                  aria-label="Cerrar"
+                >
+                  <i className="pi pi-times" aria-hidden="true" />
+                </button>
+              </div>
+            </header>
+
+            <form className="create-user__form importaciones-modal__selector-form" noValidate onSubmit={(e) => e.preventDefault()}>
+              <div className="create-salida__selector-shell" style={{ flex: 'none', overflow: 'visible' }}>
+                <section className="create-user__section create-salida__selector-card">
+                  <div className="create-user__section-header">
+                    <div>
+                      <h4>Selecciona la casa comercial</h4>
+                    </div>
+                  </div>
+                  <div className="create-salida__selector-inner">
+                    <div className="create-user__field create-salida__selector-field">
+                      <div className="create-user__dropdown" ref={casaDropdownRef} style={{ width: '100%' }}>
+                        <div
+                          className="create-user__dropdown-trigger"
+                          style={{ cursor: 'text', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }}
+                          onClick={() => setShowCasaDropdown(true)}
+                        >
+                          <i className="pi pi-search" style={{ color: 'var(--color-muted, #888)', flexShrink: 0 }} />
+                          <input
+                            type="text"
+                            placeholder="Busca por nombre, código o país..."
+                            value={casaQuery}
+                            onChange={(e) => { setCasaQuery(e.target.value); setCasaDraft(null); setShowCasaDropdown(true) }}
+                            onFocus={() => setShowCasaDropdown(true)}
+                            style={{ border: 'none', outline: 'none', flex: 1, background: 'transparent', fontSize: 'inherit', color: 'inherit' }}
+                            autoComplete="off"
+                          />
+                          {casaLoading && <i className="pi pi-spin pi-spinner" style={{ flexShrink: 0 }} />}
+                        </div>
+                      </div>
+
+                      {showCasaDropdown && casaPanelStyle && createPortal(
+                        <div data-casa-portal className="create-user__dropdown-panel" style={casaPanelStyle}>
+                          <div className="create-user__dropdown-results">
+                            {casaLoading && <small className="muted">Buscando...</small>}
+                            {!casaLoading && !casaOptions.length && (
+                              <small className="muted">{casaQuery.trim() ? 'Sin resultados.' : 'Escribe para buscar.'}</small>
+                            )}
+                            {casaOptions.map((casa) => (
+                              <button
+                                key={casa.id}
+                                type="button"
+                                className="create-user__result-option"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => { setCasaDraft(casa); setCasaQuery(''); setShowCasaDropdown(false); setCasaOptions([]) }}
+                              >
+                                <div className="create-user__result-info">
+                                  <strong>{String(casa?.nombre || '').trim()}</strong>
+                                  <small>
+                                    {[String(casa?.codigo || '').trim(), String(casa?.pais?.nombre || '').trim()].filter(Boolean).join(' · ')}
+                                  </small>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>,
+                        portalRoot
+                      )}
+                    </div>
+
+                    {casaDraft && (
+                      <div className="create-salida__field-group create-salida__field-group--defined" style={{ marginTop: '14px' }}>
+                        <div className="create-user__grid create-user__grid--two">
+                          <StaticFieldDisplay label="Código" value={casaDraft.codigo} />
+                          <StaticFieldDisplay label="Nombre" value={casaDraft.nombre} />
+                          <div className="create-user__field create-salida__static-field">
+                            <span>País</span>
+                            <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {(() => {
+                                const flagUrl = getFlagUrl(casaDraft.pais?.codigo_pais)
+                                return (
+                                  <span className={`create-user__flag${flagUrl ? '' : ' is-empty'}`} aria-hidden="true" style={{ flexShrink: 0 }}>
+                                    {flagUrl ? <img src={flagUrl} alt="" /> : '□'}
+                                  </span>
+                                )
+                              })()}
+                              {String(casaDraft.pais?.nombre || '—').trim()}
+                            </div>
+                          </div>
+                          <StaticFieldDisplay
+                            label="Días de entrega"
+                            value={casaDraft.dias_entrega != null ? `${casaDraft.dias_entrega} días` : ''}
+                          />
+                          {casaDraft.descripcion && (
+                            <StaticFieldDisplay label="Descripción" value={casaDraft.descripcion} fullWidth />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </div>
+
+              <div className="create-user__footer">
+                <div className="user-details__footer-left">
+                  <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cancelar</button>
+                </div>
+                <div className="user-details__footer-right">
+                  <button
+                    type="button"
+                    className="create-user__action create-user__action--primary"
+                    disabled={!casaDraft}
+                    onClick={() => { setSelectedCasa(casaDraft); setStep(1) }}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </>,
+      portalRoot
+    )
+  }
 
   return createPortal(
     <>
@@ -1291,49 +1503,6 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
             {/* ── PASO 2: Subir archivo ── */}
             {step === 2 && (
               <>
-                {/* Casa comercial — primero */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Casa comercial <span style={{ color: '#dc2626' }}>*</span></label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="text"
-                      placeholder="Buscar casa comercial..."
-                      value={selectedCasa ? selectedCasa.nombre : casaQuery}
-                      onFocus={() => { if (selectedCasa) { setSelectedCasa(null); setCasaQuery('') }; setShowCasaDropdown(true) }}
-                      onBlur={() => setTimeout(() => setShowCasaDropdown(false), 180)}
-                      onChange={(e) => { setCasaQuery(e.target.value); setSelectedCasa(null); setShowCasaDropdown(true) }}
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border, #e2e8f0)', fontSize: '0.875rem', background: 'var(--color-bg)', color: 'var(--color-text)', fontFamily: 'inherit' }}
-                    />
-                    {showCasaDropdown && (casaLoading || casaOptions.length > 0 || casaQuery.trim()) && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--color-bg)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.12)', zIndex: 9999, maxHeight: 220, overflowY: 'auto', marginTop: 2 }}>
-                        {casaLoading && <div style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>Buscando...</div>}
-                        {!casaLoading && casaOptions.length === 0 && casaQuery.trim() && (
-                          <div style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>Sin resultados</div>
-                        )}
-                        {casaOptions.map(casa => (
-                          <div
-                            key={casa.id}
-                            onMouseDown={() => { setSelectedCasa(casa); setCasaQuery(''); setShowCasaDropdown(false) }}
-                            style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '0.875rem', borderBottom: '1px solid var(--color-border, #e2e8f0)' }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <strong>{casa.nombre}</strong>
-                            {casa.codigo && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{casa.codigo}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {selectedCasa && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#15803d' }}>
-                      <i className="pi pi-check-circle" />
-                      <span>{selectedCasa.nombre} seleccionada</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* File drop zone */}
                 <div
                   onClick={() => fileInputRef.current?.click()}
                   onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
@@ -1361,7 +1530,6 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                     </div>
                   )}
                 </div>
-
                 {parseError && <p style={{ margin: 0, fontSize: '0.82rem', color: '#dc2626' }}>{parseError}</p>}
               </>
             )}
@@ -1369,7 +1537,6 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
             {/* ── PASO 3: Revisar productos ── */}
             {step === 3 && (
               <>
-                {/* Conflictos — bloque de advertencia prominente */}
                 {conflictoRows.length > 0 && (
                   <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1393,7 +1560,6 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                   </div>
                 )}
 
-                {/* Resumen de productos válidos */}
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   {matchedCount > 0 && (
                     <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '3px 12px', fontSize: '0.78rem', fontWeight: 600 }}>
@@ -1454,7 +1620,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
           <footer className="quick-actions__receive-actions">
             {step === 1 && (
               <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={onClose}>Cerrar</button>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep('casa')}>Atrás</button>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={() => setStep(2)}>Siguiente</button>
               </>
             )}
@@ -1489,7 +1655,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
         </div>
       </div>
     </>,
-    document.querySelector('.dashboard-shell') || document.body
+    portalRoot
   )
 }
 

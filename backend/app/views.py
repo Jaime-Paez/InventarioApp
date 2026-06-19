@@ -459,6 +459,7 @@ def _sanitize_context(raw):
                 "id": uid,
                 "name": str(entry.get("name") or "").strip() or "Usuario",
                 "completada": bool(entry.get("completada")),
+                "disculpada": bool(entry.get("disculpada")),
             })
         if sanitized_detalle:
             result["detalle_usuarios"] = sanitized_detalle
