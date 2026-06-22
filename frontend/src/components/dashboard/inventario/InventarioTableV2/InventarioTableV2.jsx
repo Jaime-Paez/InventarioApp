@@ -108,6 +108,27 @@ const isCheckboxSelection = (event) => {
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
 }
 
+const BRANCH_STOP_WORDS = new Set(['de', 'del', 'la', 'el', 'las', 'los', 'y', 'e', 'a'])
+const MONTH_ABBREVS = {
+  enero: 'Ene', febrero: 'Feb', marzo: 'Mar', abril: 'Abr',
+  mayo: 'May', junio: 'Jun', julio: 'Jul', agosto: 'Ago',
+  septiembre: 'Sep', octubre: 'Oct', noviembre: 'Nov', diciembre: 'Dic',
+}
+const abbreviateBranchName = (name) => {
+  if (!name) return name
+  return name.trim()
+    .split(/\s+/)
+    .filter(w => !BRANCH_STOP_WORDS.has(w.toLowerCase()))
+    .map(w => {
+      if (/^\d+$/.test(w)) return w
+      const monthAbbrev = MONTH_ABBREVS[w.toLowerCase()]
+      if (monthAbbrev) return monthAbbrev + '.'
+      if (w.length <= 4) return w
+      return w.slice(0, 4) + '.'
+    })
+    .join(' ')
+}
+
 function InventarioTableV2({ token, onSelect, user, moduleActions, permissionIndex }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
@@ -1120,7 +1141,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           {branches.map((branch) => (
             <Column
               key={`header_branch_group_${branch.id}`}
-              header={branch.nombre}
+              header={abbreviateBranchName(branch.nombre)}
               colSpan={2}
               reorderable={false}
               resizable={false}
@@ -1146,7 +1167,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
               <Column
                 key={`header_branch_qty_${branch.id}`}
                 field={`sucursal_${branch.id}`}
-                header="Cantidad"
+                header={abbreviateBranchName(branch.nombre)}
                 sortable
                 reorderable={false}
                 className="column-max-min-width--small inventario-v2__branch-subheader"
@@ -1157,7 +1178,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
               <Column
                 key={`header_branch_location_${branch.id}`}
                 field={`ubicacion_sucursal_${branch.id}`}
-                header="Ubicacion"
+                header={`Ub. ${abbreviateBranchName(branch.nombre)}`}
                 sortable
                 reorderable={false}
                 className="column-max-min-width inventario-v2__location-col inventario-v2__branch-subheader"
@@ -1176,8 +1197,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     () => [
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
-      { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
-      { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
+      { nombrevar: 'precio', header: 'PVP', filterPlaceholder: 'Buscar por precio' },
+      { nombrevar: 'precio_con_iva', header: 'PVP +IVA', filterPlaceholder: 'Buscar por precio + IVA' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
       { nombrevar: 'referencia', header: 'Referencia', filterPlaceholder: 'Buscar por referencia' },
       { nombrevar: 'oem_codes', header: 'OEM', filterPlaceholder: 'Buscar por OEM' },
@@ -2151,7 +2172,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 <Column
                   key={`branch_${branch.id}`}
                   field={quantityField}
-                  header={branch.nombre}
+                  header={abbreviateBranchName(branch.nombre)}
                   sortable
                   reorderable
                   className="column-max-min-width--small"
@@ -2166,7 +2187,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 <Column
                   key={`branch_location_${branch.id}`}
                   field={locationField}
-                  header={`Ubicacion ${branch.nombre}`}
+                  header={`Ub. ${abbreviateBranchName(branch.nombre)}`}
                   sortable
                   reorderable
                   className="column-max-min-width inventario-v2__location-col"

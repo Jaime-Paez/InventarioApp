@@ -634,8 +634,8 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     () => [
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
-      { nombrevar: 'precio', header: 'Precio', filterPlaceholder: 'Buscar por precio' },
-      { nombrevar: 'precio_con_iva', header: 'Precio + IVA', filterPlaceholder: 'Buscar por precio + IVA' },
+      { nombrevar: 'precio', header: 'PVP', filterPlaceholder: 'Buscar por precio' },
+      { nombrevar: 'precio_con_iva', header: 'PVP +IVA', filterPlaceholder: 'Buscar por precio + IVA' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
       { nombrevar: 'referencia', header: 'Referencia', filterPlaceholder: 'Buscar por referencia' },
       { nombrevar: 'oem_codes', header: 'OEM', filterPlaceholder: 'Buscar por OEM' },

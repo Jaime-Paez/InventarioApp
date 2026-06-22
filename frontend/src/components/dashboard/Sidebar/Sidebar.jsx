@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import './Sidebar.css'
-import { Settings, PanelLeftClose, Layers } from 'lucide-react'
+import { Settings, PanelLeftClose, Layers, LogOut } from 'lucide-react'
 import { MENU_STRUCTURE, filterMenuByPermissions } from '../menuConfig'
 import kavaDark from '../../../assets/login/kava(dark).png'
 import jpaezDark from '../../../assets/login/jpaez(dark).png'
@@ -20,6 +21,34 @@ function Sidebar({
 }) {
   const [openGroups, setOpenGroups] = useState({})
   const [profileOpen, setProfileOpen] = useState(false)
+  const [menuStyle, setMenuStyle] = useState(null)
+  const profileRef = useRef(null)
+  const menuRef = useRef(null)
+
+  const handleProfileClick = () => {
+    if (profileOpen) { setProfileOpen(false); return }
+    const rect = profileRef.current?.getBoundingClientRect()
+    if (rect) {
+      setMenuStyle({
+        position: 'fixed',
+        top: rect.top,
+        left: rect.right + 8,
+      })
+    }
+    setProfileOpen(true)
+  }
+
+  useEffect(() => {
+    if (!profileOpen) return
+    const handler = (e) => {
+      if (
+        profileRef.current && !profileRef.current.contains(e.target) &&
+        menuRef.current && !menuRef.current.contains(e.target)
+      ) setProfileOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [profileOpen])
   const canAccessConfiguration = Boolean(
     user?.is_superuser ||
       user?.is_staff ||
@@ -64,8 +93,6 @@ function Sidebar({
   const userInitial = (firstName[0] || lastName[0] || 'U').toUpperCase()
   const lastNameInitial = lastName ? `${lastName[0].toUpperCase()}.` : ''
   const userName = `${firstName || 'Usuario'}${lastNameInitial ? ` ${lastNameInitial}` : ''}`.trim()
-
-  const profileMenuId = 'sidebar-profile-menu'
 
   return (
     <aside className={`sidebar ${isOpen ? '' : 'sidebar--hidden'}${canAccessConfiguration ? ' sidebar--admin' : ''}`}>
@@ -156,35 +183,30 @@ function Sidebar({
           ) : null}
         </div>
 
-        <div className="sidebar__profile">
+        <div className="sidebar__profile" ref={profileRef}>
           <button
             type="button"
-            className={`sidebar__user ${profileOpen ? 'open' : ''}`}
-            onClick={() => setProfileOpen((value) => !value)}
-            aria-expanded={profileOpen}
-            aria-controls={profileMenuId}
+            className="sidebar__user"
+            onClick={handleProfileClick}
           >
             <div className="sidebar__avatar minimal">{userInitial}</div>
             <span className="sidebar__user-name">{userName}</span>
           </button>
+        </div>
 
-          <div
-            id={profileMenuId}
-            className={`sidebar__profile-menu ${profileOpen ? 'open' : 'closed'}`}
-            role="menu"
-            aria-hidden={!profileOpen}
-          >
+        {profileOpen && menuStyle && createPortal(
+          <div ref={menuRef} className="sidebar__profile-menu" style={menuStyle}>
             <button
               type="button"
-              className="sidebar__profile-action sidebar__profile-action--logout"
+              className="sidebar__profile-menu-item sidebar__profile-menu-item--logout"
               onClick={onLogout}
-              role="menuitem"
-              tabIndex={profileOpen ? 0 : -1}
             >
+              <LogOut size={15} />
               <span>Cerrar sesión</span>
             </button>
-          </div>
-        </div>
+          </div>,
+          document.body
+        )}
       </footer>
     </aside>
   )

@@ -2,17 +2,6 @@
   flex-wrap: wrap;
 }
 
-.inventario-v2__total-col,
-.inventario-v2__total-col.p-sortable-column,
-.inventario-v2__total-col.p-highlight {
-  background: #dbeafe !important;
-}
-
-.dashboard-shell.dark .inventario-v2__total-col,
-.dashboard-shell.dark .inventario-v2__total-col.p-sortable-column,
-.dashboard-shell.dark .inventario-v2__total-col.p-highlight {
-  background: #1e3a5f !important;
-}
 
 .inventario-v2__branch-filter {
   position: relative;
@@ -109,8 +98,11 @@
   display: inline-flex;
   min-width: 24px;
   justify-content: center;
-  font-weight: 700;
   color: var(--color-text-primary);
+}
+
+.inventario-v2__total-col .inventario-v2__quantity {
+  font-weight: 700;
 }
 
 .inventario-v2__quantity--empty {
@@ -274,7 +266,7 @@
 }
 
 .inventario-v2-datatable .p-datatable-thead > tr > th.p-frozen-column {
-  background-color: var(--table-color);
+  background-color: #dbeafe;
 }
 
 /* Hover: --table-color-hover is semi-transparent (#00457050).
