@@ -15,6 +15,38 @@ const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles']
 const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14b8a6']
 const OVERLAP_TOLERANCE = 0.05
 
+// Walk up the DOM to find the nearest scrollable ancestor
+const findScrollParent = (el) => {
+  let node = el?.parentElement
+  while (node && node !== document.body) {
+    const { overflow, overflowY } = window.getComputedStyle(node)
+    if (/(auto|scroll)/.test(overflow + overflowY)) return node
+    node = node.parentElement
+  }
+  return document.documentElement
+}
+
+// Scroll an element into view precisely within its actual scroll container.
+// align 'start' puts the element near the top; 'center' centers it vertically.
+const scrollToPrecise = (el, align = 'start', offset = 20) => {
+  if (!el) return
+  const container = findScrollParent(el)
+  const isDoc = container === document.documentElement
+  const containerTop = isDoc ? 0 : container.getBoundingClientRect().top
+  const elRect = el.getBoundingClientRect()
+  const relativeTop = elRect.top - containerTop + container.scrollTop
+
+  let targetScrollTop
+  if (align === 'center') {
+    const containerH = isDoc ? window.innerHeight : container.clientHeight
+    targetScrollTop = relativeTop - (containerH - elRect.height) / 2
+  } else {
+    targetScrollTop = relativeTop - offset
+  }
+
+  container.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' })
+}
+
 const rectsOverlap = (a, b) =>
   a.x + OVERLAP_TOLERANCE < b.x + b.ancho &&
   a.x + a.ancho - OVERLAP_TOLERANCE > b.x &&
@@ -443,13 +475,13 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   }
 
   const scrollToCard = (id) => {
-    cardRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    scrollToPrecise(cardRefs.current[id], 'start', 20)
     flashLocation(id)
   }
 
   const scrollToMapLocation = (id) => {
-    planRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    setTimeout(() => flashLocation(id), 350)
+    scrollToPrecise(planRef.current, 'start', 20)
+    setTimeout(() => flashLocation(id), 400)
   }
 
   const handleDragStart = (event, location, mode) => {
