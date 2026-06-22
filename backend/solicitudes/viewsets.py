@@ -821,6 +821,7 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 "producto__oem_productos__oem",
                 "producto_solicitado__producto__oem_productos__oem",
                 "producto_solicitado__oem_relaciones__oem",
+                "revisiones",
             )
             .filter(estado=Solicitud.Estado.REVISADO)
             .filter(q_producto | q_solicitado)
@@ -840,6 +841,11 @@ class SolicitudViewSet(viewsets.ModelViewSet):
 
         results = []
         for sol in queryset:
+            revision_ref = next(
+                (str(r.referencia or "").strip() for r in sol.revisiones.all() if getattr(r, "casa_comercial_id", None) == casa_id),
+                "",
+            )
+
             if sol.tabla == Solicitud.Tabla.PRODUCTO:
                 producto = sol.producto
                 if not producto:
@@ -847,6 +853,8 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 producto_id = producto.id
                 codigo = str(producto.codigo or "").strip()
                 nombre = str(producto.nombre or "").strip()
+                referencia = revision_ref or str(producto.referencia or "").strip()
+                precio = float(producto.precio) if producto.precio is not None else None
                 oem_codigos = [
                     str(r.oem.codigo)
                     for r in producto.oem_productos.all()
@@ -860,6 +868,8 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     producto_id = ps.producto_id
                     codigo = str(getattr(ps.producto, "codigo", "") or ps.codigo or "").strip()
                     nombre = str(getattr(ps.producto, "nombre", "") or ps.nombre or "").strip()
+                    referencia = revision_ref or str(getattr(ps.producto, "referencia", "") or "").strip()
+                    precio = float(ps.producto.precio) if ps.producto.precio is not None else None
                     oem_codigos = [
                         str(r.oem.codigo)
                         for r in ps.producto.oem_productos.all()
@@ -869,6 +879,8 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                     producto_id = None
                     codigo = str(ps.codigo or "").strip()
                     nombre = str(ps.nombre or "").strip()
+                    referencia = revision_ref
+                    precio = None
                     oem_codigos = [
                         str(r.oem.codigo)
                         for r in ps.oem_relaciones.all()
@@ -881,6 +893,8 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 "producto_id": producto_id,
                 "codigo": codigo,
                 "nombre": nombre,
+                "referencia": referencia,
+                "precio": precio,
                 "oem_codigos": oem_codigos,
                 "cantidad": int(sol.cantidad or 0),
             })
