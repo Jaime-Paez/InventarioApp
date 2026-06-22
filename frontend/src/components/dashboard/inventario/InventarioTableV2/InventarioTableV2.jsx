@@ -117,6 +117,7 @@ const MONTH_ABBREVS = {
 const abbreviateBranchName = (name) => {
   if (!name) return name
   return name.trim()
+    .replace(/\s*\(matriz\)\s*$/i, '')
     .split(/\s+/)
     .filter(w => !BRANCH_STOP_WORDS.has(w.toLowerCase()))
     .map(w => {

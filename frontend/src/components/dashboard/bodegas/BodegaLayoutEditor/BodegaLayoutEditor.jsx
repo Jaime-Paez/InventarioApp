@@ -459,16 +459,19 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     if (!rect.width || !rect.height) return
 
     const isAlreadySelected = selectedIds.has(location.id)
-    const draggingIds = mode === 'move' && isAlreadySelected
-      ? [...selectedIds]
-      : [location.id]
+    const draggingIds = isAlreadySelected ? [...selectedIds] : [location.id]
 
     if (!isAlreadySelected) setSelectedIds(new Set([location.id]))
 
     const origins = {}
+    let bboxX = Infinity, bboxY = Infinity, bboxRight = -Infinity, bboxBottom = -Infinity
     locations.forEach((loc) => {
       if (draggingIds.includes(loc.id)) {
         origins[loc.id] = { x: loc.x, y: loc.y, ancho: loc.ancho, alto: loc.alto }
+        bboxX = Math.min(bboxX, loc.x)
+        bboxY = Math.min(bboxY, loc.y)
+        bboxRight  = Math.max(bboxRight,  loc.x + loc.ancho)
+        bboxBottom = Math.max(bboxBottom, loc.y + loc.alto)
       }
     })
 
@@ -480,6 +483,8 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
       ids: draggingIds,
       origins,
       allOriginsSnapshot,
+      // Bounding box of the selection at drag start (used for proportional group resize)
+      bbox: { x: bboxX, y: bboxY, w: bboxRight - bboxX, h: bboxBottom - bboxY },
       startX: event.clientX,
       startY: event.clientY,
       rect,
@@ -538,17 +543,39 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
       }
 
       if (dragState.mode === 'resize') {
-        const id = dragState.ids[0]
-        const o = dragState.origins[id]
-        const nextWidth  = Number(clamp(o.ancho + rawDeltaX, MIN_SIZE_METERS, safeW - o.x).toFixed(1))
-        const nextHeight = Number(clamp(o.alto  + rawDeltaY, MIN_SIZE_METERS, safeH - o.y).toFixed(1))
-        const candidate = { x: o.x, y: o.y, ancho: nextWidth, alto: nextHeight }
-        const locs = locationsRef.current
-        const staticLocs = locs.filter((l) => l.id !== id)
-        if (!staticLocs.some((s) => rectsOverlap(candidate, s))) {
-          onChangeRef.current(locs.map((loc) => loc.id === id ? { ...loc, ancho: nextWidth, alto: nextHeight } : loc))
+        // Scale the entire group proportionally around the bounding box captured at drag start.
+        // This keeps relative positions and gaps intact — the group shrinks/grows as one unit.
+        const { bbox } = dragState
+        const newBboxW = clamp(bbox.w + rawDeltaX, MIN_SIZE_METERS, safeW - bbox.x)
+        const newBboxH = clamp(bbox.h + rawDeltaY, MIN_SIZE_METERS, safeH - bbox.y)
+        const scaleX = bbox.w > 0 ? newBboxW / bbox.w : 1
+        const scaleY = bbox.h > 0 ? newBboxH / bbox.h : 1
+
+        const newGeom = {}
+        for (const id of dragState.ids) {
+          const o = dragState.origins[id]
+          newGeom[id] = {
+            x:     Number((bbox.x + (o.x - bbox.x) * scaleX).toFixed(1)),
+            y:     Number((bbox.y + (o.y - bbox.y) * scaleY).toFixed(1)),
+            ancho: Number(Math.max(o.ancho * scaleX, MIN_SIZE_METERS).toFixed(1)),
+            alto:  Number(Math.max(o.alto  * scaleY, MIN_SIZE_METERS).toFixed(1)),
+          }
         }
-        setResizeOverlay({ x: event.clientX, y: event.clientY, ancho: nextWidth, alto: nextHeight })
+
+        const locs = locationsRef.current
+        const draggedSet = new Set(dragState.ids)
+        const staticLocs = locs.filter((l) => !draggedSet.has(l.id))
+        const hasOverlap = dragState.ids.some((id) =>
+          staticLocs.some((s) => rectsOverlap(newGeom[id], s))
+        )
+
+        if (!hasOverlap) {
+          onChangeRef.current(locs.map((loc) =>
+            draggedSet.has(loc.id) ? { ...loc, ...newGeom[loc.id] } : loc
+          ))
+        }
+
+        setResizeOverlay({ x: event.clientX, y: event.clientY, ancho: newBboxW, alto: newBboxH })
       }
     }
 
