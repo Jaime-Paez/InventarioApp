@@ -2148,9 +2148,14 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const casaTimerRef = useRef(null)
   const productTimerRef = useRef(null)
+  const productSearchIdRef = useRef(0)
   const casaDropdownRef = useRef(null)
   const productDropdownRef = useRef(null)
   const isFirstOpenRef = useRef(true)
+  const detailsRef = useRef([])
+  detailsRef.current = details
+  const selectedCasaRef = useRef(null)
+  selectedCasaRef.current = selectedCasa
   const [casaPanelStyle, setCasaPanelStyle] = useState(null)
   const [productPanelStyle, setProductPanelStyle] = useState(null)
   const detailDraftQuantity = Number(detailDraft.cantidad)
@@ -2451,11 +2456,12 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const searchProducts = useCallback((term) => {
     if (!token) return
     setProductLoading(true)
+    const requestId = ++productSearchIdRef.current
     const params = new URLSearchParams()
     params.set('page_size', '10')
     params.set('modulo', 'solicitudes')
     if (term) params.set('search', term)
-    if (selectedCasa?.nombre) params.set('casa_comercial', selectedCasa.nombre)
+    if (selectedCasaRef.current?.nombre) params.set('casa_comercial', selectedCasaRef.current.nombre)
 
     authFetch(`${API_URL}/productos/listado/?${params.toString()}`, {}, token)
       .then(async (response) => {
@@ -2463,12 +2469,13 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
         return response.json()
       })
       .then((payload) => {
-        const selectedIds = new Set(details.filter((item) => item.producto?.id).map((item) => String(item.producto.id)))
+        if (requestId !== productSearchIdRef.current) return
+        const selectedIds = new Set(detailsRef.current.filter((item) => item.producto?.id).map((item) => String(item.producto.id)))
         setProductOptions(parseApiList(payload).filter((product) => !selectedIds.has(String(product.id))))
       })
-      .catch((error) => notifyError(error.message))
-      .finally(() => setProductLoading(false))
-  }, [details, notifyError, selectedCasa, token])
+      .catch((error) => { if (requestId === productSearchIdRef.current) notifyError(error.message) })
+      .finally(() => { if (requestId === productSearchIdRef.current) setProductLoading(false) })
+  }, [notifyError, token])
 
   useEffect(() => {
     if (!open || !showProductDropdown) return undefined
@@ -2930,7 +2937,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                                 className="create-user__dropdown-trigger"
                                 onClick={() => {
                                   setShowProductDropdown((prev) => !prev)
-                                  if (!showProductDropdown) { setProductQuery(''); searchProducts('') }
+                                  if (!showProductDropdown) { setProductQuery('') }
                                 }}
                               >
                                 <span>{detailDraft.producto ? String(detailDraft.producto.codigo || '').trim() : 'Selecciona un código'}</span>
@@ -3262,8 +3269,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const modalPositionRef = useRef(modalPosition)
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const productTimerRef = useRef(null)
+  const productSearchIdRef = useRef(0)
   const productDropdownRef = useRef(null)
   const isFirstOpenRef = useRef(true)
+  const detailsRef = useRef([])
+  detailsRef.current = details
   const [productPanelStyle, setProductPanelStyle] = useState(null)
 
   const selectedCasa = imp?.casa_comercial || null
@@ -3446,6 +3456,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const searchProducts = useCallback((term) => {
     if (!token) return
     setProductLoading(true)
+    const requestId = ++productSearchIdRef.current
     const params = new URLSearchParams()
     params.set('page_size', '10')
     params.set('modulo', 'solicitudes')
@@ -3457,12 +3468,13 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         return response.json()
       })
       .then((payload) => {
-        const selectedIds = new Set(details.filter((item) => item.producto?.id).map((item) => String(item.producto.id)))
+        if (requestId !== productSearchIdRef.current) return
+        const selectedIds = new Set(detailsRef.current.filter((item) => item.producto?.id).map((item) => String(item.producto.id)))
         setProductOptions(parseApiList(payload).filter((product) => !selectedIds.has(String(product.id))))
       })
-      .catch((error) => toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 }))
-      .finally(() => setProductLoading(false))
-  }, [details, selectedCasa, token])
+      .catch((error) => { if (requestId === productSearchIdRef.current) toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 }) })
+      .finally(() => { if (requestId === productSearchIdRef.current) setProductLoading(false) })
+  }, [selectedCasa, token])
 
   useEffect(() => {
     if (!open || !showProductDropdown) return undefined
@@ -3773,7 +3785,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                               className="create-user__dropdown-trigger"
                               onClick={() => {
                                 setShowProductDropdown((prev) => !prev)
-                                if (!showProductDropdown) { setProductQuery(''); searchProducts('') }
+                                if (!showProductDropdown) { setProductQuery('') }
                               }}
                             >
                               <span>{detailDraft.producto ? String(detailDraft.producto.codigo || '').trim() : 'Selecciona un código'}</span>
