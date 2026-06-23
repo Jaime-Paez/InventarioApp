@@ -11,6 +11,7 @@ import { Button } from 'primereact/button'
 import CreateProducto from '../CreateProducto/CreateProducto'
 import ProductoDetails from '../ProductoDetails/ProductoDetails'
 import '../../admin/UsersTable/UsersTable.css'
+import '../../inventario/InventarioTableV2/InventarioTableV2.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -28,6 +29,20 @@ import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/a
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
 const DEFAULT_IVA_RATE = 0.15
+const parseBranchMetadata = (payload) => {
+  if (!Array.isArray(payload)) return []
+  return payload
+    .map((item) => ({
+      id: Number(item?.id) || 0,
+      nombre: String(item?.nombre || '').trim(),
+      direccion: String(item?.direccion || '').trim(),
+    }))
+    .filter((branch) => branch.id > 0)
+}
+const normalizeNumber = (value) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
 const PRODUCT_FILTER_FIELDS = [
   'codigo',
   'nombre',
@@ -61,6 +76,27 @@ const isCheckboxSelection = (event) => {
   if (!target) return true
   if (target.type === 'checkbox') return true
   return Boolean(target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input'))
+}
+const BRANCH_STOP_WORDS = new Set(['de', 'del', 'la', 'el', 'las', 'los', 'y', 'e', 'a'])
+const MONTH_ABBREVS = {
+  enero: 'Ene', febrero: 'Feb', marzo: 'Mar', abril: 'Abr',
+  mayo: 'May', junio: 'Jun', julio: 'Jul', agosto: 'Ago',
+  septiembre: 'Sep', octubre: 'Oct', noviembre: 'Nov', diciembre: 'Dic',
+}
+const abbreviateBranchName = (name) => {
+  if (!name) return name
+  return name.trim()
+    .replace(/\s*\(matriz\)\s*$/i, '')
+    .split(/\s+/)
+    .filter((word) => !BRANCH_STOP_WORDS.has(word.toLowerCase()))
+    .map((word) => {
+      if (/^\d+$/.test(word)) return word
+      const monthAbbrev = MONTH_ABBREVS[word.toLowerCase()]
+      if (monthAbbrev) return monthAbbrev + '.'
+      if (word.length <= 4) return word
+      return word.slice(0, 4) + '.'
+    })
+    .join(' ')
 }
 
 function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex }) {
@@ -121,9 +157,10 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [isCodigoColumnFrozen, setIsCodigoColumnFrozen] = useState(false)
   const [oemHoverCard, setOemHoverCard] = useState(null)
+  const [branches, setBranches] = useState([])
 
   const normalizeList = useCallback(
-    (list) =>
+    (list, activeBranches = branches) =>
       list.map((product) => {
         const houses = Array.isArray(product?.casas_comerciales) ? product.casas_comerciales : []
         const oems = Array.isArray(product?.oem_productos) ? product.oem_productos : []
@@ -131,7 +168,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
           .map((item) => item?.oem?.codigo ?? item?.oem_codigo ?? item?.codigo)
           .filter(Boolean)
         const firstHouseName = houses.map((house) => house?.nombre).find(Boolean) ?? '-'
-        return {
+        const normalized = {
           ...product,
           casa_comercial_nombre: firstHouseName,
           casas_comerciales_nombres: houses.map((house) => house?.nombre).filter(Boolean).join(', '),
@@ -141,8 +178,13 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
           oem_codes: oemCodes.join(', '),
           oem_codes_list: oemCodes,
         }
+        const stockByBranch = product?.stock_por_sucursal || {}
+        activeBranches.forEach((branch) => {
+          normalized[`sucursal_${branch.id}`] = normalizeNumber(stockByBranch?.[String(branch.id)])
+        })
+        return normalized
       }),
-    [ivaRate]
+    [ivaRate, branches]
   )
 
   const buildProductsListUrl = useCallback((criteria, options = {}) => {
@@ -219,7 +261,12 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         const data = await res.json()
         const count = Array.isArray(data) ? data.length : Number(data?.count ?? 0)
         const list = Array.isArray(data) ? data : data?.results || []
-        const normalized = normalizeList(list)
+        let activeBranches = branches
+        if (!Array.isArray(data) && Object.prototype.hasOwnProperty.call(data, 'branches')) {
+          activeBranches = parseBranchMetadata(data.branches)
+          setBranches(activeBranches)
+        }
+        const normalized = normalizeList(list, activeBranches)
         setProducts(normalized)
         setTotalRecords(count)
         setPageFirst(Math.max(0, (page - 1) * rows))
@@ -253,6 +300,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         if (signal?.aborted || isCancelled()) throw createBulkCancelError()
       }
       const all = []
+      let activeBranches = branches
       let url = buildProductsListUrl(criteria, {
         page: 1,
         rows: 200,
@@ -281,6 +329,10 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         } else {
           const count = Number(data?.count ?? 0)
           if (count > 0) total = count
+          if (Object.prototype.hasOwnProperty.call(data, 'branches')) {
+            activeBranches = parseBranchMetadata(data.branches)
+            setBranches(activeBranches)
+          }
           const list = Array.isArray(data?.results) ? data.results : []
           all.push(...list)
           ensureNotCancelled()
@@ -302,9 +354,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         percent: 100,
       })
 
-      return normalizeList(all)
+      return normalizeList(all, activeBranches)
     },
-    [token, normalizeList, buildProductsListUrl, filters, sortField, sortOrder]
+    [token, normalizeList, buildProductsListUrl, filters, sortField, sortOrder, branches]
   )
 
   const refreshData = () => {
@@ -640,8 +692,14 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       { nombrevar: 'referencia', header: 'Referencia', filterPlaceholder: 'Buscar por referencia' },
       { nombrevar: 'oem_codes', header: 'OEM', filterPlaceholder: 'Buscar por OEM' },
       { nombrevar: 'casa_comercial_nombre', header: 'Casa comercial', filterPlaceholder: 'Buscar por casa comercial' },
+      ...branches.map((branch) => ({
+        nombrevar: `sucursal_${branch.id}`,
+        header: `Cantidad ${branch.nombre}`,
+        filterPlaceholder: `Buscar cantidad ${branch.nombre}`,
+        isBranchQuantity: true,
+      })),
     ],
-    []
+    [branches]
   )
   const visibleColumnsData = useMemo(
     () => (canSeeCost ? columnsData : columnsData.filter((column) => column.nombrevar !== 'costo_minimo')),
@@ -730,6 +788,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         case 'costo_minimo':
           return formatDecimal(row?.[field])
         default:
+          if (field.startsWith('sucursal_')) {
+            return normalizeNumber(row?.[field])
+          }
           return row?.[field] ?? ''
       }
     },
@@ -815,6 +876,17 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       </span>
     )
   }
+
+  const quantityBody = useCallback((rowData, field) => {
+    const qty = rowData?.[field]
+    const n = Number(qty)
+    const isEmpty = !Number.isFinite(n) || n === 0
+    return (
+      <span className={`inventario-v2__quantity${isEmpty ? ' inventario-v2__quantity--empty' : ''}`}>
+        {Number.isFinite(n) ? n : 0}
+      </span>
+    )
+  }, [])
 
   const casaComercialBodyTemplate = (rowData) => {
     const text = rowData?.casa_comercial_nombre ?? rowData?.casas_comerciales_nombres ?? '-'
@@ -1538,7 +1610,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
             let bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
             let className = 'column-max-min-width'
             const isCodigoColumn = column.nombrevar === 'codigo'
-            let columnHeader = column.header
+            let columnHeader = column.isBranchQuantity
+              ? abbreviateBranchName(String(column.header || '').replace(/^Cantidad\s+/i, ''))
+              : column.header
 
             switch (column.nombrevar) {
               case 'codigo':
@@ -1582,7 +1656,12 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                 bodyTemplate = (rowData) => oemBodyTemplate(rowData)
                 break
               default:
-                bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+                if (column.isBranchQuantity || column.nombrevar.startsWith('sucursal_')) {
+                  bodyTemplate = (rowData) => quantityBody(rowData, column.nombrevar)
+                  className = 'column-max-min-width--small inventario-v2__qty-col inventario-v2__branch-quantity-col'
+                } else {
+                  bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
+                }
                 break
             }
 

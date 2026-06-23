@@ -185,6 +185,27 @@ def get_allowed_sucursal_ids_for_modules(user, module_keys, action_key=None):
     return merged
 
 
+def get_any_permitted_sucursal_ids(user):
+    """
+    None = sin restriccion; set() = sin sucursales con permisos explicitos.
+
+    Devuelve las sucursales donde el usuario tiene cualquier permiso con alcance
+    por sucursal, sin importar modulo o accion.
+    """
+
+    if not user or not user.is_authenticated:
+        return set()
+
+    if is_app_admin(user):
+        return None
+
+    scoped_index = _get_scoped_branch_action_index(user)
+    branch_ids = set()
+    for module_actions in scoped_index.values():
+        branch_ids.update(_collect_action_scoped_branch_ids(module_actions))
+    return branch_ids
+
+
 def apply_sucursal_scope(queryset, user, module_key, field_lookup, action_key=None):
     allowed = get_allowed_sucursal_ids(user, module_key, action_key=action_key)
     if allowed is None:

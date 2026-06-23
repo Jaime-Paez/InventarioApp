@@ -1163,7 +1163,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                       autoFocus
                     />
                   ) : (
-                    <strong>{location.cantidad}</strong>
+                    <strong className="create-user__locations-total">{location.cantidad}</strong>
                   )}
                 </span>
                 <span className="create-user__locations-cell create-user__locations-cell--action">

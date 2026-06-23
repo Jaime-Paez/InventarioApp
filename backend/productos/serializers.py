@@ -314,9 +314,16 @@ class ProductoSerializer(serializers.ModelSerializer):
     oem_productos = OEMProductoSerializer(many=True, read_only=True)
     alternativas = serializers.SerializerMethodField()
     total_stock = serializers.SerializerMethodField()
+    stock_por_sucursal = serializers.SerializerMethodField()
 
     def get_total_stock(self, obj):
         return int(getattr(obj, "total_stock", None) or 0)
+
+    def get_stock_por_sucursal(self, obj):
+        stock_map = getattr(obj, "_stock_por_sucursal", None)
+        if not isinstance(stock_map, dict):
+            return {}
+        return {str(branch_id): int(quantity or 0) for branch_id, quantity in stock_map.items()}
 
     class Meta:
         model = Producto
@@ -329,6 +336,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             "costo_minimo",
             "precio",
             "total_stock",
+            "stock_por_sucursal",
             "casas_comerciales",
             "casas_comerciales_ids",
             "oem_productos",

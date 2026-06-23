@@ -1620,6 +1620,11 @@ button.create-user__locations-row {
 .create-user__locations-cell--editable:hover {
   background: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
+
+.create-user__locations-total {
+  text-decoration: underline;
+}
+
 .create-user__locations-cell--editable input,
 .create-user__locations-cell--editable select {
   width: 100%;

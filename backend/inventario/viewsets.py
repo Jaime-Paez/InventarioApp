@@ -36,6 +36,7 @@ from usuarios.sucursal_scope import (
     ensure_sucursal_allowed_for_modules,
     get_allowed_sucursal_ids_for_modules,
     get_allowed_sucursal_ids,
+    get_any_permitted_sucursal_ids,
     get_readable_sucursal_ids,
 )
 
@@ -892,11 +893,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="sucursales-tabla")
     def sucursales_tabla(self, request, *args, **kwargs):
-        branches = (
-            Sucursal.objects.all()
-            .order_by("-id")
-            .values("id", "nombre", "direccion")
-        )
+        branches = Sucursal.objects.all()
+        allowed_branch_ids = get_any_permitted_sucursal_ids(request.user)
+        if allowed_branch_ids is not None:
+            if not allowed_branch_ids:
+                return Response([])
+            branches = branches.filter(id__in=sorted(allowed_branch_ids))
+        branches = branches.order_by("-id").values("id", "nombre", "direccion")
         payload = [
             {
                 "id": int(branch.get("id") or 0),
@@ -910,13 +913,26 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="tabla")
     def tabla(self, request, *args, **kwargs):
-        branches = list(Sucursal.objects.all().order_by("-id"))
+        branches_qs = Sucursal.objects.all()
+        scoped_branch_ids = get_any_permitted_sucursal_ids(request.user)
+        if scoped_branch_ids is not None:
+            if not scoped_branch_ids:
+                page = self.paginate_queryset([])
+                if page is not None:
+                    response = self.get_paginated_response([])
+                    response.data["branches"] = []
+                    return response
+                return Response({"results": [], "count": 0, "branches": []})
+            branches_qs = branches_qs.filter(id__in=sorted(scoped_branch_ids))
+        branches = list(branches_qs.order_by("-id"))
         allowed_branch_ids = [int(branch.id) for branch in branches]
         if not allowed_branch_ids:
             page = self.paginate_queryset([])
             if page is not None:
-                return self.get_paginated_response([])
-            return Response([])
+                response = self.get_paginated_response([])
+                response.data["branches"] = []
+                return response
+            return Response({"results": [], "count": 0, "branches": []})
 
         column_filters = parse_column_filters(request.query_params.get("column_filters"))
         product_queryset = self._apply_product_filters_for_table(

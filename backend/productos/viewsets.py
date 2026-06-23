@@ -20,8 +20,9 @@ from usuarios.permissions import (
     ProductosModulePermission,
 )
 from usuarios.sucursal_scope import get_allowed_sucursal_ids
+from usuarios.sucursal_scope import get_any_permitted_sucursal_ids
 
-from inventario.models import Inventario
+from inventario.models import Inventario, Sucursal
 
 from .models import OEM, OEMProducto, Producto, ProductoAlterno
 from .serializers import (
@@ -101,6 +102,79 @@ class ProductoViewSet(viewsets.ModelViewSet):
         ):
             return [IsAuthenticated()]
         return super().get_permissions()
+
+    def _get_table_branches(self):
+        branches = Sucursal.objects.all()
+        allowed_branch_ids = get_any_permitted_sucursal_ids(self.request.user)
+        if allowed_branch_ids is not None:
+            if not allowed_branch_ids:
+                return []
+            branches = branches.filter(id__in=sorted(allowed_branch_ids))
+        return list(branches.order_by("-id"))
+
+    def _serialize_table_branches(self, branches):
+        return [
+            {
+                "id": int(branch.id or 0),
+                "nombre": str(branch.nombre or "").strip(),
+                "direccion": str(getattr(branch, "direccion", "") or "").strip(),
+            }
+            for branch in branches
+            if int(branch.id or 0) > 0
+        ]
+
+    def _attach_branch_stock(self, products, branches):
+        products = list(products)
+        branch_ids = [int(branch.id) for branch in branches if int(branch.id or 0) > 0]
+        product_ids = [int(product.id) for product in products if int(product.id or 0) > 0]
+        empty_stock = {branch_id: 0 for branch_id in branch_ids}
+
+        for product in products:
+            product._stock_por_sucursal = dict(empty_stock)
+
+        if not product_ids or not branch_ids:
+            return products
+
+        stock_rows = (
+            Inventario.objects.filter(
+                producto_id__in=product_ids,
+                subdivision__division__bodega__sucursal_id__in=branch_ids,
+            )
+            .values("producto_id", "subdivision__division__bodega__sucursal_id")
+            .annotate(total=Coalesce(Sum("cantidad"), Value(0), output_field=IntegerField()))
+        )
+        stock_by_product = {product_id: dict(empty_stock) for product_id in product_ids}
+        for row in stock_rows:
+            product_id = int(row.get("producto_id") or 0)
+            branch_id = int(row.get("subdivision__division__bodega__sucursal_id") or 0)
+            if product_id in stock_by_product and branch_id in empty_stock:
+                stock_by_product[product_id][branch_id] = int(row.get("total") or 0)
+
+        for product in products:
+            product._stock_por_sucursal = stock_by_product.get(int(product.id), dict(empty_stock))
+        return products
+
+    def list(self, request, *args, **kwargs):
+        branches = self._get_table_branches()
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            page = self._attach_branch_stock(page, branches)
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data["branches"] = self._serialize_table_branches(branches)
+            return response
+
+        products = self._attach_branch_stock(queryset, branches)
+        serializer = self.get_serializer(products, many=True)
+        return Response(
+            {
+                "results": serializer.data,
+                "count": len(serializer.data),
+                "branches": self._serialize_table_branches(branches),
+            }
+        )
 
     def get_queryset(self):
         queryset = super().get_queryset()
