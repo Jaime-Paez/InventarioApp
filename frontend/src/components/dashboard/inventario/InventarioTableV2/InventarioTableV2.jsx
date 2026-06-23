@@ -923,7 +923,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     const n = Number(qty)
     const isEmpty = !Number.isFinite(n) || n === 0
     return (
-      <span className={`inventario-v2__quantity${isEmpty ? ' inventario-v2__quantity--empty' : ''}`}>
+      <span
+        className={`inventario-v2__quantity${
+          isEmpty ? ' inventario-v2__quantity--empty' : ' inventario-v2__quantity--has-value'
+        }`}
+      >
         {Number.isFinite(n) ? n : 0}
       </span>
     )
