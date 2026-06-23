@@ -105,7 +105,7 @@
   font-weight: 700;
 }
 
-.inventario-v2__branch-quantity-col .inventario-v2__quantity--has-value {
+.inventario-v2__quantity--scoped {
   font-weight: 700;
   text-decoration: underline;
 }

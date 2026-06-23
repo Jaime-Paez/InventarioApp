@@ -918,6 +918,12 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   }, [hideOemHoverCard])
 
   // ---------------- quantityBody helper ----------------
+  const hasAnyInventarioBranchPermission = useMemo(() => {
+    if (isAdminByRole) return false
+    const scopes = user?.sucursales_por_modulo
+    return Array.isArray(scopes) && scopes.length > 0
+  }, [isAdminByRole, user?.sucursales_por_modulo])
+
   const quantityBody = useCallback((rowData, field) => {
     const qty = rowData?.[field]
     const n = Number(qty)
@@ -926,12 +932,12 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       <span
         className={`inventario-v2__quantity${
           isEmpty ? ' inventario-v2__quantity--empty' : ' inventario-v2__quantity--has-value'
-        }`}
+        }${hasAnyInventarioBranchPermission && !isEmpty ? ' inventario-v2__quantity--scoped' : ''}`}
       >
         {Number.isFinite(n) ? n : 0}
       </span>
     )
-  }, [])
+  }, [hasAnyInventarioBranchPermission])
 
   const locationBody = useCallback(
     (rowData, branch) => {
