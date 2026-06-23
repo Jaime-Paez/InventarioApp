@@ -22,6 +22,7 @@ const getPortalRoot = () => document.querySelector('.dashboard-shell') || getPor
 
 const STATUS_CONFIG = {
   borrador: { label: 'Sugerencia', empty: 'No hay importaciones en sugerencia.' },
+  cotizacion: { label: 'Verificar', empty: 'No hay importaciones en verificación.' },
   en_camino: { label: 'En camino', empty: 'No hay importaciones en camino.' },
   importada: { label: 'Importadas', empty: 'No hay importaciones importadas.' },
 }
@@ -31,6 +32,7 @@ const IMP_HOVER_MARGIN = 12
 
 const STATUS_BADGE = {
   borrador: { label: 'Sugerencia', color: '#64748b', bg: 'rgba(100,116,139,0.1)' },
+  cotizacion: { label: 'Verificar', color: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
   en_camino: { label: 'En camino', color: '#d97706', bg: 'rgba(217,119,6,0.1)' },
   importada: { label: 'Importada', color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
 }
@@ -3548,6 +3550,25 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
   }
 
+  const handlePedirCotizacion = async () => {
+    setImportarSubmitting(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/pedir-cotizacion/`,
+        { method: 'POST' },
+        token
+      )
+      if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo solicitar la cotización.'))
+      const payload = await response.json()
+      onSaved?.(payload)
+      onClose?.()
+    } catch (error) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 })
+    } finally {
+      setImportarSubmitting(false)
+    }
+  }
+
   const handleImportar = async () => {
     const factura = facturaInput.trim()
     if (!factura) return
@@ -3698,7 +3719,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         >
           <header className="create-user__header" onMouseDown={handleModalMouseDown}>
             <div className="create-user__header-text">
-              <h3>Sugerencia: {imp.codigo}</h3>
+              <h3>{imp.estado === 'cotizacion' ? 'Verificar' : 'Sugerencia'}: {imp.codigo}</h3>
             </div>
             <div className="create-user__header-actions">
               <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} disabled={submitting} aria-label="Cerrar">
@@ -3932,7 +3953,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={submitting || importarSubmitting || deleteSubmitting}>
                   Cancelar
                 </button>
-                {imp?.estado === 'borrador' && canDelete && (
+                {(imp?.estado === 'borrador' || imp?.estado === 'cotizacion') && canDelete && (
                   <button
                     type="button"
                     className="create-user__action user-details__delete"
@@ -3944,7 +3965,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 )}
               </div>
               <div className="user-details__footer-right">
-                {canImportar && (
+                {canImportar && imp?.estado === 'borrador' && (
+                  <button
+                    type="button"
+                    className="create-user__action imp-cotizacion-btn"
+                    disabled={submitting || importarSubmitting || deleteSubmitting}
+                    onClick={handlePedirCotizacion}
+                  >
+                    {importarSubmitting ? 'Enviando...' : 'Pedir cotización'}
+                  </button>
+                )}
+                {canImportar && imp?.estado === 'cotizacion' && (
                   <button
                     type="button"
                     className="create-user__action imp-importar-btn"
@@ -3954,7 +3985,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     Importar
                   </button>
                 )}
-                {canEdit && (
+                {canEdit && imp?.estado === 'borrador' && (
                   <button type="submit" className="create-user__action create-user__action--primary" disabled={submitting || importarSubmitting || deleteSubmitting}>
                     {submitting ? 'Guardando...' : 'Guardar cambios'}
                   </button>
@@ -4037,8 +4068,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 <Info size={18} />
               </div>
               <div className="user-details__confirm-content">
-                <h4>Eliminar sugerencia</h4>
-                <p>¿Estás seguro que quieres eliminar la sugerencia <strong>{imp?.codigo}</strong>? Esta acción no se puede deshacer.</p>
+                <h4>Eliminar {imp?.estado === 'cotizacion' ? 'cotización' : 'sugerencia'}</h4>
+                <p>¿Estás seguro que quieres eliminar {imp?.estado === 'cotizacion' ? 'la cotización' : 'la sugerencia'} <strong>{imp?.codigo}</strong>? Esta acción no se puede deshacer.</p>
               </div>
               <div className="user-details__confirm-actions">
                 <button
@@ -4399,7 +4430,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const handleRowDoubleClick = useCallback((event) => {
     const rowData = event?.data
     if (!rowData) return
-    if (rowData.estado === 'borrador') {
+    if (rowData.estado === 'borrador' || rowData.estado === 'cotizacion') {
       setEditImp(rowData)
       setShowEditImp(true)
     } else {
@@ -4510,6 +4541,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
             <div className="transfer-issues-page__type-filter" role="group" aria-label="Filtro de estado">
               {[
                 { key: 'borrador', label: 'Sugerencias' },
+                { key: 'cotizacion', label: 'Verificar' },
                 { key: 'en_camino', label: 'En camino' },
                 { key: 'importada', label: 'Importadas' },
               ].map((option) => (

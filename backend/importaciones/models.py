@@ -8,10 +8,12 @@ from productos.models import Producto
 
 class Importacion(models.Model):
     ESTADO_BORRADOR = "borrador"
+    ESTADO_COTIZACION = "cotizacion"
     ESTADO_EN_CAMINO = "en_camino"
     ESTADO_IMPORTADA = "importada"
     ESTADO_CHOICES = [
         (ESTADO_BORRADOR, "Borrador"),
+        (ESTADO_COTIZACION, "Cotización"),
         (ESTADO_EN_CAMINO, "En camino"),
         (ESTADO_IMPORTADA, "Importada"),
     ]

@@ -74,8 +74,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         return queryset
 
     @transaction.atomic
-    @action(detail=True, methods=["post"], url_path="importar")
-    def importar(self, request, pk=None):
+    @action(detail=True, methods=["post"], url_path="pedir-cotizacion")
+    def pedir_cotizacion(self, request, pk=None):
         if not self._check_specific_importacion_permission(request, "puede_importar"):
             return Response(
                 {"detail": "No tienes permiso para ejecutar esta acción."},
@@ -84,7 +84,26 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         if instance.estado != Importacion.ESTADO_BORRADOR:
             return Response(
-                {"detail": "Solo se puede importar desde estado borrador."},
+                {"detail": "Solo se puede pedir cotización desde estado borrador."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        instance.estado = Importacion.ESTADO_COTIZACION
+        instance.save(update_fields=["estado"])
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    @transaction.atomic
+    @action(detail=True, methods=["post"], url_path="importar")
+    def importar(self, request, pk=None):
+        if not self._check_specific_importacion_permission(request, "puede_importar"):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta acción."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        instance = self.get_object()
+        if instance.estado != Importacion.ESTADO_COTIZACION:
+            return Response(
+                {"detail": "Solo se puede importar desde estado cotización."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         numero_factura = str(request.data.get("numero_factura") or "").strip()
@@ -620,9 +639,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         )
 
     def perform_destroy(self, instance):
-        if instance.estado != Importacion.ESTADO_BORRADOR:
+        if instance.estado not in (Importacion.ESTADO_BORRADOR, Importacion.ESTADO_COTIZACION):
             from rest_framework.exceptions import ValidationError
-            raise ValidationError("Solo se pueden eliminar importaciones en estado borrador.")
+            raise ValidationError("Solo se pueden eliminar importaciones en estado borrador o cotización.")
         instance.delete()
 
     @transaction.atomic
