@@ -1662,7 +1662,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
               default:
                 if (column.isBranchQuantity || column.nombrevar.startsWith('sucursal_')) {
                   bodyTemplate = (rowData) => quantityBody(rowData, column.nombrevar)
-                  className = 'column-max-min-width--small inventario-v2__qty-col inventario-v2__branch-quantity-col'
+                  className = `column-max-min-width--small inventario-v2__qty-col${
+                    isAdminByRole ? '' : ' inventario-v2__branch-quantity-col'
+                  }`
                 } else {
                   bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
                 }
