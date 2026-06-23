@@ -344,6 +344,14 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           Object.prototype.hasOwnProperty.call(data, 'branches')
         ) {
           setBranches(parseBranchMetadata(data.branches))
+          if (Object.prototype.hasOwnProperty.call(data, 'permitted_branch_ids')) {
+            const pbi = data.permitted_branch_ids
+            if (pbi === null || pbi === undefined) {
+              setPermittedBranchIds(null)
+            } else if (Array.isArray(pbi)) {
+              setPermittedBranchIds(pbi.length > 0 ? new Set(pbi.map(String)) : new Set())
+            }
+          }
         }
 
         const count = Array.isArray(data) ? data.length : Number(data?.count ?? 0)
@@ -918,26 +926,28 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   }, [hideOemHoverCard])
 
   // ---------------- quantityBody helper ----------------
-  const hasAnyInventarioBranchPermission = useMemo(() => {
-    if (isAdminByRole) return false
-    const scopes = user?.sucursales_por_modulo
-    return Array.isArray(scopes) && scopes.length > 0
-  }, [isAdminByRole, user?.sucursales_por_modulo])
+  const [permittedBranchIds, setPermittedBranchIds] = useState(null)
 
-  const quantityBody = useCallback((rowData, field) => {
+  const quantityBody = useCallback((rowData, field, branchId = null) => {
     const qty = rowData?.[field]
     const n = Number(qty)
     const isEmpty = !Number.isFinite(n) || n === 0
+    const isUserScoped = permittedBranchIds instanceof Set
+    const isScoped = isUserScoped && (
+      branchId != null
+        ? permittedBranchIds.has(String(branchId))
+        : true
+    )
     return (
       <span
         className={`inventario-v2__quantity${
           isEmpty ? ' inventario-v2__quantity--empty' : ' inventario-v2__quantity--has-value'
-        }${hasAnyInventarioBranchPermission && !isEmpty ? ' inventario-v2__quantity--scoped' : ''}`}
+        }${isScoped ? ' inventario-v2__quantity--scoped' : ''}`}
       >
         {Number.isFinite(n) ? n : 0}
       </span>
     )
-  }, [hasAnyInventarioBranchPermission])
+  }, [permittedBranchIds])
 
   const locationBody = useCallback(
     (rowData, branch) => {
@@ -1223,17 +1233,23 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   )
   const branchColumnsData = useMemo(
     () =>
-      branches.flatMap((branch) => [
-        {
-          nombrevar: `sucursal_${branch.id}`,
-          header: `Cantidad ${branch.nombre}`,
-        },
-        {
-          nombrevar: `ubicacion_sucursal_${branch.id}`,
-          header: `Ubicacion ${branch.nombre}`,
-        },
-      ]),
-    [branches]
+      branches.flatMap((branch) => {
+        const isLocationPermitted = !(permittedBranchIds instanceof Set) || permittedBranchIds.has(String(branch.id))
+        const cols = [
+          {
+            nombrevar: `sucursal_${branch.id}`,
+            header: `Cantidad ${branch.nombre}`,
+          },
+        ]
+        if (isLocationPermitted) {
+          cols.push({
+            nombrevar: `ubicacion_sucursal_${branch.id}`,
+            header: `Ubicacion ${branch.nombre}`,
+          })
+        }
+        return cols
+      }),
+    [branches, permittedBranchIds]
   )
 
   const [selectedColumns, setSelectedColumns] = useState(() => visibleColumnsData)
@@ -2188,7 +2204,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                   reorderable
                   className="column-max-min-width--small inventario-v2__qty-col inventario-v2__branch-quantity-col"
                   style={{ minWidth: '32px' }}
-                  body={(rowData) => quantityBody(rowData, quantityField)}
+                  body={(rowData) => quantityBody(rowData, quantityField, branch.id)}
                 />
               )
             }

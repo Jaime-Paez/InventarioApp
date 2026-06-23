@@ -808,7 +808,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         return payload_by_product
 
-    def _serialize_inventory_table_rows(self, rows, branches):
+    def _serialize_inventory_table_rows(self, rows, branches, location_branches=None):
+        if location_branches is None:
+            location_branches = branches
         rows_list = list(rows)
         product_ids = []
         for row in rows_list:
@@ -818,7 +820,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         branch_location_payloads = self._build_branch_location_payloads(
             product_ids,
-            [int(branch.id or 0) for branch in branches],
+            [int(branch.id or 0) for branch in location_branches],
         )
 
         products = (
@@ -913,32 +915,43 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="tabla")
     def tabla(self, request, *args, **kwargs):
-        branches_qs = Sucursal.objects.all()
+        # All branches — quantities are shown for every branch regardless of permissions
+        all_branches = list(Sucursal.objects.all().order_by("-id"))
+        all_branch_ids = [int(branch.id) for branch in all_branches]
+
+        if not all_branch_ids:
+            page = self.paginate_queryset([])
+            if page is not None:
+                response = self.get_paginated_response([])
+                response.data["branches"] = []
+                response.data["permitted_branch_ids"] = None
+                return response
+            return Response({"results": [], "count": 0, "branches": [], "permitted_branch_ids": None})
+
+        # Permitted branches — only these branches expose location data
         scoped_branch_ids = get_any_permitted_sucursal_ids(request.user)
-        if scoped_branch_ids is not None:
+        if scoped_branch_ids is None:
+            permitted_branches = all_branches
+            permitted_branch_ids_response = None  # None means "all branches"
+        else:
             if not scoped_branch_ids:
                 page = self.paginate_queryset([])
                 if page is not None:
                     response = self.get_paginated_response([])
                     response.data["branches"] = []
+                    response.data["permitted_branch_ids"] = []
                     return response
-                return Response({"results": [], "count": 0, "branches": []})
-            branches_qs = branches_qs.filter(id__in=sorted(scoped_branch_ids))
-        branches = list(branches_qs.order_by("-id"))
-        allowed_branch_ids = [int(branch.id) for branch in branches]
-        if not allowed_branch_ids:
-            page = self.paginate_queryset([])
-            if page is not None:
-                response = self.get_paginated_response([])
-                response.data["branches"] = []
-                return response
-            return Response({"results": [], "count": 0, "branches": []})
+                return Response({"results": [], "count": 0, "branches": [], "permitted_branch_ids": []})
+            permitted_branches = [b for b in all_branches if int(b.id) in scoped_branch_ids]
+            permitted_branch_ids_response = [int(b.id) for b in permitted_branches]
+
+        permitted_branch_ids_for_filter = [int(b.id) for b in permitted_branches]
 
         column_filters = parse_column_filters(request.query_params.get("column_filters"))
         product_queryset = self._apply_product_filters_for_table(
             Producto.objects.all(),
             column_filters=column_filters,
-            allowed_branch_ids=allowed_branch_ids,
+            allowed_branch_ids=permitted_branch_ids_for_filter,
         )
 
         product_ids = product_queryset.values("id").distinct()
@@ -958,7 +971,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 Sum(
                     "inventarios__cantidad",
                     filter=Q(
-                        inventarios__subdivision__division__bodega__sucursal_id__in=allowed_branch_ids
+                        inventarios__subdivision__division__bodega__sucursal_id__in=all_branch_ids
                     ),
                 ),
                 Value(0),
@@ -966,7 +979,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             ),
             )
         )
-        for branch in branches:
+        for branch in all_branches:
             field_name = f"sucursal_{branch.id}"
             aggregated_queryset = aggregated_queryset.annotate(
                 **{
@@ -984,7 +997,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             )
 
         ordering_param = (request.query_params.get("ordering") or "").strip()
-        for branch in branches:
+        for branch in all_branches:
             ub_field = f"ubicacion_sucursal_{branch.id}"
             sort_field = f"ubicacion_sort_{branch.id}"
             if ub_field in ordering_param:
@@ -1029,7 +1042,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             "precio_con_iva": {"lookup": "precio", "type": "number"},
             "total_general": {"lookup": "total_general", "type": "number"},
         }
-        for branch in branches:
+        for branch in all_branches:
             field_name = f"sucursal_{branch.id}"
             field_map[field_name] = {"lookup": field_name, "type": "number"}
 
@@ -1039,23 +1052,25 @@ class InventarioViewSet(viewsets.ModelViewSet):
             field_map,
         )
         aggregated_queryset = aggregated_queryset.order_by(
-            *self._resolve_table_ordering(branches)
+            *self._resolve_table_ordering(all_branches)
         )
 
-        branch_metadata = self._serialize_branch_list_for_table(branches)
+        branch_metadata = self._serialize_branch_list_for_table(all_branches)
 
         page = self.paginate_queryset(aggregated_queryset)
         if page is not None:
-            serialized = self._serialize_inventory_table_rows(page, branches)
+            serialized = self._serialize_inventory_table_rows(page, all_branches, location_branches=permitted_branches)
             response = self.get_paginated_response(serialized)
             response.data["branches"] = branch_metadata
+            response.data["permitted_branch_ids"] = permitted_branch_ids_response
             return response
 
-        serialized = self._serialize_inventory_table_rows(aggregated_queryset, branches)
+        serialized = self._serialize_inventory_table_rows(aggregated_queryset, all_branches, location_branches=permitted_branches)
         payload = {
             "results": serialized,
             "count": len(serialized),
             "branches": branch_metadata,
+            "permitted_branch_ids": permitted_branch_ids_response,
         }
         return Response(payload)
 
