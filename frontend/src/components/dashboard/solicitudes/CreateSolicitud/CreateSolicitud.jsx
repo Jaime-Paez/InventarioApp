@@ -1139,6 +1139,12 @@ function CreateSolicitud({
     setProductoDraft((prev) => ({
       ...prev,
       productoId: shouldDetachSelectedProduct ? '' : prev.productoId,
+      referencia: shouldDetachSelectedProduct && name !== 'referencia' ? '' : prev.referencia,
+      codigo: shouldDetachSelectedProduct && name !== 'codigo' ? '' : prev.codigo,
+      nombre: shouldDetachSelectedProduct && name !== 'nombre' ? '' : prev.nombre,
+      oems: shouldDetachSelectedProduct && name !== 'oems' ? '' : prev.oems,
+      casaComercialId: shouldDetachSelectedProduct ? '' : prev.casaComercialId,
+      casaComercialNombre: shouldDetachSelectedProduct ? '' : prev.casaComercialNombre,
       [name]: normalizedValue,
     }))
   }

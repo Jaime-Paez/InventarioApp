@@ -522,7 +522,7 @@
 }
 
 .importaciones-aceptados__table .create-user__locations-row {
-  grid-template-columns: 38px minmax(80px, 0.6fr) minmax(90px, 0.7fr) minmax(150px, 1.5fr) minmax(100px, 0.9fr) minmax(50px, 0.3fr);
+  grid-template-columns: 38px minmax(80px, 0.6fr) minmax(90px, 0.7fr) minmax(150px, 1.5fr) minmax(90px, 0.7fr) minmax(70px, 0.5fr) minmax(100px, 0.9fr) minmax(50px, 0.3fr);
   align-items: center;
 }
 
@@ -544,12 +544,12 @@
   box-shadow: none;
 }
 
-.importaciones-aceptados__table .create-user__locations-row > span:not(:first-child):not(:nth-child(6)) {
+.importaciones-aceptados__table .create-user__locations-row > span:not(:first-child):not(:nth-child(8)) {
   justify-content: flex-start;
   text-align: left;
 }
 
-.imp-aceptados-popup__body .create-user__locations-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty) > span:not(:first-child):not(:nth-child(6)) {
+.imp-aceptados-popup__body .create-user__locations-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty) > span:not(:first-child):not(:nth-child(8)) {
   overflow: hidden;
   min-width: 0;
   justify-content: flex-start;

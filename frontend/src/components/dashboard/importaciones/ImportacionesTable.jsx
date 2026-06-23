@@ -2649,7 +2649,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
             next.push({
               _key: pid,
               _solId: item.solicitud_id,
-              producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', ') },
+              producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', '), precio: item.precio ?? null, referencia: item.referencia || '' },
               cantidad: String(item.cantidad || ''),
             })
           }
@@ -2668,6 +2668,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
               codigo: item.codigo || '',
               nombre: item.nombre || '',
               oem: (item.oem_codigos || []).join(', '),
+              referencia: item.referencia || '',
               cantidad: String(item.cantidad || ''),
             })
           }
@@ -3048,7 +3049,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           </div>
                         ) : details.map((item) => {
                           const sinCatalogo = !item.producto?.id
-                          const codigo = item.producto?.codigo || item.codigo || '—'
+                          const codigo = item.producto?.codigo || item.codigo || ''
                           const nombre = item.producto?.nombre || item.nombre || ''
                           const oem = String(item.producto?.oem || item.oem || item.producto?.referencia || '').trim() || '-'
                           const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
@@ -3056,8 +3057,9 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           return (
                             <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
                               <span>
-                                {codigo}
-                                {sinCatalogo && <span className="importaciones-aceptados__no-catalogo-badge" style={{ marginLeft: 6 }}>Sin catálogo</span>}
+                                {sinCatalogo
+                                  ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
+                                  : codigo}
                               </span>
                               <span title={nombre}>
                                 <span className="create-salida__product-name-text">{nombre}</span>
@@ -3176,6 +3178,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   <span>Solicitud</span>
                   <span>Código JP</span>
                   <span>Nombre</span>
+                  <span>Referencia</span>
+                  <span>Precio</span>
                   <span>OEMs</span>
                   <span>Cant.</span>
                 </div>
@@ -3192,6 +3196,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   const noProducto = !item.producto_id
                   const isSelected = aceptadosSelected.has(item.solicitud_id)
                   const oemText = (item.oem_codigos || []).join(', ') || '-'
+                  const precioText = item.precio != null ? `$${Number(item.precio).toFixed(2)}` : '-'
                   return (
                     <div
                       key={item.solicitud_id}
@@ -3212,6 +3217,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                         </span>
                       </span>
                       <span title={item.nombre}><span className="imp-cell-text">{item.nombre || '-'}</span></span>
+                      <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{item.referencia || '-'}</span></span>
+                      <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{precioText}</span></span>
                       <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{oemText}</span></span>
                       <span>{item.cantidad ?? '-'}</span>
                     </div>
@@ -3648,7 +3655,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
             next.push({
               _key: pid,
               _solId: item.solicitud_id,
-              producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', ') },
+              producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', '), precio: item.precio ?? null, referencia: item.referencia || '' },
               cantidad: String(item.cantidad || ''),
             })
           }
@@ -3663,7 +3670,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
             next.push({
               _key: solKey, _solId: item.solicitud_id, producto: null,
               codigo: item.codigo || '', nombre: item.nombre || '',
-              oem: (item.oem_codigos || []).join(', '), cantidad: String(item.cantidad || ''),
+              oem: (item.oem_codigos || []).join(', '), referencia: item.referencia || '', cantidad: String(item.cantidad || ''),
             })
           }
         }
@@ -3878,7 +3885,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         <div className="create-user__locations-row create-user__locations-row--empty"><span>Sin productos agregados.</span></div>
                       ) : details.map((item) => {
                         const sinCatalogo = !item.producto?.id
-                        const codigo = item.producto?.codigo || item.codigo || '—'
+                        const codigo = item.producto?.codigo || item.codigo || ''
                         const nombre = item.producto?.nombre || item.nombre || ''
                         const oem = String(item.producto?.oem || item.oem || item.producto?.referencia || '').trim() || '-'
                         const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
@@ -3886,8 +3893,9 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         return (
                           <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
                             <span>
-                              {codigo}
-                              {sinCatalogo && <span className="importaciones-aceptados__no-catalogo-badge" style={{ marginLeft: 6 }}>Sin catálogo</span>}
+                              {sinCatalogo
+                                ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
+                                : codigo}
                             </span>
                             <span title={nombre}><span className="create-salida__product-name-text">{nombre}</span></span>
                             <span>{oem}</span>
@@ -4083,7 +4091,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <span>
                       <input type="checkbox" checked={allSelectableSelected} disabled={filteredAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
                     </span>
-                    <span>Solicitud</span><span>Código JP</span><span>Nombre</span><span>OEMs</span><span>Cant.</span>
+                    <span>Solicitud</span><span>Código JP</span><span>Nombre</span><span>Referencia</span><span>Precio</span><span>OEMs</span><span>Cant.</span>
                   </div>
                   {aceptadosLoading && (
                     <div className="create-user__locations-row create-user__locations-row--empty"><span>Cargando...</span></div>
@@ -4097,6 +4105,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     const noProducto = !item.producto_id
                     const isSelected = aceptadosSelected.has(item.solicitud_id)
                     const oemText = (item.oem_codigos || []).join(', ') || '-'
+                    const precioText = item.precio != null ? `$${Number(item.precio).toFixed(2)}` : '-'
                     return (
                       <div
                         key={item.solicitud_id}
@@ -4117,6 +4126,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                           </span>
                         </span>
                         <span title={item.nombre}><span className="imp-cell-text">{item.nombre || '-'}</span></span>
+                        <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{item.referencia || '-'}</span></span>
+                        <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{precioText}</span></span>
                         <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{oemText}</span></span>
                         <span>{item.cantidad ?? '-'}</span>
                       </div>
