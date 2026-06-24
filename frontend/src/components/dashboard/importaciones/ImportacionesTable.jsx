@@ -32,7 +32,7 @@ const IMP_HOVER_MARGIN = 12
 
 const STATUS_BADGE = {
   borrador: { label: 'Sugerencia', color: '#64748b', bg: 'rgba(100,116,139,0.1)' },
-  cotizacion: { label: 'Verificar', color: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
+  cotizacion: { label: 'Verificar', color: '#92640c', bg: 'rgba(234,179,8,0.22)' },
   en_camino: { label: 'En camino', color: '#d97706', bg: 'rgba(217,119,6,0.1)' },
   importada: { label: 'Importada', color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
 }
@@ -3218,8 +3218,9 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                       </span>
                       <span>
                         <span className="imp-cell-text">
-                          {item.codigo || '-'}
-                          {noProducto && <span className="importaciones-aceptados__no-catalogo-badge" title="Sin producto en catálogo">Sin catálogo</span>}
+                          {noProducto
+                            ? <span className="importaciones-aceptados__no-catalogo-badge" title="Sin producto en catálogo">Sin catálogo</span>
+                            : (item.codigo || '-')}
                         </span>
                       </span>
                       <span title={item.nombre}><span className="imp-cell-text">{item.nombre || '-'}</span></span>
@@ -4321,8 +4322,9 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         </span>
                         <span>
                           <span className="imp-cell-text">
-                            {item.codigo || '-'}
-                            {noProducto && <span className="importaciones-aceptados__no-catalogo-badge" title="Sin producto en catálogo">Sin catálogo</span>}
+                            {noProducto
+                              ? <span className="importaciones-aceptados__no-catalogo-badge" title="Sin producto en catálogo">Sin catálogo</span>
+                              : (item.codigo || '-')}
                           </span>
                         </span>
                         <span title={item.nombre}><span className="imp-cell-text">{item.nombre || '-'}</span></span>
@@ -4766,7 +4768,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           resizableColumns
           columnResizeMode="expand"
           onRowDoubleClick={handleRowDoubleClick}
-          rowClassName={(rowData) => ({ 'p-selectable-row': true, 'imp-row--borrador': rowData.estado === 'borrador' })}
+          rowClassName={(rowData) => ({ 'p-selectable-row': true, 'imp-row--borrador': rowData.estado === 'borrador', 'imp-row--cotizacion': rowData.estado === 'cotizacion' })}
         >
           <Column
             field="codigo"
