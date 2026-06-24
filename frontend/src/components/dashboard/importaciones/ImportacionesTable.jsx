@@ -3286,6 +3286,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [productPanelStyle, setProductPanelStyle] = useState(null)
 
   const selectedCasa = imp?.casa_comercial || null
+  const isVerificar = imp?.estado === 'cotizacion'
   const detailDraftQuantity = Number(detailDraft.cantidad)
   const canAddDetailDraft = Boolean(
     detailDraft.producto && Number.isFinite(detailDraftQuantity) && detailDraftQuantity > 0
@@ -3512,6 +3513,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     if (invalidQtyKeys.has(_key)) {
       setInvalidQtyKeys((prev) => { const next = new Set(prev); next.delete(_key); return next })
     }
+  }
+
+  const handleConfirmedChange = (_key, field, value) => {
+    setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, [field]: String(value || '') } : item))
   }
 
   const handleSubmit = async () => {
@@ -3787,25 +3792,28 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         <p className="create-user__eyebrow">Productos</p>
                         <h4>Listado de productos</h4>
                       </div>
-                      <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
-                        <button
-                          type="button"
-                          className="create-user__ghost"
-                          onClick={() => setShowAceptadosView(true)}
-                          style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                          disabled={aceptadosCount === 0}
-                        >
-                          + Aceptados de solicitudes
-                        </button>
-                      </span>
+                      {!isVerificar && (
+                        <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
+                          <button
+                            type="button"
+                            className="create-user__ghost"
+                            onClick={() => setShowAceptadosView(true)}
+                            style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                            disabled={aceptadosCount === 0}
+                          >
+                            + Aceptados de solicitudes
+                          </button>
+                        </span>
+                      )}
                     </div>
 
-                    <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table">
+                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificar ? ' importaciones-modal__products-table--verificar' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
-                        <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span><span>Acciones</span>
+                        <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
+                        {isVerificar ? <><span>Precio confirmado</span><span>Cantidad confirmada</span></> : <span>Acciones</span>}
                       </div>
 
-                      <div className="create-user__locations-row create-user__locations-row--form">
+                      {!isVerificar && <div className="create-user__locations-row create-user__locations-row--form">
                         <span className="create-salida__product-picker create-salida__product-code-cell">
                           <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
                             <button
@@ -3900,7 +3908,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             Agregar
                           </button>
                         </span>
-                      </div>
+                      </div>}
 
                       {!details.length ? (
                         <div className="create-user__locations-row create-user__locations-row--empty"><span>Sin productos agregados.</span></div>
@@ -3922,23 +3930,52 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             <span>{oem}</span>
                             <span>{referencia}</span>
                             <span>{precio}</span>
-                            <span>
-                              <input
-                                type="number"
-                                value={item.cantidad}
-                                onChange={(e) => handleQuantityChange(item._key, e.target.value)}
-                                style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
-                              />
-                            </span>
-                            <span className="create-user__locations-cell create-user__locations-cell--action">
-                              <button
-                                type="button"
-                                className="create-user__locations-remove"
-                                onClick={() => setDetails((prev) => prev.filter((d) => d._key !== item._key))}
-                              >
-                                x
-                              </button>
-                            </span>
+                            {isVerificar ? (
+                              <span className="create-salida__table-static-value">{item.cantidad}</span>
+                            ) : (
+                              <span>
+                                <input
+                                  type="number"
+                                  value={item.cantidad}
+                                  onChange={(e) => handleQuantityChange(item._key, e.target.value)}
+                                  style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
+                                />
+                              </span>
+                            )}
+                            {isVerificar ? (
+                              <>
+                                <span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="—"
+                                    value={item.precio_confirmado ?? ''}
+                                    onChange={(e) => handleConfirmedChange(item._key, 'precio_confirmado', e.target.value)}
+                                  />
+                                </span>
+                                <span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    placeholder="—"
+                                    value={item.cantidad_confirmada ?? ''}
+                                    onChange={(e) => handleConfirmedChange(item._key, 'cantidad_confirmada', e.target.value)}
+                                  />
+                                </span>
+                              </>
+                            ) : (
+                              <span className="create-user__locations-cell create-user__locations-cell--action">
+                                <button
+                                  type="button"
+                                  className="create-user__locations-remove"
+                                  onClick={() => setDetails((prev) => prev.filter((d) => d._key !== item._key))}
+                                >
+                                  x
+                                </button>
+                              </span>
+                            )}
                           </div>
                         )
                       })}

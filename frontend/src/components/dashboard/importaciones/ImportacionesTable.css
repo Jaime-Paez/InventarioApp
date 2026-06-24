@@ -255,6 +255,18 @@
   min-width: 0;
 }
 
+.importaciones-modal__products-table--verificar .create-user__locations-row {
+  grid-template-columns:
+    minmax(90px, 1.1fr)
+    minmax(100px, 1.3fr)
+    minmax(46px, 0.5fr)
+    minmax(46px, 0.5fr)
+    minmax(56px, 0.6fr)
+    minmax(56px, 0.6fr)
+    minmax(88px, 0.9fr)
+    minmax(88px, 0.9fr);
+}
+
 .importaciones-modal__products-table,
 .importaciones-modal__products-table:has(.create-salida__product-dropdown .create-user__dropdown-panel) {
   overflow: hidden;
