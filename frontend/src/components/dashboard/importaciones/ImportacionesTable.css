@@ -290,8 +290,12 @@
   flex: 1;
   min-width: 0;
   cursor: text;
+}
+
+.importaciones-modal__products-table .importaciones-verificar__precio-cell input {
   color: var(--color-text-primary);
   font: inherit;
+  font-weight: normal;
 }
 
 .importaciones-verificar__precio-cell input:read-only {
@@ -352,6 +356,7 @@
   background: var(--surface-card, #fff);
   color: var(--color-text-primary);
   font: inherit;
+  font-weight: normal;
 }
 
 .importaciones-modal__products-table .create-user__locations-row > span > input[type='number']:disabled {
