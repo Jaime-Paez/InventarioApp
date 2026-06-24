@@ -51,7 +51,7 @@ function DashboardLayout({
 
   useEffect(() => {
     setHasEntered(true)
-    const timeout = setTimeout(() => setEntryAnimationDone(true), 2600)
+    const timeout = setTimeout(() => setEntryAnimationDone(true), 3500)
 
     return () => clearTimeout(timeout)
   }, [])

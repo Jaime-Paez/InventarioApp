@@ -199,7 +199,7 @@ function Sidebar({
             <button
               type="button"
               className="sidebar__profile-menu-item sidebar__profile-menu-item--logout"
-              onClick={onLogout}
+              onClick={() => { setProfileOpen(false); onLogout() }}
             >
               <LogOut size={15} />
               <span>Cerrar sesión</span>
