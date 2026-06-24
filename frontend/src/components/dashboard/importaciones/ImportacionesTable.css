@@ -290,6 +290,8 @@
   flex: 1;
   min-width: 0;
   cursor: text;
+  color: var(--color-text-primary);
+  font: inherit;
 }
 
 .importaciones-verificar__precio-cell input:read-only {
@@ -348,7 +350,8 @@
   border-radius: 6px;
   padding: 0 6px;
   background: var(--surface-card, #fff);
-  color: inherit;
+  color: var(--color-text-primary);
+  font: inherit;
 }
 
 .importaciones-modal__products-table .create-user__locations-row > span > input[type='number']:disabled {
