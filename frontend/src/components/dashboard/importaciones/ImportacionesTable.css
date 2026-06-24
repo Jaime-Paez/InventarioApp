@@ -263,8 +263,10 @@
     minmax(34px, 0.34fr)
     minmax(48px, 0.5fr)
     minmax(42px, 0.44fr)
-    minmax(68px, 0.72fr)
-    minmax(68px, 0.72fr);
+    96px
+    76px
+    minmax(60px, 0.62fr)
+    minmax(46px, 0.46fr);
 }
 
 .importaciones-modal__products-table--verificar .create-user__locations-row:not(.create-user__locations-row--empty) > span {
@@ -296,6 +298,11 @@
   color: var(--color-text-primary);
   font: inherit;
   font-weight: normal;
+  text-align: center;
+}
+
+.importaciones-modal__products-table--verificar .create-user__locations-row > span > input[type='number'] {
+  text-align: center;
 }
 
 .importaciones-verificar__precio-cell input:read-only {
@@ -306,6 +313,20 @@
 
 .dashboard-shell.dark .importaciones-verificar__precio-cell input:read-only {
   background: var(--color-surface-darker) !important;
+}
+
+.imp-details__productos-row:not(.create-user__locations-row--empty) > span {
+  padding: 2px 6px;
+}
+
+.imp-details__productos-row {
+  grid-template-columns:
+    minmax(80px, 0.85fr)
+    minmax(120px, 1.6fr)
+    minmax(50px, 0.5fr)
+    minmax(50px, 0.5fr)
+    90px
+    62px;
 }
 
 .importaciones-modal__products-table--verificar .create-user__locations-row--head > span {

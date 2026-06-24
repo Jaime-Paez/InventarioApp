@@ -1010,25 +1010,29 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
                     </div>
                   </div>
                   <div className="create-user__locations-table" style={{ borderRadius: 8, overflow: 'hidden' }}>
-                    <div className="create-user__locations-row create-user__locations-row--head" style={{ gridTemplateColumns: 'minmax(90px,0.7fr) minmax(160px,1.6fr) minmax(110px,1fr) 60px' }}>
-                      <span>Código</span><span>Nombre</span><span>OEM</span><span style={{ justifyContent: 'center' }}>Cant.</span>
+                    <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row">
+                      <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
                     </div>
                     {!detalles.length ? (
-                      <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
+                      <div className="create-user__locations-row create-user__locations-row--empty imp-details__productos-row" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
                     ) : detalles.map((d, i) => {
                       const sinCat = !d.producto?.id
                       const codigo = d.producto?.codigo || d.codigo || '-'
                       const nombre = d.producto?.nombre || d.nombre || '-'
-                      const oem = d.producto?.oem || d.oem || '-'
+                      const oem = String(d.producto?.oem || d.oem || '').trim() || '-'
+                      const referencia = String(d.producto?.referencia || d.referencia || '').trim() || '-'
+                      const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
+                      const cantidad = d.cantidad_confirmada ?? d.cantidad ?? '-'
                       return (
-                        <div key={d.id ?? i} className={`create-user__locations-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: 'minmax(90px,0.7fr) minmax(160px,1.6fr) minmax(110px,1fr) 60px' }}>
-                          <span title={codigo} style={{ overflow: 'hidden' }}>
-                            <span className="imp-cell-text">{codigo}</span>
-                            {sinCat && <span className="importaciones-aceptados__no-catalogo-badge" style={{ marginLeft: 4 }}>Sin catálogo</span>}
+                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
+                          <span title={codigo}>
+                            {sinCat ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span> : <span className="imp-cell-text">{codigo}</span>}
                           </span>
-                          <span title={nombre} style={{ overflow: 'hidden' }}><span className="imp-cell-text">{nombre}</span></span>
-                          <span title={oem} style={{ overflow: 'hidden' }}><span className="imp-cell-text">{oem}</span></span>
-                          <span style={{ justifyContent: 'center', fontWeight: 600 }}>{d.cantidad}</span>
+                          <span title={nombre}><span className="imp-cell-text">{nombre}</span></span>
+                          <span>{oem}</span>
+                          <span>{referencia}</span>
+                          <span>{precio}</span>
+                          <span style={{ justifyContent: 'center', fontWeight: 600 }}>{cantidad}</span>
                         </div>
                       )
                     })}
@@ -3270,12 +3274,15 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
+  const [isMaximized, setIsMaximized] = useState(false)
+  const [checkedKeys, setCheckedKeys] = useState(new Set())
 
   const modalRef = useRef(null)
   const toastRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalSizeRef = useRef(modalSize)
   const modalPositionRef = useRef(modalPosition)
+  const modalRestoreRef = useRef(null)
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const productTimerRef = useRef(null)
   const productSearchIdRef = useRef(0)
@@ -3343,6 +3350,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     const handleWindowResize = () => {
       const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
       const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+      if (isMaximized) {
+        setModalSize({ width: availableWidth, height: availableHeight })
+        setModalPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+        return
+      }
       setModalSize((prev) => {
         const width = clamp(prev.width, MIN_WIDTH, availableWidth)
         const height = clamp(prev.height, MIN_HEIGHT, availableHeight)
@@ -3355,15 +3367,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
     window.addEventListener('resize', handleWindowResize)
     return () => window.removeEventListener('resize', handleWindowResize)
-  }, [])
+  }, [isMaximized])
 
   const handleModalMouseDown = (event) => {
+    if (isMaximized) return
     if (!modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
     modalDrag.current = { active: true, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top }
   }
 
   const handleResizeMouseDown = (event) => {
+    if (isMaximized) return
     event.preventDefault()
     event.stopPropagation()
     resizeData.current = {
@@ -3393,6 +3407,28 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     window.addEventListener('mouseup', handleResizeUp)
   }
 
+  const toggleMaximize = () => {
+    modalDrag.current.active = false
+    if (isMaximized) {
+      const restore = modalRestoreRef.current
+      if (restore) {
+        setModalSize(restore.size)
+        setModalPosition(restore.position)
+      }
+      setIsMaximized(false)
+      return
+    }
+    modalRestoreRef.current = {
+      size: { ...modalSizeRef.current },
+      position: { ...modalPositionRef.current },
+    }
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+    setModalSize({ width: availableWidth, height: availableHeight })
+    setModalPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+    setIsMaximized(true)
+  }
+
   useEffect(() => {
     if (!open || !imp) return
     const toCentavos = (val) => {
@@ -3419,6 +3455,9 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     setAceptadosItems([])
     setAceptadosSelected(new Set())
     setAceptadosSearch('')
+    setCheckedKeys(new Set())
+    setIsMaximized(false)
+    modalRestoreRef.current = null
   }, [open, imp])
 
   useEffect(() => {
@@ -3535,19 +3574,20 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   }
 
   const handleSubmit = async () => {
-    if (!details.length) {
-      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Agrega al menos un producto.', life: 4000 })
+    const itemsToSubmit = isVerificar ? details.filter((item) => checkedKeys.has(item._key)) : details
+    if (!itemsToSubmit.length) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: isVerificar ? 'Selecciona al menos un producto para importar.' : 'Agrega al menos un producto.', life: 4000 })
       return
     }
     const badKeys = new Set(
-      details.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 }).map((item) => item._key)
+      itemsToSubmit.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 }).map((item) => item._key)
     )
     if (badKeys.size > 0) {
       setInvalidQtyKeys(badKeys)
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Todas las cantidades deben ser mayores a cero.', life: 4000 })
       return
     }
-    const normalizedDetails = details.map((item) => {
+    const normalizedDetails = itemsToSubmit.map((item) => {
       const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
       const confirmedFields = isVerificar ? {
         precio_confirmado: item.precio_confirmado
@@ -3600,9 +3640,28 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     if (!factura) return
     setImportarSubmitting(true)
     try {
+      const normalizedDetalles = details.map((item) => {
+        const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
+        const confirmedFields = {
+          precio_confirmado: item.precio_confirmado
+            ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
+            : null,
+          cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
+        }
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), ...confirmedFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), ...confirmedFields, ...solId }
+      })
+      const selectedKeys = Array.from(checkedKeys)
       const response = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/importar/`,
-        { method: 'POST', body: JSON.stringify({ numero_factura: factura }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            numero_factura: factura,
+            detalles: normalizedDetalles,
+            detalles_seleccionados: selectedKeys,
+          }),
+        },
         token
       )
       if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo generar la importación.'))
@@ -3748,6 +3807,15 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
               <h3>{imp.estado === 'cotizacion' ? 'Verificar' : 'Sugerencia'}: {imp.codigo}</h3>
             </div>
             <div className="create-user__header-actions">
+              <button
+                type="button"
+                className="create-user__icon-button create-user__icon-button--maximize"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={toggleMaximize}
+                aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+              >
+                <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+              </button>
               <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} disabled={submitting} aria-label="Cerrar">
                 <i className="pi pi-times" aria-hidden="true" />
               </button>
@@ -3831,7 +3899,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificar ? ' importaciones-modal__products-table--verificar' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
-                        {isVerificar ? <><span>Precio conf.</span><span>Cantidad conf.</span></> : <span>Acciones</span>}
+                        {isVerificar ? <><span>Precio conf.</span><span>Cantidad conf.</span><span>Diferencia</span><span>Acciones</span></> : <span>Acciones</span>}
                       </div>
 
                       {!isVerificar && <div className="create-user__locations-row create-user__locations-row--form">
@@ -3992,6 +4060,30 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                     onChange={(e) => handleConfirmedChange(item._key, 'cantidad_confirmada', e.target.value)}
                                   />
                                 </span>
+                                {(() => {
+                                  const storedCentavos = item.producto?.precio != null ? Math.round(Number(item.producto.precio) * 100) : null
+                                  const confirmedCentavos = item.precio_confirmado ? parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) : null
+                                  const diff = storedCentavos != null && confirmedCentavos != null ? confirmedCentavos - storedCentavos : null
+                                  const diffColor = diff === null ? undefined : diff <= 0 ? '#22c55e' : diff <= 100 ? '#eab308' : '#ef4444'
+                                  return (
+                                    <span style={{ color: diffColor }}>
+                                      {diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''}
+                                    </span>
+                                  )
+                                })()}
+                                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Checkbox
+                                    checked={checkedKeys.has(item._key)}
+                                    onChange={(e) => {
+                                      setCheckedKeys((prev) => {
+                                        const next = new Set(prev)
+                                        if (e.checked) next.add(item._key)
+                                        else next.delete(item._key)
+                                        return next
+                                      })
+                                    }}
+                                  />
+                                </span>
                               </>
                             ) : (
                               <span className="create-user__locations-cell create-user__locations-cell--action">
@@ -4050,7 +4142,14 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     type="button"
                     className="create-user__action imp-importar-btn"
                     disabled={submitting || importarSubmitting || deleteSubmitting}
-                    onClick={() => { setFacturaInput(''); setShowImportarModal(true) }}
+                    onClick={() => {
+                      if (checkedKeys.size === 0) {
+                        toastRef.current?.show({ severity: 'warn', summary: 'Sin selección', detail: 'Selecciona al menos un producto para importar.', life: 4000 })
+                        return
+                      }
+                      setFacturaInput('')
+                      setShowImportarModal(true)
+                    }}
                   >
                     Importar
                   </button>

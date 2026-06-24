@@ -112,11 +112,80 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "El número de factura es requerido."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Keys of selected items: String(producto_id) or "sc_{detalle_id}"
+        selected_keys = set(str(k) for k in (request.data.get("detalles_seleccionados") or []))
+        if not selected_keys:
+            return Response(
+                {"detail": "Selecciona al menos un producto para importar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Build confirmed-price lookup from submitted detalles
+        detalles_payload = request.data.get("detalles") or []
+        confirmed_by_key = {}
+        for d in detalles_payload:
+            key = str(d["producto_id"]) if d.get("producto_id") else None
+            if key:
+                confirmed_by_key[key] = d
+
+        today = timezone.localdate()
+
+        # 1. Save confirmed data on all detalles of the original cotizacion and mark selection
+        selected_detalles = []
+        for detalle in instance.detalles.select_related("producto").all():
+            key = str(detalle.producto_id) if detalle.producto_id else f"sc_{detalle.id}"
+            confirmed = confirmed_by_key.get(key, {})
+            precio_raw = confirmed.get("precio_confirmado")
+            cant_raw = confirmed.get("cantidad_confirmada")
+            if precio_raw not in (None, ""):
+                try:
+                    detalle.precio_confirmado = float(precio_raw)
+                except (TypeError, ValueError):
+                    pass
+            if cant_raw not in (None, ""):
+                try:
+                    detalle.cantidad_confirmada = int(cant_raw)
+                except (TypeError, ValueError):
+                    pass
+            detalle.seleccionado = key in selected_keys
+            detalle.save(update_fields=["precio_confirmado", "cantidad_confirmada", "seleccionado"])
+            if detalle.seleccionado:
+                selected_detalles.append(detalle)
+
+        # Transition the original cotizacion to importada (becomes the verification archive)
         instance.numero_factura = numero_factura
-        instance.estado = Importacion.ESTADO_EN_CAMINO
-        instance.fecha_importacion = timezone.localdate()
-        instance.save()
-        serializer = self.get_serializer(instance)
+        instance.estado = Importacion.ESTADO_IMPORTADA
+        instance.fecha_importacion = today
+        instance.save(update_fields=["numero_factura", "estado", "fecha_importacion"])
+
+        # 2. Create a new importacion in en_camino with only the selected items
+        nueva = Importacion.objects.create(
+            codigo=generate_next_importacion_code(instance.casa_comercial),
+            estado=Importacion.ESTADO_EN_CAMINO,
+            casa_comercial=instance.casa_comercial,
+            fecha=today,
+            numero_factura=numero_factura,
+            fecha_importacion=today,
+            dias_entrega_estimados=instance.dias_entrega_estimados,
+            creado_por=request.user if request.user.is_authenticated else None,
+        )
+        ImportacionDetalle.objects.bulk_create([
+            ImportacionDetalle(
+                importacion=nueva,
+                producto_id=d.producto_id,
+                codigo=d.codigo,
+                nombre=d.nombre,
+                oem=d.oem,
+                cantidad=d.cantidad_confirmada or d.cantidad,
+                precio_confirmado=d.precio_confirmado,
+                solicitud_id=d.solicitud_id,
+                seleccionado=True,
+            )
+            for d in selected_detalles
+        ])
+
+        serializer = self.get_serializer(nueva)
         return Response(serializer.data)
 
     @staticmethod
@@ -627,6 +696,15 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             envio_locked.fecha_recepcion = timezone.localdate()
             envio_locked.recibido_por = request.user
             envio_locked.save(update_fields=["estado", "fecha_recepcion", "recibido_por"])
+
+            # Update product prices from precio_confirmado on the importacion detalles
+            precio_by_producto = {
+                d.producto_id: d.precio_confirmado
+                for d in envio_locked.importacion.detalles.filter(precio_confirmado__isnull=False)
+                if d.producto_id
+            }
+            for product_id, nuevo_precio in precio_by_producto.items():
+                Producto.objects.filter(pk=product_id).update(precio=nuevo_precio)
 
         User = get_user_model()
         admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]
