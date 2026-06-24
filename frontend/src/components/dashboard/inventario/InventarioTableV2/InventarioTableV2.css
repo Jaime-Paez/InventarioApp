@@ -111,10 +111,6 @@
   text-decoration: underline;
 }
 
-.inventario-v2__branch-quantity-col .inventario-v2__quantity {
-  font-weight: 700;
-  text-decoration: underline;
-}
 
 .inventario-v2__quantity--empty {
   color: #dc2626;

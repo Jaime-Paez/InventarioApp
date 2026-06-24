@@ -1191,9 +1191,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 header={abbreviateBranchName(branch.nombre)}
                 sortable
                 reorderable={false}
-                className={`column-max-min-width--small inventario-v2__qty-col inventario-v2__branch-subheader${
-                  isAdminByRole ? '' : ' inventario-v2__branch-quantity-col'
-                }`}
+                className="column-max-min-width--small inventario-v2__qty-col inventario-v2__branch-subheader"
                 style={{ minWidth: '32px' }}
               />
             )
@@ -2204,9 +2202,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                   header={abbreviateBranchName(branch.nombre)}
                   sortable
                   reorderable
-                  className={`column-max-min-width--small inventario-v2__qty-col${
-                    isAdminByRole ? '' : ' inventario-v2__branch-quantity-col'
-                  }`}
+                  className="column-max-min-width--small inventario-v2__qty-col"
                   style={{ minWidth: '32px' }}
                   body={(rowData) => quantityBody(rowData, quantityField, branch.id)}
                 />
