@@ -101,6 +101,17 @@ def _apply_location_catalog_scope(queryset, request, field_lookup):
     return queryset.filter(**{f"{field_lookup}__in": sorted(allowed)})
 
 
+def _apply_bodegas_scope(queryset, request, field_lookup):
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        readable = get_readable_sucursal_ids(request.user, RolPermiso.Modulos.SUCURSALES_BODEGAS)
+        if readable is None:
+            return queryset
+        if not readable:
+            return queryset.none()
+        return queryset.filter(**{f"{field_lookup}__in": sorted(readable)})
+    return _apply_location_catalog_scope(queryset, request, field_lookup)
+
+
 class SucursalViewSet(viewsets.ModelViewSet):
     queryset = Sucursal.objects.all().order_by("-id")
     serializer_class = SucursalSerializer
@@ -231,7 +242,7 @@ class BodegaViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = _apply_location_catalog_scope(queryset, self.request, "sucursal_id")
+        queryset = _apply_bodegas_scope(queryset, self.request, "sucursal_id")
         sucursal_id = self.request.query_params.get("sucursal_id")
         if sucursal_id:
             queryset = queryset.filter(sucursal_id=sucursal_id)
@@ -322,7 +333,7 @@ class DivisionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = _apply_location_catalog_scope(queryset, self.request, "bodega__sucursal_id")
+        queryset = _apply_bodegas_scope(queryset, self.request, "bodega__sucursal_id")
         sucursal_id = self.request.query_params.get("sucursal_id")
         if sucursal_id:
             queryset = queryset.filter(bodega__sucursal_id=sucursal_id)
@@ -371,7 +382,7 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = _apply_location_catalog_scope(
+        queryset = _apply_bodegas_scope(
             queryset,
             self.request,
             "division__bodega__sucursal_id",

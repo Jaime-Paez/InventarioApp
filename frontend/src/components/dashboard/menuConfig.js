@@ -68,6 +68,7 @@ const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'movimientos_salidas',
   'movimientos_inconvenientes',
   'productos',
+  'sucursales_bodegas',
   'solicitudes',
   'importaciones',
 ])
