@@ -257,14 +257,25 @@
 
 .importaciones-modal__products-table--verificar .create-user__locations-row {
   grid-template-columns:
-    minmax(90px, 1.1fr)
+    minmax(76px, 0.85fr)
     minmax(100px, 1.3fr)
-    minmax(46px, 0.5fr)
-    minmax(46px, 0.5fr)
-    minmax(56px, 0.6fr)
-    minmax(56px, 0.6fr)
-    minmax(88px, 0.9fr)
-    minmax(88px, 0.9fr);
+    minmax(34px, 0.34fr)
+    minmax(34px, 0.34fr)
+    minmax(48px, 0.5fr)
+    minmax(42px, 0.44fr)
+    minmax(68px, 0.72fr)
+    minmax(68px, 0.72fr);
+}
+
+.importaciones-modal__products-table--verificar .create-user__locations-row:not(.create-user__locations-row--empty) > span {
+  padding: 5px 6px;
+}
+
+.importaciones-modal__products-table--verificar .create-user__locations-row--head > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
 }
 
 .importaciones-modal__products-table,

@@ -3299,7 +3299,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     if (!open) { isFirstOpenRef.current = true; return }
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
     const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    const nextWidth = Math.min(MIN_WIDTH, availableWidth)
+    const targetWidth = imp?.estado === 'cotizacion' ? 860 : MIN_WIDTH
+    const nextWidth = Math.min(targetWidth, availableWidth)
     const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
     const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
     const centerY = Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING)
@@ -3810,7 +3811,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificar ? ' importaciones-modal__products-table--verificar' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
-                        {isVerificar ? <><span>Precio confirmado</span><span>Cantidad confirmada</span></> : <span>Acciones</span>}
+                        {isVerificar ? <><span>Precio conf.</span><span>Cantidad conf.</span></> : <span>Acciones</span>}
                       </div>
 
                       {!isVerificar && <div className="create-user__locations-row create-user__locations-row--form">
