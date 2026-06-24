@@ -271,6 +271,37 @@
   padding: 5px 6px;
 }
 
+.importaciones-verificar__precio-cell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 0;
+}
+
+.importaciones-verificar__currency-sign {
+  font-size: 0.82rem;
+  color: var(--color-text-muted, #64748b);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.importaciones-verificar__precio-cell input {
+  flex: 1;
+  min-width: 0;
+  cursor: text;
+}
+
+.importaciones-verificar__precio-cell input:read-only {
+  background: var(--surface-card, #fff);
+  opacity: 1;
+  cursor: text;
+}
+
+.dashboard-shell.dark .importaciones-verificar__precio-cell input:read-only {
+  background: var(--color-surface-darker) !important;
+}
+
 .importaciones-modal__products-table--verificar .create-user__locations-row--head > span {
   overflow: hidden;
   text-overflow: ellipsis;

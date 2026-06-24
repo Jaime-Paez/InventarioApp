@@ -3395,15 +3395,20 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
   useEffect(() => {
     if (!open || !imp) return
+    const toCentavos = (val) => {
+      if (val == null || val === '') return ''
+      return String(Math.round(parseFloat(val) * 100))
+    }
     const loaded = (imp.detalles || []).map((d, i) => {
       const solId = d.solicitud_id ? String(d.solicitud_id) : null
+      const confirmed = { precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '' }
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), _solId: solId }
+        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), _solId: solId, ...confirmed }
       }
       return {
         _key: 'sc_' + (d.id ?? i), producto: null,
         codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '',
-        cantidad: String(d.cantidad || ''), _solId: solId,
+        cantidad: String(d.cantidad || ''), _solId: solId, ...confirmed,
       }
     })
     setDetails(loaded)
@@ -3520,6 +3525,15 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, [field]: String(value || '') } : item))
   }
 
+  const formatCentavos = (centsStr) => {
+    const digits = String(centsStr || '').replace(/\D/g, '')
+    if (!digits) return '0.00'
+    const n = parseInt(digits, 10)
+    const intPart = Math.floor(n / 100)
+    const decPart = n % 100
+    return `${intPart.toLocaleString('en-US')}.${String(decPart).padStart(2, '0')}`
+  }
+
   const handleSubmit = async () => {
     if (!details.length) {
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Agrega al menos un producto.', life: 4000 })
@@ -3535,8 +3549,14 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
     const normalizedDetails = details.map((item) => {
       const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
-      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), ...solId }
-      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), ...solId }
+      const confirmedFields = isVerificar ? {
+        precio_confirmado: item.precio_confirmado
+          ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
+          : null,
+        cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
+      } : {}
+      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), ...confirmedFields, ...solId }
+      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), ...confirmedFields, ...solId }
     })
     setSubmitting(true)
     try {
@@ -3945,14 +3965,22 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             )}
                             {isVerificar ? (
                               <>
-                                <span>
+                                <span className="importaciones-verificar__precio-cell">
+                                  <span className="importaciones-verificar__currency-sign">$</span>
                                   <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    placeholder="—"
-                                    value={item.precio_confirmado ?? ''}
-                                    onChange={(e) => handleConfirmedChange(item._key, 'precio_confirmado', e.target.value)}
+                                    type="text"
+                                    inputMode="numeric"
+                                    readOnly
+                                    value={formatCentavos(item.precio_confirmado)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Backspace') {
+                                        e.preventDefault()
+                                        handleConfirmedChange(item._key, 'precio_confirmado', String(item.precio_confirmado || '').replace(/\D/g, '').slice(0, -1))
+                                      } else if (/^\d$/.test(e.key)) {
+                                        e.preventDefault()
+                                        handleConfirmedChange(item._key, 'precio_confirmado', String(item.precio_confirmado || '').replace(/\D/g, '') + e.key)
+                                      }
+                                    }}
                                   />
                                 </span>
                                 <span>
@@ -3960,7 +3988,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                     type="number"
                                     min="0"
                                     step="1"
-                                    placeholder="—"
                                     value={item.cantidad_confirmada ?? ''}
                                     onChange={(e) => handleConfirmedChange(item._key, 'cantidad_confirmada', e.target.value)}
                                   />
@@ -4011,6 +4038,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     onClick={handlePedirCotizacion}
                   >
                     {importarSubmitting ? 'Enviando...' : 'Pedir cotización'}
+                  </button>
+                )}
+                {canEdit && imp?.estado === 'cotizacion' && (
+                  <button type="submit" className="create-user__action create-user__action--primary" disabled={submitting || importarSubmitting || deleteSubmitting}>
+                    {submitting ? 'Guardando...' : 'Guardar'}
                   </button>
                 )}
                 {canImportar && imp?.estado === 'cotizacion' && (

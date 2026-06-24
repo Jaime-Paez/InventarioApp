@@ -66,6 +66,8 @@ class ImportacionDetalle(models.Model):
     nombre = models.CharField(max_length=255, blank=True, default="")
     oem = models.CharField(max_length=500, blank=True, default="")
     cantidad = models.PositiveIntegerField(default=1)
+    precio_confirmado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    cantidad_confirmada = models.PositiveIntegerField(null=True, blank=True)
     solicitud = models.ForeignKey(
         "solicitudes.Solicitud",
         on_delete=models.SET_NULL,
