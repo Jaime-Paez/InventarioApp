@@ -14,7 +14,7 @@ import './UsersTable.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
-import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
@@ -180,12 +180,11 @@ function UsersTable({
   }, [])
 
   const handleResetTable = () => {
-    localStorage.removeItem('usuarios-table-columns')
-    localStorage.removeItem('usuarios-table-state-v2')
+    tableLayoutStore.removeItem('usuarios-table-columns')
+    tableLayoutStore.removeItem('usuarios-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['usuarios-table-columns', 'usuarios-table-state-v2'], token)
     opColumns.current?.hide()
   }
 
@@ -398,25 +397,26 @@ function UsersTable({
   }, [selectedColumns])
 
   useEffect(() => {
-    const stored = localStorage.getItem('usuarios-table-columns')
+    const stored = tableLayoutStore.getItem('usuarios-table-columns')
     if (stored) setSelectedColumns(JSON.parse(stored))
     return () => {
-      localStorage.setItem('usuarios-table-columns', JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem('usuarios-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
   }, [])
 
   const handleCheckboxChangeColumn = (column) => {
-    if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
-      setSelectedColumns(selectedColumns.filter((c) => c.nombrevar !== column.nombrevar))
-    } else {
-      setSelectedColumns([...selectedColumns, column])
-    }
+    const next = selectedColumns.some((c) => c.nombrevar === column.nombrevar)
+      ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
+      : [...selectedColumns, column]
+    setSelectedColumns(next)
+    tableLayoutStore.setItem('usuarios-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (e) => {
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((f) => selectedColumns.find((c) => c.nombrevar === f)).filter(Boolean)
     setSelectedColumns(sorted)
+    tableLayoutStore.setItem('usuarios-table-columns', JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(

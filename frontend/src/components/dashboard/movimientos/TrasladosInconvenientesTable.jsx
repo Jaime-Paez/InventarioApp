@@ -10,7 +10,7 @@ import { Button } from 'primereact/button'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { fetchRemindersFromBackend } from '../common/reminders/remindersStorage'
-import { clearTableLayouts } from '../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import useModalAnimation from '../common/useModalAnimation'
@@ -326,7 +326,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   }, [selectedColumns])
 
   useEffect(() => {
-    const stored = localStorage.getItem('traslados-inconvenientes-columns')
+    const stored = tableLayoutStore.getItem('traslados-inconvenientes-table-columns')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -334,11 +334,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
           setSelectedColumns(parsed)
         }
       } catch {
-        localStorage.removeItem('traslados-inconvenientes-columns')
+        tableLayoutStore.removeItem('traslados-inconvenientes-table-columns')
       }
     }
     return () => {
-      localStorage.setItem('traslados-inconvenientes-columns', JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem('traslados-inconvenientes-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
   }, [])
 
@@ -1185,12 +1185,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   }, [])
 
   const handleResetTable = () => {
-    localStorage.removeItem('traslados-inconvenientes-columns')
-    localStorage.removeItem('traslados-inconvenientes-table-state-v2')
+    tableLayoutStore.removeItem('traslados-inconvenientes-table-columns')
+    tableLayoutStore.removeItem('traslados-inconvenientes-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['traslados-inconvenientes-columns', 'traslados-inconvenientes-table-state-v2'], token)
     opColumns.current?.hide()
   }
 
@@ -1220,13 +1219,17 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
       if (!key) return
       setSelectedColumns((prev) => {
         const exists = prev.some((item) => item.nombrevar === key)
+        let next
         if (exists) {
-          const next = prev.filter((item) => item.nombrevar !== key)
-          return next.length ? next : prev
+          next = prev.filter((item) => item.nombrevar !== key)
+          if (!next.length) return prev
+        } else {
+          const map = new Map(prev.map((item) => [item.nombrevar, item]))
+          map.set(key, column)
+          next = columnsData.filter((item) => map.has(item.nombrevar))
         }
-        const map = new Map(prev.map((item) => [item.nombrevar, item]))
-        map.set(key, column)
-        return columnsData.filter((item) => map.has(item.nombrevar))
+        tableLayoutStore.setItem('traslados-inconvenientes-table-columns', JSON.stringify(next))
+        return next
       })
     },
     [columnsData]

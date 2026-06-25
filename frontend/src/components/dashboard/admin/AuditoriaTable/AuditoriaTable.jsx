@@ -9,7 +9,7 @@ import '../UsersTable/UsersTable.css'
 import './AuditoriaTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
-import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
 const ACCION_COLORS = {
@@ -82,7 +82,7 @@ function AuditoriaTable({ token }) {
   }, [selectedColumns])
 
   useEffect(() => {
-    const stored = localStorage.getItem('auditoria-table-columns')
+    const stored = tableLayoutStore.getItem('auditoria-table-columns')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -94,16 +94,18 @@ function AuditoriaTable({ token }) {
       }
     }
     return () => {
-      localStorage.setItem('auditoria-table-columns', JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem('auditoria-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
   }, [])
 
   const handleToggleColumn = (col) => {
-    setSelectedColumns((prev) =>
-      prev.some((c) => c.field === col.field)
+    setSelectedColumns((prev) => {
+      const next = prev.some((c) => c.field === col.field)
         ? prev.filter((c) => c.field !== col.field)
         : [...columnsData.filter((c) => prev.some((p) => p.field === c.field) || c.field === col.field)]
-    )
+      tableLayoutStore.setItem('auditoria-table-columns', JSON.stringify(next))
+      return next
+    })
   }
 
   const fetchRecords = useCallback(async (overrides = {}) => {
@@ -191,12 +193,11 @@ function AuditoriaTable({ token }) {
   }, [])
 
   const handleResetTable = () => {
-    localStorage.removeItem('auditoria-table-columns')
-    localStorage.removeItem('auditoria-table-state-v2')
+    tableLayoutStore.removeItem('auditoria-table-columns')
+    tableLayoutStore.removeItem('auditoria-table-state-v2')
     setSelectedColumns(columnsData)
     handleClearAll()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['auditoria-table-columns', 'auditoria-table-state-v2'], token)
     opRef.current?.hide()
   }
 

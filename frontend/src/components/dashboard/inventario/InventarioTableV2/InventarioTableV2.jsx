@@ -25,7 +25,7 @@ import {
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
 import { moduleHasAnyAction } from '../../menuConfig'
-import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
 const normId = (value) => (value == null ? null : String(value))
@@ -548,30 +548,13 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   }, [])
 
   const handleResetTable = () => {
-    localStorage.removeItem('inventario-v2-table-columns')
-    localStorage.removeItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY)
-    localStorage.removeItem('inventario-v2-table-columns-branch-v1')
-    localStorage.removeItem(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY)
-    localStorage.removeItem('inventario-v2-table-state-v2')
-    localStorage.removeItem('inventario-v2-table-state-v3')
-    localStorage.removeItem('inventario-v2-table-state')
-    localStorage.removeItem(INVENTARIO_TABLE_LAYOUT_STATE_KEY)
+    tableLayoutStore.removeItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY)
+    tableLayoutStore.removeItem(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY)
+    tableLayoutStore.removeItem(INVENTARIO_TABLE_LAYOUT_STATE_KEY)
     setSelectedColumns(visibleColumnsData)
     setSelectedBranchColumns(branchColumnsData.map((column) => column.nombrevar))
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(
-      [
-        'inventario-v2-table-columns',
-        INVENTARIO_TABLE_COLUMNS_STORAGE_KEY,
-        INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY,
-        'inventario-v2-table-state',
-        'inventario-v2-table-state-v2',
-        'inventario-v2-table-state-v3',
-        INVENTARIO_TABLE_LAYOUT_STATE_KEY,
-      ],
-      token
-    )
     opColumns.current?.hide()
   }
 
@@ -1276,16 +1259,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   }, [branchColumnsData])
 
   useEffect(() => {
-    localStorage.removeItem('inventario-v2-table-columns-branch-v1')
-    localStorage.removeItem(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY)
-    void clearTableLayouts(
-      ['inventario-v2-table-columns-branch-v1', INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY],
-      token
-    )
+    tableLayoutStore.removeItem(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY)
   }, [token])
 
   useEffect(() => {
-    const stored = localStorage.getItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY)
+    const stored = tableLayoutStore.getItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY)
     if (stored) {
       const parsed = JSON.parse(stored)
       const migrated = (Array.isArray(parsed) ? parsed : []).map((col) => {
@@ -1306,7 +1284,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       )
     }
     return () => {
-      localStorage.setItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(selectedColumnsRef.current))
     }
   }, [visibleColumnsData])
 
@@ -1321,11 +1299,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   }, [visibleColumnsData])
 
   const handleCheckboxChangeColumn = (column) => {
-    if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
-      setSelectedColumns(selectedColumns.filter((c) => c.nombrevar !== column.nombrevar))
-    } else {
-      setSelectedColumns([...selectedColumns, column])
-    }
+    const next = selectedColumns.some((c) => c.nombrevar === column.nombrevar)
+      ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
+      : [...selectedColumns, column]
+    setSelectedColumns(next)
+    tableLayoutStore.setItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(next))
   }
 
   const handleCheckboxChangeBranchColumn = useCallback(
@@ -1357,6 +1335,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
     setSelectedColumns(sorted)
+    tableLayoutStore.setItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(

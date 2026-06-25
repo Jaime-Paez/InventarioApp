@@ -15,7 +15,7 @@ import '../admin/UsersTable/UsersTable.css'
 import '../solicitudes/CreateSolicitud/CreateSolicitud.css'
 import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
-import { clearTableLayouts } from '../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
@@ -268,10 +268,10 @@ function SalidasTable({
   }, [selectedColumns])
 
   useEffect(() => {
-    const stored = localStorage.getItem('salidas-table-columns')
+    const stored = tableLayoutStore.getItem('salidas-table-columns')
     if (stored) setSelectedColumns(JSON.parse(stored))
     return () => {
-      localStorage.setItem('salidas-table-columns', JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem('salidas-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
   }, [])
 
@@ -692,12 +692,11 @@ function SalidasTable({
   }, [])
 
   const handleResetTable = () => {
-    localStorage.removeItem('salidas-table-columns')
-    localStorage.removeItem('salidas-table-state-v2')
+    tableLayoutStore.removeItem('salidas-table-columns')
+    tableLayoutStore.removeItem('salidas-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['salidas-table-columns', 'salidas-table-state-v2'], token)
     opColumns.current?.hide()
   }
 
@@ -760,17 +759,20 @@ function SalidasTable({
   }
 
   const handleCheckboxChangeColumn = (column) => {
-    if (selectedColumns.some((item) => item.nombrevar === column.nombrevar)) {
-      setSelectedColumns(selectedColumns.filter((item) => item.nombrevar !== column.nombrevar))
-    } else {
-      setSelectedColumns([...selectedColumns, column])
-    }
+    const next = selectedColumns.some((item) => item.nombrevar === column.nombrevar)
+      ? selectedColumns.filter((item) => item.nombrevar !== column.nombrevar)
+      : [...selectedColumns, column]
+    setSelectedColumns(next)
+    tableLayoutStore.setItem('salidas-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (event) => {
     const columnOrder = (Array.isArray(event?.columns) ? event.columns : []).map((col) => col.props.field)
     const sorted = columnOrder.map((field) => selectedColumns.find((col) => col.nombrevar === field)).filter(Boolean)
-    if (sorted.length) setSelectedColumns(sorted)
+    if (sorted.length) {
+      setSelectedColumns(sorted)
+      tableLayoutStore.setItem('salidas-table-columns', JSON.stringify(sorted))
+    }
   }
 
   const clearProductHoverHideTimer = useCallback(() => {

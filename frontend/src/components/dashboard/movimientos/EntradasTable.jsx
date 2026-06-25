@@ -17,7 +17,7 @@ import {
   REMINDERS_TRANSFER_NOTIFICATION_EVENT,
 } from '../common/reminders/remindersStorage'
 import { API_URL, authFetch } from '../../../utils/api'
-import { clearTableLayouts } from '../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
@@ -276,10 +276,10 @@ function EntradasTable({
   }, [selectedColumns])
 
   useEffect(() => {
-    const stored = localStorage.getItem('entradas-table-columns')
+    const stored = tableLayoutStore.getItem('entradas-table-columns')
     if (stored) setSelectedColumns(JSON.parse(stored))
     return () => {
-      localStorage.setItem('entradas-table-columns', JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem('entradas-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
   }, [])
 
@@ -685,12 +685,11 @@ function EntradasTable({
   }, [])
 
   const handleResetTable = () => {
-    localStorage.removeItem('entradas-table-columns')
-    localStorage.removeItem('entradas-table-state-v2')
+    tableLayoutStore.removeItem('entradas-table-columns')
+    tableLayoutStore.removeItem('entradas-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['entradas-table-columns', 'entradas-table-state-v2'], token)
     opColumns.current?.hide()
   }
 
@@ -753,17 +752,20 @@ function EntradasTable({
   }
 
   const handleCheckboxChangeColumn = (column) => {
-    if (selectedColumns.some((item) => item.nombrevar === column.nombrevar)) {
-      setSelectedColumns(selectedColumns.filter((item) => item.nombrevar !== column.nombrevar))
-    } else {
-      setSelectedColumns([...selectedColumns, column])
-    }
+    const next = selectedColumns.some((item) => item.nombrevar === column.nombrevar)
+      ? selectedColumns.filter((item) => item.nombrevar !== column.nombrevar)
+      : [...selectedColumns, column]
+    setSelectedColumns(next)
+    tableLayoutStore.setItem('entradas-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (event) => {
     const columnOrder = (Array.isArray(event?.columns) ? event.columns : []).map((col) => col.props.field)
     const sorted = columnOrder.map((field) => selectedColumns.find((col) => col.nombrevar === field)).filter(Boolean)
-    if (sorted.length) setSelectedColumns(sorted)
+    if (sorted.length) {
+      setSelectedColumns(sorted)
+      tableLayoutStore.setItem('entradas-table-columns', JSON.stringify(sorted))
+    }
   }
 
   const clearProductHoverHideTimer = useCallback(() => {

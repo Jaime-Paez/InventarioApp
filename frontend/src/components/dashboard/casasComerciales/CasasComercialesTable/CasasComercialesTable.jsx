@@ -14,7 +14,7 @@ import '../../admin/UsersTable/UsersTable.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
-import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import { getModuleActions } from '../../menuConfig'
@@ -312,12 +312,11 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   }, [])
 
   const handleResetTable = () => {
-    localStorage.removeItem('casas-comerciales-table-columns')
-    localStorage.removeItem('casas-comerciales-table-state-v2')
+    tableLayoutStore.removeItem('casas-comerciales-table-columns')
+    tableLayoutStore.removeItem('casas-comerciales-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['casas-comerciales-table-columns', 'casas-comerciales-table-state-v2'], token)
     opColumns.current?.hide()
   }
 
@@ -422,25 +421,26 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   }, [selectedColumns])
 
   useEffect(() => {
-    const stored = localStorage.getItem('casas-comerciales-table-columns')
+    const stored = tableLayoutStore.getItem('casas-comerciales-table-columns')
     if (stored) setSelectedColumns(JSON.parse(stored))
     return () => {
-      localStorage.setItem('casas-comerciales-table-columns', JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem('casas-comerciales-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
   }, [])
 
   const handleCheckboxChangeColumn = (column) => {
-    if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
-      setSelectedColumns(selectedColumns.filter((c) => c.nombrevar !== column.nombrevar))
-    } else {
-      setSelectedColumns([...selectedColumns, column])
-    }
+    const next = selectedColumns.some((c) => c.nombrevar === column.nombrevar)
+      ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
+      : [...selectedColumns, column]
+    setSelectedColumns(next)
+    tableLayoutStore.setItem('casas-comerciales-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (e) => {
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((f) => selectedColumns.find((c) => c.nombrevar === f)).filter(Boolean)
     setSelectedColumns(sorted)
+    tableLayoutStore.setItem('casas-comerciales-table-columns', JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(

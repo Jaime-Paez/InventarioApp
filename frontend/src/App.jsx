@@ -10,7 +10,7 @@ import 'primereact/resources/themes/lara-light-cyan/theme.css';
 // opcional (si usas utilidades)
 import 'primeflex/primeflex.css';
 import { API_URL, authFetch } from './utils/api'
-import { startTableLayoutSync } from './utils/tableLayoutSync'
+import { tableLayoutStore } from './utils/tableLayoutStore'
 const LOGIN_EXIT_ANIMATION_MS = 900
 const DASHBOARD_EXIT_ANIMATION_MS = 3500
 const LOGIN_ENTER_ANIMATION_MS = LOGIN_EXIT_ANIMATION_MS
@@ -88,11 +88,6 @@ function App() {
   const [loginTransitioning, setLoginTransitioning] = useState(false)
   const [logoutTransitioning, setLogoutTransitioning] = useState(false)
   const [loginReturning, setLoginReturning] = useState(false)
-  const layoutSyncUserKey = useMemo(
-    () => String(user?.usuarioInternoId || user?.id || user?.email || '').trim(),
-    [user?.email, user?.id, user?.usuarioInternoId]
-  )
-
   const logoutTimeoutRef = useRef(null)
   const loginReturnTimeoutRef = useRef(null)
 
@@ -137,6 +132,12 @@ function App() {
           usuarioInternoId: data.usuario_interno_id,
         }
 
+        // Initialize the layout store from DB before rendering the dashboard
+        // so tables always receive their saved column config on first render.
+        if (!tableLayoutStore.isReady()) {
+          await tableLayoutStore.init(effectiveToken)
+        }
+
         setUser(userData)
         setShowApp(true)
         return userData
@@ -156,14 +157,6 @@ function App() {
     fetchProfile()
   }, [fetchProfile])
 
-  useEffect(() => {
-    if (!token || !layoutSyncUserKey) return undefined
-    const stopSync = startTableLayoutSync({ token })
-    return () => {
-      if (typeof stopSync === 'function') stopSync()
-    }
-  }, [layoutSyncUserKey, token])
-
   const handleLoginSuccess = async (
     incomingUser,
     incomingToken,
@@ -171,13 +164,13 @@ function App() {
     usuarioInternoId = null
   ) => {
     setLoginTransitioning(true)
-
-    // muestra el dashboard de inmediato mientras se completa el perfil
-    setUser({ ...incomingUser, permisos: incomingPermissions, usuarioInternoId })
-    setShowApp(true)
     setToken(incomingToken)
 
     try {
+      // Init store before showing the dashboard so tables render with correct columns.
+      await tableLayoutStore.init(incomingToken)
+      setUser({ ...incomingUser, permisos: incomingPermissions, usuarioInternoId })
+      setShowApp(true)
       await fetchProfile(incomingToken)
     } finally {
       window.setTimeout(() => setLoginTransitioning(false), LOGIN_EXIT_ANIMATION_MS)
@@ -189,6 +182,7 @@ function App() {
     window.clearTimeout(loginReturnTimeoutRef.current)
 
     try { sessionStorage.clear() } catch { /* no-op */ }
+    tableLayoutStore.reset()
 
     setLogoutTransitioning(true)
 

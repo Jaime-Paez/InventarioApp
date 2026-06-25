@@ -14,7 +14,7 @@ import '../../admin/UsersTable/UsersTable.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
-import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
@@ -144,13 +144,11 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   }, [])
 
   const handleResetTable = () => {
-    localStorage.removeItem('sucursales-table-columns')
-    localStorage.removeItem('sucursales-table-state-v2')
-    sessionStorage.removeItem('sucursales-table-state-v2')
+    tableLayoutStore.removeItem('sucursales-table-columns')
+    tableLayoutStore.removeItem('sucursales-table-state-v2')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['sucursales-table-columns', 'sucursales-table-state-v2'], token)
     opColumns.current?.hide()
   }
 
@@ -345,25 +343,26 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   }, [selectedColumns])
 
   useEffect(() => {
-    const stored = localStorage.getItem('sucursales-table-columns')
+    const stored = tableLayoutStore.getItem('sucursales-table-columns')
     if (stored) setSelectedColumns(JSON.parse(stored))
     return () => {
-      localStorage.setItem('sucursales-table-columns', JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem('sucursales-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
   }, [])
 
   const handleCheckboxChangeColumn = (column) => {
-    if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
-      setSelectedColumns(selectedColumns.filter((c) => c.nombrevar !== column.nombrevar))
-    } else {
-      setSelectedColumns([...selectedColumns, column])
-    }
+    const next = selectedColumns.some((c) => c.nombrevar === column.nombrevar)
+      ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
+      : [...selectedColumns, column]
+    setSelectedColumns(next)
+    tableLayoutStore.setItem('sucursales-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (e) => {
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((f) => selectedColumns.find((c) => c.nombrevar === f)).filter(Boolean)
     setSelectedColumns(sorted)
+    tableLayoutStore.setItem('sucursales-table-columns', JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(

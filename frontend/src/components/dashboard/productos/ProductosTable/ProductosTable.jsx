@@ -23,7 +23,7 @@ import {
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
 import { moduleHasAnyAction } from '../../menuConfig'
-import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
 const normId = (value) => (value == null ? null : String(value))
@@ -458,12 +458,11 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   }, [])
 
   const handleResetTable = () => {
-    localStorage.removeItem('productos-table-columns')
-    localStorage.removeItem('productos-table-state-v2')
+    tableLayoutStore.removeItem('productos-table-columns')
+    tableLayoutStore.removeItem('productos-table-state-v2')
     setSelectedColumns(visibleColumnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['productos-table-columns', 'productos-table-state-v2'], token)
     opColumns.current?.hide()
   }
 
@@ -715,7 +714,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   }, [selectedColumns])
 
   useEffect(() => {
-    const stored = localStorage.getItem('productos-table-columns')
+    const stored = tableLayoutStore.getItem('productos-table-columns')
     if (stored) {
       const parsed = JSON.parse(stored)
       const migrated = (Array.isArray(parsed) ? parsed : []).map((col) => {
@@ -736,7 +735,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       )
     }
     return () => {
-      localStorage.setItem('productos-table-columns', JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem('productos-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
   }, [visibleColumnsData])
 
@@ -751,11 +750,11 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   }, [visibleColumnsData])
 
   const handleCheckboxChangeColumn = (column) => {
-    if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
-      setSelectedColumns(selectedColumns.filter((c) => c.nombrevar !== column.nombrevar))
-    } else {
-      setSelectedColumns([...selectedColumns, column])
-    }
+    const next = selectedColumns.some((c) => c.nombrevar === column.nombrevar)
+      ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
+      : [...selectedColumns, column]
+    setSelectedColumns(next)
+    tableLayoutStore.setItem('productos-table-columns', JSON.stringify(next))
   }
 
   const toggleCodigoColumnFrozen = useCallback(() => {
@@ -766,6 +765,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
     setSelectedColumns(sorted)
+    tableLayoutStore.setItem('productos-table-columns', JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(

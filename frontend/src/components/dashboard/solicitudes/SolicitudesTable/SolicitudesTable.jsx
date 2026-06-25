@@ -23,7 +23,7 @@ const getPortalRoot = () => document.querySelector('.dashboard-shell') || docume
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
-import { clearTableLayouts } from '../../../../utils/tableLayoutSync'
+import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import { buildMovementProductExportRows } from '../../movimientos/movementTableProducts'
@@ -631,14 +631,13 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   }, [hideProductHoverCard])
 
 const handleResetTable = () => {
-    localStorage.removeItem('solicitudes-table-columns')
-    localStorage.removeItem('solicitudes-table-state-v2')
-    localStorage.removeItem('solicitudes-flat-table-columns')
+    tableLayoutStore.removeItem('solicitudes-table-columns')
+    tableLayoutStore.removeItem('solicitudes-table-state-v2')
+    tableLayoutStore.removeItem('solicitudes-flat-table-columns')
     setSelectedColumns(columnsData)
     setSelectedColumnsFlat(columnsDataFlat)
     clearFilter()
     setTableResetKey((k) => k + 1)
-    clearTableLayouts(['solicitudes-table-columns', 'solicitudes-table-state-v2'], token)
     opColumns.current?.hide()
   }
 
@@ -919,7 +918,7 @@ const handleResetTable = () => {
   }, [selectedColumnsFlat])
 
   useEffect(() => {
-    const stored = localStorage.getItem('solicitudes-table-columns')
+    const stored = tableLayoutStore.getItem('solicitudes-table-columns')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -935,12 +934,12 @@ const handleResetTable = () => {
       }
     }
     return () => {
-      localStorage.setItem('solicitudes-table-columns', JSON.stringify(selectedColumnsRef.current))
+      tableLayoutStore.setItem('solicitudes-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
   }, [columnsData])
 
   useEffect(() => {
-    const stored = localStorage.getItem('solicitudes-flat-table-columns')
+    const stored = tableLayoutStore.getItem('solicitudes-flat-table-columns')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -954,16 +953,16 @@ const handleResetTable = () => {
       }
     }
     return () => {
-      localStorage.setItem('solicitudes-flat-table-columns', JSON.stringify(selectedColumnsFlatRef.current))
+      tableLayoutStore.setItem('solicitudes-flat-table-columns', JSON.stringify(selectedColumnsFlatRef.current))
     }
   }, [columnsDataFlat])
 
   const handleCheckboxChangeColumn = (column) => {
-    if (selectedColumns.some((c) => c.nombrevar === column.nombrevar)) {
-      setSelectedColumns(selectedColumns.filter((c) => c.nombrevar !== column.nombrevar))
-    } else {
-      setSelectedColumns([...selectedColumns, column])
-    }
+    const next = selectedColumns.some((c) => c.nombrevar === column.nombrevar)
+      ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
+      : [...selectedColumns, column]
+    setSelectedColumns(next)
+    tableLayoutStore.setItem('solicitudes-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (e) => {
@@ -972,12 +971,14 @@ const handleResetTable = () => {
       const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
       if (sorted.length) {
         setSelectedColumns(sorted)
+        tableLayoutStore.setItem('solicitudes-table-columns', JSON.stringify(sorted))
         setColumnReorderKey((k) => k + 1)
       }
     } else {
       const sorted = columnOrder.map((field) => selectedColumnsFlat.find((c) => c.key === field)).filter(Boolean)
       if (sorted.length) {
         setSelectedColumnsFlat(sorted)
+        tableLayoutStore.setItem('solicitudes-flat-table-columns', JSON.stringify(sorted))
         setColumnReorderKey((k) => k + 1)
       }
     }
