@@ -501,7 +501,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
       columns: exportColumns,
       valueGetter: getExportValue,
       fileName: buildFileName('casas-comerciales'),
-      title: 'Reporte de Casas comerciales',
+      title: 'Reporte de Proveedores',
     })
   }, [companies, exportColumns, getExportValue, notifyExportWarning, processedRows, selectedRows])
 
@@ -591,7 +591,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   // ---------------- Header ----------------
   const dataLength = totalRecords ?? 0
   const emptyMessage = lastSearchRef.current
-    ? 'No se encontraron casas comerciales'
+    ? 'No se encontraron proveedores'
     : 'Realice una búsqueda para ver la información. Si quiere ver toda la información, haga la búsqueda sin aplicar ningún filtro.'
 
   const header = (
@@ -906,7 +906,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
         {!hasSearched ? (
           <div className="users-search-empty-state">
             <div className="users-search-empty-state__content">
-              <h2 className="users-search-empty-state__title">Casas Comerciales</h2>
+              <h2 className="users-search-empty-state__title">Proveedores</h2>
               <div className="users-search-empty-state__hint">
                 <span className="users-search-empty-state__hint-text">Para iniciar, seleccione</span>
                 <Button
@@ -1104,7 +1104,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
           >
             <header className="create-user__header" onMouseDown={handleSearchMouseDown}>
               <div className="create-user__header-text">
-                <h3>Buscar casas comerciales</h3>
+                <h3>Buscar proveedores</h3>
               </div>
               <div className="create-user__header-actions">
                 <button

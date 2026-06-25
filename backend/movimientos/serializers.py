@@ -6,6 +6,7 @@ import unicodedata
 from django.db import transaction
 from rest_framework import serializers
 
+from casa_comercial.models import CasaComercial
 from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision, Sucursal
 from productos.models import Producto
@@ -513,6 +514,14 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
+    casa_comercial = serializers.StringRelatedField(read_only=True)
+    casa_comercial_id = serializers.PrimaryKeyRelatedField(
+        source="casa_comercial",
+        queryset=CasaComercial.objects.all(),
+        allow_null=True,
+        required=False,
+        write_only=True,
+    )
     tipo_movimiento = serializers.StringRelatedField(read_only=True)
     tipo_movimiento_id = serializers.PrimaryKeyRelatedField(
         source="tipo_movimiento",
@@ -582,6 +591,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "ubicaciones_iniciales",
             "garantia_pendiente",
             "estado_garantia",
+            "casa_comercial",
+            "casa_comercial_id",
         ]
         extra_kwargs = {
             "no_documento": {

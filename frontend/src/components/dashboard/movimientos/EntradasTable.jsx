@@ -88,6 +88,7 @@ const ENTRADAS_FILTER_FIELDS = [
   'sub_tipo_nombre',
   'estado_nombre',
   'sucursal_objetivo_nombre',
+  'proveedor_nombre',
   'total',
   'funcional_label',
 ]
@@ -99,6 +100,7 @@ const ENTRADAS_FILTER_DEFAULT_MODES = {
   sub_tipo_nombre: FilterMatchMode.CONTAINS,
   estado_nombre: FilterMatchMode.CONTAINS,
   sucursal_objetivo_nombre: FilterMatchMode.CONTAINS,
+  proveedor_nombre: FilterMatchMode.CONTAINS,
   total: FilterMatchMode.EQUALS,
   funcional_label: FilterMatchMode.CONTAINS,
 }
@@ -110,9 +112,21 @@ const ENTRADAS_ORDERING_MAP = {
   sub_tipo_nombre: 'sub_tipo_movimiento__nombre',
   estado_nombre: 'estado_movimiento__nombre',
   sucursal_objetivo_nombre: 'sucursal_objetivo__nombre',
+  proveedor_nombre: 'casa_comercial__nombre',
   total: 'total_monto',
   funcional_label: 'funcional',
 }
+
+const COMPRA_LOCAL_COLUMN_ORDER = [
+  'proveedor_nombre',
+  'productos_resumen',
+  'fecha',
+  'no_documento',
+  'sucursal_nombre',
+  'estado_nombre',
+  'total',
+  'funcional_label',
+]
 
 const createInitialFilters = () => ({
   global: { value: null, matchMode: FilterMatchMode.CONTAINS },
@@ -224,14 +238,26 @@ function EntradasTable({
       { nombrevar: 'sucursal_nombre', header: 'Sucursal', filterPlaceholder: 'Buscar por sucursal' },
       { nombrevar: 'sub_tipo_nombre', header: 'Tipo', filterPlaceholder: 'Buscar por tipo' },
       { nombrevar: 'sucursal_objetivo_nombre', header: 'Sucursal proveedora', filterPlaceholder: 'Buscar por sucursal proveedora' },
+      { nombrevar: 'proveedor_nombre', header: 'Proveedor', filterPlaceholder: 'Buscar por proveedor' },
       { nombrevar: 'estado_nombre', header: 'Estado', filterPlaceholder: 'Buscar por estado' },
       { nombrevar: 'total', header: 'Total', filterPlaceholder: 'Buscar por total' },
       { nombrevar: 'funcional_label', header: 'Funcional', filterPlaceholder: 'Buscar por funcional' },
     ],
     []
   )
+
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
   const selectedColumnsRef = useRef(selectedColumns)
+
+  const compraLocalColumns = useMemo(
+    () =>
+      COMPRA_LOCAL_COLUMN_ORDER
+        .map((key) => columnsData.find((col) => col.nombrevar === key))
+        .filter(Boolean),
+    [columnsData]
+  )
+
+  const activeColumns = subtypeFilter === 'compra_local' ? compraLocalColumns : selectedColumns
   const [productHoverCard, setProductHoverCard] = useState(null)
 
   const showErrorToast = useCallback(
@@ -282,6 +308,7 @@ function EntradasTable({
           sub_tipo_nombre: row?.sub_tipo_nombre || row?.sub_tipo_movimiento || '-',
           estado_nombre: formatEstadoForTable(row?.estado_nombre || row?.estado_movimiento),
           sucursal_objetivo_nombre: row?.sucursal_objetivo_nombre || row?.sucursal_objetivo || '-',
+          proveedor_nombre: (row?.casa_comercial_nombre && row.casa_comercial_nombre !== '-') ? row.casa_comercial_nombre : '-',
           funcional_label: row?.funcional_label || (row?.funcional ? 'Si' : 'No'),
           productos,
           productos_resumen: buildMovementProductsSearchText(productos) || '-',
@@ -1204,7 +1231,7 @@ function EntradasTable({
   }
 
   const exportColumns = useMemo(() => {
-    const cols = selectedColumns.flatMap((col) => {
+    const cols = activeColumns.flatMap((col) => {
       if (col.nombrevar === 'productos_resumen') {
         return [
           { key: 'producto_codigo', header: 'Código' },
@@ -1506,7 +1533,7 @@ function EntradasTable({
             resizable={false}
           />
 
-          {selectedColumns.map((column) => {
+          {activeColumns.map((column) => {
             const field = column.nombrevar
             const bodyTemplate =
               field === 'total'

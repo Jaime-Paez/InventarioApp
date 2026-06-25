@@ -78,6 +78,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "tipo_movimiento",
             "sub_tipo_movimiento",
             "estado_movimiento",
+            "casa_comercial",
         )
         .prefetch_related(
             "detalles__producto",
@@ -107,6 +108,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         "estado_movimiento__nombre",
         "funcional",
         "total_monto",
+        "casa_comercial__nombre",
     ]
 
     def filter_queryset(self, queryset):
@@ -195,6 +197,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         row.get("sucursal_objetivo__nombre")
                         if is_mapping
                         else getattr(getattr(row, "sucursal_objetivo", None), "nombre", "")
+                    ) or "-",
+                    "casa_comercial_nombre": (
+                        row.get("casa_comercial__nombre")
+                        if is_mapping
+                        else getattr(getattr(row, "casa_comercial", None), "nombre", "")
                     ) or "-",
                     "funcional": bool(row.get("funcional") if is_mapping else getattr(row, "funcional", False)),
                     "funcional_label": "Si"

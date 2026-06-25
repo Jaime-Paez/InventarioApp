@@ -397,6 +397,7 @@ function CreateEntrada({
   const documentCheckSequenceRef = useRef(0)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
+  const justTransitionedFromCasaRef = useRef(false)
   const modalSizeRef = useRef(modalSize)
   const modalPositionRef = useRef(modalPosition)
   const modalRestoreRef = useRef(null)
@@ -557,7 +558,7 @@ function CreateEntrada({
   const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
   const isSelectorStep = !formData.subTipoId
-  const isCasaComercialStep = Boolean(formData.subTipoId) && isImportacion && !selectedCasaComercial
+  const isCasaComercialStep = Boolean(formData.subTipoId) && isCompraEntrada && !selectedCasaComercial
   const requiresSucursalObjetivo = isTraslado
   const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
   const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
@@ -985,13 +986,13 @@ function CreateEntrada({
   )
 
   const searchCasasComerciales = useCallback(
-    async (query) => {
+    async (query, tipo) => {
       if (!token) return
       setCasaComercialLoading(true)
       try {
         const params = new URLSearchParams()
         params.set('page_size', '10')
-        params.set('tipo', 'importacion')
+        params.set('tipo', tipo)
         if (query) params.set('search', query)
         const response = await authFetch(`${API_URL}/casa-comercial/casas/?${params.toString()}`, {}, token)
         if (!response.ok) throw new Error('No se pudieron cargar las casas comerciales.')
@@ -1829,7 +1830,7 @@ function CreateEntrada({
       casaComercialTimerRef.current = null
     }
     casaComercialTimerRef.current = setTimeout(() => {
-      searchCasasComerciales(casaComercialQuery.trim())
+      searchCasasComerciales(casaComercialQuery.trim(), isImportacion ? 'importacion' : 'local')
     }, 320)
     return () => {
       if (casaComercialTimerRef.current) {
@@ -1837,7 +1838,7 @@ function CreateEntrada({
         casaComercialTimerRef.current = null
       }
     }
-  }, [casaComercialQuery, isCasaComercialStep, open, searchCasasComerciales])
+  }, [casaComercialQuery, isCasaComercialStep, isImportacion, open, searchCasasComerciales])
 
   useEffect(() => {
     if (!open) return
@@ -1981,9 +1982,15 @@ function CreateEntrada({
     const compactMode = isSelectorStep || isCasaComercialStep
     const { availableWidth, availableHeight, minWidth, minHeight } = getViewportMetrics(compactMode)
     const preferredWidth = compactMode ? SELECTOR_WIDTH : MIN_WIDTH
+    const casaDraftHeight = casaComercialDraft
+      ? 390 +
+        (casaComercialDraft.telefono ? 48 : 0) +
+        (casaComercialDraft.correo ? 48 : 0) +
+        (casaComercialDraft.descripcion ? 48 : 0)
+      : CASA_SELECTOR_HEIGHT_EMPTY
     const preferredHeight = compactMode
       ? isCasaComercialStep
-        ? casaComercialDraft ? CASA_SELECTOR_HEIGHT_FULL : CASA_SELECTOR_HEIGHT_EMPTY
+        ? casaDraftHeight
         : SELECTOR_HEIGHT
       : MIN_HEIGHT
     const width = Math.min(Math.max(preferredWidth, minWidth), availableWidth)
@@ -2498,6 +2505,7 @@ function CreateEntrada({
           descripcion: buildDescripcion(ventaClienteLabel),
           funcional: isDevolucion ? Boolean(formData.funcional) : true,
           sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
+          casa_comercial_id: isCompraEntrada && selectedCasaComercial?.id ? Number(selectedCasaComercial.id) : null,
           estado_movimiento_id: Number(formData.estadoId),
           descuento,
           fecha: formData.fecha,
@@ -2740,6 +2748,7 @@ function CreateEntrada({
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (isCasaComercialStep || justTransitionedFromCasaRef.current) return
     setError('')
 
     if (!entradaTipoId) {
@@ -3009,7 +3018,7 @@ function CreateEntrada({
               <section className="create-user__section create-salida__selector-card">
                 <div className="create-user__section-header">
                   <div>
-                    <h4>Selecciona la casa comercial</h4>
+                    <h4>{isImportacion ? 'Selecciona la casa comercial' : 'Selecciona proveedor'}</h4>
                   </div>
                 </div>
                 <div className="create-salida__selector-inner">
@@ -3035,6 +3044,7 @@ function CreateEntrada({
                             setShowCasaComercialDropdown(true)
                           }}
                           onFocus={() => setShowCasaComercialDropdown(true)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
                           style={{ border: 'none', outline: 'none', flex: 1, background: 'transparent', fontSize: 'inherit', color: 'inherit' }}
                           autoComplete="off"
                         />
@@ -3975,7 +3985,11 @@ function CreateEntrada({
                 type="button"
                 className="create-user__action create-user__action--primary"
                 disabled={!casaComercialDraft}
-                onClick={() => setSelectedCasaComercial(casaComercialDraft)}
+                onClick={() => {
+                  justTransitionedFromCasaRef.current = true
+                  setTimeout(() => { justTransitionedFromCasaRef.current = false }, 500)
+                  setSelectedCasaComercial(casaComercialDraft)
+                }}
               >
                 Siguiente
               </button>

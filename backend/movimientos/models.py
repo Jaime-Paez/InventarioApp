@@ -78,6 +78,14 @@ class MovimientoInventario(models.Model):
         default=None,
         help_text="Estado del flujo de aprobacion de garantia. Null si no aplica.",
     )
+    casa_comercial = models.ForeignKey(
+        "casa_comercial.CasaComercial",
+        on_delete=models.SET_NULL,
+        related_name="movimientos",
+        null=True,
+        blank=True,
+        help_text="Proveedor asociado al movimiento (compra local o importacion).",
+    )
 
     class Meta:
         ordering = ["-fecha", "-id"]

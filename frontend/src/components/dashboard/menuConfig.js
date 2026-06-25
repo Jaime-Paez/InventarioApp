@@ -42,7 +42,7 @@ export const MENU_STRUCTURE = [
       { label: 'Bodegas', icon: Box, moduleKey: 'sucursales_bodegas' },
     ],
   },
-  { label: 'Casas comerciales', icon: Building, moduleKey: 'proveedores_casas' },
+  { label: 'Proveedores', icon: Truck, moduleKey: 'proveedores_casas' },
   {
     label: 'Importaciones',
     icon: PackagePlus,
