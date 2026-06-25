@@ -101,12 +101,11 @@
   color: var(--color-text-primary);
 }
 
-.inventario-v2__total-col .inventario-v2__quantity {
+.inventario-v2__quantity--scoped {
   font-weight: 700;
-  text-decoration: underline;
 }
 
-.inventario-v2__quantity--scoped {
+.inventario-v2__total-col .inventario-v2__quantity {
   font-weight: 700;
   text-decoration: underline;
 }
