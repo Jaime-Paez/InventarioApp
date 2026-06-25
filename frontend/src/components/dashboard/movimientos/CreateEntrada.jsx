@@ -3111,11 +3111,7 @@ function CreateEntrada({
                         )}
                       </div>
                     </div>
-                  ) : (
-                    <p className="create-salida__selector-hint">
-                      Pasa el cursor sobre un resultado para ver más detalles.
-                    </p>
-                  )}
+                  ) : null}
                 </div>
               </section>
             </div>
