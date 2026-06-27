@@ -93,7 +93,7 @@ const formatProductLabel = (product) => {
   return [codigo, nombre, referencia ? `Ref. ${referencia}` : ''].filter(Boolean).join(' - ')
 }
 
-const MIN_WIDTH = 660
+const MIN_WIDTH = 700
 const MIN_HEIGHT = 520
 const SELECTOR_WIDTH = 520
 const SELECTOR_HEIGHT_EMPTY = 'auto'
@@ -3932,8 +3932,27 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   }
 
   const handlePedirCotizacion = async () => {
+    const badKeys = new Set(
+      details.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 }).map((item) => item._key)
+    )
+    if (badKeys.size > 0) {
+      setInvalidQtyKeys(badKeys)
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Todas las cantidades deben ser mayores a cero.', life: 4000 })
+      return
+    }
     setImportarSubmitting(true)
     try {
+      const normalizedDetails = details.map((item) => {
+        const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...solId }
+      })
+      const saveResponse = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/`,
+        { method: 'PATCH', body: JSON.stringify({ detalles: normalizedDetails }) },
+        token
+      )
+      if (!saveResponse.ok) throw new Error(await readErrorMessage(saveResponse, 'No se pudo guardar los cambios.'))
       const response = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/pedir-cotizacion/`,
         { method: 'POST' },
@@ -4974,10 +4993,10 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       </div>
       <div className="users-header__right">
         <span className="users-header__count">Reg. {items.length}</span>
-        <button className="rounded-icon-btn" type="button" onClick={handleExportExcel} title="Exportar Excel" disabled={!items.length}>
+        <button className="users-circle users-circle--excel" type="button" onClick={handleExportExcel} title="Exportar Excel" disabled={!items.length}>
           <i className="pi pi-file-excel" />
         </button>
-        <button className="rounded-icon-btn" type="button" onClick={handleExportPdf} title="Exportar PDF" disabled={!items.length}>
+        <button className="users-circle users-circle--pdf" type="button" onClick={handleExportPdf} title="Exportar PDF" disabled={!items.length}>
           <i className="pi pi-file-pdf" />
         </button>
       </div>

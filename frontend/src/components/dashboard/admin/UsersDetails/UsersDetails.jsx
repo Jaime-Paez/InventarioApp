@@ -323,6 +323,7 @@ function UsersDetails({
   onError,
   allowEdit = true,
   allowDelete = true,
+  isTabActive,
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
@@ -1180,7 +1181,7 @@ function UsersDetails({
   if (!shouldRender) return null
 
   return createPortal(
-    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true">
+    <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={isTabActive === false ? { display: 'none' } : undefined}>
       <div
         className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
         ref={modalRef}

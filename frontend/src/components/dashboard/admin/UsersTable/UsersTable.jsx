@@ -38,7 +38,7 @@ function UsersTable({
   token,
   onSelect,
   moduleActions,
-
+  isTabActive,
   onExportExcel,
   onExportPdf,
 }) {
@@ -655,6 +655,7 @@ function UsersTable({
 
   // ---------------- Create modal ----------------
   const [showCreateModal, setShowCreateModal] = useState(false)
+
   const handleUserCreated = () => {
     setShowCreateModal(false)
     refreshData()
@@ -988,6 +989,7 @@ function UsersTable({
           onError={showErrorToast}
           allowEdit={canEdit}
           allowDelete={canDelete}
+          isTabActive={isTabActive}
         />
 
         {shouldRenderSearchModal && (
