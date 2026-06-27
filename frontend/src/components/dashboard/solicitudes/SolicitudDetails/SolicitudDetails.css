@@ -257,7 +257,7 @@
   padding: 0;
 }
 
-.create-solicitud-details__items-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(-n+4) {
+.create-solicitud-details__items-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(-n+5) {
   justify-content: flex-start;
 }
 
@@ -267,6 +267,7 @@
   white-space: nowrap;
   min-width: 0;
   flex: 1;
+  text-align: left;
 }
 
 .create-solicitud-details__items-row:hover {

@@ -17,7 +17,9 @@
       "Bash(py manage.py check)",
       "Bash(npx vite:*)",
       "Bash(find \"c:/Users/PC/Documents/GitHub/InventarioApp/frontend/src\" -name \"*[Tt]able*.{js,jsx,ts,tsx}\" -type f)",
-      "Read(//c/Users/PC/.claude/**)"
+      "Read(//c/Users/PC/.claude/**)",
+      "PowerShell(python --version)",
+      "PowerShell(pip --version)"
     ]
   }
 }

@@ -2392,7 +2392,13 @@ function SolicitudDetails({
                         >
                           <span className="create-solicitud-details__cell-text">{item.comentario || '-'}</span>
                         </span>
-                        <span>{item.cantidad || '-'}</span>
+                        <span
+                          className="create-solicitud-details__cell-tip"
+                          onMouseEnter={(e) => showOemTableHover(e, [String(item.cantidad ?? '')].filter(Boolean), 'Cantidad')}
+                          onMouseLeave={hideOemTableHover}
+                        >
+                          <span className="create-solicitud-details__cell-text">{item.cantidad || '-'}</span>
+                        </span>
                         <span aria-label={item.isReviewed ? 'Revisado' : 'Sin revisar'}>
                           <i
                             className={`pi pi-${item.isReviewed ? 'check-circle' : 'times-circle'}`}

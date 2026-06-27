@@ -2143,14 +2143,22 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const [aceptadosSelected, setAceptadosSelected] = useState(new Set())
   const [aceptadosSearch, setAceptadosSearch] = useState('')
   const [aceptadosCount, setAceptadosCount] = useState(null)
+  const [showNuevoProductoView, setShowNuevoProductoView] = useState(false)
+  const [nuevoProductoDraft, setNuevoProductoDraft] = useState({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' })
+  const [nuevoProductoErrors, setNuevoProductoErrors] = useState({})
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
+
+  const [isMaximized, setIsMaximized] = useState(false)
+  const [cellHover, setCellHover] = useState(null)
+  const cellHoverTimerRef = useRef(null)
 
   const modalRef = useRef(null)
   const toastRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalSizeRef = useRef(modalSize)
   const modalPositionRef = useRef(modalPosition)
+  const modalRestoreRef = useRef(null)
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const casaTimerRef = useRef(null)
   const productTimerRef = useRef(null)
@@ -2276,6 +2284,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     const handleWindowResize = () => {
       const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
       const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+      if (isMaximized) {
+        setModalSize({ width: availableWidth, height: availableHeight })
+        setModalPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+        return
+      }
       setModalSize((prev) => {
         const width = clamp(prev.width, MIN_WIDTH, availableWidth)
         const height = clamp(prev.height, MIN_HEIGHT, availableHeight)
@@ -2288,15 +2301,39 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     }
     window.addEventListener('resize', handleWindowResize)
     return () => window.removeEventListener('resize', handleWindowResize)
-  }, [])
+  }, [isMaximized])
+
+  const toggleMaximize = () => {
+    modalDrag.current.active = false
+    if (isMaximized) {
+      const restore = modalRestoreRef.current
+      if (restore) {
+        setModalSize(restore.size)
+        setModalPosition(restore.position)
+      }
+      setIsMaximized(false)
+      return
+    }
+    modalRestoreRef.current = {
+      size: { ...modalSizeRef.current },
+      position: { ...modalPositionRef.current },
+    }
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+    setModalSize({ width: availableWidth, height: availableHeight })
+    setModalPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+    setIsMaximized(true)
+  }
 
   const handleModalMouseDown = (event) => {
+    if (isMaximized) return
     if (!modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
     modalDrag.current = { active: true, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top }
   }
 
   const handleResizeMouseDown = (event) => {
+    if (isMaximized) return
     event.preventDefault()
     event.stopPropagation()
     resizeData.current = {
@@ -2354,6 +2391,12 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     setAceptadosSelected(new Set())
     setAceptadosSearch('')
     setAceptadosCount(null)
+    setShowNuevoProductoView(false)
+    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' })
+    setNuevoProductoErrors({})
+    setIsMaximized(false)
+    modalRestoreRef.current = null
+    setCellHover(null)
     setModalSize({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
   }, [])
 
@@ -2499,6 +2542,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       toastRef.current?.show({ severity: 'warn', summary: 'Advertencia', detail: 'Este producto ya fue agregado.', life: 3000 })
       return
     }
+    const incomingRef = String(product.referencia || '').trim().toLowerCase()
+    if (incomingRef && details.some((d) => String(d.producto?.referencia || d.referencia || '').trim().toLowerCase() === incomingRef)) {
+      toastRef.current?.show({ severity: 'warn', summary: 'Referencia duplicada', detail: `Ya existe un producto con la referencia "${product.referencia}" en el listado.`, life: 4000 })
+      return
+    }
     setDetails((prev) => [
       ...prev,
       {
@@ -2540,7 +2588,15 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       if (item.producto?.id) {
         return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), ...solId }
       }
-      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), ...solId }
+      const precioConfirmado = item.precio != null && item.precio !== '' ? Number(item.precio) : undefined
+      return {
+        codigo: item.codigo || '',
+        nombre: item.nombre || '',
+        oem: item.oem || '',
+        cantidad: Number(item.cantidad || 0),
+        ...(precioConfirmado != null ? { precio_confirmado: precioConfirmado } : {}),
+        ...solId,
+      }
     })
     const badKeys = new Set(
       details
@@ -2640,10 +2696,60 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     setShowAceptadosView(false)
   }
 
+  const showCellHover = useCallback((event, value, label) => {
+    if (!value) return
+    if (cellHoverTimerRef.current) clearTimeout(cellHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    cellHoverTimerRef.current = setTimeout(() => {
+      cellHoverTimerRef.current = null
+      setCellHover({ top: rect.bottom + 4, left: rect.left, value, label })
+    }, 400)
+  }, [])
+
+  const hideCellHover = useCallback(() => {
+    if (cellHoverTimerRef.current) { clearTimeout(cellHoverTimerRef.current); cellHoverTimerRef.current = null }
+    setCellHover(null)
+  }, [])
+
+  const handleAddNuevoProducto = () => {
+    const errors = {}
+    if (!nuevoProductoDraft.nombre.trim()) errors.nombre = 'El nombre es requerido'
+    if (!nuevoProductoDraft.oem.trim()) errors.oem = 'El OEM es requerido'
+    if (!nuevoProductoDraft.referencia.trim()) errors.referencia = 'La referencia es requerida'
+    const qty = Number(nuevoProductoDraft.cantidad)
+    if (!nuevoProductoDraft.cantidad || !Number.isFinite(qty) || qty <= 0) errors.cantidad = 'La cantidad debe ser mayor a 0'
+    if (Object.keys(errors).length > 0) { setNuevoProductoErrors(errors); return }
+    const incomingRef = nuevoProductoDraft.referencia.trim().toLowerCase()
+    if (details.some((d) => String(d.producto?.referencia || d.referencia || '').trim().toLowerCase() === incomingRef)) {
+      setNuevoProductoErrors((p) => ({ ...p, referencia: 'Ya existe un producto con esta referencia en el listado.' }))
+      return
+    }
+    const key = 'manual_' + Date.now() + '_' + Math.floor(Math.random() * 10000)
+    setDetails((prev) => [...prev, {
+      _key: key,
+      producto: null,
+      codigo: nuevoProductoDraft.codigo.trim(),
+      nombre: nuevoProductoDraft.nombre.trim(),
+      oem: nuevoProductoDraft.oem.trim(),
+      referencia: nuevoProductoDraft.referencia.trim(),
+      precio: nuevoProductoDraft.precio !== '' ? Number(nuevoProductoDraft.precio) : null,
+      cantidad: String(nuevoProductoDraft.cantidad),
+    }])
+    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' })
+    setNuevoProductoErrors({})
+    setShowNuevoProductoView(false)
+  }
+
   const handleAddFromAceptados = useCallback((aceptados) => {
+    const skippedRefs = []
     setDetails((prev) => {
       const next = [...prev]
       for (const item of aceptados) {
+        const itemRef = String(item.referencia || '').trim().toLowerCase()
+        if (itemRef && next.some((d) => String(d.producto?.referencia || d.referencia || '').trim().toLowerCase() === itemRef)) {
+          skippedRefs.push(item.referencia || item.nombre || item.codigo)
+          continue
+        }
         if (item.producto_id) {
           const pid = String(item.producto_id)
           const existingIdx = next.findIndex((d) => d._key === pid)
@@ -2682,6 +2788,14 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       }
       return next
     })
+    if (skippedRefs.length > 0) {
+      toastRef.current?.show({
+        severity: 'warn',
+        summary: 'Referencia duplicada',
+        detail: `${skippedRefs.length} producto(s) omitidos por referencia ya existente: ${skippedRefs.join(', ')}`,
+        life: 5000,
+      })
+    }
   }, [])
 
   if (!open) return null
@@ -2714,6 +2828,17 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
             <h3>Crear sugerencia</h3>
           </div>
           <div className="create-user__header-actions">
+            {step !== 'casa' && (
+              <button
+                type="button"
+                className="create-user__icon-button create-user__icon-button--maximize"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={toggleMaximize}
+                aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+              >
+                <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+              </button>
+            )}
             <button
               type="button"
               className="create-user__icon-button"
@@ -2912,17 +3037,27 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           <p className="create-user__eyebrow">Productos</p>
                           <h4>Listado de productos</h4>
                         </div>
-                        <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <button
                             type="button"
                             className="create-user__ghost"
-                            onClick={() => setShowAceptadosView(true)}
+                            onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' }); setNuevoProductoErrors({}); setShowNuevoProductoView(true) }}
                             style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                            disabled={aceptadosCount === 0}
                           >
-                            + Aceptados de solicitudes
+                            + Agregar producto
                           </button>
-                        </span>
+                          <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
+                            <button
+                              type="button"
+                              className="create-user__ghost"
+                              onClick={() => setShowAceptadosView(true)}
+                              style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                              disabled={aceptadosCount === 0}
+                            >
+                              + Aceptados de solicitudes
+                            </button>
+                          </span>
+                        </div>
                       </div>
 
                       <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table">
@@ -3059,20 +3194,47 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           const nombre = item.producto?.nombre || item.nombre || ''
                           const oem = String(item.producto?.oem || item.oem || item.producto?.referencia || '').trim() || '-'
                           const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
-                          const precio = item.producto?.precio != null ? `$${Number(item.producto.precio).toFixed(2)}` : '-'
+                          const precioVal = item.producto?.precio ?? item.precio ?? null
+                          const precio = precioVal != null ? `$${Number(precioVal).toFixed(2)}` : '-'
                           return (
                             <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
-                              <span>
+                              <span
+                                className="imp-table-cell-tip"
+                                onMouseEnter={(e) => showCellHover(e, sinCatalogo ? null : codigo, 'Código')}
+                                onMouseLeave={hideCellHover}
+                              >
                                 {sinCatalogo
                                   ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                                  : codigo}
+                                  : <span className="imp-table-cell-text">{codigo}</span>}
                               </span>
-                              <span title={nombre}>
-                                <span className="create-salida__product-name-text">{nombre}</span>
+                              <span
+                                className="imp-table-cell-tip"
+                                onMouseEnter={(e) => showCellHover(e, nombre, 'Nombre')}
+                                onMouseLeave={hideCellHover}
+                              >
+                                <span className="imp-table-cell-text">{nombre || '-'}</span>
                               </span>
-                              <span>{oem}</span>
-                              <span>{referencia}</span>
-                              <span>{precio}</span>
+                              <span
+                                className="imp-table-cell-tip"
+                                onMouseEnter={(e) => showCellHover(e, oem !== '-' ? oem : null, 'OEM')}
+                                onMouseLeave={hideCellHover}
+                              >
+                                <span className="imp-table-cell-text">{oem}</span>
+                              </span>
+                              <span
+                                className="imp-table-cell-tip"
+                                onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')}
+                                onMouseLeave={hideCellHover}
+                              >
+                                <span className="imp-table-cell-text">{referencia}</span>
+                              </span>
+                              <span
+                                className="imp-table-cell-tip"
+                                onMouseEnter={(e) => showCellHover(e, precio !== '-' ? precio : null, 'Precio')}
+                                onMouseLeave={hideCellHover}
+                              >
+                                <span className="imp-table-cell-text">{precio}</span>
+                              </span>
                               <span>
                                 <input
                                   type="number"
@@ -3241,6 +3403,115 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
               </button>
             </div>
           </div>
+        </div>,
+        getPortalRoot()
+      )}
+
+      {showNuevoProductoView && createPortal(
+        <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowNuevoProductoView(false) }}>
+          <div className="imp-aceptados-popup__dialog imp-nuevo-producto-popup__dialog">
+            <header className="imp-aceptados-popup__header">
+              <div>
+                <h3>Agregar producto</h3>
+                <p>El producto se agregará directamente al listado.</p>
+              </div>
+              <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowNuevoProductoView(false)} aria-label="Cerrar">
+                <i className="pi pi-times" />
+              </button>
+            </header>
+
+            <div className="imp-aceptados-popup__body">
+              <div className="create-user__grid create-user__grid--two" style={{ padding: '4px 0' }}>
+                <label className="create-user__field">
+                  <span>Código JP</span>
+                  <input
+                    type="text"
+                    value={nuevoProductoDraft.codigo}
+                    onChange={(e) => setNuevoProductoDraft((p) => ({ ...p, codigo: e.target.value }))}
+                    placeholder="Opcional"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className={`create-user__field${nuevoProductoErrors.nombre ? ' create-user__field--invalid' : ''}`}>
+                  <span>Nombre <span style={{ color: '#dc2626' }}>*</span></span>
+                  <input
+                    type="text"
+                    value={nuevoProductoDraft.nombre}
+                    onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, nombre: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, nombre: undefined })) }}
+                    placeholder="Nombre del producto"
+                    autoComplete="off"
+                    autoFocus
+                  />
+                  {nuevoProductoErrors.nombre && <small style={{ color: '#dc2626' }}>{nuevoProductoErrors.nombre}</small>}
+                </label>
+                <label className={`create-user__field${nuevoProductoErrors.oem ? ' create-user__field--invalid' : ''}`}>
+                  <span>OEM <span style={{ color: '#dc2626' }}>*</span></span>
+                  <input
+                    type="text"
+                    value={nuevoProductoDraft.oem}
+                    onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, oem: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, oem: undefined })) }}
+                    placeholder="Código OEM"
+                    autoComplete="off"
+                  />
+                  {nuevoProductoErrors.oem && <small style={{ color: '#dc2626' }}>{nuevoProductoErrors.oem}</small>}
+                </label>
+                <label className={`create-user__field${nuevoProductoErrors.referencia ? ' create-user__field--invalid' : ''}`}>
+                  <span>Referencia <span style={{ color: '#dc2626' }}>*</span></span>
+                  <input
+                    type="text"
+                    value={nuevoProductoDraft.referencia}
+                    onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, referencia: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, referencia: undefined })) }}
+                    placeholder="Referencia del producto"
+                    autoComplete="off"
+                  />
+                  {nuevoProductoErrors.referencia && <small style={{ color: '#dc2626' }}>{nuevoProductoErrors.referencia}</small>}
+                </label>
+                <label className="create-user__field">
+                  <span>Precio</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={nuevoProductoDraft.precio}
+                    onChange={(e) => setNuevoProductoDraft((p) => ({ ...p, precio: e.target.value }))}
+                    placeholder="0.00"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className={`create-user__field${nuevoProductoErrors.cantidad ? ' create-user__field--invalid' : ''}`}>
+                  <span>Cantidad <span style={{ color: '#dc2626' }}>*</span></span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={nuevoProductoDraft.cantidad}
+                    onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, cantidad: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, cantidad: undefined })) }}
+                    placeholder="0"
+                    autoComplete="off"
+                  />
+                  {nuevoProductoErrors.cantidad && <small style={{ color: '#dc2626' }}>{nuevoProductoErrors.cantidad}</small>}
+                </label>
+              </div>
+            </div>
+
+            <div className="imp-aceptados-popup__footer">
+              <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowNuevoProductoView(false)}>Cancelar</button>
+              <button type="button" className="create-user__action create-user__action--primary" onClick={handleAddNuevoProducto}>
+                Agregar producto
+              </button>
+            </div>
+          </div>
+        </div>,
+        getPortalRoot()
+      )}
+
+      {cellHover && createPortal(
+        <div
+          className="imp-cell-hover-card"
+          style={{ top: cellHover.top, left: cellHover.left }}
+        >
+          <div className="imp-cell-hover-card__title">{cellHover.label}</div>
+          <div className="imp-cell-hover-card__value">{cellHover.value}</div>
         </div>,
         getPortalRoot()
       )}
