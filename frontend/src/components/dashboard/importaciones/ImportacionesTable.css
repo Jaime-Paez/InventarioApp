@@ -258,16 +258,17 @@
 
 .importaciones-modal__products-table--verificar .create-user__locations-row {
   grid-template-columns:
-    minmax(76px, 0.85fr)
-    minmax(100px, 1.3fr)
-    minmax(34px, 0.34fr)
-    minmax(34px, 0.34fr)
-    minmax(48px, 0.5fr)
-    minmax(42px, 0.44fr)
-    96px
-    76px
-    minmax(60px, 0.62fr)
-    minmax(46px, 0.46fr);
+    minmax(72px, 0.7fr)
+    minmax(100px, 1fr)
+    minmax(72px, 0.7fr)
+    minmax(82px, 0.8fr)
+    minmax(60px, 0.55fr)
+    44px
+    88px
+    58px
+    minmax(60px, 0.55fr)
+    minmax(100px, 1fr)
+    40px;
 }
 
 .importaciones-modal__products-table--verificar .create-user__locations-row:not(.create-user__locations-row--empty) > span {
@@ -355,6 +356,11 @@
 
 .importaciones-modal__products-table .create-user__locations-row--head > span {
   min-width: max-content;
+}
+
+.importaciones-modal__products-table--verificar .create-user__locations-row--head > span {
+  min-width: 0;
+  overflow: hidden;
 }
 
 .importaciones-modal__products-table .create-user__locations-cell--action,
@@ -872,6 +878,48 @@
 .imp-importar-btn:hover:not(:disabled) {
   background: #15803d;
   border-color: #15803d;
+}
+
+/* Verificar Excel dropdown */
+.imp-verificar-excel-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.imp-verificar-excel-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  background: var(--modal-color);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-panel);
+  z-index: 200;
+  min-width: 168px;
+  overflow: hidden;
+}
+
+.imp-verificar-excel-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 14px;
+  font-size: 0.875rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.imp-verificar-excel-menu button:hover {
+  background: var(--color-border);
+}
+
+.dashboard-shell.dark .imp-verificar-excel-menu button:hover {
+  background: var(--color-border-dark);
 }
 
 /* Importar confirmation modal */

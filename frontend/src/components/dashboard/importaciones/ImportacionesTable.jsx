@@ -3587,9 +3587,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
   const [checkedKeys, setCheckedKeys] = useState(new Set())
+  const [showVerificarExcelDropdown, setShowVerificarExcelDropdown] = useState(false)
 
   const modalRef = useRef(null)
   const toastRef = useRef(null)
+  const verificarExcelDropdownRef = useRef(null)
+  const verificarFileInputRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalSizeRef = useRef(modalSize)
   const modalPositionRef = useRef(modalPosition)
@@ -3612,6 +3615,13 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
   useEffect(() => { modalSizeRef.current = modalSize }, [modalSize])
   useEffect(() => { modalPositionRef.current = modalPosition }, [modalPosition])
+
+  useEffect(() => {
+    if (!showVerificarExcelDropdown) return
+    const handle = (e) => { if (!verificarExcelDropdownRef.current?.contains(e.target)) setShowVerificarExcelDropdown(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [showVerificarExcelDropdown])
 
   useLayoutEffect(() => {
     if (!open) { isFirstOpenRef.current = true; return }
@@ -3931,6 +3941,138 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
   }
 
+  const handleDownloadVerificarExcel = async () => {
+    try {
+      const XLSXStyle = (await import('xlsx-js-style')).default
+      const borderThin = { style: 'thin', color: { rgb: 'DBEAFE' } }
+      const border = { top: borderThin, bottom: borderThin, left: borderThin, right: borderThin }
+      const roColCount = 6
+      const headers = ['Código', 'Nombre', 'OEM', 'Referencia', 'Precio', 'Cantidad', 'Precio conf.', 'Cant. conf.', 'Comentario', '_key']
+      const headerStyleRO = {
+        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
+        fill: { fgColor: { rgb: '1e3a5f' }, patternType: 'solid' },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: { top: borderThin, bottom: { style: 'medium', color: { rgb: '2563EB' } }, left: borderThin, right: borderThin },
+      }
+      const headerStyleEdit = {
+        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
+        fill: { fgColor: { rgb: '15803d' }, patternType: 'solid' },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: { top: borderThin, bottom: { style: 'medium', color: { rgb: '166534' } }, left: borderThin, right: borderThin },
+      }
+      const rows = details.map((item) => {
+        const codigo = item.producto?.codigo || item.codigo || 'SIN CATÁLOGO'
+        const nombre = item.producto?.nombre || item.nombre || ''
+        const oem = item.producto?.oem || item.oem || ''
+        const referencia = item.producto?.referencia || item.referencia || ''
+        const precio = item.producto?.precio != null ? Number(item.producto.precio) : ''
+        const cantidad = Number(item.cantidad || 0)
+        const precioConf = item.precio_confirmado
+          ? parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100
+          : ''
+        const cantConf = item.cantidad_confirmada != null ? Number(item.cantidad_confirmada) : ''
+        return [codigo, nombre, oem, referencia, precio, cantidad, precioConf, cantConf, item.comentario || '', item._key]
+      })
+      const aoa = [headers, ...rows]
+      const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
+      headers.forEach((_, ci) => {
+        const ref = XLSXStyle.utils.encode_cell({ r: 0, c: ci })
+        if (!worksheet[ref]) return
+        if (ci === headers.length - 1) { worksheet[ref].s = { font: { sz: 8, color: { rgb: '999999' } } }; return }
+        worksheet[ref].s = ci < roColCount ? headerStyleRO : headerStyleEdit
+      })
+      rows.forEach((row, ri) => {
+        const isEven = (ri + 1) % 2 === 0
+        row.forEach((_, ci) => {
+          const ref = XLSXStyle.utils.encode_cell({ r: ri + 1, c: ci })
+          if (!worksheet[ref]) worksheet[ref] = { t: 's', v: '' }
+          const isEdit = ci >= roColCount && ci < headers.length - 1
+          const bg = isEdit ? (isEven ? 'dcfce7' : 'f0fdf4') : (isEven ? 'EFF6FF' : 'FFFFFF')
+          worksheet[ref].s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border }
+        })
+      })
+      worksheet['!cols'] = [
+        { wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 },
+        { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 24 }, { wch: 0, hidden: true },
+      ]
+      worksheet['!rows'] = [{ hpt: 22 }]
+      const workbook = XLSXStyle.utils.book_new()
+      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Verificar')
+      const out = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `verificar-${imp?.codigo || 'cotizacion'}.xlsx`
+      document.body.appendChild(link); link.click(); document.body.removeChild(link)
+      URL.revokeObjectURL(link.href)
+    } catch (e) {
+      console.error(e)
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el Excel.', life: 3500 })
+    }
+  }
+
+  const handleUploadVerificarExcel = async (file) => {
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo debe ser .xlsx', life: 3500 })
+      return
+    }
+    try {
+      const xlsxMod = await import('xlsx')
+      const xlsx = xlsxMod?.default ?? xlsxMod
+      const buffer = await file.arrayBuffer()
+      const workbook = xlsx.read(buffer, { type: 'array' })
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+      if (rawRows.length < 2) {
+        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no contiene datos.', life: 3500 })
+        return
+      }
+      const fileHeaders = rawRows[0].map((h) => String(h || '').trim())
+      const keyIdx = fileHeaders.indexOf('_key')
+      const precioIdx = fileHeaders.indexOf('Precio conf.')
+      const cantIdx = fileHeaders.indexOf('Cant. conf.')
+      const comentIdx = fileHeaders.indexOf('Comentario')
+      if (keyIdx === -1 || precioIdx === -1 || cantIdx === -1) {
+        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta importación. Descarga el Excel desde este modal.', life: 4500 })
+        return
+      }
+      const dataRows = rawRows.slice(1).filter((row) => row.some((c) => c !== ''))
+      const keyToRow = {}
+      dataRows.forEach((row) => {
+        const k = String(row[keyIdx] || '').trim()
+        if (k) keyToRow[k] = row
+      })
+      const missing = detailsRef.current.filter((item) => !keyToRow[item._key])
+      if (missing.length > 0) {
+        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: `El Excel no corresponde: faltan ${missing.length} producto(s). Descarga de nuevo desde este modal.`, life: 4500 })
+        return
+      }
+      setDetails((prev) => prev.map((item) => {
+        const row = keyToRow[item._key]
+        if (!row) return item
+        const rawPrecio = row[precioIdx]
+        const rawCant = row[cantIdx]
+        const rawComent = comentIdx !== -1 ? row[comentIdx] : ''
+        let nuevoPrecio = item.precio_confirmado
+        if (rawPrecio !== '' && rawPrecio != null) {
+          const num = parseFloat(String(rawPrecio).replace(',', '.'))
+          if (!isNaN(num)) nuevoPrecio = Math.round(num * 100)
+        }
+        let nuevaCant = item.cantidad_confirmada
+        if (rawCant !== '' && rawCant != null) {
+          const num = parseInt(String(rawCant), 10)
+          if (!isNaN(num)) nuevaCant = num
+        }
+        return { ...item, precio_confirmado: nuevoPrecio, cantidad_confirmada: nuevaCant, comentario: rawComent !== '' ? String(rawComent) : item.comentario }
+      }))
+      toastRef.current?.show({ severity: 'success', summary: 'Datos cargados', detail: 'Tabla actualizada desde Excel. Recuerda guardar.', life: 4000 })
+    } catch (e) {
+      console.error(e)
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo leer el Excel.', life: 3500 })
+    }
+  }
+
   const handlePedirCotizacion = async () => {
     const badKeys = new Set(
       details.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 }).map((item) => item._key)
@@ -4235,7 +4377,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificar ? ' importaciones-modal__products-table--verificar' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
-                        {isVerificar ? <><span>Precio conf.</span><span>Cantidad conf.</span><span>Diferencia</span><span>Acciones</span></> : <><span>Comentario</span><span>Acciones</span></>}
+                        {isVerificar ? <><span>Precio conf.</span><span>Cant. conf.</span><span>Diferencia</span><span>Comentario</span><span>Acciones</span></> : <><span>Comentario</span><span>Acciones</span></>}
                       </div>
 
                       {!isVerificar && <div className="create-user__locations-row create-user__locations-row--form">
@@ -4377,17 +4519,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                 />
                               </span>
                             )}
-                            {!isVerificar && (
-                              <span>
-                                <input
-                                  type="text"
-                                  value={item.comentario || ''}
-                                  onChange={(e) => handleComentarioChange(item._key, e.target.value)}
-                                  placeholder="Comentario"
-                                  autoComplete="off"
-                                />
-                              </span>
-                            )}
                             {isVerificar ? (
                               <>
                                 <span className="importaciones-verificar__precio-cell">
@@ -4428,6 +4559,15 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                     </span>
                                   )
                                 })()}
+                                <span>
+                                  <input
+                                    type="text"
+                                    value={item.comentario || ''}
+                                    onChange={(e) => handleComentarioChange(item._key, e.target.value)}
+                                    placeholder="Comentario"
+                                    autoComplete="off"
+                                  />
+                                </span>
                                 <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   <Checkbox
                                     checked={checkedKeys.has(item._key)}
@@ -4443,15 +4583,26 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                 </span>
                               </>
                             ) : (
-                              <span className="create-user__locations-cell create-user__locations-cell--action">
-                                <button
-                                  type="button"
-                                  className="create-user__locations-remove"
-                                  onClick={() => setDetails((prev) => prev.filter((d) => d._key !== item._key))}
-                                >
-                                  x
-                                </button>
-                              </span>
+                              <>
+                                <span>
+                                  <input
+                                    type="text"
+                                    value={item.comentario || ''}
+                                    onChange={(e) => handleComentarioChange(item._key, e.target.value)}
+                                    placeholder="Comentario"
+                                    autoComplete="off"
+                                  />
+                                </span>
+                                <span className="create-user__locations-cell create-user__locations-cell--action">
+                                  <button
+                                    type="button"
+                                    className="create-user__locations-remove"
+                                    onClick={() => setDetails((prev) => prev.filter((d) => d._key !== item._key))}
+                                  >
+                                    x
+                                  </button>
+                                </span>
+                              </>
                             )}
                           </div>
                         )
@@ -4479,6 +4630,35 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 )}
               </div>
               <div className="user-details__footer-right">
+                {isVerificar && (
+                  <div className="imp-verificar-excel-dropdown" ref={verificarExcelDropdownRef}>
+                    <button
+                      type="button"
+                      className="users-circle users-circle--excel"
+                      title="Excel"
+                      onClick={() => setShowVerificarExcelDropdown((p) => !p)}
+                    >
+                      <i className="pi pi-file-excel" />
+                    </button>
+                    {showVerificarExcelDropdown && (
+                      <div className="imp-verificar-excel-menu">
+                        <button type="button" onClick={() => { handleDownloadVerificarExcel(); setShowVerificarExcelDropdown(false) }}>
+                          <i className="pi pi-download" /> Descargar Excel
+                        </button>
+                        <button type="button" onClick={() => { verificarFileInputRef.current?.click(); setShowVerificarExcelDropdown(false) }}>
+                          <i className="pi pi-upload" /> Subir Excel
+                        </button>
+                      </div>
+                    )}
+                    <input
+                      ref={verificarFileInputRef}
+                      type="file"
+                      accept=".xlsx"
+                      style={{ display: 'none' }}
+                      onChange={(e) => { handleUploadVerificarExcel(e.target.files?.[0]); e.target.value = '' }}
+                    />
+                  </div>
+                )}
                 {canImportar && imp?.estado === 'borrador' && (
                   <button
                     type="button"
