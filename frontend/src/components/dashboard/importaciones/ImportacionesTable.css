@@ -251,6 +251,7 @@
     minmax(50px, 0.54fr)
     minmax(58px, 0.56fr)
     minmax(58px, 0.56fr)
+    minmax(100px, 1.2fr)
     minmax(72px, 0.68fr);
   min-width: 0;
 }
@@ -368,7 +369,8 @@
   text-align: center;
 }
 
-.importaciones-modal__products-table .create-user__locations-row > span > input[type='number'] {
+.importaciones-modal__products-table .create-user__locations-row > span > input[type='number'],
+.importaciones-modal__products-table .create-user__locations-row > span > input[type='text'] {
   width: 100%;
   min-height: 30px;
   border: 1px solid var(--border-color, rgba(148, 163, 184, 0.35));

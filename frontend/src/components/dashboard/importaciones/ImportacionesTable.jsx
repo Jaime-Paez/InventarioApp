@@ -2129,7 +2129,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const [casaLoading, setCasaLoading] = useState(false)
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
-  const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '' })
+  const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '', comentario: '' })
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
   const [productLoading, setProductLoading] = useState(false)
@@ -2144,7 +2144,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const [aceptadosSearch, setAceptadosSearch] = useState('')
   const [aceptadosCount, setAceptadosCount] = useState(null)
   const [showNuevoProductoView, setShowNuevoProductoView] = useState(false)
-  const [nuevoProductoDraft, setNuevoProductoDraft] = useState({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' })
+  const [nuevoProductoDraft, setNuevoProductoDraft] = useState({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
   const [nuevoProductoErrors, setNuevoProductoErrors] = useState({})
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
@@ -2533,7 +2533,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     return () => clearTimeout(productTimerRef.current)
   }, [open, productQuery, searchProducts, showProductDropdown])
 
-  const handleAddProduct = (product, cantidad = '') => {
+  const handleAddProduct = (product, cantidad = '', comentario = '') => {
     const normalizedQuantity = Number(cantidad)
     if (!Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) {
       return
@@ -2553,6 +2553,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
         _key: String(product.id),
         producto: product,
         cantidad: String(cantidad).trim(),
+        comentario: String(comentario || '').trim(),
       },
     ])
     setProductQuery('')
@@ -2574,6 +2575,10 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     }
   }
 
+  const handleComentarioChange = (_key, value) => {
+    setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, comentario: value } : item))
+  }
+
   const handleSubmit = async () => {
     if (!selectedCasa?.id) {
       notifyError('Selecciona una casa comercial.')
@@ -2586,7 +2591,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     const normalizedDetails = details.map((item) => {
       const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
       if (item.producto?.id) {
-        return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), ...solId }
+        return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...solId }
       }
       const precioConfirmado = item.precio != null && item.precio !== '' ? Number(item.precio) : undefined
       return {
@@ -2594,6 +2599,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
         nombre: item.nombre || '',
         oem: item.oem || '',
         cantidad: Number(item.cantidad || 0),
+        comentario: item.comentario || '',
         ...(precioConfirmado != null ? { precio_confirmado: precioConfirmado } : {}),
         ...solId,
       }
@@ -2734,8 +2740,9 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       referencia: nuevoProductoDraft.referencia.trim(),
       precio: nuevoProductoDraft.precio !== '' ? Number(nuevoProductoDraft.precio) : null,
       cantidad: String(nuevoProductoDraft.cantidad),
+      comentario: nuevoProductoDraft.comentario.trim(),
     }])
-    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' })
+    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
     setNuevoProductoErrors({})
     setShowNuevoProductoView(false)
   }
@@ -2763,6 +2770,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
               _solId: item.solicitud_id,
               producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', '), precio: item.precio ?? null, referencia: item.referencia || '' },
               cantidad: String(item.cantidad || ''),
+              comentario: '',
             })
           }
         } else {
@@ -2782,6 +2790,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
               oem: (item.oem_codigos || []).join(', '),
               referencia: item.referencia || '',
               cantidad: String(item.cantidad || ''),
+              comentario: '',
             })
           }
         }
@@ -3068,6 +3077,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           <span>Referencia</span>
                           <span>Precio</span>
                           <span>Cantidad</span>
+                          <span>Comentario</span>
                           <span>Acciones</span>
                         </div>
 
@@ -3168,6 +3178,16 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                               disabled={!detailDraft.producto}
                             />
                           </span>
+                          <span>
+                            <input
+                              type="text"
+                              value={detailDraft.comentario}
+                              onChange={(e) => setDetailDraft((prev) => ({ ...prev, comentario: e.target.value }))}
+                              disabled={!detailDraft.producto}
+                              placeholder="Opcional"
+                              autoComplete="off"
+                            />
+                          </span>
                           <span className="create-user__locations-cell create-user__locations-cell--action">
                             <button
                               type="button"
@@ -3175,8 +3195,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                               disabled={!canAddDetailDraft}
                               onClick={() => {
                                 if (!canAddDetailDraft) return
-                                handleAddProduct(detailDraft.producto, detailDraft.cantidad)
-                                setDetailDraft({ producto: null, cantidad: '' })
+                                handleAddProduct(detailDraft.producto, detailDraft.cantidad, detailDraft.comentario)
+                                setDetailDraft({ producto: null, cantidad: '', comentario: '' })
                               }}
                             >
                               Agregar
@@ -3241,6 +3261,15 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                                   value={item.cantidad}
                                   onChange={(e) => handleQuantityChange(item._key, e.target.value)}
                                   style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
+                                />
+                              </span>
+                              <span>
+                                <input
+                                  type="text"
+                                  value={item.comentario || ''}
+                                  onChange={(e) => handleComentarioChange(item._key, e.target.value)}
+                                  placeholder="Comentario"
+                                  autoComplete="off"
                                 />
                               </span>
                               <span className="create-user__locations-cell create-user__locations-cell--action">
@@ -3491,6 +3520,16 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   />
                   {nuevoProductoErrors.cantidad && <small style={{ color: '#dc2626' }}>{nuevoProductoErrors.cantidad}</small>}
                 </label>
+                <label className="create-user__field" style={{ gridColumn: '1 / -1' }}>
+                  <span>Comentario</span>
+                  <input
+                    type="text"
+                    value={nuevoProductoDraft.comentario}
+                    onChange={(e) => setNuevoProductoDraft((p) => ({ ...p, comentario: e.target.value }))}
+                    placeholder="Opcional"
+                    autoComplete="off"
+                  />
+                </label>
               </div>
             </div>
 
@@ -3525,7 +3564,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const canDelete = moduleActions?.puede_eliminar !== false
   const canImportar = moduleActions?.puede_importar === true
   const [activeTab, setActiveTab] = useState('general')
-  const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '' })
+  const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '', comentario: '' })
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
   const [productLoading, setProductLoading] = useState(false)
@@ -3711,16 +3750,16 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const solId = d.solicitud_id ? String(d.solicitud_id) : null
       const confirmed = { precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '' }
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), _solId: solId, ...confirmed }
+        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, ...confirmed }
       }
       return {
         _key: 'sc_' + (d.id ?? i), producto: null,
         codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '',
-        cantidad: String(d.cantidad || ''), _solId: solId, ...confirmed,
+        cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, ...confirmed,
       }
     })
     setDetails(loaded)
-    setDetailDraft({ producto: null, cantidad: '' })
+    setDetailDraft({ producto: null, cantidad: '', comentario: '' })
     setActiveTab('general')
     setInvalidQtyKeys(new Set())
     setShowAceptadosView(false)
@@ -3810,18 +3849,18 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     return () => clearTimeout(productTimerRef.current)
   }, [open, productQuery, searchProducts, showProductDropdown])
 
-  const handleAddProduct = (product, cantidad = '') => {
+  const handleAddProduct = (product, cantidad = '', comentario = '') => {
     const n = Number(cantidad)
     if (!Number.isFinite(n) || n <= 0) return
     if (details.some((d) => d.producto?.id && String(d.producto.id) === String(product.id))) {
       toastRef.current?.show({ severity: 'warn', summary: 'Advertencia', detail: 'Este producto ya fue agregado.', life: 3000 })
       return
     }
-    setDetails((prev) => [...prev, { _key: String(product.id), producto: product, cantidad: String(cantidad).trim() }])
+    setDetails((prev) => [...prev, { _key: String(product.id), producto: product, cantidad: String(cantidad).trim(), comentario: String(comentario || '').trim() }])
     setProductQuery('')
     setProductOptions([])
     setShowProductDropdown(false)
-    setDetailDraft({ producto: null, cantidad: '' })
+    setDetailDraft({ producto: null, cantidad: '', comentario: '' })
   }
 
   const handleQuantityChange = (_key, value) => {
@@ -3830,6 +3869,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     if (invalidQtyKeys.has(_key)) {
       setInvalidQtyKeys((prev) => { const next = new Set(prev); next.delete(_key); return next })
     }
+  }
+
+  const handleComentarioChange = (_key, value) => {
+    setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, comentario: value } : item))
   }
 
   const handleConfirmedChange = (_key, field, value) => {
@@ -3867,8 +3910,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           : null,
         cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
       } : {}
-      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), ...confirmedFields, ...solId }
-      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), ...confirmedFields, ...solId }
+      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
+      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
     })
     setSubmitting(true)
     try {
@@ -3920,8 +3963,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
             : null,
           cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
         }
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), ...confirmedFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), ...confirmedFields, ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
       })
       const selectedKeys = Array.from(checkedKeys)
       const response = await authFetch(
@@ -4035,6 +4078,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
               _solId: item.solicitud_id,
               producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', '), precio: item.precio ?? null, referencia: item.referencia || '' },
               cantidad: String(item.cantidad || ''),
+              comentario: '',
             })
           }
         } else {
@@ -4049,6 +4093,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
               _key: solKey, _solId: item.solicitud_id, producto: null,
               codigo: item.codigo || '', nombre: item.nombre || '',
               oem: (item.oem_codigos || []).join(', '), referencia: item.referencia || '', cantidad: String(item.cantidad || ''),
+              comentario: '',
             })
           }
         }
@@ -4171,7 +4216,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificar ? ' importaciones-modal__products-table--verificar' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
-                        {isVerificar ? <><span>Precio conf.</span><span>Cantidad conf.</span><span>Diferencia</span><span>Acciones</span></> : <span>Acciones</span>}
+                        {isVerificar ? <><span>Precio conf.</span><span>Cantidad conf.</span><span>Diferencia</span><span>Acciones</span></> : <><span>Comentario</span><span>Acciones</span></>}
                       </div>
 
                       {!isVerificar && <div className="create-user__locations-row create-user__locations-row--form">
@@ -4259,12 +4304,22 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             disabled={!detailDraft.producto}
                           />
                         </span>
+                        <span>
+                          <input
+                            type="text"
+                            value={detailDraft.comentario}
+                            onChange={(e) => setDetailDraft((prev) => ({ ...prev, comentario: e.target.value }))}
+                            disabled={!detailDraft.producto}
+                            placeholder="Opcional"
+                            autoComplete="off"
+                          />
+                        </span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
                           <button
                             type="button"
                             className="create-user__ghost"
                             disabled={!canAddDetailDraft}
-                            onClick={() => { if (!canAddDetailDraft) return; handleAddProduct(detailDraft.producto, detailDraft.cantidad); setDetailDraft({ producto: null, cantidad: '' }) }}
+                            onClick={() => { if (!canAddDetailDraft) return; handleAddProduct(detailDraft.producto, detailDraft.cantidad, detailDraft.comentario); setDetailDraft({ producto: null, cantidad: '', comentario: '' }) }}
                           >
                             Agregar
                           </button>
@@ -4300,6 +4355,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                   value={item.cantidad}
                                   onChange={(e) => handleQuantityChange(item._key, e.target.value)}
                                   style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
+                                />
+                              </span>
+                            )}
+                            {!isVerificar && (
+                              <span>
+                                <input
+                                  type="text"
+                                  value={item.comentario || ''}
+                                  onChange={(e) => handleComentarioChange(item._key, e.target.value)}
+                                  placeholder="Comentario"
+                                  autoComplete="off"
                                 />
                               </span>
                             )}

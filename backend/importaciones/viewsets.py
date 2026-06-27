@@ -178,6 +178,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 nombre=d.nombre,
                 oem=d.oem,
                 cantidad=d.cantidad_confirmada or d.cantidad,
+                comentario=d.comentario,
                 precio_confirmado=d.precio_confirmado,
                 solicitud_id=d.solicitud_id,
                 seleccionado=True,
