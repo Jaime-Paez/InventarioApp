@@ -433,14 +433,14 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
       ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
       : [...selectedColumns, column]
     setSelectedColumns(next)
-    tableLayoutStore.setItem('casas-comerciales-table-columns', JSON.stringify(next))
+    tableLayoutStore.setItemNow('casas-comerciales-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (e) => {
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((f) => selectedColumns.find((c) => c.nombrevar === f)).filter(Boolean)
     setSelectedColumns(sorted)
-    tableLayoutStore.setItem('casas-comerciales-table-columns', JSON.stringify(sorted))
+    tableLayoutStore.setItemNow('casas-comerciales-table-columns', JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(

@@ -756,7 +756,7 @@ function EntradasTable({
       ? selectedColumns.filter((item) => item.nombrevar !== column.nombrevar)
       : [...selectedColumns, column]
     setSelectedColumns(next)
-    tableLayoutStore.setItem('entradas-table-columns', JSON.stringify(next))
+    tableLayoutStore.setItemNow('entradas-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (event) => {
@@ -764,7 +764,7 @@ function EntradasTable({
     const sorted = columnOrder.map((field) => selectedColumns.find((col) => col.nombrevar === field)).filter(Boolean)
     if (sorted.length) {
       setSelectedColumns(sorted)
-      tableLayoutStore.setItem('entradas-table-columns', JSON.stringify(sorted))
+      tableLayoutStore.setItemNow('entradas-table-columns', JSON.stringify(sorted))
     }
   }
 

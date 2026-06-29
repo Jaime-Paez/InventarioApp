@@ -2,7 +2,7 @@ import { API_URL, authFetch } from './api'
 
 const TABLE_LAYOUTS_ENDPOINT = `${API_URL}/usuarios/preferencias/table-layouts/`
 const TABLE_LAYOUT_KEY_PATTERN = /-table-(?:columns|state)/i
-const WRITE_DEBOUNCE_MS = 1500
+const RESIZE_DEBOUNCE_MS = 400
 
 const _s = {
   map: new Map(),
@@ -23,10 +23,9 @@ function _flush() {
   if (_s.pendingWrites.size === 0 || !_s.token) return
   const layouts = {}
   _s.pendingWrites.forEach((value, key) => {
-    layouts[`local:${key}`] = value // null signals deletion to backend
+    layouts[`local:${key}`] = value
   })
   _s.pendingWrites.clear()
-  // keepalive: true allows the request to complete even during page unload
   fetch(TABLE_LAYOUTS_ENDPOINT, {
     method: 'PUT',
     headers: {
@@ -35,12 +34,22 @@ function _flush() {
     },
     body: JSON.stringify({ layouts }),
     keepalive: true,
-  }).catch(() => {})
+  }).then((res) => {
+    if (!res.ok) {
+      res.json().then((body) => {
+        console.error('[tableLayoutStore] PUT failed', res.status, body)
+      }).catch(() => {
+        console.error('[tableLayoutStore] PUT failed', res.status)
+      })
+    }
+  }).catch((err) => {
+    console.error('[tableLayoutStore] PUT error', err)
+  })
 }
 
-function _scheduleFlush() {
+function _scheduleResizeFlush() {
   if (_s.writeTimer) clearTimeout(_s.writeTimer)
-  _s.writeTimer = setTimeout(_flush, WRITE_DEBOUNCE_MS)
+  _s.writeTimer = setTimeout(_flush, RESIZE_DEBOUNCE_MS)
 }
 
 function _registerUnloadHandlers() {
@@ -72,19 +81,37 @@ export const tableLayoutStore = {
     return _s.map.get(key) ?? null
   },
 
+  /**
+   * Saves a value to the in-memory map and schedules a debounced write.
+   * Use for high-frequency events like column resizing.
+   */
   setItem(key, value) {
     _s.map.set(key, value)
     if (_s.ready && _isValidKey(key)) {
       _s.pendingWrites.set(key, value)
-      _scheduleFlush()
+      _scheduleResizeFlush()
+    }
+  },
+
+  /**
+   * Saves a value and immediately flushes to the backend.
+   * Use for discrete user actions: column reorder, column visibility toggle.
+   */
+  setItemNow(key, value) {
+    _s.map.set(key, value)
+    if (_s.ready && _isValidKey(key)) {
+      if (_s.writeTimer) { clearTimeout(_s.writeTimer); _s.writeTimer = null }
+      _s.pendingWrites.set(key, value)
+      _flush()
     }
   },
 
   removeItem(key) {
     _s.map.delete(key)
     if (_s.ready && _isValidKey(key)) {
+      if (_s.writeTimer) { clearTimeout(_s.writeTimer); _s.writeTimer = null }
       _s.pendingWrites.set(key, null)
-      _scheduleFlush()
+      _flush()
     }
   },
 
@@ -120,8 +147,12 @@ export const tableLayoutStore = {
             _s.map.set(key, value)
           }
         })
+      } else {
+        console.error('[tableLayoutStore] init GET failed', response.status)
       }
-    } catch {}
+    } catch (err) {
+      console.error('[tableLayoutStore] init error', err)
+    }
 
     _s.ready = true
     _registerUnloadHandlers()
@@ -131,7 +162,6 @@ export const tableLayoutStore = {
   },
 
   reset() {
-    // Flush any pending writes before clearing so changes aren't lost on logout
     if (_s.writeTimer) { clearTimeout(_s.writeTimer); _s.writeTimer = null }
     _flush()
     _removeUnloadHandlers()

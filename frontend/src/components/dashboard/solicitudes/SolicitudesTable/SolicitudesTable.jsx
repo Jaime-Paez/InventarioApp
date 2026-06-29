@@ -962,7 +962,7 @@ const handleResetTable = () => {
       ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
       : [...selectedColumns, column]
     setSelectedColumns(next)
-    tableLayoutStore.setItem('solicitudes-table-columns', JSON.stringify(next))
+    tableLayoutStore.setItemNow('solicitudes-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (e) => {
@@ -971,14 +971,14 @@ const handleResetTable = () => {
       const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
       if (sorted.length) {
         setSelectedColumns(sorted)
-        tableLayoutStore.setItem('solicitudes-table-columns', JSON.stringify(sorted))
+        tableLayoutStore.setItemNow('solicitudes-table-columns', JSON.stringify(sorted))
         setColumnReorderKey((k) => k + 1)
       }
     } else {
       const sorted = columnOrder.map((field) => selectedColumnsFlat.find((c) => c.key === field)).filter(Boolean)
       if (sorted.length) {
         setSelectedColumnsFlat(sorted)
-        tableLayoutStore.setItem('solicitudes-flat-table-columns', JSON.stringify(sorted))
+        tableLayoutStore.setItemNow('solicitudes-flat-table-columns', JSON.stringify(sorted))
         setColumnReorderKey((k) => k + 1)
       }
     }

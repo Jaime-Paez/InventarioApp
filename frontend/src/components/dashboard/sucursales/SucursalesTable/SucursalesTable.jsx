@@ -355,14 +355,14 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
       ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
       : [...selectedColumns, column]
     setSelectedColumns(next)
-    tableLayoutStore.setItem('sucursales-table-columns', JSON.stringify(next))
+    tableLayoutStore.setItemNow('sucursales-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (e) => {
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((f) => selectedColumns.find((c) => c.nombrevar === f)).filter(Boolean)
     setSelectedColumns(sorted)
-    tableLayoutStore.setItem('sucursales-table-columns', JSON.stringify(sorted))
+    tableLayoutStore.setItemNow('sucursales-table-columns', JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(
