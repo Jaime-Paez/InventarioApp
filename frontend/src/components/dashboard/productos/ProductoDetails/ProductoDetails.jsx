@@ -83,6 +83,19 @@ const getModuleScopeBranchIdSet = (rawScopes, moduleKey) => {
     .filter(Boolean)
   return new Set(ids)
 }
+const getFullPermissionBranchIdSet = (rawScopes, moduleKey) => {
+  const normalizedModuleKey = normalizeScopeModuleKey(moduleKey)
+  if (!normalizedModuleKey) return null
+  const moduleScope = (Array.isArray(rawScopes) ? rawScopes : []).find(
+    (scope) => normalizeScopeModuleKey(scope?.modulo) === normalizedModuleKey
+  )
+  if (!moduleScope) return null
+  const ids = (Array.isArray(moduleScope?.acciones_por_sucursal) ? moduleScope.acciones_por_sucursal : [])
+    .filter((entry) => entry?.puede_leer && entry?.puede_crear && entry?.puede_actualizar && entry?.puede_eliminar)
+    .map((entry) => normalizeScopeBranchId(entry?.sucursal_id))
+    .filter(Boolean)
+  return new Set(ids)
+}
 
 const DEFAULT_IVA_RATE = 0.15
 
@@ -242,6 +255,10 @@ function ProductoDetails({
   }, [suppliers, casaSearch])
   const editableProductBranchIds = useMemo(
     () => getModuleScopeBranchIdSet(currentUser?.sucursales_por_modulo, 'productos'),
+    [currentUser]
+  )
+  const fullyEditableProductBranchIds = useMemo(
+    () => getFullPermissionBranchIdSet(currentUser?.sucursales_por_modulo, 'productos'),
     [currentUser]
   )
 
@@ -1942,6 +1959,11 @@ function ProductoDetails({
                     subdivisions={resolvedInventoryContext?.subdivisions || []}
                     inventarioEntries={resolvedInventoryContext?.inventarioEntries || []}
                     editableBranchIds={editableProductBranchIds ? Array.from(editableProductBranchIds) : null}
+                    fullyEditableBranchIds={
+                      editableProductBranchIds == null
+                        ? null
+                        : (fullyEditableProductBranchIds ? Array.from(fullyEditableProductBranchIds) : [])
+                    }
                     disabled={editorDisabled}
                     onSaved={resolvedInventoryContext?.onSaved}
                     onError={notifyError}

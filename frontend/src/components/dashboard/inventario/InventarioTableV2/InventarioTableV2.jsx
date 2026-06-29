@@ -24,7 +24,7 @@ import {
   buildPrimeOrdering,
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
-import { moduleHasAnyAction } from '../../menuConfig'
+import { getModuleActions, moduleHasAnyAction } from '../../menuConfig'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
@@ -141,6 +141,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const canCreate = moduleActions?.puede_crear ?? true
   const canEdit = moduleActions?.puede_actualizar ?? true
   const canDelete = moduleActions?.puede_eliminar ?? true
+  const productosModuleActions = useMemo(
+    () => getModuleActions('productos', permissionIndex, user?.sucursales_por_modulo),
+    [permissionIndex, user?.sucursales_por_modulo]
+  )
+  const canEditProducto = productosModuleActions?.puede_actualizar ?? true
   const isAdminByRole = Boolean(
     user?.is_superuser ||
       user?.is_staff ||
@@ -2488,9 +2493,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         onDeleted={handleDeleted}
         onError={showErrorToast}
         currentUser={user}
-        allowEdit={canEdit}
+        allowEdit={canEditProducto}
         allowDelete={canDelete}
-        allowComment={Boolean(canEdit)}
+        allowComment={Boolean(canEditProducto)}
         showCostField={canSeeCost}
       />
 
