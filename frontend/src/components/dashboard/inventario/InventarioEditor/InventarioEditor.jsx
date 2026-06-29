@@ -1208,7 +1208,6 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                       step="1"
                       value={String(location.cantidad ?? '')}
                       onChange={(event) => handleRowCantidadChange(location.uid, event.target.value)}
-                      style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '0.3rem 0.5rem', font: 'inherit', fontSize: 'var(--font-size-sm)', width: '100%', minHeight: '28px' }}
                     />
                   ) : (
                     <strong className="create-user__locations-total">{location.cantidad}</strong>
