@@ -1228,7 +1228,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
           map.set(key, column)
           next = columnsData.filter((item) => map.has(item.nombrevar))
         }
-        tableLayoutStore.setItem('traslados-inconvenientes-table-columns', JSON.stringify(next))
+        tableLayoutStore.setItemNow('traslados-inconvenientes-table-columns', JSON.stringify(next))
         return next
       })
     },

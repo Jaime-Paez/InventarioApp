@@ -492,14 +492,14 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
       ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
       : [...selectedColumns, column]
     setSelectedColumns(next)
-    tableLayoutStore.setItem('clientes-table-columns', JSON.stringify(next))
+    tableLayoutStore.setItemNow('clientes-table-columns', JSON.stringify(next))
   }
 
   const handleOrderChange = (e) => {
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
     setSelectedColumns(sorted)
-    tableLayoutStore.setItem('clientes-table-columns', JSON.stringify(sorted))
+    tableLayoutStore.setItemNow('clientes-table-columns', JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(

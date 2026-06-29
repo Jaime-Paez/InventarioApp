@@ -754,7 +754,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
       ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
       : [...selectedColumns, column]
     setSelectedColumns(next)
-    tableLayoutStore.setItem('productos-table-columns', JSON.stringify(next))
+    tableLayoutStore.setItemNow('productos-table-columns', JSON.stringify(next))
   }
 
   const toggleCodigoColumnFrozen = useCallback(() => {
@@ -765,7 +765,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
     setSelectedColumns(sorted)
-    tableLayoutStore.setItem('productos-table-columns', JSON.stringify(sorted))
+    tableLayoutStore.setItemNow('productos-table-columns', JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(

@@ -1303,7 +1303,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       ? selectedColumns.filter((c) => c.nombrevar !== column.nombrevar)
       : [...selectedColumns, column]
     setSelectedColumns(next)
-    tableLayoutStore.setItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(next))
+    tableLayoutStore.setItemNow(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(next))
   }
 
   const handleCheckboxChangeBranchColumn = useCallback(
@@ -1335,7 +1335,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     const columnOrder = e.columns.map((col) => col.props.field)
     const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
     setSelectedColumns(sorted)
-    tableLayoutStore.setItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(sorted))
+    tableLayoutStore.setItemNow(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(sorted))
   }
 
   const exportColumns = useMemo(

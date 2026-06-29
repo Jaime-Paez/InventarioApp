@@ -103,7 +103,7 @@ function AuditoriaTable({ token }) {
       const next = prev.some((c) => c.field === col.field)
         ? prev.filter((c) => c.field !== col.field)
         : [...columnsData.filter((c) => prev.some((p) => p.field === c.field) || c.field === col.field)]
-      tableLayoutStore.setItem('auditoria-table-columns', JSON.stringify(next))
+      tableLayoutStore.setItemNow('auditoria-table-columns', JSON.stringify(next))
       return next
     })
   }
