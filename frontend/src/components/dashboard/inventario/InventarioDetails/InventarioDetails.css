@@ -77,8 +77,52 @@
   overflow: visible;
 }
 
+/* Allow dropdown panels to escape the span's overflow clip */
+.inventario-details__body .create-user__locations-row > span:has(.create-user__dropdown) {
+  overflow: visible;
+}
+
 .create-user__locations-table--with-actions .create-user__locations-cell--action {
   gap: 6px;
+}
+
+/* Fix top corners when overflow:visible prevents container clipping */
+.inventario-details__body .create-user__locations-row--head {
+  border-top-left-radius: 9px;
+  border-top-right-radius: 9px;
+}
+
+/* Make dropdown panels wider so options are readable */
+.inventario-details__body .create-user__dropdown-panel {
+  min-width: 200px;
+  left: 0;
+  right: auto;
+}
+
+/* Row-edit dropdowns: compact trigger matching the add-form style */
+.inventario-details__body .create-user__locations-row .create-user__dropdown {
+  width: 100%;
+}
+
+.inventario-details__body .create-user__locations-row .create-user__dropdown-trigger {
+  font-size: var(--font-size-sm);
+  padding: 0.3rem 0.55rem;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.inventario-details__body .create-user__locations-row .create-user__dropdown-trigger > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.inventario-details__body .create-user__locations-row .create-user__dropdown-trigger > i {
+  flex-shrink: 0;
+  font-size: 0.8rem;
 }
 
 .dashboard-shell.dark .inventario-details__bodega-card {

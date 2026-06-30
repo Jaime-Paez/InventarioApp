@@ -37,6 +37,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     subdivisions = [],
     inventarioEntries = [],
     editableBranchIds = null,
+    fullyEditableBranchIds = null,
     disabled = false,
     onSaved,
     onError,
@@ -55,10 +56,6 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   })
   const [showLocationForm, setShowLocationForm] = useState(false)
   const [locationError, setLocationError] = useState('')
-  const [editingLocationKey, setEditingLocationKey] = useState(null)
-  const [editingField, setEditingField] = useState(null)
-  const [editingValue, setEditingValue] = useState('')
-  const [editError, setEditError] = useState('')
   const [showLocationBranchDropdown, setShowLocationBranchDropdown] = useState(false)
   const [showLocationBodegaDropdown, setShowLocationBodegaDropdown] = useState(false)
   const [showLocationDivisionDropdown, setShowLocationDivisionDropdown] = useState(false)
@@ -71,11 +68,15 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const [locationBodegaDebouncedQuery, setLocationBodegaDebouncedQuery] = useState('')
   const [locationDivisionDebouncedQuery, setLocationDivisionDebouncedQuery] = useState('')
   const [locationSubdivisionDebouncedQuery, setLocationSubdivisionDebouncedQuery] = useState('')
+  const [openRowDropdown, setOpenRowDropdown] = useState(null) // { uid, field }
+  const [rowDropdownQuery, setRowDropdownQuery] = useState('')
+  const [rowDropdownDebouncedQuery, setRowDropdownDebouncedQuery] = useState('')
 
   const locationBranchDropdownRef = useRef(null)
   const locationBodegaDropdownRef = useRef(null)
   const locationDivisionDropdownRef = useRef(null)
   const locationSubdivisionDropdownRef = useRef(null)
+  const rowDropdownRef = useRef(null)
   const lastNotifiedErrorRef = useRef({ message: '', at: 0 })
 
   const notifyErrorOnce = useCallback(
@@ -95,11 +96,6 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     if (!locationError) return
     notifyErrorOnce(locationError)
   }, [locationError, notifyErrorOnce])
-
-  useEffect(() => {
-    if (!editError) return
-    notifyErrorOnce(editError)
-  }, [editError, notifyErrorOnce])
 
   useEffect(() => {
     if (!error) return
@@ -279,6 +275,26 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     showLocationSubdivisionDropdown,
   ])
 
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setRowDropdownDebouncedQuery(normalizeForSearch(rowDropdownQuery)),
+      260
+    )
+    return () => window.clearTimeout(timer)
+  }, [rowDropdownQuery])
+
+  useEffect(() => {
+    if (!openRowDropdown) return undefined
+    const handleOutsideClick = (event) => {
+      if (rowDropdownRef.current && !rowDropdownRef.current.contains(event.target)) {
+        setOpenRowDropdown(null)
+        setRowDropdownQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [openRowDropdown])
+
   const filteredLocationBranches = useMemo(() => {
     if (!locationBranchDebouncedQuery) return branches
     return branches.filter((branch) => {
@@ -311,6 +327,11 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       normalizeForSearch(subdivision?.nombre).includes(locationSubdivisionDebouncedQuery)
     )
   }, [availableSubdivisions, locationSubdivisionDebouncedQuery])
+
+  const usedSubdivisionIds = useMemo(
+    () => new Set(locations.map((loc) => String(loc.subdivisionId)).filter(Boolean)),
+    [locations]
+  )
 
   const selectedLocationBranch = useMemo(
     () => branchById.get(String(locationDraft.sucursalId || '')) || null,
@@ -390,10 +411,6 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       cantidad: '1',
     })
     setLocationError('')
-    setEditError('')
-    setEditingLocationKey(null)
-    setEditingField(null)
-    setEditingValue('')
     setShowLocationBranchDropdown(false)
     setShowLocationBodegaDropdown(false)
     setShowLocationDivisionDropdown(false)
@@ -563,98 +580,56 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     setLocationError('')
   }
 
-  const beginLocationEdit = (location, field) => {
-    if (editorDisabled) return
-    if (!canManageBranchLocation(location?.sucursalId)) {
-      setEditError(SCOPE_EDIT_LOCATION_ERROR)
-      return
-    }
-    setEditError('')
-    setEditingLocationKey(location.uid)
-    setEditingField(field)
-    if (field === 'cantidad') {
-      setEditingValue(String(location.cantidad ?? ''))
-      return
-    }
-    if (field === 'subdivision') {
-      setEditingValue(String(location.subdivisionId ?? ''))
-    }
+  const fullyEditableBranchIdSet = useMemo(() => {
+    if (fullyEditableBranchIds == null) return null
+    const branchIds = Array.isArray(fullyEditableBranchIds) ? fullyEditableBranchIds : []
+    return new Set(branchIds.map((id) => normalizeScopeBranchId(id)).filter(Boolean))
+  }, [fullyEditableBranchIds])
+
+  const canInlineEditBranchLocation = useCallback(
+    (branchId) => {
+      if (!(fullyEditableBranchIdSet instanceof Set)) return true
+      const normalizedBranchId = normalizeScopeBranchId(branchId)
+      if (!normalizedBranchId) return false
+      return fullyEditableBranchIdSet.has(normalizedBranchId)
+    },
+    [fullyEditableBranchIdSet]
+  )
+
+  const handleRowFieldChange = (uid, field, id, nombre) => {
+    setLocations((prev) => prev.map((loc) => {
+      if (loc.uid !== uid) return loc
+      switch (field) {
+        case 'sucursal':
+          return { ...loc, sucursalId: String(id), sucursalNombre: nombre, bodegaId: '', bodegaNombre: '-', divisionId: '', divisionNombre: '-', subdivisionId: '', subdivisionNombre: '-' }
+        case 'bodega':
+          return { ...loc, bodegaId: String(id), bodegaNombre: nombre, divisionId: '', divisionNombre: '-', subdivisionId: '', subdivisionNombre: '-' }
+        case 'division':
+          return { ...loc, divisionId: String(id), divisionNombre: nombre, subdivisionId: '', subdivisionNombre: '-' }
+        case 'subdivision':
+          return { ...loc, subdivisionId: String(id), subdivisionNombre: nombre }
+        default:
+          return loc
+      }
+    }))
+    setOpenRowDropdown(null)
+    setRowDropdownQuery('')
   }
 
-  const cancelLocationEdit = () => {
-    setEditingLocationKey(null)
-    setEditingField(null)
-    setEditingValue('')
-    setEditError('')
-  }
-
-  const commitLocationEdit = (overrideValue) => {
-    if (!editingLocationKey || !editingField) return
-    const value = overrideValue ?? editingValue
-
-    setLocations((prev) => {
-      const index = prev.findIndex((item) => item.uid === editingLocationKey)
-      if (index === -1) return prev
-      const current = prev[index]
-
-      if (editingField === 'cantidad') {
-        const quantity = parseQuantity(value)
-        if (!quantity || quantity <= 0) {
-          setEditError('Ingresa una cantidad valida.')
-          return prev
-        }
-        const updated = [...prev]
-        updated[index] = { ...current, cantidad: quantity }
-        cancelLocationEdit()
-        return updated
-      }
-
-      if (editingField === 'subdivision') {
-        const newId = String(value || '')
-        if (!newId) {
-          setEditError('Selecciona una subdivision.')
-          return prev
-        }
-        if (prev.some((item) => item.subdivisionId === newId && item.uid !== current.uid)) {
-          setEditError('Esa subdivision ya esta en la tabla.')
-          return prev
-        }
-        const subdivision = subdivisionById.get(newId)
-        if (!subdivision) {
-          setEditError('Subdivision no valida.')
-          return prev
-        }
-        const divisionId = subdivision?.division?.id
-        if (divisionId != null && String(divisionId) !== String(current.divisionId)) {
-          setEditError('La subdivision no pertenece a la division seleccionada.')
-          return prev
-        }
-        const updated = [...prev]
-        updated[index] = {
-          ...current,
-          subdivisionId: newId,
-          subdivisionNombre: subdivision.nombre || current.subdivisionNombre,
-        }
-        cancelLocationEdit()
-        return updated
-      }
-
-      return prev
-    })
+  const handleRowCantidadChange = (uid, value) => {
+    setLocations((prev) => prev.map((loc) =>
+      loc.uid !== uid ? loc : { ...loc, cantidad: value }
+    ))
   }
 
   const handleRemoveLocation = (location) => {
     if (editorDisabled) return
     if (!canManageBranchLocation(location?.sucursalId)) {
-      setEditError(SCOPE_DELETE_LOCATION_ERROR)
+      setLocationError(SCOPE_DELETE_LOCATION_ERROR)
       return
     }
     setLocations((prev) => prev.filter((item) => item.uid !== location.uid))
-    if (editingLocationKey === location.uid) {
-      cancelLocationEdit()
-    }
     setLocationError('')
-    setEditError('')
   }
 
   const saveChanges = async () => {
@@ -1047,24 +1022,29 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         {!filteredLocationSubdivisions.length && (
                           <small className="muted">Sin resultados.</small>
                         )}
-                        {filteredLocationSubdivisions.map((subdivision) => (
-                          <button
-                            key={subdivision.id}
-                            type="button"
-                            className="create-user__result-option"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              handleLocationSubdivisionPick(subdivision)
-                            }}
-                            disabled={editorDisabled || !canManageLocationDraft}
-                          >
-                            <div className="create-user__result-info">
-                              <strong>{subdivision.nombre || `Subdivision ${subdivision.id}`}</strong>
-                            </div>
-                          </button>
-                        ))}
+                        {filteredLocationSubdivisions.map((subdivision) => {
+                          const alreadyUsed = usedSubdivisionIds.has(String(subdivision.id))
+                          return (
+                            <button
+                              key={subdivision.id}
+                              type="button"
+                              className="create-user__result-option"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                if (!alreadyUsed) handleLocationSubdivisionPick(subdivision)
+                              }}
+                              disabled={editorDisabled || !canManageLocationDraft || alreadyUsed}
+                              title={alreadyUsed ? 'Esta subdivision ya está en la tabla' : undefined}
+                            >
+                              <div className="create-user__result-info">
+                                <strong>{subdivision.nombre || `Subdivision ${subdivision.id}`}</strong>
+                                {alreadyUsed && <small style={{ opacity: 0.6 }}>Ya agregada</small>}
+                              </div>
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
@@ -1101,66 +1081,133 @@ const InventarioEditor = forwardRef(function InventarioEditor(
           )}
 
           {locations.map((location) => {
-            const rowSubdivisions = subdivisionsByDivision.get(location.divisionId) || []
             const canManageRow = canManageBranchLocation(location.sucursalId)
-            const isEditingRow = editingLocationKey === location.uid
-            const editingSubdivision = isEditingRow && editingField === 'subdivision'
-            const editingCantidad = isEditingRow && editingField === 'cantidad'
+            const canInlineEdit = !editorDisabled && canInlineEditBranchLocation(location.sucursalId)
             const currentBodega = bodegaById.get(String(location.bodegaId))
+
+            const rowBodegas = bodegasBySucursal.get(location.sucursalId) || []
+            const rowDivisions = divisionsByBodega.get(location.bodegaId) || []
+            const rowSubdivisions = subdivisionsByDivision.get(location.divisionId) || []
+
+            const isOpen = (field) => openRowDropdown?.uid === location.uid && openRowDropdown?.field === field
+
+            const toggleDropdown = (field) => {
+              if (isOpen(field)) {
+                setOpenRowDropdown(null)
+                setRowDropdownQuery('')
+              } else {
+                setOpenRowDropdown({ uid: location.uid, field })
+                setRowDropdownQuery('')
+              }
+            }
+
+            const filterByQuery = (items, getName) => {
+              if (!rowDropdownDebouncedQuery) return items
+              return items.filter((item) => normalizeForSearch(getName(item)).includes(rowDropdownDebouncedQuery))
+            }
+
+            const makeDropdown = (field, label, items, getName, getId, triggerDisabled, isItemDisabled) => {
+              const open = isOpen(field)
+              const filtered = filterByQuery(items, getName)
+              return (
+                <div
+                  className="create-user__dropdown"
+                  ref={open ? rowDropdownRef : null}
+                >
+                  <button
+                    type="button"
+                    className="create-user__dropdown-trigger"
+                    onClick={() => { if (!triggerDisabled) toggleDropdown(field) }}
+                    disabled={triggerDisabled}
+                  >
+                    <span>{label}</span>
+                    <i className={`pi pi-chevron-${open ? 'up' : 'down'}`} />
+                  </button>
+                  {open && (
+                    <div className="create-user__dropdown-panel">
+                      <div className="create-user__dropdown-search">
+                        <i className="pi pi-search" />
+                        <input
+                          type="text"
+                          placeholder={`Buscar ${field}`}
+                          value={rowDropdownQuery}
+                          onChange={(e) => setRowDropdownQuery(e.target.value)}
+                        />
+                      </div>
+                      <div className="create-user__dropdown-results">
+                        {!filtered.length && <small className="muted">Sin resultados.</small>}
+                        {filtered.map((item) => {
+                          const itemDisabled = isItemDisabled ? isItemDisabled(item) : false
+                          return (
+                            <button
+                              key={getId(item)}
+                              type="button"
+                              className="create-user__result-option"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => { if (!itemDisabled) handleRowFieldChange(location.uid, field, getId(item), getName(item)) }}
+                              disabled={itemDisabled}
+                              title={itemDisabled ? 'Ya está en uso' : undefined}
+                            >
+                              <div className="create-user__result-info">
+                                <strong>{getName(item)}</strong>
+                                {itemDisabled && <small style={{ opacity: 0.6 }}>Ya agregada</small>}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            // subdivisionIds used by other rows (not this one)
+            const otherUsedSubIds = new Set(
+              locations
+                .filter((loc) => loc.uid !== location.uid)
+                .map((loc) => String(loc.subdivisionId))
+                .filter(Boolean)
+            )
+            const isDivisionFullyUsed = (d) => {
+              const subs = subdivisionsByDivision.get(String(d.id)) || []
+              return subs.length > 0 && subs.every((s) => otherUsedSubIds.has(String(s.id)))
+            }
+            const isBodegaFullyUsed = (b) => {
+              const divs = divisionsByBodega.get(String(b.id)) || []
+              return divs.length > 0 && divs.every(isDivisionFullyUsed)
+            }
 
             return (
               <div key={location.uid} className="create-user__locations-row">
-                <span>{location.sucursalNombre}</span>
-                <span>{location.bodegaNombre}</span>
-                <span>{location.divisionNombre}</span>
-                <span
-                  className={`create-user__locations-cell${canManageRow ? ' create-user__locations-cell--editable' : ''}`}
-                  onDoubleClick={canManageRow ? () => beginLocationEdit(location, 'subdivision') : undefined}
-                >
-                  {editingSubdivision ? (
-                    <select
-                      value={editingValue}
-                      onChange={(event) => {
-                        setEditingValue(event.target.value)
-                        commitLocationEdit(event.target.value)
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Escape') cancelLocationEdit()
-                      }}
-                      onBlur={() => cancelLocationEdit()}
-                      autoFocus
-                    >
-                      <option value="">Selecciona una subdivision</option>
-                      {rowSubdivisions.map((subdivision) => (
-                        <option key={subdivision.id} value={subdivision.id}>
-                          {subdivision.nombre || `Subdivision ${subdivision.id}`}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span>{location.subdivisionNombre}</span>
-                  )}
+                <span>
+                  {canInlineEdit
+                    ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
+                    : location.sucursalNombre}
                 </span>
-                <span
-                  className={`create-user__locations-cell${canManageRow ? ' create-user__locations-cell--editable' : ''}`}
-                  onDoubleClick={canManageRow ? () => beginLocationEdit(location, 'cantidad') : undefined}
-                >
-                  {editingCantidad ? (
+                <span>
+                  {canInlineEdit
+                    ? makeDropdown('bodega', location.bodegaNombre || 'Bodega', rowBodegas, (b) => b.nombre || `Bodega ${b.id}`, (b) => b.id, !location.sucursalId, isBodegaFullyUsed)
+                    : location.bodegaNombre}
+                </span>
+                <span>
+                  {canInlineEdit
+                    ? makeDropdown('division', location.divisionNombre || 'Division', rowDivisions, (d) => d.nombre || `Division ${d.id}`, (d) => d.id, !location.bodegaId, isDivisionFullyUsed)
+                    : location.divisionNombre}
+                </span>
+                <span>
+                  {canInlineEdit
+                    ? makeDropdown('subdivision', location.subdivisionNombre || 'Subdivision', rowSubdivisions, (s) => s.nombre || `Subdivision ${s.id}`, (s) => s.id, !location.divisionId, (s) => otherUsedSubIds.has(String(s.id)))
+                    : location.subdivisionNombre}
+                </span>
+                <span>
+                  {canInlineEdit ? (
                     <input
                       type="number"
                       min="1"
                       step="1"
-                      value={editingValue}
-                      onChange={(event) => setEditingValue(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          commitLocationEdit()
-                        }
-                        if (event.key === 'Escape') cancelLocationEdit()
-                      }}
-                      onBlur={() => commitLocationEdit()}
-                      autoFocus
+                      value={String(location.cantidad ?? '')}
+                      onChange={(event) => handleRowCantidadChange(location.uid, event.target.value)}
                     />
                   ) : (
                     <strong className="create-user__locations-total">{location.cantidad}</strong>
