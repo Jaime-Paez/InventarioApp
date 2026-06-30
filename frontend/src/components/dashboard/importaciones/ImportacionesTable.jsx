@@ -1,3 +1,4 @@
+import { unzipSync, zipSync } from 'fflate'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import StaticFieldDisplay from '../movimientos/StaticFieldDisplay'
@@ -3944,62 +3945,130 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const handleDownloadVerificarExcel = async () => {
     try {
       const XLSXStyle = (await import('xlsx-js-style')).default
-      const borderThin = { style: 'thin', color: { rgb: 'DBEAFE' } }
-      const border = { top: borderThin, bottom: borderThin, left: borderThin, right: borderThin }
-      const roColCount = 6
-      const headers = ['Código', 'Nombre', 'OEM', 'Referencia', 'Precio', 'Cantidad', 'Precio conf.', 'Cant. conf.', 'Comentario', '_key']
-      const headerStyleRO = {
-        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
-        fill: { fgColor: { rgb: '1e3a5f' }, patternType: 'solid' },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: { top: borderThin, bottom: { style: 'medium', color: { rgb: '2563EB' } }, left: borderThin, right: borderThin },
-      }
-      const headerStyleEdit = {
-        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
-        fill: { fgColor: { rgb: '15803d' }, patternType: 'solid' },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: { top: borderThin, bottom: { style: 'medium', color: { rgb: '166534' } }, left: borderThin, right: borderThin },
-      }
+      const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
+      const border = { top: bt, bottom: bt, left: bt, right: bt }
+      const RO = 6; const ED = 3; const DIFF_CI = RO + ED
+      const headers = ['Código', 'Nombre', 'OEM', 'Referencia', 'Precio', 'Cantidad', 'Precio conf.', 'Cant. conf.', 'Comentario', 'Diferencia', '_key']
+      const mkH = (fill, bot) => ({ font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: fill }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: bot } }, left: bt, right: bt } })
+      const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + ED ? mkH('15803d', '166534') : ci === DIFF_CI ? mkH('374151', '374151') : null)
+
       const rows = details.map((item) => {
         const codigo = item.producto?.codigo || item.codigo || 'SIN CATÁLOGO'
         const nombre = item.producto?.nombre || item.nombre || ''
         const oem = item.producto?.oem || item.oem || ''
         const referencia = item.producto?.referencia || item.referencia || ''
-        const precio = item.producto?.precio != null ? Number(item.producto.precio) : ''
-        const cantidad = Number(item.cantidad || 0)
-        const precioConf = item.precio_confirmado
-          ? parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100
-          : ''
-        const cantConf = item.cantidad_confirmada != null ? Number(item.cantidad_confirmada) : ''
-        return [codigo, nombre, oem, referencia, precio, cantidad, precioConf, cantConf, item.comentario || '', item._key]
+        // Keep null to detect SIN CATÁLOGO for coloring; cell will receive 0 as numeric value
+        const precioReal = item.producto?.precio != null ? +Number(item.producto.precio).toFixed(2) : null
+        const cantidad = +Number(item.cantidad || 0)
+        const precioConf = (() => {
+          const raw = item.precio_confirmado
+          if (raw == null || raw === '' || raw === 0) return null
+          const c = parseInt(String(raw).replace(/\D/g, '') || '0', 10)
+          return c > 0 ? +(c / 100).toFixed(2) : null
+        })()
+        const cantConf = (() => {
+          const raw = item.cantidad_confirmada
+          if (raw == null || raw === '') return null
+          const n = parseInt(String(raw), 10)
+          return !isNaN(n) && n > 0 ? n : null
+        })()
+        // diff uses real price so static color is meaningful; null for SIN CATÁLOGO
+        const diff = precioReal != null && precioConf != null ? +(precioReal - precioConf).toFixed(2) : null
+        // precio in cell is always numeric: 0 for SIN CATÁLOGO so formula =E-G can always compute
+        const precio = precioReal ?? 0
+        return [codigo, nombre, oem, referencia, precio, cantidad, precioConf, cantConf, item.comentario || '', diff, item._key]
       })
-      const aoa = [headers, ...rows]
-      const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
-      headers.forEach((_, ci) => {
-        const ref = XLSXStyle.utils.encode_cell({ r: 0, c: ci })
-        if (!worksheet[ref]) return
-        if (ci === headers.length - 1) { worksheet[ref].s = { font: { sz: 8, color: { rgb: '999999' } } }; return }
-        worksheet[ref].s = ci < roColCount ? headerStyleRO : headerStyleEdit
-      })
+
+      // Build worksheet manually for precise type control
+      const NROWS = rows.length; const NCOLS = headers.length
+      const worksheet = { '!ref': XLSXStyle.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: NROWS, c: NCOLS - 1 } }) }
+      const setCell = (r, c, val, s, formula) => {
+        const ref = XLSXStyle.utils.encode_cell({ r, c })
+        if (formula) { worksheet[ref] = { t: 'n', v: val ?? 0, f: formula, s }; return }
+        if (val == null) { worksheet[ref] = { t: 's', v: '', s }; return }
+        if (typeof val === 'number') { worksheet[ref] = { t: 'n', v: val, s }; return }
+        worksheet[ref] = { t: 's', v: String(val), s }
+      }
+
+      headers.forEach((h, ci) => setCell(0, ci, h, hdrS[ci] || { font: { sz: 8, color: { rgb: 'AAAAAA' } } }))
+
       rows.forEach((row, ri) => {
         const isEven = (ri + 1) % 2 === 0
-        row.forEach((_, ci) => {
-          const ref = XLSXStyle.utils.encode_cell({ r: ri + 1, c: ci })
-          if (!worksheet[ref]) worksheet[ref] = { t: 's', v: '' }
-          const isEdit = ci >= roColCount && ci < headers.length - 1
-          const bg = isEdit ? (isEven ? 'dcfce7' : 'f0fdf4') : (isEven ? 'EFF6FF' : 'FFFFFF')
-          worksheet[ref].s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border }
+        const excelRow = ri + 2
+        row.forEach((val, ci) => {
+          const isEdit = ci >= RO && ci < RO + ED
+          const isDiff = ci === DIFF_CI
+          const isEmpty = val == null
+          // Static fills: CF overrides dynamically for E=0, G/H blank, and J colors
+          let bg
+          if (isEdit) bg = isEven ? 'dcfce7' : 'f0fdf4'
+          else if (isDiff && !isEmpty) bg = val >= 0 ? 'dcfce7' : val >= -1 ? 'fef9c3' : 'fee2e2'
+          else if (isDiff) bg = isEven ? 'f3f4f6' : 'f9fafb'
+          else bg = isEven ? 'EFF6FF' : 'FFFFFF'
+          const numFmt = ci === 4 || ci === RO ? '0.00' : ci === 5 || ci === RO + 1 ? '0' : isDiff ? '0.00' : null
+          const s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(numFmt ? { numFmt } : {}) }
+          const formula = isDiff ? `IF(G${excelRow}="","",E${excelRow}-G${excelRow})` : undefined
+          setCell(ri + 1, ci, val, s, formula)
         })
       })
-      worksheet['!cols'] = [
-        { wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 },
-        { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 24 }, { wch: 0, hidden: true },
-      ]
+
+      worksheet['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 0, hidden: true }]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
       XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Verificar')
-      const out = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
-      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const rawOut = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
+
+      // Inject conditional formatting via ZIP manipulation (fflate statically imported)
+      const unzipped = unzipSync(new Uint8Array(rawOut))
+      const dec = new TextDecoder(); const enc = new TextEncoder()
+
+      // Add dxf color definitions to styles.xml
+      let stylesXml = dec.decode(unzipped['xl/styles.xml'])
+      stylesXml = stylesXml.replace(/<dxfs[^>]*\/>/,
+        '<dxfs count="3">' +
+        '<dxf><fill><patternFill><bgColor rgb="FFdcfce7"/></patternFill></fill></dxf>' +  // 0: verde
+        '<dxf><fill><patternFill><bgColor rgb="FFfef9c3"/></patternFill></fill></dxf>' +  // 1: amarillo
+        '<dxf><fill><patternFill><bgColor rgb="FFfee2e2"/></patternFill></fill></dxf>' +  // 2: rojo
+        '</dxfs>')
+      unzipped['xl/styles.xml'] = enc.encode(stylesXml)
+
+      // Add conditional formatting rules to sheet1.xml
+      const eCol = XLSXStyle.utils.encode_col(4)         // E - Precio
+      const gCol = XLSXStyle.utils.encode_col(RO)        // G - Precio conf.
+      const hCol = XLSXStyle.utils.encode_col(RO + 1)    // H - Cant. conf.
+      const jCol = XLSXStyle.utils.encode_col(DIFF_CI)   // J - Diferencia
+      const last = NROWS + 1
+      const cfXml =
+        // E: amarillo cuando Precio = 0 (SIN CATÁLOGO), limpio cuando el usuario cambia el valor
+        `<conditionalFormatting sqref="${eCol}2:${eCol}${last}">` +
+        `<cfRule type="cellIs" dxfId="1" priority="1" operator="equal"><formula>0</formula></cfRule>` +
+        `</conditionalFormatting>` +
+        // G: amarillo cuando Precio conf. está vacío
+        `<conditionalFormatting sqref="${gCol}2:${gCol}${last}">` +
+        `<cfRule type="cellIs" dxfId="1" priority="1" operator="equal"><formula>""</formula></cfRule>` +
+        `</conditionalFormatting>` +
+        // H: amarillo cuando Cant. conf. está vacía
+        `<conditionalFormatting sqref="${hCol}2:${hCol}${last}">` +
+        `<cfRule type="cellIs" dxfId="1" priority="1" operator="equal"><formula>""</formula></cfRule>` +
+        `</conditionalFormatting>` +
+        // J: verde ≥0, amarillo ≥-1, rojo <-1
+        `<conditionalFormatting sqref="${jCol}2:${jCol}${last}">` +
+        `<cfRule type="cellIs" dxfId="0" priority="1" stopIfTrue="1" operator="greaterThanOrEqual"><formula>0</formula></cfRule>` +
+        `<cfRule type="cellIs" dxfId="1" priority="2" stopIfTrue="1" operator="greaterThanOrEqual"><formula>-1</formula></cfRule>` +
+        `<cfRule type="cellIs" dxfId="2" priority="3" operator="lessThan"><formula>-1</formula></cfRule>` +
+        `</conditionalFormatting>`
+
+      let sheetXml = dec.decode(unzipped['xl/worksheets/sheet1.xml'])
+      sheetXml = sheetXml.replace('</worksheet>', cfXml + '</worksheet>')
+      unzipped['xl/worksheets/sheet1.xml'] = enc.encode(sheetXml)
+
+      // Repack: skip directory entries, store uncompressed to avoid any compression mismatch
+      const zippable = {}
+      for (const [path, data] of Object.entries(unzipped)) {
+        if (!path.endsWith('/')) zippable[path] = [data, { level: 0 }]
+      }
+      const finalOut = zipSync(zippable)
+      const blob = new Blob([finalOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
       link.download = `verificar-${imp?.codigo || 'cotizacion'}.xlsx`

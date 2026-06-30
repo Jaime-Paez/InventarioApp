@@ -19,7 +19,13 @@
       "Bash(find \"c:/Users/PC/Documents/GitHub/InventarioApp/frontend/src\" -name \"*[Tt]able*.{js,jsx,ts,tsx}\" -type f)",
       "Read(//c/Users/PC/.claude/**)",
       "PowerShell(python --version)",
-      "PowerShell(pip --version)"
+      "PowerShell(pip --version)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/fflate/package.json'\\).version\\)\")",
+      "Bash(npm install *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git push *)"
     ]
   }
 }
