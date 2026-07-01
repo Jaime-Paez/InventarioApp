@@ -340,7 +340,7 @@
 
 .importaciones-modal__products-table,
 .importaciones-modal__products-table:has(.create-salida__product-dropdown .create-user__dropdown-panel) {
-  overflow: hidden;
+  overflow: clip;
   background: #f3f4f6;
   border-radius: 10px;
 }
@@ -348,6 +348,12 @@
 .dashboard-shell.dark .importaciones-modal__products-table,
 .dashboard-shell.dark .importaciones-modal__products-table:has(.create-salida__product-dropdown .create-user__dropdown-panel) {
   background: var(--table-color-dark);
+}
+
+.importaciones-modal__products-table .create-user__locations-row--head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .importaciones-modal__products-table .create-user__locations-row > span {
@@ -689,6 +695,16 @@
 .importaciones-modal__aceptados-table .create-user__locations-row--empty {
   grid-template-columns: 1fr;
   text-align: center;
+}
+
+.importaciones-aceptados__table {
+  overflow: clip;
+}
+
+.importaciones-aceptados__table .create-user__locations-row--head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .importaciones-aceptados__table .create-user__locations-row {

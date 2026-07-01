@@ -4059,7 +4059,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         `</conditionalFormatting>`
 
       let sheetXml = dec.decode(unzipped['xl/worksheets/sheet1.xml'])
-      sheetXml = sheetXml.replace('</worksheet>', cfXml + '</worksheet>')
+      // <conditionalFormatting> must precede <ignoredErrors> in OOXML element order
+      sheetXml = sheetXml.includes('<ignoredErrors')
+        ? sheetXml.replace('<ignoredErrors', cfXml + '<ignoredErrors')
+        : sheetXml.replace('</worksheet>', cfXml + '</worksheet>')
       unzipped['xl/worksheets/sheet1.xml'] = enc.encode(sheetXml)
 
       // Repack: skip directory entries, store uncompressed to avoid any compression mismatch
