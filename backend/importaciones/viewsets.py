@@ -177,6 +177,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 codigo=d.codigo,
                 nombre=d.nombre,
                 oem=d.oem,
+                referencia=d.referencia,
                 cantidad=d.cantidad_confirmada or d.cantidad,
                 comentario=d.comentario,
                 precio_confirmado=d.precio_confirmado,
@@ -398,6 +399,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 codigo=str(item.get("codigo") or ""),
                 nombre=str(item.get("nombre") or ""),
                 oem=str(item.get("oem") or ""),
+                referencia=str(item.get("referencia") or ""),
                 cantidad=int(item.get("cantidad") or 1),
             )
             for item in detalles_data
@@ -470,7 +472,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             return Response({"detail": "El archivo está vacío."}, status=status.HTTP_400_BAD_REQUEST)
 
         header = [str(h or "").strip().upper() for h in all_rows[0]]
-        sucursal_col_names = header[5:] if len(header) > 5 else []
+        sucursal_col_names = header[6:] if len(header) > 6 else []
 
         from inventario.models import Sucursal as SucursalModel
         suc_by_name = {s.nombre.strip().upper(): s.id for s in SucursalModel.objects.all()}
@@ -499,13 +501,14 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
         parsed = []
         for row in all_rows[1:]:
-            if all(cell is None or str(cell).strip() == "" for cell in (row[:5] if len(row) >= 5 else row)):
+            if all(cell is None or str(cell).strip() == "" for cell in (row[:6] if len(row) >= 6 else row)):
                 continue
             codigo = safe_str(row[0]) if len(row) > 0 else ""
             referencia = safe_str(row[1]) if len(row) > 1 else ""
-            descripcion = safe_str(row[2]) if len(row) > 2 else ""
-            cantidad = safe_int(row[3]) if len(row) > 3 else 0
-            pvp = safe_float(row[4]) if len(row) > 4 else 0.0
+            oem = safe_str(row[2]) if len(row) > 2 else ""
+            descripcion = safe_str(row[3]) if len(row) > 3 else ""
+            cantidad = safe_int(row[4]) if len(row) > 4 else 0
+            pvp = safe_float(row[5]) if len(row) > 5 else 0.0
             if not codigo and not descripcion:
                 continue
             if cantidad <= 0:
@@ -528,7 +531,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
             suc_quantities = {}
             for col_offset, suc_id in enumerate(sucursal_col_ids):
-                col_idx = 5 + col_offset
+                col_idx = 6 + col_offset
                 if suc_id is None or col_idx >= len(row):
                     continue
                 qty = safe_int(row[col_idx])
@@ -538,6 +541,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             parsed.append({
                 "codigo": codigo,
                 "referencia": referencia,
+                "oem": oem,
                 "descripcion": descripcion,
                 "cantidad": cantidad,
                 "pvp": round(pvp, 2),

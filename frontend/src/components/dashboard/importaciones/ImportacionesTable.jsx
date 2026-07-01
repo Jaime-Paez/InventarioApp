@@ -1193,10 +1193,10 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
     try {
       const XLSXStyle = (await import('xlsx-js-style')).default
       // Sugerencia template: no sucursal columns
-      const headers = ['CODIGO JP', 'REFERENCIA', 'DESCRIPCIÓN', 'CANTIDAD', 'PVP']
+      const headers = ['CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANTIDAD', 'PVP']
       const colCount = headers.length
-      // 0-2 = text (@), 3 = integer (0), 4 = decimal (0.00)
-      const colFormat = (ci) => ci === 3 ? '0' : ci === 4 ? '0.00' : '@'
+      // 0-3 = text (@), 4 = integer (0), 5 = decimal (0.00)
+      const colFormat = (ci) => ci === 4 ? '0' : ci === 5 ? '0.00' : '@'
       const headerStyle = {
         font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
         fill: { fgColor: { rgb: '1A1A2E' }, patternType: 'solid' },
@@ -1227,7 +1227,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
           worksheet[ref].s = { ...base, numFmt: colFormat(ci) }
         }
       }
-      worksheet['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 32 }, { wch: 11 }, { wch: 10 }]
+      worksheet['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 11 }, { wch: 10 }]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
       XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Importación')
@@ -1282,7 +1282,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
         .map(row =>
           row.matched_producto_id
             ? { producto_id: row.matched_producto_id, cantidad: row.cantidad }
-            : { codigo: row.codigo, nombre: row.descripcion, oem: row.referencia, cantidad: row.cantidad }
+            : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad }
         )
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/`,
@@ -1722,10 +1722,10 @@ function ImportacionExcelDirectaModal({ token, onClose, onCreated }) {
     try {
       const XLSXStyle = (await import('xlsx-js-style')).default
       const sucursalHeaders = sucursales.map(s => s.nombre.toUpperCase())
-      const headers = ['CODIGO JP', 'REFERENCIA', 'DESCRIPCIÓN', 'CANTIDAD', 'PVP', ...sucursalHeaders]
+      const headers = ['CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANTIDAD', 'PVP', ...sucursalHeaders]
       const colCount = headers.length
-      // 0-2 = text (@), 3 = integer (0), 4 = decimal (0.00), 5+ = integer (0) — sucursales
-      const colFormat = (ci) => ci === 3 ? '0' : ci === 4 ? '0.00' : ci >= 5 ? '0' : '@'
+      // 0-3 = text (@), 4 = integer (0), 5 = decimal (0.00), 6+ = integer (0) — sucursales
+      const colFormat = (ci) => ci === 4 ? '0' : ci === 5 ? '0.00' : ci >= 6 ? '0' : '@'
       const headerStyle = {
         font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
         fill: { fgColor: { rgb: '1A1A2E' }, patternType: 'solid' },
@@ -1757,7 +1757,7 @@ function ImportacionExcelDirectaModal({ token, onClose, onCreated }) {
         }
       }
       worksheet['!cols'] = [
-        { wch: 14 }, { wch: 16 }, { wch: 32 }, { wch: 11 }, { wch: 10 },
+        { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 11 }, { wch: 10 },
         ...sucursalHeaders.map(() => ({ wch: 13 })),
       ]
       worksheet['!rows'] = [{ hpt: 22 }]
@@ -1812,7 +1812,8 @@ function ImportacionExcelDirectaModal({ token, onClose, onCreated }) {
         producto_id: row.matched_producto_id || null,
         codigo: row.codigo || '',
         nombre: row.descripcion || '',
-        oem: row.referencia || '',
+        referencia: row.referencia || '',
+        oem: row.oem || '',
         cantidad: row.cantidad,
         sucursal_quantities: row.sucursal_quantities || {},
       }))
@@ -2393,7 +2394,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     setAceptadosSearch('')
     setAceptadosCount(null)
     setShowNuevoProductoView(false)
-    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' })
+    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
     setNuevoProductoErrors({})
     setIsMaximized(false)
     modalRestoreRef.current = null
@@ -2586,7 +2587,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       return
     }
     if (!details.length) {
-      setLocalError('')
       return
     }
     const normalizedDetails = details.map((item) => {
@@ -3051,7 +3051,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           <button
                             type="button"
                             className="create-user__ghost"
-                            onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' }); setNuevoProductoErrors({}); setShowNuevoProductoView(true) }}
+                            onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' }); setNuevoProductoErrors({}); setShowNuevoProductoView(true) }}
                             style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                           >
                             + Agregar producto
