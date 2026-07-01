@@ -2393,7 +2393,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     setAceptadosSearch('')
     setAceptadosCount(null)
     setShowNuevoProductoView(false)
-    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' })
+    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
     setNuevoProductoErrors({})
     setIsMaximized(false)
     modalRestoreRef.current = null
@@ -2586,7 +2586,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       return
     }
     if (!details.length) {
-      setLocalError('')
       return
     }
     const normalizedDetails = details.map((item) => {
@@ -3051,7 +3050,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           <button
                             type="button"
                             className="create-user__ghost"
-                            onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '' }); setNuevoProductoErrors({}); setShowNuevoProductoView(true) }}
+                            onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' }); setNuevoProductoErrors({}); setShowNuevoProductoView(true) }}
                             style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                           >
                             + Agregar producto
