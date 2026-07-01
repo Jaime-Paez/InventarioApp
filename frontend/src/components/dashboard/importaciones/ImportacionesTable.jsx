@@ -4913,8 +4913,13 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     className="create-user__action imp-importar-btn"
                     disabled={submitting || importarSubmitting || deleteSubmitting}
                     onClick={() => {
+                      const unreviewed = details.filter((item) => !itemCheckStates[item._key])
+                      if (unreviewed.length > 0) {
+                        toastRef.current?.show({ severity: 'warn', summary: 'Revisión incompleta', detail: `Debes marcar todos los productos con ✓ o ✗ antes de importar (${unreviewed.length} sin revisar).`, life: 5000 })
+                        return
+                      }
                       if (!Object.values(itemCheckStates).some((s) => s === 'check')) {
-                        toastRef.current?.show({ severity: 'warn', summary: 'Sin selección', detail: 'Selecciona al menos un producto para importar.', life: 4000 })
+                        toastRef.current?.show({ severity: 'warn', summary: 'Sin selección', detail: 'Selecciona al menos un producto con ✓ para importar.', life: 4000 })
                         return
                       }
                       setFacturaInput('')
