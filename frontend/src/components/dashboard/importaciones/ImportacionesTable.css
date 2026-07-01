@@ -948,6 +948,33 @@
   border-color: #15803d;
 }
 
+/* Three-state check button in confirmacion table */
+.imp-tri-check {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  border: 1.5px solid #d1d5db;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  color: #fff;
+  padding: 0;
+}
+.imp-tri-check--none { background: #fff; border-color: #d1d5db; }
+.imp-tri-check--none:hover { border-color: #6d28d9; background: #f5f3ff; }
+.imp-tri-check--check { background: #16a34a; border-color: #16a34a; }
+.imp-tri-check--check:hover { background: #15803d; border-color: #15803d; }
+.imp-tri-check--x { background: #ef4444; border-color: #ef4444; }
+.imp-tri-check--x:hover { background: #dc2626; border-color: #dc2626; }
+
+.dashboard-shell.dark .imp-tri-check--none { background: var(--color-surface-darker); border-color: #4b5563; }
+.dashboard-shell.dark .imp-tri-check--none:hover { border-color: #7c3aed; background: #2e1065; }
+}
+
 /* Verificar Excel dropdown */
 .imp-verificar-excel-dropdown {
   position: relative;

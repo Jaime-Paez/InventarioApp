@@ -7,7 +7,7 @@ import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { Toast } from 'primereact/toast'
 import { Button } from 'primereact/button'
-import { Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
+import { Check, Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { API_URL, authFetch } from '../../../utils/api'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
@@ -3589,7 +3589,15 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
-  const [checkedKeys, setCheckedKeys] = useState(new Set())
+  const [itemCheckStates, setItemCheckStates] = useState({})
+  const handleCycleCheckState = (key) => {
+    setItemCheckStates((prev) => {
+      const cur = prev[key]
+      if (!cur) return { ...prev, [key]: 'check' }
+      if (cur === 'check') return { ...prev, [key]: 'x' }
+      const next = { ...prev }; delete next[key]; return next
+    })
+  }
   const [showVerificarExcelDropdown, setShowVerificarExcelDropdown] = useState(false)
   const [showSaveOnCloseModal, setShowSaveOnCloseModal] = useState(false)
 
@@ -3785,7 +3793,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     setAceptadosItems([])
     setAceptadosSelected(new Set())
     setAceptadosSearch('')
-    setCheckedKeys(new Set())
+    setItemCheckStates({})
     setIsMaximized(false)
     modalRestoreRef.current = null
   }, [open, imp])
@@ -4273,7 +4281,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
       })
-      const selectedKeys = Array.from(checkedKeys)
+      const selectedKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'check').map(([k]) => k)
       const response = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/importar/`,
         {
@@ -4778,17 +4786,14 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                       </span>
                                       {isConfirmacion && (
                                         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                          <Checkbox
-                                            checked={checkedKeys.has(item._key)}
-                                            onChange={(e) => {
-                                              setCheckedKeys((prev) => {
-                                                const next = new Set(prev)
-                                                if (e.checked) next.add(item._key)
-                                                else next.delete(item._key)
-                                                return next
-                                              })
-                                            }}
-                                          />
+                                          <button
+                                            type="button"
+                                            className={`imp-tri-check imp-tri-check--${itemCheckStates[item._key] || 'none'}`}
+                                            onClick={() => handleCycleCheckState(item._key)}
+                                          >
+                                            {itemCheckStates[item._key] === 'check' && <Check size={13} />}
+                                            {itemCheckStates[item._key] === 'x' && <X size={13} />}
+                                          </button>
                                         </span>
                                       )}
                                     </>
@@ -4908,7 +4913,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     className="create-user__action imp-importar-btn"
                     disabled={submitting || importarSubmitting || deleteSubmitting}
                     onClick={() => {
-                      if (checkedKeys.size === 0) {
+                      if (!Object.values(itemCheckStates).some((s) => s === 'check')) {
                         toastRef.current?.show({ severity: 'warn', summary: 'Sin selección', detail: 'Selecciona al menos un producto para importar.', life: 4000 })
                         return
                       }
