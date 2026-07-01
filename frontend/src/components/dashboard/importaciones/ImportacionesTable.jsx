@@ -4880,7 +4880,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     disabled={submitting || importarSubmitting || deleteSubmitting}
                     onClick={handleConfirmar}
                   >
-                    {importarSubmitting ? 'Confirmando...' : 'Confirmar'}
+                    {importarSubmitting ? 'Confirmando...' : 'Pedir confirmación'}
                   </button>
                 )}
                 {canEdit && imp?.estado === 'confirmacion' && (
