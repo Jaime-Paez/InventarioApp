@@ -343,6 +343,7 @@
   overflow: clip;
   background: #f3f4f6;
   border-radius: 10px;
+  isolation: isolate;
 }
 
 .dashboard-shell.dark .importaciones-modal__products-table,
@@ -362,6 +363,10 @@
 
 .importaciones-modal__products-table .create-user__locations-row--head > span {
   min-width: max-content;
+}
+
+.importaciones-modal__products-table--verificar .create-user__locations-row--head {
+  position: static;
 }
 
 .importaciones-modal__products-table--verificar .create-user__locations-row--head > span {
@@ -699,6 +704,7 @@
 
 .importaciones-aceptados__table {
   overflow: clip;
+  isolation: isolate;
 }
 
 .importaciones-aceptados__table .create-user__locations-row--head {
