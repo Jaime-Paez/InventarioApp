@@ -50,7 +50,7 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ImportacionDetalle
-        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "referencia", "cantidad", "comentario", "precio_confirmado", "cantidad_confirmada", "seleccionado", "solicitud_id"]
+        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "referencia", "cantidad", "comentario", "precio_estimado", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "seleccionado", "solicitud_id"]
 
     def validate(self, data):
         producto = data.get("producto")
@@ -139,6 +139,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     referencia=str(item.get("referencia") or ""),
                     cantidad=item["cantidad"],
                     comentario=str(item.get("comentario") or ""),
+                    precio_estimado=item.get("precio_estimado"),
+                    cantidad_aproximada=item.get("cantidad_aproximada"),
                     precio_confirmado=item.get("precio_confirmado"),
                     cantidad_confirmada=item.get("cantidad_confirmada"),
                     solicitud=item.get("solicitud"),

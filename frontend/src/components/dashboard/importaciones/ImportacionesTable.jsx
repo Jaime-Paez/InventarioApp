@@ -24,6 +24,7 @@ const getPortalRoot = () => document.querySelector('.dashboard-shell') || getPor
 const STATUS_CONFIG = {
   borrador: { label: 'Sugerencia', empty: 'No hay importaciones en sugerencia.' },
   cotizacion: { label: 'Verificar', empty: 'No hay importaciones en verificación.' },
+  confirmacion: { label: 'Confirmación', empty: 'No hay importaciones en confirmación.' },
   en_camino: { label: 'En camino', empty: 'No hay importaciones en camino.' },
   importada: { label: 'Importadas', empty: 'No hay importaciones importadas.' },
 }
@@ -34,6 +35,7 @@ const IMP_HOVER_MARGIN = 12
 const STATUS_BADGE = {
   borrador: { label: 'Sugerencia', color: '#64748b', bg: 'rgba(100,116,139,0.1)' },
   cotizacion: { label: 'Verificar', color: '#92640c', bg: 'rgba(234,179,8,0.22)' },
+  confirmacion: { label: 'Confirmación', color: '#6d28d9', bg: 'rgba(109,40,217,0.12)' },
   en_camino: { label: 'En camino', color: '#d97706', bg: 'rgba(217,119,6,0.1)' },
   importada: { label: 'Importada', color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
 }
@@ -3609,6 +3611,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
   const selectedCasa = imp?.casa_comercial || null
   const isVerificar = imp?.estado === 'cotizacion'
+  const isConfirmacion = imp?.estado === 'confirmacion'
+  const isVerificarOrConfirmacion = isVerificar || isConfirmacion
   const detailDraftQuantity = Number(detailDraft.cantidad)
   const canAddDetailDraft = Boolean(
     detailDraft.producto && Number.isFinite(detailDraftQuantity) && detailDraftQuantity > 0
@@ -3628,7 +3632,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     if (!open) { isFirstOpenRef.current = true; return }
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
     const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    const targetWidth = imp?.estado === 'cotizacion' ? 860 : MIN_WIDTH
+    const targetWidth = (imp?.estado === 'cotizacion' || imp?.estado === 'confirmacion') ? 860 : MIN_WIDTH
     const nextWidth = Math.min(targetWidth, availableWidth)
     const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
     const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
@@ -3759,7 +3763,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
     const loaded = (imp.detalles || []).map((d, i) => {
       const solId = d.solicitud_id ? String(d.solicitud_id) : null
-      const confirmed = { precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '' }
+      const confirmed = {
+        precio_estimado: toCentavos(d.precio_estimado), cantidad_aproximada: d.cantidad_aproximada != null ? String(d.cantidad_aproximada) : '',
+        precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '',
+      }
       if (d.producto?.id) {
         return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, ...confirmed }
       }
@@ -3900,9 +3907,9 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   }
 
   const handleSubmit = async () => {
-    const itemsToSubmit = isVerificar ? details.filter((item) => checkedKeys.has(item._key)) : details
+    const itemsToSubmit = details
     if (!itemsToSubmit.length) {
-      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: isVerificar ? 'Selecciona al menos un producto para importar.' : 'Agrega al menos un producto.', life: 4000 })
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Agrega al menos un producto.', life: 4000 })
       return
     }
     const badKeys = new Set(
@@ -3915,7 +3922,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
     const normalizedDetails = itemsToSubmit.map((item) => {
       const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
-      const confirmedFields = isVerificar ? {
+      const confirmedFields = isVerificarOrConfirmacion ? {
+        precio_estimado: item.precio_estimado
+          ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
+          : null,
+        cantidad_aproximada: item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null,
         precio_confirmado: item.precio_confirmado
           ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
           : null,
@@ -3948,7 +3959,9 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
       const border = { top: bt, bottom: bt, left: bt, right: bt }
       const RO = 6; const ED = 3; const DIFF_CI = RO + ED
-      const headers = ['Código', 'Nombre', 'OEM', 'Referencia', 'Precio', 'Cantidad', 'Precio conf.', 'Cant. conf.', 'Comentario', 'Diferencia', '_key']
+      const precioEditLabel = isVerificar ? 'Precio est.' : 'Precio conf.'
+      const cantEditLabel = isVerificar ? 'Cant. aprox.' : 'Cant. conf.'
+      const headers = ['Código', 'Nombre', 'OEM', 'Referencia', 'Precio', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', '_key']
       const mkH = (fill, bot) => ({ font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: fill }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: bot } }, left: bt, right: bt } })
       const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + ED ? mkH('15803d', '166534') : ci === DIFF_CI ? mkH('374151', '374151') : null)
 
@@ -3961,13 +3974,13 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         const precioReal = item.producto?.precio != null ? +Number(item.producto.precio).toFixed(2) : null
         const cantidad = +Number(item.cantidad || 0)
         const precioConf = (() => {
-          const raw = item.precio_confirmado
+          const raw = isVerificar ? item.precio_estimado : item.precio_confirmado
           if (raw == null || raw === '' || raw === 0) return null
           const c = parseInt(String(raw).replace(/\D/g, '') || '0', 10)
           return c > 0 ? +(c / 100).toFixed(2) : null
         })()
         const cantConf = (() => {
-          const raw = item.cantidad_confirmada
+          const raw = isVerificar ? item.cantidad_aproximada : item.cantidad_confirmada
           if (raw == null || raw === '') return null
           const n = parseInt(String(raw), 10)
           return !isNaN(n) && n > 0 ? n : null
@@ -4015,7 +4028,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       worksheet['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 0, hidden: true }]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
-      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Verificar')
+      XLSXStyle.utils.book_append_sheet(workbook, worksheet, isVerificar ? 'Verificar' : 'Confirmacion')
       const rawOut = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
 
       // Inject conditional formatting via ZIP manipulation (fflate statically imported)
@@ -4074,7 +4087,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const blob = new Blob([finalOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
-      link.download = `verificar-${imp?.codigo || 'cotizacion'}.xlsx`
+      link.download = `${isVerificar ? 'verificar' : 'confirmacion'}-${imp?.codigo || imp?.estado}.xlsx`
       document.body.appendChild(link); link.click(); document.body.removeChild(link)
       URL.revokeObjectURL(link.href)
     } catch (e) {
@@ -4102,8 +4115,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       }
       const fileHeaders = rawRows[0].map((h) => String(h || '').trim())
       const keyIdx = fileHeaders.indexOf('_key')
-      const precioIdx = fileHeaders.indexOf('Precio conf.')
-      const cantIdx = fileHeaders.indexOf('Cant. conf.')
+      const precioIdx = fileHeaders.indexOf(isVerificar ? 'Precio est.' : 'Precio conf.')
+      const cantIdx = fileHeaders.indexOf(isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
       const comentIdx = fileHeaders.indexOf('Comentario')
       if (keyIdx === -1 || precioIdx === -1 || cantIdx === -1) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta importación. Descarga el Excel desde este modal.', life: 4500 })
@@ -4126,17 +4139,19 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         const rawPrecio = row[precioIdx]
         const rawCant = row[cantIdx]
         const rawComent = comentIdx !== -1 ? row[comentIdx] : ''
-        let nuevoPrecio = item.precio_confirmado
+        const precioField = isVerificar ? 'precio_estimado' : 'precio_confirmado'
+        const cantField = isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
+        let nuevoPrecio = item[precioField]
         if (rawPrecio !== '' && rawPrecio != null) {
           const num = parseFloat(String(rawPrecio).replace(',', '.'))
           if (!isNaN(num)) nuevoPrecio = Math.round(num * 100)
         }
-        let nuevaCant = item.cantidad_confirmada
+        let nuevaCant = item[cantField]
         if (rawCant !== '' && rawCant != null) {
           const num = parseInt(String(rawCant), 10)
           if (!isNaN(num)) nuevaCant = num
         }
-        return { ...item, precio_confirmado: nuevoPrecio, cantidad_confirmada: nuevaCant, comentario: rawComent !== '' ? String(rawComent) : item.comentario }
+        return { ...item, [precioField]: nuevoPrecio, [cantField]: nuevaCant, comentario: rawComent !== '' ? String(rawComent) : item.comentario }
       }))
       toastRef.current?.show({ severity: 'success', summary: 'Datos cargados', detail: 'Tabla actualizada desde Excel. Recuerda guardar.', life: 4000 })
     } catch (e) {
@@ -4183,6 +4198,46 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
   }
 
+  const handleConfirmar = async () => {
+    setImportarSubmitting(true)
+    try {
+      const normalizedDetails = details.map((item) => {
+        const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
+        const estimadoFields = {
+          precio_estimado: item.precio_estimado
+            ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
+            : null,
+          cantidad_aproximada: item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null,
+          precio_confirmado: item.precio_confirmado
+            ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
+            : null,
+          cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
+        }
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...estimadoFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...estimadoFields, ...solId }
+      })
+      const saveResponse = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/`,
+        { method: 'PATCH', body: JSON.stringify({ detalles: normalizedDetails }) },
+        token
+      )
+      if (!saveResponse.ok) throw new Error(await readErrorMessage(saveResponse, 'No se pudo guardar los cambios.'))
+      const response = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/confirmar/`,
+        { method: 'POST' },
+        token
+      )
+      if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo confirmar la importación.'))
+      const payload = await response.json()
+      onSaved?.(payload)
+      onClose?.()
+    } catch (error) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 })
+    } finally {
+      setImportarSubmitting(false)
+    }
+  }
+
   const handleImportar = async () => {
     const factura = facturaInput.trim()
     if (!factura) return
@@ -4191,6 +4246,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const normalizedDetalles = details.map((item) => {
         const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
         const confirmedFields = {
+          precio_estimado: item.precio_estimado
+            ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
+            : null,
+          cantidad_aproximada: item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null,
           precio_confirmado: item.precio_confirmado
             ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
             : null,
@@ -4354,7 +4413,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         >
           <header className="create-user__header" onMouseDown={handleModalMouseDown}>
             <div className="create-user__header-text">
-              <h3>{imp.estado === 'cotizacion' ? 'Verificar' : 'Sugerencia'}: {imp.codigo}</h3>
+              <h3>{imp.estado === 'cotizacion' ? 'Verificar' : imp.estado === 'confirmacion' ? 'Confirmación' : 'Sugerencia'}: {imp.codigo}</h3>
             </div>
             <div className="create-user__header-actions">
               <button
@@ -4431,7 +4490,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         <p className="create-user__eyebrow">Productos</p>
                         <h4>Listado de productos</h4>
                       </div>
-                      {!isVerificar && (
+                      {!isVerificarOrConfirmacion && (
                         <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
                           <button
                             type="button"
@@ -4446,13 +4505,13 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                       )}
                     </div>
 
-                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificar ? ' importaciones-modal__products-table--verificar' : ''}`}>
+                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
-                        {isVerificar ? <><span>Precio conf.</span><span>Cant. conf.</span><span>Diferencia</span><span>Comentario</span><span>Acciones</span></> : <><span>Comentario</span><span>Acciones</span></>}
+                        {isVerificar ? <><span>Precio est.</span><span>Cant. aprox.</span><span>Diferencia</span><span>Comentario</span></> : isConfirmacion ? <><span>Precio conf.</span><span>Cant. conf.</span><span>Diferencia</span><span>Comentario</span><span>Acciones</span></> : <><span>Comentario</span><span>Acciones</span></>}
                       </div>
 
-                      {!isVerificar && <div className="create-user__locations-row create-user__locations-row--form">
+                      {!isVerificarOrConfirmacion && <div className="create-user__locations-row create-user__locations-row--form">
                         <span className="create-salida__product-picker create-salida__product-code-cell">
                           <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
                             <button
@@ -4579,7 +4638,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             <span>{oem}</span>
                             <span>{referencia}</span>
                             <span>{precio}</span>
-                            {isVerificar ? (
+                            {isVerificarOrConfirmacion ? (
                               <span className="create-salida__table-static-value">{item.cantidad}</span>
                             ) : (
                               <span>
@@ -4591,68 +4650,74 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                 />
                               </span>
                             )}
-                            {isVerificar ? (
+                            {isVerificarOrConfirmacion ? (
                               <>
-                                <span className="importaciones-verificar__precio-cell">
-                                  <span className="importaciones-verificar__currency-sign">$</span>
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    readOnly
-                                    value={formatCentavos(item.precio_confirmado)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Backspace') {
-                                        e.preventDefault()
-                                        handleConfirmedChange(item._key, 'precio_confirmado', String(item.precio_confirmado || '').replace(/\D/g, '').slice(0, -1))
-                                      } else if (/^\d$/.test(e.key)) {
-                                        e.preventDefault()
-                                        handleConfirmedChange(item._key, 'precio_confirmado', String(item.precio_confirmado || '').replace(/\D/g, '') + e.key)
-                                      }
-                                    }}
-                                  />
-                                </span>
-                                <span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    value={item.cantidad_confirmada ?? ''}
-                                    onChange={(e) => handleConfirmedChange(item._key, 'cantidad_confirmada', e.target.value)}
-                                  />
-                                </span>
                                 {(() => {
+                                  const priceField = isVerificar ? 'precio_estimado' : 'precio_confirmado'
+                                  const qtyField = isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
+                                  const confirmedCentavos = item[priceField] ? parseInt(String(item[priceField]).replace(/\D/g, '') || '0', 10) : null
                                   const storedCentavos = item.producto?.precio != null ? Math.round(Number(item.producto.precio) * 100) : null
-                                  const confirmedCentavos = item.precio_confirmado ? parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) : null
                                   const diff = storedCentavos != null && confirmedCentavos != null ? confirmedCentavos - storedCentavos : null
                                   const diffColor = diff === null ? undefined : diff <= 0 ? '#22c55e' : diff <= 100 ? '#eab308' : '#ef4444'
                                   return (
-                                    <span style={{ color: diffColor }}>
-                                      {diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''}
-                                    </span>
+                                    <>
+                                      <span className="importaciones-verificar__precio-cell">
+                                        <span className="importaciones-verificar__currency-sign">$</span>
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          readOnly
+                                          value={formatCentavos(item[priceField])}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Backspace') {
+                                              e.preventDefault()
+                                              handleConfirmedChange(item._key, priceField, String(item[priceField] || '').replace(/\D/g, '').slice(0, -1))
+                                            } else if (/^\d$/.test(e.key)) {
+                                              e.preventDefault()
+                                              handleConfirmedChange(item._key, priceField, String(item[priceField] || '').replace(/\D/g, '') + e.key)
+                                            }
+                                          }}
+                                        />
+                                      </span>
+                                      <span>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="1"
+                                          value={item[qtyField] ?? ''}
+                                          onChange={(e) => handleConfirmedChange(item._key, qtyField, e.target.value)}
+                                        />
+                                      </span>
+                                      <span style={{ color: diffColor }}>
+                                        {diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''}
+                                      </span>
+                                      <span>
+                                        <input
+                                          type="text"
+                                          value={item.comentario || ''}
+                                          onChange={(e) => handleComentarioChange(item._key, e.target.value)}
+                                          placeholder="Comentario"
+                                          autoComplete="off"
+                                        />
+                                      </span>
+                                      {isConfirmacion && (
+                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <Checkbox
+                                            checked={checkedKeys.has(item._key)}
+                                            onChange={(e) => {
+                                              setCheckedKeys((prev) => {
+                                                const next = new Set(prev)
+                                                if (e.checked) next.add(item._key)
+                                                else next.delete(item._key)
+                                                return next
+                                              })
+                                            }}
+                                          />
+                                        </span>
+                                      )}
+                                    </>
                                   )
                                 })()}
-                                <span>
-                                  <input
-                                    type="text"
-                                    value={item.comentario || ''}
-                                    onChange={(e) => handleComentarioChange(item._key, e.target.value)}
-                                    placeholder="Comentario"
-                                    autoComplete="off"
-                                  />
-                                </span>
-                                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <Checkbox
-                                    checked={checkedKeys.has(item._key)}
-                                    onChange={(e) => {
-                                      setCheckedKeys((prev) => {
-                                        const next = new Set(prev)
-                                        if (e.checked) next.add(item._key)
-                                        else next.delete(item._key)
-                                        return next
-                                      })
-                                    }}
-                                  />
-                                </span>
                               </>
                             ) : (
                               <>
@@ -4690,7 +4755,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={submitting || importarSubmitting || deleteSubmitting}>
                   Cancelar
                 </button>
-                {(imp?.estado === 'borrador' || imp?.estado === 'cotizacion') && canDelete && (
+                {(imp?.estado === 'borrador' || imp?.estado === 'cotizacion' || imp?.estado === 'confirmacion') && canDelete && (
                   <button
                     type="button"
                     className="create-user__action user-details__delete"
@@ -4702,7 +4767,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 )}
               </div>
               <div className="user-details__footer-right">
-                {isVerificar && (
+                {isVerificarOrConfirmacion && (
                   <div className="imp-verificar-excel-dropdown" ref={verificarExcelDropdownRef}>
                     <button
                       type="button"
@@ -4747,6 +4812,21 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                   </button>
                 )}
                 {canImportar && imp?.estado === 'cotizacion' && (
+                  <button
+                    type="button"
+                    className="create-user__action imp-confirmar-btn"
+                    disabled={submitting || importarSubmitting || deleteSubmitting}
+                    onClick={handleConfirmar}
+                  >
+                    {importarSubmitting ? 'Confirmando...' : 'Confirmar'}
+                  </button>
+                )}
+                {canEdit && imp?.estado === 'confirmacion' && (
+                  <button type="submit" className="create-user__action create-user__action--primary" disabled={submitting || importarSubmitting || deleteSubmitting}>
+                    {submitting ? 'Guardando...' : 'Guardar'}
+                  </button>
+                )}
+                {canImportar && imp?.estado === 'confirmacion' && (
                   <button
                     type="button"
                     className="create-user__action imp-importar-btn"
@@ -4846,8 +4926,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 <Info size={18} />
               </div>
               <div className="user-details__confirm-content">
-                <h4>Eliminar {imp?.estado === 'cotizacion' ? 'cotización' : 'sugerencia'}</h4>
-                <p>¿Estás seguro que quieres eliminar {imp?.estado === 'cotizacion' ? 'la cotización' : 'la sugerencia'} <strong>{imp?.codigo}</strong>? Esta acción no se puede deshacer.</p>
+                <h4>Eliminar {imp?.estado === 'cotizacion' ? 'cotización' : imp?.estado === 'confirmacion' ? 'confirmación' : 'sugerencia'}</h4>
+                <p>¿Estás seguro que quieres eliminar {imp?.estado === 'cotizacion' ? 'la cotización' : imp?.estado === 'confirmacion' ? 'la confirmación' : 'la sugerencia'} <strong>{imp?.codigo}</strong>? Esta acción no se puede deshacer.</p>
               </div>
               <div className="user-details__confirm-actions">
                 <button
@@ -5209,7 +5289,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const handleRowDoubleClick = useCallback((event) => {
     const rowData = event?.data
     if (!rowData) return
-    if (rowData.estado === 'borrador' || rowData.estado === 'cotizacion') {
+    if (rowData.estado === 'borrador' || rowData.estado === 'cotizacion' || rowData.estado === 'confirmacion') {
       setEditImp(rowData)
       setShowEditImp(true)
     } else {
@@ -5321,6 +5401,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
               {[
                 { key: 'borrador', label: 'Sugerencias' },
                 { key: 'cotizacion', label: 'Verificar' },
+                { key: 'confirmacion', label: 'Confirmación' },
                 { key: 'en_camino', label: 'En camino' },
                 { key: 'importada', label: 'Importadas' },
               ].map((option) => (
@@ -5376,7 +5457,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           resizableColumns
           columnResizeMode="expand"
           onRowDoubleClick={handleRowDoubleClick}
-          rowClassName={(rowData) => ({ 'p-selectable-row': true, 'imp-row--borrador': rowData.estado === 'borrador', 'imp-row--cotizacion': rowData.estado === 'cotizacion' })}
+          rowClassName={(rowData) => ({ 'p-selectable-row': true, 'imp-row--borrador': rowData.estado === 'borrador', 'imp-row--cotizacion': rowData.estado === 'cotizacion', 'imp-row--confirmacion': rowData.estado === 'confirmacion' })}
         >
           <Column
             field="codigo"

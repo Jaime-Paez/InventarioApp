@@ -9,11 +9,13 @@ from productos.models import Producto
 class Importacion(models.Model):
     ESTADO_BORRADOR = "borrador"
     ESTADO_COTIZACION = "cotizacion"
+    ESTADO_CONFIRMACION = "confirmacion"
     ESTADO_EN_CAMINO = "en_camino"
     ESTADO_IMPORTADA = "importada"
     ESTADO_CHOICES = [
         (ESTADO_BORRADOR, "Borrador"),
         (ESTADO_COTIZACION, "Cotización"),
+        (ESTADO_CONFIRMACION, "Confirmación"),
         (ESTADO_EN_CAMINO, "En camino"),
         (ESTADO_IMPORTADA, "Importada"),
     ]
@@ -67,6 +69,8 @@ class ImportacionDetalle(models.Model):
     oem = models.CharField(max_length=500, blank=True, default="")
     referencia = models.CharField(max_length=500, blank=True, default="")
     cantidad = models.PositiveIntegerField(default=1)
+    precio_estimado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    cantidad_aproximada = models.PositiveIntegerField(null=True, blank=True)
     precio_confirmado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cantidad_confirmada = models.PositiveIntegerField(null=True, blank=True)
     seleccionado = models.BooleanField(null=True, blank=True)
