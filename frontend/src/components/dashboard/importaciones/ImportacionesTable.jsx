@@ -3591,6 +3591,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [isMaximized, setIsMaximized] = useState(false)
   const [checkedKeys, setCheckedKeys] = useState(new Set())
   const [showVerificarExcelDropdown, setShowVerificarExcelDropdown] = useState(false)
+  const [showSaveOnCloseModal, setShowSaveOnCloseModal] = useState(false)
 
   const modalRef = useRef(null)
   const toastRef = useRef(null)
@@ -4283,12 +4284,14 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
   }
 
-  const handleCloseWithSave = async () => {
+  const handleCloseWithSave = () => {
     const isEditable = imp?.estado === 'borrador' || imp?.estado === 'cotizacion' || imp?.estado === 'confirmacion'
-    if (!isEditable || submitting || importarSubmitting || !details.length) {
-      onClose?.()
-      return
-    }
+    if (!isEditable || submitting || importarSubmitting) { onClose?.(); return }
+    setShowSaveOnCloseModal(true)
+  }
+
+  const handleSaveAndClose = async () => {
+    setShowSaveOnCloseModal(false)
     setSubmitting(true)
     try {
       const normalizedDetails = details.map((item) => {
@@ -4307,18 +4310,14 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         { method: 'PATCH', body: JSON.stringify({ detalles: normalizedDetails }) },
         token
       )
-      if (!response.ok) {
-        const msg = await readErrorMessage(response, 'No se pudo guardar.')
-        toastRef.current?.show({ severity: 'error', summary: 'Error al guardar', detail: msg, life: 4000 })
-      } else {
-        const payload = await response.json()
-        onSaved?.(payload)
-      }
+      if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo guardar.'))
+      const payload = await response.json()
+      onSaved?.(payload)
+      onClose?.()
     } catch (error) {
       toastRef.current?.show({ severity: 'error', summary: 'Error al guardar', detail: error.message, life: 4000 })
     } finally {
       setSubmitting(false)
-      onClose?.()
     }
   }
 
@@ -4547,7 +4546,24 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
-                        {isVerificar ? <><span>Precio est.</span><span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_aproximada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. aprox.</span><span>Diferencia</span><span>Comentario</span></> : isConfirmacion ? <><span>Precio conf.</span><span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_confirmada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. conf.</span><span>Diferencia</span><span>Comentario</span><span>Acciones</span></> : <><span>Comentario</span><span>Acciones</span></>}
+                        {isVerificar ? (
+                          <>
+                            <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_estimado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_estimado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>Precio est.</span>
+                            <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_aproximada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. aprox.</span>
+                            <span>Diferencia</span>
+                            <span>Comentario</span>
+                          </>
+                        ) : isConfirmacion ? (
+                          <>
+                            <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_confirmado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_confirmado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>Precio conf.</span>
+                            <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_confirmada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. conf.</span>
+                            <span>Diferencia</span>
+                            <span>Comentario</span>
+                            <span>Acciones</span>
+                          </>
+                        ) : (
+                          <><span>Comentario</span><span>Acciones</span></>
+                        )}
                       </div>
 
                       {!isVerificarOrConfirmacion && <div className="create-user__locations-row create-user__locations-row--form">
@@ -4707,6 +4723,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           inputMode="numeric"
                                           readOnly
                                           value={formatCentavos(item[priceField])}
+                                          title="Doble click: usar precio original"
+                                          onDoubleClick={() => {
+                                            if (item.producto?.precio != null)
+                                              handleConfirmedChange(item._key, priceField, Math.round(Number(item.producto.precio) * 100))
+                                          }}
                                           onKeyDown={(e) => {
                                             if (e.key === 'Backspace') {
                                               e.preventDefault()
@@ -4986,6 +5007,39 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                   disabled={deleteSubmitting}
                 >
                   {deleteSubmitting ? 'Eliminando...' : 'Eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          getPortalRoot()
+        )}
+
+        {showSaveOnCloseModal && createPortal(
+          <div className="user-details__confirm-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowSaveOnCloseModal(false) }}>
+            <div className="user-details__confirm-dialog">
+              <div className="user-details__confirm-icon">
+                <Info size={18} />
+              </div>
+              <div className="user-details__confirm-content">
+                <h4>¿Guardar cambios?</h4>
+                <p>¿Quieres guardar los cambios antes de cerrar?</p>
+              </div>
+              <div className="user-details__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={() => { setShowSaveOnCloseModal(false); onClose?.() }}
+                  disabled={submitting}
+                >
+                  No guardar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleSaveAndClose}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Guardando...' : 'Guardar y cerrar'}
                 </button>
               </div>
             </div>
