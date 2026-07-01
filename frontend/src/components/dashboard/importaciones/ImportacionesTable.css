@@ -365,8 +365,9 @@
   min-width: max-content;
 }
 
-.importaciones-modal__products-table--verificar .create-user__locations-row--head {
-  position: static;
+.importaciones-modal__products-table--verificar {
+  overflow-y: auto;
+  max-height: calc(100vh - 320px);
 }
 
 .importaciones-modal__products-table--verificar .create-user__locations-row--head > span {
