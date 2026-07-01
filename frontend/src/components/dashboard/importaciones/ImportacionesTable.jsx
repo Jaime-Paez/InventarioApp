@@ -4200,19 +4200,33 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   }
 
   const handleConfirmar = async () => {
+    const missingData = details.filter((item) => {
+      const precio = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
+      const cant = Number(item.cantidad_aproximada || 0)
+      return precio <= 0 || cant <= 0
+    })
+    if (missingData.length > 0) {
+      toastRef.current?.show({
+        severity: 'error',
+        summary: 'Datos incompletos',
+        detail: `Completa el precio estimado y cantidad aprox. de todos los productos (${missingData.length} sin completar).`,
+        life: 5000,
+      })
+      return
+    }
     setImportarSubmitting(true)
     try {
       const normalizedDetails = details.map((item) => {
         const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
+        const precioEstimadoVal = item.precio_estimado
+          ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
+          : null
+        const cantAproxVal = item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null
         const estimadoFields = {
-          precio_estimado: item.precio_estimado
-            ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
-            : null,
-          cantidad_aproximada: item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null,
-          precio_confirmado: item.precio_confirmado
-            ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
-            : null,
-          cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
+          precio_estimado: precioEstimadoVal,
+          cantidad_aproximada: cantAproxVal,
+          precio_confirmado: precioEstimadoVal,
+          cantidad_confirmada: cantAproxVal,
         }
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...estimadoFields, ...solId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...estimadoFields, ...solId }
