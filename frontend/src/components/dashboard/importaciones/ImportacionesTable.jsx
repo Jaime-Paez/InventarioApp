@@ -4283,6 +4283,45 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
   }
 
+  const handleCloseWithSave = async () => {
+    const isEditable = imp?.estado === 'borrador' || imp?.estado === 'cotizacion' || imp?.estado === 'confirmacion'
+    if (!isEditable || submitting || importarSubmitting || !details.length) {
+      onClose?.()
+      return
+    }
+    setSubmitting(true)
+    try {
+      const normalizedDetails = details.map((item) => {
+        const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
+        const confirmedFields = isVerificarOrConfirmacion ? {
+          precio_estimado: item.precio_estimado ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2) : null,
+          cantidad_aproximada: item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null,
+          precio_confirmado: item.precio_confirmado ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2) : null,
+          cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
+        } : {}
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
+      })
+      const response = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/`,
+        { method: 'PATCH', body: JSON.stringify({ detalles: normalizedDetails }) },
+        token
+      )
+      if (!response.ok) {
+        const msg = await readErrorMessage(response, 'No se pudo guardar.')
+        toastRef.current?.show({ severity: 'error', summary: 'Error al guardar', detail: msg, life: 4000 })
+      } else {
+        const payload = await response.json()
+        onSaved?.(payload)
+      }
+    } catch (error) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error al guardar', detail: error.message, life: 4000 })
+    } finally {
+      setSubmitting(false)
+      onClose?.()
+    }
+  }
+
   const handleDeleteBorrador = async () => {
     setDeleteSubmitting(true)
     try {
@@ -4425,7 +4464,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
               >
                 <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
               </button>
-              <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} disabled={submitting} aria-label="Cerrar">
+              <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={handleCloseWithSave} disabled={submitting} aria-label="Cerrar">
                 <i className="pi pi-times" aria-hidden="true" />
               </button>
             </div>
@@ -4505,10 +4544,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                       )}
                     </div>
 
-                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}`}>
+                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
-                        {isVerificar ? <><span>Precio est.</span><span>Cant. aprox.</span><span>Diferencia</span><span>Comentario</span></> : isConfirmacion ? <><span>Precio conf.</span><span>Cant. conf.</span><span>Diferencia</span><span>Comentario</span><span>Acciones</span></> : <><span>Comentario</span><span>Acciones</span></>}
+                        {isVerificar ? <><span>Precio est.</span><span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_aproximada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. aprox.</span><span>Diferencia</span><span>Comentario</span></> : isConfirmacion ? <><span>Precio conf.</span><span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_confirmada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. conf.</span><span>Diferencia</span><span>Comentario</span><span>Acciones</span></> : <><span>Comentario</span><span>Acciones</span></>}
                       </div>
 
                       {!isVerificarOrConfirmacion && <div className="create-user__locations-row create-user__locations-row--form">
@@ -4686,6 +4725,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           step="1"
                                           value={item[qtyField] ?? ''}
                                           onChange={(e) => handleConfirmedChange(item._key, qtyField, e.target.value)}
+                                          onDoubleClick={() => handleConfirmedChange(item._key, qtyField, item.cantidad)}
+                                          title="Doble click: usar cantidad original"
                                         />
                                       </span>
                                       <span style={{ color: diffColor }}>

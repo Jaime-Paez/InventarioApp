@@ -267,7 +267,21 @@
     88px
     58px
     minmax(60px, 0.55fr)
+    minmax(120px, 1.2fr);
+}
+
+.importaciones-modal__products-table--confirmacion .create-user__locations-row {
+  grid-template-columns:
+    minmax(72px, 0.7fr)
     minmax(100px, 1fr)
+    minmax(72px, 0.7fr)
+    minmax(82px, 0.8fr)
+    minmax(60px, 0.55fr)
+    44px
+    88px
+    58px
+    minmax(60px, 0.55fr)
+    minmax(120px, 1.2fr)
     40px;
 }
 
