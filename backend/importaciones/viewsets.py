@@ -132,6 +132,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        fecha_raw = str(request.data.get("fecha_importacion") or "").strip()
+        try:
+            from datetime import date
+            fecha_importacion = date.fromisoformat(fecha_raw) if fecha_raw else timezone.localdate()
+        except ValueError:
+            fecha_importacion = timezone.localdate()
+
         # Keys of selected items: String(producto_id) or "sc_{detalle_id}"
         selected_keys = set(str(k) for k in (request.data.get("detalles_seleccionados") or []))
         if not selected_keys:
@@ -175,7 +182,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # Transition the original cotizacion to importada (becomes the verification archive)
         instance.numero_factura = numero_factura
         instance.estado = Importacion.ESTADO_IMPORTADA
-        instance.fecha_importacion = today
+        instance.fecha_importacion = fecha_importacion
         instance.save(update_fields=["numero_factura", "estado", "fecha_importacion"])
 
         # 2. Create a new importacion in en_camino with only the selected items
@@ -183,9 +190,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             codigo=generate_next_importacion_code(instance.casa_comercial),
             estado=Importacion.ESTADO_EN_CAMINO,
             casa_comercial=instance.casa_comercial,
-            fecha=today,
+            fecha=fecha_importacion,
             numero_factura=numero_factura,
-            fecha_importacion=today,
+            fecha_importacion=fecha_importacion,
             dias_entrega_estimados=instance.dias_entrega_estimados,
             creado_por=request.user if request.user.is_authenticated else None,
         )

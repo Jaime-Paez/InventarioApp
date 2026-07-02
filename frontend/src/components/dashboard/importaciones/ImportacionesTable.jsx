@@ -3583,6 +3583,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [aceptadosCount, setAceptadosCount] = useState(null)
   const [showImportarModal, setShowImportarModal] = useState(false)
   const [facturaInput, setFacturaInput] = useState('')
+  const [fechaImportar, setFechaImportar] = useState('')
   const [importarSubmitting, setImportarSubmitting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteSubmitting, setDeleteSubmitting] = useState(false)
@@ -4263,7 +4264,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
   const handleImportar = async () => {
     const factura = facturaInput.trim()
-    if (!factura) return
+    if (!factura || !fechaImportar) return
     setImportarSubmitting(true)
     try {
       const normalizedDetalles = details.map((item) => {
@@ -4288,6 +4289,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           method: 'POST',
           body: JSON.stringify({
             numero_factura: factura,
+            fecha_importacion: fechaImportar,
             detalles: normalizedDetalles,
             detalles_seleccionados: selectedKeys,
           }),
@@ -4922,7 +4924,18 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         toastRef.current?.show({ severity: 'warn', summary: 'Sin selección', detail: 'Selecciona al menos un producto con ✓ para importar.', life: 4000 })
                         return
                       }
+                      const checkMissingData = details.filter((item) => {
+                        if (itemCheckStates[item._key] !== 'check') return false
+                        const precio = parseInt(String(item.precio_confirmado || '').replace(/\D/g, '') || '0', 10)
+                        const cant = Number(item.cantidad_confirmada || 0)
+                        return precio <= 0 || cant <= 0
+                      })
+                      if (checkMissingData.length > 0) {
+                        toastRef.current?.show({ severity: 'error', summary: 'Datos incompletos', detail: `Los productos marcados con ✓ deben tener precio y cantidad confirmada (${checkMissingData.length} incompletos).`, life: 5000 })
+                        return
+                      }
                       setFacturaInput('')
+                      setFechaImportar(new Date().toISOString().slice(0, 10))
                       setShowImportarModal(true)
                     }}
                   >
@@ -4981,6 +4994,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     disabled={importarSubmitting}
                   />
                 </div>
+                <div className="imp-importar-modal__field">
+                  <label htmlFor="imp-fecha-input">Fecha de importación</label>
+                  <input
+                    id="imp-fecha-input"
+                    type="date"
+                    className="imp-importar-modal__input"
+                    value={fechaImportar}
+                    onChange={(e) => setFechaImportar(e.target.value)}
+                    disabled={importarSubmitting}
+                  />
+                </div>
               </div>
               <div className="imp-importar-modal__footer">
                 <button
@@ -4995,7 +5019,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                   type="button"
                   className="create-user__action imp-importar-btn"
                   onClick={handleImportar}
-                  disabled={!facturaInput.trim() || importarSubmitting}
+                  disabled={!facturaInput.trim() || !fechaImportar || importarSubmitting}
                 >
                   {importarSubmitting ? 'Importando...' : 'Importar'}
                 </button>
