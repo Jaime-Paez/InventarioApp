@@ -42,6 +42,18 @@ const STATUS_BADGE = {
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 
+const normId = (value) => (value == null ? null : String(value))
+const isCheckboxSelection = (event) => {
+  const type = event?.type
+  if (type === 'checkbox' || type === 'all') return true
+  const target = event?.originalEvent?.target
+  if (!target) return true
+  if (target.type === 'checkbox') return true
+  return Boolean(
+    target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input, .row-selection-column')
+  )
+}
+
 const todayISO = () => {
   const now = new Date()
   const year = now.getFullYear()
@@ -4122,7 +4134,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           const isEmpty = val == null
           // Static fills: CF overrides dynamically for E=0, G/H blank, and J colors
           let bg
-          if (isEdit) bg = isEven ? 'dcfce7' : 'f0fdf4'
+          if (isEdit && !isEmpty) bg = isEven ? 'FFFFFF' : 'F9FAFB'
+          else if (isEdit) bg = 'fef9c3'
           else if (isDiff && !isEmpty) bg = val >= 0 ? 'dcfce7' : val >= -1 ? 'fef9c3' : 'fee2e2'
           else if (isDiff) bg = isEven ? 'f3f4f6' : 'f9fafb'
           else bg = isEven ? 'EFF6FF' : 'FFFFFF'
@@ -5300,6 +5313,11 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const [showImpDetails, setShowImpDetails] = useState(false)
   const [editImp, setEditImp] = useState(null)
   const [showEditImp, setShowEditImp] = useState(false)
+  const [selectedRows, setSelectedRows] = useState([])
+  const [processedRows, setProcessedRows] = useState(null)
+  const clickTimerRef = useRef(null)
+  const pendingClickRowRef = useRef(null)
+  const pendingClickCountRef = useRef(0)
 
   useEffect(() => {
     if (!pendingOpenBorradorData) return
@@ -5337,6 +5355,16 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
 
   const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.en_proceso
   const canCreate = moduleActions?.puede_crear !== false
+
+  const selectedRowIds = useMemo(
+    () => (selectedRows || []).map((row) => normId(row?.id)).filter(Boolean),
+    [selectedRows]
+  )
+
+  const selectionColStyle = useMemo(
+    () => ({ width: '40px', minWidth: '40px', maxWidth: '40px', textAlign: 'center' }),
+    []
+  )
 
   const normalizeList = useCallback((list) =>
     list.map((item) => {
@@ -5384,7 +5412,16 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     setPageFirst(0)
     setGlobalFilterValue('')
     setFilters({ global: { value: null, matchMode: FilterMatchMode.CONTAINS } })
+    setSelectedRows([])
   }, [status])
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+      pendingClickCountRef.current = 0
+      pendingClickRowRef.current = null
+    }
+  }, [])
 
   const handleGlobalFilterChange = (event) => {
     const value = event.target.value
@@ -5511,15 +5548,20 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
 
   const getExportValue = useCallback((row, key) => row?.[key] ?? '', [])
 
+  const getRowsToExport = useCallback(() => {
+    if (selectedRows?.length) return selectedRows
+    return processedRows === null ? items : (processedRows ?? items)
+  }, [items, processedRows, selectedRows])
+
   const handleExportExcel = useCallback(async () => {
-    const rows = buildExportRows(items)
+    const rows = buildExportRows(getRowsToExport())
     await exportToExcel({ rows, columns: exportColumns, valueGetter: getExportValue, fileName: buildFileName('importaciones') })
-  }, [buildExportRows, getExportValue, items])
+  }, [buildExportRows, getExportValue, getRowsToExport])
 
   const handleExportPdf = useCallback(async () => {
-    const rows = buildExportRows(items)
+    const rows = buildExportRows(getRowsToExport())
     await exportToPdf({ rows, columns: exportColumns, valueGetter: getExportValue, fileName: buildFileName('importaciones'), title: 'Reporte de importaciones' })
-  }, [buildExportRows, getExportValue, items])
+  }, [buildExportRows, getExportValue, getRowsToExport])
 
   const handleOpenBorrador = useCallback((borradorData) => {
     setShowCreate(false)
@@ -5527,7 +5569,44 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     setShowEditImp(true)
   }, [])
 
+  const handleRowClick = (event) => {
+    const target = event?.originalEvent?.target
+    if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
+    const rowData = event?.data
+    if (!rowData) return
+    const id = normId(rowData?.id)
+    if (!id) return
+    const isSameRow = pendingClickRowRef.current === id
+    pendingClickRowRef.current = id
+    pendingClickCountRef.current = isSameRow ? pendingClickCountRef.current + 1 : 1
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = setTimeout(() => {
+      const clickCount = pendingClickCountRef.current
+      pendingClickCountRef.current = 0
+      pendingClickRowRef.current = null
+      clickTimerRef.current = null
+      if (clickCount > 1) return
+      setSelectedRows((prev) => {
+        const prevMap = new Map((prev || []).map((row) => [normId(row?.id), row]))
+        if (prevMap.has(id)) {
+          prevMap.delete(id)
+        } else {
+          prevMap.set(id, rowData)
+        }
+        return Array.from(prevMap.values())
+      })
+    }, 220)
+  }
+
   const handleRowDoubleClick = useCallback((event) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+    pendingClickCountRef.current = 0
+    pendingClickRowRef.current = null
+    const target = event?.originalEvent?.target
+    if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
     const rowData = event?.data
     if (!rowData) return
     if (rowData.estado === 'borrador' || rowData.estado === 'cotizacion' || rowData.estado === 'confirmacion') {
@@ -5697,9 +5776,37 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           reorderableColumns
           resizableColumns
           columnResizeMode="expand"
+          onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
-          rowClassName={(rowData) => ({ 'p-selectable-row': true, 'imp-row--borrador': rowData.estado === 'borrador', 'imp-row--cotizacion': rowData.estado === 'cotizacion', 'imp-row--confirmacion': rowData.estado === 'confirmacion' })}
+          onValueChange={(value) => setProcessedRows(value ?? [])}
+          rowClassName={(rowData) => {
+            const classes = ['p-selectable-row']
+            if (selectedRowIds.includes(normId(rowData?.id))) classes.push('selected-row-shadow')
+            if (rowData.estado === 'borrador') classes.push('imp-row--borrador')
+            if (rowData.estado === 'cotizacion') classes.push('imp-row--cotizacion')
+            if (rowData.estado === 'confirmacion') classes.push('imp-row--confirmacion')
+            return classes.join(' ')
+          }}
+          selectionMode="multiple"
+          selection={selectedRows}
+          onSelectionChange={(event) => {
+            if (!isCheckboxSelection(event)) return
+            setSelectedRows(event.value || [])
+          }}
+          frozenWidth="40px"
         >
+          <Column
+            selectionMode="multiple"
+            frozen
+            headerClassName="row-selection-column"
+            bodyClassName="row-selection-column"
+            style={selectionColStyle}
+            headerStyle={selectionColStyle}
+            bodyStyle={selectionColStyle}
+            exportable={false}
+            reorderable={false}
+            resizable={false}
+          />
           <Column
             field="codigo"
             header="Código"
