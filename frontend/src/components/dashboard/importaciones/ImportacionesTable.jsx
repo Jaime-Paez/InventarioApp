@@ -4147,9 +4147,9 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       let stylesXml = dec.decode(unzipped['xl/styles.xml'])
       stylesXml = stylesXml.replace(/<dxfs[^>]*\/>/,
         '<dxfs count="3">' +
-        '<dxf><fill><patternFill patternType="solid"><fgColor rgb="FFdcfce7"/></patternFill></fill></dxf>' +  // 0: verde
-        '<dxf><fill><patternFill patternType="solid"><fgColor rgb="FFfef9c3"/></patternFill></fill></dxf>' +  // 1: amarillo
-        '<dxf><fill><patternFill patternType="solid"><fgColor rgb="FFfee2e2"/></patternFill></fill></dxf>' +  // 2: rojo
+        '<dxf><fill><patternFill><bgColor rgb="FFdcfce7"/></patternFill></fill></dxf>' +  // 0: verde
+        '<dxf><fill><patternFill><bgColor rgb="FFfef9c3"/></patternFill></fill></dxf>' +  // 1: amarillo
+        '<dxf><fill><patternFill><bgColor rgb="FFfee2e2"/></patternFill></fill></dxf>' +  // 2: rojo
         '</dxfs>')
       unzipped['xl/styles.xml'] = enc.encode(stylesXml)
 
@@ -4172,7 +4172,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         `<conditionalFormatting sqref="${hCol}2:${hCol}${last}">` +
         `<cfRule type="cellIs" dxfId="1" priority="1" operator="equal"><formula>""</formula></cfRule>` +
         `</conditionalFormatting>` +
-        // J: verde =0, verde >1, amarillo >=-1 (cubre -1..0 y 0..1), rojo <-1
+        // J: verde =0 | verde >1 | amarillo >=-1 (cubre -1≤d<0 y 0<d≤1) | rojo <-1
         `<conditionalFormatting sqref="${jCol}2:${jCol}${last}">` +
         `<cfRule type="cellIs" dxfId="0" priority="1" stopIfTrue="1" operator="equal"><formula>0</formula></cfRule>` +
         `<cfRule type="cellIs" dxfId="0" priority="2" stopIfTrue="1" operator="greaterThan"><formula>1</formula></cfRule>` +
