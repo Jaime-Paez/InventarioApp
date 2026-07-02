@@ -1110,8 +1110,17 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
 
   // Step 3
   const [parsedRows, setParsedRows] = useState([])
+  const [referenciaDecisions, setReferenciaDecisions] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+
+  const hasReferenciaConflict = (row) =>
+    Boolean(
+      row.matched_producto_id &&
+      row.referencia &&
+      row.matched_producto_referencia &&
+      row.referencia.trim().toLowerCase() !== row.matched_producto_referencia.trim().toLowerCase()
+    )
 
   useLayoutEffect(() => {
     if (step !== 'casa') return
@@ -1266,6 +1275,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data.detail || 'Error al procesar el archivo.')
       setParsedRows(data.rows || [])
+      setReferenciaDecisions({})
       setSubmitError('')
       setStep(3)
     } catch (e) {
@@ -1279,13 +1289,17 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
     setSubmitError('')
     setSubmitting(true)
     try {
-      const detalles = parsedRows
-        .filter(row => !row.conflicto_casa)
-        .map(row =>
-          row.matched_producto_id
-            ? { producto_id: row.matched_producto_id, cantidad: row.cantidad }
-            : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad }
-        )
+      const detalles = validRows.map((row, i) =>
+        row.matched_producto_id
+          ? {
+              producto_id: row.matched_producto_id,
+              cantidad: row.cantidad,
+              ...(hasReferenciaConflict(row) && referenciaDecisions[i] === 'excel'
+                ? { update_referencia: true, nueva_referencia: row.referencia }
+                : {}),
+            }
+          : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad }
+      )
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ casa_comercial_id: selectedCasa.id, detalles }) },
@@ -1307,6 +1321,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   const validRows = parsedRows.filter(r => !r.conflicto_casa)
   const matchedCount = validRows.filter(r => r.matched_producto_id).length
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
+  const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
 
   const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa los productos'
   const portalRoot = document.querySelector('.dashboard-shell') || document.body
@@ -1580,36 +1595,81 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                       — {unmatchedCount} sin catálogo
                     </span>
                   )}
+                  {referenciaConflictCount > 0 && (
+                    <span style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '3px 12px', fontSize: '0.78rem', fontWeight: 600 }}>
+                      ⚠ {referenciaConflictCount} con referencia diferente — selecciona cuál guardar
+                    </span>
+                  )}
                 </div>
 
-                <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'hidden' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', maxHeight: 'min(380px, 45vh)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: 620 }}>
                     <thead>
-                      <tr style={{ background: '#1A1A2E', color: '#fff' }}>
+                      <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
                         <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Código</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Referencia</th>
                         <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
                         <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
                         <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Estado</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {validRows.map((row, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
-                          <td style={{ padding: '7px 12px', fontFamily: 'monospace', fontSize: '0.8rem' }}>{row.codigo || '—'}</td>
-                          <td style={{ padding: '7px 12px' }}>{row.descripcion || row.referencia || '—'}</td>
-                          <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600 }}>{row.cantidad}</td>
-                          <td style={{ padding: '7px 12px' }}>
-                            {row.matched_producto_id ? (
-                              <span style={{ color: '#15803d', fontSize: '0.78rem', fontWeight: 500 }}>
-                                <i className="pi pi-check" style={{ marginRight: 4 }} />
-                                {row.matched_producto_nombre || row.matched_producto_codigo}
-                              </span>
-                            ) : (
-                              <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Sin catálogo</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {validRows.map((row, i) => {
+                        const conflict = hasReferenciaConflict(row)
+                        const decision = referenciaDecisions[i] || 'keep'
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
+                            <td style={{ padding: '7px 12px', fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{row.codigo || '—'}</td>
+                            <td style={{ padding: '7px 12px', minWidth: 140 }}>
+                              {conflict ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <span style={{ fontSize: '0.68rem', color: '#c2410c', fontWeight: 600 }}>⚠ Difiere</span>
+                                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setReferenciaDecisions(p => ({ ...p, [i]: 'keep' }))}
+                                      style={{
+                                        fontSize: '0.68rem', padding: '2px 7px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace',
+                                        border: `1px solid ${decision !== 'excel' ? '#1e40af' : '#cbd5e1'}`,
+                                        background: decision !== 'excel' ? '#1e40af' : 'transparent',
+                                        color: decision !== 'excel' ? '#fff' : '#64748b',
+                                      }}
+                                    >
+                                      Actual: {row.matched_producto_referencia || '—'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setReferenciaDecisions(p => ({ ...p, [i]: 'excel' }))}
+                                      style={{
+                                        fontSize: '0.68rem', padding: '2px 7px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace',
+                                        border: `1px solid ${decision === 'excel' ? '#c2410c' : '#cbd5e1'}`,
+                                        background: decision === 'excel' ? '#c2410c' : 'transparent',
+                                        color: decision === 'excel' ? '#fff' : '#64748b',
+                                      }}
+                                    >
+                                      Excel: {row.referencia || '—'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{row.referencia || '—'}</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '7px 12px' }}>{row.descripcion || '—'}</td>
+                            <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
+                            <td style={{ padding: '7px 12px' }}>
+                              {row.matched_producto_id ? (
+                                <span style={{ color: '#15803d', fontSize: '0.78rem', fontWeight: 500 }}>
+                                  <i className="pi pi-check" style={{ marginRight: 4 }} />
+                                  {row.matched_producto_nombre || row.matched_producto_codigo}
+                                </span>
+                              ) : (
+                                <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Sin catálogo</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -53,6 +53,24 @@ class ImportacionViewSet(viewsets.ModelViewSet):
     ]
     ordering_fields = ["codigo", "fecha", "creado_en", "casa_comercial__nombre"]
 
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        detalles_raw = request.data.get("detalles") if isinstance(request.data, dict) else []
+        referencia_updates = {}
+        for item in (detalles_raw or []):
+            pid = item.get("producto_id")
+            nueva_ref = str(item.get("nueva_referencia") or "").strip()
+            if pid and item.get("update_referencia") and nueva_ref:
+                try:
+                    referencia_updates[int(pid)] = nueva_ref
+                except (ValueError, TypeError):
+                    pass
+        response = super().create(request, *args, **kwargs)
+        if referencia_updates and response.status_code == status.HTTP_201_CREATED:
+            for pid, nueva_ref in referencia_updates.items():
+                Producto.objects.filter(pk=pid).update(referencia=nueva_ref)
+        return response
+
     def get_queryset(self):
         queryset = (
             Importacion.objects.select_related("casa_comercial")
@@ -574,6 +592,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "matched_producto_id": matched.id if matched else None,
                 "matched_producto_codigo": matched.codigo if matched else None,
                 "matched_producto_nombre": matched.nombre if matched else None,
+                "matched_producto_referencia": matched.referencia if matched else None,
                 "sucursal_quantities": suc_quantities,
                 "conflicto_casa": conflicto_casa,
                 "conflicto_casa_nombre": conflicto_casa_nombre,
