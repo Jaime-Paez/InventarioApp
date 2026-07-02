@@ -973,7 +973,6 @@
 
 .dashboard-shell.dark .imp-tri-check--none { background: var(--color-surface-darker); border-color: #4b5563; }
 .dashboard-shell.dark .imp-tri-check--none:hover { border-color: #3b82f6; background: #1e3a5f; }
-}
 
 /* Verificar Excel dropdown */
 .imp-verificar-excel-dropdown {
