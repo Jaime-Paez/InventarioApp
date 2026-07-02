@@ -42,6 +42,19 @@ const STATUS_BADGE = {
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 
+const serializeDetailsForDirty = (detailsList) =>
+  JSON.stringify(
+    [...(detailsList || [])].sort((a, b) => String(a._key).localeCompare(String(b._key))).map((d) => [
+      d._key,
+      d.cantidad || '',
+      d.comentario || '',
+      d.precio_estimado || '',
+      d.cantidad_aproximada || '',
+      d.precio_confirmado || '',
+      d.cantidad_confirmada || '',
+    ])
+  )
+
 const normId = (value) => (value == null ? null : String(value))
 const isCheckboxSelection = (event) => {
   const type = event?.type
@@ -3727,6 +3740,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const isFirstOpenRef = useRef(true)
   const detailsRef = useRef([])
   detailsRef.current = details
+  const initialDetailsRef = useRef(null)
   const [productPanelStyle, setProductPanelStyle] = useState(null)
 
   const selectedCasa = imp?.casa_comercial || null
@@ -3897,6 +3911,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       }
     })
     setDetails(loaded)
+    initialDetailsRef.current = loaded
     setDetailDraft({ producto: null, cantidad: '', comentario: '' })
     setActiveTab('general')
     setInvalidQtyKeys(new Set())
@@ -4422,6 +4437,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const handleCloseWithSave = () => {
     const isEditable = imp?.estado === 'borrador' || imp?.estado === 'cotizacion' || imp?.estado === 'confirmacion'
     if (!isEditable || submitting || importarSubmitting) { onClose?.(); return }
+    const hasChanges = serializeDetailsForDirty(details) !== serializeDetailsForDirty(initialDetailsRef.current)
+    if (!hasChanges) { onClose?.(); return }
     setShowSaveOnCloseModal(true)
   }
 
