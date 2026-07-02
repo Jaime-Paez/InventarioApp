@@ -4123,7 +4123,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           // Static fills: CF overrides dynamically for E=0, G/H blank, and J colors
           let bg
           if (isEdit) bg = isEven ? 'dcfce7' : 'f0fdf4'
-          else if (isDiff && !isEmpty) bg = val === 0 || val > 1 ? 'dcfce7' : val >= -1 ? 'fef9c3' : 'fee2e2'
+          else if (isDiff && !isEmpty) bg = val >= 0 ? 'dcfce7' : val >= -1 ? 'fef9c3' : 'fee2e2'
           else if (isDiff) bg = isEven ? 'f3f4f6' : 'f9fafb'
           else bg = isEven ? 'EFF6FF' : 'FFFFFF'
           const numFmt = ci === 4 || ci === RO ? '0.00' : ci === 5 || ci === RO + 1 ? '0' : isDiff ? '0.00' : null
@@ -4172,12 +4172,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         `<conditionalFormatting sqref="${hCol}2:${hCol}${last}">` +
         `<cfRule type="cellIs" dxfId="1" priority="1" operator="equal"><formula>""</formula></cfRule>` +
         `</conditionalFormatting>` +
-        // J: verde =0 | verde >1 | amarillo >=-1 (cubre -1≤d<0 y 0<d≤1) | rojo <-1
+        // J: verde ≥0, amarillo ≥-1, rojo <-1
         `<conditionalFormatting sqref="${jCol}2:${jCol}${last}">` +
-        `<cfRule type="cellIs" dxfId="0" priority="1" stopIfTrue="1" operator="equal"><formula>0</formula></cfRule>` +
-        `<cfRule type="cellIs" dxfId="0" priority="2" stopIfTrue="1" operator="greaterThan"><formula>1</formula></cfRule>` +
-        `<cfRule type="cellIs" dxfId="1" priority="3" stopIfTrue="1" operator="greaterThanOrEqual"><formula>-1</formula></cfRule>` +
-        `<cfRule type="cellIs" dxfId="2" priority="4" operator="lessThan"><formula>-1</formula></cfRule>` +
+        `<cfRule type="cellIs" dxfId="0" priority="1" stopIfTrue="1" operator="greaterThanOrEqual"><formula>0</formula></cfRule>` +
+        `<cfRule type="cellIs" dxfId="1" priority="2" stopIfTrue="1" operator="greaterThanOrEqual"><formula>-1</formula></cfRule>` +
+        `<cfRule type="cellIs" dxfId="2" priority="3" operator="lessThan"><formula>-1</formula></cfRule>` +
         `</conditionalFormatting>`
 
       let sheetXml = dec.decode(unzipped['xl/worksheets/sheet1.xml'])
