@@ -1114,13 +1114,12 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
-  const hasReferenciaConflict = (row) =>
-    Boolean(
-      row.matched_producto_id &&
-      row.referencia &&
-      row.matched_producto_referencia &&
-      row.referencia.trim().toLowerCase() !== row.matched_producto_referencia.trim().toLowerCase()
-    )
+  const hasReferenciaConflict = (row) => {
+    if (!row.matched_producto_id) return false
+    const excelRef = (row.referencia || '').trim().toLowerCase()
+    const dbRef = (row.matched_producto_referencia || '').trim().toLowerCase()
+    return excelRef.length > 0 && excelRef !== dbRef
+  }
 
   useLayoutEffect(() => {
     if (step !== 'casa') return
@@ -1322,6 +1321,13 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   const matchedCount = validRows.filter(r => r.matched_producto_id).length
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
   const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
+  const allConflictsResolved = validRows.every((row, i) => !hasReferenciaConflict(row) || referenciaDecisions[i] !== undefined)
+
+  const selectAllDecision = (decision) => {
+    const updates = {}
+    validRows.forEach((row, i) => { if (hasReferenciaConflict(row)) updates[i] = decision })
+    setReferenciaDecisions(prev => ({ ...prev, ...updates }))
+  }
 
   const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa los productos'
   const portalRoot = document.querySelector('.dashboard-shell') || document.body
@@ -1597,10 +1603,33 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                   )}
                   {referenciaConflictCount > 0 && (
                     <span style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '3px 12px', fontSize: '0.78rem', fontWeight: 600 }}>
-                      ⚠ {referenciaConflictCount} con referencia diferente — selecciona cuál guardar
+                      ⚠ {referenciaConflictCount} con referencia diferente
                     </span>
                   )}
                 </div>
+
+                {referenciaConflictCount > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
+                    <span style={{ fontSize: '0.78rem', color: '#9a3412', flex: 1 }}>
+                      Debes seleccionar la referencia a guardar para cada conflicto antes de continuar.
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: '#9a3412', fontWeight: 600, whiteSpace: 'nowrap' }}>Seleccionar todas:</span>
+                    <button
+                      type="button"
+                      onClick={() => selectAllDecision('keep')}
+                      style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 4, cursor: 'pointer', border: '1px solid #1e40af', background: '#1e40af', color: '#fff', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                    >
+                      Actuales (BD)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectAllDecision('excel')}
+                      style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 4, cursor: 'pointer', border: '1px solid #c2410c', background: '#c2410c', color: '#fff', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                    >
+                      Del Excel
+                    </button>
+                  </div>
+                )}
 
                 <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', maxHeight: 'min(380px, 45vh)' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: 620 }}>
@@ -1616,23 +1645,25 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                     <tbody>
                       {validRows.map((row, i) => {
                         const conflict = hasReferenciaConflict(row)
-                        const decision = referenciaDecisions[i] || 'keep'
+                        const decision = referenciaDecisions[i]
                         return (
-                          <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
+                          <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: conflict && decision === undefined ? '#fffbeb' : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
                             <td style={{ padding: '7px 12px', fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{row.codigo || '—'}</td>
                             <td style={{ padding: '7px 12px', minWidth: 140 }}>
                               {conflict ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                  <span style={{ fontSize: '0.68rem', color: '#c2410c', fontWeight: 600 }}>⚠ Difiere</span>
+                                  <span style={{ fontSize: '0.68rem', color: decision === undefined ? '#c2410c' : '#6b7280', fontWeight: 600 }}>
+                                    {decision === undefined ? '⚠ Sin seleccionar' : '✓ Seleccionado'}
+                                  </span>
                                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                                     <button
                                       type="button"
                                       onClick={() => setReferenciaDecisions(p => ({ ...p, [i]: 'keep' }))}
                                       style={{
                                         fontSize: '0.68rem', padding: '2px 7px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace',
-                                        border: `1px solid ${decision !== 'excel' ? '#1e40af' : '#cbd5e1'}`,
-                                        background: decision !== 'excel' ? '#1e40af' : 'transparent',
-                                        color: decision !== 'excel' ? '#fff' : '#64748b',
+                                        border: `1px solid ${decision === 'keep' ? '#1e40af' : '#cbd5e1'}`,
+                                        background: decision === 'keep' ? '#1e40af' : 'transparent',
+                                        color: decision === 'keep' ? '#fff' : '#64748b',
                                       }}
                                     >
                                       Actual: {row.matched_producto_referencia || '—'}
@@ -1659,10 +1690,17 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                             <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
                             <td style={{ padding: '7px 12px' }}>
                               {row.matched_producto_id ? (
-                                <span style={{ color: '#15803d', fontSize: '0.78rem', fontWeight: 500 }}>
-                                  <i className="pi pi-check" style={{ marginRight: 4 }} />
-                                  {row.matched_producto_nombre || row.matched_producto_codigo}
-                                </span>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  <span style={{ color: '#15803d', fontSize: '0.78rem', fontWeight: 500 }}>
+                                    <i className="pi pi-check" style={{ marginRight: 4 }} />
+                                    {row.matched_producto_nombre || row.matched_producto_codigo}
+                                  </span>
+                                  {row.matched_producto_referencia && (
+                                    <span style={{ color: '#6b7280', fontSize: '0.72rem', fontFamily: 'monospace', paddingLeft: 2 }}>
+                                      Ref: {row.matched_producto_referencia}
+                                    </span>
+                                  )}
+                                </div>
                               ) : (
                                 <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Sin catálogo</span>
                               )}
@@ -1711,10 +1749,10 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
                 <button
                   type="button"
-                  className={`quick-actions__receive-btn${validRows.length > 0 ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
+                  className={`quick-actions__receive-btn${validRows.length > 0 && allConflictsResolved ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
                   onClick={handleCreate}
-                  disabled={submitting || validRows.length === 0}
-                  title={validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia' : undefined}
+                  disabled={submitting || validRows.length === 0 || !allConflictsResolved}
+                  title={validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia' : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos' : undefined}
                 >
                   {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 && conflictoRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
                 </button>
