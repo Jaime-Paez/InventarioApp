@@ -968,6 +968,24 @@
   background: color-mix(in srgb, #7c3aed 22%, var(--table-color-dark-hover)) !important;
 }
 
+.users-datatable .p-datatable-tbody > tr.imp-row--confirmacion-realizada > td {
+  background: var(--table-color) !important;
+  border-bottom-color: var(--color-border) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.imp-row--confirmacion-realizada:hover > td {
+  background: var(--table-color-hover) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.imp-row--confirmacion-realizada > td {
+  background: var(--table-color-dark) !important;
+  border-bottom-color: var(--color-border-dark) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.imp-row--confirmacion-realizada:hover > td {
+  background: var(--table-color-dark-hover) !important;
+}
+
 /* Confirmar button */
 .imp-confirmar-btn {
   background: #0891b2;
@@ -1002,6 +1020,19 @@
 .imp-importar-btn:hover:not(:disabled) {
   background: #15803d;
   border-color: #15803d;
+}
+
+.imp-realizada-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+  white-space: nowrap;
 }
 
 /* Three-state check button in confirmacion table */

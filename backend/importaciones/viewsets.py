@@ -143,6 +143,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "Solo se puede importar desde estado cotización o confirmación."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if instance.numero_factura:
+            return Response(
+                {"detail": "Esta importación ya fue importada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         numero_factura = str(request.data.get("numero_factura") or "").strip()
         if not numero_factura:
             return Response(
@@ -193,15 +198,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 except (TypeError, ValueError):
                     pass
             detalle.seleccionado = key in selected_keys
-            detalle.save(update_fields=["precio_confirmado", "cantidad_confirmada", "seleccionado"])
+            detalle.precio_pvp_snapshot = detalle.producto.precio if detalle.producto_id else None
+            detalle.save(update_fields=["precio_confirmado", "cantidad_confirmada", "seleccionado", "precio_pvp_snapshot"])
             if detalle.seleccionado:
                 selected_detalles.append(detalle)
 
-        # Transition the original cotizacion to importada (becomes the verification archive)
+        # Mark the original confirmacion as already imported without moving it out of
+        # the confirmacion tab; numero_factura acts as the "importación realizada" flag.
         instance.numero_factura = numero_factura
-        instance.estado = Importacion.ESTADO_IMPORTADA
         instance.fecha_importacion = fecha_importacion
-        instance.save(update_fields=["numero_factura", "estado", "fecha_importacion"])
+        instance.save(update_fields=["numero_factura", "fecha_importacion"])
 
         # 2. Create a new importacion in en_camino with only the selected items
         nueva = Importacion.objects.create(

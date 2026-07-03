@@ -3839,6 +3839,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const isVerificar = imp?.estado === 'cotizacion'
   const isConfirmacion = imp?.estado === 'confirmacion'
   const isVerificarOrConfirmacion = isVerificar || isConfirmacion
+  const isImportRealizada = isConfirmacion && Boolean(imp?.numero_factura)
   const detailDraftQuantity = Number(detailDraft.cantidad)
   const canAddDetailDraft = Boolean(
     detailDraft.producto && Number.isFinite(detailDraftQuantity) && detailDraftQuantity > 0
@@ -3994,12 +3995,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '',
       }
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, ...confirmed }
+        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed }
       }
       return {
         _key: 'sc_' + (d.id ?? i), producto: null,
         codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '',
-        cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, ...confirmed,
+        cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
       }
     })
     setDetails(loaded)
@@ -4807,10 +4808,22 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                           </>
                         ) : isConfirmacion ? (
                           <>
-                            <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_confirmado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_confirmado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>Precio conf.</span>
+                            <span
+                              onDoubleClick={() => !isImportRealizada && setDetails((prev) => prev.map((d) => ({ ...d, precio_confirmado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_confirmado })))}
+                              title={isImportRealizada ? undefined : 'Doble click: llenar todas con precio original'}
+                              style={isImportRealizada ? undefined : { cursor: 'pointer' }}
+                            >
+                              Precio conf.
+                            </span>
                             <span>Diferencia</span>
                             <span>Cant. Sug.</span>
-                            <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_confirmada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. conf.</span>
+                            <span
+                              onDoubleClick={() => !isImportRealizada && setDetails((prev) => prev.map((d) => ({ ...d, cantidad_confirmada: d.cantidad })))}
+                              title={isImportRealizada ? undefined : 'Doble click: llenar todas con cantidad original'}
+                              style={isImportRealizada ? undefined : { cursor: 'pointer' }}
+                            >
+                              Cant. conf.
+                            </span>
                             <span>Comentario</span>
                             <span>Acciones</span>
                           </>
@@ -4935,7 +4948,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         const oem = String(getProductoOem(item.producto) || item.oem || '').trim() || '-'
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
-                        const precio = item.producto?.precio != null ? `$${Number(item.producto.precio).toFixed(2)}` : '-'
+                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio
+                        const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
                           <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
                             <span
@@ -4991,7 +5005,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                   const priceField = isVerificar ? 'precio_estimado' : 'precio_confirmado'
                                   const qtyField = isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
                                   const confirmedCentavos = item[priceField] ? parseInt(String(item[priceField]).replace(/\D/g, '') || '0', 10) : null
-                                  const storedCentavos = item.producto?.precio != null ? Math.round(Number(item.producto.precio) * 100) : null
+                                  const pvpForDiff = item.precio_pvp_snapshot ?? item.producto?.precio
+                                  const storedCentavos = pvpForDiff != null ? Math.round(Number(pvpForDiff) * 100) : null
                                   const diff = storedCentavos != null && confirmedCentavos != null ? confirmedCentavos - storedCentavos : null
                                   const diffColor = diff === null ? undefined : diff <= 0 ? '#22c55e' : diff <= 100 ? '#eab308' : '#ef4444'
                                   return (
@@ -5002,13 +5017,16 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           type="text"
                                           inputMode="numeric"
                                           readOnly
+                                          disabled={isImportRealizada}
                                           value={formatCentavos(item[priceField])}
-                                          title="Doble click: usar precio original"
+                                          title={isImportRealizada ? undefined : 'Doble click: usar precio original'}
                                           onDoubleClick={() => {
+                                            if (isImportRealizada) return
                                             if (item.producto?.precio != null)
                                               handleConfirmedChange(item._key, priceField, Math.round(Number(item.producto.precio) * 100))
                                           }}
                                           onKeyDown={(e) => {
+                                            if (isImportRealizada) return
                                             if (e.key === 'Backspace') {
                                               e.preventDefault()
                                               handleConfirmedChange(item._key, priceField, String(item[priceField] || '').replace(/\D/g, '').slice(0, -1))
@@ -5043,15 +5061,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           type="number"
                                           min="0"
                                           step="1"
+                                          disabled={isImportRealizada}
                                           value={item[qtyField] ?? ''}
                                           onChange={(e) => handleConfirmedChange(item._key, qtyField, e.target.value)}
-                                          onDoubleClick={() => handleConfirmedChange(item._key, qtyField, item.cantidad)}
-                                          title="Doble click: usar cantidad original"
+                                          onDoubleClick={() => !isImportRealizada && handleConfirmedChange(item._key, qtyField, item.cantidad)}
+                                          title={isImportRealizada ? undefined : 'Doble click: usar cantidad original'}
                                         />
                                       </span>
                                       <span>
                                         <input
                                           type="text"
+                                          disabled={isImportRealizada}
                                           value={item.comentario || ''}
                                           onChange={(e) => handleComentarioChange(item._key, e.target.value)}
                                           placeholder="Comentario"
@@ -5063,7 +5083,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           <button
                                             type="button"
                                             className={`imp-tri-check imp-tri-check--${itemCheckStates[item._key] || 'none'}`}
-                                            onClick={() => handleCycleCheckState(item._key)}
+                                            onClick={() => !isImportRealizada && handleCycleCheckState(item._key)}
+                                            disabled={isImportRealizada}
                                           >
                                             {itemCheckStates[item._key] === 'check' && <Check size={13} />}
                                             {itemCheckStates[item._key] === 'x' && <X size={13} />}
@@ -5137,9 +5158,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         <button type="button" onClick={() => { handleDownloadVerificarExcel(); setShowVerificarExcelDropdown(false) }}>
                           <i className="pi pi-download" /> Descargar Excel
                         </button>
-                        <button type="button" onClick={() => { verificarFileInputRef.current?.click(); setShowVerificarExcelDropdown(false) }}>
-                          <i className="pi pi-upload" /> Subir Excel
-                        </button>
+                        {!isImportRealizada && (
+                          <button type="button" onClick={() => { verificarFileInputRef.current?.click(); setShowVerificarExcelDropdown(false) }}>
+                            <i className="pi pi-upload" /> Subir Excel
+                          </button>
+                        )}
                       </div>
                     )}
                     <input
@@ -5176,12 +5199,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     {importarSubmitting ? 'Confirmando...' : 'Pedir confirmación'}
                   </button>
                 )}
-                {canEdit && imp?.estado === 'confirmacion' && (
+                {canEdit && imp?.estado === 'confirmacion' && !isImportRealizada && (
                   <button type="submit" className="create-user__action create-user__action--primary" disabled={submitting || importarSubmitting || deleteSubmitting}>
                     {submitting ? 'Guardando...' : 'Guardar'}
                   </button>
                 )}
-                {canImportar && imp?.estado === 'confirmacion' && (
+                {imp?.estado === 'confirmacion' && imp?.numero_factura && (
+                  <span className="imp-realizada-badge">
+                    <Check size={14} /> Importación realizada
+                  </span>
+                )}
+                {canImportar && imp?.estado === 'confirmacion' && !imp?.numero_factura && (
                   <button
                     type="button"
                     className="create-user__action imp-importar-btn"
@@ -5569,7 +5597,11 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       const response = await authFetch(`${API_URL}/importaciones/importaciones/?${params.toString()}`, {}, token)
       if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudieron cargar las importaciones.'))
       const payload = await response.json()
-      setItems(normalizeList(parseApiList(payload)))
+      const normalized = normalizeList(parseApiList(payload))
+      if (status === 'confirmacion') {
+        normalized.sort((a, b) => (a.numero_factura ? 1 : 0) - (b.numero_factura ? 1 : 0))
+      }
+      setItems(normalized)
     } catch (err) {
       const message = err.message || 'No se pudieron cargar las importaciones.'
       setError(message)
@@ -5683,9 +5715,11 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   }, [showProductHoverCard, scheduleHideProductHoverCard])
 
   const estadoBodyTemplate = useCallback((rowData) => {
-    const badge = STATUS_BADGE[rowData?.estado] || { label: rowData?.estado || '-', color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
+    const badge = rowData?.estado === 'confirmacion' && rowData?.numero_factura
+      ? { label: 'Importación realizada', color: '#16a34a', bg: '#ffffff', border: '1px solid rgba(22,163,74,0.4)' }
+      : { ...(STATUS_BADGE[rowData?.estado] || { label: rowData?.estado || '-', color: '#64748b', bg: 'rgba(100,116,139,0.1)' }), border: 'none' }
     return (
-      <span style={{ fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.color, whiteSpace: 'nowrap' }}>
+      <span style={{ fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.color, border: badge.border, whiteSpace: 'nowrap' }}>
         {badge.label}
       </span>
     )
@@ -5957,7 +5991,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
             if (selectedRowIds.includes(normId(rowData?.id))) classes.push('selected-row-shadow')
             if (rowData.estado === 'borrador') classes.push('imp-row--borrador')
             if (rowData.estado === 'cotizacion') classes.push('imp-row--cotizacion')
-            if (rowData.estado === 'confirmacion') classes.push('imp-row--confirmacion')
+            if (rowData.estado === 'confirmacion') classes.push(rowData.numero_factura ? 'imp-row--confirmacion-realizada' : 'imp-row--confirmacion')
             return classes.join(' ')
           }}
           selectionMode="multiple"

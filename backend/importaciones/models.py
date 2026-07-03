@@ -73,6 +73,7 @@ class ImportacionDetalle(models.Model):
     cantidad_aproximada = models.PositiveIntegerField(null=True, blank=True)
     precio_confirmado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cantidad_confirmada = models.PositiveIntegerField(null=True, blank=True)
+    precio_pvp_snapshot = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     seleccionado = models.BooleanField(null=True, blank=True)
     comentario = models.TextField(blank=True, default="")
     solicitud = models.ForeignKey(
