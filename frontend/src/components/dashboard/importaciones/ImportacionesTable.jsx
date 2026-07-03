@@ -5716,7 +5716,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
 
   const estadoBodyTemplate = useCallback((rowData) => {
     const badge = rowData?.estado === 'confirmacion' && rowData?.numero_factura
-      ? { label: 'Importación realizada', color: '#16a34a', bg: '#ffffff', border: '1px solid rgba(22,163,74,0.4)' }
+      ? { label: 'Importación realizada', color: '#16a34a', bg: 'rgba(22,163,74,0.15)', border: 'none' }
       : { ...(STATUS_BADGE[rowData?.estado] || { label: rowData?.estado || '-', color: '#64748b', bg: 'rgba(100,116,139,0.1)' }), border: 'none' }
     return (
       <span style={{ fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.color, border: badge.border, whiteSpace: 'nowrap' }}>
