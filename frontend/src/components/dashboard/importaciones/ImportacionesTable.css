@@ -345,6 +345,14 @@
     62px;
 }
 
+.imp-details__productos-row.create-user__locations-row--head {
+  background: #dbe1e8;
+}
+
+.dashboard-shell.dark .imp-details__productos-row.create-user__locations-row--head {
+  background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
+}
+
 .importaciones-modal__products-table--verificar .create-user__locations-row--head > span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -392,11 +400,11 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #f3f4f6;
+  background: #dbe1e8;
 }
 
 .dashboard-shell.dark .importaciones-modal__products-table .create-user__locations-row--head {
-  background: var(--table-color-dark);
+  background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
 }
 
 .importaciones-modal__products-table .create-user__locations-row > span {
@@ -753,6 +761,11 @@
   position: sticky;
   top: 0;
   z-index: 2;
+  background: #dbe1e8;
+}
+
+.dashboard-shell.dark .importaciones-aceptados__table .create-user__locations-row--head {
+  background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
 }
 
 .importaciones-aceptados__table .create-user__locations-row {
