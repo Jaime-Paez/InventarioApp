@@ -354,10 +354,32 @@
 
 .importaciones-modal__products-table,
 .importaciones-modal__products-table:has(.create-salida__product-dropdown .create-user__dropdown-panel) {
-  overflow: clip;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
   background: #f3f4f6;
   border-radius: 10px;
   isolation: isolate;
+}
+
+/* Let the products table own the only scrollbar: the body/section around it
+   just stretches to fill the modal instead of scrolling itself. */
+.create-user__body:has(.importaciones-modal__products-table) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.create-user__body:has(.importaciones-modal__products-table) .create-user__section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.create-user__body:has(.importaciones-modal__products-table) .create-user__section-header {
+  flex: none;
 }
 
 .dashboard-shell.dark .importaciones-modal__products-table,
@@ -369,6 +391,11 @@
   position: sticky;
   top: 0;
   z-index: 2;
+  background: #f3f4f6;
+}
+
+.dashboard-shell.dark .importaciones-modal__products-table .create-user__locations-row--head {
+  background: var(--table-color-dark);
 }
 
 .importaciones-modal__products-table .create-user__locations-row > span {
@@ -381,7 +408,6 @@
 
 .importaciones-modal__products-table--verificar {
   overflow-y: auto;
-  max-height: calc(100vh - 320px);
 }
 
 .importaciones-modal__products-table--verificar .create-user__locations-row--head > span {

@@ -21,6 +21,9 @@ import './ImportacionesTable.css'
 
 const getPortalRoot = () => document.querySelector('.dashboard-shell') || getPortalRoot()
 
+const getProductoOem = (producto) =>
+  (producto?.oem_productos || []).map((r) => r?.oem?.codigo).filter(Boolean).join(', ')
+
 const STATUS_CONFIG = {
   borrador: { label: 'Sugerencia', empty: 'No hay importaciones en sugerencia.' },
   cotizacion: { label: 'Verificar', empty: 'No hay importaciones en verificación.' },
@@ -147,7 +150,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       id: d.id,
       codigo: d.producto?.codigo || d.codigo || '',
       nombre: d.producto?.nombre || d.nombre || '',
-      oem: d.producto?.oem || d.oem || '',
+      oem: getProductoOem(d.producto) || d.oem || '',
       cantidad: d.cantidad,
       sinCat: !d.producto?.id,
       checked: checkedIds.has(d.id),
@@ -189,7 +192,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           id: d.id,
           codigo: d.producto?.codigo || d.codigo || '',
           nombre: d.producto?.nombre || d.nombre || '',
-          oem: d.producto?.oem || d.oem || '',
+          oem: getProductoOem(d.producto) || d.oem || '',
           cantidad: d.cantidad,
           sinCat: !d.producto?.id,
           checked: checkedIds.has(d.id),
@@ -1047,7 +1050,7 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
                       const sinCat = !d.producto?.id
                       const codigo = d.producto?.codigo || d.codigo || '-'
                       const nombre = d.producto?.nombre || d.nombre || '-'
-                      const oem = String(d.producto?.oem || d.oem || '').trim() || '-'
+                      const oem = String(getProductoOem(d.producto) || d.oem || '').trim() || '-'
                       const referencia = String(d.producto?.referencia || d.referencia || '').trim() || '-'
                       const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
                       const cantidad = d.cantidad_confirmada ?? d.cantidad ?? '-'
@@ -3286,7 +3289,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                             </span>
                           </span>
                           <span className="create-salida__table-static-value">
-                            {detailDraft.producto ? String(detailDraft.producto.oem || detailDraft.producto.referencia || '').trim() || '-' : '-'}
+                            {detailDraft.producto ? getProductoOem(detailDraft.producto) || '-' : '-'}
                           </span>
                           <span className="create-salida__table-static-value">
                             {detailDraft.producto ? String(detailDraft.producto.referencia || '').trim() || '-' : '-'}
@@ -3338,7 +3341,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           const sinCatalogo = !item.producto?.id
                           const codigo = item.producto?.codigo || item.codigo || ''
                           const nombre = item.producto?.nombre || item.nombre || ''
-                          const oem = String(item.producto?.oem || item.oem || item.producto?.referencia || '').trim() || '-'
+                          const oem = String(getProductoOem(item.producto) || item.oem || '').trim() || '-'
                           const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
                           const precioVal = item.producto?.precio ?? item.precio ?? null
                           const precio = precioVal != null ? `$${Number(precioVal).toFixed(2)}` : '-'
@@ -4103,7 +4106,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const rows = details.map((item) => {
         const codigo = item.producto?.codigo || item.codigo || 'SIN CATÁLOGO'
         const nombre = item.producto?.nombre || item.nombre || ''
-        const oem = item.producto?.oem || item.oem || ''
+        const oem = getProductoOem(item.producto) || item.oem || ''
         const referencia = item.producto?.referencia || item.referencia || ''
         // Keep null to detect SIN CATÁLOGO for coloring; cell will receive 0 as numeric value
         const precioReal = item.producto?.precio != null ? +Number(item.producto.precio).toFixed(2) : null
@@ -4785,7 +4788,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                           </span>
                         </span>
                         <span className="create-salida__table-static-value">
-                          {detailDraft.producto ? String(detailDraft.producto.oem || detailDraft.producto.referencia || '').trim() || '-' : '-'}
+                          {detailDraft.producto ? getProductoOem(detailDraft.producto) || '-' : '-'}
                         </span>
                         <span className="create-salida__table-static-value">
                           {detailDraft.producto ? String(detailDraft.producto.referencia || '').trim() || '-' : '-'}
@@ -4831,7 +4834,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         const sinCatalogo = !item.producto?.id
                         const codigo = item.producto?.codigo || item.codigo || ''
                         const nombre = item.producto?.nombre || item.nombre || ''
-                        const oem = String(item.producto?.oem || item.oem || item.producto?.referencia || '').trim() || '-'
+                        const oem = String(getProductoOem(item.producto) || item.oem || '').trim() || '-'
                         const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
                         const precio = item.producto?.precio != null ? `$${Number(item.producto.precio).toFixed(2)}` : '-'
                         return (
@@ -5389,7 +5392,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       const productos = detalles.map((d) => ({
         codigo: d.producto?.codigo || d.codigo || '-',
         nombre: d.producto?.nombre || d.nombre || '-',
-        oem: d.producto?.oem || d.oem || '-',
+        oem: getProductoOem(d.producto) || d.oem || '-',
         cantidad: d.cantidad ?? 0,
         sinCatalogo: !d.producto?.id,
       }))
