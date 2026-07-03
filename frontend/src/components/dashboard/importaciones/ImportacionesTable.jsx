@@ -24,6 +24,8 @@ const getPortalRoot = () => document.querySelector('.dashboard-shell') || getPor
 const getProductoOem = (producto) =>
   (producto?.oem_productos || []).map((r) => r?.oem?.codigo).filter(Boolean).join(', ')
 
+const toNumberOrNull = (v) => (v === '' || v == null ? null : Number(v))
+
 const STATUS_CONFIG = {
   borrador: { label: 'Sugerencia', empty: 'No hay importaciones en sugerencia.' },
   cotizacion: { label: 'Verificar', empty: 'No hay importaciones en verificación.' },
@@ -4064,11 +4066,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         precio_estimado: item.precio_estimado
           ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
           : null,
-        cantidad_aproximada: item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null,
+        cantidad_aproximada: toNumberOrNull(item.cantidad_aproximada),
         precio_confirmado: item.precio_confirmado
           ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
           : null,
-        cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
+        cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
       } : {}
       if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
       return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
@@ -4340,14 +4342,13 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const handleConfirmar = async () => {
     const missingData = details.filter((item) => {
       const precio = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
-      const cant = Number(item.cantidad_aproximada || 0)
-      return precio <= 0 || cant <= 0
+      return precio <= 0
     })
     if (missingData.length > 0) {
       toastRef.current?.show({
         severity: 'error',
         summary: 'Datos incompletos',
-        detail: `Completa el precio estimado y cantidad aprox. de todos los productos (${missingData.length} sin completar).`,
+        detail: `Completa el precio estimado de todos los productos (${missingData.length} sin completar).`,
         life: 5000,
       })
       return
@@ -4359,7 +4360,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         const precioEstimadoVal = item.precio_estimado
           ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
           : null
-        const cantAproxVal = item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null
+        const cantAproxVal = toNumberOrNull(item.cantidad_aproximada)
         const estimadoFields = {
           precio_estimado: precioEstimadoVal,
           cantidad_aproximada: cantAproxVal,
@@ -4402,11 +4403,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           precio_estimado: item.precio_estimado
             ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
             : null,
-          cantidad_aproximada: item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null,
+          cantidad_aproximada: toNumberOrNull(item.cantidad_aproximada),
           precio_confirmado: item.precio_confirmado
             ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
             : null,
-          cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
+          cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
         }
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
@@ -4453,9 +4454,9 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
         const confirmedFields = isVerificarOrConfirmacion ? {
           precio_estimado: item.precio_estimado ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2) : null,
-          cantidad_aproximada: item.cantidad_aproximada ? Number(item.cantidad_aproximada) || null : null,
+          cantidad_aproximada: toNumberOrNull(item.cantidad_aproximada),
           precio_confirmado: item.precio_confirmado ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2) : null,
-          cantidad_confirmada: item.cantidad_confirmada ? Number(item.cantidad_confirmada) || null : null,
+          cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
         } : {}
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
@@ -4700,10 +4701,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
-                        <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
+                        <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span>
+                        {!isVerificarOrConfirmacion && <span>Cantidad</span>}
                         {isVerificar ? (
                           <>
-                            <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_estimado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_estimado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>Precio est.</span>
+                            <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_estimado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_estimado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>PVP Aprox.</span>
+                            <span>Cant. Sug.</span>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_aproximada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. aprox.</span>
                             <span>Diferencia</span>
                             <span>Comentario</span>
@@ -4711,6 +4714,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         ) : isConfirmacion ? (
                           <>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_confirmado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_confirmado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>Precio conf.</span>
+                            <span>Cant. Sug.</span>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_confirmada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. conf.</span>
                             <span>Diferencia</span>
                             <span>Comentario</span>
@@ -4848,9 +4852,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             <span>{oem}</span>
                             <span>{referencia}</span>
                             <span>{precio}</span>
-                            {isVerificarOrConfirmacion ? (
-                              <span className="create-salida__table-static-value">{item.cantidad}</span>
-                            ) : (
+                            {!isVerificarOrConfirmacion && (
                               <span>
                                 <input
                                   type="number"
@@ -4894,6 +4896,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           }}
                                         />
                                       </span>
+                                      <span className="create-salida__table-static-value">{item.cantidad}</span>
                                       <span>
                                         <input
                                           type="number"

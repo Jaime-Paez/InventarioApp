@@ -222,7 +222,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 nombre=d.nombre,
                 oem=d.oem,
                 referencia=d.referencia,
-                cantidad=d.cantidad_confirmada or d.cantidad,
+                cantidad=d.cantidad_confirmada if d.cantidad_confirmada is not None else d.cantidad,
                 comentario=d.comentario,
                 precio_confirmado=d.precio_confirmado,
                 solicitud_id=d.solicitud_id,
