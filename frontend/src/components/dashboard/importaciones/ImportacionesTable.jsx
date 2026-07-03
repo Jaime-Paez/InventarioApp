@@ -4800,17 +4800,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         {isVerificar ? (
                           <>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_estimado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_estimado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>PVP Aprox.</span>
+                            <span>Diferencia</span>
                             <span>Cant. Sug.</span>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_aproximada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. aprox.</span>
-                            <span>Diferencia</span>
                             <span>Comentario</span>
                           </>
                         ) : isConfirmacion ? (
                           <>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_confirmado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_confirmado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>Precio conf.</span>
+                            <span>Diferencia</span>
                             <span>Cant. Sug.</span>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_confirmada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. conf.</span>
-                            <span>Diferencia</span>
                             <span>Comentario</span>
                             <span>Acciones</span>
                           </>
@@ -5019,6 +5019,18 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           }}
                                         />
                                       </span>
+                                      {(() => {
+                                        const diffText = diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''
+                                        return (
+                                          <span
+                                            className="imp-table-cell-tip"
+                                            onMouseEnter={(e) => diffText && showCellHover(e, diffText, 'Diferencia')}
+                                            onMouseLeave={hideCellHover}
+                                          >
+                                            <span className="imp-table-cell-text" style={{ color: diffColor }}>{diffText}</span>
+                                          </span>
+                                        )
+                                      })()}
                                       <span
                                         className="imp-table-cell-tip"
                                         onMouseEnter={(e) => showCellHover(e, String(item.cantidad ?? ''), 'Cant. Sug.')}
@@ -5037,18 +5049,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           title="Doble click: usar cantidad original"
                                         />
                                       </span>
-                                      {(() => {
-                                        const diffText = diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''
-                                        return (
-                                          <span
-                                            className="imp-table-cell-tip"
-                                            onMouseEnter={(e) => diffText && showCellHover(e, diffText, 'Diferencia')}
-                                            onMouseLeave={hideCellHover}
-                                          >
-                                            <span className="imp-table-cell-text" style={{ color: diffColor }}>{diffText}</span>
-                                          </span>
-                                        )
-                                      })()}
                                       <span>
                                         <input
                                           type="text"

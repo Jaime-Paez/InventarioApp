@@ -264,9 +264,9 @@
     minmax(82px, 0.8fr)
     minmax(60px, 0.55fr)
     88px
+    minmax(60px, 0.55fr)
     minmax(64px, 0.55fr)
     58px
-    minmax(60px, 0.55fr)
     minmax(120px, 1.2fr);
 }
 
@@ -278,9 +278,9 @@
     minmax(82px, 0.8fr)
     minmax(60px, 0.55fr)
     88px
+    minmax(60px, 0.55fr)
     minmax(64px, 0.55fr)
     58px
-    minmax(60px, 0.55fr)
     minmax(120px, 1.2fr)
     40px;
 }
