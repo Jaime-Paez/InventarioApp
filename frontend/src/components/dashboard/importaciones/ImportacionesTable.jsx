@@ -876,6 +876,22 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
   const [showReceive, setShowReceive] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const toastRef = useRef(null)
+  const [cellHover, setCellHover] = useState(null)
+  const cellHoverTimerRef = useRef(null)
+  const showCellHover = useCallback((event, items, label) => {
+    const list = (Array.isArray(items) ? items : [items]).filter(Boolean)
+    if (!list.length) return
+    if (cellHoverTimerRef.current) clearTimeout(cellHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    cellHoverTimerRef.current = setTimeout(() => {
+      cellHoverTimerRef.current = null
+      setCellHover({ top: rect.bottom + 4, left: rect.left, items: list, label })
+    }, 400)
+  }, [])
+  const hideCellHover = useCallback(() => {
+    if (cellHoverTimerRef.current) { clearTimeout(cellHoverTimerRef.current); cellHoverTimerRef.current = null }
+    setCellHover(null)
+  }, [])
   const modalRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const [position, setPosition] = useState(() => {
@@ -1060,19 +1076,54 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
                       const codigo = d.producto?.codigo || d.codigo || '-'
                       const nombre = d.producto?.nombre || d.nombre || '-'
                       const oem = String(getProductoOem(d.producto) || d.oem || '').trim() || '-'
+                      const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                       const referencia = String(d.producto?.referencia || d.referencia || '').trim() || '-'
                       const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
                       const cantidad = d.cantidad_confirmada ?? d.cantidad ?? '-'
                       return (
                         <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
-                          <span title={codigo}>
-                            {sinCat ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span> : <span className="imp-cell-text">{codigo}</span>}
+                          <span
+                            className="imp-table-cell-tip"
+                            onMouseEnter={(e) => !sinCat && showCellHover(e, codigo, 'Código')}
+                            onMouseLeave={hideCellHover}
+                          >
+                            {sinCat ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span> : <span className="imp-table-cell-text">{codigo}</span>}
                           </span>
-                          <span title={nombre}><span className="imp-cell-text">{nombre}</span></span>
-                          <span>{oem}</span>
-                          <span>{referencia}</span>
-                          <span>{precio}</span>
-                          <span style={{ justifyContent: 'center', fontWeight: 600 }}>{cantidad}</span>
+                          <span
+                            className="imp-table-cell-tip"
+                            onMouseEnter={(e) => showCellHover(e, nombre !== '-' ? nombre : null, 'Nombre')}
+                            onMouseLeave={hideCellHover}
+                          >
+                            <span className="imp-table-cell-text">{nombre}</span>
+                          </span>
+                          <span
+                            className="imp-table-cell-tip"
+                            onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')}
+                            onMouseLeave={hideCellHover}
+                          >
+                            <span className="imp-table-cell-text">{oem}</span>
+                          </span>
+                          <span
+                            className="imp-table-cell-tip"
+                            onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')}
+                            onMouseLeave={hideCellHover}
+                          >
+                            <span className="imp-table-cell-text">{referencia}</span>
+                          </span>
+                          <span
+                            className="imp-table-cell-tip"
+                            onMouseEnter={(e) => showCellHover(e, precio !== '-' ? precio : null, 'Precio')}
+                            onMouseLeave={hideCellHover}
+                          >
+                            <span className="imp-table-cell-text">{precio}</span>
+                          </span>
+                          <span
+                            className="imp-table-cell-tip"
+                            onMouseEnter={(e) => showCellHover(e, String(cantidad ?? ''), 'Cantidad')}
+                            onMouseLeave={hideCellHover}
+                          >
+                            <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{cantidad}</span>
+                          </span>
                         </div>
                       )
                     })}
@@ -1104,6 +1155,18 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
   return (
     <>
       {modal}
+      {cellHover && createPortal(
+        <div
+          className="imp-cell-hover-card"
+          style={{ top: cellHover.top, left: cellHover.left }}
+        >
+          <div className="imp-cell-hover-card__title">{cellHover.label}</div>
+          {cellHover.items.map((value, i) => (
+            <div key={i} className="imp-cell-hover-card__row">{value}</div>
+          ))}
+        </div>,
+        getPortalRoot()
+      )}
       {showReceive && (
         <ImportacionReceiveModal
           imp={imp}
@@ -3725,6 +3788,22 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
+  const [cellHover, setCellHover] = useState(null)
+  const cellHoverTimerRef = useRef(null)
+  const showCellHover = useCallback((event, items, label) => {
+    const list = (Array.isArray(items) ? items : [items]).filter(Boolean)
+    if (!list.length) return
+    if (cellHoverTimerRef.current) clearTimeout(cellHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    cellHoverTimerRef.current = setTimeout(() => {
+      cellHoverTimerRef.current = null
+      setCellHover({ top: rect.bottom + 4, left: rect.left, items: list, label })
+    }, 400)
+  }, [])
+  const hideCellHover = useCallback(() => {
+    if (cellHoverTimerRef.current) { clearTimeout(cellHoverTimerRef.current); cellHoverTimerRef.current = null }
+    setCellHover(null)
+  }, [])
   const [itemCheckStates, setItemCheckStates] = useState({})
   const handleCycleCheckState = (key) => {
     setItemCheckStates((prev) => {
@@ -4854,19 +4933,48 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         const codigo = item.producto?.codigo || item.codigo || ''
                         const nombre = item.producto?.nombre || item.nombre || ''
                         const oem = String(getProductoOem(item.producto) || item.oem || '').trim() || '-'
+                        const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
                         const precio = item.producto?.precio != null ? `$${Number(item.producto.precio).toFixed(2)}` : '-'
                         return (
                           <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
-                            <span>
+                            <span
+                              className="imp-table-cell-tip"
+                              onMouseEnter={(e) => !sinCatalogo && showCellHover(e, codigo, 'Código')}
+                              onMouseLeave={hideCellHover}
+                            >
                               {sinCatalogo
                                 ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                                : codigo}
+                                : <span className="imp-table-cell-text">{codigo}</span>}
                             </span>
-                            <span title={nombre}><span className="create-salida__product-name-text">{nombre}</span></span>
-                            <span>{oem}</span>
-                            <span>{referencia}</span>
-                            <span>{precio}</span>
+                            <span
+                              className="imp-table-cell-tip"
+                              onMouseEnter={(e) => showCellHover(e, nombre, 'Nombre')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{nombre}</span>
+                            </span>
+                            <span
+                              className="imp-table-cell-tip"
+                              onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{oem}</span>
+                            </span>
+                            <span
+                              className="imp-table-cell-tip"
+                              onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{referencia}</span>
+                            </span>
+                            <span
+                              className="imp-table-cell-tip"
+                              onMouseEnter={(e) => showCellHover(e, precio !== '-' ? precio : null, 'PVP JP')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{precio}</span>
+                            </span>
                             {!isVerificarOrConfirmacion && (
                               <span>
                                 <input
@@ -4911,7 +5019,13 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           }}
                                         />
                                       </span>
-                                      <span className="create-salida__table-static-value">{item.cantidad}</span>
+                                      <span
+                                        className="imp-table-cell-tip"
+                                        onMouseEnter={(e) => showCellHover(e, String(item.cantidad ?? ''), 'Cant. Sug.')}
+                                        onMouseLeave={hideCellHover}
+                                      >
+                                        <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{item.cantidad}</span>
+                                      </span>
                                       <span>
                                         <input
                                           type="number"
@@ -4923,9 +5037,18 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                           title="Doble click: usar cantidad original"
                                         />
                                       </span>
-                                      <span style={{ color: diffColor }}>
-                                        {diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''}
-                                      </span>
+                                      {(() => {
+                                        const diffText = diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''
+                                        return (
+                                          <span
+                                            className="imp-table-cell-tip"
+                                            onMouseEnter={(e) => diffText && showCellHover(e, diffText, 'Diferencia')}
+                                            onMouseLeave={hideCellHover}
+                                          >
+                                            <span className="imp-table-cell-text" style={{ color: diffColor }}>{diffText}</span>
+                                          </span>
+                                        )
+                                      })()}
                                       <span>
                                         <input
                                           type="text"
@@ -5076,11 +5199,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                       const checkMissingData = details.filter((item) => {
                         if (itemCheckStates[item._key] !== 'check') return false
                         const precio = parseInt(String(item.precio_confirmado || '').replace(/\D/g, '') || '0', 10)
-                        const cant = Number(item.cantidad_confirmada || 0)
-                        return precio <= 0 || cant <= 0
+                        return precio <= 0
                       })
                       if (checkMissingData.length > 0) {
-                        toastRef.current?.show({ severity: 'error', summary: 'Datos incompletos', detail: `Los productos marcados con ✓ deben tener precio y cantidad confirmada (${checkMissingData.length} incompletos).`, life: 5000 })
+                        toastRef.current?.show({ severity: 'error', summary: 'Datos incompletos', detail: `Los productos marcados con ✓ deben tener precio confirmado (${checkMissingData.length} incompletos).`, life: 5000 })
                         return
                       }
                       setFacturaInput('')
@@ -5240,6 +5362,19 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 </button>
               </div>
             </div>
+          </div>,
+          getPortalRoot()
+        )}
+
+        {cellHover && createPortal(
+          <div
+            className="imp-cell-hover-card"
+            style={{ top: cellHover.top, left: cellHover.left }}
+          >
+            <div className="imp-cell-hover-card__title">{cellHover.label}</div>
+            {cellHover.items.map((value, i) => (
+              <div key={i} className="imp-cell-hover-card__row">{value}</div>
+            ))}
           </div>,
           getPortalRoot()
         )}
