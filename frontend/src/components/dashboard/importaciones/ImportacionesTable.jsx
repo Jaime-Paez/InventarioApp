@@ -964,7 +964,7 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
           top: position.y,
           left: position.x,
           width: 'min(720px, calc(100vw - 32px))',
-          height: 'auto',
+          height: activeTab === 'productos' ? 'min(88vh, 720px)' : 'auto',
           maxHeight: 'min(88vh, 720px)',
           minWidth: 0,
           minHeight: 0,
@@ -1065,7 +1065,7 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
                       <h4>Listado de productos</h4>
                     </div>
                   </div>
-                  <div className="create-user__locations-table" style={{ borderRadius: 8, overflow: 'hidden' }}>
+                  <div className="create-user__locations-table importaciones-modal__products-table">
                     <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row">
                       <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
                     </div>
