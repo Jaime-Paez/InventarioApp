@@ -3907,16 +3907,19 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '',
       }
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, ...confirmed }
+        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, ...confirmed }
       }
       return {
         _key: 'sc_' + (d.id ?? i), producto: null,
         codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '',
-        cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, ...confirmed,
+        cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, ...confirmed,
       }
     })
     setDetails(loaded)
     initialDetailsRef.current = loaded
+    setItemCheckStates(Object.fromEntries(
+      loaded.filter((item) => item.seleccionado === true || item.seleccionado === false).map((item) => [item._key, item.seleccionado ? 'check' : 'x'])
+    ))
     setDetailDraft({ producto: null, cantidad: '', comentario: '' })
     setActiveTab('general')
     setInvalidQtyKeys(new Set())
@@ -3924,7 +3927,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     setAceptadosItems([])
     setAceptadosSelected(new Set())
     setAceptadosSearch('')
-    setItemCheckStates({})
     setIsMaximized(false)
     modalRestoreRef.current = null
   }, [open, imp])
@@ -4071,6 +4073,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
           : null,
         cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
+        seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
       } : {}
       if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
       return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
@@ -4457,6 +4460,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           cantidad_aproximada: toNumberOrNull(item.cantidad_aproximada),
           precio_confirmado: item.precio_confirmado ? (parseInt(String(item.precio_confirmado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2) : null,
           cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
+          seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
         } : {}
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }

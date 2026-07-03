@@ -144,6 +144,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     precio_confirmado=item.get("precio_confirmado"),
                     cantidad_confirmada=item.get("cantidad_confirmada"),
                     solicitud=item.get("solicitud"),
+                    seleccionado=item.get("seleccionado"),
                 )
                 for item in detalles_data
             ])
