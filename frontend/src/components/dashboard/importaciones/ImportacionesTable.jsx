@@ -60,6 +60,13 @@ const serializeDetailsForDirty = (detailsList) =>
     ])
   )
 
+const serializeCheckStatesForDirty = (states) =>
+  JSON.stringify(
+    Object.entries(states || {})
+      .filter(([, v]) => v === 'check' || v === 'x')
+      .sort(([a], [b]) => a.localeCompare(b))
+  )
+
 const normId = (value) => (value == null ? null : String(value))
 const isCheckboxSelection = (event) => {
   const type = event?.type
@@ -3746,6 +3753,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const detailsRef = useRef([])
   detailsRef.current = details
   const initialDetailsRef = useRef(null)
+  const initialItemCheckStatesRef = useRef({})
   const [productPanelStyle, setProductPanelStyle] = useState(null)
 
   const selectedCasa = imp?.casa_comercial || null
@@ -3917,9 +3925,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     })
     setDetails(loaded)
     initialDetailsRef.current = loaded
-    setItemCheckStates(Object.fromEntries(
+    const hydratedCheckStates = Object.fromEntries(
       loaded.filter((item) => item.seleccionado === true || item.seleccionado === false).map((item) => [item._key, item.seleccionado ? 'check' : 'x'])
-    ))
+    )
+    setItemCheckStates(hydratedCheckStates)
+    initialItemCheckStatesRef.current = hydratedCheckStates
     setDetailDraft({ producto: null, cantidad: '', comentario: '' })
     setActiveTab('general')
     setInvalidQtyKeys(new Set())
@@ -4445,6 +4455,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     const isEditable = imp?.estado === 'borrador' || imp?.estado === 'cotizacion' || imp?.estado === 'confirmacion'
     if (!isEditable || submitting || importarSubmitting) { onClose?.(); return }
     const hasChanges = serializeDetailsForDirty(details) !== serializeDetailsForDirty(initialDetailsRef.current)
+      || serializeCheckStatesForDirty(itemCheckStates) !== serializeCheckStatesForDirty(initialItemCheckStatesRef.current)
     if (!hasChanges) { onClose?.(); return }
     setShowSaveOnCloseModal(true)
   }
