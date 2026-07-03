@@ -356,8 +356,9 @@
 .importaciones-modal__products-table:has(.create-salida__product-dropdown .create-user__dropdown-panel) {
   overflow-x: hidden;
   overflow-y: auto;
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
+  max-height: 100%;
   background: #f3f4f6;
   border-radius: 10px;
   isolation: isolate;
