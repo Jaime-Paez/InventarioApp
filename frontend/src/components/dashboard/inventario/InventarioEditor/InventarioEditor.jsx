@@ -663,7 +663,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
   const handleStartTransfer = (location) => {
     if (transferBusy) return
-    if (!canInlineEditBranchLocation(location?.sucursalId)) {
+    if (!canManageBranchLocation(location?.sucursalId)) {
       setLocationError(SCOPE_EDIT_LOCATION_ERROR)
       return
     }
@@ -702,7 +702,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     const moveQty = parseQuantity(transferDraft.cantidad)
     const sourceQty = Number(sourceLocation.cantidad) || 0
 
-    if (!canInlineEditBranchLocation(sourceLocation.sucursalId)) {
+    if (!canManageBranchLocation(sourceLocation.sucursalId)) {
       setLocationError(SCOPE_EDIT_LOCATION_ERROR)
       return
     }
@@ -1369,7 +1369,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             }
 
             const isTransferring = transferUid === location.uid
-            const canTransferRow = canManageRow && canInlineEditBranchLocation(location.sucursalId)
+            const canTransferRow = canManageRow
             const transferBodegas = bodegasBySucursal.get(location.sucursalId) || []
             const transferDivisions = divisionsByBodega.get(transferDraft.bodegaId) || []
             const transferSubdivisions = (subdivisionsByDivision.get(transferDraft.divisionId) || [])

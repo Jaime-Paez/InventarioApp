@@ -261,6 +261,12 @@ function ProductoDetails({
     () => getFullPermissionBranchIdSet(currentUser?.sucursales_por_modulo, 'productos'),
     [currentUser]
   )
+  const isAdminByRole = Boolean(
+    currentUser?.is_superuser ||
+      currentUser?.is_staff ||
+      currentUser?.es_administrador ||
+      String(currentUser?.rol || '').trim().toLowerCase() === 'administrador'
+  )
 
   const normalizeProducto = (data) => ({
     codigo: data?.codigo ?? '',
@@ -1975,9 +1981,11 @@ function ProductoDetails({
                     inventarioEntries={resolvedInventoryContext?.inventarioEntries || []}
                     editableBranchIds={editableProductBranchIds ? Array.from(editableProductBranchIds) : null}
                     fullyEditableBranchIds={
-                      editableProductBranchIds == null
-                        ? null
-                        : (fullyEditableProductBranchIds ? Array.from(fullyEditableProductBranchIds) : [])
+                      !isAdminByRole
+                        ? []
+                        : (editableProductBranchIds == null
+                          ? null
+                          : (fullyEditableProductBranchIds ? Array.from(fullyEditableProductBranchIds) : []))
                     }
                     disabled={editorDisabled}
                     onSaved={() => { resolvedInventoryContext?.onSaved?.(); refreshInventoryContext() }}
