@@ -5914,6 +5914,22 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     )
   }, [showProductHoverCard, scheduleHideProductHoverCard])
 
+  const handleOpenEnCamino = useCallback(async (enCaminoId) => {
+    if (!enCaminoId || !token) return
+    setShowEditImp(false)
+    setShowImpDetails(false)
+    try {
+      const response = await authFetch(`${API_URL}/importaciones/importaciones/${enCaminoId}/`, {}, token)
+      if (!response.ok) throw new Error('No se pudo abrir la importación en camino.')
+      const data = await response.json()
+      setActiveStatus('en_camino')
+      setSelectedImp(data)
+      setShowImpDetails(true)
+    } catch (err) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: err.message || 'No se pudo abrir la importación en camino.', life: 4000 })
+    }
+  }, [token])
+
   const estadoBodyTemplate = useCallback((rowData) => {
     const isEnCaminoConfirmada = rowData?.estado === 'confirmacion' && rowData?.numero_factura
     const badge = isEnCaminoConfirmada
@@ -6000,22 +6016,6 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       setShowEditImp(true)
     } catch (err) {
       toast.current?.show({ severity: 'error', summary: 'Error', detail: err.message || 'No se pudo abrir la importación de origen.', life: 4000 })
-    }
-  }, [token])
-
-  const handleOpenEnCamino = useCallback(async (enCaminoId) => {
-    if (!enCaminoId || !token) return
-    setShowEditImp(false)
-    setShowImpDetails(false)
-    try {
-      const response = await authFetch(`${API_URL}/importaciones/importaciones/${enCaminoId}/`, {}, token)
-      if (!response.ok) throw new Error('No se pudo abrir la importación en camino.')
-      const data = await response.json()
-      setActiveStatus('en_camino')
-      setSelectedImp(data)
-      setShowImpDetails(true)
-    } catch (err) {
-      toast.current?.show({ severity: 'error', summary: 'Error', detail: err.message || 'No se pudo abrir la importación en camino.', life: 4000 })
     }
   }, [token])
 
