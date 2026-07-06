@@ -301,6 +301,21 @@ function ProductoDetails({
     }
   }, [])
 
+  const refreshInventoryContext = useCallback(async () => {
+    if (hasExternalInventoryContext || !resolvedProductoId) return
+    try {
+      const response = await authFetch(
+        `${API_URL}/productos/listado/${resolvedProductoId}/?include_inventory_context=1`,
+        {},
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (response.ok) setLocalInventoryContext(buildInventoryContextFromProducto(data))
+    } catch {
+      // La tabla de ubicaciones seguira mostrando el ultimo estado local conocido.
+    }
+  }, [hasExternalInventoryContext, resolvedProductoId, token, buildInventoryContextFromProducto])
+
   const enrichAlternativas = useCallback(
     async (alternos) => {
       if (!token || !Array.isArray(alternos) || alternos.length === 0) return
@@ -1965,7 +1980,7 @@ function ProductoDetails({
                         : (fullyEditableProductBranchIds ? Array.from(fullyEditableProductBranchIds) : [])
                     }
                     disabled={editorDisabled}
-                    onSaved={resolvedInventoryContext?.onSaved}
+                    onSaved={() => { resolvedInventoryContext?.onSaved?.(); refreshInventoryContext() }}
                     onError={notifyError}
                   />
                 )}

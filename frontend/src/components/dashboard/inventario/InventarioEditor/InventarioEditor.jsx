@@ -1,9 +1,16 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { ArrowLeftRight, Check, X } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../InventarioDetails/InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { emitRemindersSync } from '../../common/reminders/remindersStorage'
 import BodegaLocationPreview from './BodegaLocationPreview'
+
+const getPortalHost = () => {
+  if (typeof document === 'undefined') return null
+  return document.querySelector('.dashboard-shell') || document.body
+}
 
 const parseNumber = (value) => {
   const parsed = Number(value)
@@ -45,6 +52,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   ref
 ) {
   const [saving, setSaving] = useState(false)
+  const [transferSaving, setTransferSaving] = useState(false)
   const [error, setError] = useState(null)
   const [locations, setLocations] = useState([])
   const [locationDraft, setLocationDraft] = useState({
@@ -72,11 +80,18 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const [rowDropdownQuery, setRowDropdownQuery] = useState('')
   const [rowDropdownDebouncedQuery, setRowDropdownDebouncedQuery] = useState('')
 
+  const [transferUid, setTransferUid] = useState(null)
+  const [transferDraft, setTransferDraft] = useState({ bodegaId: '', divisionId: '', subdivisionId: '', cantidad: '1' })
+  const [openTransferDropdown, setOpenTransferDropdown] = useState(null) // 'bodega' | 'division' | 'subdivision'
+  const [transferDropdownRect, setTransferDropdownRect] = useState(null)
+
   const locationBranchDropdownRef = useRef(null)
   const locationBodegaDropdownRef = useRef(null)
   const locationDivisionDropdownRef = useRef(null)
   const locationSubdivisionDropdownRef = useRef(null)
   const rowDropdownRef = useRef(null)
+  const transferDropdownRef = useRef(null)
+  const transferPanelRef = useRef(null)
   const lastNotifiedErrorRef = useRef({ message: '', at: 0 })
 
   const notifyErrorOnce = useCallback(
@@ -295,6 +310,19 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [openRowDropdown])
 
+  useEffect(() => {
+    if (!openTransferDropdown) return undefined
+    const handleOutsideClick = (event) => {
+      const inTrigger = transferDropdownRef.current?.contains(event.target)
+      const inPanel = transferPanelRef.current?.contains(event.target)
+      if (!inTrigger && !inPanel) {
+        setOpenTransferDropdown(null)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [openTransferDropdown])
+
   const filteredLocationBranches = useMemo(() => {
     if (!locationBranchDebouncedQuery) return branches
     return branches.filter((branch) => {
@@ -371,6 +399,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   )
 
   const editorDisabled = disabled || saving
+  const transferBusy = saving || transferSaving
   const createLocationUid = useCallback(
     () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     []
@@ -630,6 +659,167 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     }
     setLocations((prev) => prev.filter((item) => item.uid !== location.uid))
     setLocationError('')
+  }
+
+  const handleStartTransfer = (location) => {
+    if (transferBusy) return
+    if (!canInlineEditBranchLocation(location?.sucursalId)) {
+      setLocationError(SCOPE_EDIT_LOCATION_ERROR)
+      return
+    }
+    setTransferUid(location.uid)
+    setTransferDraft({
+      bodegaId: location.bodegaId,
+      divisionId: location.divisionId,
+      subdivisionId: '',
+      cantidad: String(location.cantidad || 1),
+    })
+    setLocationError('')
+    setOpenTransferDropdown(null)
+  }
+
+  const handleCancelTransfer = () => {
+    setTransferUid(null)
+    setTransferDraft({ bodegaId: '', divisionId: '', subdivisionId: '', cantidad: '1' })
+    setLocationError('')
+    setOpenTransferDropdown(null)
+  }
+
+  const handleTransferSelect = (field, id) => {
+    setTransferDraft((prev) => {
+      if (field === 'bodega') return { ...prev, bodegaId: String(id), divisionId: '', subdivisionId: '' }
+      if (field === 'division') return { ...prev, divisionId: String(id), subdivisionId: '' }
+      return { ...prev, subdivisionId: String(id) }
+    })
+    setOpenTransferDropdown(null)
+  }
+
+  const handleConfirmTransfer = async (sourceLocation) => {
+    if (transferSaving) return
+    const destBodegaId = transferDraft.bodegaId
+    const destDivisionId = transferDraft.divisionId
+    const destSubdivisionId = transferDraft.subdivisionId
+    const moveQty = parseQuantity(transferDraft.cantidad)
+    const sourceQty = Number(sourceLocation.cantidad) || 0
+
+    if (!canInlineEditBranchLocation(sourceLocation.sucursalId)) {
+      setLocationError(SCOPE_EDIT_LOCATION_ERROR)
+      return
+    }
+    if (!destBodegaId || !destDivisionId || !destSubdivisionId) {
+      setLocationError('Selecciona bodega, division y subdivision de destino.')
+      return
+    }
+    if (String(destSubdivisionId) === String(sourceLocation.subdivisionId)) {
+      setLocationError('Elige una ubicacion distinta a la actual.')
+      return
+    }
+    if (!moveQty || moveQty <= 0) {
+      setLocationError('Ingresa una cantidad valida.')
+      return
+    }
+    if (moveQty > sourceQty) {
+      setLocationError(`No puedes mover mas de ${sourceQty} unidades.`)
+      return
+    }
+    if (!productId) return
+
+    const subdivision = subdivisionById.get(String(destSubdivisionId))
+    const division = divisionById.get(String(destDivisionId))
+    const bodega = bodegaById.get(String(destBodegaId))
+    const remaining = sourceQty - moveQty
+
+    const sourceEntry = entryBySubdivision.get(String(sourceLocation.subdivisionId))
+    const destEntry = entryBySubdivision.get(String(destSubdivisionId))
+
+    setTransferSaving(true)
+    setLocationError('')
+    try {
+      const calls = []
+
+      if (sourceEntry?.id) {
+        calls.push(
+          remaining > 0
+            ? authFetch(
+                `${API_URL}/inventario/inventario/${sourceEntry.id}/`,
+                { method: 'PUT', body: JSON.stringify({ producto_id: productId, subdivision_id: Number(sourceLocation.subdivisionId), referencia: sourceEntry.referencia ?? '', cantidad: remaining }) },
+                token
+              )
+            : authFetch(`${API_URL}/inventario/inventario/${sourceEntry.id}/`, { method: 'DELETE' }, token)
+        )
+      }
+
+      if (destEntry?.id) {
+        calls.push(
+          authFetch(
+            `${API_URL}/inventario/inventario/${destEntry.id}/`,
+            { method: 'PUT', body: JSON.stringify({ producto_id: productId, subdivision_id: Number(destSubdivisionId), referencia: destEntry.referencia ?? '', cantidad: (Number(destEntry.cantidad) || 0) + moveQty }) },
+            token
+          )
+        )
+      } else {
+        calls.push(
+          authFetch(
+            `${API_URL}/inventario/inventario/`,
+            { method: 'POST', body: JSON.stringify({ producto_id: productId, subdivision_id: Number(destSubdivisionId), referencia: '', cantidad: moveQty }) },
+            token
+          )
+        )
+      }
+
+      const responses = await Promise.all(calls)
+      const failed = responses.find((response) => !response.ok)
+      if (failed) {
+        const detailPayload = await failed.json().catch(() => ({}))
+        const detailText = String(detailPayload?.detail || '').trim()
+        if (failed.status === 403 || normalizeErrorText(detailText).includes('no tienes acceso a la sucursal seleccionada')) {
+          throw new Error(SCOPE_EDIT_LOCATION_ERROR)
+        }
+        throw new Error(detailText || 'No se pudo completar el traslado.')
+      }
+
+      const payloads = await Promise.all(
+        responses.map((response) => response.clone().json().catch(() => ({})))
+      )
+      if (payloads.some((payload) => Boolean(payload?.reminders_sync_required))) {
+        emitRemindersSync()
+      }
+
+      setLocations((prev) => {
+        const next = remaining > 0
+          ? prev.map((loc) => (loc.uid === sourceLocation.uid ? { ...loc, cantidad: remaining } : loc))
+          : prev.filter((loc) => loc.uid !== sourceLocation.uid)
+
+        const existingDestIndex = next.findIndex((loc) => String(loc.subdivisionId) === String(destSubdivisionId))
+        if (existingDestIndex !== -1) {
+          return next.map((loc, i) =>
+            i === existingDestIndex ? { ...loc, cantidad: (Number(loc.cantidad) || 0) + moveQty } : loc
+          )
+        }
+        return [
+          ...next,
+          {
+            uid: createLocationUid(),
+            sucursalId: sourceLocation.sucursalId,
+            sucursalNombre: sourceLocation.sucursalNombre,
+            bodegaId: String(destBodegaId),
+            bodegaNombre: bodega?.nombre || '-',
+            divisionId: String(destDivisionId),
+            divisionNombre: division?.nombre || '-',
+            subdivisionId: String(destSubdivisionId),
+            subdivisionNombre: subdivision?.nombre || '-',
+            cantidad: moveQty,
+          },
+        ]
+      })
+
+      handleCancelTransfer()
+      onSaved?.()
+    } catch (err) {
+      setLocationError(err?.message || 'No se pudo completar el traslado.')
+    } finally {
+      setTransferSaving(false)
+    }
   }
 
   const saveChanges = async () => {
@@ -1178,58 +1368,183 @@ const InventarioEditor = forwardRef(function InventarioEditor(
               return divs.length > 0 && divs.every(isDivisionFullyUsed)
             }
 
-            return (
-              <div key={location.uid} className="create-user__locations-row">
-                <span>
-                  {canInlineEdit
-                    ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
-                    : location.sucursalNombre}
-                </span>
-                <span>
-                  {canInlineEdit
-                    ? makeDropdown('bodega', location.bodegaNombre || 'Bodega', rowBodegas, (b) => b.nombre || `Bodega ${b.id}`, (b) => b.id, !location.sucursalId, isBodegaFullyUsed)
-                    : location.bodegaNombre}
-                </span>
-                <span>
-                  {canInlineEdit
-                    ? makeDropdown('division', location.divisionNombre || 'Division', rowDivisions, (d) => d.nombre || `Division ${d.id}`, (d) => d.id, !location.bodegaId, isDivisionFullyUsed)
-                    : location.divisionNombre}
-                </span>
-                <span>
-                  {canInlineEdit
-                    ? makeDropdown('subdivision', location.subdivisionNombre || 'Subdivision', rowSubdivisions, (s) => s.nombre || `Subdivision ${s.id}`, (s) => s.id, !location.divisionId, (s) => otherUsedSubIds.has(String(s.id)))
-                    : location.subdivisionNombre}
-                </span>
-                <span>
-                  {canInlineEdit ? (
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={String(location.cantidad ?? '')}
-                      onChange={(event) => handleRowCantidadChange(location.uid, event.target.value)}
-                    />
-                  ) : (
-                    <strong className="create-user__locations-total">{location.cantidad}</strong>
-                  )}
-                </span>
-                <span className="create-user__locations-cell create-user__locations-cell--action">
-                  <BodegaLocationPreview
-                    bodega={currentBodega}
-                    divisionName={location.divisionNombre}
-                    subdivisionName={location.subdivisionNombre}
-                  />
+            const isTransferring = transferUid === location.uid
+            const canTransferRow = canManageRow && canInlineEditBranchLocation(location.sucursalId)
+            const transferBodegas = bodegasBySucursal.get(location.sucursalId) || []
+            const transferDivisions = divisionsByBodega.get(transferDraft.bodegaId) || []
+            const transferSubdivisions = (subdivisionsByDivision.get(transferDraft.divisionId) || [])
+              .filter((s) => String(s.id) !== String(location.subdivisionId))
+            const transferBodega = bodegaById.get(String(transferDraft.bodegaId))
+            const transferDivision = divisionById.get(String(transferDraft.divisionId))
+            const transferSubdivision = subdivisionById.get(String(transferDraft.subdivisionId))
+
+            const makeTransferDropdown = (field, label, items, getName, getId, triggerDisabled) => {
+              const open = isTransferring && openTransferDropdown === field
+              return (
+                <div className="create-user__dropdown">
                   <button
                     type="button"
-                    className="create-user__locations-remove"
-                    onClick={() => handleRemoveLocation(location)}
-                    disabled={editorDisabled || !canManageRow}
-                    aria-label="Eliminar ubicacion"
+                    ref={open ? transferDropdownRef : null}
+                    className="create-user__dropdown-trigger"
+                    onClick={(event) => {
+                      if (triggerDisabled) return
+                      if (open) {
+                        setOpenTransferDropdown(null)
+                        return
+                      }
+                      const rect = event.currentTarget.getBoundingClientRect()
+                      setTransferDropdownRect({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+                      setOpenTransferDropdown(field)
+                    }}
+                    disabled={triggerDisabled}
                   >
-                    ×
+                    <span>{label}</span>
+                    <i className={`pi pi-chevron-${open ? 'up' : 'down'}`} />
                   </button>
-                </span>
-              </div>
+                  {open && transferDropdownRect && createPortal(
+                    <div
+                      ref={transferPanelRef}
+                      className="create-user__dropdown-panel create-user__dropdown-panel--floating"
+                      style={{ top: transferDropdownRect.top, left: transferDropdownRect.left, width: transferDropdownRect.width }}
+                    >
+                      <div className="create-user__dropdown-results">
+                        {!items.length && <small className="muted">Sin resultados.</small>}
+                        {items.map((item) => (
+                          <button
+                            key={getId(item)}
+                            type="button"
+                            className="create-user__result-option"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleTransferSelect(field, getId(item), getName(item)) }}
+                          >
+                            <div className="create-user__result-info">
+                              <strong>{getName(item)}</strong>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>,
+                    getPortalHost()
+                  )}
+                </div>
+              )
+            }
+
+            return (
+              <Fragment key={location.uid}>
+                <div className="create-user__locations-row">
+                  <span>
+                    {canInlineEdit
+                      ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
+                      : location.sucursalNombre}
+                  </span>
+                  <span>
+                    {canInlineEdit
+                      ? makeDropdown('bodega', location.bodegaNombre || 'Bodega', rowBodegas, (b) => b.nombre || `Bodega ${b.id}`, (b) => b.id, !location.sucursalId, isBodegaFullyUsed)
+                      : location.bodegaNombre}
+                  </span>
+                  <span>
+                    {canInlineEdit
+                      ? makeDropdown('division', location.divisionNombre || 'Division', rowDivisions, (d) => d.nombre || `Division ${d.id}`, (d) => d.id, !location.bodegaId, isDivisionFullyUsed)
+                      : location.divisionNombre}
+                  </span>
+                  <span>
+                    {canInlineEdit
+                      ? makeDropdown('subdivision', location.subdivisionNombre || 'Subdivision', rowSubdivisions, (s) => s.nombre || `Subdivision ${s.id}`, (s) => s.id, !location.divisionId, (s) => otherUsedSubIds.has(String(s.id)))
+                      : location.subdivisionNombre}
+                  </span>
+                  <span>
+                    {canInlineEdit ? (
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={String(location.cantidad ?? '')}
+                        onChange={(event) => handleRowCantidadChange(location.uid, event.target.value)}
+                      />
+                    ) : (
+                      <strong className="create-user__locations-total">{location.cantidad}</strong>
+                    )}
+                  </span>
+                  <span className="create-user__locations-cell create-user__locations-cell--action">
+                    <BodegaLocationPreview
+                      bodega={currentBodega}
+                      divisionName={location.divisionNombre}
+                      subdivisionName={location.subdivisionNombre}
+                    />
+                    <button
+                      type="button"
+                      className={`create-user__locations-transfer${isTransferring ? ' create-user__locations-transfer--active' : ''}`}
+                      onClick={() => (isTransferring ? handleCancelTransfer() : handleStartTransfer(location))}
+                      disabled={transferBusy || !canTransferRow}
+                      aria-label="Trasladar ubicacion"
+                      title="Trasladar a otra ubicacion de la misma sucursal"
+                    >
+                      <ArrowLeftRight size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="create-user__locations-remove"
+                      onClick={() => handleRemoveLocation(location)}
+                      disabled={editorDisabled || !canManageRow}
+                      aria-label="Eliminar ubicacion"
+                    >
+                      ×
+                    </button>
+                  </span>
+                </div>
+
+                {isTransferring && (
+                  <div className="create-user__locations-row create-user__locations-row--form create-user__locations-row--transfer">
+                    <span>
+                      <em>{location.sucursalNombre}</em>
+                    </span>
+                    <span>
+                      {makeTransferDropdown('bodega', transferBodega?.nombre || 'Bodega', transferBodegas, (b) => b.nombre || `Bodega ${b.id}`, (b) => b.id, transferBusy)}
+                    </span>
+                    <span>
+                      {makeTransferDropdown('division', transferDivision?.nombre || 'Division', transferDivisions, (d) => d.nombre || `Division ${d.id}`, (d) => d.id, transferBusy || !transferDraft.bodegaId)}
+                    </span>
+                    <span>
+                      {makeTransferDropdown('subdivision', transferSubdivision?.nombre || 'Subdivision', transferSubdivisions, (s) => s.nombre || `Subdivision ${s.id}`, (s) => s.id, transferBusy || !transferDraft.divisionId)}
+                    </span>
+                    <span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={location.cantidad}
+                        step="1"
+                        placeholder={`Max ${location.cantidad}`}
+                        value={transferDraft.cantidad}
+                        onChange={(event) => setTransferDraft((prev) => ({ ...prev, cantidad: event.target.value }))}
+                        disabled={transferBusy}
+                      />
+                    </span>
+                    <span className="create-user__locations-cell create-user__locations-cell--action">
+                      <button
+                        type="button"
+                        className="create-user__locations-transfer create-user__locations-transfer--confirm"
+                        onClick={() => handleConfirmTransfer(location)}
+                        disabled={transferBusy}
+                        aria-label="Confirmar traslado"
+                        title="Mover cantidad"
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="create-user__locations-remove"
+                        onClick={handleCancelTransfer}
+                        disabled={transferSaving}
+                        aria-label="Cancelar traslado"
+                        title="Cancelar"
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  </div>
+                )}
+              </Fragment>
             )
           })}
         </div>

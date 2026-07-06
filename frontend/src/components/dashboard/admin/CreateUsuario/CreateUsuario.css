@@ -1420,7 +1420,7 @@
 }
 
 .create-user__locations-table--locations-selectors.create-user__locations-table--with-actions .create-user__locations-row {
-  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1.12fr) minmax(0, 0.88fr) minmax(0, 0.88fr) minmax(84px, 0.58fr) 84px;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1.12fr) minmax(0, 0.88fr) minmax(0, 0.88fr) minmax(84px, 0.58fr) 112px;
 }
 
 .create-user__locations-table--locations-selectors .create-user__locations-row--form > span {
@@ -1635,6 +1635,7 @@ button.create-user__locations-row {
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: 4px;
 }
 
 .create-user__locations-remove {
@@ -1662,6 +1663,77 @@ button.create-user__locations-row {
   cursor: not-allowed;
   background: #f3f4f6;
 }
+
+.create-user__locations-transfer {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-primary-dark, #2563eb);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.create-user__locations-transfer:hover:not(:disabled) {
+  border-color: var(--color-primary-dark, #2563eb);
+  background: color-mix(in srgb, var(--color-primary-dark, #2563eb) 12%, #fff);
+}
+
+.create-user__locations-transfer--active {
+  border-color: var(--color-primary-dark, #2563eb);
+  background: var(--color-primary-dark, #2563eb);
+  color: #fff;
+}
+
+.create-user__locations-transfer--confirm {
+  color: #16a34a;
+}
+
+.create-user__locations-transfer--confirm:hover:not(:disabled) {
+  border-color: #16a34a;
+  background: color-mix(in srgb, #16a34a 12%, #fff);
+}
+
+.create-user__locations-transfer:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f3f4f6;
+}
+
+.dashboard-shell.dark .create-user__locations-transfer {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: #7dd3fc;
+}
+
+.dashboard-shell.dark .create-user__locations-transfer:hover:not(:disabled) {
+  border-color: #7dd3fc;
+  background: color-mix(in srgb, #7dd3fc 18%, var(--color-surface-darker));
+}
+
+.dashboard-shell.dark .create-user__locations-transfer--active {
+  background: #7dd3fc;
+  color: #0f172a;
+}
+
+.dashboard-shell.dark .create-user__locations-transfer:disabled {
+  background: #2a2f36;
+  color: var(--color-text-dark);
+}
+
+.create-user__locations-row--transfer {
+  background: color-mix(in srgb, var(--color-primary-dark, #2563eb) 5%, transparent);
+}
+
+.dashboard-shell.dark .create-user__locations-row--transfer {
+  background: color-mix(in srgb, #7dd3fc 8%, transparent);
+}
+
 .create-user__location-actions {
   display: flex;
   justify-content: flex-end;
@@ -1766,6 +1838,14 @@ button.create-user__locations-row {
 .dashboard-shell.dark .create-user__dropdown-panel {
   background: var(--table-color-dark);
   border-color: var(--color-border);
+}
+
+.create-user__dropdown-panel--floating {
+  position: fixed;
+  z-index: 12000;
+  left: auto;
+  right: auto;
+  top: auto;
 }
 
 .create-user__dropdown-search {
