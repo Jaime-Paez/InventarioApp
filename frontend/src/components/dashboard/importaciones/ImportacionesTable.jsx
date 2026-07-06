@@ -5568,6 +5568,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const clickTimerRef = useRef(null)
   const pendingClickRowRef = useRef(null)
   const pendingClickCountRef = useRef(0)
+  const statusModalSnapshotsRef = useRef({})
 
   useEffect(() => {
     if (!pendingOpenBorradorData) return
@@ -5691,8 +5692,24 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
 
   const handleStatusChange = (nextStatus) => {
     if (nextStatus === status) return
+
+    // Remember whatever modal was open on this pill so it reopens exactly
+    // as left when the user comes back to it (like the top-level workspace tabs).
+    statusModalSnapshotsRef.current[status] = {
+      showCreate, showExcelImport, showExcelDirecta,
+      editImp, showEditImp,
+      selectedImp, showImpDetails,
+    }
+
+    const snapshot = statusModalSnapshotsRef.current[nextStatus] || {}
     setActiveStatus(nextStatus)
-    setShowImpDetails(false)
+    setShowCreate(snapshot.showCreate || false)
+    setShowExcelImport(snapshot.showExcelImport || false)
+    setShowExcelDirecta(snapshot.showExcelDirecta || false)
+    setEditImp(snapshot.editImp || null)
+    setShowEditImp(snapshot.showEditImp || false)
+    setSelectedImp(snapshot.selectedImp || null)
+    setShowImpDetails(snapshot.showImpDetails || false)
   }
 
   const clearProductHoverTimer = useCallback(() => {
