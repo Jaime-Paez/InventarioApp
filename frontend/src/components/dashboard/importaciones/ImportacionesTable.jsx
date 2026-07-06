@@ -943,6 +943,8 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
   }, [])
   const modalRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
+  const modalRestoreRef = useRef(null)
   const [position, setPosition] = useState(() => {
     const w = Math.min(680, window.innerWidth - 56)
     const h = Math.min(700, window.innerHeight * 0.88)
@@ -951,6 +953,15 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
       y: Math.max((window.innerHeight - h) / 2, DETAILS_VIEWPORT_PADDING),
     }
   })
+  const [modalSize, setModalSize] = useState(() => ({
+    width: Math.min(720, window.innerWidth - 56),
+    height: Math.min(700, window.innerHeight * 0.88),
+  }))
+  const [isMaximized, setIsMaximized] = useState(false)
+  const positionRef = useRef(position)
+  const modalSizeRef = useRef(modalSize)
+  useEffect(() => { positionRef.current = position }, [position])
+  useEffect(() => { modalSizeRef.current = modalSize }, [modalSize])
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -972,10 +983,82 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
     }
   }, [])
 
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const availableWidth = Math.max(0, window.innerWidth - DETAILS_VIEWPORT_PADDING * 2)
+      const availableHeight = Math.max(0, window.innerHeight - DETAILS_VIEWPORT_PADDING * 2)
+      if (isMaximized) {
+        setModalSize({ width: availableWidth, height: availableHeight })
+        setPosition({ x: DETAILS_VIEWPORT_PADDING, y: DETAILS_VIEWPORT_PADDING })
+        return
+      }
+      setModalSize((prev) => ({
+        width: clamp(prev.width, MIN_WIDTH, availableWidth),
+        height: clamp(prev.height, MIN_HEIGHT, availableHeight),
+      }))
+    }
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
+  }, [isMaximized])
+
   const handleHeaderMouseDown = (e) => {
+    if (isMaximized) return
     if (!modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
     dragData.current = { active: true, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top }
+  }
+
+  const handleResizeMouseDown = (event) => {
+    if (isMaximized) return
+    event.preventDefault()
+    event.stopPropagation()
+    resizeData.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: modalSizeRef.current.width,
+      startHeight: modalSizeRef.current.height,
+    }
+    const handleResizeMove = (moveEvent) => {
+      if (!resizeData.current.active) return
+      const deltaX = moveEvent.clientX - resizeData.current.startX
+      const deltaY = moveEvent.clientY - resizeData.current.startY
+      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - positionRef.current.x - DETAILS_VIEWPORT_PADDING)
+      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - positionRef.current.y - DETAILS_VIEWPORT_PADDING)
+      setModalSize({
+        width: clamp(resizeData.current.startWidth + deltaX, MIN_WIDTH, maxWidth),
+        height: clamp(resizeData.current.startHeight + deltaY, MIN_HEIGHT, maxHeight),
+      })
+    }
+    const handleResizeUp = () => {
+      resizeData.current.active = false
+      window.removeEventListener('mousemove', handleResizeMove)
+      window.removeEventListener('mouseup', handleResizeUp)
+    }
+    window.addEventListener('mousemove', handleResizeMove)
+    window.addEventListener('mouseup', handleResizeUp)
+  }
+
+  const toggleMaximize = () => {
+    dragData.current.active = false
+    if (isMaximized) {
+      const restore = modalRestoreRef.current
+      if (restore) {
+        setModalSize(restore.size)
+        setPosition(restore.position)
+      }
+      setIsMaximized(false)
+      return
+    }
+    modalRestoreRef.current = {
+      size: { ...modalSizeRef.current },
+      position: { ...positionRef.current },
+    }
+    const availableWidth = Math.max(0, window.innerWidth - DETAILS_VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - DETAILS_VIEWPORT_PADDING * 2)
+    setModalSize({ width: availableWidth, height: availableHeight })
+    setPosition({ x: DETAILS_VIEWPORT_PADDING, y: DETAILS_VIEWPORT_PADDING })
+    setIsMaximized(true)
   }
 
   if (!imp) return null
@@ -1012,11 +1095,12 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
         style={{
           top: position.y,
           left: position.x,
-          width: 'min(720px, calc(100vw - 32px))',
-          height: activeTab === 'productos' ? 'min(88vh, 720px)' : 'auto',
-          maxHeight: 'min(88vh, 720px)',
-          minWidth: 0,
-          minHeight: 0,
+          width: modalSize.width,
+          height: modalSize.height,
+          minWidth: MIN_WIDTH,
+          minHeight: MIN_HEIGHT,
+          maxWidth: `calc(100vw - ${DETAILS_VIEWPORT_PADDING * 2}px)`,
+          maxHeight: `calc(100vh - ${DETAILS_VIEWPORT_PADDING * 2}px)`,
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -1029,6 +1113,15 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
               <h3>{imp.codigo}</h3>
             </div>
             <div className="create-user__header-actions">
+              <button
+                type="button"
+                className="create-user__icon-button create-user__icon-button--maximize"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={toggleMaximize}
+                aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+              >
+                <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+              </button>
               <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} aria-label="Cerrar">
                 <i className="pi pi-times" />
               </button>
@@ -1195,6 +1288,12 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
               </button>
             )}
           </div>
+          <button
+            type="button"
+            aria-label="Cambiar tamaño de ventana"
+            className="create-user__resize-handle"
+            onMouseDown={handleResizeMouseDown}
+          />
         </div>
     </div>,
     getPortalRoot()
@@ -5569,6 +5668,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const pendingClickRowRef = useRef(null)
   const pendingClickCountRef = useRef(0)
   const statusModalSnapshotsRef = useRef({})
+  const itemsCacheRef = useRef({})
 
   useEffect(() => {
     if (!pendingOpenBorradorData) return
@@ -5636,8 +5736,13 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     })
   , [])
 
-  const fetchItems = useCallback(async () => {
+  const fetchItems = useCallback(async (force = false) => {
     if (!token) return
+    const cached = itemsCacheRef.current[status]
+    if (!force && cached) {
+      setItems(cached)
+      return
+    }
     setLoading(true)
     setError('')
     const params = new URLSearchParams()
@@ -5651,6 +5756,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       if (status === 'confirmacion') {
         normalized.sort((a, b) => (a.numero_factura ? 1 : 0) - (b.numero_factura ? 1 : 0))
       }
+      itemsCacheRef.current[status] = normalized
       setItems(normalized)
     } catch (err) {
       const message = err.message || 'No se pudieron cargar las importaciones.'
@@ -5909,7 +6015,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         <button
           className="rounded-icon-btn"
           type="button"
-          onClick={fetchItems}
+          onClick={() => fetchItems(true)}
           disabled={loading}
           title="Recargar"
         >
@@ -6137,7 +6243,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         imp={showImpDetails && isTabActive !== false ? selectedImp : null}
         token={token}
         onClose={() => setShowImpDetails(false)}
-        onSaved={() => { setShowImpDetails(false); fetchItems() }}
+        onSaved={() => { setShowImpDetails(false); itemsCacheRef.current = {}; fetchItems(true) }}
         moduleActions={moduleActions}
       />
 
@@ -6185,7 +6291,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         imp={editImp}
         token={token}
         onClose={() => setShowEditImp(false)}
-        onSaved={() => { setShowEditImp(false); fetchItems() }}
+        onSaved={() => { setShowEditImp(false); itemsCacheRef.current = {}; fetchItems(true) }}
         onOpenBorrador={handleOpenBorrador}
         moduleActions={moduleActions}
       />
@@ -6197,8 +6303,9 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         onError={onError}
         onCreated={() => {
           setShowCreate(false)
+          itemsCacheRef.current = {}
           if (status === 'borrador') {
-            fetchItems()
+            fetchItems(true)
           } else {
             setActiveStatus('borrador')
           }
@@ -6210,7 +6317,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         <ImportacionExcelModal
           token={token}
           onClose={() => setShowExcelImport(false)}
-          onCreated={() => { setShowExcelImport(false); fetchItems() }}
+          onCreated={() => { setShowExcelImport(false); itemsCacheRef.current = {}; fetchItems(true) }}
         />
       )}
 
@@ -6220,8 +6327,9 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           onClose={() => setShowExcelDirecta(false)}
           onCreated={() => {
             setShowExcelDirecta(false)
+            itemsCacheRef.current = {}
             if (status === 'importada') {
-              fetchItems()
+              fetchItems(true)
             } else {
               setActiveStatus('importada')
             }
