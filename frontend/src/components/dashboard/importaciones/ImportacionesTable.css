@@ -1061,6 +1061,13 @@
 .imp-tri-check--x { background: #ef4444; border-color: #ef4444; }
 .imp-tri-check--x:hover { background: #dc2626; border-color: #dc2626; }
 
+.imp-tri-check:focus,
+.imp-tri-check:focus-visible {
+  outline: none;
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 25%, transparent);
+}
+
 .dashboard-shell.dark .imp-tri-check--none { background: var(--color-surface-darker); border-color: #4b5563; }
 .dashboard-shell.dark .imp-tri-check--none:hover { border-color: #3b82f6; background: #1e3a5f; }
 

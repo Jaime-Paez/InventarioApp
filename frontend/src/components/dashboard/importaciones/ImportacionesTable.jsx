@@ -27,6 +27,7 @@ const getProductoOem = (producto) =>
 const toNumberOrNull = (v) => (v === '' || v == null ? null : Number(v))
 
 const GRID_ROW_SELECTOR = '.create-user__locations-row'
+const GRID_FOCUSABLE_SELECTOR = 'input, button:not(:disabled)'
 
 const focusGridInput = (input) => {
   if (!input) return false
@@ -37,14 +38,15 @@ const focusGridInput = (input) => {
   return true
 }
 
-// Spreadsheet-style arrow navigation between inputs of a products table:
-// Up/Down move to the same column in the previous/next row, Left/Right move
-// to the adjacent input (only past the caret's start/end for free-text fields).
+// Spreadsheet-style arrow navigation between the inputs and action buttons (e.g. the
+// Acciones check/x toggle) of a products table: Up/Down move to the same column in the
+// previous/next row, Left/Right move to the adjacent control (only past the caret's
+// start/end for free-text fields, since buttons have no caret to worry about).
 const handleProductsGridKeyDown = (e) => {
   const key = e.key
   if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight') return
   const target = e.target
-  if (!(target instanceof HTMLInputElement)) return
+  if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLButtonElement)) return
 
   const row = target.closest(GRID_ROW_SELECTOR)
   const container = row?.parentElement
@@ -52,27 +54,27 @@ const handleProductsGridKeyDown = (e) => {
 
   if (key === 'ArrowLeft' || key === 'ArrowRight') {
     let atBoundary = true
-    if (target.type === 'text' && !target.readOnly) {
+    if (target instanceof HTMLInputElement && target.type === 'text' && !target.readOnly) {
       const pos = key === 'ArrowLeft' ? 0 : target.value.length
       atBoundary = target.selectionStart === pos && target.selectionEnd === pos
     }
     if (!atBoundary) return
-    const inputsInRow = Array.from(row.querySelectorAll('input'))
-    const idx = inputsInRow.indexOf(target)
-    const nextInput = inputsInRow[key === 'ArrowLeft' ? idx - 1 : idx + 1]
-    if (focusGridInput(nextInput)) e.preventDefault()
+    const controlsInRow = Array.from(row.querySelectorAll(GRID_FOCUSABLE_SELECTOR))
+    const idx = controlsInRow.indexOf(target)
+    const nextControl = controlsInRow[key === 'ArrowLeft' ? idx - 1 : idx + 1]
+    if (focusGridInput(nextControl)) e.preventDefault()
     return
   }
 
-  const inputsInRow = Array.from(row.querySelectorAll('input'))
-  const colIdx = inputsInRow.indexOf(target)
-  const rows = Array.from(container.querySelectorAll(GRID_ROW_SELECTOR)).filter((r) => r.querySelector('input'))
+  const controlsInRow = Array.from(row.querySelectorAll(GRID_FOCUSABLE_SELECTOR))
+  const colIdx = controlsInRow.indexOf(target)
+  const rows = Array.from(container.querySelectorAll(GRID_ROW_SELECTOR)).filter((r) => r.querySelector(GRID_FOCUSABLE_SELECTOR))
   const rowIdx = rows.indexOf(row)
   const nextRow = rows[key === 'ArrowUp' ? rowIdx - 1 : rowIdx + 1]
   if (!nextRow) return
-  const nextRowInputs = Array.from(nextRow.querySelectorAll('input'))
-  const nextInput = nextRowInputs[colIdx] ?? nextRowInputs[nextRowInputs.length - 1]
-  if (focusGridInput(nextInput)) e.preventDefault()
+  const nextRowControls = Array.from(nextRow.querySelectorAll(GRID_FOCUSABLE_SELECTOR))
+  const nextControl = nextRowControls[colIdx] ?? nextRowControls[nextRowControls.length - 1]
+  if (focusGridInput(nextControl)) e.preventDefault()
 }
 
 // Shared across every mounted ImportacionesTable instance (Importaciones, En proceso,
