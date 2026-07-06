@@ -1031,11 +1031,22 @@
   gap: 6px;
   padding: 8px 14px;
   border-radius: 8px;
+  border: none;
+  font-family: inherit;
   font-weight: 600;
   font-size: 0.85rem;
-  color: #16a34a;
-  background: rgba(22, 163, 74, 0.1);
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.12);
   white-space: nowrap;
+}
+
+.imp-realizada-badge--clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.imp-realizada-badge--clickable:hover {
+  background: rgba(217, 119, 6, 0.22);
 }
 
 /* Three-state check button in confirmacion table */

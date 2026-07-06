@@ -77,6 +77,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
     total_productos = serializers.SerializerMethodField()
     origen_id = serializers.SerializerMethodField()
     origen_codigo = serializers.SerializerMethodField()
+    en_camino_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Importacion
@@ -93,6 +94,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "dias_reales_entrega",
             "origen_id",
             "origen_codigo",
+            "en_camino_id",
             "detalles",
             "total_productos",
             "creado_en",
@@ -108,6 +110,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "dias_reales_entrega",
             "origen_id",
             "origen_codigo",
+            "en_camino_id",
             "total_productos",
             "creado_en",
             "actualizado_en",
@@ -115,6 +118,11 @@ class ImportacionSerializer(serializers.ModelSerializer):
 
     def get_origen_id(self, obj):
         return obj.origen_id
+
+    def get_en_camino_id(self, obj):
+        prefetched = getattr(obj, "_prefetched_objects_cache", {}).get("en_camino_generadas")
+        derived = prefetched[0] if prefetched else obj.en_camino_generadas.first()
+        return derived.id if derived else None
 
     def get_origen_codigo(self, obj):
         return obj.origen.codigo if obj.origen_id else None

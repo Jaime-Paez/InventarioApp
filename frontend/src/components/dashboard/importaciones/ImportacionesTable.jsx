@@ -3927,7 +3927,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   )
 }
 
-function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrador, moduleActions }) {
+function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
   const canEdit = moduleActions?.puede_actualizar !== false
   const canDelete = moduleActions?.puede_eliminar !== false
   const canImportar = moduleActions?.puede_importar === true
@@ -5372,9 +5372,19 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                   </button>
                 )}
                 {imp?.estado === 'confirmacion' && imp?.numero_factura && (
-                  <span className="imp-realizada-badge">
-                    <Check size={14} /> En camino
-                  </span>
+                  imp?.en_camino_id ? (
+                    <button
+                      type="button"
+                      className="imp-realizada-badge imp-realizada-badge--clickable"
+                      onClick={() => onOpenEnCamino?.(imp.en_camino_id)}
+                    >
+                      <Check size={14} /> En camino
+                    </button>
+                  ) : (
+                    <span className="imp-realizada-badge">
+                      <Check size={14} /> En camino
+                    </span>
+                  )
                 )}
                 {canImportar && imp?.estado === 'confirmacion' && !imp?.numero_factura && (
                   <button
@@ -5905,15 +5915,27 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   }, [showProductHoverCard, scheduleHideProductHoverCard])
 
   const estadoBodyTemplate = useCallback((rowData) => {
-    const badge = rowData?.estado === 'confirmacion' && rowData?.numero_factura
-      ? { label: 'En camino', color: '#16a34a', bg: 'rgba(22,163,74,0.15)', border: 'none' }
+    const isEnCaminoConfirmada = rowData?.estado === 'confirmacion' && rowData?.numero_factura
+    const badge = isEnCaminoConfirmada
+      ? { label: 'En camino', color: '#d97706', bg: 'rgba(217,119,6,0.15)', border: 'none' }
       : { ...(STATUS_BADGE[rowData?.estado] || { label: rowData?.estado || '-', color: '#64748b', bg: 'rgba(100,116,139,0.1)' }), border: 'none' }
+    const clickable = isEnCaminoConfirmada && Boolean(rowData?.en_camino_id)
+    const Tag = clickable ? 'button' : 'span'
     return (
-      <span style={{ fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.color, border: badge.border, whiteSpace: 'nowrap' }}>
+      <Tag
+        type={clickable ? 'button' : undefined}
+        onMouseDown={clickable ? (e) => e.stopPropagation() : undefined}
+        onClick={clickable ? (e) => { e.stopPropagation(); handleOpenEnCamino(rowData.en_camino_id) } : undefined}
+        title={clickable ? 'Ver importación en camino' : undefined}
+        style={{
+          fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.color,
+          border: badge.border, whiteSpace: 'nowrap', cursor: clickable ? 'pointer' : 'default',
+        }}
+      >
         {badge.label}
-      </span>
+      </Tag>
     )
-  }, [])
+  }, [handleOpenEnCamino])
 
   const exportColumns = [
     { key: 'codigo', header: 'Importación' },
@@ -5978,6 +6000,22 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       setShowEditImp(true)
     } catch (err) {
       toast.current?.show({ severity: 'error', summary: 'Error', detail: err.message || 'No se pudo abrir la importación de origen.', life: 4000 })
+    }
+  }, [token])
+
+  const handleOpenEnCamino = useCallback(async (enCaminoId) => {
+    if (!enCaminoId || !token) return
+    setShowEditImp(false)
+    setShowImpDetails(false)
+    try {
+      const response = await authFetch(`${API_URL}/importaciones/importaciones/${enCaminoId}/`, {}, token)
+      if (!response.ok) throw new Error('No se pudo abrir la importación en camino.')
+      const data = await response.json()
+      setActiveStatus('en_camino')
+      setSelectedImp(data)
+      setShowImpDetails(true)
+    } catch (err) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: err.message || 'No se pudo abrir la importación en camino.', life: 4000 })
     }
   }, [token])
 
@@ -6327,6 +6365,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         onClose={() => setShowEditImp(false)}
         onSaved={() => { setShowEditImp(false); invalidateImportacionesItemsCache(); fetchItems(true) }}
         onOpenBorrador={handleOpenBorrador}
+        onOpenEnCamino={handleOpenEnCamino}
         moduleActions={moduleActions}
       />
 

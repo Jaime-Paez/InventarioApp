@@ -79,6 +79,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "detalles__producto",
                 "detalles__producto__casas_comerciales",
                 "detalles__producto__oem_productos__oem",
+                "en_camino_generadas",
             )
             .all()
             .distinct()
