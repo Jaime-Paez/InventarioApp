@@ -75,6 +75,14 @@ const handleProductsGridKeyDown = (e) => {
   if (focusGridInput(nextInput)) e.preventDefault()
 }
 
+// Shared across every mounted ImportacionesTable instance (Importaciones, En proceso,
+// En camino and Importadas are each their own persistent tab/component instance), so a
+// mutation made from one tab invalidates what every other tab has cached, not just its own.
+const importacionesItemsCache = {}
+const invalidateImportacionesItemsCache = () => {
+  Object.keys(importacionesItemsCache).forEach((key) => delete importacionesItemsCache[key])
+}
+
 const STATUS_CONFIG = {
   borrador: { label: 'Sugerencia', empty: 'No hay importaciones en sugerencia.' },
   cotizacion: { label: 'Verificar', empty: 'No hay importaciones en verificación.' },
@@ -5668,7 +5676,6 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const pendingClickRowRef = useRef(null)
   const pendingClickCountRef = useRef(0)
   const statusModalSnapshotsRef = useRef({})
-  const itemsCacheRef = useRef({})
 
   useEffect(() => {
     if (!pendingOpenBorradorData) return
@@ -5738,7 +5745,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
 
   const fetchItems = useCallback(async (force = false) => {
     if (!token) return
-    const cached = itemsCacheRef.current[status]
+    const cached = importacionesItemsCache[status]
     if (!force && cached) {
       setItems(cached)
       return
@@ -5756,7 +5763,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       if (status === 'confirmacion') {
         normalized.sort((a, b) => (a.numero_factura ? 1 : 0) - (b.numero_factura ? 1 : 0))
       }
-      itemsCacheRef.current[status] = normalized
+      importacionesItemsCache[status] = normalized
       setItems(normalized)
     } catch (err) {
       const message = err.message || 'No se pudieron cargar las importaciones.'
@@ -6243,7 +6250,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         imp={showImpDetails && isTabActive !== false ? selectedImp : null}
         token={token}
         onClose={() => setShowImpDetails(false)}
-        onSaved={() => { setShowImpDetails(false); itemsCacheRef.current = {}; fetchItems(true) }}
+        onSaved={() => { setShowImpDetails(false); invalidateImportacionesItemsCache(); fetchItems(true) }}
         moduleActions={moduleActions}
       />
 
@@ -6291,7 +6298,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         imp={editImp}
         token={token}
         onClose={() => setShowEditImp(false)}
-        onSaved={() => { setShowEditImp(false); itemsCacheRef.current = {}; fetchItems(true) }}
+        onSaved={() => { setShowEditImp(false); invalidateImportacionesItemsCache(); fetchItems(true) }}
         onOpenBorrador={handleOpenBorrador}
         moduleActions={moduleActions}
       />
@@ -6303,7 +6310,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         onError={onError}
         onCreated={() => {
           setShowCreate(false)
-          itemsCacheRef.current = {}
+          invalidateImportacionesItemsCache()
           if (status === 'borrador') {
             fetchItems(true)
           } else {
@@ -6317,7 +6324,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         <ImportacionExcelModal
           token={token}
           onClose={() => setShowExcelImport(false)}
-          onCreated={() => { setShowExcelImport(false); itemsCacheRef.current = {}; fetchItems(true) }}
+          onCreated={() => { setShowExcelImport(false); invalidateImportacionesItemsCache(); fetchItems(true) }}
         />
       )}
 
@@ -6327,7 +6334,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           onClose={() => setShowExcelDirecta(false)}
           onCreated={() => {
             setShowExcelDirecta(false)
-            itemsCacheRef.current = {}
+            invalidateImportacionesItemsCache()
             if (status === 'importada') {
               fetchItems(true)
             } else {
