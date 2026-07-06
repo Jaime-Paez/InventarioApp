@@ -26,6 +26,55 @@ const getProductoOem = (producto) =>
 
 const toNumberOrNull = (v) => (v === '' || v == null ? null : Number(v))
 
+const GRID_ROW_SELECTOR = '.create-user__locations-row'
+
+const focusGridInput = (input) => {
+  if (!input) return false
+  input.focus()
+  if (typeof input.select === 'function') {
+    try { input.select() } catch { /* not selectable */ }
+  }
+  return true
+}
+
+// Spreadsheet-style arrow navigation between inputs of a products table:
+// Up/Down move to the same column in the previous/next row, Left/Right move
+// to the adjacent input (only past the caret's start/end for free-text fields).
+const handleProductsGridKeyDown = (e) => {
+  const key = e.key
+  if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight') return
+  const target = e.target
+  if (!(target instanceof HTMLInputElement)) return
+
+  const row = target.closest(GRID_ROW_SELECTOR)
+  const container = row?.parentElement
+  if (!row || !container) return
+
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    let atBoundary = true
+    if (target.type === 'text' && !target.readOnly) {
+      const pos = key === 'ArrowLeft' ? 0 : target.value.length
+      atBoundary = target.selectionStart === pos && target.selectionEnd === pos
+    }
+    if (!atBoundary) return
+    const inputsInRow = Array.from(row.querySelectorAll('input'))
+    const idx = inputsInRow.indexOf(target)
+    const nextInput = inputsInRow[key === 'ArrowLeft' ? idx - 1 : idx + 1]
+    if (focusGridInput(nextInput)) e.preventDefault()
+    return
+  }
+
+  const inputsInRow = Array.from(row.querySelectorAll('input'))
+  const colIdx = inputsInRow.indexOf(target)
+  const rows = Array.from(container.querySelectorAll(GRID_ROW_SELECTOR)).filter((r) => r.querySelector('input'))
+  const rowIdx = rows.indexOf(row)
+  const nextRow = rows[key === 'ArrowUp' ? rowIdx - 1 : rowIdx + 1]
+  if (!nextRow) return
+  const nextRowInputs = Array.from(nextRow.querySelectorAll('input'))
+  const nextInput = nextRowInputs[colIdx] ?? nextRowInputs[nextRowInputs.length - 1]
+  if (focusGridInput(nextInput)) e.preventDefault()
+}
+
 const STATUS_CONFIG = {
   borrador: { label: 'Sugerencia', empty: 'No hay importaciones en sugerencia.' },
   cotizacion: { label: 'Verificar', empty: 'No hay importaciones en verificación.' },
@@ -3270,7 +3319,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                         </div>
                       </div>
 
-                      <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table">
+                      <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table" onKeyDown={handleProductsGridKeyDown}>
                         <div className="create-user__locations-row create-user__locations-row--head">
                           <span>Código</span>
                           <span>Nombre</span>
@@ -3568,7 +3617,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
             </div>
 
             <div className="imp-aceptados-popup__body">
-              <div className="create-user__locations-table importaciones-aceptados__table">
+              <div className="create-user__locations-table importaciones-aceptados__table" onKeyDown={handleProductsGridKeyDown}>
                 <div className="create-user__locations-row create-user__locations-row--head">
                   <span>
                     <input type="checkbox" checked={allSelectableSelected} disabled={filteredAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
@@ -4794,7 +4843,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                       )}
                     </div>
 
-                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`}>
+                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`} onKeyDown={handleProductsGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span>
                         {!isVerificarOrConfirmacion && <span>Cantidad</span>}
@@ -5430,7 +5479,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 />
               </div>
               <div className="imp-aceptados-popup__body">
-                <div className="create-user__locations-table importaciones-aceptados__table">
+                <div className="create-user__locations-table importaciones-aceptados__table" onKeyDown={handleProductsGridKeyDown}>
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>
                       <input type="checkbox" checked={allSelectableSelected} disabled={filteredAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
