@@ -209,15 +209,19 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         instance.fecha_importacion = fecha_importacion
         instance.save(update_fields=["numero_factura", "fecha_importacion"])
 
-        # 2. Create a new importacion in en_camino with only the selected items
+        # 2. Create a new importacion in en_camino with only the selected items.
+        # It keeps the SAME codigo as the confirmacion/cotizacion it came from
+        # (codigo is no longer unique) and also links back via origen, so both
+        # records are unmistakably the same import at different stages.
         nueva = Importacion.objects.create(
-            codigo=generate_next_importacion_code(instance.casa_comercial),
+            codigo=instance.codigo,
             estado=Importacion.ESTADO_EN_CAMINO,
             casa_comercial=instance.casa_comercial,
             fecha=fecha_importacion,
             numero_factura=numero_factura,
             fecha_importacion=fecha_importacion,
             dias_entrega_estimados=instance.dias_entrega_estimados,
+            origen=instance,
             creado_por=request.user if request.user.is_authenticated else None,
         )
         ImportacionDetalle.objects.bulk_create([

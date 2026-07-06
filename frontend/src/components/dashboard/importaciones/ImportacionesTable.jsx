@@ -930,7 +930,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
 const DETAILS_VIEWPORT_PADDING = 12
 
-function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }) {
+function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, onOpenOrigen }) {
   const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
   const [showReceive, setShowReceive] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
@@ -1288,6 +1288,15 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions }
 
           <div className="create-user__footer">
             <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
+            {imp.estado === 'en_camino' && imp.origen_id && (
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={() => onOpenOrigen?.(imp.origen_id)}
+              >
+                Ver confirmación
+              </button>
+            )}
             {imp.estado === 'en_camino' && canMarcarLlegada && (
               <button
                 type="button"
@@ -5364,7 +5373,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 )}
                 {imp?.estado === 'confirmacion' && imp?.numero_factura && (
                   <span className="imp-realizada-badge">
-                    <Check size={14} /> Importación realizada
+                    <Check size={14} /> En camino
                   </span>
                 )}
                 {canImportar && imp?.estado === 'confirmacion' && !imp?.numero_factura && (
@@ -5897,7 +5906,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
 
   const estadoBodyTemplate = useCallback((rowData) => {
     const badge = rowData?.estado === 'confirmacion' && rowData?.numero_factura
-      ? { label: 'Importación realizada', color: '#16a34a', bg: 'rgba(22,163,74,0.15)', border: 'none' }
+      ? { label: 'En camino', color: '#16a34a', bg: 'rgba(22,163,74,0.15)', border: 'none' }
       : { ...(STATUS_BADGE[rowData?.estado] || { label: rowData?.estado || '-', color: '#64748b', bg: 'rgba(100,116,139,0.1)' }), border: 'none' }
     return (
       <span style={{ fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.color, border: badge.border, whiteSpace: 'nowrap' }}>
@@ -5956,6 +5965,21 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     setEditImp(borradorData)
     setShowEditImp(true)
   }, [])
+
+  const handleOpenOrigen = useCallback(async (origenId) => {
+    if (!origenId || !token) return
+    setShowImpDetails(false)
+    try {
+      const response = await authFetch(`${API_URL}/importaciones/importaciones/${origenId}/`, {}, token)
+      if (!response.ok) throw new Error('No se pudo abrir la importación de origen.')
+      const data = await response.json()
+      setActiveStatus('confirmacion')
+      setEditImp(data)
+      setShowEditImp(true)
+    } catch (err) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: err.message || 'No se pudo abrir la importación de origen.', life: 4000 })
+    }
+  }, [token])
 
   const handleRowClick = (event) => {
     const target = event?.originalEvent?.target
@@ -6254,6 +6278,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         onClose={() => setShowImpDetails(false)}
         onSaved={() => { setShowImpDetails(false); invalidateImportacionesItemsCache(); fetchItems(true) }}
         moduleActions={moduleActions}
+        onOpenOrigen={handleOpenOrigen}
       />
 
       {Array.isArray(productHoverCard?.productos) && productHoverCard.productos.length > 0 && createPortal(

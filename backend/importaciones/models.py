@@ -20,7 +20,9 @@ class Importacion(models.Model):
         (ESTADO_IMPORTADA, "Importada"),
     ]
 
-    codigo = models.CharField(max_length=30, unique=True)
+    # Not unique: when a confirmacion is imported, the new en_camino record it spawns
+    # keeps this same codigo on purpose, so both are recognizable as the same import.
+    codigo = models.CharField(max_length=30, db_index=True)
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_BORRADOR)
     fecha = models.DateField(default=timezone.localdate)
     casa_comercial = models.ForeignKey(
@@ -32,6 +34,14 @@ class Importacion(models.Model):
     numero_factura = models.CharField(max_length=100, blank=True, default="")
     fecha_importacion = models.DateField(null=True, blank=True)
     dias_reales_entrega = models.PositiveSmallIntegerField(null=True, blank=True)
+    origen = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="en_camino_generadas",
+        help_text="Importacion de cotizacion/confirmacion desde la que se generó esta (en_camino).",
+    )
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

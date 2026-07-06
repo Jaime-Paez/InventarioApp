@@ -75,6 +75,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
     )
     detalles = ImportacionDetalleSerializer(many=True)
     total_productos = serializers.SerializerMethodField()
+    origen_id = serializers.SerializerMethodField()
+    origen_codigo = serializers.SerializerMethodField()
 
     class Meta:
         model = Importacion
@@ -89,6 +91,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "numero_factura",
             "fecha_importacion",
             "dias_reales_entrega",
+            "origen_id",
+            "origen_codigo",
             "detalles",
             "total_productos",
             "creado_en",
@@ -102,10 +106,18 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "dias_entrega_estimados",
             "fecha_importacion",
             "dias_reales_entrega",
+            "origen_id",
+            "origen_codigo",
             "total_productos",
             "creado_en",
             "actualizado_en",
         ]
+
+    def get_origen_id(self, obj):
+        return obj.origen_id
+
+    def get_origen_codigo(self, obj):
+        return obj.origen.codigo if obj.origen_id else None
 
     def get_total_productos(self, obj):
         prefetched = getattr(obj, "_prefetched_objects_cache", {}).get("detalles")
