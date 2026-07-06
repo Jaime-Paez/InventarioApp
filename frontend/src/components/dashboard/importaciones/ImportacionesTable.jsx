@@ -4015,7 +4015,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     if (!open) { isFirstOpenRef.current = true; return }
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
     const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    const targetWidth = (imp?.estado === 'cotizacion' || imp?.estado === 'confirmacion') ? 860 : MIN_WIDTH
+    const targetWidth = imp?.estado === 'confirmacion' ? 980 : imp?.estado === 'cotizacion' ? 900 : MIN_WIDTH
     const nextWidth = Math.min(targetWidth, availableWidth)
     const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
     const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
