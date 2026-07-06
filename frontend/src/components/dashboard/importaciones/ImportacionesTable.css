@@ -1,5 +1,20 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Refresh button: flags that this pill's data is more than 5 minutes stale */
+@keyframes imp-refresh-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.45); }
+  50% { box-shadow: 0 0 0 5px rgba(217, 119, 6, 0); }
+}
+
+.imp-refresh-btn--stale {
+  background: #d97706 !important;
+  animation: imp-refresh-pulse 1.6s ease-in-out infinite;
+}
+
+.imp-refresh-btn--stale:hover:not(:disabled) {
+  background: #b45309 !important;
+}
+
 .importaciones-table {
   display: flex;
   flex-direction: column;
