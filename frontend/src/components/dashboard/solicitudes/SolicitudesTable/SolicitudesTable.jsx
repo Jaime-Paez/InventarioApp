@@ -34,6 +34,8 @@ import {
 } from '../../../../utils/primeTableQuery'
 
 const normId = (value) => (value == null ? null : String(value))
+const buildClientsCacheSignature = (criteria, tableFilters, tableSortField, tableSortOrder, branchContextId, page, rows) =>
+  JSON.stringify({ criteria, tableFilters, tableSortField, tableSortOrder, branchContextId, page, rows })
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
 const SOLICITUD_PRODUCT_HOVER_CARD_WIDTH = 600
 const SOLICITUD_PRODUCT_HOVER_CARD_MARGIN = 12
@@ -109,6 +111,7 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
   const widthHandlers = useMemo(() => makeWidthStateHandlers('solicitudes-table-state-v2'), [])
+  const clientsCacheRef = useRef({})
   const [tableResetKey, setTableResetKey] = useState(0)
   const [columnReorderKey, setColumnReorderKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
@@ -432,6 +435,13 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
         setTotalRecords(count)
         setPageFirst(Math.max(0, (page - 1) * rows))
         setPageSize(rows)
+        clientsCacheRef.current[estadoFilter] = {
+          signature: buildClientsCacheSignature(criteria, tableFilters, tableSortField, tableSortOrder, branchContextId, page, rows),
+          clients: normalized,
+          totalRecords: count,
+          pageFirst: Math.max(0, (page - 1) * rows),
+          pageSize: rows,
+        }
         if (estadoFilter === 'aceptado') setBorradorImpsRefreshKey((k) => k + 1)
         return normalized
       } catch (err) {
@@ -527,6 +537,9 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   }, [fetchSucursales])
 
   const refreshData = () => {
+    clientsCacheRef.current = {}
+    importadosLoadedRef.current = false
+    if (statusFilter === 'importado') { fetchImportados(true); return }
     if (!lastSearchRef.current) {
       setShowSearchModal(true)
       return
@@ -692,14 +705,17 @@ const handleResetTable = () => {
   const [importadosLoading, setImportadosLoading] = useState(false)
   const [importadosFilter, setImportadosFilter] = useState('')
   const [importadosFilters, setImportadosFilters] = useState({ global: { value: null, matchMode: FilterMatchMode.CONTAINS } })
+  const importadosLoadedRef = useRef(false)
 
-  const fetchImportados = useCallback(async () => {
+  const fetchImportados = useCallback(async (force = false) => {
+    if (!force && importadosLoadedRef.current) return
     setImportadosLoading(true)
     try {
       const resp = await authFetch(`${API_URL}/solicitudes/solicitudes/importados/`, {}, token)
       if (!resp.ok) throw new Error('Error cargando importados')
       const data = await resp.json()
       setImportadosItems(data.results || [])
+      importadosLoadedRef.current = true
     } catch {
       setImportadosItems([])
     } finally {
@@ -716,10 +732,23 @@ const handleResetTable = () => {
     if (nextFilter === statusFilter) return
     setStatusFilter(nextFilter)
     setSelectedRows([])
+    setPageFirst(0)
+    if (nextFilter === 'importado') { setClients([]); setTotalRecords(0); return }
+
+    const cached = clientsCacheRef.current[nextFilter]
+    const signature = buildClientsCacheSignature(
+      lastSearchRef.current, filters, sortField, sortOrder, normalizedCreateBranchId, 1, pageSize
+    )
+    if (cached && cached.signature === signature) {
+      setClients(cached.clients)
+      setTotalRecords(cached.totalRecords)
+      setPageFirst(cached.pageFirst)
+      setPageSize(cached.pageSize)
+      return
+    }
+
     setClients([])
     setTotalRecords(0)
-    setPageFirst(0)
-    if (nextFilter === 'importado') return
     setIsRefreshing(true)
     fetchClients(lastSearchRef.current, 1, pageSize, {
       tableFilters: filters,
@@ -1456,17 +1485,30 @@ const handleResetTable = () => {
     const nextFilter = String(estado || '').trim().toLowerCase() === 'archivado'
       ? 'archivado'
       : 'aceptado'
+    const searchCriteriaForFetch = lastSearchRef.current || initialSearchCriteria
 
     setStatusFilter(nextFilter)
     setSelectedRows([])
-    setClients([])
-    setTotalRecords(0)
     setPageFirst(0)
     setSelectedId(normalizedId)
     setShowDetailsModal(true)
-    setIsRefreshing(true)
 
-    await fetchClients(lastSearchRef.current || initialSearchCriteria, 1, pageSize, {
+    const cached = clientsCacheRef.current[nextFilter]
+    const signature = buildClientsCacheSignature(
+      searchCriteriaForFetch, filters, sortField, sortOrder, normalizedCreateBranchId, 1, pageSize
+    )
+    if (cached && cached.signature === signature) {
+      setClients(cached.clients)
+      setTotalRecords(cached.totalRecords)
+      setPageFirst(cached.pageFirst)
+      setPageSize(cached.pageSize)
+      return
+    }
+
+    setClients([])
+    setTotalRecords(0)
+    setIsRefreshing(true)
+    await fetchClients(searchCriteriaForFetch, 1, pageSize, {
       tableFilters: filters,
       tableSortField: sortField,
       tableSortOrder: sortOrder,
@@ -1478,15 +1520,30 @@ const handleResetTable = () => {
   const handleViewOriginalSolicitud = (rowData) => {
     const id = rowData?.id
     if (id == null) return
+    const searchCriteriaForFetch = lastSearchRef.current || initialSearchCriteria
+
     setStatusFilter('solicitado')
     setSelectedRows([])
-    setClients([])
-    setTotalRecords(0)
     setPageFirst(0)
     setSelectedId(id)
     setShowDetailsModal(true)
+
+    const cached = clientsCacheRef.current.solicitado
+    const signature = buildClientsCacheSignature(
+      searchCriteriaForFetch, filters, sortField, sortOrder, normalizedCreateBranchId, 1, pageSize
+    )
+    if (cached && cached.signature === signature) {
+      setClients(cached.clients)
+      setTotalRecords(cached.totalRecords)
+      setPageFirst(cached.pageFirst)
+      setPageSize(cached.pageSize)
+      return
+    }
+
+    setClients([])
+    setTotalRecords(0)
     setIsRefreshing(true)
-    fetchClients(lastSearchRef.current || initialSearchCriteria, 1, pageSize, {
+    fetchClients(searchCriteriaForFetch, 1, pageSize, {
       tableFilters: filters,
       tableSortField: sortField,
       tableSortOrder: sortOrder,
