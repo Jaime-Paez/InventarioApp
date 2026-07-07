@@ -1308,3 +1308,13 @@
     grid-template-columns: minmax(0, 1fr) 76px 36px;
   }
 }
+
+/* The status tabs no longer always have a "Crear" button before them (it now
+   only shows on Sugerencias, pushed to the right), so the divider border that
+   separated it from the tab group would otherwise float with nothing to its
+   left. */
+.importaciones-page .users-page__actions .transfer-issues-page__type-filter {
+  border-left: none;
+  padding-left: 0;
+  margin-left: 0;
+}

@@ -6239,7 +6239,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   )
 
   return (
-    <div className="users-page">
+    <div className="users-page importaciones-page">
       <Toast
         ref={toast}
         baseZIndex={12050}
