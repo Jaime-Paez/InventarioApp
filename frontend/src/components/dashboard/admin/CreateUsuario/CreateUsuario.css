@@ -584,20 +584,22 @@
 .create-user__field--invalid input,
 .create-user__field--invalid select,
 .create-user__field--invalid textarea {
-  border-color: var(--color-error-text);
+  border-color: color-mix(in srgb, #ef4444 55%, var(--color-border));
+  box-shadow: 0 0 6px 0 color-mix(in srgb, #ef4444 35%, transparent);
 }
 
 .create-user__field--invalid input:focus,
 .create-user__field--invalid select:focus,
 .create-user__field--invalid textarea:focus {
-  border-color: var(--color-error-text);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-error-text) 20%, transparent);
+  border-color: #ef4444;
+  box-shadow: 0 0 8px 0 color-mix(in srgb, #ef4444 45%, transparent);
 }
 
 .dashboard-shell.dark .create-user__field--invalid input,
 .dashboard-shell.dark .create-user__field--invalid select,
 .dashboard-shell.dark .create-user__field--invalid textarea {
-  border-color: var(--color-error-text-dark);
+  border-color: color-mix(in srgb, #ef4444 65%, var(--color-border));
+  box-shadow: 0 0 6px 0 color-mix(in srgb, #ef4444 40%, transparent);
 }
 
 .create-user__select-with-flag {

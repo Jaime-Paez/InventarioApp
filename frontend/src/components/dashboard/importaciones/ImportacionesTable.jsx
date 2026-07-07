@@ -3193,19 +3193,21 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     if (!nuevoProductoDraft.referencia.trim()) errors.referencia = 'La referencia es requerida'
     const qty = Number(nuevoProductoDraft.cantidad)
     if (!nuevoProductoDraft.cantidad || !Number.isFinite(qty) || qty <= 0) errors.cantidad = 'La cantidad debe ser mayor a 0'
+    setNuevoProductoErrors(errors)
+    let blocked = false
     if (Object.keys(errors).length > 0) {
-      setNuevoProductoErrors(errors)
       toastRef.current?.show({ severity: 'error', summary: 'Campos incompletos', detail: 'Debes completar los campos obligatorios.', life: 4000 })
-      return
+      blocked = true
     }
     if (nuevoProductoExisting.codigo) {
       toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${nuevoProductoExisting.codigo.codigo}: ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`, life: 4500 })
-      return
+      blocked = true
     }
     if (nuevoProductoExisting.referencia) {
       toastRef.current?.show({ severity: 'warn', summary: 'Referencia ya existe', detail: `${nuevoProductoExisting.referencia.codigo}: ${nuevoProductoExisting.referencia.nombre || nuevoProductoExisting.referencia.descripcion || ''}`, life: 4500 })
-      return
+      blocked = true
     }
+    if (blocked) return
     const incomingRef = nuevoProductoDraft.referencia.trim().toLowerCase()
     if (details.some((d) => String(d.producto?.referencia || d.referencia || '').trim().toLowerCase() === incomingRef)) {
       setNuevoProductoErrors((p) => ({ ...p, referencia: 'Ya existe un producto con esta referencia en el listado.' }))
@@ -4539,19 +4541,21 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     if (!nuevoProductoDraft.referencia.trim()) errors.referencia = 'La referencia es requerida'
     const qty = Number(nuevoProductoDraft.cantidad)
     if (!nuevoProductoDraft.cantidad || !Number.isFinite(qty) || qty <= 0) errors.cantidad = 'La cantidad debe ser mayor a 0'
+    setNuevoProductoErrors(errors)
+    let blocked = false
     if (Object.keys(errors).length > 0) {
-      setNuevoProductoErrors(errors)
       toastRef.current?.show({ severity: 'error', summary: 'Campos incompletos', detail: 'Debes completar los campos obligatorios.', life: 4000 })
-      return
+      blocked = true
     }
     if (nuevoProductoExisting.codigo) {
       toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${nuevoProductoExisting.codigo.codigo}: ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`, life: 4500 })
-      return
+      blocked = true
     }
     if (nuevoProductoExisting.referencia) {
       toastRef.current?.show({ severity: 'warn', summary: 'Referencia ya existe', detail: `${nuevoProductoExisting.referencia.codigo}: ${nuevoProductoExisting.referencia.nombre || nuevoProductoExisting.referencia.descripcion || ''}`, life: 4500 })
-      return
+      blocked = true
     }
+    if (blocked) return
     const incomingRef = nuevoProductoDraft.referencia.trim().toLowerCase()
     if (details.some((d) => String(d.producto?.referencia || d.referencia || '').trim().toLowerCase() === incomingRef)) {
       setNuevoProductoErrors((p) => ({ ...p, referencia: 'Ya existe un producto con esta referencia en el listado.' }))
