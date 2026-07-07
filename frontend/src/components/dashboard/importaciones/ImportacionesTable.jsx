@@ -1221,7 +1221,7 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
                   </div>
                   <div className="create-user__locations-table importaciones-modal__products-table">
                     <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row">
-                      <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
+                      <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span><span>Comentario</span>
                     </div>
                     {!detalles.length ? (
                       <div className="create-user__locations-row create-user__locations-row--empty imp-details__productos-row" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
@@ -1234,6 +1234,7 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
                       const referencia = String(d.producto?.referencia || d.referencia || '').trim() || '-'
                       const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
                       const cantidad = d.cantidad_confirmada ?? d.cantidad ?? '-'
+                      const comentario = d.comentario || '-'
                       return (
                         <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
                           <span
@@ -1277,6 +1278,13 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
                             onMouseLeave={hideCellHover}
                           >
                             <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{cantidad}</span>
+                          </span>
+                          <span
+                            className="imp-table-cell-tip"
+                            onMouseEnter={(e) => showCellHover(e, comentario !== '-' ? comentario : null, 'Comentario')}
+                            onMouseLeave={hideCellHover}
+                          >
+                            <span className="imp-table-cell-text">{comentario}</span>
                           </span>
                         </div>
                       )
@@ -1361,87 +1369,104 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
 }
 
 function HistorialConfirmacionModal({ imp, onClose }) {
-  const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
-  const mode = isDark ? 'dark' : 'light'
   const historial = Array.isArray(imp.historial_confirmacion) ? imp.historial_confirmacion : []
+  const [cellHover, setCellHover] = useState(null)
+  const cellHoverTimerRef = useRef(null)
+  const showCellHover = useCallback((event, items, label) => {
+    const list = (Array.isArray(items) ? items : [items]).filter(Boolean)
+    if (!list.length) return
+    if (cellHoverTimerRef.current) clearTimeout(cellHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    cellHoverTimerRef.current = setTimeout(() => {
+      cellHoverTimerRef.current = null
+      setCellHover({ top: rect.bottom + 4, left: rect.left, items: list, label })
+    }, 400)
+  }, [])
+  const hideCellHover = useCallback(() => {
+    if (cellHoverTimerRef.current) { clearTimeout(cellHoverTimerRef.current); cellHoverTimerRef.current = null }
+    setCellHover(null)
+  }, [])
 
   return createPortal(
-    <div
-      className={`quick-actions__receive-overlay ${mode}`}
-      style={{ zIndex: 2100 }}
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div
-        className={`quick-actions__receive-dialog ${mode}`}
-        style={{ width: 'min(760px, 95vw)', height: 'auto', maxHeight: '85vh', gridTemplateRows: 'auto 1fr auto' }}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <header className="quick-actions__receive-head">
-          <div>
-            <h4>Historial de confirmación</h4>
-            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginTop: 2 }}>
-              Revisión guardada al importar {imp.codigo}
-            </p>
-          </div>
-          <button type="button" className="quick-actions__receive-close" onClick={onClose}><X size={16} /></button>
-        </header>
-
-        <div className="quick-actions__receive-body" style={{ padding: '16px 20px', overflowY: 'auto' }}>
-          {historial.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
-              No hay historial de confirmación para esta importación.
-            </p>
-          ) : (
-            <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', maxHeight: '60vh' }}>
-              <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)' }}>
-                <colgroup>
-                  <col />
-                  <col style={{ width: 110 }} />
-                  <col style={{ width: 60 }} />
-                  <col style={{ width: 70 }} />
-                  <col style={{ width: 46 }} />
-                  <col style={{ width: 160 }} />
-                </colgroup>
-                <thead>
-                  <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
-                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Nombre</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Referencia</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>Precio conf.</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Estado</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Comentario</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historial.map((row, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
-                      <td style={{ padding: '7px 12px' }}>{row.nombre || '—'}</td>
-                      <td style={{ padding: '7px 12px' }}>{row.referencia || '—'}</td>
-                      <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600 }}>{row.cantidad_confirmada ?? row.cantidad ?? '—'}</td>
-                      <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600 }}>{row.precio_confirmado != null ? `$${Number(row.precio_confirmado).toFixed(2)}` : '—'}</td>
-                      <td style={{ padding: '7px 12px', textAlign: 'center' }}>
-                        {row.estado === 'check' ? (
-                          <Check size={15} style={{ color: '#16a34a' }} />
-                        ) : row.estado === 'x' ? (
-                          <X size={15} style={{ color: '#dc2626' }} />
-                        ) : (
-                          <span style={{ color: '#94a3b8' }}>—</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)' }}>{row.comentario || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+    <>
+      <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+        <div className="imp-aceptados-popup__dialog" style={{ width: 'min(820px, calc(100vw - 32px))' }} onMouseDown={(e) => e.stopPropagation()}>
+          <header className="imp-aceptados-popup__header">
+            <div>
+              <h3>Historial de confirmación</h3>
+              <p>Revisión guardada al importar {imp.codigo}</p>
             </div>
-          )}
-        </div>
+            <button type="button" className="imp-aceptados-popup__close" onClick={onClose} aria-label="Cerrar">
+              <i className="pi pi-times" />
+            </button>
+          </header>
 
-        <footer className="quick-actions__receive-actions">
-          <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={onClose}>Cerrar</button>
-        </footer>
+          <div className="imp-aceptados-popup__body">
+            <div className="create-user__locations-table importaciones-modal__products-table">
+              <div className="create-user__locations-row create-user__locations-row--head imp-historial__row">
+                <span>Nombre</span><span>Referencia</span><span>Cant.</span><span>Precio conf.</span><span>Estado</span><span>Comentario</span>
+              </div>
+              {historial.length === 0 ? (
+                <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}>
+                  <span>No hay historial de confirmación para esta importación.</span>
+                </div>
+              ) : historial.map((row, i) => (
+                <div key={i} className="create-user__locations-row imp-historial__row">
+                  <span
+                    className="imp-table-cell-tip"
+                    onMouseEnter={(e) => showCellHover(e, row.nombre, 'Nombre')}
+                    onMouseLeave={hideCellHover}
+                  >
+                    <span className="imp-table-cell-text">{row.nombre || '-'}</span>
+                  </span>
+                  <span
+                    className="imp-table-cell-tip"
+                    onMouseEnter={(e) => showCellHover(e, row.referencia, 'Referencia')}
+                    onMouseLeave={hideCellHover}
+                  >
+                    <span className="imp-table-cell-text">{row.referencia || '-'}</span>
+                  </span>
+                  <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{row.cantidad_confirmada ?? row.cantidad ?? '-'}</span>
+                  <span className="imp-table-cell-text" style={{ textAlign: 'right', fontWeight: 600 }}>{row.precio_confirmado != null ? `$${Number(row.precio_confirmado).toFixed(2)}` : '-'}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {row.estado === 'check' ? (
+                      <Check size={15} style={{ color: '#16a34a' }} />
+                    ) : row.estado === 'x' ? (
+                      <X size={15} style={{ color: '#dc2626' }} />
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>-</span>
+                    )}
+                  </span>
+                  <span
+                    className="imp-table-cell-tip"
+                    onMouseEnter={(e) => showCellHover(e, row.comentario, 'Comentario')}
+                    onMouseLeave={hideCellHover}
+                  >
+                    <span className="imp-table-cell-text">{row.comentario || '-'}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="imp-aceptados-popup__footer" style={{ justifyContent: 'flex-end' }}>
+            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
+          </div>
+        </div>
       </div>
-    </div>,
+      {cellHover && createPortal(
+        <div
+          className="imp-cell-hover-card"
+          style={{ top: cellHover.top, left: cellHover.left }}
+        >
+          <div className="imp-cell-hover-card__title">{cellHover.label}</div>
+          {cellHover.items.map((value, i) => (
+            <div key={i} className="imp-cell-hover-card__row">{value}</div>
+          ))}
+        </div>,
+        getPortalRoot()
+      )}
+    </>,
     getPortalRoot()
   )
 }
