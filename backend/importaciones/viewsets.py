@@ -172,13 +172,17 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Build confirmed-price lookup from submitted detalles
+        # Build confirmed-data lookup from submitted detalles. detalle_id is the
+        # authoritative key (unambiguous for both catalogued and sin-catálogo
+        # items); producto_id is kept only as a fallback for older clients.
         detalles_payload = request.data.get("detalles") or []
-        confirmed_by_key = {}
+        confirmed_by_detalle_id = {}
+        confirmed_by_producto_id = {}
         for d in detalles_payload:
-            key = str(d["producto_id"]) if d.get("producto_id") else None
-            if key:
-                confirmed_by_key[key] = d
+            if d.get("detalle_id") is not None:
+                confirmed_by_detalle_id[str(d["detalle_id"])] = d
+            if d.get("producto_id"):
+                confirmed_by_producto_id[str(d["producto_id"])] = d
 
         # 1. Snapshot every reviewed detalle (checked, x'd, or untouched) with its
         # confirmed price/quantity/comment before anything is removed, so the
@@ -189,7 +193,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         detalles_to_delete = []
         for detalle in instance.detalles.select_related("producto").all():
             key = str(detalle.producto_id) if detalle.producto_id else f"sc_{detalle.id}"
-            confirmed = confirmed_by_key.get(key, {})
+            confirmed = confirmed_by_detalle_id.get(str(detalle.id)) or confirmed_by_producto_id.get(key, {})
             precio_raw = confirmed.get("precio_confirmado")
             cant_raw = confirmed.get("cantidad_confirmada")
             if precio_raw not in (None, ""):

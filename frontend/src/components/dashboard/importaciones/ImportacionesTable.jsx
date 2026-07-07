@@ -4404,10 +4404,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '',
       }
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), producto: d.producto, cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed }
+        return { _key: String(d.producto.id), _detalleId: d.id ?? null, producto: d.producto, cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed }
       }
       return {
-        _key: 'sc_' + (d.id ?? i), producto: null,
+        _key: 'sc_' + (d.id ?? i), _detalleId: d.id ?? null, producto: null,
         codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '',
         cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
       }
@@ -5068,8 +5068,9 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
             : null,
           cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
         }
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
+        const detalleId = item._detalleId != null ? { detalle_id: item._detalleId } : {}
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId, ...detalleId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId, ...detalleId }
       })
       const selectedKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'check').map(([k]) => k)
       const xKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'x').map(([k]) => k)
@@ -6981,7 +6982,12 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         imp={editImp}
         token={token}
         onClose={() => setShowEditImp(false)}
-        onSaved={() => { setShowEditImp(false); invalidateImportacionesItemsCache(); fetchItems(true) }}
+        onSaved={(payload) => {
+          setShowEditImp(false)
+          invalidateImportacionesItemsCache()
+          fetchItems(true)
+          if (payload?.estado === 'en_camino' && !statusProp) setActiveStatus('en_camino')
+        }}
         onOpenBorrador={handleOpenBorrador}
         onOpenEnCamino={handleOpenEnCamino}
         moduleActions={moduleActions}
