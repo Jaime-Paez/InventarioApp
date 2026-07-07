@@ -3193,7 +3193,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     if (!nuevoProductoDraft.referencia.trim()) errors.referencia = 'La referencia es requerida'
     const qty = Number(nuevoProductoDraft.cantidad)
     if (!nuevoProductoDraft.cantidad || !Number.isFinite(qty) || qty <= 0) errors.cantidad = 'La cantidad debe ser mayor a 0'
-    if (Object.keys(errors).length > 0) { setNuevoProductoErrors(errors); return }
+    if (Object.keys(errors).length > 0) {
+      setNuevoProductoErrors(errors)
+      toastRef.current?.show({ severity: 'error', summary: 'Campos incompletos', detail: 'Debes completar los campos obligatorios.', life: 4000 })
+      return
+    }
     if (nuevoProductoExisting.codigo) {
       toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${nuevoProductoExisting.codigo.codigo}: ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`, life: 4500 })
       return
@@ -4535,7 +4539,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     if (!nuevoProductoDraft.referencia.trim()) errors.referencia = 'La referencia es requerida'
     const qty = Number(nuevoProductoDraft.cantidad)
     if (!nuevoProductoDraft.cantidad || !Number.isFinite(qty) || qty <= 0) errors.cantidad = 'La cantidad debe ser mayor a 0'
-    if (Object.keys(errors).length > 0) { setNuevoProductoErrors(errors); return }
+    if (Object.keys(errors).length > 0) {
+      setNuevoProductoErrors(errors)
+      toastRef.current?.show({ severity: 'error', summary: 'Campos incompletos', detail: 'Debes completar los campos obligatorios.', life: 4000 })
+      return
+    }
     if (nuevoProductoExisting.codigo) {
       toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${nuevoProductoExisting.codigo.codigo}: ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`, life: 4500 })
       return
