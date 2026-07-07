@@ -616,15 +616,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     conflicto_casa_nombre = otra.nombre if otra else "otra casa comercial"
                     matched = None  # treat as unmatched so it never enters the import
 
-            if matched and cantidad <= 0:
-                continue  # nothing to add for an already-catalogued product
-
             faltan_datos = []
-            if not matched and not conflicto_casa:
-                if not referencia:
-                    faltan_datos.append("Referencia")
-                if not descripcion:
-                    faltan_datos.append("Descripción")
+            if not conflicto_casa:
+                if not matched:
+                    if not referencia:
+                        faltan_datos.append("Referencia")
+                    if not descripcion:
+                        faltan_datos.append("Descripción")
                 if cantidad <= 0:
                     faltan_datos.append("Cantidad")
                 if pvp <= 0:
