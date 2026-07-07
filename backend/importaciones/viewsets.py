@@ -526,12 +526,44 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if not all_rows:
             return Response({"detail": "El archivo está vacío."}, status=status.HTTP_400_BAD_REQUEST)
 
-        header = [str(h or "").strip().upper() for h in all_rows[0]]
-        sucursal_col_names = header[6:] if len(header) > 6 else []
+        import unicodedata
+
+        def normalize_header(val):
+            text = str(val or "").strip().upper()
+            text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+            return text
+
+        header = [normalize_header(h) for h in all_rows[0]]
+        # Known columns can appear in any order; anything left over (after the
+        # known ones) is treated as a per-sucursal quantity column.
+        known_aliases = {
+            "codigo": ["CODIGO JP", "CODIGO"],
+            "referencia": ["REFERENCIA"],
+            "oem": ["OEM"],
+            "descripcion": ["DESCRIPCION"],
+            "cantidad": ["CANTIDAD"],
+            "pvp": ["PVP"],
+        }
+        col_idx_by_field = {}
+        known_col_indexes = set()
+        for field, aliases in known_aliases.items():
+            for idx, name in enumerate(header):
+                if name in aliases:
+                    col_idx_by_field[field] = idx
+                    known_col_indexes.add(idx)
+                    break
+
+        sucursal_cols = [(idx, name) for idx, name in enumerate(header) if idx not in known_col_indexes and name]
 
         from inventario.models import Sucursal as SucursalModel
         suc_by_name = {s.nombre.strip().upper(): s.id for s in SucursalModel.objects.all()}
-        sucursal_col_ids = [suc_by_name.get(name) for name in sucursal_col_names]
+        sucursal_col_ids = {idx: suc_by_name.get(name) for idx, name in sucursal_cols}
+
+        def cell(row, field):
+            idx = col_idx_by_field.get(field)
+            if idx is None or idx >= len(row):
+                return None
+            return row[idx]
 
         def safe_str(val):
             return str(val or "").strip()
@@ -556,18 +588,14 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
         parsed = []
         for row in all_rows[1:]:
-            if all(cell is None or str(cell).strip() == "" for cell in (row[:6] if len(row) >= 6 else row)):
-                continue
-            codigo = safe_str(row[0]) if len(row) > 0 else ""
-            referencia = safe_str(row[1]) if len(row) > 1 else ""
-            oem = safe_str(row[2]) if len(row) > 2 else ""
-            descripcion = safe_str(row[3]) if len(row) > 3 else ""
-            cantidad = safe_int(row[4]) if len(row) > 4 else 0
-            pvp = safe_float(row[5]) if len(row) > 5 else 0.0
-            if not codigo and not descripcion:
-                continue
-            if cantidad <= 0:
-                continue
+            codigo = safe_str(cell(row, "codigo"))
+            referencia = safe_str(cell(row, "referencia"))
+            oem = safe_str(cell(row, "oem"))
+            descripcion = safe_str(cell(row, "descripcion"))
+            cantidad = safe_int(cell(row, "cantidad"))
+            pvp = safe_float(cell(row, "pvp"))
+            if not codigo and not referencia and not descripcion and cantidad <= 0 and pvp <= 0:
+                continue  # fully blank template row
 
             matched = None
             conflicto_casa = False
@@ -584,12 +612,25 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     conflicto_casa_nombre = otra.nombre if otra else "otra casa comercial"
                     matched = None  # treat as unmatched so it never enters the import
 
+            if matched and cantidad <= 0:
+                continue  # nothing to add for an already-catalogued product
+
+            faltan_datos = []
+            if not matched and not conflicto_casa:
+                if not referencia:
+                    faltan_datos.append("Referencia")
+                if not descripcion:
+                    faltan_datos.append("Descripción")
+                if cantidad <= 0:
+                    faltan_datos.append("Cantidad")
+                if pvp <= 0:
+                    faltan_datos.append("PVP")
+
             suc_quantities = {}
-            for col_offset, suc_id in enumerate(sucursal_col_ids):
-                col_idx = 6 + col_offset
-                if suc_id is None or col_idx >= len(row):
+            for idx, suc_id in sucursal_col_ids.items():
+                if suc_id is None or idx >= len(row):
                     continue
-                qty = safe_int(row[col_idx])
+                qty = safe_int(row[idx])
                 if qty > 0:
                     suc_quantities[str(suc_id)] = qty
 
@@ -607,6 +648,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "sucursal_quantities": suc_quantities,
                 "conflicto_casa": conflicto_casa,
                 "conflicto_casa_nombre": conflicto_casa_nombre,
+                "faltan_datos": faltan_datos,
             })
 
         if not parsed:

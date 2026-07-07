@@ -1585,7 +1585,8 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
 
   const canProcess = Boolean(selectedFile && selectedCasa)
   const conflictoRows = parsedRows.filter(r => r.conflicto_casa)
-  const validRows = parsedRows.filter(r => !r.conflicto_casa)
+  const incompleteRows = parsedRows.filter(r => !r.conflicto_casa && (r.faltan_datos || []).length > 0)
+  const validRows = parsedRows.filter(r => !r.conflicto_casa && (r.faltan_datos || []).length === 0)
   const matchedCount = validRows.filter(r => r.matched_producto_id).length
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
   const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
@@ -1835,159 +1836,177 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
             {/* ── PASO 3: Revisar productos ── */}
             {step === 3 && (
               <>
-                {conflictoRows.length > 0 && (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: '0.95rem' }} />
-                      <strong style={{ fontSize: 'var(--font-size-md)', color: '#dc2626' }}>
-                        {conflictoRows.length} producto{conflictoRows.length !== 1 ? 's' : ''} excluido{conflictoRows.length !== 1 ? 's' : ''} — pertenece{conflictoRows.length === 1 ? '' : 'n'} a otra casa comercial
+                {incompleteRows.length > 0 ? (
+                  <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="pi pi-exclamation-triangle" style={{ color: '#c2410c', fontSize: 'var(--font-size-base)' }} />
+                      <strong style={{ fontSize: 'var(--font-size-sm)', color: '#c2410c' }}>
+                        {incompleteRows.length} producto{incompleteRows.length !== 1 ? 's' : ''} nuevo{incompleteRows.length !== 1 ? 's' : ''} con datos incompletos en el Excel
                       </strong>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {conflictoRows.map((row, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-md)' }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#dc2626', minWidth: 80 }}>{row.codigo || '—'}</span>
-                          <span style={{ color: '#7f1d1d' }}>{row.descripcion || row.referencia || '—'}</span>
-                          <span style={{ marginLeft: 'auto', color: '#b91c1c', fontStyle: 'italic', whiteSpace: 'nowrap' }}>→ {row.conflicto_casa_nombre}</span>
+                      {incompleteRows.map((row, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)', padding: '4px 6px', background: '#ffedd5', borderRadius: 4 }}>
+                          <i className="pi pi-arrow-right" style={{ color: '#c2410c', fontSize: 'var(--font-size-sm)' }} />
+                          <span style={{ color: '#9a3412', fontWeight: 600, minWidth: 160 }}>{row.descripcion || row.referencia || row.codigo || '—'}</span>
+                          <span style={{ marginLeft: 'auto', color: '#9a3412', fontStyle: 'italic', whiteSpace: 'nowrap' }}>Falta: {row.faltan_datos.join(', ')}</span>
                         </div>
                       ))}
                     </div>
-                    <p style={{ margin: 0, fontSize: 'var(--font-size-md)', color: '#7f1d1d' }}>
-                      Estos códigos no se incluirán en la sugerencia. Para agregarlos, primero asígnalos a <strong>{selectedCasa?.nombre}</strong> en el catálogo de productos.
+                    <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#9a3412' }}>
+                      Los productos nuevos (que no existen en el catálogo) deben tener referencia, descripción, cantidad y PVP. Corrige esos datos en el Excel y vuelve a subirlo.
                     </p>
                   </div>
-                )}
+                ) : (
+                  <>
+                    {conflictoRows.length > 0 && (
+                      <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: 'var(--font-size-base)' }} />
+                          <strong style={{ fontSize: 'var(--font-size-sm)', color: '#dc2626' }}>
+                            {conflictoRows.length} producto{conflictoRows.length !== 1 ? 's' : ''} excluido{conflictoRows.length !== 1 ? 's' : ''} — pertenece{conflictoRows.length === 1 ? '' : 'n'} a otra casa comercial
+                          </strong>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {conflictoRows.map((row, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)' }}>
+                              <span style={{ fontWeight: 600, color: '#dc2626', minWidth: 80 }}>{row.codigo || '—'}</span>
+                              <span style={{ color: '#7f1d1d' }}>{row.descripcion || row.referencia || '—'}</span>
+                              <span style={{ marginLeft: 'auto', color: '#b91c1c', fontStyle: 'italic', whiteSpace: 'nowrap' }}>→ {row.conflicto_casa_nombre}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#7f1d1d' }}>
+                          Estos códigos no se incluirán en la sugerencia. Para agregarlos, primero asígnalos a <strong>{selectedCasa?.nombre}</strong> en el catálogo de productos.
+                        </p>
+                      </div>
+                    )}
 
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {matchedCount > 0 && (
-                    <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '3px 12px', fontSize: 'var(--font-size-md)', fontWeight: 600 }}>
-                      ✓ {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
-                    </span>
-                  )}
-                  {unmatchedCount > 0 && (
-                    <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '3px 12px', fontSize: 'var(--font-size-md)', fontWeight: 600 }}>
-                      — {unmatchedCount} sin catálogo
-                    </span>
-                  )}
-                  {referenciaConflictCount > 0 && (
-                    <span style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '3px 12px', fontSize: 'var(--font-size-md)', fontWeight: 600 }}>
-                      ⚠ {referenciaConflictCount} con referencia diferente
-                    </span>
-                  )}
-                </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {matchedCount > 0 && (
+                        <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                          ✓ {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
+                        </span>
+                      )}
+                      {unmatchedCount > 0 && (
+                        <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                          — {unmatchedCount} sin catálogo
+                        </span>
+                      )}
+                      {referenciaConflictCount > 0 && (
+                        <span style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                          ⚠ {referenciaConflictCount} con referencia diferente
+                        </span>
+                      )}
+                    </div>
 
-                {referenciaConflictCount > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
-                    <span style={{ fontSize: 'var(--font-size-md)', color: '#9a3412', flex: 1 }}>
-                      Debes seleccionar la referencia a guardar para cada conflicto antes de continuar.
-                    </span>
-                    <span style={{ fontSize: 'var(--font-size-md)', color: '#9a3412', fontWeight: 600, whiteSpace: 'nowrap' }}>Seleccionar todas:</span>
-                    <button
-                      type="button"
-                      onClick={() => selectAllDecision('keep')}
-                      style={{ fontSize: 'var(--font-size-md)', padding: '3px 10px', borderRadius: 4, cursor: 'pointer', border: '1px solid #1e40af', background: '#1e40af', color: '#fff', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-                    >
-                      Actuales (BD)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => selectAllDecision('excel')}
-                      style={{ fontSize: 'var(--font-size-md)', padding: '3px 10px', borderRadius: 4, cursor: 'pointer', border: '1px solid #c2410c', background: '#c2410c', color: '#fff', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-                    >
-                      Del Excel
-                    </button>
-                  </div>
-                )}
+                    {referenciaConflictCount > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
+                        <span style={{ fontSize: 'var(--font-size-sm)', color: '#9a3412', flex: 1 }}>
+                          Debes seleccionar la referencia a guardar para cada conflicto antes de continuar.
+                        </span>
+                        <span style={{ fontSize: 'var(--font-size-sm)', color: '#9a3412', fontWeight: 600, whiteSpace: 'nowrap' }}>Seleccionar todas:</span>
+                        <button
+                          type="button"
+                          onClick={() => selectAllDecision('keep')}
+                          style={{ fontSize: 'var(--font-size-sm)', padding: '2px 8px', borderRadius: 4, cursor: 'pointer', border: '1px solid #1e40af', background: '#1e40af', color: '#fff', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                        >
+                          Actuales (BD)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => selectAllDecision('excel')}
+                          style={{ fontSize: 'var(--font-size-sm)', padding: '2px 8px', borderRadius: 4, cursor: 'pointer', border: '1px solid #c2410c', background: '#c2410c', color: '#fff', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                        >
+                          Del Excel
+                        </button>
+                      </div>
+                    )}
 
-                <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', maxHeight: 'min(380px, 45vh)' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-md)', minWidth: 620 }}>
-                    <thead>
-                      <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Código</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Referencia</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {validRows.map((row, i) => {
-                        const conflict = hasReferenciaConflict(row)
-                        const decision = referenciaDecisions[i]
-                        return (
-                          <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: conflict && decision === undefined ? '#fffbeb' : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
-                            <td style={{ padding: '7px 12px', fontFamily: 'monospace', fontSize: 'var(--font-size-md)', whiteSpace: 'nowrap' }}>{row.codigo || '—'}</td>
-                            <td style={{ padding: '7px 12px', minWidth: 140 }}>
-                              {conflict ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                  <span style={{ fontSize: 'var(--font-size-md)', color: decision === undefined ? '#c2410c' : '#6b7280', fontWeight: 600 }}>
-                                    {decision === undefined ? '⚠ Sin seleccionar' : '✓ Seleccionado'}
-                                  </span>
-                                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => setReferenciaDecisions(p => ({ ...p, [i]: 'keep' }))}
-                                      style={{
-                                        fontSize: 'var(--font-size-md)', padding: '2px 7px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace',
-                                        border: `1px solid ${decision === 'keep' ? '#1e40af' : '#cbd5e1'}`,
-                                        background: decision === 'keep' ? '#1e40af' : 'transparent',
-                                        color: decision === 'keep' ? '#fff' : '#64748b',
-                                      }}
-                                    >
-                                      Actual: {row.matched_producto_referencia || '—'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setReferenciaDecisions(p => ({ ...p, [i]: 'excel' }))}
-                                      style={{
-                                        fontSize: 'var(--font-size-md)', padding: '2px 7px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace',
-                                        border: `1px solid ${decision === 'excel' ? '#c2410c' : '#cbd5e1'}`,
-                                        background: decision === 'excel' ? '#c2410c' : 'transparent',
-                                        color: decision === 'excel' ? '#fff' : '#64748b',
-                                      }}
-                                    >
-                                      Excel: {row.referencia || '—'}
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-md)' }}>{row.referencia || '—'}</span>
-                              )}
-                            </td>
-                            <td style={{ padding: '7px 12px' }}>{row.descripcion || '—'}</td>
-                            <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
-                            <td style={{ padding: '7px 12px' }}>
-                              {row.matched_producto_id ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                  <span style={{ color: '#15803d', fontSize: 'var(--font-size-md)', fontWeight: 500 }}>
-                                    <i className="pi pi-check" style={{ marginRight: 4 }} />
-                                    {row.matched_producto_nombre || row.matched_producto_codigo}
-                                  </span>
-                                  {row.matched_producto_referencia && (
-                                    <span style={{ color: '#6b7280', fontSize: 'var(--font-size-md)', fontFamily: 'monospace', paddingLeft: 2 }}>
-                                      Ref: {row.matched_producto_referencia}
-                                    </span>
-                                  )}
-                                </div>
-                              ) : (
-                                <span style={{ color: '#94a3b8', fontSize: 'var(--font-size-md)' }}>Sin catálogo</span>
-                              )}
-                            </td>
+                    <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', maxHeight: 'min(380px, 45vh)' }}>
+                      <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 620 }}>
+                        <colgroup>
+                          <col style={{ width: 100 }} />
+                          <col style={{ width: 110 }} />
+                          <col />
+                          <col style={{ width: 60 }} />
+                          <col style={{ width: 80 }} />
+                        </colgroup>
+                        <thead>
+                          <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Código</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Referencia</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>PVP</th>
                           </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                        </thead>
+                        <tbody>
+                          {validRows.map((row, i) => {
+                            const conflict = hasReferenciaConflict(row)
+                            const decision = referenciaDecisions[i]
+                            return (
+                              <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: conflict && decision === undefined ? '#fffbeb' : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
+                                <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                                  {row.matched_producto_id ? (row.codigo || '—') : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin catálogo</span>}
+                                </td>
+                                <td style={{ padding: '7px 12px' }}>
+                                  {conflict ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                      <span style={{ fontSize: 'var(--font-size-sm)', color: decision === undefined ? '#c2410c' : '#6b7280', fontWeight: 600 }}>
+                                        {decision === undefined ? '⚠ Sin seleccionar' : '✓ Seleccionado'}
+                                      </span>
+                                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => setReferenciaDecisions(p => ({ ...p, [i]: 'keep' }))}
+                                          style={{
+                                            fontSize: 'var(--font-size-sm)', padding: '2px 7px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
+                                            border: `1px solid ${decision === 'keep' ? '#1e40af' : '#cbd5e1'}`,
+                                            background: decision === 'keep' ? '#1e40af' : 'transparent',
+                                            color: decision === 'keep' ? '#fff' : '#64748b',
+                                          }}
+                                        >
+                                          Actual: {row.matched_producto_referencia || '—'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setReferenciaDecisions(p => ({ ...p, [i]: 'excel' }))}
+                                          style={{
+                                            fontSize: 'var(--font-size-sm)', padding: '2px 7px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
+                                            border: `1px solid ${decision === 'excel' ? '#c2410c' : '#cbd5e1'}`,
+                                            background: decision === 'excel' ? '#c2410c' : 'transparent',
+                                            color: decision === 'excel' ? '#fff' : '#64748b',
+                                          }}
+                                        >
+                                          Excel: {row.referencia || '—'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span>{row.referencia || '—'}</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '7px 12px' }}>{row.descripcion || '—'}</td>
+                                <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
+                                <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>${Number(row.pvp || 0).toFixed(2)}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
 
-                {unmatchedCount > 0 && (
-                  <p style={{ margin: 0, fontSize: 'var(--font-size-md)', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Info size={13} />
-                    Los productos sin catálogo se crearán como pendientes. Podrás vincularlos al confirmar la llegada.
-                  </p>
+                    {unmatchedCount > 0 && (
+                      <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Info size={13} />
+                        Los productos sin catálogo se crearán como pendientes. Podrás vincularlos al confirmar la llegada.
+                      </p>
+                    )}
+
+                    {submitError && <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#dc2626' }}>{submitError}</p>}
+                  </>
                 )}
-
-                {submitError && <p style={{ margin: 0, fontSize: 'var(--font-size-md)', color: '#dc2626' }}>{submitError}</p>}
               </>
             )}
           </div>
@@ -2013,18 +2032,22 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
               </>
             )}
             {step === 3 && (
-              <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
-                <button
-                  type="button"
-                  className={`quick-actions__receive-btn${validRows.length > 0 && allConflictsResolved ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
-                  onClick={handleCreate}
-                  disabled={submitting || validRows.length === 0 || !allConflictsResolved}
-                  title={validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia' : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos' : undefined}
-                >
-                  {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 && conflictoRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
-                </button>
-              </>
+              incompleteRows.length > 0 ? (
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={() => setStep(2)}>Volver a intentar</button>
+              ) : (
+                <>
+                  <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
+                  <button
+                    type="button"
+                    className={`quick-actions__receive-btn${validRows.length > 0 && allConflictsResolved ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
+                    onClick={handleCreate}
+                    disabled={submitting || validRows.length === 0 || !allConflictsResolved}
+                    title={validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia' : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos' : undefined}
+                  >
+                    {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 && conflictoRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
+                  </button>
+                </>
+              )
             )}
           </footer>
         </div>
@@ -2176,7 +2199,7 @@ function ImportacionExcelDirectaModal({ token, onClose, onCreated }) {
     setSubmitError('')
     setSubmitting(true)
     try {
-      const detalles = parsedRows.map(row => ({
+      const detalles = validRows.map(row => ({
         producto_id: row.matched_producto_id || null,
         codigo: row.codigo || '',
         nombre: row.descripcion || '',
@@ -2207,8 +2230,10 @@ function ImportacionExcelDirectaModal({ token, onClose, onCreated }) {
   }
 
   const canProcess = Boolean(selectedFile && selectedCasa)
-  const matchedCount = parsedRows.filter(r => r.matched_producto_id).length
-  const unmatchedCount = parsedRows.length - matchedCount
+  const incompleteRows = parsedRows.filter(r => (r.faltan_datos || []).length > 0)
+  const validRows = parsedRows.filter(r => (r.faltan_datos || []).length === 0)
+  const matchedCount = validRows.filter(r => r.matched_producto_id).length
+  const unmatchedCount = validRows.length - matchedCount
 
   // Build sucursal distribution summary for step 3
   const sucursalSummary = useMemo(() => {
@@ -2390,6 +2415,28 @@ function ImportacionExcelDirectaModal({ token, onClose, onCreated }) {
                   )}
                 </div>
 
+                {incompleteRows.length > 0 && (
+                  <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <i className="pi pi-exclamation-triangle" style={{ color: '#c2410c', fontSize: '0.95rem' }} />
+                      <strong style={{ fontSize: '0.78rem', color: '#c2410c' }}>
+                        {incompleteRows.length} producto{incompleteRows.length !== 1 ? 's' : ''} nuevo{incompleteRows.length !== 1 ? 's' : ''} excluido{incompleteRows.length !== 1 ? 's' : ''} — falta{incompleteRows.length === 1 ? '' : 'n'} datos obligatorios
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {incompleteRows.map((row, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.78rem' }}>
+                          <span style={{ color: '#9a3412', minWidth: 160 }}>{row.descripcion || row.referencia || row.codigo || '—'}</span>
+                          <span style={{ marginLeft: 'auto', color: '#9a3412', fontStyle: 'italic', whiteSpace: 'nowrap' }}>Falta: {row.faltan_datos.join(', ')}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#9a3412' }}>
+                      Los productos nuevos (que no existen en el catálogo) deben tener referencia, descripción, cantidad y PVP. Completa esos datos en el Excel y vuelve a procesarlo.
+                    </p>
+                  </div>
+                )}
+
                 <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'hidden' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                     <thead>
@@ -2401,9 +2448,11 @@ function ImportacionExcelDirectaModal({ token, onClose, onCreated }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {parsedRows.map((row, i) => (
+                      {validRows.map((row, i) => (
                         <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
-                          <td style={{ padding: '7px 12px', fontFamily: 'monospace', fontSize: '0.8rem' }}>{row.codigo || '—'}</td>
+                          <td style={{ padding: '7px 12px' }}>
+                            {row.matched_producto_id ? (row.codigo || '—') : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin catálogo</span>}
+                          </td>
                           <td style={{ padding: '7px 12px' }}>{row.descripcion || row.referencia || '—'}</td>
                           <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600 }}>{row.cantidad}</td>
                           <td style={{ padding: '7px 12px' }}>
@@ -2413,7 +2462,10 @@ function ImportacionExcelDirectaModal({ token, onClose, onCreated }) {
                                 {row.matched_producto_nombre || row.matched_producto_codigo}
                               </span>
                             ) : (
-                              <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Sin catálogo</span>
+                              <span style={{ color: '#c2410c', fontSize: '0.78rem', fontWeight: 500 }}>
+                                <i className="pi pi-plus-circle" style={{ marginRight: 4 }} />
+                                Nuevo — se creará pendiente
+                              </span>
                             )}
                           </td>
                         </tr>
