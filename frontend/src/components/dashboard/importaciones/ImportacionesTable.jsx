@@ -2166,490 +2166,6 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   )
 }
 
-function ImportacionExcelDirectaModal({ token, onClose, onCreated }) {
-  const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
-  const mode = isDark ? 'dark' : 'light'
-  const toastRef = useRef(null)
-
-  const [sucursales, setSucursales] = useState([])
-  useEffect(() => {
-    authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token)
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setSucursales(Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []))
-      .catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const [step, setStep] = useState(1)
-  const [downloading, setDownloading] = useState(false)
-
-  // Step 2
-  const fileInputRef = useRef(null)
-  const [selectedFile, setSelectedFile] = useState(null)
-  const [dragOver, setDragOver] = useState(false)
-  const [selectedCasa, setSelectedCasa] = useState(null)
-  const [casaQuery, setCasaQuery] = useState('')
-  const [casaOptions, setCasaOptions] = useState([])
-  const [casaLoading, setCasaLoading] = useState(false)
-  const [showCasaDropdown, setShowCasaDropdown] = useState(false)
-  const casaTimerRef = useRef(null)
-  const [diasTardo, setDiasTardo] = useState('')
-  const [parsing, setParsing] = useState(false)
-  const [parseError, setParseError] = useState('')
-
-  // Step 3
-  const [parsedRows, setParsedRows] = useState([])
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState('')
-
-  useEffect(() => {
-    if (!casaQuery.trim()) { setCasaOptions([]); return }
-    clearTimeout(casaTimerRef.current)
-    setCasaLoading(true)
-    casaTimerRef.current = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({ search: casaQuery, page_size: '10', tipo: 'importacion' })
-        const resp = await authFetch(`${API_URL}/casa-comercial/casas/?${params}`, {}, token)
-        const data = resp.ok ? await resp.json().catch(() => ({})) : {}
-        setCasaOptions(Array.isArray(data.results) ? data.results : [])
-      } catch {}
-      setCasaLoading(false)
-    }, 280)
-    return () => clearTimeout(casaTimerRef.current)
-  }, [casaQuery, token])
-
-  const handleDownloadTemplate = async () => {
-    setDownloading(true)
-    try {
-      const XLSXStyle = (await import('xlsx-js-style')).default
-      const sucursalHeaders = sucursales.map(s => s.nombre.toUpperCase())
-      const headers = ['CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANTIDAD', 'PVP', ...sucursalHeaders]
-      const colCount = headers.length
-      // 0-3 = text (@), 4 = integer (0), 5 = decimal (0.00), 6+ = integer (0) — sucursales
-      const colFormat = (ci) => ci === 4 ? '0' : ci === 5 ? '0.00' : ci >= 6 ? '0' : '@'
-      const headerStyle = {
-        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
-        fill: { fgColor: { rgb: '1A1A2E' }, patternType: 'solid' },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: {
-          top: { style: 'thin', color: { rgb: '2563EB' } },
-          bottom: { style: 'medium', color: { rgb: '2563EB' } },
-          left: { style: 'thin', color: { rgb: '2563EB' } },
-          right: { style: 'thin', color: { rgb: '2563EB' } },
-        },
-      }
-      const ROWS = 2000
-      const borderStyle = { style: 'thin', color: { rgb: 'DBEAFE' } }
-      const border = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
-      const baseEven = { fill: { fgColor: { rgb: 'EFF6FF' }, patternType: 'solid' }, alignment: { vertical: 'center' }, border }
-      const baseOdd  = { fill: { fgColor: { rgb: 'FFFFFF' }, patternType: 'solid' }, alignment: { vertical: 'center' }, border }
-      const aoa = [headers, ...Array.from({ length: ROWS }, () => Array(colCount).fill(''))]
-      const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
-      headers.forEach((_, ci) => {
-        const ref = XLSXStyle.utils.encode_cell({ r: 0, c: ci })
-        if (worksheet[ref]) worksheet[ref].s = headerStyle
-      })
-      for (let ri = 1; ri <= ROWS; ri++) {
-        const base = ri % 2 === 0 ? baseEven : baseOdd
-        for (let ci = 0; ci < colCount; ci++) {
-          const ref = XLSXStyle.utils.encode_cell({ r: ri, c: ci })
-          if (!worksheet[ref]) worksheet[ref] = { t: 's', v: '' }
-          worksheet[ref].s = { ...base, numFmt: colFormat(ci) }
-        }
-      }
-      worksheet['!cols'] = [
-        { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 11 }, { wch: 10 },
-        ...sucursalHeaders.map(() => ({ wch: 13 })),
-      ]
-      worksheet['!rows'] = [{ hpt: 22 }]
-      const workbook = XLSXStyle.utils.book_new()
-      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Importación')
-      const out = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
-      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = 'plantilla-importacion-directa.xlsx'
-      document.body.appendChild(link); link.click(); document.body.removeChild(link)
-      URL.revokeObjectURL(link.href)
-    } catch (e) { console.error(e) }
-    setDownloading(false)
-  }
-
-  const handleFileSelect = (file) => {
-    if (!file) return
-    if (!file.name.toLowerCase().endsWith('.xlsx')) { setParseError('El archivo debe ser formato .xlsx'); return }
-    setSelectedFile(file)
-    setParseError('')
-  }
-
-  const handleProcess = async () => {
-    setParseError('')
-    setParsing(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      const resp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel/`, {
-        method: 'POST',
-        headers: { Authorization: `Token ${token}` },
-        body: formData,
-      })
-      const data = await resp.json().catch(() => ({}))
-      if (!resp.ok) throw new Error(data.detail || 'Error al procesar el archivo.')
-      setParsedRows(data.rows || [])
-      setSubmitError('')
-      setStep(3)
-    } catch (e) {
-      setParseError(e.message)
-    } finally {
-      setParsing(false)
-    }
-  }
-
-  const handleCreate = async () => {
-    setSubmitError('')
-    setSubmitting(true)
-    try {
-      const detalles = validRows.map(row => ({
-        producto_id: row.matched_producto_id || null,
-        codigo: row.codigo || '',
-        nombre: row.descripcion || '',
-        referencia: row.referencia || '',
-        oem: row.oem || '',
-        cantidad: row.cantidad,
-        sucursal_quantities: row.sucursal_quantities || {},
-      }))
-      const payload = {
-        casa_comercial_id: selectedCasa.id,
-        detalles,
-        ...(diasTardo !== '' && !isNaN(parseInt(diasTardo)) ? { dias_reales_entrega: parseInt(diasTardo) } : {}),
-      }
-      const resp = await authFetch(
-        `${API_URL}/importaciones/importaciones/importar-directo/`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
-        token
-      )
-      const data = await resp.json().catch(() => ({}))
-      if (!resp.ok) throw new Error(data.detail || 'No se pudo crear la importación.')
-      onCreated?.(data)
-      onClose()
-    } catch (e) {
-      setSubmitError(e.message)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const canProcess = Boolean(selectedFile && selectedCasa)
-  const incompleteRows = parsedRows.filter(r => (r.faltan_datos || []).length > 0)
-  const validRows = parsedRows.filter(r => (r.faltan_datos || []).length === 0)
-  const matchedCount = validRows.filter(r => r.matched_producto_id).length
-  const unmatchedCount = validRows.length - matchedCount
-
-  // Build sucursal distribution summary for step 3
-  const sucursalSummary = useMemo(() => {
-    const map = {}
-    parsedRows.forEach(row => {
-      if (!row.matched_producto_id) return
-      Object.entries(row.sucursal_quantities || {}).forEach(([sucId, qty]) => {
-        if (parseInt(qty) > 0) {
-          map[sucId] = (map[sucId] || 0) + parseInt(qty)
-        }
-      })
-    })
-    return Object.entries(map).map(([sucId, total]) => {
-      const suc = sucursales.find(s => String(s.id) === String(sucId))
-      return { id: sucId, nombre: suc?.nombre || `Sucursal ${sucId}`, total }
-    })
-  }, [parsedRows, sucursales])
-
-  const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa y confirma'
-
-  return createPortal(
-    <>
-      <Toast ref={toastRef} />
-      <div
-        className={`quick-actions__receive-overlay ${mode}`}
-        style={{ zIndex: 2100 }}
-        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-      >
-        <div
-          className={`quick-actions__receive-dialog ${mode}`}
-          style={{ width: step === 3 ? 'min(760px, 95vw)' : 'min(540px, 92vw)', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto', transition: 'width .25s' }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <header className="quick-actions__receive-head">
-            <div>
-              <h4>Importación directa desde Excel</h4>
-              <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                Paso {step} de 3 — {stepLabel}
-              </p>
-            </div>
-            <button type="button" className="quick-actions__receive-close" onClick={onClose}><X size={16} /></button>
-          </header>
-
-          <div className="quick-actions__receive-body" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-            {/* ── PASO 1: Descargar ── */}
-            {step === 1 && (
-              <>
-                <p style={{ fontSize: '0.84rem', color: 'var(--color-text-secondary)', margin: 0 }}>
-                  Descarga la plantilla con una columna por cada sucursal. Completa las cantidades a distribuir por sucursal. La importación se registrará directamente como recibida.
-                </p>
-                <div style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <strong style={{ fontSize: '0.85rem' }}>Columnas de la plantilla</strong>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {[
-                      { label: 'CODIGO JP', type: 'texto' }, { label: 'REFERENCIA', type: 'texto' },
-                      { label: 'DESCRIPCIÓN', type: 'texto' }, { label: 'CANTIDAD', type: 'número' }, { label: 'PVP', type: 'número' },
-                      ...sucursales.map(s => ({ label: s.nombre.toUpperCase(), type: 'número' })),
-                    ].map(col => (
-                      <span key={col.label} style={{ background: '#1A1A2E', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600 }}>
-                        {col.label} <span style={{ opacity: 0.55, fontWeight: 400 }}>({col.type})</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={downloading || sucursales.length === 0}
-                  onClick={handleDownloadTemplate}
-                  style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#16a34a', border: '1px solid #16a34a', borderRadius: 6, padding: '7px 16px', color: '#fff', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-                >
-                  <i className="pi pi-download" />
-                  {downloading ? 'Descargando...' : sucursales.length === 0 ? 'Cargando sucursales...' : 'Descargar plantilla'}
-                </button>
-              </>
-            )}
-
-            {/* ── PASO 2: Subir archivo ── */}
-            {step === 2 && (
-              <>
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFileSelect(e.dataTransfer.files[0]) }}
-                  style={{
-                    border: `2px dashed ${dragOver ? 'var(--color-primary, #2563eb)' : selectedFile ? '#16a34a' : 'var(--color-border, #e2e8f0)'}`,
-                    borderRadius: 10, padding: '28px 20px', textAlign: 'center', cursor: 'pointer',
-                    background: dragOver ? 'var(--color-primary-light, #eff6ff)' : selectedFile ? '#f0fdf4' : 'var(--color-surface, #f8fafc)',
-                    transition: 'all .2s',
-                  }}
-                >
-                  <input ref={fileInputRef} type="file" accept=".xlsx" hidden onChange={(e) => handleFileSelect(e.target.files[0])} />
-                  {selectedFile ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                      <i className="pi pi-file-excel" style={{ fontSize: '1.8rem', color: '#16a34a' }} />
-                      <strong style={{ fontSize: '0.9rem', color: '#15803d' }}>{selectedFile.name}</strong>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)' }}>Haz clic para cambiar el archivo</span>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                      <i className="pi pi-upload" style={{ fontSize: '1.8rem', color: 'var(--color-text-secondary)' }} />
-                      <strong style={{ fontSize: '0.9rem' }}>Arrastra el archivo aquí</strong>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)' }}>o haz clic para seleccionar · Solo .xlsx</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Casa comercial */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Casa comercial</label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="text"
-                      placeholder="Buscar casa comercial..."
-                      value={selectedCasa ? selectedCasa.nombre : casaQuery}
-                      onFocus={() => { if (selectedCasa) { setSelectedCasa(null); setCasaQuery('') }; setShowCasaDropdown(true) }}
-                      onBlur={() => setTimeout(() => setShowCasaDropdown(false), 180)}
-                      onChange={(e) => { setCasaQuery(e.target.value); setSelectedCasa(null); setShowCasaDropdown(true) }}
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border, #e2e8f0)', fontSize: '0.875rem', background: 'var(--color-bg)', color: 'var(--color-text)', fontFamily: 'inherit' }}
-                    />
-                    {showCasaDropdown && (casaLoading || casaOptions.length > 0 || casaQuery.trim()) && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--color-bg)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.12)', zIndex: 9999, maxHeight: 220, overflowY: 'auto', marginTop: 2 }}>
-                        {casaLoading && <div style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>Buscando...</div>}
-                        {!casaLoading && casaOptions.length === 0 && casaQuery.trim() && (
-                          <div style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>Sin resultados</div>
-                        )}
-                        {casaOptions.map(casa => (
-                          <div
-                            key={casa.id}
-                            onMouseDown={() => { setSelectedCasa(casa); setCasaQuery(''); setShowCasaDropdown(false) }}
-                            style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '0.875rem', borderBottom: '1px solid var(--color-border, #e2e8f0)' }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <strong>{casa.nombre}</strong>
-                            {casa.codigo && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{casa.codigo}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {selectedCasa && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#15803d' }}>
-                      <i className="pi pi-check-circle" />
-                      <span>{selectedCasa.nombre} seleccionada</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Días que tardó */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>¿Cuántos días tardó la importación? <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}>(opcional)</span></label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Ej: 45"
-                    value={diasTardo}
-                    onChange={(e) => setDiasTardo(e.target.value)}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border, #e2e8f0)', fontSize: '0.875rem', background: 'var(--color-bg)', color: 'var(--color-text)', fontFamily: 'inherit' }}
-                  />
-                </div>
-
-                {parseError && <p style={{ margin: 0, fontSize: '0.82rem', color: '#dc2626' }}>{parseError}</p>}
-              </>
-            )}
-
-            {/* ── PASO 3: Revisar ── */}
-            {step === 3 && (
-              <>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '3px 12px', fontSize: '0.78rem', fontWeight: 600 }}>
-                    ✓ {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
-                  </span>
-                  {unmatchedCount > 0 && (
-                    <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '3px 12px', fontSize: '0.78rem', fontWeight: 600 }}>
-                      — {unmatchedCount} sin catálogo (sin distribución)
-                    </span>
-                  )}
-                </div>
-
-                {incompleteRows.length > 0 && (
-                  <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <i className="pi pi-exclamation-triangle" style={{ color: '#c2410c', fontSize: '0.95rem' }} />
-                      <strong style={{ fontSize: '0.78rem', color: '#c2410c' }}>
-                        {incompleteRows.length} producto{incompleteRows.length !== 1 ? 's' : ''} nuevo{incompleteRows.length !== 1 ? 's' : ''} excluido{incompleteRows.length !== 1 ? 's' : ''} — falta{incompleteRows.length === 1 ? '' : 'n'} datos obligatorios
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {incompleteRows.map((row, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.78rem' }}>
-                          <span style={{ color: '#9a3412', minWidth: 160 }}>{row.descripcion || row.referencia || row.codigo || '—'}</span>
-                          <span style={{ marginLeft: 'auto', color: '#9a3412', fontStyle: 'italic', whiteSpace: 'nowrap' }}>Falta: {row.faltan_datos.join(', ')}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#9a3412' }}>
-                      Los productos nuevos (que no existen en el catálogo) deben tener referencia, descripción, cantidad y PVP. Completa esos datos en el Excel y vuelve a procesarlo.
-                    </p>
-                  </div>
-                )}
-
-                <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'hidden' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                    <thead>
-                      <tr style={{ background: '#1A1A2E', color: '#fff' }}>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Código</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Catálogo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {validRows.map((row, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
-                          <td style={{ padding: '7px 12px' }}>
-                            {row.matched_producto_id ? (row.codigo || '—') : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin catálogo</span>}
-                          </td>
-                          <td style={{ padding: '7px 12px' }}>{row.descripcion || row.referencia || '—'}</td>
-                          <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600 }}>{row.cantidad}</td>
-                          <td style={{ padding: '7px 12px' }}>
-                            {row.matched_producto_id ? (
-                              <span style={{ color: '#15803d', fontSize: '0.78rem', fontWeight: 500 }}>
-                                <i className="pi pi-check" style={{ marginRight: 4 }} />
-                                {row.matched_producto_nombre || row.matched_producto_codigo}
-                              </span>
-                            ) : (
-                              <span style={{ color: '#c2410c', fontSize: '0.78rem', fontWeight: 500 }}>
-                                <i className="pi pi-plus-circle" style={{ marginRight: 4 }} />
-                                Nuevo — se creará pendiente
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Sucursal distribution summary */}
-                {sucursalSummary.length > 0 && (
-                  <div style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <strong style={{ fontSize: '0.82rem' }}>Distribución a sucursales</strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {sucursalSummary.map(s => (
-                        <span key={s.id} style={{ background: 'var(--color-primary-light, #dbeafe)', color: 'var(--color-primary, #2563eb)', borderRadius: 6, padding: '4px 10px', fontSize: '0.78rem', fontWeight: 600 }}>
-                          {s.nombre}: {s.total} u.
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {unmatchedCount > 0 && (
-                  <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Info size={13} />
-                    Los productos sin catálogo se registran en la importación pero no generan distribución a sucursales.
-                  </p>
-                )}
-
-                {submitError && <p style={{ margin: 0, fontSize: '0.82rem', color: '#dc2626' }}>{submitError}</p>}
-              </>
-            )}
-          </div>
-
-          <footer className="quick-actions__receive-actions">
-            {step === 1 && (
-              <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={onClose}>Cerrar</button>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={() => setStep(2)}>Siguiente</button>
-              </>
-            )}
-            {step === 2 && (
-              <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)} disabled={parsing}>Atrás</button>
-                <button
-                  type="button"
-                  className={`quick-actions__receive-btn${canProcess ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
-                  onClick={handleProcess}
-                  disabled={!canProcess || parsing}
-                >
-                  {parsing ? 'Procesando...' : 'Procesar archivo'}
-                </button>
-              </>
-            )}
-            {step === 3 && (
-              <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
-                <button
-                  type="button"
-                  className="quick-actions__receive-btn quick-actions__receive-btn--success"
-                  onClick={handleCreate}
-                  disabled={submitting}
-                >
-                  {submitting ? 'Registrando...' : 'Registrar importación'}
-                </button>
-              </>
-            )}
-          </footer>
-        </div>
-      </div>
-    </>,
-    document.querySelector('.dashboard-shell') || document.body
-  )
-}
-
 function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOpenBorrador }) {
   const [step, setStep] = useState('casa')
   const [nextCode, setNextCode] = useState('IMP-')
@@ -6291,7 +5807,6 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [showExcelImport, setShowExcelImport] = useState(false)
-  const [showExcelDirecta, setShowExcelDirecta] = useState(false)
   const [showCreateMenu, setShowCreateMenu] = useState(false)
   const createMenuRef = useRef(null)
   const [selectedImp, setSelectedImp] = useState(null)
@@ -6449,7 +5964,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     // Remember whatever modal was open on this pill so it reopens exactly
     // as left when the user comes back to it (like the top-level workspace tabs).
     statusModalSnapshotsRef.current[status] = {
-      showCreate, showExcelImport, showExcelDirecta,
+      showCreate, showExcelImport,
       editImp, showEditImp,
       selectedImp, showImpDetails,
     }
@@ -6458,7 +5973,6 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     setActiveStatus(nextStatus)
     setShowCreate(snapshot.showCreate || false)
     setShowExcelImport(snapshot.showExcelImport || false)
-    setShowExcelDirecta(snapshot.showExcelDirecta || false)
     setEditImp(snapshot.editImp || null)
     setShowEditImp(snapshot.showEditImp || false)
     setSelectedImp(snapshot.selectedImp || null)
@@ -6734,57 +6248,6 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
 
       <div className="users-page__top">
         <div className="users-page__actions">
-          {canCreate && (
-            status === 'importada' ? (
-              <button
-                type="button"
-                className="p-button users-topbtn users-topbtn--create"
-                onClick={() => setShowExcelDirecta(true)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem', fontWeight: 400 }}
-              >
-                <i className="pi pi-file-excel p-button-icon" />
-                <span className="p-button-label">Importación directa desde Excel</span>
-              </button>
-            ) : (
-              <div style={{ position: 'relative' }} ref={createMenuRef}>
-                <button
-                  type="button"
-                  className="p-button users-topbtn users-topbtn--create"
-                  onClick={() => setShowCreateMenu(p => !p)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem', fontWeight: 400 }}
-                >
-                  <i className="pi pi-plus p-button-icon" />
-                  <span className="p-button-label">Crear</span>
-                  <i className="pi pi-chevron-down" style={{ fontSize: '0.65rem', opacity: 0.75 }} />
-                </button>
-                {showCreateMenu && (
-                  <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 500, background: 'var(--modal-color, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 230, overflow: 'hidden' }}>
-                    <button
-                      type="button"
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={() => { setShowCreate(true); setShowCreateMenu(false) }}
-                    >
-                      <i className="pi pi-file-edit" style={{ color: 'var(--color-primary, #2563eb)' }} />
-                      <span>Crear sugerencia</span>
-                    </button>
-                    <div style={{ height: 1, background: 'var(--color-border, #e2e8f0)', margin: '0 10px' }} />
-                    <button
-                      type="button"
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={() => { setShowExcelImport(true); setShowCreateMenu(false) }}
-                    >
-                      <i className="pi pi-file-excel" style={{ color: '#16a34a' }} />
-                      <span>Sugerencia desde Excel</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )
-          )}
           {!statusProp && (
             <div className="transfer-issues-page__type-filter" role="group" aria-label="Filtro de estado">
               {[
@@ -6802,6 +6265,45 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
                   onClick={() => handleStatusChange(option.key)}
                 />
               ))}
+            </div>
+          )}
+          {canCreate && status === 'borrador' && (
+            <div style={{ position: 'relative', marginLeft: 'auto' }} ref={createMenuRef}>
+              <button
+                type="button"
+                className="p-button users-topbtn users-topbtn--create"
+                onClick={() => setShowCreateMenu(p => !p)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem', fontWeight: 400 }}
+              >
+                <i className="pi pi-plus p-button-icon" />
+                <span className="p-button-label">Crear</span>
+                <i className="pi pi-chevron-down" style={{ fontSize: '0.65rem', opacity: 0.75 }} />
+              </button>
+              {showCreateMenu && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 500, background: 'var(--modal-color, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 230, overflow: 'hidden' }}>
+                  <button
+                    type="button"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    onClick={() => { setShowCreate(true); setShowCreateMenu(false) }}
+                  >
+                    <i className="pi pi-file-edit" style={{ color: 'var(--color-primary, #2563eb)' }} />
+                    <span>Crear sugerencia</span>
+                  </button>
+                  <div style={{ height: 1, background: 'var(--color-border, #e2e8f0)', margin: '0 10px' }} />
+                  <button
+                    type="button"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    onClick={() => { setShowExcelImport(true); setShowCreateMenu(false) }}
+                  >
+                    <i className="pi pi-file-excel" style={{ color: '#16a34a' }} />
+                    <span>Sugerencia desde Excel</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -7018,21 +6520,6 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         />
       )}
 
-      {showExcelDirecta && (
-        <ImportacionExcelDirectaModal
-          token={token}
-          onClose={() => setShowExcelDirecta(false)}
-          onCreated={() => {
-            setShowExcelDirecta(false)
-            invalidateImportacionesItemsCache()
-            if (status === 'importada') {
-              fetchItems(true)
-            } else {
-              setActiveStatus('importada')
-            }
-          }}
-        />
-      )}
     </div>
   )
 }
