@@ -1583,6 +1583,16 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
     }
   }
 
+  const handleRetry = () => {
+    setSelectedFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    setParsedRows([])
+    setReferenciaDecisions({})
+    setSubmitError('')
+    setParseError('')
+    setStep(2)
+  }
+
   const canProcess = Boolean(selectedFile && selectedCasa)
   const conflictoRows = parsedRows.filter(r => r.conflicto_casa)
   const incompleteRows = parsedRows.filter(r => !r.conflicto_casa && (r.faltan_datos || []).length > 0)
@@ -1847,8 +1857,8 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {incompleteRows.map((row, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)', padding: '4px 6px', background: '#ffedd5', borderRadius: 4 }}>
-                          <i className="pi pi-arrow-right" style={{ color: '#c2410c', fontSize: 'var(--font-size-sm)' }} />
-                          <span style={{ color: '#9a3412', fontWeight: 600, minWidth: 160 }}>{row.descripcion || row.referencia || row.codigo || '—'}</span>
+                          <span style={{ color: '#9a3412', fontWeight: 700, whiteSpace: 'nowrap' }}>Fila {row.fila_excel}</span>
+                          <span style={{ color: '#9a3412', minWidth: 160 }}>{row.descripcion || row.referencia || row.codigo || '—'}</span>
                           <span style={{ marginLeft: 'auto', color: '#9a3412', fontStyle: 'italic', whiteSpace: 'nowrap' }}>Falta: {row.faltan_datos.join(', ')}</span>
                         </div>
                       ))}
@@ -2033,7 +2043,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
             )}
             {step === 3 && (
               incompleteRows.length > 0 ? (
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={() => setStep(2)}>Volver a intentar</button>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={handleRetry}>Volver a intentar</button>
               ) : (
                 <>
                   <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>

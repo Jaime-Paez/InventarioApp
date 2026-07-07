@@ -587,7 +587,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             casa_comercial_id = None
 
         parsed = []
-        for row in all_rows[1:]:
+        for fila_excel, row in enumerate(all_rows[1:], start=2):
             codigo = safe_str(cell(row, "codigo"))
             referencia = safe_str(cell(row, "referencia"))
             oem = safe_str(cell(row, "oem"))
@@ -602,6 +602,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             conflicto_casa_nombre = ""
             if codigo:
                 matched = Producto.objects.filter(codigo__iexact=codigo).first()
+            if not matched and referencia:
+                matched = Producto.objects.filter(referencia__iexact=referencia).first()
+                if matched and not codigo:
+                    codigo = matched.codigo
 
             if matched and casa_comercial_id:
                 casas_ids = list(matched.casas_comerciales.values_list("id", flat=True))
@@ -635,6 +639,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     suc_quantities[str(suc_id)] = qty
 
             parsed.append({
+                "fila_excel": fila_excel,
                 "codigo": codigo,
                 "referencia": referencia,
                 "oem": oem,
