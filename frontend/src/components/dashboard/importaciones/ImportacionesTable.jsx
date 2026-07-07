@@ -934,6 +934,7 @@ const DETAILS_VIEWPORT_PADDING = 12
 function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, onOpenOrigen }) {
   const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
   const [showReceive, setShowReceive] = useState(false)
+  const [showHistorial, setShowHistorial] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const toastRef = useRef(null)
   const [cellHover, setCellHover] = useState(null)
@@ -1298,6 +1299,15 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
                 Ver confirmación
               </button>
             )}
+            {(imp.estado === 'en_camino' || imp.estado === 'importada') && Array.isArray(imp.historial_confirmacion) && imp.historial_confirmacion.length > 0 && (
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={() => setShowHistorial(true)}
+              >
+                Historial
+              </button>
+            )}
             {imp.estado === 'en_camino' && canMarcarLlegada && (
               <button
                 type="button"
@@ -1343,7 +1353,96 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
           onConfirmed={(payload) => { onSaved?.(payload); onClose?.() }}
         />
       )}
+      {showHistorial && (
+        <HistorialConfirmacionModal imp={imp} onClose={() => setShowHistorial(false)} />
+      )}
     </>
+  )
+}
+
+function HistorialConfirmacionModal({ imp, onClose }) {
+  const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
+  const mode = isDark ? 'dark' : 'light'
+  const historial = Array.isArray(imp.historial_confirmacion) ? imp.historial_confirmacion : []
+
+  return createPortal(
+    <div
+      className={`quick-actions__receive-overlay ${mode}`}
+      style={{ zIndex: 2100 }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div
+        className={`quick-actions__receive-dialog ${mode}`}
+        style={{ width: 'min(760px, 95vw)', height: 'auto', maxHeight: '85vh', gridTemplateRows: 'auto 1fr auto' }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <header className="quick-actions__receive-head">
+          <div>
+            <h4>Historial de confirmación</h4>
+            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginTop: 2 }}>
+              Revisión guardada al importar {imp.codigo}
+            </p>
+          </div>
+          <button type="button" className="quick-actions__receive-close" onClick={onClose}><X size={16} /></button>
+        </header>
+
+        <div className="quick-actions__receive-body" style={{ padding: '16px 20px', overflowY: 'auto' }}>
+          {historial.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+              No hay historial de confirmación para esta importación.
+            </p>
+          ) : (
+            <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', maxHeight: '60vh' }}>
+              <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)' }}>
+                <colgroup>
+                  <col />
+                  <col style={{ width: 110 }} />
+                  <col style={{ width: 60 }} />
+                  <col style={{ width: 70 }} />
+                  <col style={{ width: 46 }} />
+                  <col style={{ width: 160 }} />
+                </colgroup>
+                <thead>
+                  <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Nombre</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Referencia</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>Precio conf.</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Estado</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Comentario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historial.map((row, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
+                      <td style={{ padding: '7px 12px' }}>{row.nombre || '—'}</td>
+                      <td style={{ padding: '7px 12px' }}>{row.referencia || '—'}</td>
+                      <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600 }}>{row.cantidad_confirmada ?? row.cantidad ?? '—'}</td>
+                      <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600 }}>{row.precio_confirmado != null ? `$${Number(row.precio_confirmado).toFixed(2)}` : '—'}</td>
+                      <td style={{ padding: '7px 12px', textAlign: 'center' }}>
+                        {row.estado === 'check' ? (
+                          <Check size={15} style={{ color: '#16a34a' }} />
+                        ) : row.estado === 'x' ? (
+                          <X size={15} style={{ color: '#dc2626' }} />
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)' }}>{row.comentario || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <footer className="quick-actions__receive-actions">
+          <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={onClose}>Cerrar</button>
+        </footer>
+      </div>
+    </div>,
+    getPortalRoot()
   )
 }
 
@@ -4098,6 +4197,21 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const next = { ...prev }; delete next[key]; return next
     })
   }
+  const handleCycleAllCheckStates = () => {
+    setItemCheckStates((prev) => {
+      const allCheck = details.every((d) => prev[d._key] === 'check')
+      const allX = details.every((d) => prev[d._key] === 'x')
+      if (allCheck) {
+        const next = {}
+        details.forEach((d) => { next[d._key] = 'x' })
+        return next
+      }
+      if (allX) return {}
+      const next = {}
+      details.forEach((d) => { next[d._key] = 'check' })
+      return next
+    })
+  }
   const [showVerificarExcelDropdown, setShowVerificarExcelDropdown] = useState(false)
   const [showSaveOnCloseModal, setShowSaveOnCloseModal] = useState(false)
   const [creatingProductKey, setCreatingProductKey] = useState(null)
@@ -4958,6 +5072,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
       })
       const selectedKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'check').map(([k]) => k)
+      const xKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'x').map(([k]) => k)
       const response = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/importar/`,
         {
@@ -4967,6 +5082,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
             fecha_importacion: fechaImportar,
             detalles: normalizedDetalles,
             detalles_seleccionados: selectedKeys,
+            detalles_x: xKeys,
           }),
         },
         token
@@ -5287,7 +5403,13 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                               Cant. conf.
                             </span>
                             <span>Comentario</span>
-                            <span>Acciones</span>
+                            <span
+                              onDoubleClick={() => !isImportRealizada && handleCycleAllCheckStates()}
+                              title={isImportRealizada ? undefined : 'Doble click: alternar todas entre ✓, ✗ y vacío'}
+                              style={isImportRealizada ? undefined : { cursor: 'pointer' }}
+                            >
+                              Acciones
+                            </span>
                           </>
                         ) : (
                           <><span>Comentario</span><span>Acciones</span></>

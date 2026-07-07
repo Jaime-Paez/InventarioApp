@@ -40,7 +40,13 @@ class Importacion(models.Model):
         null=True,
         blank=True,
         related_name="en_camino_generadas",
-        help_text="Importacion de cotizacion/confirmacion desde la que se generó esta (en_camino).",
+        help_text="Importacion de cotizacion/confirmacion desde la que se generó esta (en_camino). Legado: ya no se generan registros separados al importar.",
+    )
+    historial_confirmacion = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Snapshot de los productos revisados en confirmación (check/x, comentarios, precios) al momento de importar.",
     )
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,

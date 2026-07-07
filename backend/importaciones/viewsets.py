@@ -163,8 +163,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         except ValueError:
             fecha_importacion = timezone.localdate()
 
-        # Keys of selected items: String(producto_id) or "sc_{detalle_id}"
+        # Keys of reviewed items: String(producto_id) or "sc_{detalle_id}"
         selected_keys = set(str(k) for k in (request.data.get("detalles_seleccionados") or []))
+        x_keys = set(str(k) for k in (request.data.get("detalles_x") or []))
         if not selected_keys:
             return Response(
                 {"detail": "Selecciona al menos un producto para importar."},
@@ -179,10 +180,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if key:
                 confirmed_by_key[key] = d
 
-        today = timezone.localdate()
-
-        # 1. Save confirmed data on all detalles of the original cotizacion and mark selection
-        selected_detalles = []
+        # 1. Snapshot every reviewed detalle (checked, x'd, or untouched) with its
+        # confirmed price/quantity/comment before anything is removed, so the
+        # confirmación review (checks, x's, comments) stays visible via "Historial"
+        # even after this importación moves past confirmación — no second record
+        # is spawned anymore.
+        historial = []
+        detalles_to_delete = []
         for detalle in instance.detalles.select_related("producto").all():
             key = str(detalle.producto_id) if detalle.producto_id else f"sc_{detalle.id}"
             confirmed = confirmed_by_key.get(key, {})
@@ -198,51 +202,51 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     detalle.cantidad_confirmada = int(cant_raw)
                 except (TypeError, ValueError):
                     pass
-            detalle.seleccionado = key in selected_keys
-            detalle.precio_pvp_snapshot = detalle.producto.precio if detalle.producto_id else None
-            detalle.save(update_fields=["precio_confirmado", "cantidad_confirmada", "seleccionado", "precio_pvp_snapshot"])
-            if detalle.seleccionado:
-                selected_detalles.append(detalle)
+            comentario = confirmed.get("comentario")
+            if comentario is not None:
+                detalle.comentario = str(comentario)
 
-        # Mark the original confirmacion as already imported without moving it out of
-        # the confirmacion tab; numero_factura acts as the "importación realizada" flag.
+            if key in selected_keys:
+                revision = "check"
+            elif key in x_keys:
+                revision = "x"
+            else:
+                revision = None
+            detalle.seleccionado = revision == "check"
+
+            historial.append({
+                "codigo": (detalle.producto.codigo if detalle.producto_id else detalle.codigo) or "",
+                "nombre": (detalle.producto.nombre if detalle.producto_id else detalle.nombre) or "",
+                "referencia": (detalle.producto.referencia if detalle.producto_id else detalle.referencia) or "",
+                "cantidad": detalle.cantidad,
+                "cantidad_confirmada": detalle.cantidad_confirmada,
+                "precio_confirmado": str(detalle.precio_confirmado) if detalle.precio_confirmado is not None else None,
+                "comentario": detalle.comentario or "",
+                "estado": revision,
+            })
+
+            if revision == "check":
+                detalle.cantidad = detalle.cantidad_confirmada if detalle.cantidad_confirmada is not None else detalle.cantidad
+                detalle.precio_pvp_snapshot = detalle.producto.precio if detalle.producto_id else None
+                detalle.save(update_fields=["precio_confirmado", "cantidad_confirmada", "comentario", "seleccionado", "cantidad", "precio_pvp_snapshot"])
+            else:
+                detalles_to_delete.append(detalle.id)
+
+        # Items left unchecked or marked with "x" don't continue in the actual
+        # shipment; their review data already lives in historial_confirmacion.
+        if detalles_to_delete:
+            ImportacionDetalle.objects.filter(id__in=detalles_to_delete).delete()
+
+        # 2. Transition this same importación into en_camino instead of spawning
+        # a separate record for it.
+        instance.estado = Importacion.ESTADO_EN_CAMINO
         instance.numero_factura = numero_factura
         instance.fecha_importacion = fecha_importacion
-        instance.save(update_fields=["numero_factura", "fecha_importacion"])
+        instance.fecha = fecha_importacion
+        instance.historial_confirmacion = historial
+        instance.save(update_fields=["estado", "numero_factura", "fecha_importacion", "fecha", "historial_confirmacion"])
 
-        # 2. Create a new importacion in en_camino with only the selected items.
-        # It keeps the SAME codigo as the confirmacion/cotizacion it came from
-        # (codigo is no longer unique) and also links back via origen, so both
-        # records are unmistakably the same import at different stages.
-        nueva = Importacion.objects.create(
-            codigo=instance.codigo,
-            estado=Importacion.ESTADO_EN_CAMINO,
-            casa_comercial=instance.casa_comercial,
-            fecha=fecha_importacion,
-            numero_factura=numero_factura,
-            fecha_importacion=fecha_importacion,
-            dias_entrega_estimados=instance.dias_entrega_estimados,
-            origen=instance,
-            creado_por=request.user if request.user.is_authenticated else None,
-        )
-        ImportacionDetalle.objects.bulk_create([
-            ImportacionDetalle(
-                importacion=nueva,
-                producto_id=d.producto_id,
-                codigo=d.codigo,
-                nombre=d.nombre,
-                oem=d.oem,
-                referencia=d.referencia,
-                cantidad=d.cantidad_confirmada if d.cantidad_confirmada is not None else d.cantidad,
-                comentario=d.comentario,
-                precio_confirmado=d.precio_confirmado,
-                solicitud_id=d.solicitud_id,
-                seleccionado=True,
-            )
-            for d in selected_detalles
-        ])
-
-        serializer = self.get_serializer(nueva)
+        serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
     @staticmethod
