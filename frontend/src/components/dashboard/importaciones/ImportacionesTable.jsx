@@ -2578,6 +2578,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const [showNuevoProductoView, setShowNuevoProductoView] = useState(false)
   const [nuevoProductoDraft, setNuevoProductoDraft] = useState({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
   const [nuevoProductoErrors, setNuevoProductoErrors] = useState({})
+  const [nuevoProductoExisting, setNuevoProductoExisting] = useState({ codigo: null, referencia: null })
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
 
@@ -2594,6 +2595,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const casaTimerRef = useRef(null)
   const productTimerRef = useRef(null)
+  const nuevoProductoCheckTimerRef = useRef(null)
+  const nuevoProductoNotifiedRef = useRef({ codigoId: null, referenciaId: null })
   const productSearchIdRef = useRef(0)
   const casaDropdownRef = useRef(null)
   const productDropdownRef = useRef(null)
@@ -3148,6 +3151,41 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     setCellHover(null)
   }, [])
 
+  useEffect(() => {
+    if (!showNuevoProductoView) return
+    const codigoVal = nuevoProductoDraft.codigo.trim()
+    const referenciaVal = nuevoProductoDraft.referencia.trim()
+    if (!codigoVal && !referenciaVal) { setNuevoProductoExisting({ codigo: null, referencia: null }); return }
+    clearTimeout(nuevoProductoCheckTimerRef.current)
+    nuevoProductoCheckTimerRef.current = setTimeout(async () => {
+      const [codigoData, referenciaData] = await Promise.all([
+        codigoVal
+          ? authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(codigoVal)}`, {}, token).then((r) => r.ok ? r.json() : null).catch(() => null)
+          : Promise.resolve(null),
+        referenciaVal
+          ? authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(referenciaVal)}`, {}, token).then((r) => r.ok ? r.json() : null).catch(() => null)
+          : Promise.resolve(null),
+      ])
+      const codigoMatch = codigoVal ? parseApiList(codigoData).find((p) => String(p.codigo || '').trim().toLowerCase() === codigoVal.toLowerCase()) : null
+      const referenciaMatch = referenciaVal ? parseApiList(referenciaData).find((p) => String(p.referencia || '').trim().toLowerCase() === referenciaVal.toLowerCase()) : null
+      const notified = nuevoProductoNotifiedRef.current
+      if (codigoMatch && notified.codigoId !== codigoMatch.id) {
+        notified.codigoId = codigoMatch.id
+        toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${codigoMatch.codigo}: ${codigoMatch.nombre || codigoMatch.descripcion || ''}`, life: 4500 })
+      } else if (!codigoMatch) {
+        notified.codigoId = null
+      }
+      if (referenciaMatch && notified.referenciaId !== referenciaMatch.id) {
+        notified.referenciaId = referenciaMatch.id
+        toastRef.current?.show({ severity: 'warn', summary: 'Referencia ya existe', detail: `${referenciaMatch.codigo}: ${referenciaMatch.nombre || referenciaMatch.descripcion || ''}`, life: 4500 })
+      } else if (!referenciaMatch) {
+        notified.referenciaId = null
+      }
+      setNuevoProductoExisting({ codigo: codigoMatch || null, referencia: referenciaMatch || null })
+    }, 350)
+    return () => clearTimeout(nuevoProductoCheckTimerRef.current)
+  }, [nuevoProductoDraft.codigo, nuevoProductoDraft.referencia, showNuevoProductoView, token])
+
   const handleAddNuevoProducto = () => {
     const errors = {}
     if (!nuevoProductoDraft.nombre.trim()) errors.nombre = 'El nombre es requerido'
@@ -3156,6 +3194,14 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     const qty = Number(nuevoProductoDraft.cantidad)
     if (!nuevoProductoDraft.cantidad || !Number.isFinite(qty) || qty <= 0) errors.cantidad = 'La cantidad debe ser mayor a 0'
     if (Object.keys(errors).length > 0) { setNuevoProductoErrors(errors); return }
+    if (nuevoProductoExisting.codigo) {
+      toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${nuevoProductoExisting.codigo.codigo}: ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`, life: 4500 })
+      return
+    }
+    if (nuevoProductoExisting.referencia) {
+      toastRef.current?.show({ severity: 'warn', summary: 'Referencia ya existe', detail: `${nuevoProductoExisting.referencia.codigo}: ${nuevoProductoExisting.referencia.nombre || nuevoProductoExisting.referencia.descripcion || ''}`, life: 4500 })
+      return
+    }
     const incomingRef = nuevoProductoDraft.referencia.trim().toLowerCase()
     if (details.some((d) => String(d.producto?.referencia || d.referencia || '').trim().toLowerCase() === incomingRef)) {
       setNuevoProductoErrors((p) => ({ ...p, referencia: 'Ya existe un producto con esta referencia en el listado.' }))
@@ -3175,6 +3221,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     }])
     setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
     setNuevoProductoErrors({})
+    setNuevoProductoExisting({ codigo: null, referencia: null })
     setShowNuevoProductoView(false)
   }
 
@@ -3481,7 +3528,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           <button
                             type="button"
                             className="create-user__ghost"
-                            onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' }); setNuevoProductoErrors({}); setShowNuevoProductoView(true) }}
+                            onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' }); setNuevoProductoErrors({}); setNuevoProductoExisting({ codigo: null, referencia: null }); nuevoProductoNotifiedRef.current = { codigoId: null, referenciaId: null }; setShowNuevoProductoView(true) }}
                             style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                           >
                             + Agregar producto
@@ -3882,12 +3929,12 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
 
             <div className="imp-aceptados-popup__body">
               <div className="create-user__grid create-user__grid--two" style={{ padding: '4px 0' }}>
-                <label className="create-user__field">
+                <label className={`create-user__field${nuevoProductoErrors.codigo || nuevoProductoExisting.codigo ? ' create-user__field--invalid' : ''}`}>
                   <span>Código JP</span>
                   <input
                     type="text"
                     value={nuevoProductoDraft.codigo}
-                    onChange={(e) => setNuevoProductoDraft((p) => ({ ...p, codigo: e.target.value }))}
+                    onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, codigo: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, codigo: undefined })) }}
                     placeholder="Opcional"
                     autoComplete="off"
                   />
@@ -3902,7 +3949,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                     autoComplete="off"
                     autoFocus
                   />
-                  {nuevoProductoErrors.nombre && <small style={{ color: '#dc2626' }}>{nuevoProductoErrors.nombre}</small>}
                 </label>
                 <label className={`create-user__field${nuevoProductoErrors.oem ? ' create-user__field--invalid' : ''}`}>
                   <span>OEM <span style={{ color: '#dc2626' }}>*</span></span>
@@ -3913,9 +3959,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                     placeholder="Código OEM"
                     autoComplete="off"
                   />
-                  {nuevoProductoErrors.oem && <small style={{ color: '#dc2626' }}>{nuevoProductoErrors.oem}</small>}
                 </label>
-                <label className={`create-user__field${nuevoProductoErrors.referencia ? ' create-user__field--invalid' : ''}`}>
+                <label className={`create-user__field${nuevoProductoErrors.referencia || nuevoProductoExisting.referencia ? ' create-user__field--invalid' : ''}`}>
                   <span>Referencia <span style={{ color: '#dc2626' }}>*</span></span>
                   <input
                     type="text"
@@ -3924,7 +3969,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                     placeholder="Referencia del producto"
                     autoComplete="off"
                   />
-                  {nuevoProductoErrors.referencia && <small style={{ color: '#dc2626' }}>{nuevoProductoErrors.referencia}</small>}
                 </label>
                 <label className="create-user__field">
                   <span>Precio</span>
@@ -3949,7 +3993,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                     placeholder="0"
                     autoComplete="off"
                   />
-                  {nuevoProductoErrors.cantidad && <small style={{ color: '#dc2626' }}>{nuevoProductoErrors.cantidad}</small>}
                 </label>
                 <label className="create-user__field" style={{ gridColumn: '1 / -1' }}>
                   <span>Comentario</span>
@@ -3966,7 +4009,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
 
             <div className="imp-aceptados-popup__footer">
               <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowNuevoProductoView(false)}>Cancelar</button>
-              <button type="button" className="create-user__action create-user__action--primary" onClick={handleAddNuevoProducto}>
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={handleAddNuevoProducto}
+              >
                 Agregar producto
               </button>
             </div>
@@ -4051,6 +4098,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [productForm, setProductForm] = useState({ codigo: '', nombre: '', precio: '', costo_minimo: '', descripcion: '' })
   const [productFormErrors, setProductFormErrors] = useState({})
   const [productFormSaving, setProductFormSaving] = useState(false)
+  const [showNuevoProductoView, setShowNuevoProductoView] = useState(false)
+  const [nuevoProductoDraft, setNuevoProductoDraft] = useState({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
+  const [nuevoProductoErrors, setNuevoProductoErrors] = useState({})
+  const [nuevoProductoExisting, setNuevoProductoExisting] = useState({ codigo: null, referencia: null })
 
   const modalRef = useRef(null)
   const toastRef = useRef(null)
@@ -4064,6 +4115,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const productTimerRef = useRef(null)
   const productSearchIdRef = useRef(0)
   const productDropdownRef = useRef(null)
+  const nuevoProductoCheckTimerRef = useRef(null)
+  const nuevoProductoNotifiedRef = useRef({ codigoId: null, referenciaId: null })
   const isFirstOpenRef = useRef(true)
   const detailsRef = useRef([])
   detailsRef.current = details
@@ -4440,6 +4493,80 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     }
   }
 
+  useEffect(() => {
+    if (!showNuevoProductoView) return
+    const codigoVal = nuevoProductoDraft.codigo.trim()
+    const referenciaVal = nuevoProductoDraft.referencia.trim()
+    if (!codigoVal && !referenciaVal) { setNuevoProductoExisting({ codigo: null, referencia: null }); return }
+    clearTimeout(nuevoProductoCheckTimerRef.current)
+    nuevoProductoCheckTimerRef.current = setTimeout(async () => {
+      const [codigoData, referenciaData] = await Promise.all([
+        codigoVal
+          ? authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(codigoVal)}`, {}, token).then((r) => r.ok ? r.json() : null).catch(() => null)
+          : Promise.resolve(null),
+        referenciaVal
+          ? authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(referenciaVal)}`, {}, token).then((r) => r.ok ? r.json() : null).catch(() => null)
+          : Promise.resolve(null),
+      ])
+      const codigoMatch = codigoVal ? parseApiList(codigoData).find((p) => String(p.codigo || '').trim().toLowerCase() === codigoVal.toLowerCase()) : null
+      const referenciaMatch = referenciaVal ? parseApiList(referenciaData).find((p) => String(p.referencia || '').trim().toLowerCase() === referenciaVal.toLowerCase()) : null
+      const notified = nuevoProductoNotifiedRef.current
+      if (codigoMatch && notified.codigoId !== codigoMatch.id) {
+        notified.codigoId = codigoMatch.id
+        toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${codigoMatch.codigo}: ${codigoMatch.nombre || codigoMatch.descripcion || ''}`, life: 4500 })
+      } else if (!codigoMatch) {
+        notified.codigoId = null
+      }
+      if (referenciaMatch && notified.referenciaId !== referenciaMatch.id) {
+        notified.referenciaId = referenciaMatch.id
+        toastRef.current?.show({ severity: 'warn', summary: 'Referencia ya existe', detail: `${referenciaMatch.codigo}: ${referenciaMatch.nombre || referenciaMatch.descripcion || ''}`, life: 4500 })
+      } else if (!referenciaMatch) {
+        notified.referenciaId = null
+      }
+      setNuevoProductoExisting({ codigo: codigoMatch || null, referencia: referenciaMatch || null })
+    }, 350)
+    return () => clearTimeout(nuevoProductoCheckTimerRef.current)
+  }, [nuevoProductoDraft.codigo, nuevoProductoDraft.referencia, showNuevoProductoView, token])
+
+  const handleAddNuevoProducto = () => {
+    const errors = {}
+    if (!nuevoProductoDraft.nombre.trim()) errors.nombre = 'El nombre es requerido'
+    if (!nuevoProductoDraft.oem.trim()) errors.oem = 'El OEM es requerido'
+    if (!nuevoProductoDraft.referencia.trim()) errors.referencia = 'La referencia es requerida'
+    const qty = Number(nuevoProductoDraft.cantidad)
+    if (!nuevoProductoDraft.cantidad || !Number.isFinite(qty) || qty <= 0) errors.cantidad = 'La cantidad debe ser mayor a 0'
+    if (Object.keys(errors).length > 0) { setNuevoProductoErrors(errors); return }
+    if (nuevoProductoExisting.codigo) {
+      toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${nuevoProductoExisting.codigo.codigo}: ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`, life: 4500 })
+      return
+    }
+    if (nuevoProductoExisting.referencia) {
+      toastRef.current?.show({ severity: 'warn', summary: 'Referencia ya existe', detail: `${nuevoProductoExisting.referencia.codigo}: ${nuevoProductoExisting.referencia.nombre || nuevoProductoExisting.referencia.descripcion || ''}`, life: 4500 })
+      return
+    }
+    const incomingRef = nuevoProductoDraft.referencia.trim().toLowerCase()
+    if (details.some((d) => String(d.producto?.referencia || d.referencia || '').trim().toLowerCase() === incomingRef)) {
+      setNuevoProductoErrors((p) => ({ ...p, referencia: 'Ya existe un producto con esta referencia en el listado.' }))
+      return
+    }
+    const key = 'manual_' + Date.now() + '_' + Math.floor(Math.random() * 10000)
+    setDetails((prev) => [...prev, {
+      _key: key,
+      producto: null,
+      codigo: nuevoProductoDraft.codigo.trim(),
+      nombre: nuevoProductoDraft.nombre.trim(),
+      oem: nuevoProductoDraft.oem.trim(),
+      referencia: nuevoProductoDraft.referencia.trim(),
+      precio: nuevoProductoDraft.precio !== '' ? Number(nuevoProductoDraft.precio) : null,
+      cantidad: String(nuevoProductoDraft.cantidad),
+      comentario: nuevoProductoDraft.comentario.trim(),
+    }])
+    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
+    setNuevoProductoErrors({})
+    setNuevoProductoExisting({ codigo: null, referencia: null })
+    setShowNuevoProductoView(false)
+  }
+
   const handleSubmit = async () => {
     const itemsToSubmit = details
     if (!itemsToSubmit.length) {
@@ -4468,7 +4595,18 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
       } : {}
       if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
-      return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
+      const manualPrecio = item.precio != null && item.precio !== '' ? Number(item.precio) : undefined
+      return {
+        codigo: item.codigo || '',
+        nombre: item.nombre || '',
+        oem: item.oem || '',
+        referencia: item.referencia || '',
+        cantidad: Number(item.cantidad || 0),
+        comentario: item.comentario || '',
+        ...(manualPrecio != null && !isVerificarOrConfirmacion ? { precio_confirmado: manualPrecio } : {}),
+        ...confirmedFields,
+        ...solId,
+      }
     })
     setSubmitting(true)
     try {
@@ -5082,17 +5220,27 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         <h4>Listado de productos</h4>
                       </div>
                       {!isVerificarOrConfirmacion && (
-                        <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <button
                             type="button"
                             className="create-user__ghost"
-                            onClick={() => setShowAceptadosView(true)}
+                            onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' }); setNuevoProductoErrors({}); setNuevoProductoExisting({ codigo: null, referencia: null }); nuevoProductoNotifiedRef.current = { codigoId: null, referenciaId: null }; setShowNuevoProductoView(true) }}
                             style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                            disabled={aceptadosCount === 0}
                           >
-                            + Aceptados de solicitudes
+                            + Agregar producto
                           </button>
-                        </span>
+                          <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
+                            <button
+                              type="button"
+                              className="create-user__ghost"
+                              onClick={() => setShowAceptadosView(true)}
+                              style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                              disabled={aceptadosCount === 0}
+                            >
+                              + Aceptados de solicitudes
+                            </button>
+                          </span>
+                        </div>
                       )}
                     </div>
 
@@ -5250,7 +5398,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         const oem = String(getProductoOem(item.producto) || item.oem || '').trim() || '-'
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
-                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio
+                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
                           <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
@@ -5779,6 +5927,114 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                 </button>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={saveCreateProductForm} disabled={productFormSaving}>
                   {productFormSaving ? 'Guardando...' : 'Crear producto'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          getPortalRoot()
+        )}
+
+        {showNuevoProductoView && createPortal(
+          <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowNuevoProductoView(false) }}>
+            <div className="imp-aceptados-popup__dialog imp-nuevo-producto-popup__dialog">
+              <header className="imp-aceptados-popup__header">
+                <div>
+                  <h3>Agregar producto</h3>
+                  <p>El producto se agregará directamente al listado.</p>
+                </div>
+                <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowNuevoProductoView(false)} aria-label="Cerrar">
+                  <i className="pi pi-times" />
+                </button>
+              </header>
+
+              <div className="imp-aceptados-popup__body">
+                <div className="create-user__grid create-user__grid--two" style={{ padding: '4px 0' }}>
+                  <label className={`create-user__field${nuevoProductoErrors.codigo || nuevoProductoExisting.codigo ? ' create-user__field--invalid' : ''}`}>
+                    <span>Código JP</span>
+                    <input
+                      type="text"
+                      value={nuevoProductoDraft.codigo}
+                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, codigo: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, codigo: undefined })) }}
+                      placeholder="Opcional"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className={`create-user__field${nuevoProductoErrors.nombre ? ' create-user__field--invalid' : ''}`}>
+                    <span>Nombre <span style={{ color: '#dc2626' }}>*</span></span>
+                    <input
+                      type="text"
+                      value={nuevoProductoDraft.nombre}
+                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, nombre: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, nombre: undefined })) }}
+                      placeholder="Nombre del producto"
+                      autoComplete="off"
+                      autoFocus
+                    />
+                  </label>
+                  <label className={`create-user__field${nuevoProductoErrors.oem ? ' create-user__field--invalid' : ''}`}>
+                    <span>OEM <span style={{ color: '#dc2626' }}>*</span></span>
+                    <input
+                      type="text"
+                      value={nuevoProductoDraft.oem}
+                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, oem: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, oem: undefined })) }}
+                      placeholder="Código OEM"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className={`create-user__field${nuevoProductoErrors.referencia || nuevoProductoExisting.referencia ? ' create-user__field--invalid' : ''}`}>
+                    <span>Referencia <span style={{ color: '#dc2626' }}>*</span></span>
+                    <input
+                      type="text"
+                      value={nuevoProductoDraft.referencia}
+                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, referencia: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, referencia: undefined })) }}
+                      placeholder="Referencia del producto"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className="create-user__field">
+                    <span>Precio</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={nuevoProductoDraft.precio}
+                      onChange={(e) => setNuevoProductoDraft((p) => ({ ...p, precio: e.target.value }))}
+                      placeholder="0.00"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className={`create-user__field${nuevoProductoErrors.cantidad ? ' create-user__field--invalid' : ''}`}>
+                    <span>Cantidad <span style={{ color: '#dc2626' }}>*</span></span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={nuevoProductoDraft.cantidad}
+                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, cantidad: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, cantidad: undefined })) }}
+                      placeholder="0"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className="create-user__field" style={{ gridColumn: '1 / -1' }}>
+                    <span>Comentario</span>
+                    <input
+                      type="text"
+                      value={nuevoProductoDraft.comentario}
+                      onChange={(e) => setNuevoProductoDraft((p) => ({ ...p, comentario: e.target.value }))}
+                      placeholder="Opcional"
+                      autoComplete="off"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="imp-aceptados-popup__footer">
+                <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowNuevoProductoView(false)}>Cancelar</button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleAddNuevoProducto}
+                >
+                  Agregar producto
                 </button>
               </div>
             </div>
