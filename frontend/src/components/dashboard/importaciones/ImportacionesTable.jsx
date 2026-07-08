@@ -1640,9 +1640,15 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
                     <div className="create-salida__field-group create-salida__field-group--defined">
                       <div className="create-user__grid create-user__grid--two">
                         <StaticFieldDisplay label="Código" value={imp.codigo} />
+                        <StaticFieldDisplay label="Fecha de creación" value={String(imp.creado_en || '').slice(0, 10) || '-'} />
                         <StaticFieldDisplay label="Fecha importación" value={imp.fecha_importacion || imp.fecha || '-'} />
+                        {imp.fecha_llegada && <StaticFieldDisplay label="Fecha de llegada" value={imp.fecha_llegada} />}
                         <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(imp.casa_comercial)} fullWidth />
-                        <StaticFieldDisplay label="Días estimados" value={imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : '-'} />
+                        {imp.estado === 'importada' ? (
+                          <StaticFieldDisplay label="Tiempo de entrega" value={imp.dias_reales_entrega != null ? `${imp.dias_reales_entrega} días` : '-'} />
+                        ) : (
+                          <StaticFieldDisplay label="Días estimados" value={imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : '-'} />
+                        )}
                         {imp.numero_factura && <StaticFieldDisplay label="Factura" value={imp.numero_factura} />}
                         {imp.casa_comercial?.pais?.nombre && (
                           <div className="create-user__field create-salida__static-field">
@@ -6958,6 +6964,28 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
             className="column-max-min-width"
             style={{ minWidth: '100px' }}
           />
+          {status === 'importada' && (
+            <Column
+              field="creado_en"
+              header="Fecha de creación"
+              sortable
+              reorderable
+              className="column-max-min-width"
+              style={{ minWidth: '120px' }}
+              body={(row) => String(row.creado_en || '').slice(0, 10) || '-'}
+            />
+          )}
+          {status === 'importada' && (
+            <Column
+              field="fecha_llegada"
+              header="Fecha de llegada"
+              sortable
+              reorderable
+              className="column-max-min-width"
+              style={{ minWidth: '120px' }}
+              body={(row) => row.fecha_llegada || '-'}
+            />
+          )}
           <Column
             field="casa_nombre"
             header="Casa comercial"
