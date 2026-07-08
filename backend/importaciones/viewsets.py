@@ -840,6 +840,15 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     conflicto_casa_nombre = otra.nombre if otra else "otra casa comercial"
                     matched = None  # treat as unmatched so it never enters the import
 
+            # Si el producto ya existe (por código o por referencia), completa
+            # referencia/descripción con los datos del catálogo cuando el Excel
+            # no los trae: código o referencia solos ya identifican el producto.
+            if matched:
+                if not referencia:
+                    referencia = matched.referencia or ""
+                if not descripcion:
+                    descripcion = matched.nombre or ""
+
             faltan_datos = []
             if not conflicto_casa:
                 if not matched:

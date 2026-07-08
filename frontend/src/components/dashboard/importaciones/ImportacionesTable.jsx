@@ -4281,8 +4281,6 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
 }
 
 function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
-  const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
-  const mode = isDark ? 'dark' : 'light'
   const canEdit = moduleActions?.puede_actualizar !== false
   const canDelete = moduleActions?.puede_eliminar !== false
   const canImportar = moduleActions?.puede_importar === true
@@ -4352,10 +4350,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   }
   const [showVerificarExcelDropdown, setShowVerificarExcelDropdown] = useState(false)
   const [showSaveOnCloseModal, setShowSaveOnCloseModal] = useState(false)
-  const [creatingProductKey, setCreatingProductKey] = useState(null)
-  const [productForm, setProductForm] = useState({ codigo: '', nombre: '', precio: '', costo_minimo: '', descripcion: '' })
-  const [productFormErrors, setProductFormErrors] = useState({})
-  const [productFormSaving, setProductFormSaving] = useState(false)
   const [showNuevoProductoView, setShowNuevoProductoView] = useState(false)
   const [nuevoProductoDraft, setNuevoProductoDraft] = useState({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
   const [nuevoProductoErrors, setNuevoProductoErrors] = useState({})
@@ -4683,72 +4677,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     const intPart = Math.floor(n / 100)
     const decPart = n % 100
     return `${intPart.toLocaleString('en-US')}.${String(decPart).padStart(2, '0')}`
-  }
-
-  const openCreateProductForm = (item) => {
-    setCreatingProductKey(item._key)
-    setProductForm({ codigo: item.codigo || '', nombre: item.nombre || '', precio: '', costo_minimo: '', descripcion: '' })
-    setProductFormErrors({})
-  }
-
-  const saveCreateProductForm = async () => {
-    const errs = {}
-    if (!productForm.codigo.trim()) errs.codigo = 'Requerido'
-    if (!productForm.nombre.trim()) errs.nombre = 'Requerido'
-    if (!productForm.precio || isNaN(parseFloat(productForm.precio))) errs.precio = 'Requerido'
-    if (productForm.costo_minimo && !isNaN(parseFloat(productForm.costo_minimo)) && !isNaN(parseFloat(productForm.precio)) && parseFloat(productForm.precio) <= parseFloat(productForm.costo_minimo)) errs.precio = 'El precio debe ser mayor al costo'
-    if (Object.keys(errs).length) { setProductFormErrors(errs); return }
-    if (!selectedCasa?.id) { setProductFormErrors({ _general: 'La importación no tiene casa comercial asignada.' }); return }
-
-    setProductFormSaving(true)
-    try {
-      const payload = {
-        codigo: productForm.codigo.trim(),
-        nombre: productForm.nombre.trim(),
-        precio: parseFloat(productForm.precio),
-        casas_comerciales_ids: [selectedCasa.id],
-      }
-      if (productForm.costo_minimo) payload.costo_minimo = parseFloat(productForm.costo_minimo)
-      if (productForm.descripcion.trim()) payload.descripcion = productForm.descripcion.trim()
-
-      const resp = await authFetch(`${API_URL}/productos/listado/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }, token)
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}))
-        const codigoErr = Array.isArray(data?.codigo) ? data.codigo.join(' ') : String(data?.codigo || '')
-        if (codigoErr.toLowerCase().includes('ya existe')) {
-          try {
-            const searchResp = await authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(productForm.codigo.trim())}`, {}, token)
-            if (searchResp.ok) {
-              const searchData = await searchResp.json()
-              const results = searchData?.results ?? searchData ?? []
-              const existing = Array.isArray(results) && results.find(p => p.codigo?.toLowerCase() === productForm.codigo.trim().toLowerCase())
-              if (existing) {
-                setDetails((prev) => prev.map((d) => d._key === creatingProductKey ? { ...d, producto: existing } : d))
-                setCreatingProductKey(null)
-                return
-              }
-            }
-          } catch {}
-        }
-        const fe = {}
-        Object.entries(typeof data === 'object' && data !== null ? data : {}).forEach(([k, v]) => {
-          fe[k] = Array.isArray(v) ? v.join(' ') : String(v)
-        })
-        setProductFormErrors(Object.keys(fe).length ? fe : { _general: 'Error al crear el producto.' })
-        return
-      }
-      const created = await resp.json()
-      setDetails((prev) => prev.map((d) => d._key === creatingProductKey ? { ...d, producto: created } : d))
-      setCreatingProductKey(null)
-    } catch (e) {
-      setProductFormErrors({ _general: e.message || 'Error al crear el producto.' })
-    } finally {
-      setProductFormSaving(false)
-    }
   }
 
   useEffect(() => {
@@ -5830,16 +5758,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                   />
                                 </span>
                                 <span className="create-user__locations-cell create-user__locations-cell--action">
-                                  {sinCatalogo && (
-                                    <button
-                                      type="button"
-                                      className="create-user__ghost"
-                                      style={{ fontSize: '0.72rem', padding: '4px 8px', whiteSpace: 'nowrap' }}
-                                      onClick={() => openCreateProductForm(item)}
-                                    >
-                                      Crear producto
-                                    </button>
-                                  )}
                                   <button
                                     type="button"
                                     className="create-user__locations-remove"
@@ -6130,76 +6048,6 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                   disabled={submitting}
                 >
                   {submitting ? 'Guardando...' : 'Guardar y cerrar'}
-                </button>
-              </div>
-            </div>
-          </div>,
-          getPortalRoot()
-        )}
-
-        {creatingProductKey !== null && createPortal(
-          <div
-            className={`quick-actions__receive-overlay ${mode}`}
-            style={{ zIndex: 2200 }}
-            onMouseDown={(e) => { if (e.target === e.currentTarget && !productFormSaving) setCreatingProductKey(null) }}
-          >
-            <div
-              className={`quick-actions__receive-dialog ${mode}`}
-              style={{ width: 'min(520px, 90vw)', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto' }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <header className="quick-actions__receive-head">
-                <div>
-                  <h4>Completar datos del producto</h4>
-                  <p>{details.find((d) => d._key === creatingProductKey)?.nombre || details.find((d) => d._key === creatingProductKey)?.codigo || 'Sin catálogo'}</p>
-                </div>
-                <button type="button" className="quick-actions__receive-close" onClick={() => setCreatingProductKey(null)} disabled={productFormSaving}>
-                  <X size={16} />
-                </button>
-              </header>
-
-              <div className="quick-actions__receive-body" style={{ padding: '16px 20px' }}>
-                {productFormErrors._general && (
-                  <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: 12 }}>{productFormErrors._general}</p>
-                )}
-                <div className="create-user__grid create-user__grid--two">
-                  <label className={`create-user__field create-user__field--required${productFormErrors.nombre ? ' create-user__field--invalid' : ''}`}>
-                    <span>Nombre</span>
-                    <input type="text" value={productForm.nombre} onChange={(e) => setProductForm(f => ({ ...f, nombre: e.target.value }))} />
-                    {productFormErrors.nombre && <small style={{ color: '#dc2626' }}>{productFormErrors.nombre}</small>}
-                  </label>
-                  <label className={`create-user__field create-user__field--required${productFormErrors.codigo ? ' create-user__field--invalid' : ''}`}>
-                    <span>Código JP</span>
-                    <input type="text" value={productForm.codigo} onChange={(e) => setProductForm(f => ({ ...f, codigo: e.target.value }))} />
-                    {productFormErrors.codigo && <small style={{ color: '#dc2626' }}>{productFormErrors.codigo}</small>}
-                  </label>
-                  <label className={`create-user__field create-user__field--required${productFormErrors.precio ? ' create-user__field--invalid' : ''}`}>
-                    <span>Precio</span>
-                    <input type="number" min="0" step="0.01" placeholder="0.00" value={productForm.precio} onChange={(e) => setProductForm(f => ({ ...f, precio: e.target.value }))} />
-                    {productFormErrors.precio && <small style={{ color: '#dc2626' }}>{productFormErrors.precio}</small>}
-                  </label>
-                  <label className="create-user__field">
-                    <span>Costo</span>
-                    <input type="number" min="0" step="0.01" placeholder="0.00" value={productForm.costo_minimo} onChange={(e) => setProductForm(f => ({ ...f, costo_minimo: e.target.value }))} />
-                  </label>
-                  <label className="create-user__field create-user__field--full">
-                    <span>Descripción</span>
-                    <input type="text" placeholder="Opcional" value={productForm.descripcion} onChange={(e) => setProductForm(f => ({ ...f, descripcion: e.target.value }))} />
-                  </label>
-                </div>
-                {selectedCasa && (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--color-muted,#64748b)', marginTop: 14 }}>
-                    Casa comercial: <strong>{selectedCasa.nombre}</strong> (asignada automáticamente)
-                  </p>
-                )}
-              </div>
-
-              <div className="quick-actions__receive-actions">
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setCreatingProductKey(null)} disabled={productFormSaving}>
-                  Cancelar
-                </button>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={saveCreateProductForm} disabled={productFormSaving}>
-                  {productFormSaving ? 'Guardando...' : 'Crear producto'}
                 </button>
               </div>
             </div>
