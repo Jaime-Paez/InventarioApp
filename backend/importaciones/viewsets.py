@@ -357,12 +357,20 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        today = timezone.localdate()
+        fecha_llegada_raw = str(request.data.get("fecha_llegada") or "").strip()
+        try:
+            from datetime import date
+            fecha_llegada = date.fromisoformat(fecha_llegada_raw) if fecha_llegada_raw else timezone.localdate()
+        except ValueError:
+            fecha_llegada = timezone.localdate()
+
         start = instance.fecha_importacion or instance.fecha
-        dias_reales = (today - start).days if start else None
+        dias_reales = (fecha_llegada - start).days if start else None
 
         instance.estado = Importacion.ESTADO_IMPORTADA
+        instance.fecha_llegada = fecha_llegada
         instance.dias_reales_entrega = dias_reales
+        instance.borrador_llegada = None
         instance.save()
 
         # Register cantidad recibida per detalle and log faltante/sobrante inconvenientes
@@ -472,6 +480,28 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]
         if admin_ids:
             self._create_importacion_reminder(instance, None, admin_ids, request.user)
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="guardar-borrador-llegada")
+    def guardar_borrador_llegada(self, request, pk=None):
+        """Guarda el progreso del asistente de llegada (paso, revisados, cantidades
+        recibidas, distribución, destinatarios) para poder continuarlo al reabrirlo."""
+        if not self._check_specific_importacion_permission(request, "puede_marcar_llegada"):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta acción."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        instance = self.get_object()
+        if instance.estado != Importacion.ESTADO_EN_CAMINO:
+            return Response(
+                {"detail": "Solo se puede guardar el progreso desde estado en camino."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        instance.borrador_llegada = request.data.get("borrador") or None
+        instance.save(update_fields=["borrador_llegada"])
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)

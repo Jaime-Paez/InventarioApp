@@ -33,6 +33,11 @@ class Importacion(models.Model):
     dias_entrega_estimados = models.PositiveSmallIntegerField(null=True, blank=True)
     numero_factura = models.CharField(max_length=100, blank=True, default="")
     fecha_importacion = models.DateField(null=True, blank=True)
+    fecha_llegada = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Fecha real en que llegó la importación, confirmada/editada al marcar la llegada.",
+    )
     dias_reales_entrega = models.PositiveSmallIntegerField(null=True, blank=True)
     origen = models.ForeignKey(
         "self",
@@ -47,6 +52,12 @@ class Importacion(models.Model):
         blank=True,
         default=None,
         help_text="Snapshot de los productos revisados en confirmación (check/x, comentarios, precios) al momento de importar.",
+    )
+    borrador_llegada = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Progreso guardado del asistente de llegada (paso, revisados, cantidades recibidas, distribución, destinatarios) para poder continuar al reabrirlo.",
     )
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,

@@ -31,6 +31,18 @@ const getCantidadRecibidaCeiling = (row) => {
   return Number.isFinite(n) ? n : row.cantidad
 }
 
+// El progreso del asistente de llegada se guarda en la base de datos
+// (Importacion.borrador_llegada) para sobrevivir a cerrar el modal o recargar la
+// página; localStorage queda como respaldo mientras esa data no ha llegado aún.
+const getSavedDraft = (impData) => {
+  if (impData?.borrador_llegada) return impData.borrador_llegada
+  try {
+    return JSON.parse(localStorage.getItem(`imp-receive-${impData?.id}`) || 'null')
+  } catch {
+    return null
+  }
+}
+
 // Posiciona un popover como un dropdown inteligente: abre hacia abajo del elemento
 // que lo dispara salvo que no quepa y haya más espacio arriba, en cuyo caso se voltea.
 const computeSmartPopoverPosition = (trigger, cardEl) => {
@@ -356,7 +368,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   )
 
   const [rows, setRows] = useState(() => {
-    const saved = JSON.parse(localStorage.getItem(`imp-receive-${imp.id}`) || 'null')
+    const saved = getSavedDraft(imp)
     const checkedIds = new Set(saved?.checkedIds || [])
     const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
     return (imp.detalles || []).map(d => ({
@@ -383,30 +395,26 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [formErrors, setFormErrors] = useState({})
   const [formSaving, setFormSaving] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
-  const [step, setStep] = useState(() => {
-    const saved = JSON.parse(localStorage.getItem(`imp-receive-${imp.id}`) || 'null')
-    return saved?.step || 1
-  })
+  const [step, setStep] = useState(() => getSavedDraft(imp)?.step || 1)
+  const [fechaLlegada, setFechaLlegada] = useState(() => getSavedDraft(imp)?.fechaLlegada || todayISO())
   const [sucursales, setSucursales] = useState([])
   const [loadingSucursales, setLoadingSucursales] = useState(false)
-  const [distribution, setDistribution] = useState(() => {
-    const saved = JSON.parse(localStorage.getItem(`imp-receive-${imp.id}`) || 'null')
-    return saved?.distribution || {}
-  })
+  const [distribution, setDistribution] = useState(() => getSavedDraft(imp)?.distribution || {})
   const [allUsers, setAllUsers] = useState([])
   const [loadingUsers, setLoadingUsers] = useState(false)
-  const [recipientsBySucursal, setRecipientsBySucursal] = useState({})
+  const [recipientsBySucursal, setRecipientsBySucursal] = useState(() => getSavedDraft(imp)?.recipientsBySucursal || {})
 
-  // Fetch fresh importacion data on mount so already-linked products are reflected
+  // Fetch fresh importacion data on mount so already-linked products, and the latest
+  // saved progress (borrador_llegada), are reflected even if the `imp` prop was stale.
   useEffect(() => {
     authFetch(`${API_URL}/importaciones/importaciones/${imp.id}/`, {}, token)
       .then(r => r.ok ? r.json() : null)
-      .then(fresh => {
+      .then(async fresh => {
         if (!fresh?.detalles) return
-        const saved = JSON.parse(localStorage.getItem(storageKey) || 'null')
+        const saved = getSavedDraft(fresh)
         const checkedIds = new Set(saved?.checkedIds || [])
         const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
-        setRows(fresh.detalles.map(d => ({
+        const freshRows = fresh.detalles.map(d => ({
           id: d.id,
           productoId: d.producto?.id ?? null,
           codigo: d.producto?.codigo || d.codigo || '',
@@ -419,7 +427,46 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           sinCat: !d.producto?.id,
           checked: checkedIds.has(d.id),
           newProducto: null,
-        })))
+        }))
+        setRows(freshRows)
+        const restoredStep = saved?.step || 1
+        setStep(restoredStep)
+        if (saved?.fechaLlegada) setFechaLlegada(saved.fechaLlegada)
+        if (saved?.recipientsBySucursal) setRecipientsBySucursal(saved.recipientsBySucursal)
+
+        // Los pasos previos quedaron guardados sin normalizar sucursales/distribución
+        // todavía (eso solo pasa al llegar al paso 4); si el borrador ya venía en
+        // paso 4+, cárgalas aquí para que ese paso no se quede vacío al reabrir el modal.
+        if (restoredStep >= 4) {
+          setLoadingSucursales(true)
+          try {
+            const resp = await authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token)
+            const data = resp.ok ? await resp.json() : []
+            const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+            setSucursales(list)
+            const matriz = findMatrizSucursal(list)
+            const nextDistribution = {}
+            freshRows.forEach(row => {
+              nextDistribution[row.id] = {}
+              list.forEach(suc => { nextDistribution[row.id][suc.id] = saved?.distribution?.[row.id]?.[suc.id] ?? '' })
+              if (matriz) {
+                const ceiling = getCantidadRecibidaCeiling(row)
+                const othersSum = list
+                  .filter(suc => suc.id !== matriz.id)
+                  .reduce((sum, suc) => sum + (parseInt(nextDistribution[row.id][suc.id]) || 0), 0)
+                nextDistribution[row.id][matriz.id] = String(Math.max(0, ceiling - othersSum))
+              }
+            })
+            setDistribution(nextDistribution)
+          } catch {
+            setSucursales([])
+          } finally {
+            setLoadingSucursales(false)
+          }
+        }
+        if (restoredStep === 5) {
+          await enterStep5()
+        }
       })
       .catch(() => {})
       .finally(() => setLoadingData(false))
@@ -444,32 +491,15 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     return next
   }
 
-  // Auto-load sucursales if modal is restored at step 3 or 4
-  useEffect(() => {
-    if (step < 3 || loadingSucursales || sucursales.length > 0) return
-    setLoadingSucursales(true)
-    authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token)
-      .then(r => r.ok ? r.json() : [])
-      .then(data => {
-        const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
-        setSucursales(list)
-        setDistribution(prev => seedDistribution(list, prev))
-      })
-      .catch(() => {})
-      .finally(() => setLoadingSucursales(false))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-load users if modal is restored at step 4
-  useEffect(() => {
-    if (step !== 4 || allUsers.length > 0) return
-    enterStep4()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Nota: la carga de sucursales/usuarios al restaurar el modal en paso 3+/4 ya la
+  // resuelve el efecto de "fetch fresh importacion data" de arriba (usa el borrador
+  // recién llegado del servidor en vez del step inicial, que podría estar desactualizado).
 
   useEffect(() => {
     const checkedIds = rows.filter(r => r.checked).map(r => r.id)
     const cantidadesRecibidas = Object.fromEntries(rows.map(r => [r.id, r.cantidadRecibida]))
-    localStorage.setItem(storageKey, JSON.stringify({ checkedIds, step, distribution, cantidadesRecibidas }))
-  }, [rows, step, distribution, storageKey])
+    localStorage.setItem(storageKey, JSON.stringify({ checkedIds, step, fechaLlegada, distribution, cantidadesRecibidas, recipientsBySucursal }))
+  }, [rows, step, fechaLlegada, distribution, recipientsBySucursal, storageKey])
 
   const toggleRow = useCallback((id) => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, checked: !r.checked } : r))
@@ -600,8 +630,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     }
   }
 
-  const enterStep3 = async () => {
-    setStep(3)
+  const enterStep4 = async () => {
+    setStep(4)
     setLoadingSucursales(true)
     try {
       const resp = await authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token)
@@ -643,8 +673,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     })
   }, [sucursales])
 
-  const enterStep4 = async () => {
-    setStep(4)
+  const enterStep5 = async () => {
+    setStep(5)
     if (allUsers.length > 0) return
     setLoadingUsers(true)
     try {
@@ -697,7 +727,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       const revisiones = rows.map(row => ({ detalle_id: row.id, cantidad_recibida: getCantidadRecibidaCeiling(row) }))
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/marcar-llegada/`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones, destinatarios_por_sucursal, revisiones }) },
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones, destinatarios_por_sucursal, revisiones, fecha_llegada: fechaLlegada }) },
         token
       )
       if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo marcar la llegada.'))
@@ -710,17 +740,40 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     }
   }
 
+  // Guarda el progreso actual en la base de datos (no solo en localStorage) para que
+  // sobreviva a cerrar el modal, recargar la página o reabrirlo en otro dispositivo.
+  const saveDraftToServer = async () => {
+    const checkedIds = rows.filter(r => r.checked).map(r => r.id)
+    const cantidadesRecibidas = Object.fromEntries(rows.map(r => [r.id, r.cantidadRecibida]))
+    const borrador = { step, fechaLlegada, checkedIds, cantidadesRecibidas, distribution, recipientsBySucursal }
+    try {
+      await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/guardar-borrador-llegada/`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ borrador }) },
+        token
+      )
+    } catch {
+      // Si falla, el progreso sigue disponible en localStorage para este navegador.
+    }
+  }
+
+  const handleClose = async () => {
+    if (submitting) return
+    await saveDraftToServer()
+    onClose()
+  }
+
   return createPortal(
     <>
       <Toast ref={toastRef} />
       <div
         className={`quick-actions__receive-overlay ${mode}`}
         style={{ zIndex: 2100 }}
-        onMouseDown={(e) => { if (e.target === e.currentTarget && !submitting) onClose() }}
+        onMouseDown={(e) => { if (e.target === e.currentTarget && !submitting) handleClose() }}
       >
         <div
           className={`quick-actions__receive-dialog ${mode}`}
-          style={{ width: step === 2 ? 'min(950px, 95vw)' : step === 3 ? 'min(860px, 95vw)' : step === 4 ? 'min(700px, 95vw)' : 'min(640px, 90vw)', gridTemplateRows: 'auto 1fr auto', transition: 'width .25s' }}
+          style={{ width: step === 3 ? 'min(950px, 95vw)' : step === 4 ? 'min(860px, 95vw)' : step === 5 ? 'min(700px, 95vw)' : 'min(640px, 90vw)', gridTemplateRows: 'auto 1fr auto', transition: 'width .25s' }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <header className="quick-actions__receive-head">
@@ -728,7 +781,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               <h4>{imp.codigo}</h4>
               <p>{imp.casa_comercial?.nombre || '-'} · Recepción de productos</p>
             </div>
-            <button type="button" className="quick-actions__receive-close" onClick={onClose} disabled={submitting}>
+            <button type="button" className="quick-actions__receive-close" onClick={handleClose} disabled={submitting}>
               <X size={16} />
             </button>
           </header>
@@ -737,12 +790,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           {!loadingData && (
             <div style={{ padding: '12px 20px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', gap: 5 }}>
-                {[1,2,3,4].map(n => (
+                {[1,2,3,4,5].map(n => (
                   <div key={n} style={{ flex: 1, height: 3, borderRadius: 2, background: step >= n ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #e2e8f0)', transition: 'background .3s' }} />
                 ))}
               </div>
               <span style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
-                Paso {step} de 4 — {step === 1 ? 'Productos nuevos' : step === 2 ? 'Revisión de llegada' : step === 3 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
+                Paso {step} de 5 — {step === 1 ? 'Fecha de llegada' : step === 2 ? 'Productos nuevos' : step === 3 ? 'Revisión de llegada' : step === 4 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
               </span>
             </div>
           )}
@@ -757,11 +810,35 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>Cargando productos...</span>
               </div>
             ) : step === 1 ? (
-              /* ── PASO 1: registrar productos sin catálogo ── */
+              /* ── PASO 1: fecha de llegada ── */
               <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 1 — Productos nuevos</p>
+                    <p className="quick-actions__receive-stage-kicker">Paso 1 — Fecha de llegada</p>
+                    <h5>¿Cuándo llegó la importación?</h5>
+                    <p className="quick-actions__receive-stage-name">
+                      Por defecto se usa la fecha de hoy. Puedes editarla si la mercadería llegó en otro momento.
+                    </p>
+                  </div>
+                </article>
+                <div style={{ padding: '4px 16px 8px', maxWidth: 260 }}>
+                  <label className="create-user__field create-user__field--required">
+                    <span>Fecha de llegada</span>
+                    <input
+                      type="date"
+                      value={fechaLlegada}
+                      onChange={(e) => setFechaLlegada(e.target.value)}
+                      max={todayISO()}
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : step === 2 ? (
+              /* ── PASO 2: registrar productos sin catálogo ── */
+              <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
+                <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
+                  <div className="quick-actions__receive-stage-copy">
+                    <p className="quick-actions__receive-stage-kicker">Paso 2 — Productos nuevos</p>
                     <h5>Registra los productos que no están en el catálogo</h5>
                     <p className="quick-actions__receive-stage-name">
                       Estos ítems llegaron en esta importación pero aún no tienen un producto asignado. Completa sus datos antes de continuar.
@@ -815,8 +892,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   </div>
                 )}
               </div>
-            ) : step === 2 ? (
-              /* ── PASO 2: verificar cantidades recibidas ── */
+            ) : step === 3 ? (
+              /* ── PASO 3: verificar cantidades recibidas ── */
               <div
                 className="quick-actions__receive-step quick-actions__receive-step--list"
                 style={{ '--receive-list-locations-column': 'minmax(120px, 1.1fr)', '--receive-list-received-column': '0px' }}
@@ -824,7 +901,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-head">
                     <div className="quick-actions__receive-stage-copy">
-                      <p className="quick-actions__receive-stage-kicker">Paso 2 — Revisión de llegada</p>
+                      <p className="quick-actions__receive-stage-kicker">Paso 3 — Revisión de llegada</p>
                       <h5>Confirma los productos recibidos</h5>
                       <p className="quick-actions__receive-stage-name">Marca cada producto cuando confirmes físicamente haberlo recibido.</p>
                     </div>
@@ -963,12 +1040,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   </p>
                 )}
               </div>
-            ) : step === 3 ? (
-              /* ── PASO 3: distribución a sucursales ── */
+            ) : step === 4 ? (
+              /* ── PASO 4: distribución a sucursales ── */
               <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 3 — Distribución</p>
+                    <p className="quick-actions__receive-stage-kicker">Paso 4 — Distribución</p>
                     <h5>Envía los productos a las sucursales</h5>
                     <p className="quick-actions__receive-stage-name">Indica cuántas unidades de cada producto van a cada sucursal. El total debe coincidir con la cantidad recibida.</p>
                   </div>
@@ -1066,11 +1143,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 })()}
               </div>
             ) : (
-              /* ── PASO 4: destinatarios por sucursal ── */
+              /* ── PASO 5: destinatarios por sucursal ── */
               <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 4 — Destinatarios del envío</p>
+                    <p className="quick-actions__receive-stage-kicker">Paso 5 — Destinatarios del envío</p>
                     <h5>Vas a enviar productos a varias sucursales</h5>
                     <p className="quick-actions__receive-stage-name">Escoge a quién debe llegarle el recordatorio de cada envío. Pasa el mouse sobre el ícono junto al nombre de la sucursal para ver qué productos le llegarán. Este paso es opcional.</p>
                   </div>
@@ -1131,22 +1208,27 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           <footer className="quick-actions__receive-actions">
             {step === 1 ? (
               <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={onClose}>Cancelar</button>
-                <button type="button" className={`quick-actions__receive-btn${canGoNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={() => setStep(2)} disabled={loadingData || !canGoNext}>Siguiente</button>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={handleClose}>Cancelar</button>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--success" onClick={() => setStep(2)} disabled={loadingData || !fechaLlegada}>Siguiente</button>
               </>
             ) : step === 2 ? (
               <>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)}>Atrás</button>
-                <button type="button" className={`quick-actions__receive-btn${allChecked ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep3} disabled={!allChecked}>Siguiente</button>
+                <button type="button" className={`quick-actions__receive-btn${canGoNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={() => setStep(3)} disabled={loadingData || !canGoNext}>Siguiente</button>
               </>
             ) : step === 3 ? (
               <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
-                <button type="button" className={`quick-actions__receive-btn${canFinish ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep4} disabled={!canFinish}>Siguiente</button>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)}>Atrás</button>
+                <button type="button" className={`quick-actions__receive-btn${allChecked ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep4} disabled={!allChecked}>Siguiente</button>
+              </>
+            ) : step === 4 ? (
+              <>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(3)} disabled={submitting}>Atrás</button>
+                <button type="button" className={`quick-actions__receive-btn${canFinish ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep5} disabled={!canFinish}>Siguiente</button>
               </>
             ) : (
               <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(3)} disabled={submitting}>Atrás</button>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(4)} disabled={submitting}>Atrás</button>
                 <button type="button" className={`quick-actions__receive-btn${canConfirmStep4 ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={handleConfirm} disabled={submitting || !canConfirmStep4}>
                   {submitting ? 'Confirmando...' : 'Confirmar llegada y enviar a sucursales'}
                 </button>
