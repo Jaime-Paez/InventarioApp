@@ -851,9 +851,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
             faltan_datos = []
             if not conflicto_casa:
+                # La referencia es obligatoria para todo producto, esté o no vinculado
+                # al catálogo: si el producto vinculado tampoco tiene referencia en la
+                # base de datos, el Excel debe traerla para poder continuar.
+                if not referencia:
+                    faltan_datos.append("Referencia")
                 if not matched:
-                    if not referencia:
-                        faltan_datos.append("Referencia")
                     if not descripcion:
                         faltan_datos.append("Descripción")
                 if cantidad <= 0:

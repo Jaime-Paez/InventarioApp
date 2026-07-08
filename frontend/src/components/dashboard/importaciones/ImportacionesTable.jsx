@@ -2281,6 +2281,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
         row.matched_producto_id
           ? {
               producto_id: row.matched_producto_id,
+              referencia: row.referencia,
               cantidad: row.cantidad,
               ...(hasReferenciaConflict(row) && referenciaDecisions[i] === 'excel'
                 ? { update_referencia: true, nueva_referencia: row.referencia }
@@ -2585,7 +2586,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                       ))}
                     </div>
                     <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#9a3412' }}>
-                      Todo producto debe tener cantidad y PVP; si no existe en el catálogo, también necesita referencia y descripción. Corrige esos datos en el Excel y vuelve a subirlo.
+                      Todo producto debe tener referencia, cantidad y PVP; si no existe en el catálogo, también necesita descripción. Corrige esos datos en el Excel y vuelve a subirlo.
                     </p>
                   </div>
                 ) : (
