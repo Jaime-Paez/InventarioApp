@@ -269,21 +269,25 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   }, [])
 
   // Popover de stock por sucursal para un producto y sus alternos (Paso 3, icono "i").
+  // Se posiciona como un dropdown inteligente: abre hacia abajo salvo que no quepa,
+  // en cuyo caso se voltea hacia arriba del ícono.
   const [alternosHover, setAlternosHover] = useState(null)
+  const [alternosHoverPos, setAlternosHoverPos] = useState(null)
+  const alternosHoverCardRef = useRef(null)
   const alternosHoverTimerRef = useRef(null)
   const alternosCacheRef = useRef({})
   const showAlternosHover = useCallback((event, productoId) => {
     if (!productoId) return
     if (alternosHoverTimerRef.current) clearTimeout(alternosHoverTimerRef.current)
     const rect = event.currentTarget.getBoundingClientRect()
-    const position = { top: rect.bottom + 4, left: Math.min(rect.left, Math.max(8, window.innerWidth - 340)) }
+    const trigger = { triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left }
     alternosHoverTimerRef.current = setTimeout(async () => {
       alternosHoverTimerRef.current = null
       if (alternosCacheRef.current[productoId]) {
-        setAlternosHover({ ...position, data: alternosCacheRef.current[productoId] })
+        setAlternosHover({ ...trigger, data: alternosCacheRef.current[productoId] })
         return
       }
-      setAlternosHover({ ...position, data: 'loading' })
+      setAlternosHover({ ...trigger, data: 'loading' })
       try {
         const resp = await authFetch(`${API_URL}/productos/listado/${productoId}/stock-alternos/`, {}, token)
         const data = resp.ok ? await resp.json() : null
@@ -297,7 +301,22 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const hideAlternosHover = useCallback(() => {
     if (alternosHoverTimerRef.current) { clearTimeout(alternosHoverTimerRef.current); alternosHoverTimerRef.current = null }
     setAlternosHover(null)
+    setAlternosHoverPos(null)
   }, [])
+
+  useLayoutEffect(() => {
+    if (!alternosHover || !alternosHoverCardRef.current) return
+    const margin = 8
+    const cardRect = alternosHoverCardRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - alternosHover.triggerBottom
+    const spaceAbove = alternosHover.triggerTop
+    const top = cardRect.height + margin > spaceBelow && spaceAbove > spaceBelow
+      ? Math.max(margin, alternosHover.triggerTop - cardRect.height - 4)
+      : alternosHover.triggerBottom + 4
+    const maxLeft = Math.max(margin, window.innerWidth - cardRect.width - margin)
+    const left = Math.min(Math.max(margin, alternosHover.triggerLeft), maxLeft)
+    setAlternosHoverPos({ top, left })
+  }, [alternosHover])
 
   const storageKey = `imp-receive-${imp.id}`
   // IDs de ítems que eran sinCat al abrir el modal (fijo, no cambia con el fetch fresco)
@@ -1189,7 +1208,15 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       )}
 
       {alternosHover && createPortal(
-        <div className="imp-alternos-hover-card" style={{ top: alternosHover.top, left: alternosHover.left }}>
+        <div
+          ref={alternosHoverCardRef}
+          className="imp-alternos-hover-card"
+          style={{
+            top: alternosHoverPos?.top ?? alternosHover.triggerBottom + 4,
+            left: alternosHoverPos?.left ?? alternosHover.triggerLeft,
+            visibility: alternosHoverPos ? 'visible' : 'hidden',
+          }}
+        >
           {alternosHover.data === 'loading' ? (
             <div className="imp-alternos-hover-card__message">Cargando stock...</div>
           ) : !alternosHover.data ? (
