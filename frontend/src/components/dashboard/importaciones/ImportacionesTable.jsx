@@ -1667,42 +1667,9 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       <h4>Información de la importación</h4>
                     </div>
                   </div>
-                  <div className="create-salida__field-groups">
-                    <div className="create-salida__field-group create-salida__field-group--defined">
-                      <div className="create-user__grid create-user__grid--two">
-                        <StaticFieldDisplay label="Código" value={imp.codigo} />
-                        <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(imp.casa_comercial)} fullWidth />
-                        <StaticFieldDisplay label="Fecha de creación de sugerencia" value={String(imp.creado_en || '').slice(0, 10) || '-'} />
-                        <StaticFieldDisplay label="Fecha importación" value={imp.fecha_importacion || imp.fecha || '-'} />
-                        {imp.fecha_llegada && <StaticFieldDisplay label="Fecha de llegada" value={imp.fecha_llegada} />}
-                        {imp.estado === 'importada' ? (
-                          <StaticFieldDisplay label="Tiempo de entrega" value={imp.dias_reales_entrega != null ? `${imp.dias_reales_entrega} días` : '-'} />
-                        ) : (
-                          <StaticFieldDisplay label="Días estimados" value={imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : '-'} />
-                        )}
-                        {imp.numero_factura && <StaticFieldDisplay label="Factura" value={imp.numero_factura} />}
-                        {imp.casa_comercial?.pais?.nombre && (
-                          <div className="create-user__field create-salida__static-field">
-                            <span>País</span>
-                            <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              {(() => {
-                                const flagUrl = getFlagUrl(imp.casa_comercial.pais?.codigo_pais)
-                                return (
-                                  <span className={`create-user__flag${flagUrl ? '' : ' is-empty'}`} aria-hidden="true" style={{ flexShrink: 0 }}>
-                                    {flagUrl ? <img src={flagUrl} alt="" /> : '□'}
-                                  </span>
-                                )
-                              })()}
-                              {String(imp.casa_comercial.pais.nombre).trim()}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
 
                   {imp.estado === 'en_camino' && (
-                    <div style={{ marginTop: 22 }}>
+                    <div style={{ marginBottom: 22 }}>
                       <p className="create-user__eyebrow" style={{ marginBottom: 10 }}>Seguimiento del envío</p>
                       <div className="imp-tracker">
                         {IMPORT_TRACKER_STEPS.map((trackerStep, idx) => {
@@ -1726,22 +1693,45 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           )
                         })}
                       </div>
-                      {trackerEditingField && (
-                        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <input
-                            type="date"
-                            value={trackerDateDraft}
-                            onChange={(e) => setTrackerDateDraft(e.target.value)}
-                            max={todayISO()}
-                          />
-                          <button type="button" className="create-user__action create-user__action--primary" onClick={saveTrackerDate} disabled={trackerSaving}>
-                            {trackerSaving ? 'Guardando...' : 'Guardar'}
-                          </button>
-                          <button type="button" className="create-user__action create-user__action--cancel" onClick={closeTrackerEditor} disabled={trackerSaving}>Cancelar</button>
-                        </div>
-                      )}
                     </div>
                   )}
+
+                  <div className="create-salida__field-groups">
+                    <div className="create-salida__field-group create-salida__field-group--defined">
+                      <div className="create-user__grid create-user__grid--two">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <StaticFieldDisplay label="Código" value={imp.codigo} />
+                          <StaticFieldDisplay label="Factura" value={imp.numero_factura || '-'} />
+                          <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(imp.casa_comercial)} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {imp.casa_comercial?.pais?.nombre ? (
+                            <div className="create-user__field create-salida__static-field">
+                              <span>País</span>
+                              <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {(() => {
+                                  const flagUrl = getFlagUrl(imp.casa_comercial.pais?.codigo_pais)
+                                  return (
+                                    <span className={`create-user__flag${flagUrl ? '' : ' is-empty'}`} aria-hidden="true" style={{ flexShrink: 0 }}>
+                                      {flagUrl ? <img src={flagUrl} alt="" /> : '□'}
+                                    </span>
+                                  )
+                                })()}
+                                {String(imp.casa_comercial.pais.nombre).trim()}
+                              </div>
+                            </div>
+                          ) : (
+                            <StaticFieldDisplay label="País" value="-" />
+                          )}
+                          {imp.estado === 'importada' ? (
+                            <StaticFieldDisplay label="Tiempo de entrega" value={imp.dias_reales_entrega != null ? `${imp.dias_reales_entrega} días` : '-'} />
+                          ) : (
+                            <StaticFieldDisplay label="Días estimados" value={imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : '-'} />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </section>
               )}
 
@@ -1896,6 +1886,50 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       )}
       {showHistorial && (
         <HistorialConfirmacionModal imp={imp} onClose={() => setShowHistorial(false)} />
+      )}
+      {trackerEditingField && createPortal(
+        <div
+          className="create-user__overlay"
+          role="dialog"
+          aria-modal="true"
+          style={{ zIndex: 3000, pointerEvents: 'auto', background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget && !trackerSaving) closeTrackerEditor() }}
+        >
+          <div
+            className="create-user__modal"
+            style={{ position: 'relative', top: 'auto', left: 'auto', transform: 'none', width: 320, minWidth: 320, height: 'auto', minHeight: 'auto' }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <header className="create-user__header">
+              <div className="create-user__header-text">
+                <h3>{IMPORT_TRACKER_STEPS.find((s) => s.field === trackerEditingField)?.label || 'Editar fecha'}</h3>
+              </div>
+              <div className="create-user__header-actions">
+                <button type="button" className="create-user__icon-button" onClick={closeTrackerEditor} disabled={trackerSaving} aria-label="Cerrar">
+                  <i className="pi pi-times" />
+                </button>
+              </div>
+            </header>
+            <div className="create-user__form" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <label className="create-user__field">
+                <span>Fecha</span>
+                <input
+                  type="date"
+                  value={trackerDateDraft}
+                  onChange={(e) => setTrackerDateDraft(e.target.value)}
+                  autoFocus
+                />
+              </label>
+              <div className="create-user__footer" style={{ padding: 0, border: 'none' }}>
+                <button type="button" className="create-user__action create-user__action--cancel" onClick={closeTrackerEditor} disabled={trackerSaving}>Cancelar</button>
+                <button type="button" className="create-user__action create-user__action--primary" onClick={saveTrackerDate} disabled={trackerSaving}>
+                  {trackerSaving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        getPortalRoot()
       )}
     </>
   )
