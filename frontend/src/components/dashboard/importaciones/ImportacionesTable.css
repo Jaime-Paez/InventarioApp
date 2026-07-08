@@ -258,7 +258,7 @@
   max-height: 300px;
 }
 
-.importaciones-modal__products-table .create-user__locations-row:not(.imp-details__productos-row):not(.imp-historial__row):not(.imp-receive__productos-row):not(.imp-distribucion__productos-row) {
+.importaciones-modal__products-table:not(.importaciones-modal__products-table--verificar):not(.importaciones-modal__products-table--confirmacion) .create-user__locations-row:not(.imp-details__productos-row):not(.imp-historial__row):not(.imp-receive__productos-row):not(.imp-distribucion__productos-row) {
   grid-template-columns:
     minmax(100px, 1.18fr)
     minmax(110px, 1.32fr)
