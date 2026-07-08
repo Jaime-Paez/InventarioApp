@@ -3269,6 +3269,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
         codigo: item.codigo || '',
         nombre: item.nombre || '',
         oem: item.oem || '',
+        referencia: item.referencia || '',
         cantidad: Number(item.cantidad || 0),
         comentario: item.comentario || '',
         ...(precioConfirmado != null ? { precio_confirmado: precioConfirmado } : {}),
@@ -3774,7 +3775,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                             onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' }); setNuevoProductoErrors({}); setNuevoProductoExisting({ codigo: null, referencia: null }); nuevoProductoNotifiedRef.current = { codigoId: null, referenciaId: null }; setShowNuevoProductoView(true) }}
                             style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                           >
-                            + Agregar producto
+                            + Agregar nuevo producto
                           </button>
                           <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
                             <button
@@ -4162,7 +4163,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
           <div className="imp-aceptados-popup__dialog imp-nuevo-producto-popup__dialog">
             <header className="imp-aceptados-popup__header">
               <div>
-                <h3>Agregar producto</h3>
+                <h3>Agregar nuevo producto</h3>
                 <p>El producto se agregará directamente al listado.</p>
               </div>
               <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowNuevoProductoView(false)} aria-label="Cerrar">
@@ -4540,7 +4541,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       }
       return {
         _key: 'sc_' + (d.id ?? i), _detalleId: d.id ?? null, producto: null,
-        codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '',
+        codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '', referencia: d.referencia || '',
         cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
       }
     })
@@ -5040,7 +5041,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const normalizedDetails = details.map((item) => {
         const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -5093,7 +5094,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           cantidad_confirmada: cantAproxVal,
         }
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...estimadoFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...estimadoFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...estimadoFields, ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -5136,7 +5137,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         }
         const detalleId = item._detalleId != null ? { detalle_id: item._detalleId } : {}
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId, ...detalleId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId, ...detalleId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId, ...detalleId }
       })
       const selectedKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'check').map(([k]) => k)
       const xKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'x').map(([k]) => k)
@@ -5189,7 +5190,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
         } : {}
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
       })
       const response = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -5422,7 +5423,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' }); setNuevoProductoErrors({}); setNuevoProductoExisting({ codigo: null, referencia: null }); nuevoProductoNotifiedRef.current = { codigoId: null, referenciaId: null }; setShowNuevoProductoView(true) }}
                             style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                           >
-                            + Agregar producto
+                            + Agregar nuevo producto
                           </button>
                           <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
                             <button
@@ -6060,7 +6061,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
             <div className="imp-aceptados-popup__dialog imp-nuevo-producto-popup__dialog">
               <header className="imp-aceptados-popup__header">
                 <div>
-                  <h3>Agregar producto</h3>
+                  <h3>Agregar nuevo producto</h3>
                   <p>El producto se agregará directamente al listado.</p>
                 </div>
                 <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowNuevoProductoView(false)} aria-label="Cerrar">
