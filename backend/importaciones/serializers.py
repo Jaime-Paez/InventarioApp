@@ -78,6 +78,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
     origen_id = serializers.SerializerMethodField()
     origen_codigo = serializers.SerializerMethodField()
     en_camino_id = serializers.SerializerMethodField()
+    envios = serializers.SerializerMethodField()
 
     class Meta:
         model = Importacion
@@ -99,6 +100,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "historial_confirmacion",
             "borrador_llegada",
             "detalles",
+            "envios",
             "total_productos",
             "creado_en",
             "actualizado_en",
@@ -115,6 +117,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "origen_id",
             "origen_codigo",
             "en_camino_id",
+            "envios",
             "historial_confirmacion",
             "borrador_llegada",
             "total_productos",
@@ -132,6 +135,27 @@ class ImportacionSerializer(serializers.ModelSerializer):
 
     def get_origen_codigo(self, obj):
         return obj.origen.codigo if obj.origen_id else None
+
+    def get_envios(self, obj):
+        envios_qs = obj.envios.select_related("sucursal").prefetch_related("detalles__producto")
+        return [
+            {
+                "id": envio.id,
+                "sucursal_id": envio.sucursal_id,
+                "sucursal_nombre": envio.sucursal.nombre,
+                "estado": envio.estado,
+                "detalles": [
+                    {
+                        "producto_id": detalle.producto_id,
+                        "producto_codigo": detalle.producto.codigo,
+                        "producto_nombre": detalle.producto.nombre,
+                        "cantidad": detalle.cantidad,
+                    }
+                    for detalle in envio.detalles.all()
+                ],
+            }
+            for envio in envios_qs
+        ]
 
     def get_total_productos(self, obj):
         prefetched = getattr(obj, "_prefetched_objects_cache", {}).get("detalles")

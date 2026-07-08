@@ -1845,6 +1845,29 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
 
 function HistorialConfirmacionModal({ imp, onClose }) {
   const historial = Array.isArray(imp.historial_confirmacion) ? imp.historial_confirmacion : []
+  const distribucion = useMemo(() => {
+    const envios = Array.isArray(imp.envios) ? imp.envios : []
+    const sucursalesMap = new Map()
+    const productosMap = new Map()
+    envios.forEach(envio => {
+      if (!sucursalesMap.has(envio.sucursal_id)) sucursalesMap.set(envio.sucursal_id, envio.sucursal_nombre)
+      ;(envio.detalles || []).forEach(det => {
+        if (!productosMap.has(det.producto_id)) {
+          productosMap.set(det.producto_id, { codigo: det.producto_codigo, nombre: det.producto_nombre, cantidades: {} })
+        }
+        const entry = productosMap.get(det.producto_id)
+        entry.cantidades[envio.sucursal_id] = (entry.cantidades[envio.sucursal_id] || 0) + det.cantidad
+      })
+    })
+    const sucursales = Array.from(sucursalesMap.entries())
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)))
+    const productos = Array.from(productosMap.entries())
+      .map(([id, data]) => ({ id, ...data }))
+      .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)))
+    return { sucursales, productos }
+  }, [imp.envios])
+  const distribucionGridCols = `minmax(72px, 0.6fr) minmax(140px, 1.3fr) repeat(${distribucion.sucursales.length}, 76px) 64px`
   const [cellHover, setCellHover] = useState(null)
   const cellHoverTimerRef = useRef(null)
   const showCellHover = useCallback((event, items, label) => {
@@ -1865,7 +1888,7 @@ function HistorialConfirmacionModal({ imp, onClose }) {
   return createPortal(
     <>
       <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-        <div className="imp-aceptados-popup__dialog" style={{ width: 'min(820px, calc(100vw - 32px))' }} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="imp-aceptados-popup__dialog" style={{ width: 'min(920px, calc(100vw - 32px))' }} onMouseDown={(e) => e.stopPropagation()}>
           <header className="imp-aceptados-popup__header">
             <div>
               <h3>Historial de confirmación</h3>
@@ -1922,6 +1945,47 @@ function HistorialConfirmacionModal({ imp, onClose }) {
                 </div>
               ))}
             </div>
+
+            {distribucion.sucursales.length > 0 && (
+              <>
+                <h4 style={{ margin: '20px 0 8px', fontSize: '0.92rem' }}>Distribución a sucursales</h4>
+                <div className="create-user__locations-table importaciones-modal__products-table imp-distribucion__table">
+                  <div className="create-user__locations-row create-user__locations-row--head imp-distribucion__productos-row" style={{ gridTemplateColumns: distribucionGridCols }}>
+                    <span style={{ justifyContent: 'flex-start' }}>Código</span>
+                    <span style={{ justifyContent: 'flex-start' }}>Nombre</span>
+                    {distribucion.sucursales.map(suc => <span key={suc.id} title={suc.nombre}>{suc.nombre}</span>)}
+                    <span>Total</span>
+                  </div>
+                  {distribucion.productos.map(p => {
+                    const total = distribucion.sucursales.reduce((sum, suc) => sum + (p.cantidades[suc.id] || 0), 0)
+                    return (
+                      <div key={p.id} className="create-user__locations-row imp-distribucion__productos-row" style={{ gridTemplateColumns: distribucionGridCols }}>
+                        <span
+                          className="imp-table-cell-tip"
+                          style={{ justifyContent: 'flex-start' }}
+                          onMouseEnter={(e) => showCellHover(e, p.codigo, 'Código')}
+                          onMouseLeave={hideCellHover}
+                        >
+                          <span className="imp-table-cell-text">{p.codigo || '-'}</span>
+                        </span>
+                        <span
+                          className="imp-table-cell-tip"
+                          style={{ justifyContent: 'flex-start' }}
+                          onMouseEnter={(e) => showCellHover(e, p.nombre, 'Nombre')}
+                          onMouseLeave={hideCellHover}
+                        >
+                          <span className="imp-table-cell-text">{p.nombre || '-'}</span>
+                        </span>
+                        {distribucion.sucursales.map(suc => (
+                          <span key={suc.id} className="imp-table-cell-text">{p.cantidades[suc.id] || 0}</span>
+                        ))}
+                        <span className="imp-table-cell-text" style={{ fontWeight: 700 }}>{total}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="imp-aceptados-popup__footer" style={{ justifyContent: 'flex-end' }}>
