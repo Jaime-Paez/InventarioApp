@@ -329,6 +329,59 @@ class ProductoViewSet(viewsets.ModelViewSet):
         producto = self.get_object()
         return Response(build_producto_rating_summary(producto), status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["get"], url_path="stock-alternos")
+    def stock_alternos(self, request, pk=None):
+        """Stock por sucursal de este producto y todos sus alternos (útil para decidir
+        cuántas unidades enviar a cada sucursal durante una distribución)."""
+        producto = self.get_object()
+        group_ids = get_alterno_group_ids(producto.id)
+
+        productos_list = list(Producto.objects.filter(id__in=group_ids))
+        productos_list.sort(key=lambda p: (p.id != producto.id, p.codigo))
+        productos_payload = [
+            {
+                "id": p.id,
+                "codigo": p.codigo,
+                "nombre": p.nombre,
+                "es_principal": p.id == producto.id,
+            }
+            for p in productos_list
+        ]
+
+        inventario_rows = (
+            Inventario.objects.filter(producto_id__in=group_ids)
+            .values(
+                "producto_id",
+                "subdivision__division__bodega__sucursal_id",
+                "subdivision__division__bodega__sucursal__nombre",
+            )
+            .annotate(total=Sum("cantidad"))
+        )
+
+        sucursales_map = {}
+        stock = {}
+        for row in inventario_rows:
+            total = int(row["total"] or 0)
+            if total <= 0:
+                continue
+            sucursal_id = row["subdivision__division__bodega__sucursal_id"]
+            sucursales_map[sucursal_id] = row["subdivision__division__bodega__sucursal__nombre"]
+            stock.setdefault(str(row["producto_id"]), {})[str(sucursal_id)] = total
+
+        sucursales_payload = [
+            {"id": sucursal_id, "nombre": nombre}
+            for sucursal_id, nombre in sorted(sucursales_map.items(), key=lambda kv: kv[1])
+        ]
+
+        return Response(
+            {
+                "productos": productos_payload,
+                "sucursales": sucursales_payload,
+                "stock": stock,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=["get", "post"], url_path="comentarios")
     def comentarios(self, request, pk=None):
         producto = self.get_object()

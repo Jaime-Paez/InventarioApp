@@ -258,7 +258,7 @@
   max-height: 300px;
 }
 
-.importaciones-modal__products-table .create-user__locations-row:not(.imp-details__productos-row):not(.imp-historial__row):not(.imp-receive__productos-row) {
+.importaciones-modal__products-table .create-user__locations-row:not(.imp-details__productos-row):not(.imp-historial__row):not(.imp-receive__productos-row):not(.imp-distribucion__productos-row) {
   grid-template-columns:
     minmax(100px, 1.18fr)
     minmax(110px, 1.32fr)
@@ -447,6 +447,67 @@
 .imp-receive__cantidad-input--sobrante {
   border-color: #d97706;
   background: rgba(217, 119, 6, 0.08);
+}
+
+.imp-distribucion__table {
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: 10px;
+}
+
+.dashboard-shell.dark .imp-distribucion__table {
+  border-color: var(--color-border-dark, #334155);
+}
+
+.imp-distribucion__productos-row:not(.create-user__locations-row--empty) > span {
+  padding: 6px 4px;
+  border-left: 1px solid var(--color-border, #cbd5e1);
+}
+
+.dashboard-shell.dark .imp-distribucion__productos-row:not(.create-user__locations-row--empty) > span {
+  border-left-color: var(--color-border-dark, #334155);
+}
+
+.imp-distribucion__productos-row:not(.create-user__locations-row--empty) > span:first-child {
+  border-left: none;
+}
+
+.imp-distribucion__productos-row.create-user__locations-row--head {
+  background: #dbe1e8;
+}
+
+.dashboard-shell.dark .imp-distribucion__productos-row.create-user__locations-row--head {
+  background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
+}
+
+.imp-distribucion__cantidad-input {
+  width: 100%;
+  max-width: 52px;
+  text-align: center;
+  border: 1.5px solid var(--color-primary, #2563eb);
+  border-radius: 5px;
+  padding: 2px 3px;
+  font: inherit;
+  font-size: 0.78rem;
+  color: inherit;
+  background: var(--modal-color, #fff);
+}
+
+.imp-distribucion__cantidad-input:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 1px;
+}
+
+.imp-distribucion__cantidad-input--matriz {
+  font-weight: 700;
+  border-color: var(--color-border, #cbd5e1);
+  background: var(--color-surface, #f8fafc);
+  color: var(--color-text-secondary, #64748b);
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+
+.dashboard-shell.dark .imp-distribucion__cantidad-input--matriz {
+  border-color: var(--color-border-dark, #334155);
 }
 
 .imp-details__productos-row.create-user__locations-row--head {
@@ -814,6 +875,67 @@
 
 .dashboard-shell.dark .imp-cell-hover-card__row {
   color: #e2e8f0;
+}
+
+.imp-distribucion__info-icon {
+  color: var(--color-text-secondary, #64748b);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.imp-distribucion__info-icon:hover {
+  color: var(--color-primary, #2563eb);
+}
+
+.imp-alternos-hover-card {
+  position: fixed;
+  z-index: 11000;
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.28));
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
+  max-width: 420px;
+  pointer-events: none;
+}
+
+.dashboard-shell.dark .imp-alternos-hover-card {
+  background: var(--surface-dark, #1e293b);
+  border-color: rgba(148, 163, 184, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.imp-alternos-hover-card__message {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.imp-alternos-hover-card__table {
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.imp-alternos-hover-card__table th,
+.imp-alternos-hover-card__table td {
+  padding: 3px 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.imp-alternos-hover-card__table th:first-child,
+.imp-alternos-hover-card__table td:first-child {
+  text-align: left;
+}
+
+.imp-alternos-hover-card__table th {
+  font-weight: 700;
+  color: var(--color-text-secondary, #64748b);
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+}
+
+.imp-alternos-hover-card__row--principal td {
+  font-weight: 700;
+  color: var(--color-primary, #2563eb);
 }
 
 .imp-table-cell-tip {

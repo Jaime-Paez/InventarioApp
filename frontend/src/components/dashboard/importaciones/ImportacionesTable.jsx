@@ -31,6 +31,12 @@ const getCantidadRecibidaCeiling = (row) => {
   return Number.isFinite(n) ? n : row.cantidad
 }
 
+// La sucursal matriz (nombre contiene "matriz") absorbe automáticamente el
+// remanente de la distribución: recibe el total por defecto y se reduce a
+// medida que se asignan unidades al resto de sucursales.
+const findMatrizSucursal = (list) =>
+  (list || []).find((s) => String(s?.nombre || '').toLowerCase().includes('matriz')) || null
+
 const GRID_ROW_SELECTOR = '.create-user__locations-row'
 const GRID_FOCUSABLE_SELECTOR = 'input, button:not(:disabled)'
 
@@ -78,6 +84,40 @@ const handleProductsGridKeyDown = (e) => {
   const nextRow = rows[key === 'ArrowUp' ? rowIdx - 1 : rowIdx + 1]
   if (!nextRow) return
   const nextRowControls = Array.from(nextRow.querySelectorAll(GRID_FOCUSABLE_SELECTOR))
+  const nextControl = nextRowControls[colIdx] ?? nextRowControls[nextRowControls.length - 1]
+  if (focusGridInput(nextControl)) e.preventDefault()
+}
+
+const DISTRIBUTION_FOCUSABLE_SELECTOR = 'input:not(:disabled)'
+
+// Same spreadsheet-style arrow navigation as handleProductsGridKeyDown, but only
+// counting enabled inputs — the matriz cell is read-only and must be skipped rather
+// than silently swallow focus.
+const handleDistributionGridKeyDown = (e) => {
+  const key = e.key
+  if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight') return
+  const target = e.target
+  if (!(target instanceof HTMLInputElement)) return
+
+  const row = target.closest(GRID_ROW_SELECTOR)
+  const container = row?.parentElement
+  if (!row || !container) return
+
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    const controlsInRow = Array.from(row.querySelectorAll(DISTRIBUTION_FOCUSABLE_SELECTOR))
+    const idx = controlsInRow.indexOf(target)
+    const nextControl = controlsInRow[key === 'ArrowLeft' ? idx - 1 : idx + 1]
+    if (focusGridInput(nextControl)) e.preventDefault()
+    return
+  }
+
+  const controlsInRow = Array.from(row.querySelectorAll(DISTRIBUTION_FOCUSABLE_SELECTOR))
+  const colIdx = controlsInRow.indexOf(target)
+  const rowsEls = Array.from(container.querySelectorAll(GRID_ROW_SELECTOR)).filter((r) => r.querySelector(DISTRIBUTION_FOCUSABLE_SELECTOR))
+  const rowIdx = rowsEls.indexOf(row)
+  const nextRow = rowsEls[key === 'ArrowUp' ? rowIdx - 1 : rowIdx + 1]
+  if (!nextRow) return
+  const nextRowControls = Array.from(nextRow.querySelectorAll(DISTRIBUTION_FOCUSABLE_SELECTOR))
   const nextControl = nextRowControls[colIdx] ?? nextRowControls[nextRowControls.length - 1]
   if (focusGridInput(nextControl)) e.preventDefault()
 }
@@ -228,6 +268,37 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     setCellHover(null)
   }, [])
 
+  // Popover de stock por sucursal para un producto y sus alternos (Paso 3, icono "i").
+  const [alternosHover, setAlternosHover] = useState(null)
+  const alternosHoverTimerRef = useRef(null)
+  const alternosCacheRef = useRef({})
+  const showAlternosHover = useCallback((event, productoId) => {
+    if (!productoId) return
+    if (alternosHoverTimerRef.current) clearTimeout(alternosHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    const position = { top: rect.bottom + 4, left: Math.min(rect.left, Math.max(8, window.innerWidth - 340)) }
+    alternosHoverTimerRef.current = setTimeout(async () => {
+      alternosHoverTimerRef.current = null
+      if (alternosCacheRef.current[productoId]) {
+        setAlternosHover({ ...position, data: alternosCacheRef.current[productoId] })
+        return
+      }
+      setAlternosHover({ ...position, data: 'loading' })
+      try {
+        const resp = await authFetch(`${API_URL}/productos/listado/${productoId}/stock-alternos/`, {}, token)
+        const data = resp.ok ? await resp.json() : null
+        alternosCacheRef.current[productoId] = data
+        setAlternosHover(prev => (prev ? { ...prev, data } : prev))
+      } catch {
+        setAlternosHover(prev => (prev ? { ...prev, data: null } : prev))
+      }
+    }, 300)
+  }, [token])
+  const hideAlternosHover = useCallback(() => {
+    if (alternosHoverTimerRef.current) { clearTimeout(alternosHoverTimerRef.current); alternosHoverTimerRef.current = null }
+    setAlternosHover(null)
+  }, [])
+
   const storageKey = `imp-receive-${imp.id}`
   // IDs de ítems que eran sinCat al abrir el modal (fijo, no cambia con el fetch fresco)
   const [originalSinCatIds] = useState(() =>
@@ -240,6 +311,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
     return (imp.detalles || []).map(d => ({
       id: d.id,
+      productoId: d.producto?.id ?? null,
       codigo: d.producto?.codigo || d.codigo || '',
       nombre: d.producto?.nombre || d.nombre || '',
       oem: getProductoOem(d.producto) || d.oem || '',
@@ -286,6 +358,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
         setRows(fresh.detalles.map(d => ({
           id: d.id,
+          productoId: d.producto?.id ?? null,
           codigo: d.producto?.codigo || d.codigo || '',
           nombre: d.producto?.nombre || d.nombre || '',
           oem: getProductoOem(d.producto) || d.oem || '',
@@ -302,6 +375,25 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       .finally(() => setLoadingData(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reparte la cantidad recibida entre las sucursales: la matriz parte con el
+  // total y absorbe lo que sobre a medida que se asigna a las demás.
+  const seedDistribution = (list, prev) => {
+    const matriz = findMatrizSucursal(list)
+    const next = {}
+    rows.forEach(row => {
+      next[row.id] = {}
+      list.forEach(suc => { next[row.id][suc.id] = prev[row.id]?.[suc.id] ?? '' })
+      if (matriz) {
+        const ceiling = getCantidadRecibidaCeiling(row)
+        const othersSum = list
+          .filter(suc => suc.id !== matriz.id)
+          .reduce((sum, suc) => sum + (parseInt(next[row.id][suc.id]) || 0), 0)
+        next[row.id][matriz.id] = String(Math.max(0, ceiling - othersSum))
+      }
+    })
+    return next
+  }
+
   // Auto-load sucursales if modal is restored at step 3 or 4
   useEffect(() => {
     if (step < 3 || loadingSucursales || sucursales.length > 0) return
@@ -311,6 +403,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       .then(data => {
         const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
         setSucursales(list)
+        setDistribution(prev => seedDistribution(list, prev))
       })
       .catch(() => {})
       .finally(() => setLoadingSucursales(false))
@@ -465,20 +558,40 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       const data = resp.ok ? await resp.json() : []
       const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
       setSucursales(list)
-      setDistribution(prev => {
-        const next = {}
-        rows.forEach(row => {
-          next[row.id] = {}
-          list.forEach(suc => { next[row.id][suc.id] = prev[row.id]?.[suc.id] ?? '' })
-        })
-        return next
-      })
+      setDistribution(prev => seedDistribution(list, prev))
     } catch {
       setSucursales([])
     } finally {
       setLoadingSucursales(false)
     }
   }
+
+  const updateDistribution = useCallback((row, sucursalId, value) => {
+    setDistribution(prev => {
+      const matriz = findMatrizSucursal(sucursales)
+      const prevRowDist = prev[row.id] || {}
+      const wasAnyOtherFilled = sucursales.some(suc =>
+        suc.id !== matriz?.id && suc.id !== sucursalId && String(prevRowDist[suc.id] ?? '').trim() !== ''
+      )
+      const rowDist = { ...prevRowDist, [sucursalId]: value }
+      // Al escribir el primer número de la fila, el resto de sucursales vacías pasan a 0.
+      if (!wasAnyOtherFilled && value.trim() !== '') {
+        sucursales.forEach(suc => {
+          if (matriz && suc.id === matriz.id) return
+          if (suc.id === sucursalId) return
+          if (String(rowDist[suc.id] ?? '').trim() === '') rowDist[suc.id] = '0'
+        })
+      }
+      if (matriz && sucursalId !== matriz.id) {
+        const ceiling = getCantidadRecibidaCeiling(row)
+        const othersSum = sucursales
+          .filter(suc => suc.id !== matriz.id)
+          .reduce((sum, suc) => sum + (parseInt(rowDist[suc.id]) || 0), 0)
+        rowDist[matriz.id] = String(Math.max(0, ceiling - othersSum))
+      }
+      return { ...prev, [row.id]: rowDist }
+    })
+  }, [sucursales])
 
   const enterStep4 = async () => {
     setStep(4)
@@ -829,54 +942,78 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   <div style={{ padding: '32px 20px', textAlign: 'center' }}>
                     <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>No hay sucursales disponibles.</p>
                   </div>
-                ) : (
-                  <div style={{ overflowX: 'auto', padding: '4px 16px 8px' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '2px solid var(--color-border, #e2e8f0)' }}>
-                          <th style={{ textAlign: 'left', padding: '6px 12px 8px 0', fontWeight: 600, color: 'var(--color-text-secondary)', minWidth: 140 }}>Producto</th>
-                          <th style={{ textAlign: 'center', padding: '6px 8px 8px', fontWeight: 600, color: 'var(--color-text-secondary)', width: 60, whiteSpace: 'nowrap' }}>Total</th>
-                          {sucursales.map(suc => (
-                            <th key={suc.id} style={{ textAlign: 'center', padding: '6px 6px 8px', fontWeight: 600, color: 'var(--color-text-secondary)', width: 72 }}>
-                              <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }} title={suc.nombre}>{suc.nombre}</span>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((row, i) => {
-                          const rowDist = distribution[row.id] || {}
-                          const assigned = Object.values(rowDist).reduce((s, v) => s + (parseInt(v) || 0), 0)
-                          const ceiling = getCantidadRecibidaCeiling(row)
-                          const isComplete = assigned === ceiling
-                          const isOver = assigned > ceiling
-                          return (
-                            <tr key={row.id} style={{ borderBottom: i < rows.length - 1 ? '1px solid var(--color-border, #e2e8f0)' : 'none', background: isComplete ? 'rgba(22,163,74,0.05)' : 'transparent', transition: 'background .2s' }}>
-                              <td style={{ padding: '10px 12px 10px 0', verticalAlign: 'middle' }}>
-                                <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{row.nombre || row.codigo || '-'}</div>
-                                {row.nombre && row.codigo && <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>{row.codigo}</div>}
-                              </td>
-                              <td style={{ textAlign: 'center', padding: '10px 8px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: isOver ? '#dc2626' : isComplete ? '#16a34a' : 'var(--color-text-secondary)' }}>{assigned}/{ceiling}</span>
-                              </td>
-                              {sucursales.map(suc => (
-                                <td key={suc.id} style={{ textAlign: 'center', padding: '8px 6px', verticalAlign: 'middle' }}>
+                ) : (() => {
+                  const matrizSucursal = findMatrizSucursal(sucursales)
+                  const gridCols = `minmax(72px, 0.4fr) minmax(140px, 1.6fr) 56px repeat(${sucursales.length}, 62px)`
+                  return (
+                    <div className="create-user__locations-table importaciones-modal__products-table imp-distribucion__table" onKeyDown={handleDistributionGridKeyDown}>
+                      <div className="create-user__locations-row create-user__locations-row--head imp-distribucion__productos-row" style={{ gridTemplateColumns: gridCols }}>
+                        <span style={{ justifyContent: 'flex-start' }}>Código</span>
+                        <span style={{ justifyContent: 'flex-start' }}>Nombre</span>
+                        <span style={{ justifyContent: 'center' }}>Total</span>
+                        {sucursales.map(suc => (
+                          <span key={suc.id} title={suc.nombre}>{suc.nombre}</span>
+                        ))}
+                      </div>
+                      {rows.map((row) => {
+                        const rowDist = distribution[row.id] || {}
+                        const assigned = Object.values(rowDist).reduce((s, v) => s + (parseInt(v) || 0), 0)
+                        const ceiling = getCantidadRecibidaCeiling(row)
+                        const isOver = assigned > ceiling
+                        const isComplete = assigned === ceiling
+                        return (
+                          <div key={row.id} className="create-user__locations-row imp-distribucion__productos-row" style={{ gridTemplateColumns: gridCols }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-start', minWidth: 0, overflow: 'hidden' }}>
+                              <span
+                                className="imp-table-cell-tip"
+                                style={{ justifyContent: 'flex-start' }}
+                                onMouseEnter={(e) => showCellHover(e, row.codigo, 'Código')}
+                                onMouseLeave={hideCellHover}
+                              >
+                                <span className="imp-table-cell-text">{row.codigo || '-'}</span>
+                              </span>
+                              {row.productoId != null && (
+                                <Info
+                                  size={13}
+                                  className="imp-distribucion__info-icon"
+                                  onMouseEnter={(e) => showAlternosHover(e, row.productoId)}
+                                  onMouseLeave={hideAlternosHover}
+                                />
+                              )}
+                            </span>
+                            <span
+                              className="imp-table-cell-tip"
+                              style={{ justifyContent: 'flex-start' }}
+                              onMouseEnter={(e) => showCellHover(e, row.nombre, 'Nombre')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{row.nombre || '-'}</span>
+                            </span>
+                            <span className="imp-table-cell-text" style={{ justifyContent: 'center', textAlign: 'center', fontWeight: 700, color: isOver ? '#dc2626' : isComplete ? '#16a34a' : 'var(--color-text-secondary)' }}>
+                              {assigned}/{ceiling}
+                            </span>
+                            {sucursales.map(suc => {
+                              const isMatriz = Boolean(matrizSucursal && suc.id === matrizSucursal.id)
+                              return (
+                                <span key={suc.id}>
                                   <input
                                     type="number" min="0" max={ceiling}
                                     value={rowDist[suc.id] ?? ''}
-                                    disabled={(isComplete || isOver) && !(parseInt(rowDist[suc.id]) > 0)}
-                                    onChange={(e) => setDistribution(prev => ({ ...prev, [row.id]: { ...(prev[row.id] || {}), [suc.id]: e.target.value } }))}
-                                    style={{ width: 60, textAlign: 'center', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, padding: '4px 6px', fontSize: '0.85rem', background: (isComplete || isOver) && !(parseInt(rowDist[suc.id]) > 0) ? 'var(--color-surface, #f8fafc)' : 'var(--modal-color, #fff)', color: 'inherit', cursor: (isComplete || isOver) && !(parseInt(rowDist[suc.id]) > 0) ? 'not-allowed' : 'text', opacity: (isComplete || isOver) && !(parseInt(rowDist[suc.id]) > 0) ? 0.4 : 1 }}
+                                    disabled={isMatriz || submitting}
+                                    readOnly={isMatriz}
+                                    onChange={(e) => !isMatriz && updateDistribution(row, suc.id, e.target.value)}
+                                    title={isMatriz ? 'Calculado automáticamente: total menos lo asignado a otras sucursales' : undefined}
+                                    className={`imp-distribucion__cantidad-input${isMatriz ? ' imp-distribucion__cantidad-input--matriz' : ''}`}
                                   />
-                                </td>
-                              ))}
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
               </div>
             ) : (
               /* ── PASO 4: destinatarios por sucursal ── */
@@ -1047,6 +1184,38 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           {cellHover.items.map((value, i) => (
             <div key={i} className="imp-cell-hover-card__row">{value}</div>
           ))}
+        </div>,
+        getPortalRoot()
+      )}
+
+      {alternosHover && createPortal(
+        <div className="imp-alternos-hover-card" style={{ top: alternosHover.top, left: alternosHover.left }}>
+          {alternosHover.data === 'loading' ? (
+            <div className="imp-alternos-hover-card__message">Cargando stock...</div>
+          ) : !alternosHover.data ? (
+            <div className="imp-alternos-hover-card__message">No se pudo cargar la información.</div>
+          ) : alternosHover.data.sucursales.length === 0 ? (
+            <div className="imp-alternos-hover-card__message">Sin stock registrado en ninguna sucursal.</div>
+          ) : (
+            <table className="imp-alternos-hover-card__table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  {alternosHover.data.sucursales.map(suc => <th key={suc.id}>{suc.nombre}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {alternosHover.data.productos.map(p => (
+                  <tr key={p.id} className={p.es_principal ? 'imp-alternos-hover-card__row--principal' : undefined}>
+                    <td title={p.nombre}>{p.codigo}</td>
+                    {alternosHover.data.sucursales.map(suc => (
+                      <td key={suc.id}>{alternosHover.data.stock?.[String(p.id)]?.[String(suc.id)] ?? 0}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>,
         getPortalRoot()
       )}
