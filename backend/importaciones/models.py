@@ -33,6 +33,11 @@ class Importacion(models.Model):
     dias_entrega_estimados = models.PositiveSmallIntegerField(null=True, blank=True)
     numero_factura = models.CharField(max_length=100, blank=True, default="")
     fecha_importacion = models.DateField(null=True, blank=True)
+    fecha_puerto = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Fecha en que la importación llegó al puerto/país, editable mientras está en camino.",
+    )
     fecha_llegada = models.DateField(
         null=True,
         blank=True,

@@ -257,6 +257,15 @@ const formatCasaLabel = (casa) => {
   return [codigo, nombre].filter(Boolean).join(' - ')
 }
 
+// Seguimiento de una importación "en camino": Creación y Llegó son informativos
+// (se fijan solos), Salida y Puerto se editan haciendo clic en su paso.
+const IMPORT_TRACKER_STEPS = [
+  { field: 'creado_en', label: 'Creación de sugerencia', editable: false, isDateTime: true },
+  { field: 'fecha_importacion', label: 'Salida del proveedor', editable: true },
+  { field: 'fecha_puerto', label: 'Llegada a puerto', editable: true },
+  { field: 'fecha_llegada', label: 'Llegó', editable: false },
+]
+
 const formatProductLabel = (product) => {
   if (!product) return ''
   const codigo = String(product?.codigo || '').trim()
@@ -1407,12 +1416,48 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
 const DETAILS_VIEWPORT_PADDING = 12
 
-function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, onOpenOrigen }) {
+function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, moduleActions, onOpenOrigen }) {
   const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
   const [showReceive, setShowReceive] = useState(false)
   const [showHistorial, setShowHistorial] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const toastRef = useRef(null)
+
+  // Copia local que se actualiza al editar las fechas del seguimiento en camino,
+  // sin depender de que el padre vuelva a pedir la lista completa.
+  const [impOverride, setImpOverride] = useState(null)
+  const imp = impOverride && impProp && impOverride.id === impProp.id ? impOverride : impProp
+  const [trackerEditingField, setTrackerEditingField] = useState(null)
+  const [trackerDateDraft, setTrackerDateDraft] = useState('')
+  const [trackerSaving, setTrackerSaving] = useState(false)
+
+  const openTrackerEditor = (field, currentValue) => {
+    setTrackerEditingField(field)
+    setTrackerDateDraft(currentValue || todayISO())
+  }
+  const closeTrackerEditor = () => {
+    setTrackerEditingField(null)
+    setTrackerDateDraft('')
+  }
+  const saveTrackerDate = async () => {
+    if (!trackerEditingField || !imp) return
+    setTrackerSaving(true)
+    try {
+      const resp = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/actualizar-fecha-tracker/`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campo: trackerEditingField, fecha: trackerDateDraft }) },
+        token
+      )
+      if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo guardar la fecha.'))
+      const updated = await resp.json()
+      setImpOverride(updated)
+      closeTrackerEditor()
+    } catch (e) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 })
+    } finally {
+      setTrackerSaving(false)
+    }
+  }
   const [cellHover, setCellHover] = useState(null)
   const cellHoverTimerRef = useRef(null)
   const showCellHover = useCallback((event, items, label) => {
@@ -1553,20 +1598,6 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
   const detalles = imp.detalles || []
   const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
 
-  const progressInfo = (() => {
-    const startDate = imp.fecha_importacion || imp.fecha
-    if (imp.estado !== 'en_camino' || !startDate || !imp.dias_entrega_estimados) return null
-    const start = new Date(startDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const elapsedMs = today - start
-    const elapsedDays = Math.max(0, Math.floor(elapsedMs / 86400000))
-    const totalDays = imp.dias_entrega_estimados
-    const pct = Math.min(100, Math.round((elapsedDays / totalDays) * 100))
-    const remaining = Math.max(0, totalDays - elapsedDays)
-    return { pct, elapsedDays, totalDays, remaining }
-  })()
-
   const ribbonClass = imp.estado === 'importada'
     ? 'entrada-details__pending-ribbon--accepted'
     : imp.estado === 'en_camino'
@@ -1640,10 +1671,10 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
                     <div className="create-salida__field-group create-salida__field-group--defined">
                       <div className="create-user__grid create-user__grid--two">
                         <StaticFieldDisplay label="Código" value={imp.codigo} />
-                        <StaticFieldDisplay label="Fecha de creación" value={String(imp.creado_en || '').slice(0, 10) || '-'} />
+                        <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(imp.casa_comercial)} fullWidth />
+                        <StaticFieldDisplay label="Fecha de creación de sugerencia" value={String(imp.creado_en || '').slice(0, 10) || '-'} />
                         <StaticFieldDisplay label="Fecha importación" value={imp.fecha_importacion || imp.fecha || '-'} />
                         {imp.fecha_llegada && <StaticFieldDisplay label="Fecha de llegada" value={imp.fecha_llegada} />}
-                        <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(imp.casa_comercial)} fullWidth />
                         {imp.estado === 'importada' ? (
                           <StaticFieldDisplay label="Tiempo de entrega" value={imp.dias_reales_entrega != null ? `${imp.dias_reales_entrega} días` : '-'} />
                         ) : (
@@ -1669,32 +1700,53 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
                       </div>
                     </div>
                   </div>
+
+                  {imp.estado === 'en_camino' && (
+                    <div style={{ marginTop: 22 }}>
+                      <p className="create-user__eyebrow" style={{ marginBottom: 10 }}>Seguimiento del envío</p>
+                      <div className="imp-tracker">
+                        {IMPORT_TRACKER_STEPS.map((trackerStep, idx) => {
+                          const rawValue = imp[trackerStep.field]
+                          const value = trackerStep.isDateTime ? String(rawValue || '').slice(0, 10) : (rawValue || '')
+                          const filled = Boolean(value)
+                          return (
+                            <div key={trackerStep.field} className={`imp-tracker__step${filled ? ' is-filled' : ''}`}>
+                              <button
+                                type="button"
+                                className={`imp-tracker__dot${filled ? ' is-filled' : ''}${trackerStep.editable ? ' is-editable' : ''}`}
+                                onClick={() => trackerStep.editable && openTrackerEditor(trackerStep.field, value)}
+                                disabled={!trackerStep.editable}
+                                title={trackerStep.editable ? 'Clic para editar la fecha' : undefined}
+                              >
+                                {filled ? <Check size={14} /> : idx + 1}
+                              </button>
+                              <span className="imp-tracker__label">{trackerStep.label}</span>
+                              <span className="imp-tracker__date">{value || (trackerStep.editable ? 'Sin definir' : 'Pendiente')}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {trackerEditingField && (
+                        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <input
+                            type="date"
+                            value={trackerDateDraft}
+                            onChange={(e) => setTrackerDateDraft(e.target.value)}
+                            max={todayISO()}
+                          />
+                          <button type="button" className="create-user__action create-user__action--primary" onClick={saveTrackerDate} disabled={trackerSaving}>
+                            {trackerSaving ? 'Guardando...' : 'Guardar'}
+                          </button>
+                          <button type="button" className="create-user__action create-user__action--cancel" onClick={closeTrackerEditor} disabled={trackerSaving}>Cancelar</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </section>
               )}
 
               {activeTab === 'productos' && (
                 <section className="create-user__section">
-                  {progressInfo && (
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                        <p className="create-user__eyebrow" style={{ margin: 0 }}>Progreso de entrega</p>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                          {progressInfo.pct < 100
-                            ? `${progressInfo.elapsedDays} / ${progressInfo.totalDays} días — faltan ${progressInfo.remaining} día${progressInfo.remaining === 1 ? '' : 's'}`
-                            : `${progressInfo.elapsedDays} días transcurridos`}
-                        </span>
-                      </div>
-                      <div className="imp-details__progress-track">
-                        <div
-                          className={`imp-details__progress-fill${progressInfo.pct >= 100 ? ' imp-details__progress-fill--late' : ''}`}
-                          style={{ width: `${progressInfo.pct}%` }}
-                        />
-                      </div>
-                      <div style={{ textAlign: 'right', fontSize: '0.75rem', marginTop: 4, fontWeight: 600, color: progressInfo.pct >= 100 ? '#ef4444' : 'var(--color-muted,#64748b)' }}>
-                        {progressInfo.pct}%
-                      </div>
-                    </div>
-                  )}
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Productos</p>

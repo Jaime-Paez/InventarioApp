@@ -506,6 +506,48 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
+    @action(detail=True, methods=["post"], url_path="actualizar-fecha-tracker")
+    def actualizar_fecha_tracker(self, request, pk=None):
+        """Edita las fechas del seguimiento en camino (salida del proveedor / llegada
+        a puerto). La fecha de llegada final no se edita aquí, se fija al marcar llegada."""
+        if not self._check_specific_importacion_permission(request, "puede_marcar_llegada"):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta acción."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        instance = self.get_object()
+        if instance.estado != Importacion.ESTADO_EN_CAMINO:
+            return Response(
+                {"detail": "Solo se puede editar el seguimiento mientras está en camino."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        campo = str(request.data.get("campo") or "").strip()
+        if campo not in {"fecha_importacion", "fecha_puerto"}:
+            return Response(
+                {"detail": "Debes indicar un campo válido: fecha_importacion o fecha_puerto."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        fecha_raw = str(request.data.get("fecha") or "").strip()
+        fecha_valor = None
+        if fecha_raw:
+            try:
+                from datetime import date
+                fecha_valor = date.fromisoformat(fecha_raw)
+            except ValueError:
+                return Response({"detail": "Fecha inválida."}, status=status.HTTP_400_BAD_REQUEST)
+
+        update_fields = [campo]
+        setattr(instance, campo, fecha_valor)
+        if campo == "fecha_importacion" and fecha_valor is not None:
+            instance.fecha = fecha_valor
+            update_fields.append("fecha")
+        instance.save(update_fields=update_fields)
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     @action(detail=False, methods=["get"], url_path="inconvenientes")
     def importacion_inconvenientes(self, request):
         if not is_app_admin(request.user):

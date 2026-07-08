@@ -1112,27 +1112,94 @@
   color: #e2e8f0;
 }
 
-/* En camino progress bar */
-.imp-details__progress-track {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--color-border, rgba(148,163,184,0.3));
-  overflow: hidden;
+/* Seguimiento en camino: tracker de 4 pasos (creación, salida, puerto, llegó) */
+.imp-tracker {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
 }
 
-.imp-details__progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: #3b82f6;
-  transition: width 0.4s ease;
+.imp-tracker__step {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
 }
 
-.imp-details__progress-fill--late {
-  background: #ef4444;
+.imp-tracker__step:not(:first-child)::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--color-border, #e2e8f0);
+  z-index: 0;
 }
 
-.dashboard-shell.dark .imp-details__progress-track {
-  background: var(--color-border-dark, rgba(148,163,184,0.2));
+.imp-tracker__step.is-filled:not(:first-child)::before {
+  background: var(--color-primary, #2563eb);
+}
+
+.dashboard-shell.dark .imp-tracker__step:not(:first-child)::before {
+  background: var(--color-border-dark, #334155);
+}
+
+.imp-tracker__dot {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border, #e2e8f0);
+  background: var(--modal-color, #fff);
+  color: var(--color-text-secondary, #64748b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.imp-tracker__dot.is-filled {
+  border-color: var(--color-primary, #2563eb);
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+}
+
+.imp-tracker__dot.is-editable {
+  cursor: pointer;
+}
+
+.imp-tracker__dot.is-editable:hover {
+  border-color: var(--color-primary, #2563eb);
+}
+
+.imp-tracker__dot:disabled {
+  cursor: default;
+}
+
+.imp-tracker__label {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text, #1e293b);
+  padding: 0 2px;
+}
+
+.dashboard-shell.dark .imp-tracker__label {
+  color: #e2e8f0;
+}
+
+.imp-tracker__date {
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary, #64748b);
 }
 
 /* Borrador rows in the main importaciones DataTable */
