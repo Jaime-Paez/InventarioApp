@@ -26,6 +26,11 @@ const getProductoOem = (producto) =>
 
 const toNumberOrNull = (v) => (v === '' || v == null ? null : Number(v))
 
+const getCantidadRecibidaCeiling = (row) => {
+  const n = parseInt(row.cantidadRecibida, 10)
+  return Number.isFinite(n) ? n : row.cantidad
+}
+
 const GRID_ROW_SELECTOR = '.create-user__locations-row'
 const GRID_FOCUSABLE_SELECTOR = 'input, button:not(:disabled)'
 
@@ -206,6 +211,23 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const mode = isDark ? 'dark' : 'light'
   const toastRef = useRef(null)
 
+  const [cellHover, setCellHover] = useState(null)
+  const cellHoverTimerRef = useRef(null)
+  const showCellHover = useCallback((event, items, label) => {
+    const list = (Array.isArray(items) ? items : [items]).filter(Boolean)
+    if (!list.length) return
+    if (cellHoverTimerRef.current) clearTimeout(cellHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    cellHoverTimerRef.current = setTimeout(() => {
+      cellHoverTimerRef.current = null
+      setCellHover({ top: rect.bottom + 4, left: rect.left, items: list, label })
+    }, 400)
+  }, [])
+  const hideCellHover = useCallback(() => {
+    if (cellHoverTimerRef.current) { clearTimeout(cellHoverTimerRef.current); cellHoverTimerRef.current = null }
+    setCellHover(null)
+  }, [])
+
   const storageKey = `imp-receive-${imp.id}`
   // IDs de ítems que eran sinCat al abrir el modal (fijo, no cambia con el fetch fresco)
   const [originalSinCatIds] = useState(() =>
@@ -215,12 +237,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [rows, setRows] = useState(() => {
     const saved = JSON.parse(localStorage.getItem(`imp-receive-${imp.id}`) || 'null')
     const checkedIds = new Set(saved?.checkedIds || [])
+    const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
     return (imp.detalles || []).map(d => ({
       id: d.id,
       codigo: d.producto?.codigo || d.codigo || '',
       nombre: d.producto?.nombre || d.nombre || '',
       oem: getProductoOem(d.producto) || d.oem || '',
+      referencia: d.producto?.referencia || d.referencia || '',
+      precio: d.precio_confirmado ?? d.producto?.precio ?? null,
       cantidad: d.cantidad,
+      cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
       sinCat: !d.producto?.id,
       checked: checkedIds.has(d.id),
       newProducto: null,
@@ -257,12 +283,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         if (!fresh?.detalles) return
         const saved = JSON.parse(localStorage.getItem(storageKey) || 'null')
         const checkedIds = new Set(saved?.checkedIds || [])
+        const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
         setRows(fresh.detalles.map(d => ({
           id: d.id,
           codigo: d.producto?.codigo || d.codigo || '',
           nombre: d.producto?.nombre || d.nombre || '',
           oem: getProductoOem(d.producto) || d.oem || '',
+          referencia: d.producto?.referencia || d.referencia || '',
+          precio: d.precio_confirmado ?? d.producto?.precio ?? null,
           cantidad: d.cantidad,
+          cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
           sinCat: !d.producto?.id,
           checked: checkedIds.has(d.id),
           newProducto: null,
@@ -294,11 +324,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
   useEffect(() => {
     const checkedIds = rows.filter(r => r.checked).map(r => r.id)
-    localStorage.setItem(storageKey, JSON.stringify({ checkedIds, step, distribution }))
+    const cantidadesRecibidas = Object.fromEntries(rows.map(r => [r.id, r.cantidadRecibida]))
+    localStorage.setItem(storageKey, JSON.stringify({ checkedIds, step, distribution, cantidadesRecibidas }))
   }, [rows, step, distribution, storageKey])
 
   const toggleRow = useCallback((id) => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, checked: !r.checked } : r))
+  }, [])
+  const updateCantidadRecibida = useCallback((id, value) => {
+    const sanitized = value.replace(/[^0-9]/g, '')
+    setRows(prev => prev.map(r => r.id === id ? { ...r, cantidadRecibida: sanitized } : r))
   }, [])
   const toggleAll = useCallback((checked) => {
     setRows(prev => prev.map(r => ({ ...r, checked })))
@@ -322,7 +357,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const canGoNext = step1Pending.length === 0
   const canFinish = !loadingSucursales && sucursales.length > 0 && rows.every(row => {
     const assigned = Object.values(distribution[row.id] || {}).reduce((s, v) => s + (parseInt(v) || 0), 0)
-    return assigned === row.cantidad
+    return assigned === getCantidadRecibidaCeiling(row)
   })
 
   const sucursalesWithDistribution = useMemo(() =>
@@ -496,9 +531,10 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       const destinatarios_por_sucursal = Object.entries(recipientsBySucursal)
         .filter(([, ids]) => ids.length > 0)
         .map(([sucursalId, ids]) => ({ sucursal_id: parseInt(sucursalId), user_ids: ids }))
+      const revisiones = rows.map(row => ({ detalle_id: row.id, cantidad_recibida: getCantidadRecibidaCeiling(row) }))
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/marcar-llegada/`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones, destinatarios_por_sucursal }) },
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones, destinatarios_por_sucursal, revisiones }) },
         token
       )
       if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo marcar la llegada.'))
@@ -521,7 +557,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       >
         <div
           className={`quick-actions__receive-dialog ${mode}`}
-          style={{ width: step === 3 ? 'min(860px, 95vw)' : step === 4 ? 'min(700px, 95vw)' : 'min(640px, 90vw)', gridTemplateRows: 'auto 1fr auto', transition: 'width .25s' }}
+          style={{ width: step === 2 ? 'min(950px, 95vw)' : step === 3 ? 'min(860px, 95vw)' : step === 4 ? 'min(700px, 95vw)' : 'min(640px, 90vw)', gridTemplateRows: 'auto 1fr auto', transition: 'width .25s' }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <header className="quick-actions__receive-head">
@@ -657,36 +693,112 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   </div>
                 </div>
 
-                <div className="quick-actions__receive-list">
-                  {filteredRows.map((row) => {
+                <div className="create-user__locations-table importaciones-modal__products-table imp-receive__table" onKeyDown={handleProductsGridKeyDown}>
+                  <div className="create-user__locations-row create-user__locations-row--head imp-receive__productos-row">
+                    <span>Código</span>
+                    <span>Nombre</span>
+                    <span>Referencia</span>
+                    <span>OEM</span>
+                    <span>Precio</span>
+                    <span>Esperada</span>
+                    <span
+                      onDoubleClick={() => setRows(prev => prev.map(r => ({ ...r, cantidadRecibida: String(r.cantidad) })))}
+                      title="Doble click: llenar todas con la cantidad esperada"
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Recibida
+                    </span>
+                    <span
+                      onDoubleClick={() => toggleAll(!allChecked)}
+                      title="Doble click: marcar/desmarcar todas"
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Acciones
+                    </span>
+                  </div>
+                  {filteredRows.length === 0 ? (
+                    <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
+                  ) : filteredRows.map((row) => {
                     const hasError = showErrors && !row.checked
+                    const precioLabel = row.precio != null ? `$${Number(row.precio).toFixed(2)}` : '-'
+                    const ceiling = getCantidadRecibidaCeiling(row)
+                    const diff = ceiling - row.cantidad
+                    const diffClass = diff < 0 ? ' imp-receive__cantidad-input--faltante' : diff > 0 ? ' imp-receive__cantidad-input--sobrante' : ''
+                    const diffTitle = diff < 0
+                      ? `Se registrará un inconveniente por faltante de ${-diff} unidad${-diff === 1 ? '' : 'es'}.`
+                      : diff > 0
+                        ? `Se registrará un inconveniente por sobrante de ${diff} unidad${diff === 1 ? '' : 'es'}.`
+                        : ''
                     return (
-                      <article key={row.id} className={`quick-actions__receive-item${row.checked ? ' is-reviewed is-ready' : ' is-pending'}${hasError ? ' has-validation-error' : ''}`}>
-                        <div className="quick-actions__receive-item-head quick-actions__receive-item-head--check">
-                          <label className="quick-actions__receive-check quick-actions__receive-check--row">
-                            <Checkbox binary checked={row.checked} onChange={() => toggleRow(row.id)} disabled={submitting} />
-                          </label>
-                          <div className="quick-actions__receive-item-title">
-                            <small className="quick-actions__receive-col-label">Producto</small>
-                            <strong>{row.codigo || '-'}</strong>
-                            {row.nombre && <p className="quick-actions__receive-item-name">{row.nombre}</p>}
-                          </div>
-                        </div>
-                        <div className="quick-actions__receive-location-row quick-actions__receive-location-row--review" style={{ gridTemplateColumns: '1fr', alignSelf: 'start', paddingTop: 2 }}>
-                          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', display: 'block', paddingTop: 6 }}>
-                            {row.newProducto?.codigo || row.oem || '—'}
-                          </span>
-                        </div>
-                        <div className="quick-actions__receive-item-meta">
-                          <span>Cantidad<strong>{row.cantidad}</strong></span>
-                        </div>
-                        {hasError && (
-                          <p className="quick-actions__receive-item-hint quick-actions__receive-item-hint--warning">Confirma haber revisado este producto.</p>
-                        )}
-                      </article>
+                      <div key={row.id} className={`create-user__locations-row imp-receive__productos-row${hasError ? ' has-validation-error' : ''}`}>
+                        <span
+                          className="imp-table-cell-tip"
+                          onMouseEnter={(e) => showCellHover(e, row.codigo, 'Código')}
+                          onMouseLeave={hideCellHover}
+                        >
+                          <span className="imp-table-cell-text">{row.codigo || '-'}</span>
+                        </span>
+                        <span
+                          className="imp-table-cell-tip"
+                          onMouseEnter={(e) => showCellHover(e, row.nombre, 'Nombre')}
+                          onMouseLeave={hideCellHover}
+                        >
+                          <span className="imp-table-cell-text">{row.nombre || '-'}</span>
+                        </span>
+                        <span
+                          className="imp-table-cell-tip"
+                          onMouseEnter={(e) => showCellHover(e, row.referencia, 'Referencia')}
+                          onMouseLeave={hideCellHover}
+                        >
+                          <span className="imp-table-cell-text">{row.referencia || '-'}</span>
+                        </span>
+                        <span
+                          className="imp-table-cell-tip"
+                          onMouseEnter={(e) => showCellHover(e, row.oem, 'OEM')}
+                          onMouseLeave={hideCellHover}
+                        >
+                          <span className="imp-table-cell-text">{row.oem || '-'}</span>
+                        </span>
+                        <span
+                          className="imp-table-cell-tip"
+                          onMouseEnter={(e) => showCellHover(e, precioLabel !== '-' ? precioLabel : null, 'Precio')}
+                          onMouseLeave={hideCellHover}
+                        >
+                          <span className="imp-table-cell-text">{precioLabel}</span>
+                        </span>
+                        <span
+                          className="imp-table-cell-text"
+                          style={{ textAlign: 'center', fontWeight: 600, cursor: 'pointer' }}
+                          onDoubleClick={() => updateCantidadRecibida(row.id, String(row.cantidad))}
+                          title="Doble click: usar cantidad esperada"
+                        >
+                          {row.cantidad}
+                        </span>
+                        <span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            className={`imp-receive__cantidad-input${diffClass}`}
+                            value={row.cantidadRecibida}
+                            title={diffTitle || 'Doble click: usar cantidad esperada'}
+                            onChange={(e) => updateCantidadRecibida(row.id, e.target.value)}
+                            onDoubleClick={() => updateCantidadRecibida(row.id, String(row.cantidad))}
+                            disabled={submitting}
+                          />
+                        </span>
+                        <span className="imp-receive__check-cell">
+                          <Checkbox binary checked={row.checked} onChange={() => toggleRow(row.id)} disabled={submitting} />
+                        </span>
+                      </div>
                     )
                   })}
                 </div>
+                {showErrors && filteredRows.some(row => !row.checked) && (
+                  <p className="quick-actions__receive-item-hint quick-actions__receive-item-hint--warning" style={{ padding: '0 16px' }}>
+                    Confirma haber revisado todos los productos antes de continuar.
+                  </p>
+                )}
               </div>
             ) : step === 3 ? (
               /* ── PASO 3: distribución a sucursales ── */
@@ -700,7 +812,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   {!loadingSucursales && sucursales.length > 0 && (
                     <div className="quick-actions__receive-stage-stats" style={{ marginTop: 10 }}>
                       <span className="quick-actions__receive-stage-stat">Productos <strong>{rows.length}</strong></span>
-                      <span className="quick-actions__receive-stage-stat">Listos <strong>{rows.filter(row => Object.values(distribution[row.id] || {}).reduce((s, v) => s + (parseInt(v) || 0), 0) === row.cantidad).length}</strong></span>
+                      <span className="quick-actions__receive-stage-stat">Listos <strong>{rows.filter(row => Object.values(distribution[row.id] || {}).reduce((s, v) => s + (parseInt(v) || 0), 0) === getCantidadRecibidaCeiling(row)).length}</strong></span>
                     </div>
                   )}
                 </article>
@@ -735,8 +847,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         {rows.map((row, i) => {
                           const rowDist = distribution[row.id] || {}
                           const assigned = Object.values(rowDist).reduce((s, v) => s + (parseInt(v) || 0), 0)
-                          const isComplete = assigned === row.cantidad
-                          const isOver = assigned > row.cantidad
+                          const ceiling = getCantidadRecibidaCeiling(row)
+                          const isComplete = assigned === ceiling
+                          const isOver = assigned > ceiling
                           return (
                             <tr key={row.id} style={{ borderBottom: i < rows.length - 1 ? '1px solid var(--color-border, #e2e8f0)' : 'none', background: isComplete ? 'rgba(22,163,74,0.05)' : 'transparent', transition: 'background .2s' }}>
                               <td style={{ padding: '10px 12px 10px 0', verticalAlign: 'middle' }}>
@@ -744,12 +857,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                                 {row.nombre && row.codigo && <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>{row.codigo}</div>}
                               </td>
                               <td style={{ textAlign: 'center', padding: '10px 8px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: isOver ? '#dc2626' : isComplete ? '#16a34a' : 'var(--color-text-secondary)' }}>{assigned}/{row.cantidad}</span>
+                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: isOver ? '#dc2626' : isComplete ? '#16a34a' : 'var(--color-text-secondary)' }}>{assigned}/{ceiling}</span>
                               </td>
                               {sucursales.map(suc => (
                                 <td key={suc.id} style={{ textAlign: 'center', padding: '8px 6px', verticalAlign: 'middle' }}>
                                   <input
-                                    type="number" min="0" max={row.cantidad}
+                                    type="number" min="0" max={ceiling}
                                     value={rowDist[suc.id] ?? ''}
                                     disabled={(isComplete || isOver) && !(parseInt(rowDist[suc.id]) > 0)}
                                     onChange={(e) => setDistribution(prev => ({ ...prev, [row.id]: { ...(prev[row.id] || {}), [suc.id]: e.target.value } }))}
@@ -924,6 +1037,19 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           getPortalRoot()
         )
       })()}
+
+      {cellHover && createPortal(
+        <div
+          className="imp-cell-hover-card"
+          style={{ top: cellHover.top, left: cellHover.left }}
+        >
+          <div className="imp-cell-hover-card__title">{cellHover.label}</div>
+          {cellHover.items.map((value, i) => (
+            <div key={i} className="imp-cell-hover-card__row">{value}</div>
+          ))}
+        </div>,
+        getPortalRoot()
+      )}
     </>,
     getPortalRoot()
   )
@@ -1297,16 +1423,6 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
           </div>
 
           <div className="create-user__footer">
-            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
-            {imp.estado === 'en_camino' && imp.origen_id && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--cancel"
-                onClick={() => onOpenOrigen?.(imp.origen_id)}
-              >
-                Ver confirmación
-              </button>
-            )}
             {(imp.estado === 'en_camino' || imp.estado === 'importada') && Array.isArray(imp.historial_confirmacion) && imp.historial_confirmacion.length > 0 && (
               <button
                 type="button"
@@ -1314,6 +1430,15 @@ function ImportacionDetailsModal({ imp, token, onClose, onSaved, moduleActions, 
                 onClick={() => setShowHistorial(true)}
               >
                 Historial
+              </button>
+            )}
+            {imp.estado === 'en_camino' && imp.origen_id && (
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={() => onOpenOrigen?.(imp.origen_id)}
+              >
+                Ver confirmación
               </button>
             )}
             {imp.estado === 'en_camino' && canMarcarLlegada && (

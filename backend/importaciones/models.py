@@ -90,6 +90,7 @@ class ImportacionDetalle(models.Model):
     precio_confirmado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cantidad_confirmada = models.PositiveIntegerField(null=True, blank=True)
     precio_pvp_snapshot = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    cantidad_recibida = models.PositiveIntegerField(null=True, blank=True)
     seleccionado = models.BooleanField(null=True, blank=True)
     comentario = models.TextField(blank=True, default="")
     solicitud = models.ForeignKey(
@@ -168,3 +169,111 @@ class ImportacionEnvioDetalle(models.Model):
 
     def __str__(self):
         return f"{self.envio} - {self.producto.codigo}"
+
+
+class ImportacionInconveniente(models.Model):
+    """Inconvenientes detectados al revisar la llegada de una importación (faltante/sobrante frente a lo esperado)."""
+
+    class Tipos(models.TextChoices):
+        FALTANTE = "faltante", "Faltante"
+        SOBRANTE = "sobrante", "Sobrante"
+
+    class Estados(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente"
+        RESUELTO = "resuelto", "Resuelto"
+        PERDIDO = "perdido", "Perdido"
+
+    class Resoluciones(models.TextChoices):
+        REPORTADO_PROVEEDOR = "reportado_proveedor", "Reportado al proveedor"
+        ACEPTADO = "aceptado", "Aceptado sin cambios"
+        PERDIDO = "perdido", "Perdido / no recuperable"
+
+    importacion = models.ForeignKey(
+        Importacion,
+        on_delete=models.CASCADE,
+        related_name="inconvenientes",
+    )
+    detalle = models.ForeignKey(
+        ImportacionDetalle,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inconvenientes",
+    )
+    producto = models.ForeignKey(
+        Producto,
+        on_delete=models.PROTECT,
+        related_name="inconvenientes_importacion",
+    )
+    tipo = models.CharField(
+        max_length=20,
+        choices=Tipos.choices,
+        default=Tipos.FALTANTE,
+    )
+    cantidad_esperada = models.PositiveIntegerField(default=0)
+    cantidad_recibida = models.PositiveIntegerField(default=0)
+    cantidad_diferencia = models.PositiveIntegerField(default=0)
+    estado = models.CharField(
+        max_length=20,
+        choices=Estados.choices,
+        default=Estados.PENDIENTE,
+    )
+    resolucion = models.CharField(
+        max_length=30,
+        choices=Resoluciones.choices,
+        blank=True,
+        default="",
+    )
+    motivo = models.TextField(blank=True, default="")
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="inconvenientes_importacion_creados",
+        null=True,
+        blank=True,
+    )
+    resuelto_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="inconvenientes_importacion_resueltos_por",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Inconveniente de importación"
+        verbose_name_plural = "Inconvenientes de importación"
+
+    def __str__(self):
+        return f"{self.importacion.codigo} - {self.producto.codigo} ({self.tipo}: {self.cantidad_diferencia})"
+
+
+class ImportacionInconvenienteHistorial(models.Model):
+    """Historial de decisiones tomadas sobre inconvenientes de importación."""
+
+    inconveniente = models.ForeignKey(
+        ImportacionInconveniente,
+        on_delete=models.CASCADE,
+        related_name="historial",
+    )
+    accion = models.CharField(max_length=40)
+    detalle = models.TextField(blank=True, default="")
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="historial_inconvenientes_importacion",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Historial de inconveniente de importación"
+        verbose_name_plural = "Historial de inconvenientes de importación"
+
+    def __str__(self):
+        return f"{self.inconveniente_id} - {self.accion}"

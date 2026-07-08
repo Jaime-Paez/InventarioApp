@@ -21,7 +21,14 @@ from app.models import ReminderState
 from inventario.models import Inventario, SubDivision
 from productos.models import Producto
 
-from .models import Importacion, ImportacionDetalle, ImportacionEnvio, ImportacionEnvioDetalle
+from .models import (
+    Importacion,
+    ImportacionDetalle,
+    ImportacionEnvio,
+    ImportacionEnvioDetalle,
+    ImportacionInconveniente,
+    ImportacionInconvenienteHistorial,
+)
 from .serializers import ImportacionDetalleSerializer, ImportacionSerializer, generate_next_importacion_code
 
 
@@ -31,9 +38,65 @@ class ImportacionViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
 
     def get_permissions(self):
-        if self.action in ("envios_pendientes", "confirmar_recepcion_envio"):
+        if self.action in (
+            "envios_pendientes",
+            "confirmar_recepcion_envio",
+            "importacion_inconvenientes",
+            "resolver_importacion_inconveniente",
+        ):
             return [IsAuthenticated()]
         return super().get_permissions()
+
+    @staticmethod
+    def _resolve_user_display(user):
+        if user is None:
+            return ""
+        full_name = str(getattr(user, "get_full_name", lambda: "")() or "").strip()
+        if full_name:
+            return full_name
+        return str(getattr(user, "email", "") or "").strip()
+
+    def _serialize_importacion_inconveniente(self, inconveniente):
+        historial_rows = list(
+            inconveniente.historial.select_related("actor").all().order_by("-created_at", "-id")
+        )
+        historial_payload = [
+            {
+                "id": int(row.id),
+                "accion": str(row.accion or "").strip(),
+                "detalle": str(row.detalle or "").strip(),
+                "actor_id": int(row.actor_id) if row.actor_id else None,
+                "actor_nombre": self._resolve_user_display(getattr(row, "actor", None)),
+                "created_at": row.created_at,
+            }
+            for row in historial_rows
+        ]
+
+        return {
+            "id": int(inconveniente.id),
+            "importacion_id": int(inconveniente.importacion_id),
+            "importacion_codigo": str(getattr(inconveniente.importacion, "codigo", "") or "").strip(),
+            "casa_comercial_nombre": str(
+                getattr(getattr(inconveniente.importacion, "casa_comercial", None), "nombre", "") or ""
+            ).strip(),
+            "producto_id": int(inconveniente.producto_id),
+            "producto_codigo": str(getattr(getattr(inconveniente, "producto", None), "codigo", "") or "").strip(),
+            "producto_nombre": str(getattr(getattr(inconveniente, "producto", None), "nombre", "") or "").strip(),
+            "tipo": str(inconveniente.tipo or "faltante").strip(),
+            "cantidad_esperada": int(inconveniente.cantidad_esperada or 0),
+            "cantidad_recibida": int(inconveniente.cantidad_recibida or 0),
+            "cantidad_diferencia": int(inconveniente.cantidad_diferencia or 0),
+            "estado": str(inconveniente.estado or "").strip(),
+            "resolucion": str(inconveniente.resolucion or "").strip(),
+            "motivo": str(inconveniente.motivo or "").strip(),
+            "creado_por_id": int(inconveniente.creado_por_id) if inconveniente.creado_por_id else None,
+            "creado_por_nombre": self._resolve_user_display(getattr(inconveniente, "creado_por", None)),
+            "resuelto_por_id": int(inconveniente.resuelto_por_id) if inconveniente.resuelto_por_id else None,
+            "resuelto_por_nombre": self._resolve_user_display(getattr(inconveniente, "resuelto_por", None)),
+            "created_at": inconveniente.created_at,
+            "updated_at": inconveniente.updated_at,
+            "historial": historial_payload,
+        }
 
     def _check_specific_importacion_permission(self, request, flag_name):
         """Verifica un permiso específico de importaciones (puede_importar, puede_marcar_llegada)."""
@@ -302,6 +365,54 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         instance.dias_reales_entrega = dias_reales
         instance.save()
 
+        # Register cantidad recibida per detalle and log faltante/sobrante inconvenientes
+        for revision in request.data.get("revisiones", []):
+            try:
+                detalle_id = revision.get("detalle_id")
+                cantidad_recibida = int(revision.get("cantidad_recibida"))
+                if cantidad_recibida < 0 or not detalle_id:
+                    continue
+                detalle = instance.detalles.select_related("producto").get(pk=detalle_id)
+            except Exception:
+                continue
+            if not detalle.producto_id:
+                continue
+
+            detalle.cantidad_recibida = cantidad_recibida
+            detalle.save(update_fields=["cantidad_recibida"])
+
+            cantidad_esperada = int(detalle.cantidad or 0)
+            if cantidad_recibida == cantidad_esperada:
+                continue
+
+            tipo = (
+                ImportacionInconveniente.Tipos.FALTANTE
+                if cantidad_recibida < cantidad_esperada
+                else ImportacionInconveniente.Tipos.SOBRANTE
+            )
+            diferencia = abs(cantidad_esperada - cantidad_recibida)
+            inconveniente = ImportacionInconveniente.objects.create(
+                importacion=instance,
+                detalle=detalle,
+                producto_id=detalle.producto_id,
+                tipo=tipo,
+                cantidad_esperada=cantidad_esperada,
+                cantidad_recibida=cantidad_recibida,
+                cantidad_diferencia=diferencia,
+                estado=ImportacionInconveniente.Estados.PENDIENTE,
+                creado_por=request.user,
+            )
+            tipo_label = "faltante" if tipo == ImportacionInconveniente.Tipos.FALTANTE else "sobrante"
+            ImportacionInconvenienteHistorial.objects.create(
+                inconveniente=inconveniente,
+                accion="detectado",
+                detalle=(
+                    f"Se detecto un {tipo_label} de {diferencia} unidades al revisar la llegada. "
+                    f"Esperado: {cantidad_esperada}, recibido: {cantidad_recibida}."
+                ),
+                actor=request.user,
+            )
+
         # Recalculate casa_comercial.dias_entrega from last 5 real delivery times
         if dias_reales is not None:
             ultimos = list(
@@ -364,6 +475,144 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="inconvenientes")
+    def importacion_inconvenientes(self, request):
+        if not is_app_admin(request.user):
+            return Response(
+                {"detail": "Solo los administradores pueden consultar inconvenientes de importaciones."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = (
+            ImportacionInconveniente.objects.select_related(
+                "importacion",
+                "importacion__casa_comercial",
+                "producto",
+                "creado_por",
+                "resuelto_por",
+            )
+            .prefetch_related("historial__actor")
+            .order_by("-created_at", "-id")
+        )
+
+        estado = str(request.query_params.get("estado") or "").strip().lower()
+        if estado in {
+            ImportacionInconveniente.Estados.PENDIENTE,
+            ImportacionInconveniente.Estados.RESUELTO,
+            ImportacionInconveniente.Estados.PERDIDO,
+        }:
+            queryset = queryset.filter(estado=estado)
+
+        payload = [self._serialize_importacion_inconveniente(row) for row in queryset]
+        return Response(payload, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"inconvenientes/(?P<inconveniente_id>\d+)/resolver",
+    )
+    def resolver_importacion_inconveniente(self, request, inconveniente_id=None):
+        if not is_app_admin(request.user):
+            return Response(
+                {"detail": "Solo los administradores pueden resolver inconvenientes de importaciones."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        inconveniente = (
+            ImportacionInconveniente.objects.select_related("importacion", "producto")
+            .filter(pk=inconveniente_id)
+            .first()
+        )
+        if inconveniente is None:
+            return Response(
+                {"detail": "No se encontro el inconveniente de importacion."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if inconveniente.estado != ImportacionInconveniente.Estados.PENDIENTE:
+            return Response(
+                {"detail": "Este inconveniente ya fue resuelto."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        decision = str(request.data.get("decision") or "").strip().lower()
+        motivo = str(request.data.get("motivo") or "").strip()
+
+        valid_decisions = {"reportado_proveedor", "aceptado", "perdido"}
+        if decision not in valid_decisions:
+            return Response(
+                {"detail": "Debes enviar una decision valida: reportado_proveedor, aceptado o perdido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if decision == "perdido" and inconveniente.tipo != ImportacionInconveniente.Tipos.FALTANTE:
+            return Response(
+                {"detail": "La decision 'perdido' solo aplica para inconvenientes de tipo faltante."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            inconveniente_locked = (
+                ImportacionInconveniente.objects.select_for_update(of=("self",))
+                .select_related("importacion", "importacion__casa_comercial", "producto")
+                .filter(pk=inconveniente.id)
+                .first()
+            )
+            if inconveniente_locked is None or inconveniente_locked.estado != ImportacionInconveniente.Estados.PENDIENTE:
+                return Response(
+                    {"detail": "Este inconveniente ya fue resuelto."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if decision == "reportado_proveedor":
+                resolucion = ImportacionInconveniente.Resoluciones.REPORTADO_PROVEEDOR
+                estado_resultado = ImportacionInconveniente.Estados.RESUELTO
+                action_label = "reportado_a_proveedor"
+            elif decision == "aceptado":
+                resolucion = ImportacionInconveniente.Resoluciones.ACEPTADO
+                estado_resultado = ImportacionInconveniente.Estados.RESUELTO
+                action_label = "aceptado_sin_cambios"
+            else:
+                resolucion = ImportacionInconveniente.Resoluciones.PERDIDO
+                estado_resultado = ImportacionInconveniente.Estados.PERDIDO
+                action_label = "marcado_como_perdido"
+
+            inconveniente_locked.estado = estado_resultado
+            inconveniente_locked.resolucion = resolucion
+            inconveniente_locked.motivo = motivo
+            inconveniente_locked.resuelto_por = request.user
+            inconveniente_locked.save(
+                update_fields=["estado", "resolucion", "motivo", "resuelto_por", "updated_at"]
+            )
+
+            tipo_label = "faltante" if inconveniente_locked.tipo == ImportacionInconveniente.Tipos.FALTANTE else "sobrante"
+            detail_text = (
+                f"Se resolvio el {tipo_label} de {inconveniente_locked.cantidad_diferencia} unidades "
+                f"({resolucion})."
+            )
+            if motivo:
+                detail_text = f"{detail_text} Motivo: {motivo}"
+
+            ImportacionInconvenienteHistorial.objects.create(
+                inconveniente=inconveniente_locked,
+                accion=action_label,
+                detalle=detail_text,
+                actor=request.user,
+            )
+
+            inconveniente_out = (
+                ImportacionInconveniente.objects.select_related("importacion", "importacion__casa_comercial", "producto")
+                .prefetch_related("historial__actor")
+                .filter(pk=inconveniente_locked.id)
+                .first()
+            )
+
+        return Response(
+            {
+                "detail": "Inconveniente resuelto correctamente.",
+                "inconveniente": self._serialize_importacion_inconveniente(inconveniente_out),
+            },
+            status=status.HTTP_200_OK,
+        )
 
     def _create_importacion_reminder(self, importacion, sucursal_id, user_ids, actor_user):
         User = get_user_model()

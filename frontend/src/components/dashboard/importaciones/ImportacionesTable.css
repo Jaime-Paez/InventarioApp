@@ -258,7 +258,7 @@
   max-height: 300px;
 }
 
-.importaciones-modal__products-table .create-user__locations-row:not(.imp-details__productos-row) {
+.importaciones-modal__products-table .create-user__locations-row:not(.imp-details__productos-row):not(.imp-historial__row):not(.imp-receive__productos-row) {
   grid-template-columns:
     minmax(100px, 1.18fr)
     minmax(110px, 1.32fr)
@@ -378,6 +378,75 @@
 
 .imp-historial__row:not(.create-user__locations-row--empty) > span {
   padding: 5px 6px;
+}
+
+.imp-receive__table {
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: 10px;
+}
+
+.dashboard-shell.dark .imp-receive__table {
+  border-color: var(--color-border-dark, #334155);
+}
+
+.imp-receive__productos-row {
+  grid-template-columns:
+    minmax(90px, 0.85fr)
+    minmax(150px, 1.5fr)
+    minmax(100px, 0.95fr)
+    minmax(90px, 0.85fr)
+    minmax(72px, 0.65fr)
+    92px
+    minmax(104px, 0.95fr)
+    76px;
+}
+
+.imp-receive__productos-row:not(.create-user__locations-row--empty) > span {
+  padding: 5px 6px;
+  border-left: 1px solid var(--color-border, #cbd5e1);
+}
+
+.dashboard-shell.dark .imp-receive__productos-row:not(.create-user__locations-row--empty) > span {
+  border-left-color: var(--color-border-dark, #334155);
+}
+
+.imp-receive__productos-row:not(.create-user__locations-row--empty) > span:first-child {
+  border-left: none;
+}
+
+.imp-receive__productos-row.create-user__locations-row--head {
+  background: #dbe1e8;
+}
+
+.dashboard-shell.dark .imp-receive__productos-row.create-user__locations-row--head {
+  background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
+}
+
+.imp-receive__check-cell {
+  padding: 0 !important;
+  justify-content: center;
+}
+
+.imp-receive__cantidad-input {
+  width: 100%;
+  text-align: center;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+  background: var(--modal-color, #fff);
+}
+
+.imp-receive__cantidad-input--faltante {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.imp-receive__cantidad-input--sobrante {
+  border-color: #d97706;
+  background: rgba(217, 119, 6, 0.08);
 }
 
 .imp-details__productos-row.create-user__locations-row--head {

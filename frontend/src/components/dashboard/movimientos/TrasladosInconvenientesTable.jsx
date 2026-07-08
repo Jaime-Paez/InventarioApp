@@ -92,6 +92,8 @@ const formatResolucion = (value) => {
   if (normalized === 'perdido') return 'Marcado como desaparecido'
   if (normalized === 'restar_proveedora') return 'Restado de sucursal proveedora'
   if (normalized === 'sin_cambios') return 'Sin cambios de inventario'
+  if (normalized === 'reportado_proveedor') return 'Reportado al proveedor'
+  if (normalized === 'aceptado') return 'Aceptado sin cambios'
   return '-'
 }
 
@@ -102,6 +104,8 @@ const formatHistorialAccion = (value) => {
   if (normalized === 'marcado_como_perdido') return 'Marcado como desaparecido'
   if (normalized === 'restado_de_proveedora') return 'Restado de proveedora'
   if (normalized === 'sin_cambios') return 'Sin cambios'
+  if (normalized === 'reportado_a_proveedor') return 'Reportado a proveedor'
+  if (normalized === 'aceptado_sin_cambios') return 'Aceptado sin cambios'
   return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
 }
 
@@ -130,6 +134,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
 
   const columnsData = useMemo(
     () => [
+      { nombrevar: 'origen_label', header: 'Origen', filterPlaceholder: 'Buscar por origen' },
       { nombrevar: 'solicitud_no_documento', header: 'Documento', filterPlaceholder: 'Buscar por documento' },
       { nombrevar: 'producto_nombre', header: 'Nombre', filterPlaceholder: 'Buscar por producto' },
       { nombrevar: 'producto_codigo', header: 'Código', filterPlaceholder: 'Buscar por codigo' },
@@ -256,7 +261,9 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
         const keyFallback = `${normalizeId(row?.solicitud_id)}-${normalizeId(row?.producto_id)}-${index}`
         return {
           ...row,
-          row_key: rowId || keyFallback,
+          origen: 'traslado',
+          origen_label: 'Traslado',
+          row_key: rowId ? `traslado-${rowId}` : keyFallback,
           estado_key: state || 'pendiente',
           estado_label: formatEstado(row?.estado),
           resolucion_label: formatResolucion(row?.resolucion),
@@ -268,6 +275,37 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
           sucursal_proveedora: String(row?.sucursal_proveedora || '-').trim() || '-',
           sucursal_solicitante: String(row?.sucursal_solicitante || '-').trim() || '-',
           solicitud_no_documento: String(row?.solicitud_no_documento || row?.solicitud_id || '-').trim() || '-',
+        }
+      }),
+    []
+  )
+
+  const normalizeImportacionRows = useCallback(
+    (list) =>
+      list.map((row, index) => {
+        const rowId = normalizeId(row?.id)
+        const state = String(row?.estado || '').trim().toLowerCase()
+        const productCode = String(row?.producto_codigo || '').trim()
+        const productName = String(row?.producto_nombre || '').trim() || 'Producto sin nombre'
+        const reason = String(row?.motivo || '').trim()
+        const diffQty = Number.parseInt(String(row?.cantidad_diferencia || 0), 10) || 0
+        const keyFallback = `importacion-${normalizeId(row?.importacion_id)}-${normalizeId(row?.producto_id)}-${index}`
+        return {
+          ...row,
+          origen: 'importacion',
+          origen_label: 'Importación',
+          row_key: rowId ? `importacion-${rowId}` : keyFallback,
+          estado_key: state || 'pendiente',
+          estado_label: formatEstado(row?.estado),
+          resolucion_label: formatResolucion(row?.resolucion),
+          created_at_label: formatDateTime(row?.created_at),
+          producto_codigo: productCode || `Producto ${normalizeId(row?.producto_id) || '-'}`,
+          producto_nombre: productName,
+          producto_resumen: reason ? `${productCode || productName} | Novedad: ${reason}` : (productCode || productName),
+          cantidad_faltante: diffQty,
+          sucursal_proveedora: String(row?.casa_comercial_nombre || '-').trim() || '-',
+          sucursal_solicitante: '-',
+          solicitud_no_documento: String(row?.importacion_codigo || row?.importacion_id || '-').trim() || '-',
         }
       }),
     []
@@ -294,13 +332,31 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
         if (statusFilter && statusFilter !== 'all') {
           endpoint.searchParams.set('estado', statusFilter)
         }
-        const response = await authFetch(endpoint.toString(), {}, token)
+        const importacionEndpoint = new URL(`${API_URL}/importaciones/importaciones/inconvenientes/`)
+        if (statusFilter && statusFilter !== 'all') {
+          importacionEndpoint.searchParams.set('estado', statusFilter)
+        }
+
+        const [response, importacionResponse] = await Promise.all([
+          authFetch(endpoint.toString(), {}, token),
+          authFetch(importacionEndpoint.toString(), {}, token),
+        ])
         if (!response.ok) {
           throw new Error('No se pudieron cargar los inconvenientes de traslado.')
         }
 
         const payload = await response.json().catch(() => [])
-        const parsed = normalizeRows(parseApiList(payload))
+        const traslados = normalizeRows(parseApiList(payload))
+
+        let importaciones = []
+        if (importacionResponse.ok) {
+          const importacionPayload = await importacionResponse.json().catch(() => [])
+          importaciones = normalizeImportacionRows(parseApiList(importacionPayload))
+        }
+
+        const parsed = [...traslados, ...importaciones].sort(
+          (a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime()
+        )
         setRows(parsed)
         return parsed
       } catch (requestError) {
@@ -314,7 +370,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
         setIsRefreshing(false)
       }
     },
-    [canRead, normalizeRows, showErrorToast, statusFilter, token]
+    [canRead, normalizeRows, normalizeImportacionRows, showErrorToast, statusFilter, token]
   )
 
   useEffect(() => {
@@ -357,7 +413,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   }, [columnsData])
 
   const selectedRowIds = useMemo(
-    () => new Set((selectedRows || []).map((row) => normalizeId(row?.id)).filter(Boolean)),
+    () => new Set((selectedRows || []).map((row) => row?.row_key).filter(Boolean)),
     [selectedRows]
   )
 
@@ -875,10 +931,10 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
 
   const ensureRowSelected = useCallback((rowData) => {
     if (!rowData) return
-    const id = normalizeId(rowData?.id)
+    const id = rowData?.row_key
     if (!id) return
     setSelectedRows((prev) => {
-      const map = new Map((prev || []).map((row) => [normalizeId(row?.id), row]))
+      const map = new Map((prev || []).map((row) => [row?.row_key, row]))
       map.set(id, rowData)
       return Array.from(map.values())
     })
@@ -1356,21 +1412,26 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
       setResolverError('Debes elegir una decisión para este producto.')
       return
     }
-    if (
-      (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') &&
-      !normalizeId(resolverSubdivisionId)
-    ) {
-      setResolverError('Debes seleccionar bodega, división y subdivisión para sumar inventario.')
-      return
-    }
-    if (resolverDecision === 'devolver_proveedora') {
-      if (!normalizeId(resolverSubdivisionId)) {
-        setResolverError('Debes seleccionar la ubicación en sucursal destino de donde restar el sobrante.')
+
+    const isImportacion = selectedIssue?.origen === 'importacion'
+
+    if (!isImportacion) {
+      if (
+        (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') &&
+        !normalizeId(resolverSubdivisionId)
+      ) {
+        setResolverError('Debes seleccionar bodega, división y subdivisión para sumar inventario.')
         return
       }
-      if (!normalizeId(resolverProvSubdivisionId)) {
-        setResolverError('Debes seleccionar la ubicación en sucursal proveedora donde devolver el sobrante.')
-        return
+      if (resolverDecision === 'devolver_proveedora') {
+        if (!normalizeId(resolverSubdivisionId)) {
+          setResolverError('Debes seleccionar la ubicación en sucursal destino de donde restar el sobrante.')
+          return
+        }
+        if (!normalizeId(resolverProvSubdivisionId)) {
+          setResolverError('Debes seleccionar la ubicación en sucursal proveedora donde devolver el sobrante.')
+          return
+        }
       }
     }
 
@@ -1381,18 +1442,22 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
         decision: resolverDecision,
         motivo: String(resolverMotivo || '').trim(),
       }
-      if (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') {
-        body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
-      }
-      if (resolverDecision === 'devolver_proveedora') {
-        body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
-        body.subdivision_proveedora_id = Number.parseInt(String(resolverProvSubdivisionId || ''), 10)
+      if (!isImportacion) {
+        if (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') {
+          body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
+        }
+        if (resolverDecision === 'devolver_proveedora') {
+          body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
+          body.subdivision_proveedora_id = Number.parseInt(String(resolverProvSubdivisionId || ''), 10)
+        }
       }
 
+      const endpoint = isImportacion
+        ? `${API_URL}/importaciones/importaciones/inconvenientes/${encodeURIComponent(normalizeId(selectedIssue?.id))}/resolver/`
+        : `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/${encodeURIComponent(normalizeId(selectedIssue?.id))}/resolver/`
+
       const response = await authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/${encodeURIComponent(
-          normalizeId(selectedIssue?.id)
-        )}/resolver/`,
+        endpoint,
         {
           method: 'POST',
           body: JSON.stringify(body),
@@ -1819,7 +1884,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
           onRowDoubleClick={handleRowDoubleClick}
           rowClassName={(rowData) => {
             const classes = []
-            if (selectedRowIds.has(normalizeId(rowData?.id))) {
+            if (selectedRowIds.has(rowData?.row_key)) {
               classes.push('selected-row-shadow')
             }
             const rowState = String(rowData?.estado_key || '').trim().toLowerCase()
@@ -1972,12 +2037,16 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                         </div>
                       </div>
                       <StaticFieldDisplay
-                        label="Sucursal proveedora"
+                        label={selectedIssue?.origen === 'importacion' ? 'Casa comercial' : 'Sucursal proveedora'}
                         value={String(selectedIssue?.sucursal_proveedora || '-').trim() || '-'}
                       />
                       <StaticFieldDisplay
-                        label="Sucursal destino"
-                        value={String(selectedIssue?.sucursal_solicitante || '-').trim() || '-'}
+                        label={selectedIssue?.origen === 'importacion' ? 'Importación' : 'Sucursal destino'}
+                        value={
+                          selectedIssue?.origen === 'importacion'
+                            ? String(selectedIssue?.solicitud_no_documento || '-').trim() || '-'
+                            : String(selectedIssue?.sucursal_solicitante || '-').trim() || '-'
+                        }
                       />
                       <StaticFieldDisplay
                         label="Estado"
@@ -2006,6 +2075,62 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                   </div>
                   {canResolveSelectedIssue ? (
                     <>
+                      {selectedIssue?.origen === 'importacion' && (
+                        <>
+                          <p className="muted transfer-issues-details__hint">
+                            {selectedIssue?.tipo === 'sobrante'
+                              ? 'Decide si el excedente se reporta al proveedor o se acepta sin cambios en el inventario.'
+                              : 'Decide si el faltante se reporta al proveedor o se marca como perdido.'}
+                          </p>
+                          <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
+                            <button
+                              type="button"
+                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
+                                resolverDecision === 'reportado_proveedor' ? ' is-active' : ''
+                              }`}
+                              onClick={() => setResolverDecision('reportado_proveedor')}
+                              disabled={resolverSubmitting}
+                            >
+                              Reportar a proveedor
+                            </button>
+                            {selectedIssue?.tipo === 'sobrante' ? (
+                              <button
+                                type="button"
+                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--success${
+                                  resolverDecision === 'aceptado' ? ' is-active' : ''
+                                }`}
+                                onClick={() => setResolverDecision('aceptado')}
+                                disabled={resolverSubmitting}
+                              >
+                                Aceptar excedente
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--danger${
+                                  resolverDecision === 'perdido' ? ' is-active' : ''
+                                }`}
+                                onClick={() => setResolverDecision('perdido')}
+                                disabled={resolverSubmitting}
+                              >
+                                Marcar como perdido
+                              </button>
+                            )}
+                          </div>
+                          <label className="create-user__field create-user__field--full transfer-issues-details__field">
+                            <span>Motivo o nota (opcional)</span>
+                            <textarea
+                              rows={3}
+                              value={resolverMotivo}
+                              onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
+                              disabled={resolverSubmitting}
+                            />
+                          </label>
+                          {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
+                        </>
+                      )}
+                      {selectedIssue?.origen !== 'importacion' && (
+                      <>
                       {selectedIssue?.tipo === 'sobrante' ? (
                         <>
                           <p className="muted transfer-issues-details__hint">
@@ -2624,6 +2749,8 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                         />
                       </label>
                       {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
+                      </>
+                      )}
                     </>
                   ) : (
                     <p className="muted transfer-issues-details__hint">
