@@ -31,6 +31,21 @@ const getCantidadRecibidaCeiling = (row) => {
   return Number.isFinite(n) ? n : row.cantidad
 }
 
+// Posiciona un popover como un dropdown inteligente: abre hacia abajo del elemento
+// que lo dispara salvo que no quepa y haya más espacio arriba, en cuyo caso se voltea.
+const computeSmartPopoverPosition = (trigger, cardEl) => {
+  const margin = 8
+  const cardRect = cardEl.getBoundingClientRect()
+  const spaceBelow = window.innerHeight - trigger.triggerBottom
+  const spaceAbove = trigger.triggerTop
+  const top = cardRect.height + margin > spaceBelow && spaceAbove > spaceBelow
+    ? Math.max(margin, trigger.triggerTop - cardRect.height - 4)
+    : trigger.triggerBottom + 4
+  const maxLeft = Math.max(margin, window.innerWidth - cardRect.width - margin)
+  const left = Math.min(Math.max(margin, trigger.triggerLeft), maxLeft)
+  return { top, left }
+}
+
 // La sucursal matriz (nombre contiene "matriz") absorbe automáticamente el
 // remanente de la distribución: recibe el total por defecto y se reduce a
 // medida que se asignan unidades al resto de sucursales.
@@ -306,17 +321,33 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
   useLayoutEffect(() => {
     if (!alternosHover || !alternosHoverCardRef.current) return
-    const margin = 8
-    const cardRect = alternosHoverCardRef.current.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - alternosHover.triggerBottom
-    const spaceAbove = alternosHover.triggerTop
-    const top = cardRect.height + margin > spaceBelow && spaceAbove > spaceBelow
-      ? Math.max(margin, alternosHover.triggerTop - cardRect.height - 4)
-      : alternosHover.triggerBottom + 4
-    const maxLeft = Math.max(margin, window.innerWidth - cardRect.width - margin)
-    const left = Math.min(Math.max(margin, alternosHover.triggerLeft), maxLeft)
-    setAlternosHoverPos({ top, left })
+    setAlternosHoverPos(computeSmartPopoverPosition(alternosHover, alternosHoverCardRef.current))
   }, [alternosHover])
+
+  // Popover de "qué se envía a esta sucursal" (Paso 4, icono "i" junto al nombre).
+  const [envioItemsHover, setEnvioItemsHover] = useState(null)
+  const [envioItemsHoverPos, setEnvioItemsHoverPos] = useState(null)
+  const envioItemsHoverCardRef = useRef(null)
+  const envioItemsHoverTimerRef = useRef(null)
+  const showEnvioItemsHover = useCallback((event, suc) => {
+    if (envioItemsHoverTimerRef.current) clearTimeout(envioItemsHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    const trigger = { triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left }
+    envioItemsHoverTimerRef.current = setTimeout(() => {
+      envioItemsHoverTimerRef.current = null
+      setEnvioItemsHover({ ...trigger, items: suc.items, sucursalNombre: suc.nombre })
+    }, 250)
+  }, [])
+  const hideEnvioItemsHover = useCallback(() => {
+    if (envioItemsHoverTimerRef.current) { clearTimeout(envioItemsHoverTimerRef.current); envioItemsHoverTimerRef.current = null }
+    setEnvioItemsHover(null)
+    setEnvioItemsHoverPos(null)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!envioItemsHover || !envioItemsHoverCardRef.current) return
+    setEnvioItemsHoverPos(computeSmartPopoverPosition(envioItemsHover, envioItemsHoverCardRef.current))
+  }, [envioItemsHover])
 
   const storageKey = `imp-receive-${imp.id}`
   // IDs de ítems que eran sinCat al abrir el modal (fijo, no cambia con el fetch fresco)
@@ -1040,8 +1071,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-copy">
                     <p className="quick-actions__receive-stage-kicker">Paso 4 — Destinatarios del envío</p>
-                    <h5>¿Quién recibirá cada envío?</h5>
-                    <p className="quick-actions__receive-stage-name">Selecciona los usuarios que recibirán la notificación del envío en camino para cada sucursal. Este paso es opcional.</p>
+                    <h5>Vas a enviar productos a varias sucursales</h5>
+                    <p className="quick-actions__receive-stage-name">Escoge a quién debe llegarle el recordatorio de cada envío. Pasa el mouse sobre el ícono junto al nombre de la sucursal para ver qué productos le llegarán. Este paso es opcional.</p>
                   </div>
                 </article>
 
@@ -1064,21 +1095,25 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                       const selectedIds = recipientsBySucursal[suc.id] || []
                       return (
                         <div key={suc.id} style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '12px 14px' }}>
-                          <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 8 }}>{suc.nombre}</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                            {suc.items.map(item => (
-                              <span key={item.id} style={{ fontSize: '0.75rem', background: 'var(--color-primary-light, #dbeafe)', color: 'var(--color-primary, #2563eb)', borderRadius: 4, padding: '2px 8px', fontWeight: 500 }}>
-                                {item.nombre || item.codigo} · {item.qty} u.
-                              </span>
-                            ))}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontWeight: 700, fontSize: '1rem' }}>{suc.nombre}</span>
+                            <Info
+                              size={16}
+                              className="imp-distribucion__info-icon"
+                              onMouseEnter={(e) => showEnvioItemsHover(e, suc)}
+                              onMouseLeave={hideEnvioItemsHover}
+                            />
                           </div>
+                          <p style={{ fontSize: '0.88rem', color: 'var(--color-text-secondary)', margin: '3px 0 10px' }}>
+                            Vas a enviar {suc.items.length} producto{suc.items.length === 1 ? '' : 's'} a esta sucursal.
+                          </p>
                           {usersForSuc.length === 0 ? (
-                            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: 0 }}>No hay destinatarios disponibles para esta sucursal.</p>
+                            <p style={{ fontSize: '0.88rem', color: 'var(--color-text-secondary)', margin: 0 }}>No hay destinatarios disponibles para esta sucursal.</p>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                               {usersForSuc.map(u => (
-                                <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.82rem' }}>
-                                  <input type="checkbox" checked={selectedIds.includes(u.id)} onChange={() => toggleRecipient(suc.id, u.id)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                                <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.92rem' }}>
+                                  <input type="checkbox" checked={selectedIds.includes(u.id)} onChange={() => toggleRecipient(suc.id, u.id)} style={{ width: 17, height: 17, cursor: 'pointer' }} />
                                   <span>{u.name}</span>
                                 </label>
                               ))}
@@ -1238,6 +1273,43 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     {alternosHover.data.sucursales.map(suc => (
                       <td key={suc.id}>{alternosHover.data.stock?.[String(p.id)]?.[String(suc.id)] ?? 0}</td>
                     ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>,
+        getPortalRoot()
+      )}
+
+      {envioItemsHover && createPortal(
+        <div
+          ref={envioItemsHoverCardRef}
+          className="imp-alternos-hover-card"
+          style={{
+            top: envioItemsHoverPos?.top ?? envioItemsHover.triggerBottom + 4,
+            left: envioItemsHoverPos?.left ?? envioItemsHover.triggerLeft,
+            visibility: envioItemsHoverPos ? 'visible' : 'hidden',
+          }}
+        >
+          <div className="imp-cell-hover-card__title">Productos para {envioItemsHover.sucursalNombre}</div>
+          {envioItemsHover.items.length === 0 ? (
+            <div className="imp-alternos-hover-card__message">Sin productos asignados.</div>
+          ) : (
+            <table className="imp-alternos-hover-card__table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Producto</th>
+                  <th>Cantidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {envioItemsHover.items.map(item => (
+                  <tr key={item.id}>
+                    <td>{item.codigo || '-'}</td>
+                    <td style={{ textAlign: 'left' }}>{item.nombre || '-'}</td>
+                    <td>{item.qty}</td>
                   </tr>
                 ))}
               </tbody>
