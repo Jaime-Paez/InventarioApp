@@ -730,6 +730,14 @@ const formatTimelineDayDate = (dateKey) => {
   return formatDate(parsed, '-')
 }
 
+const formatTimelineDayDateShort = (dateKey) => {
+  const parsed = parseDateKey(dateKey)
+  if (!parsed) return '-'
+  const day = String(parsed.getDate()).padStart(2, '0')
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  return `${day}/${month}`
+}
+
 const formatTimelineFullDate = (dateKey) => {
   const parsed = parseDateKey(dateKey)
   if (!parsed) return 'Fecha no disponible'
@@ -1219,6 +1227,7 @@ function RecordatoriosPopup({
         severity,
         dayName: formatTimelineDayName(dateKey),
         dayDate: formatTimelineDayDate(dateKey),
+        dayDateShort: formatTimelineDayDateShort(dateKey),
       }
     })
   }, [getTimelineDaySeverityForReminder, normalizedSelectedTimelineDate, remindersByDate])
@@ -2913,7 +2922,7 @@ function RecordatoriosPopup({
                         >
                           <span className="recordatorios-popup__timeline-day-label">
                             <span className="recordatorios-popup__timeline-day-name">{day.dayName}</span>
-                            <span className="recordatorios-popup__timeline-day-date">{day.dayDate}</span>
+                            <span className="recordatorios-popup__timeline-day-date">{day.dayDateShort}</span>
                           </span>
                           <span className="recordatorios-popup__timeline-day-count">{day.count} rec.</span>
                         </button>
