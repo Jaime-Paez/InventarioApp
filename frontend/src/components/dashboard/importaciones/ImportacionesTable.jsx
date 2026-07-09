@@ -400,7 +400,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [showErrors, setShowErrors] = useState(false)
 
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ codigo: '', nombre: '', precio: '', costo_minimo: '', descripcion: '' })
+  const [form, setForm] = useState({ codigo: '', nombre: '', precio: '', referencia: '', oem: '', descripcion: '' })
   const [formErrors, setFormErrors] = useState({})
   const [formSaving, setFormSaving] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
@@ -562,8 +562,48 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
   const openProductForm = (row) => {
     setEditingId(row.id)
-    setForm({ codigo: row.codigo || '', nombre: row.nombre || '', precio: '', costo_minimo: '', descripcion: '' })
+    setForm({
+      codigo: row.codigo || '',
+      nombre: row.nombre || '',
+      precio: row.precio != null ? String(row.precio) : '',
+      referencia: row.referencia || '',
+      oem: row.oem || '',
+      descripcion: '',
+    })
     setFormErrors({})
+  }
+
+  const linkOemsToProduct = async (productId, oemText) => {
+    const codes = [...new Set(String(oemText || '').split(',').map(s => s.trim()).filter(Boolean))]
+    for (const codigo of codes) {
+      try {
+        let oemId = null
+        const searchResp = await authFetch(`${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}`, {}, token)
+        if (searchResp.ok) {
+          const searchData = await searchResp.json()
+          const results = searchData?.results ?? searchData ?? []
+          const existing = Array.isArray(results) && results.find(o => String(o.codigo || '').trim().toLowerCase() === codigo.toLowerCase())
+          if (existing) oemId = existing.id
+        }
+        if (!oemId) {
+          const createResp = await authFetch(
+            `${API_URL}/productos/oem/`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codigo }) },
+            token
+          )
+          if (createResp.ok) oemId = (await createResp.json()).id
+        }
+        if (oemId) {
+          await authFetch(
+            `${API_URL}/productos/oem-producto/`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: productId, oem_id: oemId }) },
+            token
+          )
+        }
+      } catch {
+        // Un OEM individual puede fallar (duplicado, red); no debe bloquear el resto.
+      }
+    }
   }
 
   const saveProductForm = async () => {
@@ -571,7 +611,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     if (!form.codigo.trim()) errs.codigo = 'Requerido'
     if (!form.nombre.trim()) errs.nombre = 'Requerido'
     if (!form.precio || isNaN(parseFloat(form.precio))) errs.precio = 'Requerido'
-    if (form.costo_minimo && !isNaN(parseFloat(form.costo_minimo)) && !isNaN(parseFloat(form.precio)) && parseFloat(form.precio) <= parseFloat(form.costo_minimo)) errs.precio = 'El precio debe ser mayor al costo'
+    if (!form.referencia.trim()) errs.referencia = 'Requerido'
     if (Object.keys(errs).length) { setFormErrors(errs); return }
     const casaId = imp.casa_comercial?.id
     if (!casaId) { setFormErrors({ _general: 'La importación no tiene casa comercial asignada.' }); return }
@@ -582,9 +622,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         codigo: form.codigo.trim(),
         nombre: form.nombre.trim(),
         precio: parseFloat(form.precio),
+        referencia: form.referencia.trim(),
         casas_comerciales_ids: [casaId],
       }
-      if (form.costo_minimo) payload.costo_minimo = parseFloat(form.costo_minimo)
       if (form.descripcion.trim()) payload.descripcion = form.descripcion.trim()
 
       const resp = await authFetch(`${API_URL}/productos/listado/`, {
@@ -624,6 +664,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         return
       }
       const created = await resp.json()
+      if (form.oem.trim()) await linkOemsToProduct(created.id, form.oem)
       // Persist the product link on the detalle so progress survives modal close/reopen
       authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/detalles/${editingId}/`,
@@ -804,7 +845,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 ))}
               </div>
               <span style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
-                Paso {step} de 5 — {step === 1 ? 'Fecha de llegada' : step === 2 ? 'Productos nuevos' : step === 3 ? 'Revisión de llegada' : step === 4 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
+                Paso {step} de 5 — {step === 1 ? 'Productos nuevos' : step === 2 ? 'Fecha de llegada' : step === 3 ? 'Revisión de llegada' : step === 4 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
               </span>
             </div>
           )}
@@ -819,35 +860,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>Cargando productos...</span>
               </div>
             ) : step === 1 ? (
-              /* ── PASO 1: fecha de llegada ── */
+              /* ── PASO 1: registrar productos sin catálogo ── */
               <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 1 — Fecha de llegada</p>
-                    <h5>¿Cuándo llegó la importación?</h5>
-                    <p className="quick-actions__receive-stage-name">
-                      Por defecto se usa la fecha de hoy. Puedes editarla si la mercadería llegó en otro momento.
-                    </p>
-                  </div>
-                </article>
-                <div style={{ padding: '4px 16px 8px', maxWidth: 260 }}>
-                  <label className="create-user__field create-user__field--required">
-                    <span>Fecha de llegada</span>
-                    <input
-                      type="date"
-                      value={fechaLlegada}
-                      onChange={(e) => setFechaLlegada(e.target.value)}
-                      max={todayISO()}
-                    />
-                  </label>
-                </div>
-              </div>
-            ) : step === 2 ? (
-              /* ── PASO 2: registrar productos sin catálogo ── */
-              <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
-                <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
-                  <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 2 — Productos nuevos</p>
+                    <p className="quick-actions__receive-stage-kicker">Paso 1 — Productos nuevos</p>
                     <h5>Registra los productos que no están en el catálogo</h5>
                     <p className="quick-actions__receive-stage-name">
                       Estos ítems llegaron en esta importación pero aún no tienen un producto asignado. Completa sus datos antes de continuar.
@@ -900,6 +917,30 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     })}
                   </div>
                 )}
+              </div>
+            ) : step === 2 ? (
+              /* ── PASO 2: fecha de llegada ── */
+              <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
+                <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
+                  <div className="quick-actions__receive-stage-copy">
+                    <p className="quick-actions__receive-stage-kicker">Paso 2 — Fecha de llegada</p>
+                    <h5>¿Cuándo llegó la importación?</h5>
+                    <p className="quick-actions__receive-stage-name">
+                      Por defecto se usa la fecha de hoy. Puedes editarla si la mercadería llegó en otro momento.
+                    </p>
+                  </div>
+                </article>
+                <div style={{ padding: '4px 16px 8px', maxWidth: 260 }}>
+                  <label className="create-user__field create-user__field--required">
+                    <span>Fecha de llegada</span>
+                    <input
+                      type="date"
+                      value={fechaLlegada}
+                      onChange={(e) => setFechaLlegada(e.target.value)}
+                      max={todayISO()}
+                    />
+                  </label>
+                </div>
               </div>
             ) : step === 3 ? (
               /* ── PASO 3: verificar cantidades recibidas ── */
@@ -1218,12 +1259,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
             {step === 1 ? (
               <>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={handleClose}>Cancelar</button>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--success" onClick={() => setStep(2)} disabled={loadingData || !fechaLlegada}>Siguiente</button>
+                <button type="button" className={`quick-actions__receive-btn${canGoNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={() => setStep(2)} disabled={loadingData || !canGoNext}>Siguiente</button>
               </>
             ) : step === 2 ? (
               <>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)}>Atrás</button>
-                <button type="button" className={`quick-actions__receive-btn${canGoNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={() => setStep(3)} disabled={loadingData || !canGoNext}>Siguiente</button>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--success" onClick={() => setStep(3)} disabled={loadingData || !fechaLlegada}>Siguiente</button>
               </>
             ) : step === 3 ? (
               <>
@@ -1290,9 +1331,14 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     <input type="number" min="0" step="0.01" placeholder="0.00" value={form.precio} onChange={(e) => setForm(f => ({ ...f, precio: e.target.value }))} />
                     {formErrors.precio && <small style={{ color: '#dc2626' }}>{formErrors.precio}</small>}
                   </label>
+                  <label className={`create-user__field create-user__field--required${formErrors.referencia ? ' create-user__field--invalid' : ''}`}>
+                    <span>Referencia</span>
+                    <input type="text" value={form.referencia} onChange={(e) => setForm(f => ({ ...f, referencia: e.target.value }))} />
+                    {formErrors.referencia && <small style={{ color: '#dc2626' }}>{formErrors.referencia}</small>}
+                  </label>
                   <label className="create-user__field">
-                    <span>Costo</span>
-                    <input type="number" min="0" step="0.01" placeholder="0.00" value={form.costo_minimo} onChange={(e) => setForm(f => ({ ...f, costo_minimo: e.target.value }))} />
+                    <span>OEMs</span>
+                    <input type="text" placeholder="Separados por coma" value={form.oem} onChange={(e) => setForm(f => ({ ...f, oem: e.target.value }))} />
                   </label>
                   <label className="create-user__field create-user__field--full">
                     <span>Descripción</span>
@@ -5414,29 +5460,35 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <div className="create-salida__field-groups">
                       <div className="create-salida__field-group create-salida__field-group--defined">
                         <div className="create-user__grid create-user__grid--two">
-                          <StaticFieldDisplay label="Código" value={imp.codigo} />
-                          <StaticFieldDisplay label="Fecha" value={imp.fecha || '-'} />
-                          <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(selectedCasa)} fullWidth />
-                          <StaticFieldDisplay
-                            label="Días de entrega"
-                            value={imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : ''}
-                          />
-                          {selectedCasa?.pais?.nombre && (
-                            <div className="create-user__field create-salida__static-field">
-                              <span>País</span>
-                              <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                {(() => {
-                                  const flagUrl = getFlagUrl(selectedCasa.pais?.codigo_pais)
-                                  return (
-                                    <span className={`create-user__flag${flagUrl ? '' : ' is-empty'}`} aria-hidden="true" style={{ flexShrink: 0 }}>
-                                      {flagUrl ? <img src={flagUrl} alt="" /> : '□'}
-                                    </span>
-                                  )
-                                })()}
-                                {String(selectedCasa.pais.nombre).trim()}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <StaticFieldDisplay label="Código" value={imp.codigo} />
+                            <StaticFieldDisplay label="Fecha" value={imp.fecha || '-'} />
+                            <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(selectedCasa)} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            {selectedCasa?.pais?.nombre ? (
+                              <div className="create-user__field create-salida__static-field">
+                                <span>País</span>
+                                <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {(() => {
+                                    const flagUrl = getFlagUrl(selectedCasa.pais?.codigo_pais)
+                                    return (
+                                      <span className={`create-user__flag${flagUrl ? '' : ' is-empty'}`} aria-hidden="true" style={{ flexShrink: 0 }}>
+                                        {flagUrl ? <img src={flagUrl} alt="" /> : '□'}
+                                      </span>
+                                    )
+                                  })()}
+                                  {String(selectedCasa.pais.nombre).trim()}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            ) : (
+                              <StaticFieldDisplay label="País" value="-" />
+                            )}
+                            <StaticFieldDisplay
+                              label="Días de entrega aproximados"
+                              value={imp.dias_entrega_estimados != null ? `${imp.dias_entrega_estimados} días` : ''}
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
