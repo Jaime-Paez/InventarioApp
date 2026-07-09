@@ -403,6 +403,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [form, setForm] = useState({ codigo: '', nombre: '', precio: '', referencia: '', oem: '', descripcion: '' })
   const [formErrors, setFormErrors] = useState({})
   const [formSaving, setFormSaving] = useState(false)
+  const [isKit, setIsKit] = useState(false)
+  const [kitForms, setKitForms] = useState([])
+  const [kitFormErrors, setKitFormErrors] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   const [step, setStep] = useState(() => getSavedDraft(imp)?.step || 1)
   const [fechaLlegada, setFechaLlegada] = useState(() => getSavedDraft(imp)?.fechaLlegada || todayISO())
@@ -572,8 +575,29 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       oem: row.oem || '',
       descripcion: '',
     })
+    setIsKit(false)
+    setKitForms([])
+    setKitFormErrors([])
     setFormErrors({})
   }
+
+  const emptyKitItem = () => ({ codigo: '', nombre: '', precio: '', referencia: '', oem: '', descripcion: '' })
+
+  // "Es Kit": lo que llegó como 1 ítem en realidad son varios productos distintos
+  // (cada uno con su propio código), así que se crean todos por separado.
+  const toggleKit = () => {
+    setIsKit(prev => {
+      const next = !prev
+      if (next) setKitForms(kf => (kf.length >= 2 ? kf : [{ ...form }, emptyKitItem()]))
+      return next
+    })
+    setFormErrors({})
+    setKitFormErrors([])
+  }
+
+  const addKitRow = () => setKitForms(prev => [...prev, emptyKitItem()])
+  const removeKitRow = (idx) => setKitForms(prev => (prev.length > 2 ? prev.filter((_, i) => i !== idx) : prev))
+  const updateKitForm = (idx, field, value) => setKitForms(prev => prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item)))
 
   const linkOemsToProduct = async (productId, oemText) => {
     const codes = [...new Set(String(oemText || '').split(',').map(s => s.trim()).filter(Boolean))]
@@ -608,26 +632,18 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     }
   }
 
-  const saveProductForm = async () => {
-    const errs = {}
-    if (!form.codigo.trim()) errs.codigo = 'Requerido'
-    if (!form.nombre.trim()) errs.nombre = 'Requerido'
-    if (!form.precio || isNaN(parseFloat(form.precio))) errs.precio = 'Requerido'
-    if (!form.referencia.trim()) errs.referencia = 'Requerido'
-    if (Object.keys(errs).length) { setFormErrors(errs); return }
-    const casaId = imp.casa_comercial?.id
-    if (!casaId) { setFormErrors({ _general: 'La importación no tiene casa comercial asignada.' }); return }
-
-    setFormSaving(true)
+  // Crea el producto en el catálogo, o lo vincula si el código ya existe.
+  // Devuelve el producto creado/existente, o null si falló (deja el detalle en formErrors).
+  const createOrLinkProduct = async (item, casaId) => {
     try {
       const payload = {
-        codigo: form.codigo.trim(),
-        nombre: form.nombre.trim(),
-        precio: parseFloat(form.precio),
-        referencia: form.referencia.trim(),
+        codigo: item.codigo.trim(),
+        nombre: item.nombre.trim(),
+        precio: parseFloat(item.precio),
+        referencia: item.referencia.trim(),
         casas_comerciales_ids: [casaId],
       }
-      if (form.descripcion.trim()) payload.descripcion = form.descripcion.trim()
+      if (item.descripcion.trim()) payload.descripcion = item.descripcion.trim()
 
       const resp = await authFetch(`${API_URL}/productos/listado/`, {
         method: 'POST',
@@ -639,44 +655,71 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         // Si el código ya existe, buscar el producto y linkarlo en vez de fallar
         const codigoErr = Array.isArray(data?.codigo) ? data.codigo.join(' ') : String(data?.codigo || '')
         if (codigoErr.toLowerCase().includes('ya existe')) {
-          try {
-            const searchResp = await authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(form.codigo.trim())}`, {}, token)
-            if (searchResp.ok) {
-              const searchData = await searchResp.json()
-              const results = searchData?.results ?? searchData ?? []
-              const existing = Array.isArray(results) && results.find(p => p.codigo?.toLowerCase() === form.codigo.trim().toLowerCase())
-              if (existing) {
-                await authFetch(
-                  `${API_URL}/importaciones/importaciones/${imp.id}/detalles/${editingId}/`,
-                  { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: existing.id }) },
-                  token
-                )
-                setRows(prev => prev.map(r => r.id === editingId ? { ...r, newProducto: existing } : r))
-                setEditingId(null)
-                return
-              }
-            }
-          } catch {}
+          const searchResp = await authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(item.codigo.trim())}`, {}, token)
+          if (searchResp.ok) {
+            const searchData = await searchResp.json()
+            const results = searchData?.results ?? searchData ?? []
+            const existing = Array.isArray(results) && results.find(p => p.codigo?.toLowerCase() === item.codigo.trim().toLowerCase())
+            if (existing) return existing
+          }
         }
         const fe = {}
         Object.entries(typeof data === 'object' && data !== null ? data : {}).forEach(([k, v]) => {
           fe[k] = Array.isArray(v) ? v.join(' ') : String(v)
         })
         setFormErrors(Object.keys(fe).length ? fe : { _general: 'Error al crear el producto.' })
-        return
+        return null
       }
       const created = await resp.json()
-      if (form.oem.trim()) await linkOemsToProduct(created.id, form.oem)
-      // Persist the product link on the detalle so progress survives modal close/reopen
-      authFetch(
-        `${API_URL}/importaciones/importaciones/${imp.id}/detalles/${editingId}/`,
-        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: created.id }) },
-        token
-      ).catch(() => {})
-      setRows(prev => prev.map(r => r.id === editingId ? { ...r, newProducto: created } : r))
-      setEditingId(null)
+      if (item.oem.trim()) await linkOemsToProduct(created.id, item.oem)
+      return created
     } catch (e) {
       setFormErrors({ _general: e.message || 'Error al crear el producto.' })
+      return null
+    }
+  }
+
+  const saveProductForm = async () => {
+    const items = isKit ? kitForms : [form]
+
+    const errsList = items.map(item => {
+      const e = {}
+      if (!item.codigo.trim()) e.codigo = 'Requerido'
+      if (!item.nombre.trim()) e.nombre = 'Requerido'
+      if (!item.precio || isNaN(parseFloat(item.precio))) e.precio = 'Requerido'
+      if (!item.referencia.trim()) e.referencia = 'Requerido'
+      return e
+    })
+    if (errsList.some(e => Object.keys(e).length)) {
+      if (isKit) setKitFormErrors(errsList)
+      else setFormErrors(errsList[0])
+      return
+    }
+    const casaId = imp.casa_comercial?.id
+    if (!casaId) { setFormErrors({ _general: 'La importación no tiene casa comercial asignada.' }); return }
+
+    setFormSaving(true)
+    setFormErrors({})
+    setKitFormErrors([])
+    try {
+      const createdProducts = []
+      for (const item of items) {
+        const producto = await createOrLinkProduct(item, casaId)
+        if (!producto) return
+        createdProducts.push(producto)
+      }
+      // La línea de importación solo admite un producto vinculado: en un kit se
+      // enlaza el primero (así el paso 1 lo marca como resuelto) y el resto queda
+      // creado en el catálogo aunque sin vínculo directo a esta línea.
+      authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/detalles/${editingId}/`,
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: createdProducts[0].id }) },
+        token
+      ).catch(() => {})
+      setRows(prev => prev.map(r => r.id === editingId
+        ? { ...r, newProducto: createdProducts[0], kitProductos: isKit ? createdProducts : null }
+        : r))
+      setEditingId(null)
     } finally {
       setFormSaving(false)
     }
@@ -902,7 +945,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                           </div>
                           {isDone ? (
                             <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--color-success, #16a34a)', whiteSpace: 'nowrap' }}>
-                              {productCode}
+                              {row.kitProductos?.length > 1
+                                ? `${row.kitProductos.length} productos (kit)`
+                                : productCode}
                             </span>
                           ) : (
                             <button
@@ -1306,7 +1351,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           >
             <div
               className={`quick-actions__receive-dialog ${mode}`}
-              style={{ width: 'min(520px, 90vw)', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto' }}
+              style={{ width: isKit ? 'min(640px, 92vw)' : 'min(520px, 90vw)', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <header className="quick-actions__receive-head">
@@ -1323,36 +1368,115 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 {formErrors._general && (
                   <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: 12 }}>{formErrors._general}</p>
                 )}
-                <div className="create-user__grid create-user__grid--two">
-                  <label className={`create-user__field create-user__field--required${formErrors.nombre ? ' create-user__field--invalid' : ''}`}>
-                    <span>Nombre</span>
-                    <input type="text" value={form.nombre} onChange={(e) => setForm(f => ({ ...f, nombre: e.target.value }))} />
-                    {formErrors.nombre && <small style={{ color: '#dc2626' }}>{formErrors.nombre}</small>}
-                  </label>
-                  <label className={`create-user__field create-user__field--required${formErrors.codigo ? ' create-user__field--invalid' : ''}`}>
-                    <span>Código JP</span>
-                    <input type="text" value={form.codigo} onChange={(e) => setForm(f => ({ ...f, codigo: e.target.value }))} />
-                    {formErrors.codigo && <small style={{ color: '#dc2626' }}>{formErrors.codigo}</small>}
-                  </label>
-                  <label className={`create-user__field create-user__field--required${formErrors.precio ? ' create-user__field--invalid' : ''}`}>
-                    <span>Precio</span>
-                    <input type="number" min="0" step="0.01" placeholder="0.00" value={form.precio} onChange={(e) => setForm(f => ({ ...f, precio: e.target.value }))} />
-                    {formErrors.precio && <small style={{ color: '#dc2626' }}>{formErrors.precio}</small>}
-                  </label>
-                  <label className={`create-user__field create-user__field--required${formErrors.referencia ? ' create-user__field--invalid' : ''}`}>
-                    <span>Referencia</span>
-                    <input type="text" value={form.referencia} onChange={(e) => setForm(f => ({ ...f, referencia: e.target.value }))} />
-                    {formErrors.referencia && <small style={{ color: '#dc2626' }}>{formErrors.referencia}</small>}
-                  </label>
-                  <label className="create-user__field">
-                    <span>OEMs</span>
-                    <input type="text" placeholder="Separados por coma" value={form.oem} onChange={(e) => setForm(f => ({ ...f, oem: e.target.value }))} />
-                  </label>
-                  <label className="create-user__field create-user__field--full">
-                    <span>Descripción</span>
-                    <input type="text" placeholder="Opcional" value={form.descripcion} onChange={(e) => setForm(f => ({ ...f, descripcion: e.target.value }))} />
-                  </label>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                  <button
+                    type="button"
+                    className={`quick-actions__receive-btn${isKit ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--cancel'}`}
+                    style={{ fontSize: '0.78rem', minHeight: 30, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    onClick={toggleKit}
+                    disabled={formSaving}
+                  >
+                    <PackagePlus size={14} />
+                    {isKit ? 'Es Kit ✓' : 'Es Kit'}
+                  </button>
                 </div>
+
+                {!isKit ? (
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className={`create-user__field create-user__field--required${formErrors.nombre ? ' create-user__field--invalid' : ''}`}>
+                      <span>Nombre</span>
+                      <input type="text" value={form.nombre} onChange={(e) => setForm(f => ({ ...f, nombre: e.target.value }))} />
+                      {formErrors.nombre && <small style={{ color: '#dc2626' }}>{formErrors.nombre}</small>}
+                    </label>
+                    <label className={`create-user__field create-user__field--required${formErrors.codigo ? ' create-user__field--invalid' : ''}`}>
+                      <span>Código JP</span>
+                      <input type="text" value={form.codigo} onChange={(e) => setForm(f => ({ ...f, codigo: e.target.value }))} />
+                      {formErrors.codigo && <small style={{ color: '#dc2626' }}>{formErrors.codigo}</small>}
+                    </label>
+                    <label className={`create-user__field create-user__field--required${formErrors.precio ? ' create-user__field--invalid' : ''}`}>
+                      <span>Precio</span>
+                      <input type="number" min="0" step="0.01" placeholder="0.00" value={form.precio} onChange={(e) => setForm(f => ({ ...f, precio: e.target.value }))} />
+                      {formErrors.precio && <small style={{ color: '#dc2626' }}>{formErrors.precio}</small>}
+                    </label>
+                    <label className={`create-user__field create-user__field--required${formErrors.referencia ? ' create-user__field--invalid' : ''}`}>
+                      <span>Referencia</span>
+                      <input type="text" value={form.referencia} onChange={(e) => setForm(f => ({ ...f, referencia: e.target.value }))} />
+                      {formErrors.referencia && <small style={{ color: '#dc2626' }}>{formErrors.referencia}</small>}
+                    </label>
+                    <label className="create-user__field">
+                      <span>OEMs</span>
+                      <input type="text" placeholder="Separados por coma" value={form.oem} onChange={(e) => setForm(f => ({ ...f, oem: e.target.value }))} />
+                    </label>
+                    <label className="create-user__field create-user__field--full">
+                      <span>Descripción</span>
+                      <input type="text" placeholder="Opcional" value={form.descripcion} onChange={(e) => setForm(f => ({ ...f, descripcion: e.target.value }))} />
+                    </label>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: 0 }}>
+                      Este ítem llegó como kit: crea un producto de catálogo distinto por cada componente, con su propio código.
+                    </p>
+                    {kitForms.map((item, idx) => (
+                      <div key={idx} style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <strong style={{ fontSize: '0.82rem' }}>Producto {idx + 1}</strong>
+                          <button
+                            type="button"
+                            className="quick-actions__receive-close"
+                            style={{ width: 24, height: 24 }}
+                            onClick={() => removeKitRow(idx)}
+                            disabled={formSaving || kitForms.length <= 2}
+                            title="Quitar producto"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                        <div className="create-user__grid create-user__grid--two">
+                          <label className={`create-user__field create-user__field--required${kitFormErrors[idx]?.nombre ? ' create-user__field--invalid' : ''}`}>
+                            <span>Nombre</span>
+                            <input type="text" value={item.nombre} onChange={(e) => updateKitForm(idx, 'nombre', e.target.value)} />
+                            {kitFormErrors[idx]?.nombre && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].nombre}</small>}
+                          </label>
+                          <label className={`create-user__field create-user__field--required${kitFormErrors[idx]?.codigo ? ' create-user__field--invalid' : ''}`}>
+                            <span>Código JP</span>
+                            <input type="text" value={item.codigo} onChange={(e) => updateKitForm(idx, 'codigo', e.target.value)} />
+                            {kitFormErrors[idx]?.codigo && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].codigo}</small>}
+                          </label>
+                          <label className={`create-user__field create-user__field--required${kitFormErrors[idx]?.precio ? ' create-user__field--invalid' : ''}`}>
+                            <span>Precio</span>
+                            <input type="number" min="0" step="0.01" placeholder="0.00" value={item.precio} onChange={(e) => updateKitForm(idx, 'precio', e.target.value)} />
+                            {kitFormErrors[idx]?.precio && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].precio}</small>}
+                          </label>
+                          <label className={`create-user__field create-user__field--required${kitFormErrors[idx]?.referencia ? ' create-user__field--invalid' : ''}`}>
+                            <span>Referencia</span>
+                            <input type="text" value={item.referencia} onChange={(e) => updateKitForm(idx, 'referencia', e.target.value)} />
+                            {kitFormErrors[idx]?.referencia && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].referencia}</small>}
+                          </label>
+                          <label className="create-user__field">
+                            <span>OEMs</span>
+                            <input type="text" placeholder="Separados por coma" value={item.oem} onChange={(e) => updateKitForm(idx, 'oem', e.target.value)} />
+                          </label>
+                          <label className="create-user__field create-user__field--full">
+                            <span>Descripción</span>
+                            <input type="text" placeholder="Opcional" value={item.descripcion} onChange={(e) => updateKitForm(idx, 'descripcion', e.target.value)} />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="quick-actions__receive-btn quick-actions__receive-btn--cancel"
+                      style={{ alignSelf: 'flex-start', fontSize: '0.8rem', minHeight: 30, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      onClick={addKitRow}
+                      disabled={formSaving}
+                    >
+                      <Plus size={14} />
+                      Agregar producto
+                    </button>
+                  </div>
+                )}
+
                 {imp.casa_comercial && (
                   <p style={{ fontSize: '0.8rem', color: 'var(--color-muted,#64748b)', marginTop: 14 }}>
                     Casa comercial: <strong>{imp.casa_comercial.nombre}</strong> (asignada automáticamente)
@@ -1365,7 +1489,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   Cancelar
                 </button>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={saveProductForm} disabled={formSaving}>
-                  {formSaving ? 'Guardando...' : 'Crear producto'}
+                  {formSaving ? 'Guardando...' : (isKit ? `Crear ${kitForms.length} productos` : 'Crear producto')}
                 </button>
               </div>
             </div>
