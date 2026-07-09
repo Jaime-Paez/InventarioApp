@@ -249,6 +249,17 @@ function CreateProducto({
     })
     return map
   }, [subdivisions])
+  const sortedLocations = useMemo(() => {
+    return [...locations].sort((a, b) => {
+      const sucursalCompare = (a.sucursalNombre || '').localeCompare(b.sucursalNombre || '', 'es', { sensitivity: 'base' })
+      if (sucursalCompare !== 0) return sucursalCompare
+      const bodegaCompare = (a.bodegaNombre || '').localeCompare(b.bodegaNombre || '', 'es', { sensitivity: 'base' })
+      if (bodegaCompare !== 0) return bodegaCompare
+      const divisionCompare = (a.divisionNombre || '').localeCompare(b.divisionNombre || '', 'es', { sensitivity: 'base' })
+      if (divisionCompare !== 0) return divisionCompare
+      return (a.subdivisionNombre || '').localeCompare(b.subdivisionNombre || '', 'es', { sensitivity: 'base' })
+    })
+  }, [locations])
   const selectedLocationBranch = useMemo(
     () => (locationDraft.sucursalId ? branchById.get(String(locationDraft.sucursalId)) || null : null),
     [branchById, locationDraft.sucursalId]
@@ -2414,7 +2425,7 @@ function CreateProducto({
                       <span>Sin ubicaciones registradas.</span>
                     </div>
                   )}
-                  {locations.map((location) => {
+                  {sortedLocations.map((location) => {
                     const rowSubdivisions = subdivisionsByBodega.get(location.bodegaId) || []
                     const canManageRow = canManageLocationBranch(location.sucursalId)
                     const isEditingRow = editingLocationKey === location.uid
