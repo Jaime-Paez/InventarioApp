@@ -1452,6 +1452,14 @@
   min-width: 0;
 }
 
+.create-user__locations-table--locations-selectors .create-user__dropdown-panel:not(.create-user__dropdown-panel--floating) {
+  left: 0;
+  right: auto;
+  width: max-content;
+  min-width: max(100%, 240px);
+  max-width: 320px;
+}
+
 .create-user__locations-table--locations-selectors .create-user__dropdown-trigger {
   gap: 8px;
   padding: 0.35rem 0.65rem;
@@ -1872,6 +1880,8 @@ button.create-user__locations-row {
   left: auto;
   right: auto;
   top: auto;
+  min-width: 240px;
+  max-width: 320px;
 }
 
 .create-user__dropdown-search {

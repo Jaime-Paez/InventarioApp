@@ -84,6 +84,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const [transferDraft, setTransferDraft] = useState({ bodegaId: '', divisionId: '', subdivisionId: '', cantidad: '1' })
   const [openTransferDropdown, setOpenTransferDropdown] = useState(null) // 'bodega' | 'division' | 'subdivision'
   const [transferDropdownRect, setTransferDropdownRect] = useState(null)
+  const [transferDropdownQuery, setTransferDropdownQuery] = useState('')
+  const [transferDropdownDebouncedQuery, setTransferDropdownDebouncedQuery] = useState('')
 
   const locationBranchDropdownRef = useRef(null)
   const locationBodegaDropdownRef = useRef(null)
@@ -317,11 +319,20 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       const inPanel = transferPanelRef.current?.contains(event.target)
       if (!inTrigger && !inPanel) {
         setOpenTransferDropdown(null)
+        setTransferDropdownQuery('')
       }
     }
     document.addEventListener('mousedown', handleOutsideClick)
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [openTransferDropdown])
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setTransferDropdownDebouncedQuery(normalizeForSearch(transferDropdownQuery)),
+      260
+    )
+    return () => window.clearTimeout(timer)
+  }, [transferDropdownQuery])
 
   const filteredLocationBranches = useMemo(() => {
     if (!locationBranchDebouncedQuery) return branches
@@ -1392,6 +1403,9 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
             const makeTransferDropdown = (field, label, items, getName, getId, triggerDisabled) => {
               const open = isTransferring && openTransferDropdown === field
+              const filteredItems = transferDropdownDebouncedQuery
+                ? items.filter((item) => normalizeForSearch(getName(item)).includes(transferDropdownDebouncedQuery))
+                : items
               return (
                 <div className="create-user__dropdown">
                   <button
@@ -1402,10 +1416,12 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                       if (triggerDisabled) return
                       if (open) {
                         setOpenTransferDropdown(null)
+                        setTransferDropdownQuery('')
                         return
                       }
                       const rect = event.currentTarget.getBoundingClientRect()
                       setTransferDropdownRect({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+                      setTransferDropdownQuery('')
                       setOpenTransferDropdown(field)
                     }}
                     disabled={triggerDisabled}
@@ -1419,15 +1435,30 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                       className="create-user__dropdown-panel create-user__dropdown-panel--floating"
                       style={{ top: transferDropdownRect.top, left: transferDropdownRect.left, width: transferDropdownRect.width }}
                     >
+                      <div className="create-user__dropdown-search">
+                        <i className="pi pi-search" />
+                        <input
+                          type="text"
+                          placeholder={`Buscar ${field}`}
+                          value={transferDropdownQuery}
+                          onChange={(event) => setTransferDropdownQuery(event.target.value)}
+                          autoFocus
+                        />
+                      </div>
                       <div className="create-user__dropdown-results">
-                        {!items.length && <small className="muted">Sin resultados.</small>}
-                        {items.map((item) => (
+                        {!filteredItems.length && <small className="muted">Sin resultados.</small>}
+                        {filteredItems.map((item) => (
                           <button
                             key={getId(item)}
                             type="button"
                             className="create-user__result-option"
                             onMouseDown={(event) => event.preventDefault()}
-                            onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleTransferSelect(field, getId(item), getName(item)) }}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              handleTransferSelect(field, getId(item), getName(item))
+                              setTransferDropdownQuery('')
+                            }}
                           >
                             <div className="create-user__result-info">
                               <strong>{getName(item)}</strong>
