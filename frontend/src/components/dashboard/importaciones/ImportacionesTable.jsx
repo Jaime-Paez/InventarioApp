@@ -255,6 +255,17 @@ const IMPORT_TRACKER_STEPS = [
   { field: 'fecha_llegada', label: 'Llegó', editable: false },
 ]
 
+// Fecha del paso anterior del seguimiento con valor cargado (saltando pasos vacíos),
+// para no permitir que un paso quede con una fecha menor a la del paso previo.
+const getTrackerMinDate = (imp, field) => {
+  const idx = IMPORT_TRACKER_STEPS.findIndex((s) => s.field === field)
+  for (let i = idx - 1; i >= 0; i--) {
+    const raw = imp?.[IMPORT_TRACKER_STEPS[i].field]
+    if (raw) return String(raw).slice(0, 10)
+  }
+  return null
+}
+
 const formatProductLabel = (product) => {
   if (!product) return ''
   const codigo = String(product?.codigo || '').trim()
@@ -526,6 +537,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const step1Rows = rows.filter(r => originalSinCatIds.has(r.id))
   const step1Pending = step1Rows.filter(r => r.sinCat && !r.newProducto)
   const canGoNext = step1Pending.length === 0
+  const fechaLlegadaMinDate = getTrackerMinDate(imp, 'fecha_llegada')
+  const fechaLlegadaValid = !fechaLlegadaMinDate || fechaLlegada >= fechaLlegadaMinDate
   const canFinish = !loadingSucursales && sucursales.length > 0 && rows.every(row => {
     const assigned = Object.values(distribution[row.id] || {}).reduce((s, v) => s + (parseInt(v) || 0), 0)
     return assigned === getCantidadRecibidaCeiling(row)
@@ -926,8 +939,14 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                       type="date"
                       value={fechaLlegada}
                       onChange={(e) => setFechaLlegada(e.target.value)}
+                      min={fechaLlegadaMinDate || undefined}
                       max={todayISO()}
                     />
+                    {fechaLlegadaMinDate && (
+                      <small style={{ color: 'var(--color-text-secondary)' }}>
+                        No puede ser anterior a {formatDate(fechaLlegadaMinDate)}.
+                      </small>
+                    )}
                   </label>
                 </div>
               </div>
@@ -1253,7 +1272,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
             ) : step === 2 ? (
               <>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)}>Atrás</button>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--success" onClick={() => setStep(3)} disabled={loadingData || !fechaLlegada}>Siguiente</button>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--success" onClick={() => setStep(3)} disabled={loadingData || !fechaLlegada || !fechaLlegadaValid}>Siguiente</button>
               </>
             ) : step === 3 ? (
               <>
@@ -1464,18 +1483,30 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const imp = impOverride && impProp && impOverride.id === impProp.id ? impOverride : impProp
   const [trackerEditingField, setTrackerEditingField] = useState(null)
   const [trackerDateDraft, setTrackerDateDraft] = useState('')
+  const [trackerMinDate, setTrackerMinDate] = useState(null)
   const [trackerSaving, setTrackerSaving] = useState(false)
 
   const openTrackerEditor = (field, currentValue) => {
     setTrackerEditingField(field)
     setTrackerDateDraft(currentValue || todayISO())
+    setTrackerMinDate(getTrackerMinDate(imp, field))
   }
   const closeTrackerEditor = () => {
     setTrackerEditingField(null)
     setTrackerDateDraft('')
+    setTrackerMinDate(null)
   }
   const saveTrackerDate = async () => {
     if (!trackerEditingField || !imp) return
+    if (trackerMinDate && trackerDateDraft < trackerMinDate) {
+      toastRef.current?.show({
+        severity: 'warn',
+        summary: 'Fecha inválida',
+        detail: `La fecha no puede ser anterior a ${formatDate(trackerMinDate)}.`,
+        life: 4000,
+      })
+      return
+    }
     setTrackerSaving(true)
     try {
       const resp = await authFetch(
@@ -1963,8 +1994,14 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                   type="date"
                   value={trackerDateDraft}
                   onChange={(e) => setTrackerDateDraft(e.target.value)}
+                  min={trackerMinDate || undefined}
                   autoFocus
                 />
+                {trackerMinDate && (
+                  <small style={{ color: 'var(--color-text-secondary)' }}>
+                    No puede ser anterior a {formatDate(trackerMinDate)}.
+                  </small>
+                )}
               </label>
               <div className="create-user__footer" style={{ padding: 0, border: 'none' }}>
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={closeTrackerEditor} disabled={trackerSaving}>Cancelar</button>
