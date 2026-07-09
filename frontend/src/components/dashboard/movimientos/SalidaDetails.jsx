@@ -388,7 +388,6 @@ function SalidaDetails({
   const clientDataReadOnly = restrictedEditMode
   const requiresStockValidation = isTraslado || isVenta || isDevolucion
   const requiresSucursalObjetivo = isTraslado
-  const documentLabel = isTraslado ? 'No. de Traslado' : isDevolucion ? 'No. Garantía' : 'No. de Factura'
   const selectedSucursalName = branches.find((b) => String(b.id) === String(formData.sucursalId))?.nombre || ''
   const selectedObjetivoName = branches.find((b) => String(b.id) === String(formData.sucursalObjetivoId))?.nombre || ''
   const formattedFecha = formatDate(formData.fecha, '')
@@ -1942,18 +1941,12 @@ function SalidaDetails({
                       <p className="create-user__eyebrow">Datos</p>
                       <h4>Informacion general</h4>
                     </div>
+                    <span className="entrada-details__section-date">{formattedFecha}</span>
                   </div>
 
                   <div className="create-salida__field-groups">
                     <div className="create-salida__field-group create-salida__field-group--defined">
-                      <div className="create-user__grid create-user__grid--two">
-                        <StaticFieldDisplay
-                          label="Tipo de salida"
-                          value={formatSalidaSubTipoLabel(selectedSubTipo?.nombre || formData.subTipoNombre || '')}
-                        />
-
-                        <StaticFieldDisplay label="Fecha" value={formattedFecha} />
-
+                      <div className="create-user__grid create-user__grid--three">
                         <StaticFieldDisplay
                           label={isTraslado ? 'Sucursal proveedora' : 'Sucursal'}
                           value={selectedSucursalName}
@@ -1966,18 +1959,16 @@ function SalidaDetails({
                           />
                         )}
 
-                        <StaticFieldDisplay label={documentLabel} value={formData.no_documento} />
-
                         <StaticFieldDisplay label="Estado del movimiento" value={selectedEstadoName} />
                       </div>
                     </div>
 
-                    <div className="create-user__grid create-user__grid--two">
-                      {isVenta && (
-                        <StaticFieldDisplay label="Descuento (%)" value={formData.descuento} />
-                      )}
+                    {(isVenta || isDevolucion) && (
+                      <div className="create-user__grid create-user__grid--two">
+                        {isVenta && (
+                          <StaticFieldDisplay label="Descuento (%)" value={formData.descuento} />
+                        )}
 
-                      {(isVenta || isDevolucion) && (
                         <label className="create-user__field create-user__field--full">
                           <span>No. de Factura</span>
                           <input
@@ -1989,20 +1980,8 @@ function SalidaDetails({
                             required={isVenta || isDevolucion}
                           />
                         </label>
-                      )}
-
-                      <label className={`create-user__field create-user__field--full${isDevolucion ? ' create-user__field--required' : ''}`}>
-                        <span>Descripción</span>
-                        <textarea
-                          name="descripcion"
-                          value={formData.descripcion}
-                          onChange={handleChange}
-                          disabled={editorDisabled}
-                          rows={3}
-                          required={isDevolucion}
-                        />
-                      </label>
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -2203,14 +2182,12 @@ function SalidaDetails({
                     <div className="create-user__locations-row create-salida__totals-row">
                       <span className="create-salida__totals-label">Subtotal</span>
                       <span className="create-salida__totals-value">{formatCurrency(subtotalConBorrador)}</span>
-                      <span className="create-salida__totals-spacer" />
                     </div>
 
                     {isVenta && (
                       <div className="create-user__locations-row create-salida__totals-row">
                         <span className="create-salida__totals-label">Descuento ({descuentoPercentLabel}%)</span>
                         <span className="create-salida__totals-value">-{formatCurrency(descuentoAplicado)}</span>
-                        <span className="create-salida__totals-spacer" />
                       </div>
                     )}
 
@@ -2219,10 +2196,32 @@ function SalidaDetails({
                       <span className="create-salida__totals-value">
                         <strong>{formatCurrency(totalConIva)}</strong>
                       </span>
-                      <span className="create-salida__totals-spacer" />
                     </div>
                   </div>
 
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Datos</p>
+                      <h4>Descripcion</h4>
+                    </div>
+                  </div>
+
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className={`create-user__field create-user__field--full${isDevolucion ? ' create-user__field--required' : ''}`}>
+                      <textarea
+                        name="descripcion"
+                        aria-label="Descripcion"
+                        value={formData.descripcion}
+                        onChange={handleChange}
+                        disabled={editorDisabled}
+                        rows={3}
+                        required={isDevolucion}
+                      />
+                    </label>
+                  </div>
                 </section>
                   </>
                 )}

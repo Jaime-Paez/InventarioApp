@@ -432,6 +432,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.create-user__grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .create-user__field {
   display: flex;
   flex-direction: column;
@@ -2218,6 +2222,10 @@ button.create-user__locations-row {
 
   .create-user__grid--two {
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+
+  .create-user__grid--three {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 }
 

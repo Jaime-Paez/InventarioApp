@@ -693,24 +693,6 @@
   color: var(--color-text-secondary);
 }
 
-.create-salida__detail-unavailable {
-  margin-left: 6px;
-  padding: 0 6px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-error) 6%, var(--color-border));
-  color: var(--color-error);
-  font-size: var(--font-size-xs, 0.6rem);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
 .create-salida__results-header {
   display: grid;
   grid-template-columns: minmax(72px, 0.65fr) 1fr minmax(68px, auto);
@@ -1066,50 +1048,30 @@
   font-variant-numeric: tabular-nums;
 }
 
-.create-salida__totals-row {
+.create-user__locations-row.create-salida__totals-row {
   background: color-mix(in srgb, var(--color-primary) 6%, transparent);
 }
 
 .create-salida__totals-label {
-  text-align: right;
+  grid-column: 1 / span 4;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 10px;
   font-weight: 700;
 }
 
 .create-salida__totals-value {
-  text-align: center;
+  grid-column: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
   font-variant-numeric: tabular-nums;
 }
 
-.create-salida__totals-row--strong {
+.create-user__locations-row.create-salida__totals-row--strong {
   background: color-mix(in srgb, var(--color-primary) 14%, transparent);
-}
-
-.create-salida__totals-spacer {
-}
-
-.create-salida__products-table--with-actions .create-salida__totals-label {
-  grid-column: 1 / span 4;
-}
-
-.create-salida__products-table--with-actions .create-salida__totals-value {
-  grid-column: 5;
-}
-
-.create-salida__products-table--with-actions .create-salida__totals-spacer {
-  grid-column: 6;
-  display: block;
-}
-
-.create-salida__products-table:not(.create-salida__products-table--with-actions) .create-salida__totals-label {
-  grid-column: 1 / span 3;
-}
-
-.create-salida__products-table:not(.create-salida__products-table--with-actions) .create-salida__totals-value {
-  grid-column: 4 / span 2;
-}
-
-.create-salida__products-table:not(.create-salida__products-table--with-actions) .create-salida__totals-spacer {
-  display: none;
 }
 
 .create-salida__discount-inline-input {
@@ -1495,6 +1457,13 @@
   border-color: color-mix(in srgb, #ef4444 60%, #7f1d1d);
   background: color-mix(in srgb, #3f1d1d 78%, #111827);
   color: #fecaca;
+}
+
+.entrada-details__section-date {
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  white-space: nowrap;
 }
 
 @media (max-width: 980px) {

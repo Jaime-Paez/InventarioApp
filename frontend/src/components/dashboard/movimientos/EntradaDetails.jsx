@@ -408,7 +408,6 @@ function EntradaDetails({
   const isVenta = selectedSubTipoName.includes('vent')
   const isCompraEntrada = selectedSubTipoName.includes('compra') || selectedSubTipoName.includes('import')
   const requiresSucursalObjetivo = isTraslado
-  const documentLabel = isTraslado ? 'Codigo de solicitud' : 'Codigo de entrada'
 
   const selectedBranchName = useMemo(
     () => branches.find((b) => String(b.id) === String(formData.sucursalId))?.nombre || formData.sucursalId || '-',
@@ -2510,13 +2509,12 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       <p className="create-user__eyebrow">Datos</p>
                       <h4>Informacion general</h4>
                     </div>
+                    <span className="entrada-details__section-date">{formattedFecha}</span>
                   </div>
 
                   <div className="create-salida__field-groups">
                     <div className="create-salida__field-group create-salida__field-group--defined">
-                      <div className="create-user__grid create-user__grid--two">
-                        <StaticFieldDisplay label="Tipo de entrada" value={selectedSubTipo?.nombre || formData.subTipoNombre} />
-                        <StaticFieldDisplay label="Fecha" value={formattedFecha} />
+                      <div className="create-user__grid create-user__grid--three">
                         <StaticFieldDisplay label="Sucursal" value={selectedBranchName} />
                         {requiresSucursalObjetivo && (
                           <StaticFieldDisplay
@@ -2524,7 +2522,6 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                             value={selectedObjectiveBranchName}
                           />
                         )}
-                        <StaticFieldDisplay label={documentLabel} value={formData.no_documento} />
                         {isDevolucion && (
                           <StaticFieldDisplay label="No. factura venta origen" value={formData.factura_referencia} />
                         )}
@@ -2534,52 +2531,43 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       </div>
                     </div>
 
-                    <div className="create-user__grid create-user__grid--two">
-                      {isVenta && (
-                        <label className="create-user__field">
-                          <span>Descuento (%)</span>
-                          <input
-                            name="descuento"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            max="100"
-                            value={formData.descuento}
-                            onChange={handleChange}
-                            disabled={editorDisabled}
-                          />
-                        </label>
-                      )}
+                    {(isVenta || isDevolucion) && (
+                      <div className="create-user__grid create-user__grid--two">
+                        {isVenta && (
+                          <label className="create-user__field">
+                            <span>Descuento (%)</span>
+                            <input
+                              name="descuento"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              value={formData.descuento}
+                              onChange={handleChange}
+                              disabled={editorDisabled}
+                            />
+                          </label>
+                        )}
 
-                      {isDevolucion && (
-                        <label className="create-user__field">
-                          <span>Funcional</span>
-                          <select
-                            name="funcional"
-                            value={formData.funcional ? 'true' : 'false'}
-                            onChange={(event) =>
-                              isEditing &&
-                              setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                            }
-                            disabled={editorDisabled}
-                          >
-                            <option value="true">Si</option>
-                            <option value="false">No</option>
-                          </select>
-                        </label>
-                      )}
-
-                      <label className="create-user__field create-user__field--full">
-                        <span>Descripcion</span>
-                        <input
-                          name="descripcion"
-                          type="text"
-                          value={formData.descripcion}
-                          onChange={handleChange}
-                          disabled={editorDisabled}
-                        />
-                      </label>
-                    </div>
+                        {isDevolucion && (
+                          <label className="create-user__field">
+                            <span>Funcional</span>
+                            <select
+                              name="funcional"
+                              value={formData.funcional ? 'true' : 'false'}
+                              onChange={(event) =>
+                                isEditing &&
+                                setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
+                              }
+                              disabled={editorDisabled}
+                            >
+                              <option value="true">Si</option>
+                              <option value="false">No</option>
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -2745,17 +2733,11 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                         const stockLabel = showProveedorStockInfo
                           ? Math.max(0, Math.trunc(allowance))
                           : null
-                        const isUnavailable = isTraslado && remaining <= 0
 
                         return (
                           <div key={detail.uid} className="create-user__locations-row">
                             <span>
                               {detail.productoCodigo || '-'}
-                              {isUnavailable && (
-                                <small className="create-salida__detail-unavailable">
-                                  Producto no disponible
-                                </small>
-                              )}
                               {stockLabel !== null && (
                                 <small className="create-salida__row-stock">
                                   {stockLabel}
@@ -2799,14 +2781,12 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     <div className="create-user__locations-row create-salida__totals-row">
                       <span className="create-salida__totals-label">Subtotal</span>
                       <span className="create-salida__totals-value">{formatCurrency(subtotalConBorrador)}</span>
-                      <span className="create-salida__totals-spacer" />
                     </div>
 
                     {isVenta && (
                       <div className="create-user__locations-row create-salida__totals-row">
                         <span className="create-salida__totals-label">Descuento ({descuentoPercentLabel}%)</span>
                         <span className="create-salida__totals-value">-{formatCurrency(descuentoAplicado)}</span>
-                        <span className="create-salida__totals-spacer" />
                       </div>
                     )}
 
@@ -2815,10 +2795,31 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       <span className="create-salida__totals-value">
                         <strong>{formatCurrency(totalConIva)}</strong>
                       </span>
-                      <span className="create-salida__totals-spacer" />
                     </div>
                   </div>
 
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Datos</p>
+                      <h4>Descripcion</h4>
+                    </div>
+                  </div>
+
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field create-user__field--full">
+                      <input
+                        name="descripcion"
+                        type="text"
+                        aria-label="Descripcion"
+                        value={formData.descripcion}
+                        onChange={handleChange}
+                        disabled={editorDisabled}
+                      />
+                    </label>
+                  </div>
                 </section>
                   </>
                 )}
