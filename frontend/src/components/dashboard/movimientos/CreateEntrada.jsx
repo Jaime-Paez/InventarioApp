@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
+import { formatDate } from '../../../utils/dateFormat'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
@@ -229,20 +230,6 @@ const todayISO = () => {
   const month = String(today.getMonth() + 1).padStart(2, '0')
   const day = String(today.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-const formatDateDisplay = (value) => {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
-  const [year, month, day] = raw.split('-').map((part) => Number(part))
-  if (!year || !month || !day) return raw
-  const parsed = new Date(year, month - 1, day)
-  if (Number.isNaN(parsed.getTime())) return raw
-  return new Intl.DateTimeFormat('es-EC', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(parsed)
 }
 
 const formatCurrency = (value) => {
@@ -579,7 +566,7 @@ function CreateEntrada({
   const destinationBranches = useMemo(() => {
     return providerBranchPool.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
   }, [providerBranchPool, selectedSucursalId])
-  const formattedFecha = useMemo(() => formatDateDisplay(formData.fecha), [formData.fecha])
+  const formattedFecha = useMemo(() => formatDate(formData.fecha, ''), [formData.fecha])
   const documentHelperText = useMemo(() => {
     if (documentStatus === DOCUMENT_STATUS.error) return 'No se pudo generar el código automáticamente.'
     return ''

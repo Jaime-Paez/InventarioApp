@@ -5,6 +5,7 @@ import './CreateSalida.css'
 import '../clientes/CreateCliente/CreateCliente.css'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
+import { formatDate } from '../../../utils/dateFormat'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
@@ -223,20 +224,6 @@ const todayISO = () => {
   const month = String(today.getMonth() + 1).padStart(2, '0')
   const day = String(today.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-const formatDateDisplay = (value) => {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
-  const [year, month, day] = raw.split('-').map((part) => Number(part))
-  if (!year || !month || !day) return raw
-  const parsed = new Date(year, month - 1, day)
-  if (Number.isNaN(parsed.getTime())) return raw
-  return new Intl.DateTimeFormat('es-EC', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(parsed)
 }
 
 const nowReminderDateTime = () => {
@@ -583,7 +570,7 @@ function CreateSalida({
     const branch = source.find((item) => String(item?.id || '').trim() === objetivoId)
     return String(branch?.nombre || '').trim()
   }, [allBranches, branches, formData.sucursalObjetivoId])
-  const formattedFecha = useMemo(() => formatDateDisplay(formData.fecha), [formData.fecha])
+  const formattedFecha = useMemo(() => formatDate(formData.fecha, ''), [formData.fecha])
 
   const fetchNextDocumentNumber = useCallback(
     async ({ subTipoId, sucursalId, sucursalObjetivoId }) => {

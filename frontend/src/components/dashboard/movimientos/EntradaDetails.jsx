@@ -5,6 +5,7 @@ import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
+import { formatDate } from '../../../utils/dateFormat'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
@@ -417,12 +418,7 @@ function EntradaDetails({
     () => branches.find((b) => String(b.id) === String(formData.sucursalObjetivoId))?.nombre || formData.sucursalObjetivoId || '-',
     [branches, formData.sucursalObjetivoId]
   )
-  const formattedFecha = useMemo(() => {
-    if (!formData.fecha) return '-'
-    const date = new Date(`${formData.fecha}T00:00:00`)
-    if (!Number.isFinite(date.getTime())) return formData.fecha
-    return date.toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: 'numeric' })
-  }, [formData.fecha])
+  const formattedFecha = useMemo(() => formatDate(formData.fecha), [formData.fecha])
 
   const stockBranchId = useMemo(() => {
     if (isTraslado) {

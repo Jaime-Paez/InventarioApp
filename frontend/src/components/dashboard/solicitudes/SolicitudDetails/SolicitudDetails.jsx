@@ -6,6 +6,7 @@ import '../../admin/UsersDetails/UsersDetails.css'
 import '../../movimientos/CreateSalida.css'
 import './SolicitudDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { formatDate } from '../../../../utils/dateFormat'
 import useModalAnimation from '../../common/useModalAnimation'
 import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
@@ -1555,9 +1556,7 @@ function SolicitudDetails({
     solicitud?.codigo ||
     (solicitudId ? `Solicitud #${solicitudId}` : 'Detalle de solicitud')
   const allGroupItemsReviewed = groupItems.length > 0 && groupItems.every((item) => item.isReviewed)
-  const solicitudFormattedFecha = formData.fecha
-    ? new Date(formData.fecha + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: 'numeric' })
-    : ''
+  const solicitudFormattedFecha = formData.fecha ? formatDate(formData.fecha) : ''
   const productModalTitle = [
     selectedGroupItem?.productoCodigo || productFormData.productoCodigo || 'Producto',
     selectedGroupItem?.productoNombre || productFormData.productoNombre || '',

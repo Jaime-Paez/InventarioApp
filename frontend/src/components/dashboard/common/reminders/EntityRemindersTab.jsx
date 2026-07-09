@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Minus, Plus } from 'lucide-react'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { formatDateTime } from '../../../../utils/dateFormat'
 import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
@@ -161,13 +162,7 @@ const formatIsoDateTime = (value) => {
   const raw = String(value || '').trim()
   if (!raw) return '-'
 
-  const timestamp = Date.parse(raw)
-  if (!Number.isFinite(timestamp)) return raw
-
-  return new Intl.DateTimeFormat('es-EC', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(timestamp))
+  return formatDateTime(raw, raw)
 }
 
 const formatDecisionStatusLabel = (value) => {
@@ -903,7 +898,7 @@ function EntityRemindersTab({
                             {!!entry.timestamp && (
                               <span className="recordatorios-popup__detail-history-time">
                                 {Number.isFinite(Date.parse(entry.timestamp))
-                                  ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.timestamp))
+                                  ? formatDateTime(entry.timestamp)
                                   : '-'}
                               </span>
                             )}

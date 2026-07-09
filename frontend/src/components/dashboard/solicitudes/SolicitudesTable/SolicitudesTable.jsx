@@ -23,6 +23,7 @@ const getPortalRoot = () => document.querySelector('.dashboard-shell') || docume
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { formatDate } from '../../../../utils/dateFormat'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
@@ -1177,7 +1178,8 @@ const handleResetTable = () => {
   }
 
   const cellWithTooltip = (rowData, field) => {
-    const content = rowData?.[field] ?? '-'
+    const rawContent = rowData?.[field] ?? '-'
+    const content = field === 'fecha' && rawContent !== '-' ? formatDate(rawContent, rawContent) : rawContent
     const textColor = content === '-' ? '#9ca3af' : undefined
     return (
       <span className="cell-tooltip" data-pr-tooltip={String(content)} style={{ color: textColor }}>
@@ -2072,7 +2074,8 @@ const handleResetTable = () => {
                 </div>
               }
             >
-              <Column field="fecha" header="Fecha" sortable style={{ minWidth: '100px' }} />
+              <Column field="fecha" header="Fecha" sortable style={{ minWidth: '100px' }}
+                body={(r) => formatDate(r.fecha)} />
               <Column field="solicitud_codigo" header="Solicitud" sortable style={{ minWidth: '100px' }} />
               <Column field="codigo" header="Código JP" sortable style={{ minWidth: '100px' }}
                 body={(r) => r.codigo || '-'} />

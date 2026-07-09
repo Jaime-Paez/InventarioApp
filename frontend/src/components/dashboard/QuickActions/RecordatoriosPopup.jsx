@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Loader2, Plus, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
+import { formatDate, formatDateTime } from '../../../utils/dateFormat'
 import {
   buildTransferHistoryEntry,
   buildReminderStatusForUser,
@@ -712,9 +713,7 @@ const formatWeekRangeLabel = (startDate, endDate) => {
   if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) return ''
   if (!(endDate instanceof Date) || Number.isNaN(endDate.getTime())) return ''
 
-  const startLabel = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' }).format(startDate)
-  const endLabel = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }).format(endDate)
-  return `${startLabel} - ${endLabel}`
+  return `${formatDate(startDate)} - ${formatDate(endDate)}`
 }
 
 const formatTimelineDayName = (dateKey) => {
@@ -728,18 +727,14 @@ const formatTimelineDayName = (dateKey) => {
 const formatTimelineDayDate = (dateKey) => {
   const parsed = parseDateKey(dateKey)
   if (!parsed) return '-'
-  return new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: '2-digit' }).format(parsed)
+  return formatDate(parsed, '-')
 }
 
 const formatTimelineFullDate = (dateKey) => {
   const parsed = parseDateKey(dateKey)
   if (!parsed) return 'Fecha no disponible'
-  return new Intl.DateTimeFormat('es-CO', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  }).format(parsed)
+  const weekdayLabel = new Intl.DateTimeFormat('es-CO', { weekday: 'long' }).format(parsed).replace('.', '')
+  return `${weekdayLabel}, ${formatDate(parsed, 'Fecha no disponible')}`
 }
 
 const getReminderDateTimeTimestamp = (reminder) => {
@@ -3679,7 +3674,7 @@ function RecordatoriosPopup({
                     <div className={`recordatorios-popup__decision-grid${activeDecisionIsGarantia ? '' : ' recordatorios-popup__decision-grid--3col'}`}>
                       <label>
                         <span>Fecha</span>
-                        <strong>{decisionDetail?.fecha || '-'}</strong>
+                        <strong>{decisionDetail?.fecha ? formatDate(decisionDetail.fecha) : '-'}</strong>
                       </label>
                       {activeDecisionIsGarantia ? (
                         <label>
@@ -3978,7 +3973,7 @@ function RecordatoriosPopup({
                                 {!!entry.timestamp && (
                                   <span className="recordatorios-popup__detail-history-time">
                                     {Number.isFinite(Date.parse(entry.timestamp))
-                                      ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.timestamp))
+                                      ? formatDateTime(entry.timestamp)
                                       : '-'}
                                   </span>
                                 )}

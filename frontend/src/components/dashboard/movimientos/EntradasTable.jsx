@@ -17,6 +17,7 @@ import {
   REMINDERS_TRANSFER_NOTIFICATION_EVENT,
 } from '../common/reminders/remindersStorage'
 import { API_URL, authFetch } from '../../../utils/api'
+import { formatDate } from '../../../utils/dateFormat'
 import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
@@ -838,8 +839,8 @@ function EntradasTable({
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [hideProductHoverCard])
 
-  const cellWithTooltip = (rowData, field) => {
-    const content = rowData?.[field] ?? '-'
+  const cellWithTooltip = (rowData, field, displayValue) => {
+    const content = displayValue !== undefined ? displayValue : (rowData?.[field] ?? '-')
     const textColor = content === '-' ? '#9ca3af' : undefined
     const normalizedEstado = normalizeValue(rowData?.estado_nombre)
     const isSolicitudTraslado = Boolean(rowData?.es_solicitud_traslado)
@@ -1542,7 +1543,9 @@ function EntradasTable({
                 ? totalBodyTemplate
                 : field === 'productos_resumen'
                   ? productsBodyTemplate
-                  : (rowData) => cellWithTooltip(rowData, field)
+                  : field === 'fecha'
+                    ? (rowData) => cellWithTooltip(rowData, field, formatDate(rowData?.fecha))
+                    : (rowData) => cellWithTooltip(rowData, field)
             return (
               <Column
                 key={field}

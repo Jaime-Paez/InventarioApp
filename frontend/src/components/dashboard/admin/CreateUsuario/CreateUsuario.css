@@ -1527,6 +1527,7 @@ button.create-user__locations-row {
   background: #f3f4f6;
   font-weight: 700;
   font-size: var(--font-size-sm);
+  user-select: none;
 }
 
 .create-user__locations-row--empty {

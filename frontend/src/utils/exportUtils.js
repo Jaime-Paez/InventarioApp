@@ -1,3 +1,5 @@
+import { formatDateTime } from './dateFormat'
+
 export const buildFileName = (base) => {
   const now = new Date()
   const yyyy = now.getFullYear()
@@ -31,12 +33,7 @@ export const buildExportMatrix = (rows, columns, valueGetter) => {
 
 const REPORT_HEADER_URL = new URL('../assets/reports/Header.png', import.meta.url).href
 
-const formatReportDate = () => {
-  const now = new Date()
-  const date = now.toLocaleDateString('es-EC', { year: 'numeric', month: 'long', day: '2-digit' })
-  const time = now.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
-  return `${date} ${time}`
-}
+const formatReportDate = () => formatDateTime(new Date().toISOString())
 
 const loadImageData = async (url) => {
   const response = await fetch(url)

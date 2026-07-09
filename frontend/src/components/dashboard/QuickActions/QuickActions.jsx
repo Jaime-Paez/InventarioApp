@@ -7,6 +7,7 @@ import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
 import { API_URL, authFetch } from '../../../utils/api'
+import { formatDate } from '../../../utils/dateFormat'
 import {
   requestSystemNotificationPermission,
   showSystemNotification,
@@ -4332,7 +4333,7 @@ function QuickActions({
                             {isOpening
                               ? 'Abriendo...'
                               : (fecha
-                                ? `Fecha: ${fecha}`
+                                ? `Fecha: ${formatDate(fecha)}`
                                 : (relatedReminder ? 'Abrir envío en camino' : 'Abrir recepción'))}
                           </span>
                         </button>
@@ -4421,7 +4422,7 @@ function QuickActions({
                                 <span>Generando número...</span>
                               </span>
                             ) : (
-                              (fecha ? `Fecha: ${fecha}` : 'Abrir en salidas')
+                              (fecha ? `Fecha: ${formatDate(fecha)}` : 'Abrir en salidas')
                             )}
                           </span>
                         </button>
@@ -4546,7 +4547,7 @@ function QuickActions({
                 <h4>{isRandomInspectionVerifyMode ? 'Verificación de inspección aleatoria' : 'Inspección aleatoria diaria'}</h4>
                 <p>
                   {activeRandomInspection?.fecha_programada
-                    ? `Fecha: ${String(activeRandomInspection.fecha_programada).trim()}`
+                    ? `Fecha: ${formatDate(activeRandomInspection.fecha_programada)}`
                     : (isRandomInspectionVerifyMode ? 'Revisión administrativa de diferencias' : 'Revisión diaria de inventario')}
                 </p>
               </div>

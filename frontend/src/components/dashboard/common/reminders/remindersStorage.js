@@ -1,4 +1,5 @@
 import { API_URL, authFetch, resolveAuthToken } from '../../../../utils/api'
+import { formatDateTime } from '../../../../utils/dateFormat'
 
 export const REMINDERS_STORAGE_KEY = 'inventario-recordatorios-v1'
 export const REMINDERS_SYNC_EVENT = 'inventario-reminders-sync'
@@ -98,10 +99,7 @@ export const formatReminderDateTime = (reminder) => {
   const timestamp = Date.parse(`${date}T${time}:00`)
   if (!Number.isFinite(timestamp)) return `${date} ${time}`
 
-  return new Intl.DateTimeFormat('es-CO', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(timestamp))
+  return formatDateTime(timestamp)
 }
 
 export const sanitizeRecipient = (recipient) => {

@@ -9,6 +9,7 @@ import { Checkbox } from 'primereact/checkbox'
 import { Button } from 'primereact/button'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
+import { formatDateTime } from '../../../utils/dateFormat'
 import { fetchRemindersFromBackend } from '../common/reminders/remindersStorage'
 import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
@@ -60,21 +61,6 @@ const isCheckboxSelection = (event) => {
   return Boolean(
     target.closest?.('.p-checkbox, .p-checkbox-box, .p-checkbox-icon, .p-checkbox-input, .row-selection-column')
   )
-}
-
-const formatDateTime = (value) => {
-  const raw = String(value || '').trim()
-  if (!raw) return '-'
-  const timestamp = Date.parse(raw)
-  if (!Number.isFinite(timestamp)) return raw
-  try {
-    return new Intl.DateTimeFormat('es-EC', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(timestamp))
-  } catch {
-    return raw
-  }
 }
 
 const formatEstado = (value) => {

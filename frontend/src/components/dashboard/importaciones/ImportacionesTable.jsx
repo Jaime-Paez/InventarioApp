@@ -12,6 +12,7 @@ import { Checkbox } from 'primereact/checkbox'
 import { API_URL, authFetch } from '../../../utils/api'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
+import { formatDate } from '../../../utils/dateFormat'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import '../admin/UsersTable/UsersTable.css'
@@ -217,18 +218,6 @@ const todayISO = () => {
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-const formatDate = (value) => {
-  const raw = String(value || '').trim()
-  if (!raw) return '-'
-  const [year, month, day] = raw.split('-').map(Number)
-  if (!year || !month || !day) return raw
-  return new Intl.DateTimeFormat('es-EC', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(year, month - 1, day))
 }
 
 const readErrorMessage = async (response, fallback) => {
@@ -1734,7 +1723,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                                 {filled ? <Check size={14} /> : idx + 1}
                               </button>
                               <span className="imp-tracker__label">{trackerStep.label}</span>
-                              <span className="imp-tracker__date">{value || (trackerStep.editable ? 'Sin definir' : 'Pendiente')}</span>
+                              <span className="imp-tracker__date">{value ? formatDate(value) : (trackerStep.editable ? 'Sin definir' : 'Pendiente')}</span>
                             </div>
                           )
                         })}
@@ -1889,7 +1878,18 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
               <button
                 type="button"
                 className="create-user__action create-user__action--primary"
-                onClick={() => setShowReceive(true)}
+                onClick={() => {
+                  if (!imp.fecha_puerto) {
+                    toastRef.current?.show({
+                      severity: 'warn',
+                      summary: 'Falta la fecha de llegada a puerto',
+                      detail: 'Registra la fecha de llegada a puerto en el seguimiento del envío antes de marcar la llegada al local.',
+                      life: 5000,
+                    })
+                    return
+                  }
+                  setShowReceive(true)
+                }}
               >
                 Llegó importación
               </button>
@@ -5462,7 +5462,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         <div className="create-user__grid create-user__grid--two">
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                             <StaticFieldDisplay label="Código" value={imp.codigo} />
-                            <StaticFieldDisplay label="Fecha" value={imp.fecha || '-'} />
+                            <StaticFieldDisplay label="Fecha" value={formatDate(imp.fecha)} />
                             <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(selectedCasa)} />
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -6043,7 +6043,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                   />
                 </div>
                 <div className="imp-importar-modal__field">
-                  <label htmlFor="imp-fecha-input">Fecha de importación</label>
+                  <label htmlFor="imp-fecha-input">Fecha de salida</label>
                   <input
                     id="imp-fecha-input"
                     type="date"
@@ -6444,34 +6444,44 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     })
   , [])
 
+  // Evita que la respuesta de un fetch anterior (de otra pestaña de estado) sobreescriba
+  // `items` si el usuario ya cambió de pestaña antes de que esa petición terminara.
+  const latestStatusRef = useRef(status)
+  useEffect(() => { latestStatusRef.current = status }, [status])
+
   const fetchItems = useCallback(async (force = false) => {
     if (!token) return
-    const cached = importacionesItemsCache[status]
+    const requestedStatus = status
+    const cached = importacionesItemsCache[requestedStatus]
     if (!force && cached) {
-      setItems(cached.items)
+      if (latestStatusRef.current === requestedStatus) setItems(cached.items)
       return
     }
-    setLoading(true)
-    setError('')
+    if (latestStatusRef.current === requestedStatus) {
+      setLoading(true)
+      setError('')
+    }
     const params = new URLSearchParams()
-    params.set('estado', status)
+    params.set('estado', requestedStatus)
     params.set('page_size', '200')
     try {
       const response = await authFetch(`${API_URL}/importaciones/importaciones/?${params.toString()}`, {}, token)
       if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudieron cargar las importaciones.'))
       const payload = await response.json()
       const normalized = normalizeList(parseApiList(payload))
-      if (status === 'confirmacion') {
+      if (requestedStatus === 'confirmacion') {
         normalized.sort((a, b) => (a.numero_factura ? 1 : 0) - (b.numero_factura ? 1 : 0))
       }
-      importacionesItemsCache[status] = { items: normalized, fetchedAt: Date.now() }
-      setItems(normalized)
+      importacionesItemsCache[requestedStatus] = { items: normalized, fetchedAt: Date.now() }
+      if (latestStatusRef.current === requestedStatus) setItems(normalized)
     } catch (err) {
       const message = err.message || 'No se pudieron cargar las importaciones.'
-      setError(message)
-      toast.current?.show({ severity: 'error', summary: 'Error', detail: message, life: 4000 })
+      if (latestStatusRef.current === requestedStatus) {
+        setError(message)
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: message, life: 4000 })
+      }
     } finally {
-      setLoading(false)
+      if (latestStatusRef.current === requestedStatus) setLoading(false)
     }
   }, [normalizeList, status, token])
 
@@ -6951,6 +6961,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
             reorderable
             className="column-max-min-width"
             style={{ minWidth: '100px' }}
+            body={(row) => formatDate(row.fecha)}
           />
           {status === 'importada' && (
             <Column
@@ -6960,7 +6971,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
               reorderable
               className="column-max-min-width"
               style={{ minWidth: '120px' }}
-              body={(row) => String(row.creado_en || '').slice(0, 10) || '-'}
+              body={(row) => formatDate(row.creado_en)}
             />
           )}
           {status === 'importada' && (
@@ -6971,7 +6982,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
               reorderable
               className="column-max-min-width"
               style={{ minWidth: '120px' }}
-              body={(row) => row.fecha_llegada || '-'}
+              body={(row) => formatDate(row.fecha_llegada)}
             />
           )}
           <Column

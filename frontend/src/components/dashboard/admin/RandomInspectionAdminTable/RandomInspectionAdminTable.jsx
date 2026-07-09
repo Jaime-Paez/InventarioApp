@@ -4,26 +4,12 @@ import { Eye, Loader2, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { formatDateTime } from '../../../../utils/dateFormat'
 import '../CreateUsuario/CreateUsuario.css'
 import './RandomInspectionAdminTable.css'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
-
-const formatDateTime = (value) => {
-  const raw = String(value || '').trim()
-  if (!raw) return '-'
-  const timestamp = Date.parse(raw)
-  if (!Number.isFinite(timestamp)) return raw
-  try {
-    return new Intl.DateTimeFormat('es-EC', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(timestamp))
-  } catch {
-    return raw
-  }
-}
 
 const formatPercent = (value) => {
   const numeric = Number(value)

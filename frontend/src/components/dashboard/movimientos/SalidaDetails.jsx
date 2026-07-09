@@ -5,6 +5,7 @@ import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
+import { formatDate } from '../../../utils/dateFormat'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
@@ -79,20 +80,6 @@ const todayISO = () => {
   const month = String(today.getMonth() + 1).padStart(2, '0')
   const day = String(today.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-const formatDateDisplay = (value) => {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
-  const [year, month, day] = raw.split('-').map((part) => Number(part))
-  if (!year || !month || !day) return raw
-  const parsed = new Date(year, month - 1, day)
-  if (Number.isNaN(parsed.getTime())) return raw
-  return new Intl.DateTimeFormat('es-EC', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(parsed)
 }
 
 const formatCurrency = (value) => {
@@ -404,7 +391,7 @@ function SalidaDetails({
   const documentLabel = isTraslado ? 'No. de Traslado' : isDevolucion ? 'No. Garantía' : 'No. de Factura'
   const selectedSucursalName = branches.find((b) => String(b.id) === String(formData.sucursalId))?.nombre || ''
   const selectedObjetivoName = branches.find((b) => String(b.id) === String(formData.sucursalObjetivoId))?.nombre || ''
-  const formattedFecha = formatDateDisplay(formData.fecha)
+  const formattedFecha = formatDate(formData.fecha, '')
 
   const devolucionEstadoOptions = useMemo(
     () => {

@@ -1081,7 +1081,7 @@ function UsersTable({
 
                       <label className="create-user__field">
                       <span>Fecha de creación</span>
-                      <input name="fecha_creacion" type="text" placeholder="Ej: 2025-12-31" value={searchCriteria.fecha_creacion} onChange={handleSearchInputChange} />
+                      <input name="fecha_creacion" type="text" placeholder="Ej: 08/12/2025" value={searchCriteria.fecha_creacion} onChange={handleSearchInputChange} />
                     </label>
 
                     </div>
