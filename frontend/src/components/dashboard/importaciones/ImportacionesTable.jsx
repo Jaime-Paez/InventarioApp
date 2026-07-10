@@ -852,9 +852,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     }
   }
 
-  const handleClose = async () => {
+  const handleClose = () => {
     if (submitting) return
-    await saveDraftToServer()
+    saveDraftToServer()
     onClose()
   }
 
