@@ -2223,11 +2223,6 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
           </div>
 
           <div className="create-user__footer">
-            {imp.estado === 'importada' && (
-              <button type="button" className="users-circle users-circle--excel" title="Descargar Excel" onClick={handleDownloadExcel}>
-                <i className="pi pi-file-excel" />
-              </button>
-            )}
             {(imp.estado === 'en_camino' || imp.estado === 'importada') && Array.isArray(imp.historial_confirmacion) && imp.historial_confirmacion.length > 0 && (
               <button
                 type="button"
@@ -2264,6 +2259,11 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                 }}
               >
                 Llegó importación
+              </button>
+            )}
+            {imp.estado === 'importada' && (
+              <button type="button" className="users-circle users-circle--excel" style={{ marginLeft: 'auto' }} title="Descargar Excel" onClick={handleDownloadExcel}>
+                <i className="pi pi-file-excel" />
               </button>
             )}
           </div>
