@@ -433,10 +433,52 @@
     100px
     56px
     minmax(100px, 1.2fr);
+  /* Igual que .imp-details__productos-row: con columnas dinámicas por
+     sucursal la fila necesita su propio ancho (no el 100% del padre) para
+     que su fondo cubra todas las columnas al hacer scroll horizontal. */
+  width: max-content;
+  min-width: 100%;
 }
 
 .imp-historial__row:not(.create-user__locations-row--empty) > span {
   padding: 5px 6px;
+  border-right: 1px solid var(--color-border, #cbd5e1);
+}
+
+.imp-historial__row:not(.create-user__locations-row--empty) > span:last-child {
+  border-right: none;
+}
+
+.dashboard-shell.dark .imp-historial__row:not(.create-user__locations-row--empty) > span {
+  border-right-color: var(--color-border-dark, #3a3f47);
+}
+
+/* El historial vive dentro de .imp-aceptados-popup__body, que ya es el
+   único dueño del scroll vertical (flex:1; overflow-y:auto) — a diferencia
+   de .imp-details__productos-table esta tabla no necesita su propio alto
+   fijo ni scroll vertical propio, solo el horizontal. El wrapper es quien
+   recorta con el borde redondeado (mismo motivo que
+   .imp-details__productos-table-wrap: la barra de scroll nativa es
+   rectangular y se sale de un border-radius puesto en el propio elemento
+   con overflow-x). */
+.imp-historial__table-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dashboard-shell.dark .imp-historial__table-wrap {
+  border-color: var(--color-border-dark);
+}
+
+.importaciones-modal__products-table.imp-historial__table {
+  overflow-x: auto;
+  overflow-y: visible;
+  flex: none;
+  min-height: 0;
+  max-height: none;
+  border: none;
+  border-radius: 0;
 }
 
 .imp-receive__table {

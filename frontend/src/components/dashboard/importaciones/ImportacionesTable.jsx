@@ -2363,29 +2363,33 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
 
 function HistorialConfirmacionModal({ imp, onClose }) {
   const historial = Array.isArray(imp.historial_confirmacion) ? imp.historial_confirmacion : []
+  // A qué sucursales se envió cada producto y en qué cantidad, indexado por
+  // código (historial_confirmacion no guarda producto_id, solo el código).
   const distribucion = useMemo(() => {
     const envios = Array.isArray(imp.envios) ? imp.envios : []
     const sucursalesMap = new Map()
-    const productosMap = new Map()
+    const porCodigo = new Map()
     envios.forEach(envio => {
-      if (!sucursalesMap.has(envio.sucursal_id)) sucursalesMap.set(envio.sucursal_id, envio.sucursal_nombre)
+      const sucursalId = envio.sucursal_id
+      const sucursalNombre = envio.sucursal_nombre || (sucursalId != null ? `Sucursal ${sucursalId}` : 'Sucursal')
+      if (sucursalId != null) sucursalesMap.set(sucursalId, sucursalNombre)
       ;(envio.detalles || []).forEach(det => {
-        if (!productosMap.has(det.producto_id)) {
-          productosMap.set(det.producto_id, { codigo: det.producto_codigo, nombre: det.producto_nombre, cantidades: {} })
-        }
-        const entry = productosMap.get(det.producto_id)
-        entry.cantidades[envio.sucursal_id] = (entry.cantidades[envio.sucursal_id] || 0) + det.cantidad
+        const codigo = det.producto_codigo
+        if (!codigo) return
+        if (!porCodigo.has(codigo)) porCodigo.set(codigo, [])
+        porCodigo.get(codigo).push({ sucursalId, sucursalNombre, cantidad: Number(det.cantidad || 0) })
       })
     })
     const sucursales = Array.from(sucursalesMap.entries())
       .map(([id, nombre]) => ({ id, nombre }))
-      .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)))
-    const productos = Array.from(productosMap.entries())
-      .map(([id, data]) => ({ id, ...data }))
-      .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)))
-    return { sucursales, productos }
+      .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'))
+    return { sucursales, porCodigo }
   }, [imp.envios])
-  const distribucionGridCols = `minmax(72px, 0.6fr) minmax(140px, 1.3fr) repeat(${distribucion.sucursales.length}, 76px) 64px`
+  const historialGridTemplate = [
+    '220px', '110px', '70px', '100px', '70px',
+    ...distribucion.sucursales.map(() => '90px'),
+    '140px',
+  ].join(' ')
   const [cellHover, setCellHover] = useState(null)
   const cellHoverTimerRef = useRef(null)
   const showCellHover = useCallback((event, items, label) => {
@@ -2418,16 +2422,21 @@ function HistorialConfirmacionModal({ imp, onClose }) {
           </header>
 
           <div className="imp-aceptados-popup__body">
-            <div className="create-user__locations-table importaciones-modal__products-table">
-              <div className="create-user__locations-row create-user__locations-row--head imp-historial__row">
-                <span>Descripción</span><span>Referencia</span><span>Cant.</span><span>Precio conf.</span><span>Estado</span><span>Comentario</span>
+            <div className="imp-historial__table-wrap">
+            <div className="create-user__locations-table importaciones-modal__products-table imp-historial__table">
+              <div className="create-user__locations-row create-user__locations-row--head imp-historial__row" style={{ gridTemplateColumns: historialGridTemplate }}>
+                <span>Descripción</span><span>Referencia</span><span>Cant.</span><span>Precio conf.</span><span>Estado</span>
+                {distribucion.sucursales.map((suc) => <span key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</span>)}
+                <span>Comentario</span>
               </div>
               {historial.length === 0 ? (
                 <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}>
                   <span>No hay historial de confirmación para esta importación.</span>
                 </div>
-              ) : historial.map((row, i) => (
-                <div key={i} className="create-user__locations-row imp-historial__row">
+              ) : historial.map((row, i) => {
+                const envios = distribucion.porCodigo.get(row.codigo) || []
+                return (
+                <div key={i} className="create-user__locations-row imp-historial__row" style={{ gridTemplateColumns: historialGridTemplate }}>
                   <span
                     className="imp-table-cell-tip"
                     onMouseEnter={(e) => showCellHover(e, row.nombre, 'Descripción')}
@@ -2453,6 +2462,14 @@ function HistorialConfirmacionModal({ imp, onClose }) {
                       <span style={{ color: '#94a3b8' }}>-</span>
                     )}
                   </span>
+                  {distribucion.sucursales.map((suc) => {
+                    const found = envios.find((e) => e.sucursalId === suc.id)
+                    return (
+                      <span key={suc.id} className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>
+                        {found ? found.cantidad : '-'}
+                      </span>
+                    )
+                  })}
                   <span
                     className="imp-table-cell-tip"
                     onMouseEnter={(e) => showCellHover(e, row.comentario, 'Comentario')}
@@ -2461,49 +2478,10 @@ function HistorialConfirmacionModal({ imp, onClose }) {
                     <span className="imp-table-cell-text">{row.comentario || '-'}</span>
                   </span>
                 </div>
-              ))}
+                )
+              })}
             </div>
-
-            {distribucion.sucursales.length > 0 && (
-              <>
-                <h4 style={{ margin: '20px 0 8px', fontSize: '0.92rem' }}>Distribución a sucursales</h4>
-                <div className="create-user__locations-table importaciones-modal__products-table imp-distribucion__table">
-                  <div className="create-user__locations-row create-user__locations-row--head imp-distribucion__productos-row" style={{ gridTemplateColumns: distribucionGridCols }}>
-                    <span style={{ justifyContent: 'flex-start' }}>Código</span>
-                    <span style={{ justifyContent: 'flex-start' }}>Descripción</span>
-                    {distribucion.sucursales.map(suc => <span key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</span>)}
-                    <span>Total</span>
-                  </div>
-                  {distribucion.productos.map(p => {
-                    const total = distribucion.sucursales.reduce((sum, suc) => sum + (p.cantidades[suc.id] || 0), 0)
-                    return (
-                      <div key={p.id} className="create-user__locations-row imp-distribucion__productos-row" style={{ gridTemplateColumns: distribucionGridCols }}>
-                        <span
-                          className="imp-table-cell-tip"
-                          style={{ justifyContent: 'flex-start' }}
-                          onMouseEnter={(e) => showCellHover(e, p.codigo, 'Código')}
-                          onMouseLeave={hideCellHover}
-                        >
-                          <span className="imp-table-cell-text">{p.codigo || '-'}</span>
-                        </span>
-                        <span
-                          className="imp-table-cell-tip"
-                          style={{ justifyContent: 'flex-start' }}
-                          onMouseEnter={(e) => showCellHover(e, p.nombre, 'Descripción')}
-                          onMouseLeave={hideCellHover}
-                        >
-                          <span className="imp-table-cell-text">{p.nombre || '-'}</span>
-                        </span>
-                        {distribucion.sucursales.map(suc => (
-                          <span key={suc.id} className="imp-table-cell-text">{p.cantidades[suc.id] || 0}</span>
-                        ))}
-                        <span className="imp-table-cell-text" style={{ fontWeight: 700 }}>{total}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            )}
+            </div>
           </div>
 
           <div className="imp-aceptados-popup__footer" style={{ justifyContent: 'flex-end' }}>
