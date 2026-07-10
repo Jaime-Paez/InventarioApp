@@ -806,7 +806,7 @@ function EntityRemindersTab({
               </div>
 
               <label className="create-user__field entity-reminders__description-field">
-                <span>Descripcion</span>
+                <span>Nota</span>
                 <textarea
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
@@ -925,7 +925,7 @@ function EntityRemindersTab({
               <thead>
                 <tr>
                   <th>Fecha y hora</th>
-                  <th>Descripcion</th>
+                  <th>Nota</th>
                   <th>Creador</th>
                   <th>Dirigido a</th>
                   <th>Estado</th>
@@ -1049,7 +1049,7 @@ function EntityRemindersTab({
               </div>
 
               <section className="entity-reminders__detail-section entity-reminders__detail-section--description">
-                <h6>Descripcion</h6>
+                <h6>Nota</h6>
                 <p className="entity-reminders__detail-description">
                   {String(activeReminderDetail?.description || '').trim() || '-'}
                 </p>

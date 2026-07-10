@@ -3080,7 +3080,7 @@ function CreateEntrada({
                   {casaComercialDraft ? (
                     <div className="create-salida__field-group create-salida__field-group--defined" style={{ marginTop: '14px' }}>
                       <div className="create-user__grid create-user__grid--two">
-                        <StaticFieldDisplay label="Nombre" value={casaComercialDraft.nombre} fullWidth />
+                        <StaticFieldDisplay label="Descripción" value={casaComercialDraft.nombre} fullWidth />
                         <StaticFieldDisplay label="Código" value={casaComercialDraft.codigo} />
                         <StaticFieldDisplay label="País" value={casaComercialDraft.pais?.nombre} />
                         <StaticFieldDisplay
@@ -3094,7 +3094,7 @@ function CreateEntrada({
                           <StaticFieldDisplay label="Correo" value={casaComercialDraft.correo} />
                         )}
                         {casaComercialDraft.descripcion && (
-                          <StaticFieldDisplay label="Descripción" value={casaComercialDraft.descripcion} fullWidth />
+                          <StaticFieldDisplay label="Nota" value={casaComercialDraft.descripcion} fullWidth />
                         )}
                       </div>
                     </div>
@@ -3329,7 +3329,7 @@ function CreateEntrada({
                       )}
 
                       <label className="create-user__field create-user__field--full">
-                        <span>Descripción</span>
+                        <span>Nota</span>
                         <input
                           name="descripcion"
                           type="text"
@@ -3354,7 +3354,7 @@ function CreateEntrada({
                   <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions">
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Código</span>
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <span>Cantidad</span>
                       <span>Precio</span>
                       <span>Precio total</span>
@@ -3457,7 +3457,7 @@ function CreateEntrada({
                                 {productOptions.length > 0 && (
                                   <div className="create-salida__results-header">
                                     <span>Código</span>
-                                    <span>Nombre</span>
+                                    <span>Descripción</span>
                                     <span>Cantidad</span>
                                   </div>
                                 )}
@@ -3577,7 +3577,7 @@ function CreateEntrada({
                             )}
                           </span>
                           <span
-                            onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Nombre')}
+                            onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Descripción')}
                             onMouseLeave={hideHover}
                           >
                             <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
@@ -3751,7 +3751,7 @@ function CreateEntrada({
                           </label>
 
                           <label className="create-user__field">
-                            <span>Nombres</span>
+                            <span>Descripción</span>
                             <input
                               name="nombres"
                               type="text"

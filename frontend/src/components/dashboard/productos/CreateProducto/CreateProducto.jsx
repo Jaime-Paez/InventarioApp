@@ -1998,7 +1998,7 @@ function CreateProducto({
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>Código</span>
                     <span>Producto</span>
-                    <span>Descripción</span>
+                    <span>Nota</span>
                     <span>Acciones</span>
                   </div>
 
@@ -2056,7 +2056,7 @@ function CreateProducto({
                                       disabled={isSelected}
                                     >
                                       <div className="create-user__result-info">
-                                        <strong>{product.nombre || 'Sin nombre'}</strong>
+                                        <strong>{product.nombre || 'Sin descripción'}</strong>
                                         <small>{product.codigo ? `Código: ${product.codigo}` : `ID: ${product.id}`}</small>
                                       </div>
                                       <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
@@ -2092,7 +2092,7 @@ function CreateProducto({
                   {alternosSelected.map((alterno, index) => (
                     <div key={`${alterno.id}-${index}`} className="create-user__locations-row">
                       <span>{alterno.codigo || '-'}</span>
-                      <span>{alterno.nombre || 'Sin nombre'}</span>
+                      <span>{alterno.nombre || 'Sin descripción'}</span>
                       <span>{alterno.descripcion || '—'}</span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button

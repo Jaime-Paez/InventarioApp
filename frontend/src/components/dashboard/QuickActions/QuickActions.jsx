@@ -5161,7 +5161,7 @@ function QuickActions({
                         <span>
                           {receiveShipmentSort === 'bodega_first' && 'Con bodega primero'}
                           {receiveShipmentSort === 'codigo' && 'Código A–Z'}
-                          {receiveShipmentSort === 'nombre' && 'Nombre A–Z'}
+                          {receiveShipmentSort === 'nombre' && 'Descripción A–Z'}
                           {receiveShipmentSort === 'default' && 'Ordenar'}
                         </span>
                         <ChevronDown size={12} />
@@ -5172,7 +5172,7 @@ function QuickActions({
                             { value: 'default', label: 'Orden original' },
                             { value: 'bodega_first', label: 'Con bodega primero' },
                             { value: 'codigo', label: 'Código A–Z' },
-                            { value: 'nombre', label: 'Nombre A–Z' },
+                            { value: 'nombre', label: 'Descripción A–Z' },
                           ].map((option) => (
                             <button
                               key={option.value}

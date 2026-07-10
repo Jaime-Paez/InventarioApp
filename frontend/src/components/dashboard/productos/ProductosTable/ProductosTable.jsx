@@ -684,7 +684,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const columnsData = useMemo(
     () => [
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
-      { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
+      { nombrevar: 'nombre', header: 'Descripción', filterPlaceholder: 'Buscar por descripción' },
       { nombrevar: 'precio', header: 'PVP', filterPlaceholder: 'Buscar por precio' },
       { nombrevar: 'precio_con_iva', header: 'PVP +IVA', filterPlaceholder: 'Buscar por precio + IVA' },
       { nombrevar: 'costo_minimo', header: 'Costo', filterPlaceholder: 'Buscar por costo' },
@@ -1957,7 +1957,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                     </label>
 
                     <label className="create-user__field">
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <input name="nombre" type="text" placeholder="Ej: Filtro de aire" value={searchCriteria.nombre} onChange={handleSearchInputChange} />
                     </label>
 
@@ -2043,7 +2043,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                     </label>
 
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripción</span>
+                      <span>Nota</span>
                       <input name="descripcion" type="text" placeholder="Ej: Repuesto original" value={searchCriteria.descripcion} onChange={handleSearchInputChange} />
                     </label>
                   </div>

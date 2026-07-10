@@ -390,11 +390,11 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Nombres</span>
+                  <span>Descripción</span>
                   <input
                     name="nombres"
                     type="text"
-                    placeholder="Nombres del cliente"
+                    placeholder="Descripción del cliente"
                     value={formData.nombres}
                     onChange={handleChange}
                     required

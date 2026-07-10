@@ -338,7 +338,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
+      { nombrevar: 'nombre', header: 'Descripción', filterPlaceholder: 'Buscar por descripción' },
       { nombrevar: 'sucursal_nombre', header: 'Sucursal', filterPlaceholder: 'Buscar por sucursal' },
       { nombrevar: 'ancho_metros', header: 'Ancho (m)', filterPlaceholder: 'Filtrar por ancho' },
       { nombrevar: 'alto_metros', header: 'Alto (m)', filterPlaceholder: 'Filtrar por alto' },
@@ -965,7 +965,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <input name="nombre" type="text" placeholder="Ej: Bodega Norte" value={searchCriteria.nombre} onChange={handleSearchInputChange} />
                     </label>
 

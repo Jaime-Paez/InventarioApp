@@ -379,7 +379,7 @@ function UsersTable({
   const columnsData = useMemo(
     () => [
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
-      { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
+      { nombrevar: 'nombre', header: 'Descripción', filterPlaceholder: 'Buscar por descripción' },
       { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
       { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
       { nombrevar: 'cargo', header: 'Cargo', filterPlaceholder: 'Buscar por cargo' },
@@ -1046,7 +1046,7 @@ function UsersTable({
                     </label>
 
                       <label className="create-user__field">
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <input name="nombre" type="text" placeholder="Ej: Ana Perez" value={searchCriteria.nombre} onChange={handleSearchInputChange} />
                     </label>
 

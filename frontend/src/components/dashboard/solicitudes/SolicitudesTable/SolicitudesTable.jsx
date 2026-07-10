@@ -933,7 +933,7 @@ const handleResetTable = () => {
     { key: 'oem_codigos', header: 'OEMs' },
     { key: 'revisiones', header: 'Casas comerciales' },
     { key: 'cantidad', header: 'Cantidad' },
-    { key: 'producto_solicitado_nombre', header: 'Nombre' },
+    { key: 'producto_solicitado_nombre', header: 'Descripción' },
   ], [])
 
   const [selectedColumnsFlat, setSelectedColumnsFlat] = useState(columnsDataFlat)
@@ -2079,7 +2079,7 @@ const handleResetTable = () => {
               <Column field="solicitud_codigo" header="Solicitud" sortable style={{ minWidth: '100px' }} />
               <Column field="codigo" header="Código JP" sortable style={{ minWidth: '100px' }}
                 body={(r) => r.codigo || '-'} />
-              <Column field="nombre" header="Nombre" sortable style={{ minWidth: '180px' }}
+              <Column field="nombre" header="Descripción" sortable style={{ minWidth: '180px' }}
                 body={(r) => <span title={r.nombre}>{r.nombre || '-'}</span>} />
               <Column field="oem" header="OEM" style={{ minWidth: '110px' }}
                 body={(r) => r.oem || '-'} />
@@ -2834,7 +2834,7 @@ const handleResetTable = () => {
             <div className="create-user__body" style={{ padding: '16px 20px' }}>
               <div className="create-salida__field-group create-salida__field-group--defined">
                 <div className="create-user__grid create-user__grid--two">
-                  <StaticFieldDisplay label="Nombre" value={basicProductData.nombre} fullWidth />
+                  <StaticFieldDisplay label="Descripción" value={basicProductData.nombre} fullWidth />
                   <StaticFieldDisplay label="OEM" value={basicProductData.oem} fullWidth />
                   <StaticFieldDisplay label="Comentario" value={basicProductData.comentario} fullWidth />
                 </div>

@@ -613,11 +613,11 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                 </label>
 
                 <label className="create-user__field">
-                  <span>Nombre</span>
+                  <span>Descripción</span>
                   <input
                     name="nombre"
                     type="text"
-                    placeholder="Nombre de la casa comercial"
+                    placeholder="Descripción de la casa comercial"
                     value={formData.nombre}
                     onChange={handleChange}
                     required
@@ -736,11 +736,11 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                 </label>
 
                 <label className="create-user__field create-user__field--full">
-                  <span>Descripción</span>
+                  <span>Nota</span>
                   <input
                     name="descripcion"
                     type="text"
-                    placeholder="Descripción"
+                    placeholder="Nota"
                     value={formData.descripcion}
                     onChange={handleChange}
                     disabled={loading}

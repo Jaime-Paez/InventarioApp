@@ -1413,7 +1413,7 @@ function RecordatoriosPopup({
       return {
         id: issueId || `${activeDetailSolicitudId}-${productId || index}`,
         productoCodigo: String(issue?.producto_codigo || '').trim() || '-',
-        productoNombre: String(issue?.producto_nombre || '').trim() || 'Producto sin nombre',
+        productoNombre: String(issue?.producto_nombre || '').trim() || 'Producto sin descripción',
         cantidadFaltante: Number.parseInt(String(issue?.cantidad_faltante || 0), 10) || 0,
         estadoLabel: formatTransferIssueValue(issue?.estado, 'Pendiente'),
       }
@@ -2821,7 +2821,7 @@ function RecordatoriosPopup({
                 </label>
 
                 <label className="recordatorios-popup__field recordatorios-popup__field--full">
-                  <span>Descripción</span>
+                  <span>Nota</span>
                   <textarea
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
@@ -3731,7 +3731,7 @@ function RecordatoriosPopup({
                     </div>
 
                     <label className="recordatorios-popup__decision-description">
-                      <span>Descripción</span>
+                      <span>Nota</span>
                       <p>{String(decisionDetail?.descripcion || '').trim() || '-'}</p>
                     </label>
                   </>
@@ -3781,7 +3781,7 @@ function RecordatoriosPopup({
 
                     <div className="recordatorios-popup__reject-body">
                       <label className="recordatorios-popup__field recordatorios-popup__field--full">
-                        <span>Descripción (obligatoria)</span>
+                        <span>Nota (obligatoria)</span>
                         <textarea
                           value={rejectionReason}
                           onChange={(event) => setRejectionReason(event.target.value)}
@@ -3860,7 +3860,7 @@ function RecordatoriosPopup({
 
                 {!isRandomInspectionAdminSummaryReminder(activeDetailReminder) && (
                   <div className="recordatorios-popup__detail-description">
-                    <span>Descripción</span>
+                    <span>Nota</span>
                     <p>{activeDetailReminderDescription}</p>
                   </div>
                 )}

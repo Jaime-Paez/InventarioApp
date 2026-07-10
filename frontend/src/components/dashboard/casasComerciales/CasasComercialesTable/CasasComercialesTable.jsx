@@ -400,14 +400,14 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
+      { nombrevar: 'nombre', header: 'Descripción', filterPlaceholder: 'Buscar por descripción' },
       { nombrevar: 'codigo', header: 'Código', filterPlaceholder: 'Buscar por código' },
       { nombrevar: 'tipo_label', header: 'Tipo', filterPlaceholder: 'Buscar por tipo' },
       { nombrevar: 'pais_nombre', header: 'País', filterPlaceholder: 'Buscar por país' },
       { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
       { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
       { nombrevar: 'dias_entrega', header: 'Días aproximados de entrega', filterPlaceholder: 'Buscar por días' },
-      { nombrevar: 'descripcion', header: 'Descripción', filterPlaceholder: 'Buscar por descripción' },
+      { nombrevar: 'descripcion', header: 'Nota', filterPlaceholder: 'Buscar por nota' },
     ],
     []
   )
@@ -1142,7 +1142,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
                     </label>
 
                     <label className="create-user__field">
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <input name="nombre" type="text" placeholder="Ej: Casa Comercial XYZ" value={searchCriteria.nombre} onChange={handleSearchInputChange} />
                     </label>
 
@@ -1219,7 +1219,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
                     </label>
 
                     <label className="create-user__field">
-                      <span>Descripción</span>
+                      <span>Nota</span>
                       <input name="descripcion" type="text" placeholder="Ej: Proveedor principal" value={searchCriteria.descripcion} onChange={handleSearchInputChange} />
                     </label>
                   </div>

@@ -326,7 +326,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'nombre', header: 'Nombre', filterPlaceholder: 'Buscar por nombre' },
+      { nombrevar: 'nombre', header: 'Descripción', filterPlaceholder: 'Buscar por descripción' },
       { nombrevar: 'direccion', header: 'Dirección', filterPlaceholder: 'Buscar por dirección' },
       { nombrevar: 'latitud', header: 'Latitud', filterPlaceholder: 'Filtrar por latitud' },
       { nombrevar: 'longitud', header: 'Longitud', filterPlaceholder: 'Filtrar por longitud' },
@@ -957,7 +957,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <input name="nombre" type="text" placeholder="Ej: Sucursal Centro" value={searchCriteria.nombre} onChange={handleSearchInputChange} />
                     </label>
 

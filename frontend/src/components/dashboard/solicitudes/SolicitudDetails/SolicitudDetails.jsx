@@ -1725,7 +1725,7 @@ function SolicitudDetails({
                     <input name="productoCodigo" value={productFormData.productoCodigo} disabled />
                   </label>
                   <label className="create-user__field">
-                    <span>Nombre</span>
+                    <span>Descripción</span>
                     <input name="productoNombre" value={productFormData.productoNombre} disabled />
                   </label>
                   {productFormData.tabla === 'producto_solicitado' && (
@@ -1942,7 +1942,7 @@ function SolicitudDetails({
                       <div className="create-user__locations-table create-solicitud-details__oem-table">
                         <div className="create-user__locations-row create-user__locations-row--head">
                           <span>Código</span>
-                          <span>Nombre</span>
+                          <span>Descripción</span>
                           <span>Referencia</span>
                           <span>OEM</span>
                           <span>Casas comerciales</span>
@@ -2348,7 +2348,7 @@ function SolicitudDetails({
                   <div className="create-user__locations-table create-solicitud-details__items-table">
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>OEM</span>
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <span>Código</span>
                       <span>Comentario</span>
                       <span>Cantidad</span>
@@ -2372,7 +2372,7 @@ function SolicitudDetails({
                         </span>
                         <span
                           className="create-solicitud-details__cell-tip"
-                          onMouseEnter={(e) => showOemTableHover(e, [item.productoNombre].filter(Boolean), 'Nombre')}
+                          onMouseEnter={(e) => showOemTableHover(e, [item.productoNombre].filter(Boolean), 'Descripción')}
                           onMouseLeave={hideOemTableHover}
                         >
                           <span className="create-solicitud-details__cell-text">{item.productoNombre || '-'}</span>
@@ -2441,7 +2441,7 @@ function SolicitudDetails({
                 <div className="create-salida__field-group create-salida__field-group--defined">
                   <div className="create-user__grid create-user__grid--two">
                     <StaticFieldDisplay label="Cedula/RUC" value={clienteData.cedula_ruc} />
-                    <StaticFieldDisplay label="Nombres" value={clienteData.nombres} />
+                    <StaticFieldDisplay label="Descripción" value={clienteData.nombres} />
                     <StaticFieldDisplay label="Apellidos" value={clienteData.apellidos} />
                     <StaticFieldDisplay label="Correo" value={clienteData.correo} />
                     <StaticFieldDisplay label="Telefono" value={clienteData.telefono} />

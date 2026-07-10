@@ -821,7 +821,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
             </div>
             <div className="bodega-layout__grid">
               <label className="create-user__field">
-                <span>Nombre</span>
+                <span>Descripción</span>
                 <input
                   type="text"
                   value={location.nombre}

@@ -122,7 +122,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     () => [
       { nombrevar: 'origen_label', header: 'Origen', filterPlaceholder: 'Buscar por origen' },
       { nombrevar: 'solicitud_no_documento', header: 'Documento', filterPlaceholder: 'Buscar por documento' },
-      { nombrevar: 'producto_nombre', header: 'Nombre', filterPlaceholder: 'Buscar por producto' },
+      { nombrevar: 'producto_nombre', header: 'Descripción', filterPlaceholder: 'Buscar por producto' },
       { nombrevar: 'producto_codigo', header: 'Código', filterPlaceholder: 'Buscar por codigo' },
       { nombrevar: 'cantidad_faltante', header: 'Faltante', filterPlaceholder: 'Buscar por faltante' },
       { nombrevar: 'sucursal_proveedora', header: 'Sucursal proveedora', filterPlaceholder: 'Buscar por proveedora' },
@@ -241,7 +241,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
         const rowId = normalizeId(row?.id)
         const state = String(row?.estado || '').trim().toLowerCase()
         const productCode = String(row?.producto_codigo || '').trim()
-        const productName = String(row?.producto_nombre || '').trim() || 'Producto sin nombre'
+        const productName = String(row?.producto_nombre || '').trim() || 'Producto sin descripción'
         const reason = String(row?.motivo || '').trim()
         const missingQty = Number.parseInt(String(row?.cantidad_faltante || 0), 10) || 0
         const keyFallback = `${normalizeId(row?.solicitud_id)}-${normalizeId(row?.producto_id)}-${index}`
@@ -272,7 +272,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
         const rowId = normalizeId(row?.id)
         const state = String(row?.estado || '').trim().toLowerCase()
         const productCode = String(row?.producto_codigo || '').trim()
-        const productName = String(row?.producto_nombre || '').trim() || 'Producto sin nombre'
+        const productName = String(row?.producto_nombre || '').trim() || 'Producto sin descripción'
         const reason = String(row?.motivo || '').trim()
         const diffQty = Number.parseInt(String(row?.cantidad_diferencia || 0), 10) || 0
         const keyFallback = `importacion-${normalizeId(row?.importacion_id)}-${normalizeId(row?.producto_id)}-${index}`

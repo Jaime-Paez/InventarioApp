@@ -1038,7 +1038,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 <div className="create-user__locations-table importaciones-modal__products-table imp-receive__table" onKeyDown={handleProductsGridKeyDown}>
                   <div className="create-user__locations-row create-user__locations-row--head imp-receive__productos-row">
                     <span>Código</span>
-                    <span>Nombre</span>
+                    <span>Descripción</span>
                     <span>Referencia</span>
                     <span>OEM</span>
                     <span>Precio</span>
@@ -1082,7 +1082,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         </span>
                         <span
                           className="imp-table-cell-tip"
-                          onMouseEnter={(e) => showCellHover(e, row.nombre, 'Nombre')}
+                          onMouseEnter={(e) => showCellHover(e, row.nombre, 'Descripción')}
                           onMouseLeave={hideCellHover}
                         >
                           <span className="imp-table-cell-text">{row.nombre || '-'}</span>
@@ -1178,7 +1178,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     <div className="create-user__locations-table importaciones-modal__products-table imp-distribucion__table" onKeyDown={handleDistributionGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head imp-distribucion__productos-row" style={{ gridTemplateColumns: gridCols }}>
                         <span style={{ justifyContent: 'flex-start' }}>Código</span>
-                        <span style={{ justifyContent: 'flex-start' }}>Nombre</span>
+                        <span style={{ justifyContent: 'flex-start' }}>Descripción</span>
                         <span style={{ justifyContent: 'center' }}>Total</span>
                         {sucursales.map(suc => (
                           <span key={suc.id} title={suc.nombre}>{suc.nombre}</span>
@@ -1213,7 +1213,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             <span
                               className="imp-table-cell-tip"
                               style={{ justifyContent: 'flex-start' }}
-                              onMouseEnter={(e) => showCellHover(e, row.nombre, 'Nombre')}
+                              onMouseEnter={(e) => showCellHover(e, row.nombre, 'Descripción')}
                               onMouseLeave={hideCellHover}
                             >
                               <span className="imp-table-cell-text">{row.nombre || '-'}</span>
@@ -1383,7 +1383,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 {!isKit ? (
                   <div className="create-user__grid create-user__grid--two">
                     <label className={`create-user__field create-user__field--required${formErrors.nombre ? ' create-user__field--invalid' : ''}`}>
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <input type="text" value={form.nombre} onChange={(e) => setForm(f => ({ ...f, nombre: e.target.value }))} />
                       {formErrors.nombre && <small style={{ color: '#dc2626' }}>{formErrors.nombre}</small>}
                     </label>
@@ -1407,7 +1407,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                       <input type="text" placeholder="Separados por coma" value={form.oem} onChange={(e) => setForm(f => ({ ...f, oem: e.target.value }))} />
                     </label>
                     <label className="create-user__field create-user__field--full">
-                      <span>Descripción</span>
+                      <span>Nota</span>
                       <input type="text" placeholder="Opcional" value={form.descripcion} onChange={(e) => setForm(f => ({ ...f, descripcion: e.target.value }))} />
                     </label>
                   </div>
@@ -1433,7 +1433,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         </div>
                         <div className="create-user__grid create-user__grid--two">
                           <label className={`create-user__field create-user__field--required${kitFormErrors[idx]?.nombre ? ' create-user__field--invalid' : ''}`}>
-                            <span>Nombre</span>
+                            <span>Descripción</span>
                             <input type="text" value={item.nombre} onChange={(e) => updateKitForm(idx, 'nombre', e.target.value)} />
                             {kitFormErrors[idx]?.nombre && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].nombre}</small>}
                           </label>
@@ -1457,7 +1457,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             <input type="text" placeholder="Separados por coma" value={item.oem} onChange={(e) => updateKitForm(idx, 'oem', e.target.value)} />
                           </label>
                           <label className="create-user__field create-user__field--full">
-                            <span>Descripción</span>
+                            <span>Nota</span>
                             <input type="text" placeholder="Opcional" value={item.descripcion} onChange={(e) => updateKitForm(idx, 'descripcion', e.target.value)} />
                           </label>
                         </div>
@@ -1934,7 +1934,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                   </div>
                   <div className="create-user__locations-table importaciones-modal__products-table">
                     <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row">
-                      <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span><span>Comentario</span>
+                      <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span><span>Comentario</span>
                     </div>
                     {!detalles.length ? (
                       <div className="create-user__locations-row create-user__locations-row--empty imp-details__productos-row" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
@@ -1959,7 +1959,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           </span>
                           <span
                             className="imp-table-cell-tip"
-                            onMouseEnter={(e) => showCellHover(e, nombre !== '-' ? nombre : null, 'Nombre')}
+                            onMouseEnter={(e) => showCellHover(e, nombre !== '-' ? nombre : null, 'Descripción')}
                             onMouseLeave={hideCellHover}
                           >
                             <span className="imp-table-cell-text">{nombre}</span>
@@ -2200,7 +2200,7 @@ function HistorialConfirmacionModal({ imp, onClose }) {
           <div className="imp-aceptados-popup__body">
             <div className="create-user__locations-table importaciones-modal__products-table">
               <div className="create-user__locations-row create-user__locations-row--head imp-historial__row">
-                <span>Nombre</span><span>Referencia</span><span>Cant.</span><span>Precio conf.</span><span>Estado</span><span>Comentario</span>
+                <span>Descripción</span><span>Referencia</span><span>Cant.</span><span>Precio conf.</span><span>Estado</span><span>Comentario</span>
               </div>
               {historial.length === 0 ? (
                 <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}>
@@ -2210,7 +2210,7 @@ function HistorialConfirmacionModal({ imp, onClose }) {
                 <div key={i} className="create-user__locations-row imp-historial__row">
                   <span
                     className="imp-table-cell-tip"
-                    onMouseEnter={(e) => showCellHover(e, row.nombre, 'Nombre')}
+                    onMouseEnter={(e) => showCellHover(e, row.nombre, 'Descripción')}
                     onMouseLeave={hideCellHover}
                   >
                     <span className="imp-table-cell-text">{row.nombre || '-'}</span>
@@ -2250,7 +2250,7 @@ function HistorialConfirmacionModal({ imp, onClose }) {
                 <div className="create-user__locations-table importaciones-modal__products-table imp-distribucion__table">
                   <div className="create-user__locations-row create-user__locations-row--head imp-distribucion__productos-row" style={{ gridTemplateColumns: distribucionGridCols }}>
                     <span style={{ justifyContent: 'flex-start' }}>Código</span>
-                    <span style={{ justifyContent: 'flex-start' }}>Nombre</span>
+                    <span style={{ justifyContent: 'flex-start' }}>Descripción</span>
                     {distribucion.sucursales.map(suc => <span key={suc.id} title={suc.nombre}>{suc.nombre}</span>)}
                     <span>Total</span>
                   </div>
@@ -2269,7 +2269,7 @@ function HistorialConfirmacionModal({ imp, onClose }) {
                         <span
                           className="imp-table-cell-tip"
                           style={{ justifyContent: 'flex-start' }}
-                          onMouseEnter={(e) => showCellHover(e, p.nombre, 'Nombre')}
+                          onMouseEnter={(e) => showCellHover(e, p.nombre, 'Descripción')}
                           onMouseLeave={hideCellHover}
                         >
                           <span className="imp-table-cell-text">{p.nombre || '-'}</span>
@@ -2663,7 +2663,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                       <div className="create-salida__field-group create-salida__field-group--defined" style={{ marginTop: '14px' }}>
                         <div className="create-user__grid create-user__grid--two">
                           <StaticFieldDisplay label="Código" value={casaDraft.codigo} />
-                          <StaticFieldDisplay label="Nombre" value={casaDraft.nombre} />
+                          <StaticFieldDisplay label="Descripción" value={casaDraft.nombre} />
                           <div className="create-user__field create-salida__static-field">
                             <span>País</span>
                             <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2683,7 +2683,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                             value={casaDraft.dias_entrega != null ? `${casaDraft.dias_entrega} días` : ''}
                           />
                           {casaDraft.descripcion && (
-                            <StaticFieldDisplay label="Descripción" value={casaDraft.descripcion} fullWidth />
+                            <StaticFieldDisplay label="Nota" value={casaDraft.descripcion} fullWidth />
                           )}
                         </div>
                       </div>
@@ -3910,7 +3910,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                     <div className="create-salida__field-group create-salida__field-group--defined" style={{ marginTop: '14px' }}>
                       <div className="create-user__grid create-user__grid--two">
                         <StaticFieldDisplay label="Código" value={casaDraft.codigo} />
-                        <StaticFieldDisplay label="Nombre" value={casaDraft.nombre} />
+                        <StaticFieldDisplay label="Descripción" value={casaDraft.nombre} />
                         <div className="create-user__field create-salida__static-field">
                           <span>País</span>
                           <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3930,7 +3930,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                           value={casaDraft.dias_entrega != null ? `${casaDraft.dias_entrega} días` : ''}
                         />
                         {casaDraft.descripcion && (
-                          <StaticFieldDisplay label="Descripción" value={casaDraft.descripcion} fullWidth />
+                          <StaticFieldDisplay label="Nota" value={casaDraft.descripcion} fullWidth />
                         )}
                       </div>
                     </div>
@@ -3994,7 +3994,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                               </div>
                             )}
                             {selectedCasa?.descripcion && (
-                              <StaticFieldDisplay label="Descripción" value={selectedCasa.descripcion} fullWidth />
+                              <StaticFieldDisplay label="Nota" value={selectedCasa.descripcion} fullWidth />
                             )}
                           </div>
                         </div>
@@ -4035,7 +4035,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                       <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table" onKeyDown={handleProductsGridKeyDown}>
                         <div className="create-user__locations-row create-user__locations-row--head">
                           <span>Código</span>
-                          <span>Nombre</span>
+                          <span>Descripción</span>
                           <span>OEM</span>
                           <span>Referencia</span>
                           <span>Precio</span>
@@ -4083,7 +4083,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                                     {productOptions.length > 0 && (
                                       <div className="create-salida__results-header">
                                         <span>Código</span>
-                                        <span>Nombre</span>
+                                        <span>Descripción</span>
                                         <span>Stock</span>
                                       </div>
                                     )}
@@ -4192,7 +4192,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                               </span>
                               <span
                                 className="imp-table-cell-tip"
-                                onMouseEnter={(e) => showCellHover(e, nombre, 'Nombre')}
+                                onMouseEnter={(e) => showCellHover(e, nombre, 'Descripción')}
                                 onMouseLeave={hideCellHover}
                               >
                                 <span className="imp-table-cell-text">{nombre || '-'}</span>
@@ -4337,7 +4337,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   </span>
                   <span>Solicitud</span>
                   <span>Código JP</span>
-                  <span>Nombre</span>
+                  <span>Descripción</span>
                   <span>Referencia</span>
                   <span>Precio</span>
                   <span>OEMs</span>
@@ -4425,12 +4425,12 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   />
                 </label>
                 <label className={`create-user__field${nuevoProductoErrors.nombre ? ' create-user__field--invalid' : ''}`}>
-                  <span>Nombre <span style={{ color: '#dc2626' }}>*</span></span>
+                  <span>Descripción <span style={{ color: '#dc2626' }}>*</span></span>
                   <input
                     type="text"
                     value={nuevoProductoDraft.nombre}
                     onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, nombre: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, nombre: undefined })) }}
-                    placeholder="Nombre del producto"
+                    placeholder="Descripción del producto"
                     autoComplete="off"
                     autoFocus
                   />
@@ -5068,7 +5068,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const RO = 6; const ED = 3; const DIFF_CI = RO + ED
       const precioEditLabel = isVerificar ? 'Precio est.' : 'Precio conf.'
       const cantEditLabel = isVerificar ? 'Cant. aprox.' : 'Cant. conf.'
-      const headers = ['Código', 'Nombre', 'OEM', 'Referencia', 'Precio', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', '_key']
+      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'Precio', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', '_key']
       const mkH = (fill, bot) => ({ font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: fill }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: bot } }, left: bt, right: bt } })
       const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + ED ? mkH('15803d', '166534') : ci === DIFF_CI ? mkH('374151', '374151') : null)
 
@@ -5689,7 +5689,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`} onKeyDown={handleProductsGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head">
-                        <span>Código</span><span>Nombre</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span>
+                        <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span>
                         {!isVerificarOrConfirmacion && <span>Cantidad</span>}
                         {isVerificar ? (
                           <>
@@ -5764,7 +5764,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                                   {!productLoading && productQuery.trim() && !productOptions.length && <small className="muted">Sin resultados.</small>}
                                   {productOptions.length > 0 && (
                                     <div className="create-salida__results-header">
-                                      <span>Código</span><span>Nombre</span><span>Stock</span>
+                                      <span>Código</span><span>Descripción</span><span>Stock</span>
                                     </div>
                                   )}
                                   {productOptions.map((product) => {
@@ -5862,7 +5862,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             </span>
                             <span
                               className="imp-table-cell-tip"
-                              onMouseEnter={(e) => showCellHover(e, nombre, 'Nombre')}
+                              onMouseEnter={(e) => showCellHover(e, nombre, 'Descripción')}
                               onMouseLeave={hideCellHover}
                             >
                               <span className="imp-table-cell-text">{nombre}</span>
@@ -6329,12 +6329,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     />
                   </label>
                   <label className={`create-user__field${nuevoProductoErrors.nombre ? ' create-user__field--invalid' : ''}`}>
-                    <span>Nombre <span style={{ color: '#dc2626' }}>*</span></span>
+                    <span>Descripción <span style={{ color: '#dc2626' }}>*</span></span>
                     <input
                       type="text"
                       value={nuevoProductoDraft.nombre}
                       onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, nombre: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, nombre: undefined })) }}
-                      placeholder="Nombre del producto"
+                      placeholder="Descripción del producto"
                       autoComplete="off"
                       autoFocus
                     />
@@ -6452,7 +6452,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <span>
                       <input type="checkbox" checked={allSelectableSelected} disabled={filteredAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
                     </span>
-                    <span>Solicitud</span><span>Código JP</span><span>Nombre</span><span>Referencia</span><span>Precio</span><span>OEMs</span><span>Cant.</span>
+                    <span>Solicitud</span><span>Código JP</span><span>Descripción</span><span>Referencia</span><span>Precio</span><span>OEMs</span><span>Cant.</span>
                   </div>
                   {aceptadosLoading && (
                     <div className="create-user__locations-row create-user__locations-row--empty"><span>Cargando...</span></div>
@@ -6821,7 +6821,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     { key: 'estado_label', header: 'Estado' },
     { key: 'dias_entrega_estimados', header: 'Días estimados' },
     { key: 'prod_codigo', header: 'Código' },
-    { key: 'prod_nombre', header: 'Nombre' },
+    { key: 'prod_nombre', header: 'Descripción' },
     { key: 'prod_oem', header: 'OEM' },
     { key: 'prod_cantidad', header: 'Cantidad' },
   ]
@@ -7210,7 +7210,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
             <thead>
               <tr>
                 <th>Código</th>
-                <th>Nombre</th>
+                <th>Descripción</th>
                 <th>OEM</th>
                 <th className="movimientos-table__product-hover-qty">Cant.</th>
               </tr>

@@ -641,11 +641,11 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Nombre</span>
+                  <span>Descripción</span>
                   <input
                     name="nombre"
                     type="text"
-                    placeholder="Nombre de la bodega"
+                    placeholder="Descripción de la bodega"
                     value={formData.nombre}
                     onChange={handleChange}
                     required

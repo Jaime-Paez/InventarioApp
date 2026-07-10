@@ -1666,7 +1666,7 @@ function SalidaDetails({
     }
 
     if (isDevolucion && !String(formData.descripcion || '').trim()) {
-      notifyError('La Descripción es obligatoria para solicitudes de garantía.')
+      notifyError('La Nota es obligatoria para solicitudes de garantía.')
       return
     }
 
@@ -1996,7 +1996,7 @@ function SalidaDetails({
                   <div className={`create-user__locations-table create-salida__products-table${showDetailActions ? ' create-salida__products-table--with-actions' : ''}`}>
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Codigo</span>
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <span>Cantidad</span>
                       <span>Precio</span>
                       <span>Precio total</span>
@@ -2161,7 +2161,7 @@ function SalidaDetails({
                       <div key={detail.uid} className="create-user__locations-row">
                         <span>{detail.productoCodigo || '-'}</span>
                         <span
-                          onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Nombre')}
+                          onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Descripción')}
                           onMouseLeave={hideHover}
                         >
                           <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
@@ -2205,7 +2205,7 @@ function SalidaDetails({
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Datos</p>
-                      <h4>Descripcion</h4>
+                      <h4>Nota</h4>
                     </div>
                   </div>
 
@@ -2213,7 +2213,7 @@ function SalidaDetails({
                     <label className={`create-user__field create-user__field--full${isDevolucion ? ' create-user__field--required' : ''}`}>
                       <textarea
                         name="descripcion"
-                        aria-label="Descripcion"
+                        aria-label="Nota"
                         value={formData.descripcion}
                         onChange={handleChange}
                         disabled={editorDisabled}
@@ -2298,7 +2298,7 @@ function SalidaDetails({
                       </label>
 
                       <label className="create-user__field">
-                        <span>Nombres</span>
+                        <span>Descripción</span>
                         <input
                           name="nombres"
                           type="text"

@@ -2582,7 +2582,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   <div className={productosTableClassName}>
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Codigo</span>
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <span>Cantidad</span>
                       <span>Precio</span>
                       <span>Precio total</span>
@@ -2745,7 +2745,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                               )}
                             </span>
                           <span
-                            onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Nombre')}
+                            onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Descripción')}
                             onMouseLeave={hideHover}
                           >
                             <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
@@ -2804,7 +2804,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Datos</p>
-                      <h4>Descripcion</h4>
+                      <h4>Nota</h4>
                     </div>
                   </div>
 
@@ -2813,7 +2813,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       <input
                         name="descripcion"
                         type="text"
-                        aria-label="Descripcion"
+                        aria-label="Nota"
                         value={formData.descripcion}
                         onChange={handleChange}
                         disabled={editorDisabled}
@@ -2896,7 +2896,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       </label>
 
                       <label className="create-user__field">
-                        <span>Nombres</span>
+                        <span>Descripción</span>
                         <input
                           name="nombres"
                           type="text"

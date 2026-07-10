@@ -670,11 +670,11 @@ function SucursalDetails({
 
                 <div className="create-user__grid create-user__grid--two">
                   <label className="create-user__field create-user__field--full">
-                    <span>Nombre</span>
+                    <span>Descripción</span>
                     <input
                       name="nombre"
                       type="text"
-                      placeholder="Nombre de la sucursal"
+                      placeholder="Descripción de la sucursal"
                       value={formData.nombre}
                       onChange={handleChange}
                       disabled={!isEditing || loadingData || saving}

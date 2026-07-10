@@ -1262,7 +1262,7 @@ function SalidasTable({
       if (col.nombrevar === 'productos_resumen') {
         return [
           { key: 'producto_codigo', header: 'Código' },
-          { key: 'producto_nombre', header: 'Nombre producto' },
+          { key: 'producto_nombre', header: 'Descripción producto' },
           { key: 'producto_cantidad', header: 'Cantidad' },
         ]
       }

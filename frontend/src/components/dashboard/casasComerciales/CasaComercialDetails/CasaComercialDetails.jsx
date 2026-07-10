@@ -630,7 +630,7 @@ function CasaComercialDetails({
                 </label>
 
                 <label className="create-user__field create-user__field--required">
-                  <span>Nombre</span>
+                  <span>Descripción</span>
                   <input
                     name="nombre"
                     type="text"
@@ -750,7 +750,7 @@ function CasaComercialDetails({
                 </label>
 
                 <label className="create-user__field create-user__field--full">
-                  <span>Descripción</span>
+                  <span>Nota</span>
                   <input
                     name="descripcion"
                     type="text"

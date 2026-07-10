@@ -1267,7 +1267,7 @@ function UsersDetails({
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Nombres</span>
+                  <span>Descripción</span>
                   <input
                     name="nombres"
                     type="text"

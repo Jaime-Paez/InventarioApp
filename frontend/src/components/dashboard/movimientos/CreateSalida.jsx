@@ -2871,7 +2871,7 @@ function CreateSalida({
     }
 
     if (isDevolucion && !String(formData.descripcion || '').trim()) {
-      notifyError('La Descripción es obligatoria para solicitudes de garantía.')
+      notifyError('La Nota es obligatoria para solicitudes de garantía.')
       return false
     }
 
@@ -3450,7 +3450,7 @@ function CreateSalida({
                   <div className={`create-user__locations-table create-salida__products-table${!isPrefilledTransfer ? ' create-salida__products-table--with-actions' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span>
-                        <span>Nombre</span>
+                        <span>Descripción</span>
                         <span>Cantidad</span>
                         <span>Precio</span>
                         <span>Precio total</span>
@@ -3563,7 +3563,7 @@ function CreateSalida({
                                 {productOptions.length > 0 && (
                                   <div className="create-salida__results-header">
                                     <span>Código</span>
-                                    <span>Nombre</span>
+                                    <span>Descripción</span>
                                     <span>Cantidad</span>
                                   </div>
                                 )}
@@ -3656,7 +3656,7 @@ function CreateSalida({
                       <div key={detail.uid} className="create-user__locations-row">
                         <span>{detail.productoCodigo || '-'}</span>
                         <span
-                          onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Nombre')}
+                          onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Descripción')}
                           onMouseLeave={hideHover}
                         >
                           <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
@@ -3720,7 +3720,7 @@ function CreateSalida({
 
                 <section className="create-user__section">
                   <label className={`create-user__field create-user__field--full${isDevolucion ? ' create-user__field--required' : ''}`}>
-                    <span>Descripción</span>
+                    <span>Nota</span>
                     <textarea
                       name="descripcion"
                       value={formData.descripcion}
@@ -3854,7 +3854,7 @@ function CreateSalida({
                           </label>
 
                           <label className="create-user__field">
-                            <span>Nombres</span>
+                            <span>Descripción</span>
                             <input
                               name="nombres"
                               type="text"

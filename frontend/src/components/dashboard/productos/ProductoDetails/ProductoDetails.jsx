@@ -1424,7 +1424,7 @@ function ProductoDetails({
                   disabled={isSelected || editorDisabled}
                 >
                   <div className="create-user__result-info">
-                    <strong>{product.nombre || 'Sin nombre'}</strong>
+                    <strong>{product.nombre || 'Sin descripción'}</strong>
                     <small>{product.codigo ? `Código: ${product.codigo}` : `ID: ${product.id}`}</small>
                   </div>
                   <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
@@ -1579,7 +1579,7 @@ function ProductoDetails({
                   </div>
                   <div className="create-salida__field-group create-salida__field-group--defined">
                     <div className="create-user__grid create-user__grid--two">
-                      <StaticFieldDisplay label="Nombre" value={formData.nombre} />
+                      <StaticFieldDisplay label="Descripción" value={formData.nombre} />
                       <StaticFieldDisplay label="Código" value={formData.codigo} />
                       <StaticFieldDisplay label="Referencia" value={formData.referencia} />
                       <StaticFieldDisplay label="Casa comercial" value={selectedCasa?.nombre} />
@@ -1613,7 +1613,7 @@ function ProductoDetails({
 
                 {formData.descripcion ? (
                   <section className="create-user__section">
-                    <div className="create-user__section-header"><h4>Descripción</h4></div>
+                    <div className="create-user__section-header"><h4>Nota</h4></div>
                     <div className="create-salida__field-group create-salida__field-group--defined">
                       <div className="create-user__grid create-user__grid--two">
                         <StaticFieldDisplay label="" value={formData.descripcion} fullWidth />
@@ -1635,7 +1635,7 @@ function ProductoDetails({
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field create-user__field--required">
-                      <span>Nombre</span>
+                      <span>Descripción</span>
                       <input
                         name="nombre"
                         type="text"
@@ -1856,7 +1856,7 @@ function ProductoDetails({
                 <section className="create-user__section">
                   <div className="create-user__section-header">
                     <div>
-                      <h4>Descripción</h4>
+                      <h4>Nota</h4>
                     </div>
                   </div>
                   <div className="create-user__grid create-user__grid--two">
@@ -1885,7 +1885,7 @@ function ProductoDetails({
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>Código</span>
                     <span>Producto</span>
-                    <span>Descripción</span>
+                    <span>Nota</span>
                     <span>Acciones</span>
                   </div>
 
@@ -1933,7 +1933,7 @@ function ProductoDetails({
                   {alternativas.map((alterno, index) => (
                     <div key={`${alterno.id}-${index}`} className="create-user__locations-row">
                       <span>{alterno.codigo || '-'}</span>
-                      <span>{alterno.nombre || 'Sin nombre'}</span>
+                      <span>{alterno.nombre || 'Sin descripción'}</span>
                       <span title={alterno.descripcion || ''}>{alterno.descripcion || '-'}</span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
