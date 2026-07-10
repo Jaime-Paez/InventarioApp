@@ -12,6 +12,7 @@ import useModalAnimation from '../../common/useModalAnimation'
 import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
 import { formatMoneyFromValue, formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
+import { toUpperCode } from '../../../../utils/textInput'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -650,6 +651,13 @@ function ProductoDetails({
       setFormData((prev) => ({
         ...prev,
         [name]: formatMoneyInput(value),
+      }))
+      return
+    }
+    if (name === 'codigo') {
+      setFormData((prev) => ({
+        ...prev,
+        codigo: toUpperCode(value),
       }))
       return
     }

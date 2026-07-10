@@ -3,6 +3,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 import { formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
+import { toUpperCode } from '../../../../utils/textInput'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -25,8 +26,6 @@ const parseQuantity = (value) => {
   if (!Number.isFinite(parsed)) return null
   return Math.max(0, Math.floor(parsed))
 }
-const toUpperProductCode = (value) => String(value ?? '').toLocaleUpperCase('es-EC')
-
 const mergeByIdList = (current, incoming) => {
   const map = new Map(
     (Array.isArray(current) ? current : []).map((item) => [String(item?.id ?? ''), item]).filter(([key]) => key)
@@ -523,7 +522,7 @@ function CreateProducto({
   useEffect(() => {
     if (!open) return
     const nextInitialData = initialData && typeof initialData === 'object' ? initialData : {}
-    const nextCodigo = toUpperProductCode(nextInitialData.codigo).trim()
+    const nextCodigo = toUpperCode(nextInitialData.codigo).trim()
     const nextNombre = String(nextInitialData.nombre || '').trim()
     const nextDescripcion = String(nextInitialData.descripcion || '').trim()
     const nextOemItems = Array.isArray(nextInitialData.oemItems)
@@ -787,7 +786,7 @@ function CreateProducto({
   const handleChange = (event) => {
     const { name, value } = event.target
     if (name === 'codigo') {
-      const normalizedCode = toUpperProductCode(value)
+      const normalizedCode = toUpperCode(value)
       setFormData((prev) => ({
         ...prev,
         codigo: normalizedCode,
@@ -1375,7 +1374,7 @@ function CreateProducto({
     }
 
     const payload = {
-      codigo: toUpperProductCode(formData.codigo).trim(),
+      codigo: toUpperCode(formData.codigo).trim(),
       nombre: formData.nombre.trim(),
       descripcion: formData.descripcion.trim(),
       referencia: formData.referencia.trim(),

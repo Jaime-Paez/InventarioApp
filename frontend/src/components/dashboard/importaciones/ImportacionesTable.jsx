@@ -13,6 +13,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import { formatDate } from '../../../utils/dateFormat'
+import { toUpperCode } from '../../../utils/textInput'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import '../admin/UsersTable/UsersTable.css'
@@ -26,8 +27,6 @@ const getProductoOem = (producto) =>
   (producto?.oem_productos || []).map((r) => r?.oem?.codigo).filter(Boolean).join(', ')
 
 const toNumberOrNull = (v) => (v === '' || v == null ? null : Number(v))
-
-const toUpperProductCode = (value) => String(value ?? '').toLocaleUpperCase('es-EC')
 
 const getCantidadRecibidaCeiling = (row) => {
   const n = parseInt(row.cantidadRecibida, 10)
@@ -572,7 +571,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const openProductForm = (row) => {
     setEditingId(row.id)
     setForm({
-      codigo: toUpperProductCode(row.codigo || ''),
+      codigo: toUpperCode(row.codigo || ''),
       nombre: row.nombre || '',
       precio: row.precio != null ? String(row.precio) : '',
       referencia: row.referencia || '',
@@ -708,7 +707,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const createOrLinkProduct = async (item, casaId) => {
     try {
       const payload = {
-        codigo: toUpperProductCode(item.codigo).trim(),
+        codigo: toUpperCode(item.codigo).trim(),
         nombre: item.nombre.trim(),
         precio: parseFloat(item.precio),
         referencia: item.referencia.trim(),
@@ -1469,7 +1468,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                       <span>Código JP</span>
                       <div style={{ position: 'relative' }}>
                         <input type="text" autoCapitalize="characters" spellCheck={false} style={{ paddingRight: 34 }} value={form.codigo} onChange={(e) => {
-                          const v = toUpperProductCode(e.target.value)
+                          const v = toUpperCode(e.target.value)
                           setForm(f => ({ ...f, codigo: v }))
                           scheduleDupCheck('single-codigo', 'codigo', v)
                         }} />
@@ -1533,7 +1532,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             <span>Código JP</span>
                             <div style={{ position: 'relative' }}>
                               <input type="text" autoCapitalize="characters" spellCheck={false} style={{ paddingRight: 34 }} value={item.codigo} onChange={(e) => {
-                                const v = toUpperProductCode(e.target.value)
+                                const v = toUpperCode(e.target.value)
                                 updateKitForm(idx, 'codigo', v)
                                 scheduleDupCheck(`kit-${item._key}-codigo`, 'codigo', v, kitForms.filter((_, i) => i !== idx).map(k => k.codigo))
                               }} />
@@ -1963,22 +1962,25 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     </div>
                   </div>
 
-                  {imp.estado === 'en_camino' && (
+                  {(imp.estado === 'en_camino' || imp.estado === 'importada') && (
                     <div style={{ marginBottom: 22 }}>
-                      <p className="create-user__eyebrow" style={{ marginBottom: 10 }}>Seguimiento del envío</p>
+                      <p className="create-user__eyebrow" style={{ marginBottom: 10 }}>
+                        {imp.estado === 'importada' ? 'Historial del envío' : 'Seguimiento del envío'}
+                      </p>
                       <div className="imp-tracker">
                         {IMPORT_TRACKER_STEPS.map((trackerStep, idx) => {
                           const rawValue = imp[trackerStep.field]
                           const value = trackerStep.isDateTime ? String(rawValue || '').slice(0, 10) : (rawValue || '')
                           const filled = Boolean(value)
+                          const isEditable = trackerStep.editable && imp.estado !== 'importada'
                           return (
                             <div key={trackerStep.field} className={`imp-tracker__step${filled ? ' is-filled' : ''}`}>
                               <button
                                 type="button"
-                                className={`imp-tracker__dot${filled ? ' is-filled' : ''}${trackerStep.editable ? ' is-editable' : ''}`}
-                                onClick={() => trackerStep.editable && openTrackerEditor(trackerStep.field, value)}
-                                disabled={!trackerStep.editable}
-                                title={trackerStep.editable ? 'Clic para editar la fecha' : undefined}
+                                className={`imp-tracker__dot${filled ? ' is-filled' : ''}${isEditable ? ' is-editable' : ''}`}
+                                onClick={() => isEditable && openTrackerEditor(trackerStep.field, value)}
+                                disabled={!isEditable}
+                                title={isEditable ? 'Clic para editar la fecha' : undefined}
                               >
                                 {filled ? <Check size={14} /> : idx + 1}
                               </button>
@@ -4525,7 +4527,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   <input
                     type="text"
                     value={nuevoProductoDraft.codigo}
-                    onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, codigo: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, codigo: undefined })) }}
+                    onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, codigo: toUpperCode(e.target.value) })); setNuevoProductoErrors((p) => ({ ...p, codigo: undefined })) }}
                     placeholder="Opcional"
                     autoComplete="off"
                   />
@@ -6429,7 +6431,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                     <input
                       type="text"
                       value={nuevoProductoDraft.codigo}
-                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, codigo: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, codigo: undefined })) }}
+                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, codigo: toUpperCode(e.target.value) })); setNuevoProductoErrors((p) => ({ ...p, codigo: undefined })) }}
                       placeholder="Opcional"
                       autoComplete="off"
                     />
