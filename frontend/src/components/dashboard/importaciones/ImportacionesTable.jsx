@@ -1768,6 +1768,69 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     if (cellHoverTimerRef.current) { clearTimeout(cellHoverTimerRef.current); cellHoverTimerRef.current = null }
     setCellHover(null)
   }, [])
+
+  // A qué sucursales se envió cada producto y en qué cantidad, derivado de los
+  // envíos generados al confirmar la llegada (solo existen una vez "importada").
+  const enviosDistribucion = useMemo(() => {
+    const envios = Array.isArray(imp?.envios) ? imp.envios : []
+    const porProducto = new Map()
+    const sucursalesMap = new Map()
+    envios.forEach((envio) => {
+      const sucursalId = envio.sucursal_id
+      const sucursalNombre = envio.sucursal_nombre || (sucursalId != null ? `Sucursal ${sucursalId}` : 'Sucursal')
+      if (sucursalId != null) sucursalesMap.set(sucursalId, sucursalNombre)
+      ;(envio.detalles || []).forEach((det) => {
+        const productoId = det.producto_id
+        if (productoId == null) return
+        if (!porProducto.has(productoId)) porProducto.set(productoId, [])
+        porProducto.get(productoId).push({ sucursalId, sucursalNombre, cantidad: Number(det.cantidad || 0) })
+      })
+    })
+    const sucursales = Array.from(sucursalesMap.entries())
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    return { porProducto, sucursales }
+  }, [imp?.envios])
+
+  const handleDownloadExcel = useCallback(async () => {
+    const { sucursales, porProducto } = enviosDistribucion
+    const detallesList = imp?.detalles || []
+    const columns = [
+      { key: 'codigo', header: 'Código' },
+      { key: 'nombre', header: 'Descripción' },
+      { key: 'oem', header: 'OEM' },
+      { key: 'referencia', header: 'Referencia' },
+      { key: 'precio', header: 'Precio' },
+      { key: 'cantidad', header: 'Cantidad' },
+      ...sucursales.map((s) => ({ key: `suc_${s.id}`, header: s.nombre })),
+      { key: 'comentario', header: 'Comentario' },
+    ]
+    const rows = detallesList.map((d) => {
+      const productoId = d.producto?.id
+      const envios = productoId != null ? (porProducto.get(productoId) || []) : []
+      const row = {
+        codigo: d.producto?.codigo || d.codigo || '-',
+        nombre: d.producto?.nombre || d.nombre || '-',
+        oem: getProductoOem(d.producto) || d.oem || '-',
+        referencia: d.producto?.referencia || d.referencia || '-',
+        precio: d.precio_confirmado != null ? Number(d.precio_confirmado).toFixed(2) : '-',
+        cantidad: d.cantidad_confirmada ?? d.cantidad ?? '-',
+        comentario: d.comentario || '',
+      }
+      sucursales.forEach((s) => {
+        const found = envios.find((e) => e.sucursalId === s.id)
+        row[`suc_${s.id}`] = found ? found.cantidad : ''
+      })
+      return row
+    })
+    await exportToExcel({
+      rows,
+      columns,
+      valueGetter: (row, key) => row[key],
+      fileName: buildFileName(`importacion-${imp?.codigo || imp?.id}`),
+    })
+  }, [enviosDistribucion, imp?.detalles, imp?.codigo, imp?.id])
+
   const modalRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
@@ -1890,6 +1953,12 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
 
   if (!imp) return null
   const detalles = imp.detalles || []
+  const sucursalesCols = enviosDistribucion.sucursales
+  const productosGridTemplate = [
+    'minmax(72px, 0.7fr)', 'minmax(100px, 1fr)', 'minmax(72px, 0.7fr)', 'minmax(82px, 0.8fr)', 'minmax(60px, 0.55fr)', '88px',
+    ...sucursalesCols.map(() => 'minmax(90px, 0.8fr)'),
+    'minmax(120px, 1.2fr)',
+  ].join(' ')
   const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
 
   const ribbonClass = imp.estado === 'importada'
@@ -2041,8 +2110,10 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     </div>
                   </div>
                   <div className="create-user__locations-table importaciones-modal__products-table">
-                    <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row">
-                      <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span><span>Comentario</span>
+                    <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: productosGridTemplate }}>
+                      <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
+                      {sucursalesCols.map((s) => <span key={s.id}>{s.nombre}</span>)}
+                      <span>Comentario</span>
                     </div>
                     {!detalles.length ? (
                       <div className="create-user__locations-row create-user__locations-row--empty imp-details__productos-row" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
@@ -2056,8 +2127,9 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
                       const cantidad = d.cantidad_confirmada ?? d.cantidad ?? '-'
                       const comentario = d.comentario || '-'
+                      const envios = d.producto?.id != null ? (enviosDistribucion.porProducto.get(d.producto.id) || []) : []
                       return (
-                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
+                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: productosGridTemplate }}>
                           <span
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => !sinCat && showCellHover(e, codigo, 'Código')}
@@ -2100,6 +2172,14 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           >
                             <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{cantidad}</span>
                           </span>
+                          {sucursalesCols.map((s) => {
+                            const found = envios.find((e) => e.sucursalId === s.id)
+                            return (
+                              <span key={s.id} className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>
+                                {found ? found.cantidad : '-'}
+                              </span>
+                            )
+                          })}
                           <span
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => showCellHover(e, comentario !== '-' ? comentario : null, 'Comentario')}
@@ -2118,6 +2198,15 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
           </div>
 
           <div className="create-user__footer">
+            {imp.estado === 'importada' && (
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={handleDownloadExcel}
+              >
+                Descargar Excel
+              </button>
+            )}
             {(imp.estado === 'en_camino' || imp.estado === 'importada') && Array.isArray(imp.historial_confirmacion) && imp.historial_confirmacion.length > 0 && (
               <button
                 type="button"
