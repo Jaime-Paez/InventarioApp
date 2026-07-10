@@ -395,6 +395,14 @@
    especificidad aquí. */
 .importaciones-modal__products-table.imp-details__productos-table {
   overflow-x: auto;
+  /* Las esquinas redondeadas (border-radius: 10px, heredado de
+     .create-user__locations-table) recortaban bien el contenido cuando
+     overflow-x era hidden, pero la barra de scroll horizontal nativa
+     siempre se dibuja como un rectángulo recto: con overflow-x: auto se
+     sale del borde redondeado de abajo. Se cuadran solo las esquinas
+     inferiores (donde vive esa barra) para que no lo desborden. */
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .imp-historial__row {
