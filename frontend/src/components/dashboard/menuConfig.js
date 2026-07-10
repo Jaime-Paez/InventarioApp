@@ -14,6 +14,7 @@ import {
   ClipboardCheck,
   ScrollText,
   PackagePlus,
+  PackageCheck,
   Truck,
   Hand,
 } from 'lucide-react'
@@ -48,7 +49,7 @@ export const MENU_STRUCTURE = [
     icon: PackagePlus,
     children: [
       { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
-      { label: 'En camino', icon: Truck, moduleKey: 'importaciones' },
+      { label: 'Importaciones', icon: PackageCheck, moduleKey: 'importaciones' },
     ],
   },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
@@ -307,10 +308,17 @@ export const filterMenuByPermissions = (
     .filter(Boolean)
 }
 
+// Solo se incluyen los ítems seleccionables (hojas): los grupos con hijos nunca
+// son un tab por sí mismos (el Sidebar solo los usa para expandir/colapsar), y
+// si un grupo comparte label con uno de sus hijos (p. ej. "Importaciones"),
+// incluir el grupo haría que el match por label devolviera el grupo primero.
 const flattenMenu = (menu) =>
   menu.reduce((acc, item) => {
-    acc.push(item)
-    if (item.children?.length) acc.push(...flattenMenu(item.children))
+    if (item.children?.length) {
+      acc.push(...flattenMenu(item.children))
+    } else {
+      acc.push(item)
+    }
     return acc
   }, [])
 

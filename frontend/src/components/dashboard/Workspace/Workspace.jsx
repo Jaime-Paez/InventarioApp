@@ -119,8 +119,10 @@ function Workspace({
 
   const handleOpenImportacionBorrador = useCallback((borradorData) => {
     // Tabs that show borradores (no fixed statusProp). Prefer whichever is already open.
-    const borradorCapableTabs = ['En camino', 'Importaciones']
-    const targetTab = openTabs.find((t) => borradorCapableTabs.includes(t)) || 'En camino'
+    // 'En camino' queda solo por compatibilidad con tabs viejos ya abiertos antes del
+    // rename del menú a 'Importaciones'.
+    const borradorCapableTabs = ['Importaciones', 'En camino']
+    const targetTab = openTabs.find((t) => borradorCapableTabs.includes(t)) || 'Importaciones'
     onSelectTab?.(targetTab)
     setPendingOpenBorradorData(borradorData)
     setPendingOpenBorradorTab(targetTab)
@@ -128,11 +130,11 @@ function Workspace({
 
   const handleOpenImportacionDetails = useCallback((importacionId, estado) => {
     const tabByEstado = {
-      en_camino: 'En camino',
+      en_camino: 'Importaciones',
       importada: 'Importadas',
       borrador: 'Importaciones',
     }
-    const preferredTab = tabByEstado[estado] || 'En camino'
+    const preferredTab = tabByEstado[estado] || 'Importaciones'
     const targetTab = openTabs.includes(preferredTab) ? preferredTab : preferredTab
     onSelectTab?.(targetTab)
     setPendingOpenDetailsId(importacionId)

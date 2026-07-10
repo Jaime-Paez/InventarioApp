@@ -985,7 +985,6 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                       value={fechaLlegada}
                       onChange={(e) => setFechaLlegada(e.target.value)}
                       min={fechaLlegadaMinDate || undefined}
-                      max={todayISO()}
                     />
                     {fechaLlegadaMinDate && (
                       <small style={{ color: 'var(--color-text-secondary)' }}>
