@@ -27,6 +27,8 @@ const getProductoOem = (producto) =>
 
 const toNumberOrNull = (v) => (v === '' || v == null ? null : Number(v))
 
+const toUpperProductCode = (value) => String(value ?? '').toLocaleUpperCase('es-EC')
+
 const getCantidadRecibidaCeiling = (row) => {
   const n = parseInt(row.cantidadRecibida, 10)
   return Number.isFinite(n) ? n : row.cantidad
@@ -565,10 +567,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     [sucursalesWithDistribution, recipientsBySucursal]
   )
 
+  const makeKitItemKey = () => `kit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
   const openProductForm = (row) => {
     setEditingId(row.id)
     setForm({
-      codigo: row.codigo || '',
+      codigo: toUpperProductCode(row.codigo || ''),
       nombre: row.nombre || '',
       precio: row.precio != null ? String(row.precio) : '',
       referencia: row.referencia || '',
@@ -579,16 +583,19 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     setKitForms([])
     setKitFormErrors([])
     setFormErrors({})
+    Object.values(dupCheckTimersRef.current).forEach(clearTimeout)
+    dupCheckTimersRef.current = {}
+    setDupStatus({})
   }
 
-  const emptyKitItem = () => ({ codigo: '', nombre: '', precio: '', referencia: '', oem: '', descripcion: '' })
+  const emptyKitItem = () => ({ _key: makeKitItemKey(), codigo: '', nombre: '', precio: '', referencia: '', oem: '', descripcion: '' })
 
   // "Es Kit": lo que llegó como 1 ítem en realidad son varios productos distintos
   // (cada uno con su propio código), así que se crean todos por separado.
   const toggleKit = () => {
     setIsKit(prev => {
       const next = !prev
-      if (next) setKitForms(kf => (kf.length >= 2 ? kf : [{ ...form }, emptyKitItem()]))
+      if (next) setKitForms(kf => (kf.length >= 2 ? kf : [{ ...form, _key: makeKitItemKey() }, emptyKitItem()]))
       return next
     })
     setFormErrors({})
@@ -596,8 +603,72 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   }
 
   const addKitRow = () => setKitForms(prev => [...prev, emptyKitItem()])
-  const removeKitRow = (idx) => setKitForms(prev => (prev.length > 2 ? prev.filter((_, i) => i !== idx) : prev))
+  const removeKitRow = (idx) => setKitForms(prev => {
+    if (prev.length <= 2) return prev
+    const removed = prev[idx]
+    if (removed) {
+      const keys = [`kit-${removed._key}-codigo`, `kit-${removed._key}-referencia`]
+      keys.forEach(k => { if (dupCheckTimersRef.current[k]) { clearTimeout(dupCheckTimersRef.current[k]); delete dupCheckTimersRef.current[k] } })
+      setDupStatus(ds => { const next = { ...ds }; keys.forEach(k => delete next[k]); return next })
+    }
+    return prev.filter((_, i) => i !== idx)
+  })
   const updateKitForm = (idx, field, value) => setKitForms(prev => prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item)))
+
+  // Valida en vivo que el código/referencia no estén ya en uso: por otro producto
+  // del catálogo, o por otra fila del mismo kit.
+  const [dupStatus, setDupStatus] = useState({})
+  const dupCheckTimersRef = useRef({})
+  const dupCheckSeqRef = useRef({})
+
+  const scheduleDupCheck = useCallback((key, field, value, siblingValues = []) => {
+    if (dupCheckTimersRef.current[key]) clearTimeout(dupCheckTimersRef.current[key])
+    const term = String(value ?? '').trim()
+    const fieldLabel = field === 'codigo' ? 'código' : 'referencia'
+    if (!term) {
+      setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: '', checked: false } }))
+      return
+    }
+    const dupInKit = siblingValues.some(v => String(v ?? '').trim().toLowerCase() === term.toLowerCase())
+    if (dupInKit) {
+      setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: `Este ${fieldLabel} se repite en el kit.`, checked: true } }))
+      return
+    }
+    if (!token) { setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: '', checked: false } })); return }
+    const seq = (dupCheckSeqRef.current[key] = (dupCheckSeqRef.current[key] || 0) + 1)
+    setDupStatus(prev => ({ ...prev, [key]: { checking: true, error: '', checked: false } }))
+    dupCheckTimersRef.current[key] = setTimeout(async () => {
+      try {
+        const resp = await authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`, {}, token)
+        if (dupCheckSeqRef.current[key] !== seq) return
+        if (!resp.ok) { setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: '', checked: false } })); return }
+        const data = await resp.json()
+        const list = Array.isArray(data) ? data : data?.results || []
+        const exists = list.some(p => String(p?.[field] ?? '').trim().toLowerCase() === term.toLowerCase())
+        setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: exists ? `Este ${fieldLabel} ya existe.` : '', checked: true } }))
+      } catch {
+        if (dupCheckSeqRef.current[key] !== seq) return
+        setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: '', checked: false } }))
+      }
+    }, 350)
+  }, [token])
+
+  const renderDupIcon = (status, fieldLabel) => {
+    if (!status?.checked) return null
+    const isError = Boolean(status.error)
+    return (
+      <span
+        onMouseEnter={(e) => showCellHover(e, [status.error || 'Disponible'], fieldLabel)}
+        onMouseLeave={hideCellHover}
+        style={{
+          position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+          display: 'inline-flex', color: isError ? '#dc2626' : '#16a34a', cursor: 'default', pointerEvents: 'auto',
+        }}
+      >
+        {isError ? <X size={16} /> : <Check size={16} />}
+      </span>
+    )
+  }
 
   const linkOemsToProduct = async (productId, oemText) => {
     const codes = [...new Set(String(oemText || '').split(',').map(s => s.trim()).filter(Boolean))]
@@ -637,7 +708,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const createOrLinkProduct = async (item, casaId) => {
     try {
       const payload = {
-        codigo: item.codigo.trim(),
+        codigo: toUpperProductCode(item.codigo).trim(),
         nombre: item.nombre.trim(),
         precio: parseFloat(item.precio),
         referencia: item.referencia.trim(),
@@ -695,6 +766,10 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       else setFormErrors(errsList[0])
       return
     }
+    const dupKeys = isKit
+      ? items.flatMap(item => [`kit-${item._key}-codigo`, `kit-${item._key}-referencia`])
+      : ['single-codigo', 'single-referencia']
+    if (dupKeys.some(k => dupStatus[k]?.checking || dupStatus[k]?.error)) return
     const casaId = imp.casa_comercial?.id
     if (!casaId) { setFormErrors({ _general: 'La importación no tiene casa comercial asignada.' }); return }
 
@@ -1342,6 +1417,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
       {editingId !== null && (() => {
         const row = rows.find(r => r.id === editingId)
+        const dupCheckKeys = isKit
+          ? kitForms.flatMap(item => [`kit-${item._key}-codigo`, `kit-${item._key}-referencia`])
+          : ['single-codigo', 'single-referencia']
         return createPortal(
           <div
             className={`quick-actions__receive-overlay ${mode}`}
@@ -1387,9 +1465,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                       <input type="text" value={form.nombre} onChange={(e) => setForm(f => ({ ...f, nombre: e.target.value }))} />
                       {formErrors.nombre && <small style={{ color: '#dc2626' }}>{formErrors.nombre}</small>}
                     </label>
-                    <label className={`create-user__field create-user__field--required${formErrors.codigo ? ' create-user__field--invalid' : ''}`}>
+                    <label className={`create-user__field create-user__field--required${(formErrors.codigo || dupStatus['single-codigo']?.error) ? ' create-user__field--invalid' : ''}`}>
                       <span>Código JP</span>
-                      <input type="text" value={form.codigo} onChange={(e) => setForm(f => ({ ...f, codigo: e.target.value }))} />
+                      <div style={{ position: 'relative' }}>
+                        <input type="text" autoCapitalize="characters" spellCheck={false} style={{ paddingRight: 34 }} value={form.codigo} onChange={(e) => {
+                          const v = toUpperProductCode(e.target.value)
+                          setForm(f => ({ ...f, codigo: v }))
+                          scheduleDupCheck('single-codigo', 'codigo', v)
+                        }} />
+                        {renderDupIcon(dupStatus['single-codigo'], 'Código JP')}
+                      </div>
                       {formErrors.codigo && <small style={{ color: '#dc2626' }}>{formErrors.codigo}</small>}
                     </label>
                     <label className={`create-user__field create-user__field--required${formErrors.precio ? ' create-user__field--invalid' : ''}`}>
@@ -1397,9 +1482,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                       <input type="number" min="0" step="0.01" placeholder="0.00" value={form.precio} onChange={(e) => setForm(f => ({ ...f, precio: e.target.value }))} />
                       {formErrors.precio && <small style={{ color: '#dc2626' }}>{formErrors.precio}</small>}
                     </label>
-                    <label className={`create-user__field create-user__field--required${formErrors.referencia ? ' create-user__field--invalid' : ''}`}>
+                    <label className={`create-user__field create-user__field--required${(formErrors.referencia || dupStatus['single-referencia']?.error) ? ' create-user__field--invalid' : ''}`}>
                       <span>Referencia</span>
-                      <input type="text" value={form.referencia} onChange={(e) => setForm(f => ({ ...f, referencia: e.target.value }))} />
+                      <div style={{ position: 'relative' }}>
+                        <input type="text" style={{ paddingRight: 34 }} value={form.referencia} onChange={(e) => {
+                          const v = e.target.value
+                          setForm(f => ({ ...f, referencia: v }))
+                          scheduleDupCheck('single-referencia', 'referencia', v)
+                        }} />
+                        {renderDupIcon(dupStatus['single-referencia'], 'Referencia')}
+                      </div>
                       {formErrors.referencia && <small style={{ color: '#dc2626' }}>{formErrors.referencia}</small>}
                     </label>
                     <label className="create-user__field">
@@ -1417,7 +1509,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                       Este ítem llegó como kit: crea un producto de catálogo distinto por cada componente, con su propio código.
                     </p>
                     {kitForms.map((item, idx) => (
-                      <div key={idx} style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '12px 14px' }}>
+                      <div key={item._key} style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '12px 14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                           <strong style={{ fontSize: '0.82rem' }}>Producto {idx + 1}</strong>
                           <button
@@ -1437,9 +1529,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             <input type="text" value={item.nombre} onChange={(e) => updateKitForm(idx, 'nombre', e.target.value)} />
                             {kitFormErrors[idx]?.nombre && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].nombre}</small>}
                           </label>
-                          <label className={`create-user__field create-user__field--required${kitFormErrors[idx]?.codigo ? ' create-user__field--invalid' : ''}`}>
+                          <label className={`create-user__field create-user__field--required${(kitFormErrors[idx]?.codigo || dupStatus[`kit-${item._key}-codigo`]?.error) ? ' create-user__field--invalid' : ''}`}>
                             <span>Código JP</span>
-                            <input type="text" value={item.codigo} onChange={(e) => updateKitForm(idx, 'codigo', e.target.value)} />
+                            <div style={{ position: 'relative' }}>
+                              <input type="text" autoCapitalize="characters" spellCheck={false} style={{ paddingRight: 34 }} value={item.codigo} onChange={(e) => {
+                                const v = toUpperProductCode(e.target.value)
+                                updateKitForm(idx, 'codigo', v)
+                                scheduleDupCheck(`kit-${item._key}-codigo`, 'codigo', v, kitForms.filter((_, i) => i !== idx).map(k => k.codigo))
+                              }} />
+                              {renderDupIcon(dupStatus[`kit-${item._key}-codigo`], 'Código JP')}
+                            </div>
                             {kitFormErrors[idx]?.codigo && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].codigo}</small>}
                           </label>
                           <label className={`create-user__field create-user__field--required${kitFormErrors[idx]?.precio ? ' create-user__field--invalid' : ''}`}>
@@ -1447,9 +1546,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             <input type="number" min="0" step="0.01" placeholder="0.00" value={item.precio} onChange={(e) => updateKitForm(idx, 'precio', e.target.value)} />
                             {kitFormErrors[idx]?.precio && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].precio}</small>}
                           </label>
-                          <label className={`create-user__field create-user__field--required${kitFormErrors[idx]?.referencia ? ' create-user__field--invalid' : ''}`}>
+                          <label className={`create-user__field create-user__field--required${(kitFormErrors[idx]?.referencia || dupStatus[`kit-${item._key}-referencia`]?.error) ? ' create-user__field--invalid' : ''}`}>
                             <span>Referencia</span>
-                            <input type="text" value={item.referencia} onChange={(e) => updateKitForm(idx, 'referencia', e.target.value)} />
+                            <div style={{ position: 'relative' }}>
+                              <input type="text" style={{ paddingRight: 34 }} value={item.referencia} onChange={(e) => {
+                                const v = e.target.value
+                                updateKitForm(idx, 'referencia', v)
+                                scheduleDupCheck(`kit-${item._key}-referencia`, 'referencia', v, kitForms.filter((_, i) => i !== idx).map(k => k.referencia))
+                              }} />
+                              {renderDupIcon(dupStatus[`kit-${item._key}-referencia`], 'Referencia')}
+                            </div>
                             {kitFormErrors[idx]?.referencia && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].referencia}</small>}
                           </label>
                           <label className="create-user__field">
@@ -1487,7 +1593,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setEditingId(null)} disabled={formSaving}>
                   Cancelar
                 </button>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={saveProductForm} disabled={formSaving}>
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={saveProductForm} disabled={formSaving || dupCheckKeys.some(k => dupStatus[k]?.checking || dupStatus[k]?.error)}>
                   {formSaving ? 'Guardando...' : (isKit ? `Crear ${kitForms.length} productos` : 'Crear producto')}
                 </button>
               </div>
