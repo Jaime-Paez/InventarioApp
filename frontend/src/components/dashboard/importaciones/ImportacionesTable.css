@@ -348,7 +348,27 @@
 }
 
 .imp-details__productos-row:not(.create-user__locations-row--empty) > span {
-  padding: 5px 6px;
+  padding: 8px 10px;
+  border-right: 1px solid var(--color-border, #cbd5e1);
+}
+
+.imp-details__productos-row:not(.create-user__locations-row--empty) > span:last-child {
+  border-right: none;
+}
+
+.dashboard-shell.dark .imp-details__productos-row:not(.create-user__locations-row--empty) > span {
+  border-right-color: var(--color-border-dark, #3a3f47);
+}
+
+/* Las filas (grid) nunca reciben un width explícito, así que por defecto
+   ocupan el 100% del contenedor padre en vez de crecer para caber sus
+   propias columnas (que con muchas sucursales necesitan más ancho). Eso
+   deja el fondo de la fila (p. ej. el gris del header) pintado solo hasta
+   ese 100%, mientras las columnas de más allá "se salen" de la caja de la
+   fila y se ven sin fondo aunque el texto y los bordes sí aparecen. */
+.imp-details__productos-row {
+  width: max-content;
+  min-width: 100%;
 }
 
 .imp-details__productos-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty) > span:nth-child(-n+4) {
@@ -364,6 +384,17 @@
     minmax(60px, 0.55fr)
     88px
     minmax(120px, 1.2fr);
+}
+
+/* Con columnas dinámicas por sucursal esta tabla puede volverse más ancha que
+   el modal; a diferencia de las demás tablas de este archivo (que recortan el
+   contenido con overflow: hidden), esta necesita scroll horizontal propio.
+   Selector con dos clases a propósito: .importaciones-modal__products-table
+   más abajo en este mismo archivo fija overflow-x: hidden con la misma
+   especificidad (1 clase) y ganaría por orden de aparición si no subimos la
+   especificidad aquí. */
+.importaciones-modal__products-table.imp-details__productos-table {
+  overflow-x: auto;
 }
 
 .imp-historial__row {
@@ -571,6 +602,17 @@
 
 .dashboard-shell.dark .importaciones-modal__products-table .create-user__locations-row--head {
   background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
+}
+
+/* Esta tabla es la única que scrollea en ambos ejes a la vez (columnas
+   dinámicas por sucursal + muchas filas). position: sticky en un contenedor
+   con overflow-x y overflow-y simultáneos calcula mal el ancho del header
+   sticky en algunos navegadores: el fondo deja de pintarse a partir de
+   cierta columna aunque el texto y los bordes de esas celdas sí se vean.
+   Se desactiva sticky solo aquí para evitar esa clase de bug; el resto de
+   tablas de este archivo (que solo scrollean en vertical) no lo necesitan. */
+.importaciones-modal__products-table.imp-details__productos-table .create-user__locations-row--head {
+  position: static;
 }
 
 .importaciones-modal__products-table .create-user__locations-row > span {
@@ -853,9 +895,13 @@
 .imp-cell-hover-card__row {
   font-size: 0.88rem;
   line-height: 1.55;
-  padding: 2px 0;
+  padding: 5px 2px;
   color: var(--color-text, #1e293b);
   overflow-wrap: anywhere;
+}
+
+.imp-cell-hover-card__row + .imp-cell-hover-card__row {
+  border-top: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
 }
 
 .dashboard-shell.dark .imp-cell-hover-card {
@@ -875,6 +921,10 @@
 
 .dashboard-shell.dark .imp-cell-hover-card__row {
   color: #e2e8f0;
+}
+
+.dashboard-shell.dark .imp-cell-hover-card__row + .imp-cell-hover-card__row {
+  border-top-color: rgba(148, 163, 184, 0.15);
 }
 
 .imp-distribucion__info-icon {
@@ -931,6 +981,18 @@
   font-weight: 700;
   color: var(--color-text-secondary, #64748b);
   border-bottom: 1px solid var(--color-border, #e2e8f0);
+}
+
+.imp-alternos-hover-card__table td {
+  border-top: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
+}
+
+.imp-alternos-hover-card__table tr:first-child td {
+  border-top: none;
+}
+
+.dashboard-shell.dark .imp-alternos-hover-card__table td {
+  border-top-color: rgba(148, 163, 184, 0.15);
 }
 
 .imp-alternos-hover-card__row--principal td {

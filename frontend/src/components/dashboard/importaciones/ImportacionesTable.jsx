@@ -33,6 +33,24 @@ const getCantidadRecibidaCeiling = (row) => {
   return Number.isFinite(n) ? n : row.cantidad
 }
 
+const SPANISH_MONTH_ABBR = {
+  enero: 'Ene', febrero: 'Feb', marzo: 'Mar', abril: 'Abr', mayo: 'May', junio: 'Jun',
+  julio: 'Jul', agosto: 'Ago', septiembre: 'Sep', setiembre: 'Sep', octubre: 'Oct',
+  noviembre: 'Nov', diciembre: 'Dic',
+}
+
+// Nombres de sucursal tipo "9 de Octubre" ocupan demasiado espacio como encabezado
+// de columna en tablas angostas; se abrevia a "9 Oct" (el nombre completo sigue
+// disponible via title/tooltip donde ya se mostraba).
+const shortSucursalLabel = (nombre) => {
+  const value = String(nombre || '').trim()
+  if (!value) return '(Sin nombre)'
+  const match = value.match(/^(\d{1,2})\s+de\s+([a-zñáéíóú]+)/i)
+  if (!match) return value
+  const abbr = SPANISH_MONTH_ABBR[match[2].toLowerCase()]
+  return abbr ? `${match[1]} ${abbr}` : value
+}
+
 // El progreso del asistente de llegada se guarda en la base de datos
 // (Importacion.borrador_llegada) para sobrevivir a cerrar el modal o recargar la
 // página; localStorage queda como respaldo mientras esa data no ha llegado aún.
@@ -1255,7 +1273,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         <span style={{ justifyContent: 'flex-start' }}>Descripción</span>
                         <span style={{ justifyContent: 'center' }}>Total</span>
                         {sucursales.map(suc => (
-                          <span key={suc.id} title={suc.nombre}>{suc.nombre}</span>
+                          <span key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</span>
                         ))}
                       </div>
                       {rows.map((row) => {
@@ -1636,7 +1654,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               <thead>
                 <tr>
                   <th>Producto</th>
-                  {alternosHover.data.sucursales.map(suc => <th key={suc.id}>{suc.nombre}</th>)}
+                  {alternosHover.data.sucursales.map(suc => <th key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -1954,10 +1972,17 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   if (!imp) return null
   const detalles = imp.detalles || []
   const sucursalesCols = enviosDistribucion.sucursales
+  // Anchos fijos (sin fr): con scroll horizontal ya no hace falta que las columnas
+  // se estiren, y usar solo px hace que cada fila calcule exactamente el mismo
+  // ancho total sin importar su propio contenido — necesario porque la fila
+  // ahora usa width: max-content (ver ImportacionesTable.css) para que su fondo
+  // cubra todas las columnas; con unidades fr eso haría que cada fila (con
+  // contenido distinto) repartiera el espacio distinto y las columnas quedaran
+  // desalineadas entre filas.
   const productosGridTemplate = [
-    'minmax(72px, 0.7fr)', 'minmax(100px, 1fr)', 'minmax(72px, 0.7fr)', 'minmax(82px, 0.8fr)', 'minmax(60px, 0.55fr)', '88px',
-    ...sucursalesCols.map(() => 'minmax(90px, 0.8fr)'),
-    'minmax(120px, 1.2fr)',
+    '90px', '140px', '90px', '100px', '80px', '88px',
+    ...sucursalesCols.map(() => '90px'),
+    '150px',
   ].join(' ')
   const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
 
@@ -2109,10 +2134,10 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       <h4>Listado de productos</h4>
                     </div>
                   </div>
-                  <div className="create-user__locations-table importaciones-modal__products-table">
+                  <div className="create-user__locations-table importaciones-modal__products-table imp-details__productos-table">
                     <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: productosGridTemplate }}>
                       <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
-                      {sucursalesCols.map((s) => <span key={s.id}>{s.nombre}</span>)}
+                      {sucursalesCols.map((s) => <span key={s.id} title={s.nombre}>{shortSucursalLabel(s.nombre)}</span>)}
                       <span>Comentario</span>
                     </div>
                     {!detalles.length ? (
@@ -2199,12 +2224,8 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
 
           <div className="create-user__footer">
             {imp.estado === 'importada' && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--cancel"
-                onClick={handleDownloadExcel}
-              >
-                Descargar Excel
+              <button type="button" className="users-circle users-circle--excel" title="Descargar Excel" onClick={handleDownloadExcel}>
+                <i className="pi pi-file-excel" />
               </button>
             )}
             {(imp.estado === 'en_camino' || imp.estado === 'importada') && Array.isArray(imp.historial_confirmacion) && imp.historial_confirmacion.length > 0 && (
@@ -2448,7 +2469,7 @@ function HistorialConfirmacionModal({ imp, onClose }) {
                   <div className="create-user__locations-row create-user__locations-row--head imp-distribucion__productos-row" style={{ gridTemplateColumns: distribucionGridCols }}>
                     <span style={{ justifyContent: 'flex-start' }}>Código</span>
                     <span style={{ justifyContent: 'flex-start' }}>Descripción</span>
-                    {distribucion.sucursales.map(suc => <span key={suc.id} title={suc.nombre}>{suc.nombre}</span>)}
+                    {distribucion.sucursales.map(suc => <span key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</span>)}
                     <span>Total</span>
                   </div>
                   {distribucion.productos.map(p => {
