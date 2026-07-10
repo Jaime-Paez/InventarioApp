@@ -2134,6 +2134,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       <h4>Listado de productos</h4>
                     </div>
                   </div>
+                  <div className="imp-details__productos-table-wrap">
                   <div className="create-user__locations-table importaciones-modal__products-table imp-details__productos-table">
                     <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: productosGridTemplate }}>
                       <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
@@ -2215,6 +2216,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                         </div>
                       )
                     })}
+                  </div>
                   </div>
                 </section>
               )}
