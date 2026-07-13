@@ -27,11 +27,14 @@ export const MENU_STRUCTURE = [
     children: [
       { label: 'Entradas', icon: CircleArrowDown, moduleKey: 'movimientos_entradas' },
       { label: 'Salidas', icon: CircleArrowUp, moduleKey: 'movimientos_salidas' },
-      {
-        label: 'Inconvenientes',
-        icon: AlertTriangle,
-        moduleKey: 'movimientos_inconvenientes',
-      },
+    ],
+  },
+  {
+    label: 'Importaciones',
+    icon: PackagePlus,
+    children: [
+      { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
+      { label: 'Importaciones', icon: PackageCheck, moduleKey: 'importaciones' },
     ],
   },
   { label: 'Productos', icon: Tag, moduleKey: 'productos' },
@@ -44,15 +47,12 @@ export const MENU_STRUCTURE = [
     ],
   },
   { label: 'Proveedores', icon: Truck, moduleKey: 'proveedores_casas' },
-  {
-    label: 'Importaciones',
-    icon: PackagePlus,
-    children: [
-      { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
-      { label: 'Importaciones', icon: PackageCheck, moduleKey: 'importaciones' },
-    ],
-  },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
+  {
+    label: 'Inconvenientes',
+    icon: AlertTriangle,
+    moduleKey: 'movimientos_inconvenientes',
+  },
   { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios', requiresAdmin: true },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
   { label: 'Auditoría', icon: ScrollText, moduleKey: 'usuarios', requiresAdmin: true },
