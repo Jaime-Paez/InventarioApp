@@ -36,11 +36,16 @@ const parseProductoLabel = (label) => {
   return { nombre: match[1].trim(), codigo: match[2].trim() }
 }
 
-// Input tipo "tags" para OEMs: busca con debounce en el catálogo existente
-// (para poder unir el producto nuevo al mismo grupo que ya usa ese OEM) y,
-// si no hay coincidencia, permite agregar el código tal cual como uno nuevo.
+// Selector de un solo OEM: busca con debounce en el catálogo existente (para
+// poder unir el producto nuevo al mismo grupo que ya usa ese OEM) y, si no
+// hay coincidencia, permite agregar el código tal cual como uno nuevo. Al
+// elegir un código ya vinculado a otro producto, ese producto queda marcado
+// como "alterno" del nuevo al guardar (ver linkOemToProduct más abajo), lo
+// que hace que el backend unifique automáticamente TODOS los códigos OEM
+// del conglomerado entre ambos — por eso el ícono de info muestra tanto los
+// productos existentes como esa lista completa de OEMs relacionados.
 function OemAutocomplete({ value, onChange, token, disabled }) {
-  const codes = useMemo(() => String(value || '').split(',').map((s) => s.trim()).filter(Boolean), [value])
+  const selectedCode = String(value || '').trim()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -131,28 +136,24 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
     return () => document.removeEventListener('mousedown', onDocMouseDown)
   }, [open])
 
-  const addCode = (raw) => {
+  const selectCode = (raw) => {
     const clean = String(raw || '').trim()
     if (!clean) return
-    if (!codes.some((c) => c.toLowerCase() === clean.toLowerCase())) {
-      onChange([...codes, clean].join(', '))
-    }
+    onChange(clean)
     setQuery('')
     setOptions([])
     setOpen(false)
   }
 
-  const removeCode = (code) => {
-    onChange(codes.filter((c) => c !== code).join(', '))
-  }
+  const clearSelection = () => onChange('')
 
   const term = query.trim()
   const exactMatch = options.some((o) => o.codigo.toLowerCase() === term.toLowerCase())
 
   // "Ya vinculado a: ..." recorta a los primeros 3 productos (con "…"); el
-  // ícono de info muestra la lista completa (código + nombre) en una tarjeta
-  // flotante, mismo patrón que el ícono "i" de alternos/stock
-  // (imp-alternos-hover-card) más abajo en este archivo.
+  // ícono de info de cada opción del dropdown muestra la lista completa
+  // (código + nombre) en una tarjeta flotante, mismo patrón que el ícono "i"
+  // de alternos/stock (imp-alternos-hover-card) más abajo en este archivo.
   const [productsHover, setProductsHover] = useState(null)
   const [productsHoverPos, setProductsHoverPos] = useState(null)
   const productsHoverCardRef = useRef(null)
@@ -177,34 +178,105 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
     setProductsHoverPos(computeSmartPopoverPosition(productsHover, productsHoverCardRef.current))
   }, [productsHover])
 
+  // Una vez elegido un código, se busca si ya pertenece a algún producto del
+  // catálogo: si es así, este ícono muestra ese "conglomerado" (los
+  // productos que ya lo usan + todos los códigos OEM que ellos tienen), ya
+  // que al guardar se enlazan como alternos y el backend unifica esos OEMs
+  // entre ambos productos (ver linkOemToProduct).
+  const [groupInfo, setGroupInfo] = useState(null)
+  const [groupHover, setGroupHover] = useState(null)
+  const [groupHoverPos, setGroupHoverPos] = useState(null)
+  const groupHoverCardRef = useRef(null)
+  const groupHoverTimerRef = useRef(null)
+
+  useEffect(() => {
+    if (!selectedCode || !token) { setGroupInfo(null); return undefined }
+    let cancelled = false
+    setGroupInfo('loading')
+    ;(async () => {
+      try {
+        const resp = await authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(selectedCode)}&page_size=20`, {}, token)
+        if (cancelled) return
+        if (!resp.ok) { setGroupInfo(null); return }
+        const data = await resp.json()
+        const list = Array.isArray(data) ? data : data?.results || []
+        const matches = list.filter((p) =>
+          (p?.oem_productos || []).some((r) => String(r?.oem?.codigo || '').trim().toLowerCase() === selectedCode.toLowerCase())
+        )
+        if (!matches.length) { setGroupInfo(null); return }
+        const oemSet = new Set()
+        matches.forEach((p) => (p.oem_productos || []).forEach((r) => {
+          const c = String(r?.oem?.codigo || '').trim()
+          if (c) oemSet.add(c)
+        }))
+        setGroupInfo({
+          productos: matches.map((p) => ({ codigo: p.codigo, nombre: p.nombre })),
+          oemCodes: Array.from(oemSet),
+        })
+      } catch {
+        if (!cancelled) setGroupInfo(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [selectedCode, token])
+
+  const showGroupHover = (event) => {
+    if (groupHoverTimerRef.current) clearTimeout(groupHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    groupHoverTimerRef.current = setTimeout(() => {
+      groupHoverTimerRef.current = null
+      setGroupHover({ triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left })
+    }, 150)
+  }
+  const hideGroupHover = () => {
+    if (groupHoverTimerRef.current) { clearTimeout(groupHoverTimerRef.current); groupHoverTimerRef.current = null }
+    setGroupHover(null)
+    setGroupHoverPos(null)
+  }
+
+  useLayoutEffect(() => {
+    if (!groupHover || !groupHoverCardRef.current) return
+    setGroupHoverPos(computeSmartPopoverPosition(groupHover, groupHoverCardRef.current))
+  }, [groupHover])
+
   return (
     <div className="imp-oem-input" ref={wrapRef}>
-      <div className="imp-oem-input__chips">
-        {codes.map((code) => (
-          <span key={code} className="imp-oem-input__chip">
-            {code}
-            {!disabled && (
-              <button type="button" onClick={() => removeCode(code)} aria-label={`Quitar ${code}`}>
-                <X size={11} />
-              </button>
-            )}
-          </span>
-        ))}
-        <input
-          type="text"
-          className="imp-oem-input__field"
-          placeholder={codes.length ? '' : 'Buscar o agregar OEM'}
-          value={query}
-          disabled={disabled}
-          onFocus={() => setOpen(true)}
-          onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); if (term) addCode(term) }
-            else if (e.key === 'Backspace' && !query && codes.length) removeCode(codes[codes.length - 1])
-            else if (e.key === 'Escape') setOpen(false)
-          }}
-          autoComplete="off"
-        />
+      <div className="imp-oem-input__row">
+        <div className="imp-oem-input__chips">
+          {selectedCode ? (
+            <span className="imp-oem-input__chip">
+              {selectedCode}
+              {!disabled && (
+                <button type="button" onClick={clearSelection} aria-label={`Quitar ${selectedCode}`}>
+                  <X size={11} />
+                </button>
+              )}
+            </span>
+          ) : (
+            <input
+              type="text"
+              className="imp-oem-input__field"
+              placeholder="Buscar o agregar OEM"
+              value={query}
+              disabled={disabled}
+              onFocus={() => setOpen(true)}
+              onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); if (term) selectCode(term) }
+                else if (e.key === 'Escape') setOpen(false)
+              }}
+              autoComplete="off"
+            />
+          )}
+        </div>
+        {selectedCode && groupInfo && groupInfo !== 'loading' && (
+          <Info
+            size={14}
+            className="imp-distribucion__info-icon imp-oem-input__group-icon"
+            onMouseEnter={showGroupHover}
+            onMouseLeave={hideGroupHover}
+          />
+        )}
       </div>
       {open && term && panelRect && createPortal(
         <div
@@ -219,7 +291,7 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
               key={o.codigo}
               className="imp-oem-input__option"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => addCode(o.codigo)}
+              onClick={() => selectCode(o.codigo)}
             >
               <span className="imp-oem-input__option-code">{o.codigo}</span>
               <span className="imp-oem-input__option-meta-row">
@@ -243,7 +315,7 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
             </button>
           ))}
           {!loading && !exactMatch && (
-            <button type="button" className="imp-oem-input__option imp-oem-input__option--new" onMouseDown={(e) => e.preventDefault()} onClick={() => addCode(term)}>
+            <button type="button" className="imp-oem-input__option imp-oem-input__option--new" onMouseDown={(e) => e.preventDefault()} onClick={() => selectCode(term)}>
               <Plus size={13} />
               Agregar &quot;{term}&quot; como OEM nuevo
             </button>
@@ -263,15 +335,43 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
         >
           <table className="imp-alternos-hover-card__table">
             <thead>
-              <tr><th>Producto</th></tr>
+              <tr><th>Código</th><th>Producto</th></tr>
             </thead>
             <tbody>
               {productsHover.productos.map((p, i) => {
                 const { codigo, nombre } = parseProductoLabel(p)
-                return <tr key={i}><td>{codigo ? `${codigo}: ${nombre}` : nombre}</td></tr>
+                return <tr key={i}><td>{codigo || '-'}</td><td>{nombre}</td></tr>
               })}
             </tbody>
           </table>
+        </div>,
+        getPortalRoot()
+      )}
+      {groupHover && groupInfo && groupInfo !== 'loading' && createPortal(
+        <div
+          ref={groupHoverCardRef}
+          className="imp-alternos-hover-card imp-alternos-hover-card--group"
+          style={{
+            top: groupHoverPos?.top ?? groupHover.triggerBottom + 4,
+            left: groupHoverPos?.left ?? groupHover.triggerLeft,
+            visibility: groupHoverPos ? 'visible' : 'hidden',
+          }}
+        >
+          <div className="imp-alternos-hover-card__section-title">Productos alternos</div>
+          <table className="imp-alternos-hover-card__table">
+            <thead>
+              <tr><th>Código</th><th>Producto</th></tr>
+            </thead>
+            <tbody>
+              {groupInfo.productos.map((p, i) => (
+                <tr key={i}><td>{p.codigo || '-'}</td><td>{p.nombre}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="imp-alternos-hover-card__section-title">Lista de OEMs</div>
+          <div className="imp-alternos-hover-card__oem-list">
+            {groupInfo.oemCodes.join(', ')}
+          </div>
         </div>,
         getPortalRoot()
       )}
@@ -950,36 +1050,59 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     )
   }
 
-  const linkOemsToProduct = async (productId, oemText) => {
-    const codes = [...new Set(String(oemText || '').split(',').map(s => s.trim()).filter(Boolean))]
-    for (const codigo of codes) {
-      try {
-        let oemId = null
-        const searchResp = await authFetch(`${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}`, {}, token)
-        if (searchResp.ok) {
-          const searchData = await searchResp.json()
-          const results = searchData?.results ?? searchData ?? []
-          const existing = Array.isArray(results) && results.find(o => String(o.codigo || '').trim().toLowerCase() === codigo.toLowerCase())
-          if (existing) oemId = existing.id
-        }
-        if (!oemId) {
-          const createResp = await authFetch(
-            `${API_URL}/productos/oem/`,
-            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codigo }) },
-            token
-          )
-          if (createResp.ok) oemId = (await createResp.json()).id
-        }
-        if (oemId) {
+  // Enlaza un único código OEM al producto recién creado. Si ese código ya
+  // pertenece a otro producto del catálogo, en vez de solo copiar el código
+  // se crea la relación de "alterno" con ese producto: el backend
+  // (ProductoAlternoViewSet.perform_create) propaga automáticamente TODOS
+  // los códigos OEM de ese conglomerado a ambos productos, no solo el que se
+  // buscó — por eso no hace falta enlazar el OEM manualmente en ese caso.
+  const linkOemToProduct = async (productId, oemText) => {
+    const codigo = String(oemText || '').trim()
+    if (!codigo) return
+    try {
+      const matchResp = await authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(codigo)}&page_size=20`, {}, token)
+      if (matchResp.ok) {
+        const matchData = await matchResp.json()
+        const matchList = Array.isArray(matchData) ? matchData : matchData?.results || []
+        const matched = matchList.find((p) =>
+          p.id !== productId &&
+          (p.oem_productos || []).some((r) => String(r?.oem?.codigo || '').trim().toLowerCase() === codigo.toLowerCase())
+        )
+        if (matched) {
           await authFetch(
-            `${API_URL}/productos/oem-producto/`,
-            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: productId, oem_id: oemId }) },
+            `${API_URL}/productos/alternos/`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: productId, alterno_id: matched.id }) },
             token
           )
+          return
         }
-      } catch {
-        // Un OEM individual puede fallar (duplicado, red); no debe bloquear el resto.
       }
+
+      let oemId = null
+      const searchResp = await authFetch(`${API_URL}/productos/oem/?search=${encodeURIComponent(codigo)}`, {}, token)
+      if (searchResp.ok) {
+        const searchData = await searchResp.json()
+        const results = searchData?.results ?? searchData ?? []
+        const existing = Array.isArray(results) && results.find(o => String(o.codigo || '').trim().toLowerCase() === codigo.toLowerCase())
+        if (existing) oemId = existing.id
+      }
+      if (!oemId) {
+        const createResp = await authFetch(
+          `${API_URL}/productos/oem/`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codigo }) },
+          token
+        )
+        if (createResp.ok) oemId = (await createResp.json()).id
+      }
+      if (oemId) {
+        await authFetch(
+          `${API_URL}/productos/oem-producto/`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: productId, oem_id: oemId }) },
+          token
+        )
+      }
+    } catch {
+      // No debe bloquear el guardado del producto si el enlace de OEM falla.
     }
   }
 
@@ -1022,7 +1145,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         return null
       }
       const created = await resp.json()
-      if (item.oem.trim()) await linkOemsToProduct(created.id, item.oem)
+      if (item.oem.trim()) await linkOemToProduct(created.id, item.oem)
       return created
     } catch (e) {
       setFormErrors({ _general: e.message || 'Error al crear el producto.' })

@@ -37,6 +37,11 @@ export const MENU_STRUCTURE = [
       { label: 'Importaciones', icon: PackageCheck, moduleKey: 'importaciones' },
     ],
   },
+  {
+    label: 'Inconvenientes',
+    icon: AlertTriangle,
+    moduleKey: 'movimientos_inconvenientes',
+  },
   { label: 'Productos', icon: Tag, moduleKey: 'productos' },
   {
     label: 'Sucursales',
@@ -48,11 +53,6 @@ export const MENU_STRUCTURE = [
   },
   { label: 'Proveedores', icon: Truck, moduleKey: 'proveedores_casas' },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
-  {
-    label: 'Inconvenientes',
-    icon: AlertTriangle,
-    moduleKey: 'movimientos_inconvenientes',
-  },
   { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios', requiresAdmin: true },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
   { label: 'Auditoría', icon: ScrollText, moduleKey: 'usuarios', requiresAdmin: true },
