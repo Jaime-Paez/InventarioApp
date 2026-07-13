@@ -224,7 +224,12 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
               <span className="imp-oem-input__option-code">{o.codigo}</span>
               <span className="imp-oem-input__option-meta-row">
                 <span className="imp-oem-input__option-meta">
-                  {o.productos.length ? `Ya vinculado a: ${o.productos.slice(0, 3).join(', ')}${o.productos.length > 3 ? '…' : ''}` : 'Sin productos vinculados aún'}
+                  {o.productos.length
+                    ? `Ya vinculado a: ${o.productos.slice(0, 3).map((p) => {
+                        const { codigo, nombre } = parseProductoLabel(p)
+                        return codigo ? `${codigo}: ${nombre}` : nombre
+                      }).join(', ')}${o.productos.length > 3 ? '…' : ''}`
+                    : 'Sin productos vinculados aún'}
                 </span>
                 {o.productos.length > 0 && (
                   <Info
@@ -258,12 +263,12 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
         >
           <table className="imp-alternos-hover-card__table">
             <thead>
-              <tr><th>Código</th><th>Producto</th></tr>
+              <tr><th>Producto</th></tr>
             </thead>
             <tbody>
               {productsHover.productos.map((p, i) => {
                 const { codigo, nombre } = parseProductoLabel(p)
-                return <tr key={i}><td>{codigo || '-'}</td><td>{nombre}</td></tr>
+                return <tr key={i}><td>{codigo ? `${codigo}: ${nombre}` : nombre}</td></tr>
               })}
             </tbody>
           </table>
