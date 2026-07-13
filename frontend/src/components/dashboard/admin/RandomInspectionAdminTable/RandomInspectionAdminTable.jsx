@@ -8,8 +8,142 @@ import { formatDateTime } from '../../../../utils/dateFormat'
 import '../CreateUsuario/CreateUsuario.css'
 import './RandomInspectionAdminTable.css'
 
+const getPortalHost = () => {
+  if (typeof document === 'undefined') return null
+  return document.querySelector('.dashboard-shell') || document.body
+}
+
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
+const normalizeForSearch = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+    .toLowerCase()
+
+// Dropdown con búsqueda debounced sobre una lista ya cargada en memoria —
+// mismo patrón (create-user__dropdown + create-user__result-option) que
+// usan las demás búsquedas en cascada Sucursal/Bodega/Division del resto
+// de la app (ver InventarioEditor.jsx). El panel se renderiza vía portal
+// con create-user__dropdown-panel--floating (position:fixed) para que
+// pueda salirse del modal en vez de quedar recortado por su overflow.
+function CascadeDropdown({ placeholder, searchPlaceholder, options, valueId, onSelect, disabled, getOptionLabel }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [panelRect, setPanelRect] = useState(null)
+  const wrapRef = useRef(null)
+  const panelRef = useRef(null)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(normalizeForSearch(query)), 260)
+    return () => window.clearTimeout(timer)
+  }, [query])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const handleOutsideClick = (event) => {
+      const inTrigger = wrapRef.current?.contains(event.target)
+      const inPanel = panelRef.current?.contains(event.target)
+      if (!inTrigger && !inPanel) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [open])
+
+  const filtered = useMemo(() => {
+    if (!debouncedQuery) return options
+    return options.filter((o) => normalizeForSearch(getOptionLabel(o)).includes(debouncedQuery))
+  }, [options, debouncedQuery, getOptionLabel])
+
+  const selected = options.find((o) => String(o.id) === String(valueId))
+
+  return (
+    <div className="create-user__dropdown" ref={wrapRef}>
+      <button
+        type="button"
+        className="create-user__dropdown-trigger"
+        onClick={(event) => {
+          if (disabled) return
+          if (open) {
+            setOpen(false)
+            setQuery('')
+            return
+          }
+          const rect = event.currentTarget.getBoundingClientRect()
+          // El panel puede llegar a medir ~230px (buscador + resultados con
+          // max-height:150px). Si no hay espacio debajo, se abre hacia
+          // arriba anclando el borde inferior (bottom) en vez del superior,
+          // para que nunca quede cortado por el borde de la pantalla.
+          const estimatedPanelHeight = 230
+          const spaceBelow = window.innerHeight - rect.bottom
+          const spaceAbove = rect.top
+          const openUpward = spaceBelow < estimatedPanelHeight && spaceAbove > spaceBelow
+          const left = Math.min(Math.max(rect.left, 8), window.innerWidth - rect.width - 8)
+          setPanelRect({
+            left,
+            width: rect.width,
+            ...(openUpward
+              ? { bottom: window.innerHeight - rect.top + 4 }
+              : { top: rect.bottom + 4 }),
+          })
+          setOpen(true)
+        }}
+        disabled={disabled}
+      >
+        <span>{selected ? getOptionLabel(selected) : placeholder}</span>
+        <i className={`pi pi-chevron-${open ? 'up' : 'down'}`} />
+      </button>
+
+      {open && panelRect && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={panelRef}
+          className="create-user__dropdown-panel create-user__dropdown-panel--floating"
+          style={{ top: panelRect.top, bottom: panelRect.bottom, left: panelRect.left, width: panelRect.width, maxHeight: 'calc(100vh - 16px)' }}
+        >
+          <div className="create-user__dropdown-search">
+            <i className="pi pi-search" />
+            <input
+              type="text"
+              placeholder={searchPlaceholder}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              autoFocus
+              autoComplete="off"
+            />
+          </div>
+          <div className="create-user__dropdown-results">
+            {!filtered.length && <small className="muted">Sin resultados.</small>}
+            {filtered.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className="create-user__result-option"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onSelect(option)
+                  setOpen(false)
+                  setQuery('')
+                }}
+              >
+                <div className="create-user__result-info">
+                  <strong>{getOptionLabel(option)}</strong>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>,
+        getPortalHost()
+      )}
+    </div>
+  )
+}
 
 const formatPercent = (value) => {
   const numeric = Number(value)
@@ -82,6 +216,16 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [sendNowDialogLoading, setSendNowDialogLoading] = useState(false)
   const [sendNowParams, setSendNowParams] = useState({ cantidad_productos: '', hora_recordatorio: '' })
   const [sendNowSelectedUserIds, setSendNowSelectedUserIds] = useState(new Set())
+  const [sendNowMode, setSendNowMode] = useState('aleatorio')
+  const [divisionSucursalId, setDivisionSucursalId] = useState('')
+  const [divisionBodegaId, setDivisionBodegaId] = useState('')
+  const [divisionId, setDivisionId] = useState('')
+  const [divisionUsuarioId, setDivisionUsuarioId] = useState('')
+  const [divisionBodegas, setDivisionBodegas] = useState([])
+  const [divisionBodegasLoading, setDivisionBodegasLoading] = useState(false)
+  const [divisionDivisiones, setDivisionDivisiones] = useState([])
+  const [divisionDivisionesLoading, setDivisionDivisionesLoading] = useState(false)
+  const [divisionSending, setDivisionSending] = useState(false)
   const [assignmentsModalPosition, setAssignmentsModalPosition] = useState({ x: 0, y: 0 })
   const [assignmentsModalSize, setAssignmentsModalSize] = useState({
     width: ASSIGNMENTS_MODAL_MIN_WIDTH,
@@ -208,6 +352,75 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       setSendNowLoading(false)
     }
   }, [token, sendNowParams, notifyError, notifySuccess])
+
+  useEffect(() => {
+    if (!token || sendNowMode !== 'division' || !divisionSucursalId) {
+      setDivisionBodegas([])
+      return undefined
+    }
+    let cancelled = false
+    setDivisionBodegasLoading(true)
+    authFetch(`${API_URL}/inventario/bodegas/?sucursal_id=${encodeURIComponent(divisionSucursalId)}&page_size=200`, {}, token)
+      .then(async (res) => {
+        const payload = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron cargar las bodegas.')
+        if (!cancelled) setDivisionBodegas(parseApiList(payload))
+      })
+      .catch((error) => { if (!cancelled) { setDivisionBodegas([]); notifyError(error?.message || 'No se pudieron cargar las bodegas.') } })
+      .finally(() => { if (!cancelled) setDivisionBodegasLoading(false) })
+    return () => { cancelled = true }
+  }, [token, sendNowMode, divisionSucursalId, notifyError])
+
+  useEffect(() => {
+    if (!token || sendNowMode !== 'division' || !divisionBodegaId) {
+      setDivisionDivisiones([])
+      return undefined
+    }
+    let cancelled = false
+    setDivisionDivisionesLoading(true)
+    authFetch(`${API_URL}/inventario/divisiones/?bodega_id=${encodeURIComponent(divisionBodegaId)}&page_size=200`, {}, token)
+      .then(async (res) => {
+        const payload = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron cargar las divisiones.')
+        if (!cancelled) setDivisionDivisiones(parseApiList(payload))
+      })
+      .catch((error) => { if (!cancelled) { setDivisionDivisiones([]); notifyError(error?.message || 'No se pudieron cargar las divisiones.') } })
+      .finally(() => { if (!cancelled) setDivisionDivisionesLoading(false) })
+    return () => { cancelled = true }
+  }, [token, sendNowMode, divisionBodegaId, notifyError])
+
+  const sendDivision = useCallback(async () => {
+    if (!token) return
+    if (!divisionId) { notifyError('Debes seleccionar una division.'); return }
+    if (!divisionUsuarioId) { notifyError('Debes seleccionar un revisor.'); return }
+
+    const hora = String(sendNowParams?.hora_recordatorio || '').trim()
+    if (!hora) { notifyError('Debes seleccionar la hora del recordatorio.'); return }
+
+    setDivisionSending(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/recordatorios/inspeccion-aleatoria/enviar-division/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            division_id: divisionId,
+            usuario_id: divisionUsuarioId,
+            hora_recordatorio: hora,
+          }),
+        },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo enviar la division.')
+      notifySuccess(`Division enviada: ${payload.productos} producto(s) para ${payload.nombre}.`)
+      setShowSendNowDialog(false)
+    } catch (error) {
+      notifyError(error?.message || 'No se pudo enviar la division.')
+    } finally {
+      setDivisionSending(false)
+    }
+  }, [token, divisionId, divisionUsuarioId, sendNowParams, notifyError, notifySuccess])
 
   const loadAssignments = useCallback(async () => {
     if (!token || !canUpdate) {
@@ -766,6 +979,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     }).filter((b) => b.reviewers.length > 0)
   }, [assignmentBranches, assignmentRows])
 
+  const divisionReviewers = useMemo(() => {
+    if (!divisionSucursalId) return []
+    return sendNowSummary.find((b) => b.id === normalizeId(divisionSucursalId))?.reviewers || []
+  }, [sendNowSummary, divisionSucursalId])
+
   if (!canRead) {
     return (
       <section className="inspection-admin">
@@ -795,6 +1013,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 // estaba pasando.
                 setShowSendNowDialog(true)
                 setSendNowDialogLoading(true)
+                setSendNowMode('aleatorio')
+                setDivisionSucursalId('')
+                setDivisionBodegaId('')
+                setDivisionId('')
+                setDivisionUsuarioId('')
                 try {
                   const now = new Date()
                   now.setMinutes(now.getMinutes() + 5)
@@ -1042,11 +1265,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
 
             <div className="inspection-admin__dialog-body">
               <div className="inspection-admin__dialog-grid">
-                <label>
+                <label className="create-user__field">
                   <span>Cantidad esperada</span>
                   <input type="number" value={Number.parseInt(String(editingItem?.cantidad_esperada || 0), 10) || 0} disabled />
                 </label>
-                <label>
+                <label className="create-user__field">
                   <span>Cantidad reportada</span>
                   <input
                     type="number"
@@ -1056,7 +1279,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 </label>
               </div>
 
-              <label>
+              <label className="create-user__field">
                 <span>Cantidad real confirmada</span>
                 <input
                   type="number"
@@ -1068,7 +1291,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 />
               </label>
 
-              <label>
+              <label className="create-user__field">
                 <span>Nota (opcional)</span>
                 <textarea
                   rows={3}
@@ -1085,7 +1308,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             <footer className="inspection-admin__dialog-actions">
               <button
                 type="button"
-                className="inspection-admin__btn inspection-admin__btn--ghost"
+                className="create-user__action create-user__action--secondary"
                 onClick={closeEditDialog}
                 disabled={submitLoading}
               >
@@ -1093,7 +1316,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
               </button>
               <button
                 type="button"
-                className="inspection-admin__btn inspection-admin__btn--primary"
+                className="create-user__action create-user__action--primary"
                 onClick={() => void submitVerification()}
                 disabled={submitLoading}
               >
@@ -1105,7 +1328,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       )}
 
       {showSendNowDialog && (
-        <div className="inspection-admin__dialog-overlay" onMouseDown={() => !(sendNowLoading || sendNowDialogLoading) && setShowSendNowDialog(false)}>
+        <div className="inspection-admin__dialog-overlay" onMouseDown={() => !(sendNowLoading || sendNowDialogLoading || divisionSending) && setShowSendNowDialog(false)}>
           <div
             className="inspection-admin__dialog"
             role="dialog"
@@ -1113,7 +1336,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             aria-label="Enviar revision ahora"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            {(sendNowLoading || sendNowDialogLoading) && (
+            {(sendNowLoading || sendNowDialogLoading || divisionSending) && (
               <div className="inspection-admin__dialog-loading">
                 <div className="inspection-admin__dialog-loading-content">
                   <Loader2 className="inspection-admin__dialog-loading-spinner" size={24} />
@@ -1130,28 +1353,49 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 type="button"
                 className="inspection-admin__dialog-close"
                 onClick={() => setShowSendNowDialog(false)}
-                disabled={sendNowLoading || sendNowDialogLoading}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
                 aria-label="Cerrar"
               >
                 <X size={16} />
               </button>
             </header>
 
+            <div className="create-user__tabs" role="tablist">
+              <button
+                type="button"
+                className={`create-user__tab${sendNowMode === 'aleatorio' ? ' create-user__tab--active' : ''}`}
+                onClick={() => setSendNowMode('aleatorio')}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
+              >
+                Aleatorio
+              </button>
+              <button
+                type="button"
+                className={`create-user__tab${sendNowMode === 'division' ? ' create-user__tab--active' : ''}`}
+                onClick={() => setSendNowMode('division')}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
+              >
+                Division especifica
+              </button>
+            </div>
+
             <div className="inspection-admin__dialog-body">
               <div className="inspection-admin__config-fields" style={{ marginBottom: '12px' }}>
-                <label className="create-user__field">
-                  <span>Productos por sucursal</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="200"
-                    step="1"
-                    value={sendNowParams.cantidad_productos}
-                    onChange={(e) => setSendNowParams((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
-                    placeholder="Ej: 5"
-                    disabled={sendNowLoading || sendNowDialogLoading}
-                  />
-                </label>
+                {sendNowMode === 'aleatorio' && (
+                  <label className="create-user__field">
+                    <span>Productos por sucursal</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="200"
+                      step="1"
+                      value={sendNowParams.cantidad_productos}
+                      onChange={(e) => setSendNowParams((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
+                      placeholder="Ej: 5"
+                      disabled={sendNowLoading || sendNowDialogLoading}
+                    />
+                  </label>
+                )}
                 <label className="create-user__field">
                   <span>Hora del recordatorio</span>
                   <input
@@ -1159,12 +1403,76 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     min={`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`}
                     value={sendNowParams.hora_recordatorio}
                     onChange={(e) => setSendNowParams((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
-                    disabled={sendNowLoading || sendNowDialogLoading}
+                    disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
                   />
                 </label>
               </div>
 
-              {sendNowSummary.length === 0 ? (
+              {sendNowMode === 'division' ? (
+                <div className="inspection-admin__division-fields">
+                  <label className="create-user__field">
+                    <span>Sucursal</span>
+                    <CascadeDropdown
+                      placeholder="Selecciona una sucursal"
+                      searchPlaceholder="Buscar sucursal"
+                      options={sendNowSummary}
+                      valueId={divisionSucursalId}
+                      getOptionLabel={(o) => o.nombre}
+                      onSelect={(o) => {
+                        setDivisionSucursalId(o.id)
+                        setDivisionBodegaId('')
+                        setDivisionId('')
+                        setDivisionUsuarioId('')
+                      }}
+                      disabled={divisionSending}
+                    />
+                  </label>
+                  <label className="create-user__field">
+                    <span>Bodega</span>
+                    <CascadeDropdown
+                      placeholder={divisionBodegasLoading ? 'Cargando...' : 'Selecciona una bodega'}
+                      searchPlaceholder="Buscar bodega"
+                      options={divisionBodegas}
+                      valueId={divisionBodegaId}
+                      getOptionLabel={(o) => o.nombre}
+                      onSelect={(o) => {
+                        setDivisionBodegaId(o.id)
+                        setDivisionId('')
+                      }}
+                      disabled={!divisionSucursalId || divisionBodegasLoading || divisionSending}
+                    />
+                  </label>
+                  <label className="create-user__field">
+                    <span>Division</span>
+                    <CascadeDropdown
+                      placeholder={divisionDivisionesLoading ? 'Cargando...' : 'Selecciona una division'}
+                      searchPlaceholder="Buscar division"
+                      options={divisionDivisiones}
+                      valueId={divisionId}
+                      getOptionLabel={(o) => o.nombre}
+                      onSelect={(o) => setDivisionId(o.id)}
+                      disabled={!divisionBodegaId || divisionDivisionesLoading || divisionSending}
+                    />
+                  </label>
+                  <label className="create-user__field">
+                    <span>Revisor</span>
+                    <CascadeDropdown
+                      placeholder="Selecciona un revisor"
+                      searchPlaceholder="Buscar revisor"
+                      options={divisionReviewers}
+                      valueId={divisionUsuarioId}
+                      getOptionLabel={(o) => String(o?.nombre_completo || o?.correo || `Usuario ${o?.id}`).trim()}
+                      onSelect={(o) => setDivisionUsuarioId(o.id)}
+                      disabled={!divisionSucursalId || divisionSending}
+                    />
+                  </label>
+                  {divisionSucursalId && divisionReviewers.length === 0 && (
+                    <p className="inspection-admin__sendnow-empty">
+                      Esta sucursal no tiene revisores asignados.
+                    </p>
+                  )}
+                </div>
+              ) : sendNowSummary.length === 0 ? (
                 <p className="inspection-admin__sendnow-empty">
                   No hay revisores asignados. Configura los revisores antes de enviar.
                 </p>
@@ -1256,20 +1564,31 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             <footer className="inspection-admin__dialog-actions">
               <button
                 type="button"
-                className="inspection-admin__btn inspection-admin__btn--ghost"
+                className="create-user__action create-user__action--secondary"
                 onClick={() => setShowSendNowDialog(false)}
-                disabled={sendNowLoading || sendNowDialogLoading}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
               >
                 Cancelar
               </button>
-              <button
-                type="button"
-                className="inspection-admin__btn inspection-admin__btn--primary"
-                onClick={() => void sendNow()}
-                disabled={sendNowLoading || sendNowDialogLoading || sendNowSummary.length === 0 || sendNowSelectedUserIds.size === 0}
-              >
-                {sendNowLoading ? 'Enviando...' : 'Enviar ahora'}
-              </button>
+              {sendNowMode === 'division' ? (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={() => void sendDivision()}
+                  disabled={divisionSending || !divisionId || !divisionUsuarioId}
+                >
+                  {divisionSending ? 'Enviando...' : 'Enviar division completa'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={() => void sendNow()}
+                  disabled={sendNowLoading || sendNowDialogLoading || sendNowSummary.length === 0 || sendNowSelectedUserIds.size === 0}
+                >
+                  {sendNowLoading ? 'Enviando...' : 'Enviar ahora'}
+                </button>
+              )}
             </footer>
           </div>
         </div>

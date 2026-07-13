@@ -297,13 +297,15 @@
 
 .inspection-admin__dialog-head h4 {
   margin: 0;
-  font-size: 21px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .inspection-admin__dialog-head p {
   margin: 4px 0 0;
   color: #5d6878;
-  font-size: 13px;
+  font-size: 1rem;
 }
 
 .inspection-admin__dialog-close {
@@ -337,29 +339,12 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.inspection-admin__dialog-body label {
-  display: grid;
-  gap: 6px;
-}
-
-.inspection-admin__dialog-body label span {
-  font-size: 13px;
-  color: #334155;
-  font-weight: 600;
-}
-
-.inspection-admin__dialog-body input,
-.inspection-admin__dialog-body textarea {
-  border: 1px solid #aeb5be;
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: 14px;
-  color: #111827;
-  background: #fff;
-  width: 100%;
-}
-
+/* Los <label> de estos dialogos usan className="create-user__field" (mismas
+   clases que Importaciones y el resto de modals, importadas desde
+   CreateUsuario.css) para que texto e inputs midan y se vean igual en toda
+   la app; por eso no hay reglas propias de tamaño de fuente/inputs aca. */
 .inspection-admin__dialog-body input:disabled,
+.inspection-admin__dialog-body select:disabled,
 .inspection-admin__dialog-body textarea:disabled {
   background: #f5f6f7;
   color: #6b7280;
@@ -710,6 +695,13 @@
   padding: 4px 0 8px;
 }
 
+.inspection-admin__division-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+
 .inspection-admin__sendnow-summary {
   display: grid;
   gap: 8px;
@@ -900,31 +892,6 @@
   color: var(--color-text-dark);
 }
 
-.inspection-admin__btn {
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 8px 14px;
-  cursor: pointer;
-}
-
-.inspection-admin__btn--ghost {
-  border: 1px solid #aeb5be;
-  background: #fff;
-  color: #384152;
-}
-
-.inspection-admin__btn--primary {
-  border: 1px solid #0b5c95;
-  background: #0b5c95;
-  color: #fff;
-}
-
-.inspection-admin__btn:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
 .dashboard-shell.dark .inspection-admin__block,
 .dashboard-shell.dark .inspection-admin__table-wrap,
 .dashboard-shell.dark .inspection-admin__reviewers-table-card {
@@ -975,7 +942,6 @@
 
 .dashboard-shell.dark .inspection-admin__manage,
 .dashboard-shell.dark .inspection-admin__refresh,
-.dashboard-shell.dark .inspection-admin__btn--ghost,
 .dashboard-shell.dark .inspection-admin__dialog-close {
   background: color-mix(in srgb, var(--color-surface-dark) 88%, #0f172a 12%);
   border-color: color-mix(in srgb, var(--color-border-dark) 78%, transparent);
@@ -984,14 +950,11 @@
 
 .dashboard-shell.dark .inspection-admin__manage:hover,
 .dashboard-shell.dark .inspection-admin__refresh:hover,
-.dashboard-shell.dark .inspection-admin__btn--ghost:hover,
 .dashboard-shell.dark .inspection-admin__dialog-close:hover {
   background: color-mix(in srgb, var(--color-surface-dark) 76%, var(--color-primary-dark) 24%);
 }
 
-.dashboard-shell.dark .inspection-admin__subhead select,
-.dashboard-shell.dark .inspection-admin__dialog-body input,
-.dashboard-shell.dark .inspection-admin__dialog-body textarea {
+.dashboard-shell.dark .inspection-admin__subhead select {
   background: color-mix(in srgb, var(--color-surface-dark) 90%, #0f172a 10%);
   border-color: color-mix(in srgb, var(--color-border-dark) 78%, transparent);
   color: var(--color-text-dark);
@@ -1008,7 +971,6 @@
 }
 
 .dashboard-shell.dark .inspection-admin__dialog-head p,
-.dashboard-shell.dark .inspection-admin__dialog-body label span,
 .dashboard-shell.dark .inspection-admin__sendnow-label,
 .dashboard-shell.dark .inspection-admin__sendnow-branches-title,
 .dashboard-shell.dark .inspection-admin__product-cell__email,
@@ -1054,6 +1016,7 @@
 }
 
 .dashboard-shell.dark .inspection-admin__dialog-body input:disabled,
+.dashboard-shell.dark .inspection-admin__dialog-body select:disabled,
 .dashboard-shell.dark .inspection-admin__dialog-body textarea:disabled {
   background: color-mix(in srgb, var(--color-surface-dark) 82%, #000 18%);
   color: color-mix(in srgb, var(--color-text-dark) 76%, transparent);

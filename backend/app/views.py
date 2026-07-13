@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from configuracion.models import ConfiguracionSistema
-from inventario.models import Inventario, SubDivision
+from inventario.models import Division, Inventario, SubDivision
 from usuarios.models import RolPermiso
 from usuarios.sucursal_scope import get_allowed_sucursal_ids
 from usuarios.utils import (
@@ -987,6 +987,43 @@ def _collect_branch_inspection_candidates(branch_id):
     queryset = Inventario.objects.filter(
         cantidad__gt=0,
         subdivision__division__bodega__sucursal_id=branch_id,
+    )
+    rows = (
+        queryset.values(
+            "subdivision__division__bodega__sucursal_id",
+            "subdivision__division__bodega__sucursal__nombre",
+            "producto_id",
+            "producto__codigo",
+            "producto__nombre",
+        )
+        .annotate(cantidad_esperada=Sum("cantidad"))
+        .order_by("producto_id")
+    )
+    candidates = []
+    for row in rows:
+        sucursal_id = _normalize_int(row.get("subdivision__division__bodega__sucursal_id"), 0)
+        producto_id = _normalize_int(row.get("producto_id"), 0)
+        cantidad_esperada = _normalize_int(row.get("cantidad_esperada"), 0)
+        if sucursal_id <= 0 or producto_id <= 0 or cantidad_esperada <= 0:
+            continue
+        candidates.append({
+            "sucursal_id": sucursal_id,
+            "sucursal_nombre": _normalize_text(
+                row.get("subdivision__division__bodega__sucursal__nombre")
+            ) or f"Sucursal {sucursal_id}",
+            "producto_id": producto_id,
+            "producto_codigo": _normalize_text(row.get("producto__codigo")),
+            "producto_nombre": _normalize_text(row.get("producto__nombre")) or f"Producto {producto_id}",
+            "cantidad_esperada": cantidad_esperada,
+        })
+    return candidates
+
+
+def _collect_division_inspection_candidates(division_id):
+    """Collect inventory candidates for a single division (todas sus subdivisiones)."""
+    queryset = Inventario.objects.filter(
+        cantidad__gt=0,
+        subdivision__division_id=division_id,
     )
     rows = (
         queryset.values(
@@ -3096,6 +3133,32 @@ class RandomInspectionConfigAPIView(APIView):
         )
 
 
+def _parse_reminder_time(raw_value):
+    """Valida "HH:MM" (hoy, igual o posterior a la hora actual).
+
+    Devuelve (time_str, error_detail): si error_detail no es None, time_str
+    queda en "" y el detail ya esta listo para responder un 400.
+    """
+    hora_raw = _normalize_text(raw_value)
+    if not hora_raw:
+        return "", "Debes especificar la hora del recordatorio."
+
+    parts = hora_raw.split(":")
+    try:
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError()
+    except (ValueError, IndexError):
+        return "", "Formato de hora invalido. Usa HH:MM."
+
+    now = timezone.localtime().time()
+    if (h, m) < (now.hour, now.minute):
+        return "", "La hora debe ser igual o posterior a la hora actual."
+
+    return f"{h:02d}:{m:02d}", None
+
+
 class RandomInspectionSendNowAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -3114,33 +3177,9 @@ class RandomInspectionSendNowAPIView(APIView):
         cantidad = max(RANDOM_INSPECTION_MIN_ITEMS_PER_DAY, min(RANDOM_INSPECTION_MAX_ITEMS_PER_DAY, cantidad))
 
         # Parse hora_recordatorio (solo para hoy)
-        hora_raw = _normalize_text(request.data.get("hora_recordatorio", ""))
-        if not hora_raw:
-            return Response(
-                {"detail": "Debes especificar la hora del recordatorio."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        parts = hora_raw.split(":")
-        try:
-            h = int(parts[0])
-            m = int(parts[1]) if len(parts) > 1 else 0
-            if not (0 <= h <= 23 and 0 <= m <= 59):
-                raise ValueError()
-        except (ValueError, IndexError):
-            return Response(
-                {"detail": "Formato de hora invalido. Usa HH:MM."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        now = timezone.localtime().time()
-        if (h, m) < (now.hour, now.minute):
-            return Response(
-                {"detail": "La hora debe ser igual o posterior a la hora actual."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        time_str = f"{h:02d}:{m:02d}"
+        time_str, time_error = _parse_reminder_time(request.data.get("hora_recordatorio", ""))
+        if time_error:
+            return Response({"detail": time_error}, status=status.HTTP_400_BAD_REQUEST)
 
         usuario_ids_raw = request.data.get("usuario_ids")
         if usuario_ids_raw is not None:
@@ -3270,6 +3309,158 @@ class RandomInspectionSendNowAPIView(APIView):
             {
                 "dispatched": dispatched,
                 "count": len(dispatched),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RandomInspectionSendDivisionAPIView(APIView):
+    """Envia a un revisor puntual una inspeccion que cubre TODOS los
+    productos de una division especifica de una bodega, en vez de la
+    muestra aleatoria diaria."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta accion."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        division_id = _normalize_int(request.data.get("division_id"), 0)
+        usuario_id = _normalize_int(request.data.get("usuario_id"), 0)
+        if division_id <= 0 or usuario_id <= 0:
+            return Response(
+                {"detail": "Debes seleccionar una division y un revisor."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        time_str, time_error = _parse_reminder_time(request.data.get("hora_recordatorio", ""))
+        if time_error:
+            return Response({"detail": time_error}, status=status.HTTP_400_BAD_REQUEST)
+
+        division = (
+            Division.objects.select_related("bodega", "bodega__sucursal")
+            .filter(id=division_id)
+            .first()
+        )
+        if division is None:
+            return Response({"detail": "La division no existe."}, status=status.HTTP_404_NOT_FOUND)
+
+        sucursal_id = division.bodega.sucursal_id
+        sucursal_nombre = division.bodega.sucursal.nombre
+
+        user_model = get_user_model()
+        user = user_model.objects.filter(id=usuario_id, is_active=True).first()
+        if user is None:
+            return Response(
+                {"detail": "El usuario no existe o esta inactivo."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        pref = UsuarioPreferencia.objects.filter(usuario_id=usuario_id).first()
+        if pref is None or not pref.inspeccion_aleatoria:
+            return Response(
+                {"detail": "Este usuario no tiene habilitada la inspeccion aleatoria."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Lista vacia = habilitado para todas las sucursales (mismo criterio
+        # que /usuarios/listado/inspeccion-aleatoria-asignaciones/).
+        branch_ids = [
+            int(bid) for bid in (pref.inspeccion_aleatoria_sucursales or []) if bid is not None
+        ]
+        if branch_ids and sucursal_id not in branch_ids:
+            return Response(
+                {"detail": "Este usuario no esta asignado a la sucursal de esa division."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        candidates = _collect_division_inspection_candidates(division_id)
+        if not candidates:
+            return Response(
+                {"detail": "Esta division no tiene inventario disponible para revisar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        scheduled_date = timezone.localdate()
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+
+            inspection = (
+                InspeccionAleatoriaDiaria.objects.select_for_update()
+                .filter(usuario=user, sucursal_id=sucursal_id, fecha_programada=scheduled_date)
+                .first()
+            )
+
+            existing_producto_ids = set()
+            if inspection is not None:
+                existing_producto_ids = set(inspection.items.values_list("producto_id", flat=True))
+
+            new_items = [c for c in candidates if c["producto_id"] not in existing_producto_ids]
+            if not new_items:
+                return Response(
+                    {
+                        "detail": "Todos los productos de esta division ya estaban en la "
+                        "inspeccion de hoy de este usuario.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if inspection is None:
+                all_branch_candidates = _collect_branch_inspection_candidates(sucursal_id)
+                candidate_keys = {
+                    (c["sucursal_id"], c["producto_id"]) for c in all_branch_candidates
+                }
+                coverage = _calculate_random_inspection_coverage(user, candidate_keys)
+
+                inspection = InspeccionAleatoriaDiaria.objects.create(
+                    usuario=user,
+                    sucursal_id=sucursal_id,
+                    fecha_programada=scheduled_date,
+                    estado=InspeccionAleatoriaDiaria.Estados.PENDIENTE,
+                    total_items=len(new_items),
+                    cobertura_porcentaje=coverage,
+                )
+            else:
+                inspection.total_items = inspection.total_items + len(new_items)
+                inspection.save(update_fields=["total_items"])
+
+            InspeccionAleatoriaItem.objects.bulk_create(
+                [
+                    InspeccionAleatoriaItem(
+                        inspeccion=inspection,
+                        sucursal_id=sucursal_id,
+                        producto_id=item["producto_id"],
+                        cantidad_esperada=item["cantidad_esperada"],
+                    )
+                    for item in new_items
+                ],
+                ignore_conflicts=True,
+            )
+
+            _upsert_random_inspection_reminder(
+                store,
+                inspection,
+                user,
+                branch_nombre=f"{division.nombre} - {sucursal_nombre}",
+                time_str=time_str,
+            )
+            _upsert_random_inspection_admin_summary_reminder(store, scheduled_date, time_str=time_str)
+            store.save()
+
+        return Response(
+            {
+                "usuario_id": int(user.id),
+                "nombre": _format_user_display_name(user),
+                "sucursal_id": sucursal_id,
+                "sucursal_nombre": sucursal_nombre,
+                "division_id": int(division.id),
+                "division_nombre": division.nombre,
+                "inspeccion_id": int(inspection.id),
+                "productos": len(new_items),
             },
             status=status.HTTP_200_OK,
         )
