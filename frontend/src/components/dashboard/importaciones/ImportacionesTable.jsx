@@ -26,6 +26,16 @@ const getPortalRoot = () => document.querySelector('.dashboard-shell') || getPor
 const getProductoOem = (producto) =>
   (producto?.oem_productos || []).map((r) => r?.oem?.codigo).filter(Boolean).join(', ')
 
+// OEMProductoSerializer manda "producto" como su __str__ ("Nombre (Codigo)"),
+// no como objeto — se separa el código (paréntesis al final) del nombre para
+// poder mostrarlo en su propia columna en vez de mezclado en un solo texto.
+const parseProductoLabel = (label) => {
+  const str = String(label || '')
+  const match = /^(.*)\s\(([^)]+)\)\s*$/.exec(str)
+  if (!match) return { nombre: str, codigo: '' }
+  return { nombre: match[1].trim(), codigo: match[2].trim() }
+}
+
 // Input tipo "tags" para OEMs: busca con debounce en el catálogo existente
 // (para poder unir el producto nuevo al mismo grupo que ya usa ese OEM) y,
 // si no hay coincidencia, permite agregar el código tal cual como uno nuevo.
@@ -35,9 +45,32 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [options, setOptions] = useState([])
+  const [panelRect, setPanelRect] = useState(null)
   const wrapRef = useRef(null)
+  const panelRef = useRef(null)
   const timerRef = useRef(null)
   const seqRef = useRef(0)
+
+  // El panel se posiciona con position:fixed vía portal (en vez de absolute
+  // dentro de .imp-oem-input) para que pueda salirse del modal — que tiene
+  // su propio scroll interno y lo recortaba — en lugar de quedar atrapado
+  // ahí dentro con su propia barra de scroll.
+  useLayoutEffect(() => {
+    if (!open || !wrapRef.current) { setPanelRect(null); return }
+    const rect = wrapRef.current.getBoundingClientRect()
+    const estimatedPanelHeight = 240
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    const openUpward = spaceBelow < estimatedPanelHeight && spaceAbove > spaceBelow
+    const left = Math.min(Math.max(rect.left, 8), window.innerWidth - rect.width - 8)
+    setPanelRect({
+      left,
+      width: rect.width,
+      ...(openUpward
+        ? { bottom: window.innerHeight - rect.top + 4 }
+        : { top: rect.bottom + 4 }),
+    })
+  }, [open])
 
   useEffect(() => {
     const term = query.trim()
@@ -89,7 +122,11 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
 
   useEffect(() => {
     if (!open) return undefined
-    const onDocMouseDown = (e) => { if (!wrapRef.current?.contains(e.target)) setOpen(false) }
+    const onDocMouseDown = (e) => {
+      const inWrap = wrapRef.current?.contains(e.target)
+      const inPanel = panelRef.current?.contains(e.target)
+      if (!inWrap && !inPanel) setOpen(false)
+    }
     document.addEventListener('mousedown', onDocMouseDown)
     return () => document.removeEventListener('mousedown', onDocMouseDown)
   }, [open])
@@ -111,6 +148,34 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
 
   const term = query.trim()
   const exactMatch = options.some((o) => o.codigo.toLowerCase() === term.toLowerCase())
+
+  // "Ya vinculado a: ..." recorta a los primeros 3 productos (con "…"); el
+  // ícono de info muestra la lista completa (código + nombre) en una tarjeta
+  // flotante, mismo patrón que el ícono "i" de alternos/stock
+  // (imp-alternos-hover-card) más abajo en este archivo.
+  const [productsHover, setProductsHover] = useState(null)
+  const [productsHoverPos, setProductsHoverPos] = useState(null)
+  const productsHoverCardRef = useRef(null)
+  const productsHoverTimerRef = useRef(null)
+
+  const showProductsHover = (event, productos) => {
+    if (productsHoverTimerRef.current) clearTimeout(productsHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    productsHoverTimerRef.current = setTimeout(() => {
+      productsHoverTimerRef.current = null
+      setProductsHover({ triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left, productos })
+    }, 150)
+  }
+  const hideProductsHover = () => {
+    if (productsHoverTimerRef.current) { clearTimeout(productsHoverTimerRef.current); productsHoverTimerRef.current = null }
+    setProductsHover(null)
+    setProductsHoverPos(null)
+  }
+
+  useLayoutEffect(() => {
+    if (!productsHover || !productsHoverCardRef.current) return
+    setProductsHoverPos(computeSmartPopoverPosition(productsHover, productsHoverCardRef.current))
+  }, [productsHover])
 
   return (
     <div className="imp-oem-input" ref={wrapRef}>
@@ -141,8 +206,12 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
           autoComplete="off"
         />
       </div>
-      {open && term && (
-        <div className="imp-oem-input__panel">
+      {open && term && panelRect && createPortal(
+        <div
+          ref={panelRef}
+          className="imp-oem-input__panel"
+          style={{ top: panelRect.top, bottom: panelRect.bottom, left: panelRect.left, width: panelRect.width }}
+        >
           {loading && <small className="muted">Buscando OEM...</small>}
           {!loading && options.map((o) => (
             <button
@@ -153,8 +222,18 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
               onClick={() => addCode(o.codigo)}
             >
               <span className="imp-oem-input__option-code">{o.codigo}</span>
-              <span className="imp-oem-input__option-meta">
-                {o.productos.length ? `Ya vinculado a: ${o.productos.slice(0, 3).join(', ')}${o.productos.length > 3 ? '…' : ''}` : 'Sin productos vinculados aún'}
+              <span className="imp-oem-input__option-meta-row">
+                <span className="imp-oem-input__option-meta">
+                  {o.productos.length ? `Ya vinculado a: ${o.productos.slice(0, 3).join(', ')}${o.productos.length > 3 ? '…' : ''}` : 'Sin productos vinculados aún'}
+                </span>
+                {o.productos.length > 0 && (
+                  <Info
+                    size={13}
+                    className="imp-distribucion__info-icon"
+                    onMouseEnter={(e) => showProductsHover(e, o.productos)}
+                    onMouseLeave={hideProductsHover}
+                  />
+                )}
               </span>
             </button>
           ))}
@@ -164,7 +243,32 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
               Agregar &quot;{term}&quot; como OEM nuevo
             </button>
           )}
-        </div>
+        </div>,
+        getPortalRoot()
+      )}
+      {productsHover && createPortal(
+        <div
+          ref={productsHoverCardRef}
+          className="imp-alternos-hover-card"
+          style={{
+            top: productsHoverPos?.top ?? productsHover.triggerBottom + 4,
+            left: productsHoverPos?.left ?? productsHover.triggerLeft,
+            visibility: productsHoverPos ? 'visible' : 'hidden',
+          }}
+        >
+          <table className="imp-alternos-hover-card__table">
+            <thead>
+              <tr><th>Código</th><th>Producto</th></tr>
+            </thead>
+            <tbody>
+              {productsHover.productos.map((p, i) => {
+                const { codigo, nombre } = parseProductoLabel(p)
+                return <tr key={i}><td>{codigo || '-'}</td><td>{nombre}</td></tr>
+              })}
+            </tbody>
+          </table>
+        </div>,
+        getPortalRoot()
       )}
     </div>
   )
@@ -3116,7 +3220,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                   <strong style={{ fontSize: 'var(--font-size-md)' }}>Columnas de la plantilla</strong>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {[
-                      { label: 'CODIGO JP', type: 'texto' }, { label: 'REFERENCIA', type: 'texto' },
+                      { label: 'CODIGO JP', type: 'texto' }, { label: 'REFERENCIA', type: 'texto' }, { label: 'OEM', type: 'texto' },
                       { label: 'DESCRIPCIÓN', type: 'texto' }, { label: 'CANTIDAD', type: 'número' }, { label: 'PVP', type: 'número' },
                     ].map(col => (
                       <span key={col.label} style={{ background: '#1A1A2E', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 'var(--font-size-md)', fontWeight: 600 }}>

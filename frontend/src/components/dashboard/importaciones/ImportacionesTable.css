@@ -1818,12 +1818,13 @@
   box-shadow: none;
 }
 
+/* position:fixed en vez de absolute: el panel se renderiza vía portal
+   (ver OemAutocomplete en ImportacionesTable.jsx) con top/bottom/left/width
+   calculados en JS a partir del rect del input, para poder salirse del
+   modal en lugar de quedar recortado por su scroll interno. */
 .imp-oem-input__panel {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 30;
+  position: fixed;
+  z-index: 9999;
   max-height: 220px;
   overflow-y: auto;
   border: 1px solid var(--color-border);
@@ -1874,6 +1875,13 @@
 .imp-oem-input__option-meta {
   font-size: 0.75rem;
   color: var(--color-text-secondary, #64748b);
+}
+
+.imp-oem-input__option-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
 }
 
 .imp-oem-input__option--new {
