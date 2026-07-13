@@ -1053,11 +1053,11 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Descripción</span>
+                      <span>Nombre</span>
                       <input
                         name="nombres"
                         type="text"
-                        placeholder="Descripción"
+                        placeholder="Nombre"
                         value={formData.nombres}
                         onChange={handleChange}
                         required
@@ -1371,7 +1371,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                   const salidasSubtypes = [
                     { key: 'puede_crear_venta', label: 'Ventas' },
                     { key: 'puede_crear_traslado', label: 'Traslados' },
-                    { key: 'puede_crear_devolucion', label: 'Devoluciones' },
+                    { key: 'puede_crear_devolucion', label: 'Garantía' },
                   ]
                   const importacionesSubtypes = [
                     { key: 'puede_importar', label: 'Enviar a en camino' },

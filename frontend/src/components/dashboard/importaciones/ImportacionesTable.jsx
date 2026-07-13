@@ -26,6 +26,150 @@ const getPortalRoot = () => document.querySelector('.dashboard-shell') || getPor
 const getProductoOem = (producto) =>
   (producto?.oem_productos || []).map((r) => r?.oem?.codigo).filter(Boolean).join(', ')
 
+// Input tipo "tags" para OEMs: busca con debounce en el catálogo existente
+// (para poder unir el producto nuevo al mismo grupo que ya usa ese OEM) y,
+// si no hay coincidencia, permite agregar el código tal cual como uno nuevo.
+function OemAutocomplete({ value, onChange, token, disabled }) {
+  const codes = useMemo(() => String(value || '').split(',').map((s) => s.trim()).filter(Boolean), [value])
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [options, setOptions] = useState([])
+  const wrapRef = useRef(null)
+  const timerRef = useRef(null)
+  const seqRef = useRef(0)
+
+  useEffect(() => {
+    const term = query.trim()
+    if (!open || !term || !token) {
+      setOptions([])
+      setLoading(false)
+      return undefined
+    }
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setLoading(true)
+    const seq = ++seqRef.current
+    timerRef.current = setTimeout(async () => {
+      try {
+        const [oemResp, linksResp] = await Promise.all([
+          authFetch(`${API_URL}/productos/oem/?search=${encodeURIComponent(term)}&page_size=20`, {}, token),
+          authFetch(`${API_URL}/productos/oem-producto/?search=${encodeURIComponent(term)}&page_size=50`, {}, token),
+        ])
+        if (seqRef.current !== seq) return
+        const byCode = new Map()
+        if (oemResp.ok) {
+          const data = await oemResp.json()
+          const list = Array.isArray(data) ? data : data?.results || []
+          list.forEach((o) => {
+            const codigo = String(o?.codigo || '').trim()
+            if (codigo) byCode.set(codigo.toLowerCase(), { codigo, productos: [] })
+          })
+        }
+        if (linksResp.ok) {
+          const data = await linksResp.json()
+          const list = Array.isArray(data) ? data : data?.results || []
+          list.forEach((row) => {
+            const codigo = String(row?.oem?.codigo || '').trim()
+            if (!codigo || !codigo.toLowerCase().includes(term.toLowerCase())) return
+            const key = codigo.toLowerCase()
+            if (!byCode.has(key)) byCode.set(key, { codigo, productos: [] })
+            if (row.producto) byCode.get(key).productos.push(String(row.producto))
+          })
+        }
+        setOptions(Array.from(byCode.values()))
+      } catch {
+        if (seqRef.current !== seq) return
+        setOptions([])
+      } finally {
+        if (seqRef.current === seq) setLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(timerRef.current)
+  }, [query, open, token])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onDocMouseDown = (e) => { if (!wrapRef.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [open])
+
+  const addCode = (raw) => {
+    const clean = String(raw || '').trim()
+    if (!clean) return
+    if (!codes.some((c) => c.toLowerCase() === clean.toLowerCase())) {
+      onChange([...codes, clean].join(', '))
+    }
+    setQuery('')
+    setOptions([])
+    setOpen(false)
+  }
+
+  const removeCode = (code) => {
+    onChange(codes.filter((c) => c !== code).join(', '))
+  }
+
+  const term = query.trim()
+  const exactMatch = options.some((o) => o.codigo.toLowerCase() === term.toLowerCase())
+
+  return (
+    <div className="imp-oem-input" ref={wrapRef}>
+      <div className="imp-oem-input__chips">
+        {codes.map((code) => (
+          <span key={code} className="imp-oem-input__chip">
+            {code}
+            {!disabled && (
+              <button type="button" onClick={() => removeCode(code)} aria-label={`Quitar ${code}`}>
+                <X size={11} />
+              </button>
+            )}
+          </span>
+        ))}
+        <input
+          type="text"
+          className="imp-oem-input__field"
+          placeholder={codes.length ? '' : 'Buscar o agregar OEM'}
+          value={query}
+          disabled={disabled}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); if (term) addCode(term) }
+            else if (e.key === 'Backspace' && !query && codes.length) removeCode(codes[codes.length - 1])
+            else if (e.key === 'Escape') setOpen(false)
+          }}
+          autoComplete="off"
+        />
+      </div>
+      {open && term && (
+        <div className="imp-oem-input__panel">
+          {loading && <small className="muted">Buscando OEM...</small>}
+          {!loading && options.map((o) => (
+            <button
+              type="button"
+              key={o.codigo}
+              className="imp-oem-input__option"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => addCode(o.codigo)}
+            >
+              <span className="imp-oem-input__option-code">{o.codigo}</span>
+              <span className="imp-oem-input__option-meta">
+                {o.productos.length ? `Ya vinculado a: ${o.productos.slice(0, 3).join(', ')}${o.productos.length > 3 ? '…' : ''}` : 'Sin productos vinculados aún'}
+              </span>
+            </button>
+          ))}
+          {!loading && !exactMatch && (
+            <button type="button" className="imp-oem-input__option imp-oem-input__option--new" onMouseDown={(e) => e.preventDefault()} onClick={() => addCode(term)}>
+              <Plus size={13} />
+              Agregar &quot;{term}&quot; como OEM nuevo
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const toNumberOrNull = (v) => (v === '' || v == null ? null : Number(v))
 
 const getCantidadRecibidaCeiling = (row) => {
@@ -671,6 +815,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   }, [token])
 
   const renderDupIcon = (status, fieldLabel) => {
+    if (status?.checking) {
+      return (
+        <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex', color: 'var(--color-text-secondary, #64748b)', pointerEvents: 'none' }}>
+          <svg style={{ animation: 'spin 0.8s linear infinite', width: 16, height: 16 }} viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.2" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+        </span>
+      )
+    }
     if (!status?.checked) return null
     const isError = Boolean(status.error)
     return (
@@ -1513,7 +1667,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     </label>
                     <label className="create-user__field">
                       <span>OEMs</span>
-                      <input type="text" placeholder="Separados por coma" value={form.oem} onChange={(e) => setForm(f => ({ ...f, oem: e.target.value }))} />
+                      <OemAutocomplete value={form.oem} onChange={(v) => setForm(f => ({ ...f, oem: v }))} token={token} disabled={formSaving} />
                     </label>
                     <label className="create-user__field create-user__field--full">
                       <span>Nota</span>
@@ -1577,7 +1731,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                           </label>
                           <label className="create-user__field">
                             <span>OEMs</span>
-                            <input type="text" placeholder="Separados por coma" value={item.oem} onChange={(e) => updateKitForm(idx, 'oem', e.target.value)} />
+                            <OemAutocomplete value={item.oem} onChange={(v) => updateKitForm(idx, 'oem', v)} token={token} disabled={formSaving} />
                           </label>
                           <label className="create-user__field create-user__field--full">
                             <span>Nota</span>
@@ -1866,6 +2020,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     height: Math.min(700, window.innerHeight * 0.88),
   }))
   const [isMaximized, setIsMaximized] = useState(false)
+  const [isResizingModal, setIsResizingModal] = useState(false)
   const positionRef = useRef(position)
   const modalSizeRef = useRef(modalSize)
   useEffect(() => { positionRef.current = position }, [position])
@@ -1920,6 +2075,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     if (isMaximized) return
     event.preventDefault()
     event.stopPropagation()
+    setIsResizingModal(true)
     resizeData.current = {
       active: true,
       startX: event.clientX,
@@ -1940,6 +2096,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     }
     const handleResizeUp = () => {
       resizeData.current.active = false
+      setIsResizingModal(false)
       window.removeEventListener('mousemove', handleResizeMove)
       window.removeEventListener('mouseup', handleResizeUp)
     }
@@ -1949,6 +2106,8 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
 
   const toggleMaximize = () => {
     dragData.current.active = false
+    resizeData.current.active = false
+    setIsResizingModal(false)
     if (isMaximized) {
       const restore = modalRestoreRef.current
       if (restore) {
@@ -1972,18 +2131,27 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   if (!imp) return null
   const detalles = imp.detalles || []
   const sucursalesCols = enviosDistribucion.sucursales
-  // Anchos fijos (sin fr): con scroll horizontal ya no hace falta que las columnas
-  // se estiren, y usar solo px hace que cada fila calcule exactamente el mismo
-  // ancho total sin importar su propio contenido — necesario porque la fila
-  // ahora usa width: max-content (ver ImportacionesTable.css) para que su fondo
-  // cubra todas las columnas; con unidades fr eso haría que cada fila (con
-  // contenido distinto) repartiera el espacio distinto y las columnas quedaran
-  // desalineadas entre filas.
-  const productosGridTemplate = [
-    '90px', '140px', '90px', '100px', '80px', '88px',
-    ...sucursalesCols.map(() => '90px'),
-    '150px',
-  ].join(' ')
+  // Columnas con minmax(px, fr): crecen para llenar el modal, pero nunca por
+  // debajo de su mínimo en px. El mínimo es un número fijo (no depende del
+  // contenido de cada celda), así que la fila y el header siempre calculan
+  // exactamente el mismo ancho total y las columnas quedan alineadas entre
+  // filas — para eso la fila usa width:100% + un min-width en px (ver
+  // productosMinWidth más abajo) en vez de width:max-content: eso evitaría
+  // que el navegador use el contenido real de cada celda para repartir el
+  // espacio de las columnas fr, lo que sí desalinearía filas con distinto
+  // contenido (comentarios largos, etc.).
+  const productosCols = [
+    { min: 72, fr: 0.7 }, // Código
+    { min: 100, fr: 1 }, // Descripción
+    { min: 72, fr: 0.7 }, // OEM
+    { min: 82, fr: 0.8 }, // Referencia
+    { min: 60, fr: 0.55 }, // Precio
+    { min: 70, fr: 0.5 }, // Cantidad
+    ...sucursalesCols.map(() => ({ min: 70, fr: 0.5 })),
+    { min: 120, fr: 1.2 }, // Comentario
+  ]
+  const productosGridTemplate = productosCols.map((c) => `minmax(${c.min}px, ${c.fr}fr)`).join(' ')
+  const productosMinWidth = productosCols.reduce((sum, c) => sum + c.min, 0)
   const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
 
   const ribbonClass = imp.estado === 'importada'
@@ -1998,7 +2166,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       <Toast ref={toastRef} />
       <div
         ref={modalRef}
-        className="create-user__modal create-salida__modal entrada-details__modal--pending"
+        className={`create-user__modal create-salida__modal entrada-details__modal--pending${isResizingModal ? ' create-salida__modal--resizing' : ''}`}
         style={{
           top: position.y,
           left: position.x,
@@ -2136,7 +2304,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                   </div>
                   <div className="imp-details__productos-table-wrap">
                   <div className="create-user__locations-table importaciones-modal__products-table imp-details__productos-table">
-                    <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: productosGridTemplate }}>
+                    <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
                       <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
                       {sucursalesCols.map((s) => <span key={s.id} title={s.nombre}>{shortSucursalLabel(s.nombre)}</span>)}
                       <span>Comentario</span>
@@ -2155,7 +2323,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const comentario = d.comentario || '-'
                       const envios = d.producto?.id != null ? (enviosDistribucion.porProducto.get(d.producto.id) || []) : []
                       return (
-                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: productosGridTemplate }}>
+                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
                           <span
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => !sinCat && showCellHover(e, codigo, 'Código')}

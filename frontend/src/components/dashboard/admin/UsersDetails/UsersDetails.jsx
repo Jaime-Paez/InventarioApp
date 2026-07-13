@@ -1267,7 +1267,7 @@ function UsersDetails({
 
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
-                  <span>Descripción</span>
+                  <span>Nombre</span>
                   <input
                     name="nombres"
                     type="text"
@@ -1657,7 +1657,7 @@ function UsersDetails({
                 const salidasSubtypes = [
                   { key: 'puede_crear_venta', label: 'Ventas' },
                   { key: 'puede_crear_traslado', label: 'Traslados' },
-                  { key: 'puede_crear_devolucion', label: 'Devoluciones' },
+                  { key: 'puede_crear_devolucion', label: 'Garantía' },
                 ]
 
                 return (

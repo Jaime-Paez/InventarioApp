@@ -539,7 +539,7 @@ function AuditoriaTable({ token }) {
                       <span>Usuario</span>
                       <input
                         type="text"
-                        placeholder="Descripción, apellido o correo del usuario"
+                        placeholder="Nombre, apellido o correo del usuario"
                         value={pending.usuario_search}
                         onChange={(e) => setPending((p) => ({ ...p, usuario_search: e.target.value }))}
                       />
