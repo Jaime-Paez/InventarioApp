@@ -788,6 +788,12 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
               type="button"
               className="inspection-admin__manage"
               onClick={async () => {
+                // Abre el diálogo de inmediato (con su propio spinner de
+                // "Cargando datos...") en vez de esperar a que terminen las
+                // peticiones antes de mostrar nada: antes el botón se sentía
+                // trabado varios segundos sin ninguna señal de que algo
+                // estaba pasando.
+                setShowSendNowDialog(true)
                 setSendNowDialogLoading(true)
                 try {
                   const now = new Date()
@@ -810,10 +816,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       .filter(Boolean)
                   )
                   setSendNowSelectedUserIds(allIds)
-
-                  setShowSendNowDialog(true)
-                } catch (error) {
+                } catch {
                   notifyError('Error al cargar datos para enviar recordatorios.')
+                  setShowSendNowDialog(false)
                 } finally {
                   setSendNowDialogLoading(false)
                 }
