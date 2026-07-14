@@ -4936,7 +4936,7 @@ function QuickActions({
                         <span>¿Algo no salió como lo esperado?</span>
                       </label>
                       {randomInspectionHasGeneralIssue && (
-                        <label className="quick-actions__inspection-note">
+                        <label className="quick-actions__inspection-note quick-actions__receive-general-issue-note">
                           <span>Cuéntanos qué pasó (obligatorio)</span>
                           <textarea
                             rows={3}
@@ -5114,30 +5114,6 @@ function QuickActions({
                     <p className="quick-actions__receive-summary-missing-note">
                       Faltan <strong>{receiveShipmentTotalMissing}</strong> unidad(es) en total.
                     </p>
-                  )}
-                  <label className="quick-actions__receive-general-issue">
-                    <input
-                      type="checkbox"
-                      checked={receiveShipmentHasGeneralIssue}
-                      onChange={(event) => {
-                        const checked = event.target.checked
-                        setReceiveShipmentHasGeneralIssue(checked)
-                        if (!checked) setReceiveShipmentGeneralNote('')
-                      }}
-                      disabled={receiveShipmentSubmitting}
-                    />
-                    <span>¿Algo no salió como lo esperado?</span>
-                  </label>
-                  {receiveShipmentHasGeneralIssue && (
-                    <label className="quick-actions__receive-note">
-                      <span>Cuéntanos qué pasó (obligatorio)</span>
-                      <textarea
-                        rows={3}
-                        value={receiveShipmentGeneralNote}
-                        onChange={(event) => setReceiveShipmentGeneralNote(event.target.value)}
-                        disabled={receiveShipmentSubmitting}
-                      />
-                    </label>
                   )}
                 </div>
               ) : inTransitSubdivisionsLoading ? (
@@ -5766,6 +5742,35 @@ function QuickActions({
                   </div>
                 )
               })() : null}
+
+              {!inTransitSubdivisionsLoading && (
+                <div className="quick-actions__receive-general-issue-block">
+                  <label className="quick-actions__receive-general-issue">
+                    <input
+                      type="checkbox"
+                      checked={receiveShipmentHasGeneralIssue}
+                      onChange={(event) => {
+                        const checked = event.target.checked
+                        setReceiveShipmentHasGeneralIssue(checked)
+                        if (!checked) setReceiveShipmentGeneralNote('')
+                      }}
+                      disabled={receiveShipmentSubmitting}
+                    />
+                    <span>¿Algo no salió como lo esperado?</span>
+                  </label>
+                  {receiveShipmentHasGeneralIssue && (
+                    <label className="quick-actions__receive-note quick-actions__receive-general-issue-note">
+                      <span>Cuéntanos qué pasó (obligatorio)</span>
+                      <textarea
+                        rows={3}
+                        value={receiveShipmentGeneralNote}
+                        onChange={(event) => setReceiveShipmentGeneralNote(event.target.value)}
+                        disabled={receiveShipmentSubmitting}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
 
               {receiveShipmentError && (
                 <p className="quick-actions__receive-error">{receiveShipmentError}</p>
