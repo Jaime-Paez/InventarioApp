@@ -145,8 +145,6 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
     setOpen(false)
   }
 
-  const clearSelection = () => onChange('')
-
   const term = query.trim()
   const exactMatch = options.some((o) => o.codigo.toLowerCase() === term.toLowerCase())
 
@@ -242,34 +240,19 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
   return (
     <div className="imp-oem-input" ref={wrapRef}>
       <div className="imp-oem-input__row">
-        <div className="imp-oem-input__chips">
-          {selectedCode ? (
-            <span className="imp-oem-input__chip">
-              {selectedCode}
-              {!disabled && (
-                <button type="button" onClick={clearSelection} aria-label={`Quitar ${selectedCode}`}>
-                  <X size={11} />
-                </button>
-              )}
-            </span>
-          ) : (
-            <input
-              type="text"
-              className="imp-oem-input__field"
-              placeholder="Buscar o agregar OEM"
-              value={query}
-              disabled={disabled}
-              onFocus={() => setOpen(true)}
-              onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); if (term) selectCode(term) }
-                else if (e.key === 'Escape') setOpen(false)
-              }}
-              autoComplete="off"
-            />
-          )}
-        </div>
-        {selectedCode && groupInfo && groupInfo !== 'loading' && (
+        <button
+          type="button"
+          className="create-user__dropdown-trigger imp-oem-input__trigger"
+          onClick={() => {
+            setOpen((prev) => !prev)
+            if (!open) setQuery('')
+          }}
+          disabled={disabled}
+        >
+          <span>{selectedCode || 'Buscar o agregar OEM'}</span>
+          <i className={`pi pi-chevron-${open ? 'up' : 'down'}`} />
+        </button>
+        {selectedCode && (
           <Info
             size={14}
             className="imp-distribucion__info-icon imp-oem-input__group-icon"
@@ -278,14 +261,30 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
           />
         )}
       </div>
-      {open && term && panelRect && createPortal(
+      {open && panelRect && createPortal(
         <div
           ref={panelRef}
           className="imp-oem-input__panel"
           style={{ top: panelRect.top, bottom: panelRect.bottom, left: panelRect.left, width: panelRect.width }}
         >
+          <div className="create-user__dropdown-search">
+            <i className="pi pi-search" />
+            <input
+              type="text"
+              placeholder="Buscar o agregar OEM"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); if (term) selectCode(term) }
+                else if (e.key === 'Escape') setOpen(false)
+              }}
+              autoFocus
+              autoComplete="off"
+            />
+          </div>
           {loading && <small className="muted">Buscando OEM...</small>}
-          {!loading && options.map((o) => (
+          {!loading && !term && <small className="muted">Escribe para buscar.</small>}
+          {!loading && term && options.map((o) => (
             <button
               type="button"
               key={o.codigo}
@@ -314,7 +313,7 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
               </span>
             </button>
           ))}
-          {!loading && !exactMatch && (
+          {!loading && term && !exactMatch && (
             <button type="button" className="imp-oem-input__option imp-oem-input__option--new" onMouseDown={(e) => e.preventDefault()} onClick={() => selectCode(term)}>
               <Plus size={13} />
               Agregar &quot;{term}&quot; como OEM nuevo
@@ -347,7 +346,7 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
         </div>,
         getPortalRoot()
       )}
-      {groupHover && groupInfo && groupInfo !== 'loading' && createPortal(
+      {groupHover && createPortal(
         <div
           ref={groupHoverCardRef}
           className="imp-alternos-hover-card imp-alternos-hover-card--group"
@@ -357,21 +356,31 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
             visibility: groupHoverPos ? 'visible' : 'hidden',
           }}
         >
-          <div className="imp-alternos-hover-card__section-title">Productos alternos</div>
-          <table className="imp-alternos-hover-card__table">
-            <thead>
-              <tr><th>Código</th><th>Producto</th></tr>
-            </thead>
-            <tbody>
-              {groupInfo.productos.map((p, i) => (
-                <tr key={i}><td>{p.codigo || '-'}</td><td>{p.nombre}</td></tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="imp-alternos-hover-card__section-title">Lista de OEMs</div>
-          <div className="imp-alternos-hover-card__oem-list">
-            {groupInfo.oemCodes.join(', ')}
-          </div>
+          {groupInfo === 'loading' && (
+            <div className="imp-alternos-hover-card__message">Buscando...</div>
+          )}
+          {!groupInfo && (
+            <div className="imp-alternos-hover-card__message">No hay ningún producto ni OEM agregado.</div>
+          )}
+          {groupInfo && groupInfo !== 'loading' && (
+            <>
+              <div className="imp-alternos-hover-card__section-title">Productos alternos</div>
+              <table className="imp-alternos-hover-card__table">
+                <thead>
+                  <tr><th>Código</th><th>Producto</th></tr>
+                </thead>
+                <tbody>
+                  {groupInfo.productos.map((p, i) => (
+                    <tr key={i}><td>{p.codigo || '-'}</td><td>{p.nombre}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="imp-alternos-hover-card__section-title">Lista de OEMs</div>
+              <div className="imp-alternos-hover-card__oem-list">
+                {groupInfo.oemCodes.join(', ')}
+              </div>
+            </>
+          )}
         </div>,
         getPortalRoot()
       )}
@@ -1898,10 +1907,10 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                       </div>
                       {formErrors.referencia && <small style={{ color: '#dc2626' }}>{formErrors.referencia}</small>}
                     </label>
-                    <label className="create-user__field">
+                    <div className="create-user__field">
                       <span>OEMs</span>
                       <OemAutocomplete value={form.oem} onChange={(v) => setForm(f => ({ ...f, oem: v }))} token={token} disabled={formSaving} />
-                    </label>
+                    </div>
                     <label className="create-user__field create-user__field--full">
                       <span>Nota</span>
                       <input type="text" placeholder="Opcional" value={form.descripcion} onChange={(e) => setForm(f => ({ ...f, descripcion: e.target.value }))} />
@@ -1962,10 +1971,10 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             </div>
                             {kitFormErrors[idx]?.referencia && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].referencia}</small>}
                           </label>
-                          <label className="create-user__field">
+                          <div className="create-user__field">
                             <span>OEMs</span>
                             <OemAutocomplete value={item.oem} onChange={(v) => updateKitForm(idx, 'oem', v)} token={token} disabled={formSaving} />
-                          </label>
+                          </div>
                           <label className="create-user__field create-user__field--full">
                             <span>Nota</span>
                             <input type="text" placeholder="Opcional" value={item.descripcion} onChange={(e) => updateKitForm(idx, 'descripcion', e.target.value)} />

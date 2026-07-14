@@ -1764,7 +1764,7 @@
   gap: 6px;
 }
 
-.imp-oem-input__row .imp-oem-input__chips {
+.imp-oem-input__row .imp-oem-input__trigger {
   flex: 1;
   min-width: 0;
 }
@@ -1773,93 +1773,11 @@
   flex-shrink: 0;
 }
 
-.imp-oem-input__chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 0.35rem 0.75rem;
-  min-height: 24px;
-  /* Los demás <input> de .create-user__field quedan blancos por default del
-     navegador (esa regla no fija background en modo claro); --color-surface
-     es gris (#E9ECEF), así que usarla aquí se veía como un campo distinto/
-     deshabilitado en vez de un input más. */
-  background: #fff;
-}
-
-.imp-oem-input__chips:focus-within {
-  border-color: var(--color-primary-dark);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
-}
-
-.dashboard-shell.dark .imp-oem-input__chips {
-  background: var(--color-surface-darker);
-  border-color: var(--color-border);
-}
-
-.imp-oem-input__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-  color: var(--color-text-primary);
-  font-size: 0.78rem;
-  font-weight: 600;
+.imp-oem-input__trigger span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.imp-oem-input__chip button {
-  display: inline-flex;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  color: inherit;
-  opacity: 0.6;
-}
-
-.imp-oem-input__chip button:hover {
-  opacity: 1;
-}
-
-/* .create-user__field input (CreateUsuario.css) matches this input too,
-   ya que es un selector descendiente genérico sin importar la profundidad;
-   como su especificidad es mayor que una sola clase, sin este refuerzo pisa
-   el border/padding/width de acá y el input queda con su propia caja
-   redondeada dentro de .imp-oem-input__chips (efecto "caja dentro de caja"). */
-.imp-oem-input__chips .imp-oem-input__field {
-  flex: 1;
-  min-width: 80px;
-  width: auto;
-  min-height: auto;
-  border: 0;
-  border-radius: 0;
-  outline: 0;
-  padding: 2px 0;
-  background: transparent;
-  font: inherit;
-  color: var(--color-text-primary);
-}
-
-.imp-oem-input__chips .imp-oem-input__field:focus {
-  border: 0;
-  box-shadow: none;
-}
-
-.dashboard-shell.dark .imp-oem-input__chips .imp-oem-input__field {
-  background: transparent;
-  border-color: transparent;
-  color: var(--color-button-primary);
-}
-
-.dashboard-shell.dark .imp-oem-input__chips .imp-oem-input__field:focus {
-  border: 0;
-  box-shadow: none;
+  text-align: left;
 }
 
 /* position:fixed en vez de absolute: el panel se renderiza vía portal
