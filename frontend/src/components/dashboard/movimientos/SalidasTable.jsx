@@ -70,6 +70,7 @@ const parseTotalValue = (row) => {
 }
 const MOVEMENT_PRODUCTS_HOVER_CARD_WIDTH = 480
 const MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN = 12
+const MOVEMENT_PRODUCTS_HOVER_CARD_MAX_HEIGHT = 520
 const formatSalidaSubTipoLabel = (value) => {
   const nombre = String(value || '').trim()
   return normalizeValue(nombre) === 'devolucion' ? 'Garantia' : nombre
@@ -178,6 +179,7 @@ function SalidasTable({
   const loadedTokenRef = useRef(null)
   const handledTransferRequestKeyRef = useRef('')
   const productHoverHideTimeoutRef = useRef(null)
+  const productHoverCardRef = useRef(null)
   const clickTimerRef = useRef(null)
   const pendingClickRowRef = useRef(null)
   const pendingClickCountRef = useRef(0)
@@ -815,7 +817,15 @@ function SalidasTable({
         )
       }
 
-      const maxTop = Math.max(window.innerHeight - 280, MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN)
+      // El alto real del card puede llegar hasta min(70vh, 520px) (ver
+      // .movimientos-table__product-hover-card en UsersTable.css); se reserva
+      // ese espacio debajo del top para que nunca quede cortado por el borde
+      // inferior de la ventana sin importar cuántas filas tenga la lista.
+      const maxCardHeight = Math.min(MOVEMENT_PRODUCTS_HOVER_CARD_MAX_HEIGHT, window.innerHeight * 0.7)
+      const maxTop = Math.max(
+        window.innerHeight - maxCardHeight - MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN,
+        MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN
+      )
       const top = Math.min(
         Math.max(rect.top - 8, MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN),
         maxTop
@@ -838,7 +848,13 @@ function SalidasTable({
   )
 
   useEffect(() => {
-    const handleScroll = () => {
+    const handleScroll = (event) => {
+      // Ignora el scroll que ocurre dentro del propio card (para poder
+      // recorrer la lista de productos con la rueda del mouse); solo lo
+      // oculta cuando el scroll viene de la tabla/página de atrás.
+      if (productHoverCardRef.current && event.target && productHoverCardRef.current.contains(event.target)) {
+        return
+      }
       hideProductHoverCard()
     }
 
@@ -1617,6 +1633,7 @@ function SalidasTable({
 
         {Array.isArray(productHoverCard?.products) && productHoverCard.products.length > 0 && (
           <div
+            ref={productHoverCardRef}
             className="movimientos-table__product-hover-card"
             role="tooltip"
             style={{

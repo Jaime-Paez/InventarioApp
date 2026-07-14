@@ -1154,6 +1154,9 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
   position: fixed;
   z-index: 1200;
   width: min(480px, calc(100vw - 24px));
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 14px;
@@ -1162,7 +1165,15 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
 }
 
 .movimientos-table__product-hover-title {
-  margin-bottom: 8px;
+  position: sticky;
+  top: -12px;
+  margin: -12px -12px 8px;
+  height: 32px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  z-index: 2;
+  background: var(--color-surface);
   font-size: 0.82rem;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -1174,6 +1185,13 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
+}
+
+.movimientos-table__product-hover-table thead th {
+  position: sticky;
+  top: 20px;
+  background: var(--color-surface);
+  z-index: 1;
 }
 
 .movimientos-table__product-hover-table th,
@@ -1252,6 +1270,14 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
 .dashboard-shell.dark .movimientos-table__product-hover-table th,
 .dashboard-shell.dark .movimientos-table__product-hover-table td {
   color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .movimientos-table__product-hover-title {
+  background: var(--color-surface-darker);
+}
+
+.dashboard-shell.dark .movimientos-table__product-hover-table thead th {
+  background: var(--color-surface-darker);
 }
 
 .dashboard-shell.dark .movimientos-table__product-hover-table th {

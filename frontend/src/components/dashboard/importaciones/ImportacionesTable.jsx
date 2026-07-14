@@ -541,6 +541,7 @@ const STATUS_CONFIG = {
 
 const IMP_HOVER_WIDTH = 560
 const IMP_HOVER_MARGIN = 12
+const IMP_HOVER_MAX_HEIGHT = 520
 
 const STATUS_BADGE = {
   borrador: { label: 'Sugerencia', color: '#64748b', bg: 'rgba(100,116,139,0.1)' },
@@ -7161,6 +7162,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
 
   const [productHoverCard, setProductHoverCard] = useState(null)
   const productHoverHideTimerRef = useRef(null)
+  const productHoverCardRef = useRef(null)
   const [globalFilterValue, setGlobalFilterValue] = useState('')
   const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
   const globalSearchDebounceRef = useRef(null)
@@ -7334,13 +7336,29 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     if (left + IMP_HOVER_WIDTH > window.innerWidth - IMP_HOVER_MARGIN) {
       left = Math.max(IMP_HOVER_MARGIN, rect.left - IMP_HOVER_WIDTH - 10)
     }
-    const top = Math.min(Math.max(rect.top - 8, IMP_HOVER_MARGIN), Math.max(window.innerHeight - 320, IMP_HOVER_MARGIN))
+    // El alto real del card puede llegar hasta min(70vh, 520px) (ver
+    // .movimientos-table__product-hover-card en UsersTable.css); se reserva
+    // ese espacio debajo del top para que nunca quede cortado por el borde
+    // inferior de la ventana sin importar cuántas filas tenga la lista.
+    const maxCardHeight = Math.min(IMP_HOVER_MAX_HEIGHT, window.innerHeight * 0.7)
+    const top = Math.min(
+      Math.max(rect.top - 8, IMP_HOVER_MARGIN),
+      Math.max(window.innerHeight - maxCardHeight - IMP_HOVER_MARGIN, IMP_HOVER_MARGIN)
+    )
     setProductHoverCard({ left, top, productos: list })
   }, [clearProductHoverTimer, hideProductHoverCard])
 
   useEffect(() => () => clearProductHoverTimer(), [clearProductHoverTimer])
   useEffect(() => {
-    const handler = () => hideProductHoverCard()
+    const handler = (event) => {
+      // Ignora el scroll que ocurre dentro del propio card (para poder
+      // recorrer la lista de productos con la rueda del mouse); solo lo
+      // oculta cuando el scroll viene de la tabla/página de atrás.
+      if (productHoverCardRef.current && event.target && productHoverCardRef.current.contains(event.target)) {
+        return
+      }
+      hideProductHoverCard()
+    }
     window.addEventListener('scroll', handler, true)
     return () => window.removeEventListener('scroll', handler, true)
   }, [hideProductHoverCard])
@@ -7791,6 +7809,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
 
       {Array.isArray(productHoverCard?.productos) && productHoverCard.productos.length > 0 && createPortal(
         <div
+          ref={productHoverCardRef}
           className="movimientos-table__product-hover-card movimientos-table__product-hover-card--wide"
           role="tooltip"
           style={{ top: productHoverCard.top, left: productHoverCard.left, width: IMP_HOVER_WIDTH }}
