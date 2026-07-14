@@ -7336,14 +7336,16 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     if (left + IMP_HOVER_WIDTH > window.innerWidth - IMP_HOVER_MARGIN) {
       left = Math.max(IMP_HOVER_MARGIN, rect.left - IMP_HOVER_WIDTH - 10)
     }
-    // El alto real del card puede llegar hasta min(70vh, 520px) (ver
-    // .movimientos-table__product-hover-card en UsersTable.css); se reserva
-    // ese espacio debajo del top para que nunca quede cortado por el borde
-    // inferior de la ventana sin importar cuántas filas tenga la lista.
-    const maxCardHeight = Math.min(IMP_HOVER_MAX_HEIGHT, window.innerHeight * 0.7)
+    // Estima el alto real del card según su contenido (título + encabezado +
+    // filas) en vez de asumir siempre el máximo — así una lista corta se
+    // sigue posicionando pegada al ojo, y solo listas largas (que superan
+    // min(70vh, 520px), el max-height real del CSS) se recorren hacia arriba
+    // lo justo para no quedar cortadas por el borde inferior.
+    const estimatedCardHeight = 32 + 24 + list.length * 27 + 12
+    const cardHeight = Math.min(estimatedCardHeight, IMP_HOVER_MAX_HEIGHT, window.innerHeight * 0.7)
     const top = Math.min(
       Math.max(rect.top - 8, IMP_HOVER_MARGIN),
-      Math.max(window.innerHeight - maxCardHeight - IMP_HOVER_MARGIN, IMP_HOVER_MARGIN)
+      Math.max(window.innerHeight - cardHeight - IMP_HOVER_MARGIN, IMP_HOVER_MARGIN)
     )
     setProductHoverCard({ left, top, productos: list })
   }, [clearProductHoverTimer, hideProductHoverCard])

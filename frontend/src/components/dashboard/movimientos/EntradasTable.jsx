@@ -810,13 +810,19 @@ function EntradasTable({
         )
       }
 
-      // El alto real del card puede llegar hasta min(70vh, 520px) (ver
-      // .movimientos-table__product-hover-card en UsersTable.css); se reserva
-      // ese espacio debajo del top para que nunca quede cortado por el borde
-      // inferior de la ventana sin importar cuántas filas tenga la lista.
-      const maxCardHeight = Math.min(MOVEMENT_PRODUCTS_HOVER_CARD_MAX_HEIGHT, window.innerHeight * 0.7)
+      // Estima el alto real del card según su contenido (título + encabezado +
+      // filas) en vez de asumir siempre el máximo — así una lista corta se
+      // sigue posicionando pegada al ojo, y solo listas largas (que superan
+      // min(70vh, 520px), el max-height real del CSS) se recorren hacia
+      // arriba lo justo para no quedar cortadas por el borde inferior.
+      const estimatedCardHeight = 32 + 24 + normalizedProducts.length * 27 + 12
+      const cardHeight = Math.min(
+        estimatedCardHeight,
+        MOVEMENT_PRODUCTS_HOVER_CARD_MAX_HEIGHT,
+        window.innerHeight * 0.7
+      )
       const maxTop = Math.max(
-        window.innerHeight - maxCardHeight - MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN,
+        window.innerHeight - cardHeight - MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN,
         MOVEMENT_PRODUCTS_HOVER_CARD_MARGIN
       )
       const top = Math.min(
