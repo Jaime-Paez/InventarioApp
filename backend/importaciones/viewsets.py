@@ -861,8 +861,6 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                         faltan_datos.append("Descripción")
                 if cantidad <= 0:
                     faltan_datos.append("Cantidad")
-                if pvp <= 0:
-                    faltan_datos.append("PVP")
 
             suc_quantities = {}
             for idx, suc_id in sucursal_col_ids.items():

@@ -3349,7 +3349,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {[
                       { label: 'CODIGO JP', type: 'texto' }, { label: 'REFERENCIA', type: 'texto' }, { label: 'OEM', type: 'texto' },
-                      { label: 'DESCRIPCIÓN', type: 'texto' }, { label: 'CANTIDAD', type: 'número' }, { label: 'PVP', type: 'número' },
+                      { label: 'DESCRIPCIÓN', type: 'texto' }, { label: 'CANTIDAD', type: 'número' }, { label: 'PVP', type: 'número, opcional' },
                     ].map(col => (
                       <span key={col.label} style={{ background: '#1A1A2E', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 'var(--font-size-md)', fontWeight: 600 }}>
                         {col.label} <span style={{ opacity: 0.55, fontWeight: 400 }}>({col.type})</span>
@@ -3424,7 +3424,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                       ))}
                     </div>
                     <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#9a3412' }}>
-                      Todo producto debe tener referencia, cantidad y PVP; si no existe en el catálogo, también necesita descripción. Corrige esos datos en el Excel y vuelve a subirlo.
+                      Todo producto debe tener referencia y cantidad; si no existe en el catálogo, también necesita descripción. El PVP no es obligatorio en este paso. Corrige esos datos en el Excel y vuelve a subirlo.
                     </p>
                   </div>
                 ) : (

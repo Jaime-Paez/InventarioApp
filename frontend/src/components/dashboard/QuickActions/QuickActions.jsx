@@ -4923,11 +4923,12 @@ function QuickActions({
                       </div>
 
                       <label className="quick-actions__receive-general-issue">
-                        <input
-                          type="checkbox"
+                        <Checkbox
+                          binary
+                          inputId="random-inspection-general-issue"
                           checked={randomInspectionHasGeneralIssue}
                           onChange={(event) => {
-                            const checked = event.target.checked
+                            const checked = event.checked
                             setRandomInspectionHasGeneralIssue(checked)
                             if (!checked) setRandomInspectionGeneralNote('')
                           }}
@@ -5746,11 +5747,12 @@ function QuickActions({
               {!inTransitSubdivisionsLoading && (
                 <div className="quick-actions__receive-general-issue-block">
                   <label className="quick-actions__receive-general-issue">
-                    <input
-                      type="checkbox"
+                    <Checkbox
+                      binary
+                      inputId="receive-shipment-general-issue"
                       checked={receiveShipmentHasGeneralIssue}
                       onChange={(event) => {
-                        const checked = event.target.checked
+                        const checked = event.checked
                         setReceiveShipmentHasGeneralIssue(checked)
                         if (!checked) setReceiveShipmentGeneralNote('')
                       }}
