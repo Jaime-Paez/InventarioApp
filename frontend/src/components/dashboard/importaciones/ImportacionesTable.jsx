@@ -5181,6 +5181,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [isMaximized, setIsMaximized] = useState(false)
   const [cellHover, setCellHover] = useState(null)
   const cellHoverTimerRef = useRef(null)
+  const [fechaSalidaInfoPos, setFechaSalidaInfoPos] = useState(null)
+  const showFechaSalidaInfo = useCallback((event) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setFechaSalidaInfoPos({ top: rect.top, left: rect.right + 8 })
+  }, [])
+  const hideFechaSalidaInfo = useCallback(() => setFechaSalidaInfoPos(null), [])
   const showCellHover = useCallback((event, items, label) => {
     const list = (Array.isArray(items) ? items : [items]).filter(Boolean)
     if (!list.length) return
@@ -5944,7 +5950,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       toastRef.current?.show({
         severity: 'error',
         summary: 'Datos incompletos',
-        detail: `Completa el precio estimado de todos los productos (${missingData.length} sin completar).`,
+        detail: `Completa el PVP Aprox. de todos los productos (${missingData.length} sin completar).`,
         life: 5000,
       })
       return
@@ -6832,7 +6838,15 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                   />
                 </div>
                 <div className="imp-importar-modal__field">
-                  <label htmlFor="imp-fecha-input">Fecha de salida</label>
+                  <label htmlFor="imp-fecha-input" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    Fecha de salida
+                    <Info
+                      size={13}
+                      className="imp-distribucion__info-icon"
+                      onMouseEnter={showFechaSalidaInfo}
+                      onMouseLeave={hideFechaSalidaInfo}
+                    />
+                  </label>
                   <input
                     id="imp-fecha-input"
                     type="date"
@@ -7049,6 +7063,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
             {cellHover.items.map((value, i) => (
               <div key={i} className="imp-cell-hover-card__row">{value}</div>
             ))}
+          </div>,
+          getPortalRoot()
+        )}
+
+        {fechaSalidaInfoPos && createPortal(
+          <div
+            className="movimientos-table__product-hover-card"
+            role="tooltip"
+            style={{ top: fechaSalidaInfoPos.top, left: fechaSalidaInfoPos.left, width: 'auto', maxWidth: 280, zIndex: 20000 }}
+          >
+            <p className="imp-fecha-salida-hover-text">Fecha en que el proveedor marcó la salida.</p>
           </div>,
           getPortalRoot()
         )}

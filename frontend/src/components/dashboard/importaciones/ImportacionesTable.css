@@ -960,6 +960,17 @@
   overflow-wrap: anywhere;
 }
 
+.imp-fecha-salida-hover-text {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+}
+
+.dashboard-shell.dark .imp-fecha-salida-hover-text {
+  color: var(--color-text-dark);
+}
+
 .imp-cell-hover-card__row {
   font-size: 0.88rem;
   line-height: 1.55;
