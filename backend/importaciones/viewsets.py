@@ -610,15 +610,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         decision = str(request.data.get("decision") or "").strip().lower()
         motivo = str(request.data.get("motivo") or "").strip()
 
-        valid_decisions = {"reportado_proveedor", "aceptado", "perdido"}
+        es_sobrante = inconveniente.tipo == ImportacionInconveniente.Tipos.SOBRANTE
+        valid_decisions = {"devolver_proveedor", "aceptado"} if es_sobrante else {"aceptado", "reportado_proveedor"}
         if decision not in valid_decisions:
             return Response(
-                {"detail": "Debes enviar una decision valida: reportado_proveedor, aceptado o perdido."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if decision == "perdido" and inconveniente.tipo != ImportacionInconveniente.Tipos.FALTANTE:
-            return Response(
-                {"detail": "La decision 'perdido' solo aplica para inconvenientes de tipo faltante."},
+                {"detail": f"Debes enviar una decision valida: {' o '.join(sorted(valid_decisions))}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -639,14 +635,14 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 resolucion = ImportacionInconveniente.Resoluciones.REPORTADO_PROVEEDOR
                 estado_resultado = ImportacionInconveniente.Estados.RESUELTO
                 action_label = "reportado_a_proveedor"
-            elif decision == "aceptado":
+            elif decision == "devolver_proveedor":
+                resolucion = ImportacionInconveniente.Resoluciones.DEVOLVER_PROVEEDOR
+                estado_resultado = ImportacionInconveniente.Estados.RESUELTO
+                action_label = "devuelto_a_proveedor"
+            else:
                 resolucion = ImportacionInconveniente.Resoluciones.ACEPTADO
                 estado_resultado = ImportacionInconveniente.Estados.RESUELTO
                 action_label = "aceptado_sin_cambios"
-            else:
-                resolucion = ImportacionInconveniente.Resoluciones.PERDIDO
-                estado_resultado = ImportacionInconveniente.Estados.PERDIDO
-                action_label = "marcado_como_perdido"
 
             inconveniente_locked.estado = estado_resultado
             inconveniente_locked.resolucion = resolucion

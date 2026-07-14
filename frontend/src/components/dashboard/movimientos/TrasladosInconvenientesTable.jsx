@@ -80,6 +80,7 @@ const formatResolucion = (value) => {
   if (normalized === 'sin_cambios') return 'Sin cambios de inventario'
   if (normalized === 'reportado_proveedor') return 'Reportado al proveedor'
   if (normalized === 'aceptado') return 'Aceptado sin cambios'
+  if (normalized === 'devolver_proveedor') return 'Devuelto al proveedor'
   return '-'
 }
 
@@ -92,6 +93,7 @@ const formatHistorialAccion = (value) => {
   if (normalized === 'sin_cambios') return 'Sin cambios'
   if (normalized === 'reportado_a_proveedor') return 'Reportado a proveedor'
   if (normalized === 'aceptado_sin_cambios') return 'Aceptado sin cambios'
+  if (normalized === 'devuelto_a_proveedor') return 'Devuelto a proveedor'
   return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
 }
 
@@ -2082,42 +2084,56 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                         <>
                           <p className="muted transfer-issues-details__hint">
                             {selectedIssue?.tipo === 'sobrante'
-                              ? 'Decide si el excedente se reporta al proveedor o se acepta sin cambios en el inventario.'
-                              : 'Decide si el faltante se reporta al proveedor o se marca como perdido.'}
+                              ? 'Decide si el excedente se devuelve al proveedor o no se hace ningún cambio.'
+                              : 'Decide si no se hace ningún cambio o se genera un reclamo al proveedor por el faltante.'}
                           </p>
                           <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
-                            <button
-                              type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
-                                resolverDecision === 'reportado_proveedor' ? ' is-active' : ''
-                              }`}
-                              onClick={() => setResolverDecision('reportado_proveedor')}
-                              disabled={resolverSubmitting}
-                            >
-                              Reportar a proveedor
-                            </button>
                             {selectedIssue?.tipo === 'sobrante' ? (
-                              <button
-                                type="button"
-                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--success${
-                                  resolverDecision === 'aceptado' ? ' is-active' : ''
-                                }`}
-                                onClick={() => setResolverDecision('aceptado')}
-                                disabled={resolverSubmitting}
-                              >
-                                Aceptar excedente
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
+                                    resolverDecision === 'devolver_proveedor' ? ' is-active' : ''
+                                  }`}
+                                  onClick={() => setResolverDecision('devolver_proveedor')}
+                                  disabled={resolverSubmitting}
+                                >
+                                  Devolver a proveedor
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
+                                    resolverDecision === 'aceptado' ? ' is-active' : ''
+                                  }`}
+                                  onClick={() => setResolverDecision('aceptado')}
+                                  disabled={resolverSubmitting}
+                                >
+                                  No hacer nada
+                                </button>
+                              </>
                             ) : (
-                              <button
-                                type="button"
-                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--danger${
-                                  resolverDecision === 'perdido' ? ' is-active' : ''
-                                }`}
-                                onClick={() => setResolverDecision('perdido')}
-                                disabled={resolverSubmitting}
-                              >
-                                Marcar como perdido
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
+                                    resolverDecision === 'aceptado' ? ' is-active' : ''
+                                  }`}
+                                  onClick={() => setResolverDecision('aceptado')}
+                                  disabled={resolverSubmitting}
+                                >
+                                  No hacer nada
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
+                                    resolverDecision === 'reportado_proveedor' ? ' is-active' : ''
+                                  }`}
+                                  onClick={() => setResolverDecision('reportado_proveedor')}
+                                  disabled={resolverSubmitting}
+                                >
+                                  Generar un reclamo al proveedor
+                                </button>
+                              </>
                             )}
                           </div>
                           <label className="create-user__field create-user__field--full transfer-issues-details__field">

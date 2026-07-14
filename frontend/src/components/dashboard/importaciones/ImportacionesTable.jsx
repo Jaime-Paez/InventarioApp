@@ -602,6 +602,27 @@ const todayISO = () => {
   return `${year}-${month}-${day}`
 }
 
+const addOneDayISO = (isoDate) => {
+  const [year, month, day] = String(isoDate).split('-').map(Number)
+  const date = new Date(year, (month || 1) - 1, day || 1)
+  date.setDate(date.getDate() + 1)
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+// Fecha de llegada por defecto: hoy, salvo que sea anterior a la fecha en que
+// llegó a puerto (paso previo del tracker) — en ese caso se usa el día
+// siguiente a esa llegada a puerto, ya que la mercadería no puede llegar a
+// bodega el mismo día o antes de haber llegado al puerto.
+const getDefaultFechaLlegada = (imp) => {
+  const minDate = getTrackerMinDate(imp, 'fecha_llegada')
+  const today = todayISO()
+  if (minDate && today < minDate) return addOneDayISO(minDate)
+  return today
+}
+
 const readErrorMessage = async (response, fallback) => {
   const payload = await response.json().catch(() => null)
   const visit = (value) => {
@@ -790,7 +811,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [kitFormErrors, setKitFormErrors] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   const [step, setStep] = useState(() => getSavedDraft(imp)?.step || 1)
-  const [fechaLlegada, setFechaLlegada] = useState(() => getSavedDraft(imp)?.fechaLlegada || todayISO())
+  const [fechaLlegada, setFechaLlegada] = useState(() => getSavedDraft(imp)?.fechaLlegada || getDefaultFechaLlegada(imp))
   const [sucursales, setSucursales] = useState([])
   const [loadingSucursales, setLoadingSucursales] = useState(false)
   const [distribution, setDistribution] = useState(() => getSavedDraft(imp)?.distribution || {})
@@ -1530,13 +1551,13 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     <span>Referencia</span>
                     <span>OEM</span>
                     <span>Precio</span>
-                    <span>Esperada</span>
+                    <span>Cant. Esperada</span>
                     <span
                       onDoubleClick={() => setRows(prev => prev.map(r => ({ ...r, cantidadRecibida: String(r.cantidad) })))}
                       title="Doble click: llenar todas con la cantidad esperada"
                       style={{ cursor: 'pointer' }}
                     >
-                      Recibida
+                      Cant. Recibida
                     </span>
                     <span
                       onDoubleClick={() => toggleAll(!allChecked)}

@@ -203,6 +203,7 @@ class ImportacionInconveniente(models.Model):
         REPORTADO_PROVEEDOR = "reportado_proveedor", "Reportado al proveedor"
         ACEPTADO = "aceptado", "Aceptado sin cambios"
         PERDIDO = "perdido", "Perdido / no recuperable"
+        DEVOLVER_PROVEEDOR = "devolver_proveedor", "Devuelto al proveedor"
 
     importacion = models.ForeignKey(
         Importacion,
