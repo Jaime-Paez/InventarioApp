@@ -1729,6 +1729,7 @@
 
 .recordatorios-popup__inspection-detail-th-estado,
 .recordatorios-popup__inspection-detail-th-usuario,
+.recordatorios-popup__inspection-detail-th-nota,
 .recordatorios-popup__inspection-detail-th-accion {
   font-size: 11px;
   font-weight: 700;
@@ -1784,6 +1785,17 @@
 .recordatorios-popup__inspection-detail-tr--done .recordatorios-popup__inspection-detail-td-name {
   color: color-mix(in srgb, currentColor 55%, transparent);
   font-weight: 400;
+}
+
+.recordatorios-popup__inspection-detail-td-nota {
+  font-size: 13px;
+  padding: 12px 10px;
+  vertical-align: middle;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, currentColor 75%, transparent);
 }
 
 .recordatorios-popup__inspection-detail-td-action {

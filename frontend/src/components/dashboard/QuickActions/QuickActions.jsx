@@ -499,6 +499,8 @@ function QuickActions({
   const [receiveShipmentError, setReceiveShipmentError] = useState('')
   const [receiveShipmentShowErrors, setReceiveShipmentShowErrors] = useState(false)
   const [receiveShipmentShowSummary, setReceiveShipmentShowSummary] = useState(false)
+  const [receiveShipmentHasGeneralIssue, setReceiveShipmentHasGeneralIssue] = useState(false)
+  const [receiveShipmentGeneralNote, setReceiveShipmentGeneralNote] = useState('')
   const [receiveShipmentFilter, setReceiveShipmentFilter] = useState('')
   const [receiveShipmentSort, setReceiveShipmentSort] = useState('default')
   const [receiveShipmentSortOpen, setReceiveShipmentSortOpen] = useState(false)
@@ -511,6 +513,8 @@ function QuickActions({
   const [randomInspectionLoading, setRandomInspectionLoading] = useState(false)
   const [randomInspectionSubmitting, setRandomInspectionSubmitting] = useState(false)
   const [randomInspectionError, setRandomInspectionError] = useState('')
+  const [randomInspectionHasGeneralIssue, setRandomInspectionHasGeneralIssue] = useState(false)
+  const [randomInspectionGeneralNote, setRandomInspectionGeneralNote] = useState('')
   const [activeReceiveLocationDropdown, setActiveReceiveLocationDropdown] = useState({
     productId: '',
     field: '',
@@ -2749,6 +2753,8 @@ function QuickActions({
     setReceiveShipmentShowErrors(false)
     setReceiveShipmentSubmitting(false)
     setReceiveShipmentShowSummary(false)
+    setReceiveShipmentHasGeneralIssue(false)
+    setReceiveShipmentGeneralNote('')
     setReceiveShipmentFilter('')
     setReceiveShipmentSort('default')
     setReceiveShipmentSortOpen(false)
@@ -2807,6 +2813,8 @@ function QuickActions({
     setReceiveShipmentDraftByProductId(draftByProductId)
     setActiveInTransitShipment(shipment)
     setReceiveShipmentShowSummary(false)
+    setReceiveShipmentHasGeneralIssue(false)
+    setReceiveShipmentGeneralNote('')
     setIsInTransitShipmentsOpen(false)
     setIsReceiveShipmentModalOpen(true)
 
@@ -2823,6 +2831,8 @@ function QuickActions({
     setRandomInspectionError('')
     setRandomInspectionSubmitting(false)
     setRandomInspectionLoading(false)
+    setRandomInspectionHasGeneralIssue(false)
+    setRandomInspectionGeneralNote('')
   }, [])
 
   useEffect(() => {
@@ -2984,6 +2994,8 @@ function QuickActions({
       setRandomInspectionMode(isVerifyReminder ? 'verify' : 'review')
       setRandomInspectionStepIndex(0)
       setRandomInspectionShowSummary(false)
+      setRandomInspectionHasGeneralIssue(false)
+      setRandomInspectionGeneralNote('')
       setIsRandomInspectionModalOpen(true)
       try {
         const inspection = await fetchRandomInspectionDetail(inspectionId)
@@ -3928,6 +3940,12 @@ function QuickActions({
         itemsPayload.push(payloadRow)
       }
 
+      const generalNote = randomInspectionHasGeneralIssue ? randomInspectionGeneralNote.trim() : ''
+      if (randomInspectionHasGeneralIssue && !generalNote) {
+        setRandomInspectionError('Cuéntanos qué pasó: el campo es obligatorio si marcaste que algo no salió como lo esperado.')
+        return
+      }
+
       setRandomInspectionError('')
       setRandomInspectionSubmitting(true)
       try {
@@ -3935,7 +3953,7 @@ function QuickActions({
           `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/responder/`,
           {
             method: 'POST',
-            body: JSON.stringify({ items: itemsPayload }),
+            body: JSON.stringify({ items: itemsPayload, nota_general: generalNote }),
           },
           token
         )
@@ -3979,6 +3997,8 @@ function QuickActions({
       activeRandomInspection,
       closeRandomInspectionModal,
       randomInspectionRows,
+      randomInspectionHasGeneralIssue,
+      randomInspectionGeneralNote,
       token,
     ]
   )
@@ -4135,6 +4155,12 @@ function QuickActions({
         return
       }
 
+      const generalNote = receiveShipmentHasGeneralIssue ? receiveShipmentGeneralNote.trim() : ''
+      if (receiveShipmentHasGeneralIssue && !generalNote) {
+        setReceiveShipmentError('Cuéntanos qué pasó: el campo es obligatorio si marcaste que algo no salió como lo esperado.')
+        return
+      }
+
       setReceiveShipmentError('')
       setReceiveShipmentSubmitting(true)
       try {
@@ -4154,6 +4180,7 @@ function QuickActions({
                 novedad: item.novedad,
                 ubicaciones: item.ubicaciones,
               })),
+              nota_general: generalNote,
             }),
           },
           token
@@ -4194,6 +4221,8 @@ function QuickActions({
       closeReceiveShipmentModal,
       fetchInTransitTransferShipments,
       getReceiveShipmentRowValidationMessage,
+      receiveShipmentGeneralNote,
+      receiveShipmentHasGeneralIssue,
       receiveShipmentRows,
       token,
     ]
@@ -4892,6 +4921,31 @@ function QuickActions({
                           )
                         })}
                       </div>
+
+                      <label className="quick-actions__receive-general-issue">
+                        <input
+                          type="checkbox"
+                          checked={randomInspectionHasGeneralIssue}
+                          onChange={(event) => {
+                            const checked = event.target.checked
+                            setRandomInspectionHasGeneralIssue(checked)
+                            if (!checked) setRandomInspectionGeneralNote('')
+                          }}
+                          disabled={randomInspectionSubmitting}
+                        />
+                        <span>¿Algo no salió como lo esperado?</span>
+                      </label>
+                      {randomInspectionHasGeneralIssue && (
+                        <label className="quick-actions__inspection-note">
+                          <span>Cuéntanos qué pasó (obligatorio)</span>
+                          <textarea
+                            rows={3}
+                            value={randomInspectionGeneralNote}
+                            onChange={(event) => setRandomInspectionGeneralNote(event.target.value)}
+                            disabled={randomInspectionSubmitting}
+                          />
+                        </label>
+                      )}
                     </div>
                   )}
                 </div>
@@ -5060,6 +5114,30 @@ function QuickActions({
                     <p className="quick-actions__receive-summary-missing-note">
                       Faltan <strong>{receiveShipmentTotalMissing}</strong> unidad(es) en total.
                     </p>
+                  )}
+                  <label className="quick-actions__receive-general-issue">
+                    <input
+                      type="checkbox"
+                      checked={receiveShipmentHasGeneralIssue}
+                      onChange={(event) => {
+                        const checked = event.target.checked
+                        setReceiveShipmentHasGeneralIssue(checked)
+                        if (!checked) setReceiveShipmentGeneralNote('')
+                      }}
+                      disabled={receiveShipmentSubmitting}
+                    />
+                    <span>¿Algo no salió como lo esperado?</span>
+                  </label>
+                  {receiveShipmentHasGeneralIssue && (
+                    <label className="quick-actions__receive-note">
+                      <span>Cuéntanos qué pasó (obligatorio)</span>
+                      <textarea
+                        rows={3}
+                        value={receiveShipmentGeneralNote}
+                        onChange={(event) => setReceiveShipmentGeneralNote(event.target.value)}
+                        disabled={receiveShipmentSubmitting}
+                      />
+                    </label>
                   )}
                 </div>
               ) : inTransitSubdivisionsLoading ? (

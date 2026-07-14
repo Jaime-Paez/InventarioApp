@@ -2024,6 +2024,26 @@
   padding: 8px 10px;
 }
 
+.quick-actions__receive-general-issue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.quick-actions__receive-general-issue input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-general-issue {
+  color: var(--color-text-dark);
+}
+
 .quick-actions__inspection-overlay {
   position: fixed;
   inset: 0;
@@ -2654,6 +2674,10 @@
 
 .quick-actions__inspection-overlay.dark .quick-actions__inspection-item-head strong {
   color: var(--color-text-title-dark);
+}
+
+.quick-actions__inspection-overlay.dark .quick-actions__receive-general-issue {
+  color: var(--color-text-dark);
 }
 
 .quick-actions__inspection-overlay.dark .quick-actions__inspection-item-head span,

@@ -264,6 +264,7 @@ class TrasladoInconveniente(models.Model):
     class Tipos(models.TextChoices):
         FALTANTE = "faltante", "Faltante"
         SOBRANTE = "sobrante", "Sobrante"
+        OTRO = "otro", "Otro"
 
     class Estados(models.TextChoices):
         PENDIENTE = "pendiente", "Pendiente"
@@ -292,6 +293,9 @@ class TrasladoInconveniente(models.Model):
         "productos.Producto",
         on_delete=models.PROTECT,
         related_name="inconvenientes_traslado",
+        null=True,
+        blank=True,
+        help_text="Vacio para inconvenientes de tipo 'Otro' (nota general, no ligada a un producto puntual).",
     )
     tipo = models.CharField(
         max_length=20,

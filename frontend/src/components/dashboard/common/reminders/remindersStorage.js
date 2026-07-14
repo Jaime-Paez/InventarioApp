@@ -575,7 +575,11 @@ export const isRandomInspectionDailyReminder = (reminder) => {
   const kind = normalizeId(reminder?.kind)
   if (kind === RANDOM_INSPECTION_KIND) return true
   const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
-  return contextType === RANDOM_INSPECTION_CONTEXT_TYPE && kind !== RANDOM_INSPECTION_VERIFY_KIND
+  return (
+    contextType === RANDOM_INSPECTION_CONTEXT_TYPE &&
+    kind !== RANDOM_INSPECTION_VERIFY_KIND &&
+    kind !== RANDOM_INSPECTION_ADMIN_SUMMARY_KIND
+  )
 }
 
 export const isRandomInspectionVerifyReminder = (reminder) =>

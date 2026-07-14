@@ -1538,6 +1538,7 @@ def _serialize_random_inspection(inspection):
         "cobertura_porcentaje": float(inspection.cobertura_porcentaje or 0),
         "completada_en": _parse_iso_timestamp(inspection.completada_en),
         "borrador_paso_actual": int(inspection.borrador_paso_actual or 0),
+        "nota_general": str(inspection.nota_general or "").strip(),
         "items": [_serialize_random_inspection_item(item) for item in inspection_items],
     }
 
@@ -1737,18 +1738,25 @@ def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=N
         user_id = str(int(user.id))
         is_completed = inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA
         is_disculpada = bool(inspection.disculpada)
+        nota_general = str(inspection.nota_general or "").strip()
         if user_id not in user_map:
             user_map[user_id] = {
                 "id": user_id,
                 "name": _format_user_display_name(user),
                 "completada": is_completed,
                 "disculpada": is_disculpada,
+                "nota_general": nota_general,
             }
         else:
             if is_completed:
                 user_map[user_id]["completada"] = True
             if is_disculpada:
                 user_map[user_id]["disculpada"] = True
+            if nota_general:
+                existing_note = user_map[user_id].get("nota_general") or ""
+                user_map[user_id]["nota_general"] = (
+                    f"{existing_note}; {nota_general}" if existing_note else nota_general
+                )
 
     if not user_map:
         return False
@@ -2397,8 +2405,16 @@ class RandomInspectionRespondAPIView(APIView):
             inspection.total_items = len(inspection_items)
             inspection.completada_en = now
             inspection.borrador_paso_actual = 0
+            inspection.nota_general = _normalize_text(request.data.get("nota_general"))
             inspection.save(
-                update_fields=["estado", "total_items", "completada_en", "borrador_paso_actual", "updated_at"]
+                update_fields=[
+                    "estado",
+                    "total_items",
+                    "completada_en",
+                    "borrador_paso_actual",
+                    "nota_general",
+                    "updated_at",
+                ]
             )
 
             store = ReminderState.get_global(for_update=True)

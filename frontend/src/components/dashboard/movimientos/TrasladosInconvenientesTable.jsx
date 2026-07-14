@@ -1392,9 +1392,10 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     })
   }, [exportColumns, getExportValue, getRowsToExport, showWarningToast])
 
-  const submitResolver = useCallback(async () => {
+  const submitResolver = useCallback(async (decisionOverride) => {
     if (!token || !selectedIssue) return
-    if (!resolverDecision) {
+    const resolvedDecision = decisionOverride || resolverDecision
+    if (!resolvedDecision) {
       setResolverError('Debes elegir una decisión para este producto.')
       return
     }
@@ -1403,13 +1404,13 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
 
     if (!isImportacion) {
       if (
-        (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') &&
+        (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora') &&
         !normalizeId(resolverSubdivisionId)
       ) {
         setResolverError('Debes seleccionar bodega, división y subdivisión para sumar inventario.')
         return
       }
-      if (resolverDecision === 'devolver_proveedora') {
+      if (resolvedDecision === 'devolver_proveedora') {
         if (!normalizeId(resolverSubdivisionId)) {
           setResolverError('Debes seleccionar la ubicación en sucursal destino de donde restar el sobrante.')
           return
@@ -1425,14 +1426,14 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     setResolverSubmitting(true)
     try {
       const body = {
-        decision: resolverDecision,
+        decision: resolvedDecision,
         motivo: String(resolverMotivo || '').trim(),
       }
       if (!isImportacion) {
-        if (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora') {
+        if (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora') {
           body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
         }
-        if (resolverDecision === 'devolver_proveedora') {
+        if (resolvedDecision === 'devolver_proveedora') {
           body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
           body.subdivision_proveedora_id = Number.parseInt(String(resolverProvSubdivisionId || ''), 10)
         }
@@ -2014,14 +2015,22 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                     <div className="create-user__grid create-user__grid--two">
                       <StaticFieldDisplay
                         label="Producto"
-                        value={`${String(selectedIssue?.producto_codigo || '-').trim()} - ${String(selectedIssue?.producto_nombre || '-').trim()}`}
+                        value={
+                          selectedIssue?.tipo === 'otro'
+                            ? 'Sin producto especifico'
+                            : `${String(selectedIssue?.producto_codigo || '-').trim()} - ${String(selectedIssue?.producto_nombre || '-').trim()}`
+                        }
                       />
-                      <div className="create-user__field create-salida__static-field">
-                        <span>{selectedIssue?.tipo === 'sobrante' ? 'Sobrante' : 'Faltante'}</span>
-                        <div className={`create-salida__static-value transfer-issues-cantidad--${selectedIssue?.tipo === 'sobrante' ? 'sobrante' : 'faltante'}`}>
-                          {selectedIssue?.tipo === 'sobrante' ? '+' : '−'}{String(Number.parseInt(String(selectedIssue?.cantidad_faltante || 0), 10) || 0)}
+                      {selectedIssue?.tipo === 'otro' ? (
+                        <StaticFieldDisplay label="Tipo" value="Otro" />
+                      ) : (
+                        <div className="create-user__field create-salida__static-field">
+                          <span>{selectedIssue?.tipo === 'sobrante' ? 'Sobrante' : 'Faltante'}</span>
+                          <div className={`create-salida__static-value transfer-issues-cantidad--${selectedIssue?.tipo === 'sobrante' ? 'sobrante' : 'faltante'}`}>
+                            {selectedIssue?.tipo === 'sobrante' ? '+' : '−'}{String(Number.parseInt(String(selectedIssue?.cantidad_faltante || 0), 10) || 0)}
+                          </div>
                         </div>
-                      </div>
+                      )}
                       <StaticFieldDisplay
                         label={selectedIssue?.origen === 'importacion' ? 'Casa comercial' : 'Sucursal proveedora'}
                         value={String(selectedIssue?.sucursal_proveedora || '-').trim() || '-'}
@@ -2060,6 +2069,14 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                     </div>
                   </div>
                   {canResolveSelectedIssue ? (
+                    selectedIssue?.tipo === 'otro' ? (
+                      <>
+                        <p className="muted transfer-issues-details__hint">
+                          Marca este inconveniente como solucionado una vez que lo hayas atendido.
+                        </p>
+                        {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
+                      </>
+                    ) : (
                     <>
                       {selectedIssue?.origen === 'importacion' && (
                         <>
@@ -2738,6 +2755,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                       </>
                       )}
                     </>
+                    )
                   ) : (
                     <p className="muted transfer-issues-details__hint">
                       Este registro ya fue procesado o no tienes permisos para resolverlo.
@@ -2783,10 +2801,14 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                   <button
                     type="button"
                     className="create-user__action create-user__action--primary"
-                    onClick={() => void submitResolver()}
+                    onClick={() => void submitResolver(selectedIssue?.tipo === 'otro' ? 'solucionado' : undefined)}
                     disabled={resolverSubmitting}
                   >
-                    {resolverSubmitting ? 'Guardando...' : 'Confirmar decisión'}
+                    {resolverSubmitting
+                      ? 'Guardando...'
+                      : selectedIssue?.tipo === 'otro'
+                        ? 'Solucionado'
+                        : 'Confirmar decisión'}
                   </button>
                 ) : null}
               </footer>

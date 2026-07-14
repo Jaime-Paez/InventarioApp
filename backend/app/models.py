@@ -130,6 +130,11 @@ class InspeccionAleatoriaDiaria(models.Model):
         default=False,
         help_text="True si el admin disculpó al usuario por no haber completado el conteo.",
     )
+    nota_general = models.TextField(
+        blank=True,
+        default="",
+        help_text="Nota del revisor cuando algo no salió como lo esperado durante el conteo.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -2511,7 +2511,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 or ""
             ).strip(),
             "movimiento_entrada_id": int(inconveniente.movimiento_entrada_id),
-            "producto_id": int(inconveniente.producto_id),
+            "producto_id": int(inconveniente.producto_id) if inconveniente.producto_id else None,
             "producto_codigo": str(getattr(getattr(inconveniente, "producto", None), "codigo", "") or "").strip(),
             "producto_nombre": str(getattr(getattr(inconveniente, "producto", None), "nombre", "") or "").strip(),
             "tipo": str(inconveniente.tipo or "faltante").strip(),
@@ -3584,6 +3584,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        nota_general = str(request.data.get("nota_general") or "").strip()
+
         movimiento_entrada = (
             MovimientoInventario.objects.select_related("estado_movimiento")
             .prefetch_related("detalles__producto")
@@ -3970,6 +3972,48 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 if inconveniente is not None:
                     inconvenientes_payload.append(self._serialize_inconveniente(inconveniente))
 
+            if nota_general:
+                # Nota general del usuario que recibe ("algo no salio como lo
+                # esperado"), sin ligarse a un producto puntual ni a un
+                # faltante/sobrante de cantidad: se registra igual como
+                # Inconveniente (tipo Otro, sin producto) para que quede
+                # visible/rastreable para el admin, pero se resuelve con un
+                # solo boton ("Solucionado") en vez del flujo de ajuste de
+                # inventario.
+                inconveniente = TrasladoInconveniente.objects.create(
+                    solicitud=solicitud_locked,
+                    movimiento_entrada=movimiento_entrada_locked,
+                    producto=None,
+                    tipo=TrasladoInconveniente.Tipos.OTRO,
+                    cantidad_faltante=0,
+                    estado=TrasladoInconveniente.Estados.PENDIENTE,
+                    motivo=nota_general,
+                    creado_por=request.user,
+                )
+                TrasladoInconvenienteHistorial.objects.create(
+                    inconveniente=inconveniente,
+                    accion="detectado",
+                    detalle="El usuario reporto un problema general con la recepcion.",
+                    actor=request.user,
+                )
+                inconveniente = (
+                    TrasladoInconveniente.objects.select_related(
+                        "solicitud",
+                        "solicitud__sucursal_solicitante",
+                        "solicitud__sucursal_proveedora",
+                        "producto",
+                        "creado_por",
+                        "resuelto_por",
+                        "sucursal_resolucion",
+                        "subdivision_resolucion",
+                    )
+                    .prefetch_related("historial__actor")
+                    .filter(pk=inconveniente.id)
+                    .first()
+                )
+                if inconveniente is not None:
+                    inconvenientes_payload.append(self._serialize_inconveniente(inconveniente))
+
             solicitud_locked.borrador_recepcion = {}
             solicitud_locked.save(update_fields=["borrador_recepcion", "updated_at"])
             solicitud_output = SolicitudTrasladoSerializer(instance=solicitud_locked).data
@@ -4135,12 +4179,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         decision = self._normalize_state_name(request.data.get("decision"))
         motivo = str(request.data.get("motivo") or "").strip()
 
-        valid_decisions = {"sumar_solicitante", "sumar_proveedora", "perdido", "restar_proveedora", "sin_cambios", "devolver_proveedora"}
+        valid_decisions = {
+            "sumar_solicitante", "sumar_proveedora", "perdido", "restar_proveedora",
+            "sin_cambios", "devolver_proveedora", "solucionado",
+        }
         if decision not in valid_decisions:
             return Response(
                 {
                     "detail": (
-                        "Debes enviar una decision valida: sumar_solicitante, sumar_proveedora, perdido, restar_proveedora, sin_cambios o devolver_proveedora."
+                        "Debes enviar una decision valida: sumar_solicitante, sumar_proveedora, perdido, "
+                        "restar_proveedora, sin_cambios, devolver_proveedora o solucionado."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -4170,8 +4218,20 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            es_otro = inconveniente_locked.tipo == TrasladoInconveniente.Tipos.OTRO
+            if es_otro and decision != "solucionado":
+                return Response(
+                    {"detail": "Este inconveniente solo admite marcarse como solucionado."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not es_otro and decision == "solucionado":
+                return Response(
+                    {"detail": "La decision 'solucionado' solo aplica a inconvenientes de tipo Otro."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             cantidad_faltante = int(inconveniente_locked.cantidad_faltante or 0)
-            if cantidad_faltante <= 0:
+            if not es_otro and cantidad_faltante <= 0:
                 return Response(
                     {"detail": "El inconveniente no tiene cantidad faltante pendiente."},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -4292,6 +4352,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 subdivision_resolucion_id = int(subdivision_dest.id)
             elif decision == "sin_cambios":
                 resolucion = TrasladoInconveniente.Resoluciones.SIN_CAMBIOS
+            elif decision == "solucionado":
+                resolucion = TrasladoInconveniente.Resoluciones.SIN_CAMBIOS
             else:
                 resolucion = TrasladoInconveniente.Resoluciones.PERDIDO
                 estado_resultado = TrasladoInconveniente.Estados.PERDIDO
@@ -4300,7 +4362,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             inconveniente_locked.resolucion = resolucion
             inconveniente_locked.sucursal_resolucion_id = sucursal_resolucion_id
             inconveniente_locked.subdivision_resolucion_id = subdivision_resolucion_id
-            inconveniente_locked.motivo = motivo
+            if not es_otro:
+                # Para "Otro" no hay campo de motivo en el resolver (solo el
+                # boton "Solucionado"): se conserva la nota original con la
+                # que se creo el inconveniente en vez de pisarla con un
+                # `motivo` vacio.
+                inconveniente_locked.motivo = motivo
             inconveniente_locked.resuelto_por = request.user
             inconveniente_locked.save(
                 update_fields=[
@@ -4327,6 +4394,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             elif decision == "sin_cambios":
                 action_label = "sin_cambios"
                 detail_text = f"Se resolvio el {tipo_label} de {cantidad_faltante} unidades sin modificar inventario."
+            elif decision == "solucionado":
+                action_label = "solucionado"
+                detail_text = "Se marco como solucionado."
             else:
                 action_label = "marcado_como_perdido"
                 detail_text = f"Se marco como perdido el {tipo_label} de {cantidad_faltante} unidades."

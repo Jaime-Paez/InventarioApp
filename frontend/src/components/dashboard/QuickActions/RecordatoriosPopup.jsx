@@ -826,7 +826,6 @@ function RecordatoriosPopup({
   const [openingTransferReminderId, setOpeningTransferReminderId] = useState('')
   const [openingInspectionReminderId, setOpeningInspectionReminderId] = useState('')
   const [discusingUserId, setDiscusingUserId] = useState('')
-  const [discusingAllKey, setDiscusingAllKey] = useState('')
   const [highlightedReminderId, setHighlightedReminderId] = useState('')
   const [pendingScrollReminderId, setPendingScrollReminderId] = useState('')
   const [transferLifecycleBySolicitudId, setTransferLifecycleBySolicitudId] = useState({})
@@ -2670,40 +2669,6 @@ function RecordatoriosPopup({
     [discusingUserId, notifyError, onApplyRemindersUpdate, token]
   )
 
-  const handleDisculparTodos = useCallback(
-    async (reminder) => {
-      const fecha = reminder?.context?.id
-      if (!fecha) return
-      if (discusingAllKey === fecha) return
-      const pendingUsers = (reminder?.context?.detalle_usuarios || []).filter(
-        (u) => !u.completada && !u.disculpada
-      )
-      if (!pendingUsers.length) return
-      setDiscusingAllKey(fecha)
-      try {
-        for (const u of pendingUsers) {
-          const res = await authFetch(`${API_URL}/recordatorios/inspeccion-aleatoria/admin/disculpar/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ usuario_id: u.id, fecha }),
-          })
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            notifyError(data?.detail || 'No se pudo aplicar la disculpa.')
-            break
-          }
-        }
-        const updated = await fetchRemindersFromBackend(token)
-        if (updated) onApplyRemindersUpdate?.(updated)
-      } catch {
-        notifyError('Error al aplicar la disculpa.')
-      } finally {
-        setDiscusingAllKey('')
-      }
-    },
-    [discusingAllKey, notifyError, onApplyRemindersUpdate, token]
-  )
-
   const handleOpenTransferInTransit = useCallback(
     async (reminder) => {
       if (typeof onOpenTransferRequestInTransit !== 'function') return false
@@ -3572,25 +3537,13 @@ function RecordatoriosPopup({
                                       )}
                                   </button>
                                 ) : isAdminSummaryReminder ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                      onClick={() => setActiveDetailReminderId(String(reminder?.id || ''))}
-                                    >
-                                      Ver inspecciones
-                                    </button>
-                                    {(reminder?.context?.detalle_usuarios || []).some((u) => !u.completada && !u.disculpada) && (
-                                      <button
-                                        type="button"
-                                        className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
-                                        onClick={(e) => { e.stopPropagation(); void handleDisculparTodos(reminder) }}
-                                        disabled={discusingAllKey === reminder?.context?.id || !!discusingUserId}
-                                      >
-                                        {discusingAllKey === reminder?.context?.id ? '...' : 'Dejar pasar a todos'}
-                                      </button>
-                                    )}
-                                  </>
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => setActiveDetailReminderId(String(reminder?.id || ''))}
+                                  >
+                                    Ver inspecciones
+                                  </button>
                                 ) : canOpenTransferIssueAction ? (
                                   <button
                                     type="button"
@@ -3872,6 +3825,7 @@ function RecordatoriosPopup({
                         <tr>
                           <th className="recordatorios-popup__inspection-detail-th-estado">Estado</th>
                           <th className="recordatorios-popup__inspection-detail-th-usuario">Usuario</th>
+                          <th className="recordatorios-popup__inspection-detail-th-nota">Nota</th>
                           <th className="recordatorios-popup__inspection-detail-th-accion">Acción</th>
                         </tr>
                       </thead>
@@ -3880,6 +3834,7 @@ function RecordatoriosPopup({
                           const isDone = u.completada || u.disculpada
                           const discuseKey = `${u.id}:${activeDetailReminder?.context?.id}`
                           const isDiscusing = discusingUserId === discuseKey
+                          const notaGeneral = String(u?.nota_general || '').trim()
                           return (
                             <tr
                               key={u.id}
@@ -3887,6 +3842,9 @@ function RecordatoriosPopup({
                             >
                               <td className="recordatorios-popup__inspection-detail-td-icon">{isDone ? '✓' : '✗'}</td>
                               <td className="recordatorios-popup__inspection-detail-td-name">{u.name}</td>
+                              <td className="recordatorios-popup__inspection-detail-td-nota" title={notaGeneral}>
+                                {notaGeneral || '-'}
+                              </td>
                               <td className="recordatorios-popup__inspection-detail-td-action">
                                 {!isDone && (
                                   <button
