@@ -196,6 +196,7 @@ class ImportacionInconveniente(models.Model):
 
     class Estados(models.TextChoices):
         PENDIENTE = "pendiente", "Pendiente"
+        RECLAMADO = "reclamado", "Reclamado"
         RESUELTO = "resuelto", "Resuelto"
         PERDIDO = "perdido", "Perdido"
 
@@ -204,6 +205,7 @@ class ImportacionInconveniente(models.Model):
         ACEPTADO = "aceptado", "Aceptado sin cambios"
         PERDIDO = "perdido", "Perdido / no recuperable"
         DEVOLVER_PROVEEDOR = "devolver_proveedor", "Devuelto al proveedor"
+        REPOSICION_ACORDADA = "reposicion_acordada", "Reposición acordada"
 
     importacion = models.ForeignKey(
         Importacion,
@@ -242,6 +244,8 @@ class ImportacionInconveniente(models.Model):
         default="",
     )
     motivo = models.TextField(blank=True, default="")
+    cantidad_prometida = models.PositiveIntegerField(null=True, blank=True)
+    fecha_entrega_prometida = models.DateField(null=True, blank=True)
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

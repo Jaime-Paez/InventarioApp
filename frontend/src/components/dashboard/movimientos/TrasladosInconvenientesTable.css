@@ -276,11 +276,13 @@
 }
 
 .transfer-issues-details__decision-btn {
+  position: relative;
   min-height: 40px;
-  padding: 8px 12px;
+  padding: 8px 30px 8px 12px;
   font-size: var(--font-size-base);
   font-weight: 700;
   text-align: left;
+  border-width: 1px;
 }
 
 .transfer-issues-details__decision-btn:hover:not(:disabled) {
@@ -288,8 +290,45 @@
 }
 
 .transfer-issues-details__decision-btn.is-active {
+  border-width: 2px;
   border-color: color-mix(in srgb, var(--color-primary) 56%, var(--color-border));
   background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.transfer-issues-details__decision-btn.is-active::after {
+  content: '\2713';
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  color: inherit;
+}
+
+.transfer-issues-details__decision-wrap {
+  position: relative;
+}
+
+.transfer-issues-details__decision-wrap .transfer-issues-details__decision-btn {
+  width: 100%;
+}
+
+.transfer-issues-details__decision-info {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  opacity: 0.55;
+  cursor: help;
+  z-index: 1;
+}
+
+.transfer-issues-details__decision-info:hover {
+  opacity: 1;
+  color: var(--color-primary);
 }
 
 /* primary — blue (sumar a proveedora) */

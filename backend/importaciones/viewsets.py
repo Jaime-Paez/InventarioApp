@@ -89,6 +89,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             "estado": str(inconveniente.estado or "").strip(),
             "resolucion": str(inconveniente.resolucion or "").strip(),
             "motivo": str(inconveniente.motivo or "").strip(),
+            "cantidad_prometida": (
+                int(inconveniente.cantidad_prometida) if inconveniente.cantidad_prometida is not None else None
+            ),
+            "fecha_entrega_prometida": inconveniente.fecha_entrega_prometida,
             "creado_por_id": int(inconveniente.creado_por_id) if inconveniente.creado_por_id else None,
             "creado_por_nombre": self._resolve_user_display(getattr(inconveniente, "creado_por", None)),
             "resuelto_por_id": int(inconveniente.resuelto_por_id) if inconveniente.resuelto_por_id else None,
@@ -374,6 +378,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         instance.save()
 
         # Register cantidad recibida per detalle and log faltante/sobrante inconvenientes
+        inconvenientes_resumen = []
         for revision in request.data.get("revisiones", []):
             try:
                 detalle_id = revision.get("detalle_id")
@@ -420,6 +425,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 ),
                 actor=request.user,
             )
+            producto_label = (
+                detalle.producto.nombre or detalle.producto.codigo or f"Producto {detalle.producto_id}"
+            )
+            verbo = "faltan" if tipo == ImportacionInconveniente.Tipos.FALTANTE else "sobran"
+            inconvenientes_resumen.append(f"{producto_label}: {verbo} {diferencia}")
 
         # Recalculate casa_comercial.dias_entrega from last 5 real delivery times
         if dias_reales is not None:
@@ -479,7 +489,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         User = get_user_model()
         admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]
         if admin_ids:
-            self._create_importacion_reminder(instance, None, admin_ids, request.user)
+            self._create_importacion_reminder(
+                instance, None, admin_ids, request.user, inconvenientes_resumen=inconvenientes_resumen
+            )
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
@@ -571,6 +583,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         estado = str(request.query_params.get("estado") or "").strip().lower()
         if estado in {
             ImportacionInconveniente.Estados.PENDIENTE,
+            ImportacionInconveniente.Estados.RECLAMADO,
             ImportacionInconveniente.Estados.RESUELTO,
             ImportacionInconveniente.Estados.PERDIDO,
         }:
@@ -601,7 +614,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "No se encontro el inconveniente de importacion."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        if inconveniente.estado != ImportacionInconveniente.Estados.PENDIENTE:
+        estados_accionables = {
+            ImportacionInconveniente.Estados.PENDIENTE,
+            ImportacionInconveniente.Estados.RECLAMADO,
+        }
+        if inconveniente.estado not in estados_accionables:
             return Response(
                 {"detail": "Este inconveniente ya fue resuelto."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -610,13 +627,40 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         decision = str(request.data.get("decision") or "").strip().lower()
         motivo = str(request.data.get("motivo") or "").strip()
 
-        es_sobrante = inconveniente.tipo == ImportacionInconveniente.Tipos.SOBRANTE
-        valid_decisions = {"devolver_proveedor", "aceptado"} if es_sobrante else {"aceptado", "reportado_proveedor"}
+        if inconveniente.estado == ImportacionInconveniente.Estados.RECLAMADO:
+            valid_decisions = {"olvidar", "solucion"}
+        else:
+            es_sobrante = inconveniente.tipo == ImportacionInconveniente.Tipos.SOBRANTE
+            valid_decisions = {"devolver_proveedor", "aceptado"} if es_sobrante else {"aceptado", "reportado_proveedor"}
         if decision not in valid_decisions:
             return Response(
                 {"detail": f"Debes enviar una decision valida: {' o '.join(sorted(valid_decisions))}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        cantidad_prometida = None
+        fecha_entrega_prometida = None
+        if decision == "solucion":
+            try:
+                cantidad_prometida = int(request.data.get("cantidad_prometida"))
+            except (TypeError, ValueError):
+                cantidad_prometida = None
+            if not cantidad_prometida or cantidad_prometida <= 0:
+                return Response(
+                    {"detail": "Debes indicar la cantidad que enviara el proveedor."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            fecha_raw = str(request.data.get("fecha_entrega_prometida") or "").strip()
+            try:
+                from datetime import date as date_cls
+                fecha_entrega_prometida = date_cls.fromisoformat(fecha_raw) if fecha_raw else None
+            except ValueError:
+                fecha_entrega_prometida = None
+            if fecha_entrega_prometida is None:
+                return Response(
+                    {"detail": "Debes indicar la fecha de entrega acordada con el proveedor."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         with transaction.atomic():
             inconveniente_locked = (
@@ -625,7 +669,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 .filter(pk=inconveniente.id)
                 .first()
             )
-            if inconveniente_locked is None or inconveniente_locked.estado != ImportacionInconveniente.Estados.PENDIENTE:
+            if inconveniente_locked is None or inconveniente_locked.estado not in estados_accionables:
                 return Response(
                     {"detail": "Este inconveniente ya fue resuelto."},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -633,12 +677,20 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
             if decision == "reportado_proveedor":
                 resolucion = ImportacionInconveniente.Resoluciones.REPORTADO_PROVEEDOR
-                estado_resultado = ImportacionInconveniente.Estados.RESUELTO
-                action_label = "reportado_a_proveedor"
+                estado_resultado = ImportacionInconveniente.Estados.RECLAMADO
+                action_label = "reclamado_a_proveedor"
             elif decision == "devolver_proveedor":
                 resolucion = ImportacionInconveniente.Resoluciones.DEVOLVER_PROVEEDOR
                 estado_resultado = ImportacionInconveniente.Estados.RESUELTO
                 action_label = "devuelto_a_proveedor"
+            elif decision == "olvidar":
+                resolucion = ImportacionInconveniente.Resoluciones.PERDIDO
+                estado_resultado = ImportacionInconveniente.Estados.PERDIDO
+                action_label = "olvidado"
+            elif decision == "solucion":
+                resolucion = ImportacionInconveniente.Resoluciones.REPOSICION_ACORDADA
+                estado_resultado = ImportacionInconveniente.Estados.RESUELTO
+                action_label = "solucion_acordada"
             else:
                 resolucion = ImportacionInconveniente.Resoluciones.ACEPTADO
                 estado_resultado = ImportacionInconveniente.Estados.RESUELTO
@@ -648,15 +700,34 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             inconveniente_locked.resolucion = resolucion
             inconveniente_locked.motivo = motivo
             inconveniente_locked.resuelto_por = request.user
-            inconveniente_locked.save(
-                update_fields=["estado", "resolucion", "motivo", "resuelto_por", "updated_at"]
-            )
+            update_fields = ["estado", "resolucion", "motivo", "resuelto_por", "updated_at"]
+            if decision == "solucion":
+                inconveniente_locked.cantidad_prometida = cantidad_prometida
+                inconveniente_locked.fecha_entrega_prometida = fecha_entrega_prometida
+                update_fields += ["cantidad_prometida", "fecha_entrega_prometida"]
+            inconveniente_locked.save(update_fields=update_fields)
 
             tipo_label = "faltante" if inconveniente_locked.tipo == ImportacionInconveniente.Tipos.FALTANTE else "sobrante"
-            detail_text = (
-                f"Se resolvio el {tipo_label} de {inconveniente_locked.cantidad_diferencia} unidades "
-                f"({resolucion})."
-            )
+            if decision == "reportado_proveedor":
+                detail_text = (
+                    f"Se genero un reclamo al proveedor por el {tipo_label} de "
+                    f"{inconveniente_locked.cantidad_diferencia} unidades."
+                )
+            elif decision == "olvidar":
+                detail_text = (
+                    f"Se decidio olvidar el proceso; el {tipo_label} de "
+                    f"{inconveniente_locked.cantidad_diferencia} unidades queda como perdida."
+                )
+            elif decision == "solucion":
+                detail_text = (
+                    f"El proveedor acordo enviar {cantidad_prometida} unidades con fecha de entrega "
+                    f"{fecha_entrega_prometida.isoformat()}."
+                )
+            else:
+                detail_text = (
+                    f"Se resolvio el {tipo_label} de {inconveniente_locked.cantidad_diferencia} unidades "
+                    f"({resolucion})."
+                )
             if motivo:
                 detail_text = f"{detail_text} Motivo: {motivo}"
 
@@ -682,7 +753,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    def _create_importacion_reminder(self, importacion, sucursal_id, user_ids, actor_user):
+    def _create_importacion_reminder(
+        self, importacion, sucursal_id, user_ids, actor_user, inconvenientes_resumen=None
+    ):
         User = get_user_model()
         recipient_users = User.objects.filter(id__in=user_ids, is_active=True)
         recipients = [
@@ -697,11 +770,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         now = timezone.localtime(timezone.now())
         created_at = timezone.now().isoformat()
         label = f"Importación {importacion.codigo}"
-        description = (
-            f"La {label} ha sido recibida y está siendo distribuida."
-            if sucursal_id is None
-            else f"Hay un envío en camino de {label} hacia tu sucursal."
-        )
+        if sucursal_id is None:
+            if inconvenientes_resumen:
+                description = (
+                    f"La {label} ha sido recibida con inconvenientes de cantidad. "
+                    f"{'; '.join(inconvenientes_resumen)}."
+                )
+            else:
+                description = f"La {label} ha sido recibida y está siendo distribuida."
+        else:
+            description = f"Hay un envío en camino de {label} hacia tu sucursal."
 
         reminder = {
             "id": str(uuid4()),

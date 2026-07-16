@@ -48,6 +48,7 @@ const VIEWPORT_PADDING = 12
 const STATUS_FILTERS = [
   { key: 'all', label: 'Todos' },
   { key: 'pendiente', label: 'Pendientes' },
+  { key: 'reclamado', label: 'Reclamados' },
   { key: 'resuelto', label: 'Resueltos' },
   { key: 'perdido', label: 'Perdidos' },
 ]
@@ -66,6 +67,7 @@ const isCheckboxSelection = (event) => {
 const formatEstado = (value) => {
   const normalized = String(value || '').trim().toLowerCase()
   if (normalized === 'pendiente') return 'Pendiente'
+  if (normalized === 'reclamado') return 'Reclamado'
   if (normalized === 'resuelto') return 'Resuelto'
   if (normalized === 'perdido') return 'Perdido'
   return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
@@ -81,6 +83,7 @@ const formatResolucion = (value) => {
   if (normalized === 'reportado_proveedor') return 'Reportado al proveedor'
   if (normalized === 'aceptado') return 'Aceptado sin cambios'
   if (normalized === 'devolver_proveedor') return 'Devuelto al proveedor'
+  if (normalized === 'reposicion_acordada') return 'Reposición acordada'
   return '-'
 }
 
@@ -94,6 +97,9 @@ const formatHistorialAccion = (value) => {
   if (normalized === 'reportado_a_proveedor') return 'Reportado a proveedor'
   if (normalized === 'aceptado_sin_cambios') return 'Aceptado sin cambios'
   if (normalized === 'devuelto_a_proveedor') return 'Devuelto a proveedor'
+  if (normalized === 'reclamado_a_proveedor') return 'Reclamado a proveedor'
+  if (normalized === 'olvidado') return 'Proceso olvidado'
+  if (normalized === 'solucion_acordada') return 'Solución acordada'
   return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
 }
 
@@ -156,6 +162,8 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const [isResizingModal, setIsResizingModal] = useState(false)
   const [resolverDecision, setResolverDecision] = useState('')
   const [resolverMotivo, setResolverMotivo] = useState('')
+  const [resolverCantidadPrometida, setResolverCantidadPrometida] = useState('')
+  const [resolverFechaPrometida, setResolverFechaPrometida] = useState('')
   const [resolverBodegaId, setResolverBodegaId] = useState('')
   const [resolverDivisionId, setResolverDivisionId] = useState('')
   const [resolverSubdivisionId, setResolverSubdivisionId] = useState('')
@@ -869,6 +877,8 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const resetResolverState = useCallback(() => {
     setResolverDecision('')
     setResolverMotivo('')
+    setResolverCantidadPrometida('')
+    setResolverFechaPrometida('')
     setResolverBodegaId('')
     setResolverDivisionId('')
     setResolverSubdivisionId('')
@@ -1424,6 +1434,19 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
       }
     }
 
+    let cantidadPrometidaValue = null
+    if (isImportacion && resolvedDecision === 'solucion') {
+      cantidadPrometidaValue = Number.parseInt(String(resolverCantidadPrometida || ''), 10)
+      if (!Number.isFinite(cantidadPrometidaValue) || cantidadPrometidaValue <= 0) {
+        setResolverError('Debes indicar la cantidad que enviará el proveedor.')
+        return
+      }
+      if (!resolverFechaPrometida) {
+        setResolverError('Debes indicar la fecha de entrega acordada.')
+        return
+      }
+    }
+
     setResolverError('')
     setResolverSubmitting(true)
     try {
@@ -1439,6 +1462,10 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
           body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
           body.subdivision_proveedora_id = Number.parseInt(String(resolverProvSubdivisionId || ''), 10)
         }
+      }
+      if (isImportacion && resolvedDecision === 'solucion') {
+        body.cantidad_prometida = cantidadPrometidaValue
+        body.fecha_entrega_prometida = resolverFechaPrometida
       }
 
       const endpoint = isImportacion
@@ -1469,7 +1496,9 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     }
   }, [
     fetchRows,
+    resolverCantidadPrometida,
     resolverDecision,
+    resolverFechaPrometida,
     resolverMotivo,
     resolverProvSubdivisionId,
     resolverSubdivisionId,
@@ -1480,7 +1509,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
 
   const canResolveSelectedIssue = useMemo(() => {
     const selectedState = String(selectedIssue?.estado || '').trim().toLowerCase()
-    return Boolean(canUpdate && selectedState === 'pendiente')
+    return Boolean(canUpdate && (selectedState === 'pendiente' || selectedState === 'reclamado'))
   }, [canUpdate, selectedIssue])
 
   const selectedHistoryRows = useMemo(() => {
@@ -2080,7 +2109,83 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                       </>
                     ) : (
                     <>
-                      {selectedIssue?.origen === 'importacion' && (
+                      {selectedIssue?.origen === 'importacion' && selectedIssue?.estado === 'reclamado' && (
+                        <>
+                          <p className="muted transfer-issues-details__hint">
+                            Ya se generó un reclamo al proveedor. Decide si se olvida el proceso o si ya se acordó una solución.
+                          </p>
+                          <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
+                            <div className="transfer-issues-details__decision-wrap">
+                              <button
+                                type="button"
+                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
+                                  resolverDecision === 'olvidar' ? ' is-active' : ''
+                                }`}
+                                onClick={() => setResolverDecision('olvidar')}
+                                disabled={resolverSubmitting}
+                              >
+                                Olvidar proceso
+                              </button>
+                              <i
+                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                data-pr-tooltip="El inconveniente se marca como perdido/no recuperable y se cierra. Úsalo cuando decidas no seguir gestionando el reclamo con el proveedor."
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            </div>
+                            <div className="transfer-issues-details__decision-wrap">
+                              <button
+                                type="button"
+                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
+                                  resolverDecision === 'solucion' ? ' is-active' : ''
+                                }`}
+                                onClick={() => setResolverDecision('solucion')}
+                                disabled={resolverSubmitting}
+                              >
+                                Solución de inconveniente
+                              </button>
+                              <i
+                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                data-pr-tooltip="Registra la cantidad que enviará el proveedor y la fecha de entrega acordada. El inconveniente queda resuelto con esa información documentada."
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            </div>
+                          </div>
+                          {resolverDecision === 'solucion' && (
+                            <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
+                              <label className="create-user__field transfer-issues-details__field">
+                                <span>Cantidad que enviará el proveedor</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={resolverCantidadPrometida}
+                                  onChange={(event) => setResolverCantidadPrometida(event.target.value)}
+                                  disabled={resolverSubmitting}
+                                />
+                              </label>
+                              <label className="create-user__field transfer-issues-details__field">
+                                <span>Fecha de entrega</span>
+                                <input
+                                  type="date"
+                                  value={resolverFechaPrometida}
+                                  onChange={(event) => setResolverFechaPrometida(event.target.value)}
+                                  disabled={resolverSubmitting}
+                                />
+                              </label>
+                            </div>
+                          )}
+                          <label className="create-user__field create-user__field--full transfer-issues-details__field">
+                            <span>Motivo o nota (opcional)</span>
+                            <textarea
+                              rows={3}
+                              value={resolverMotivo}
+                              onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
+                              disabled={resolverSubmitting}
+                            />
+                          </label>
+                          {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
+                        </>
+                      )}
+                      {selectedIssue?.origen === 'importacion' && selectedIssue?.estado !== 'reclamado' && (
                         <>
                           <p className="muted transfer-issues-details__hint">
                             {selectedIssue?.tipo === 'sobrante'
@@ -2090,49 +2195,77 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                           <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
                             {selectedIssue?.tipo === 'sobrante' ? (
                               <>
-                                <button
-                                  type="button"
-                                  className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
-                                    resolverDecision === 'devolver_proveedor' ? ' is-active' : ''
-                                  }`}
-                                  onClick={() => setResolverDecision('devolver_proveedor')}
-                                  disabled={resolverSubmitting}
-                                >
-                                  Devolver a proveedor
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
-                                    resolverDecision === 'aceptado' ? ' is-active' : ''
-                                  }`}
-                                  onClick={() => setResolverDecision('aceptado')}
-                                  disabled={resolverSubmitting}
-                                >
-                                  No hacer nada
-                                </button>
+                                <div className="transfer-issues-details__decision-wrap">
+                                  <button
+                                    type="button"
+                                    className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
+                                      resolverDecision === 'devolver_proveedor' ? ' is-active' : ''
+                                    }`}
+                                    onClick={() => setResolverDecision('devolver_proveedor')}
+                                    disabled={resolverSubmitting}
+                                  >
+                                    Devolver a proveedor
+                                  </button>
+                                  <i
+                                    className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                    data-pr-tooltip="El excedente queda marcado como devuelto al proveedor. No se ajusta el inventario del sistema, solo se documenta el motivo del sobrante."
+                                    onClick={(event) => event.stopPropagation()}
+                                  />
+                                </div>
+                                <div className="transfer-issues-details__decision-wrap">
+                                  <button
+                                    type="button"
+                                    className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
+                                      resolverDecision === 'aceptado' ? ' is-active' : ''
+                                    }`}
+                                    onClick={() => setResolverDecision('aceptado')}
+                                    disabled={resolverSubmitting}
+                                  >
+                                    No hacer nada
+                                  </button>
+                                  <i
+                                    className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                    data-pr-tooltip="El sobrante queda aceptado tal cual. No se genera ningún ajuste de inventario ni reclamo al proveedor."
+                                    onClick={(event) => event.stopPropagation()}
+                                  />
+                                </div>
                               </>
                             ) : (
                               <>
-                                <button
-                                  type="button"
-                                  className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
-                                    resolverDecision === 'aceptado' ? ' is-active' : ''
-                                  }`}
-                                  onClick={() => setResolverDecision('aceptado')}
-                                  disabled={resolverSubmitting}
-                                >
-                                  No hacer nada
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
-                                    resolverDecision === 'reportado_proveedor' ? ' is-active' : ''
-                                  }`}
-                                  onClick={() => setResolverDecision('reportado_proveedor')}
-                                  disabled={resolverSubmitting}
-                                >
-                                  Generar un reclamo al proveedor
-                                </button>
+                                <div className="transfer-issues-details__decision-wrap">
+                                  <button
+                                    type="button"
+                                    className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
+                                      resolverDecision === 'aceptado' ? ' is-active' : ''
+                                    }`}
+                                    onClick={() => setResolverDecision('aceptado')}
+                                    disabled={resolverSubmitting}
+                                  >
+                                    No hacer nada
+                                  </button>
+                                  <i
+                                    className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                    data-pr-tooltip="El faltante queda aceptado tal cual. No se genera ningún ajuste de inventario ni reclamo al proveedor."
+                                    onClick={(event) => event.stopPropagation()}
+                                  />
+                                </div>
+                                <div className="transfer-issues-details__decision-wrap">
+                                  <button
+                                    type="button"
+                                    className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
+                                      resolverDecision === 'reportado_proveedor' ? ' is-active' : ''
+                                    }`}
+                                    onClick={() => setResolverDecision('reportado_proveedor')}
+                                    disabled={resolverSubmitting}
+                                  >
+                                    Generar un reclamo al proveedor
+                                  </button>
+                                  <i
+                                    className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                    data-pr-tooltip="El inconveniente pasa a estado 'Reclamado' y se mantiene activo para que lo sigas gestionando hasta acordar una solución con el proveedor."
+                                    onClick={(event) => event.stopPropagation()}
+                                  />
+                                </div>
                               </>
                             )}
                           </div>
@@ -2156,50 +2289,64 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                             Decide si los productos sobrantes deben devolverse a la sucursal proveedora (se restan del destino y se suman al origen) o mantenerse en la sucursal destino.
                           </p>
                           <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
-                            <button
-                              type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
-                                resolverDecision === 'devolver_proveedora' ? ' is-active' : ''
-                              }`}
-                              onClick={() => {
-                                setResolverDecision('devolver_proveedora')
-                                setResolverBodegaId('')
-                                setResolverDivisionId('')
-                                setResolverSubdivisionId('')
-                                setResolverNeedsManualLocation(false)
-                                closeResolverLocationDropdown()
-                                setResolverProvBodegaId('')
-                                setResolverProvDivisionId('')
-                                setResolverProvSubdivisionId('')
-                                setResolverProvNeedsManualLocation(false)
-                                closeResolverProvLocationDropdown()
-                              }}
-                              disabled={resolverSubmitting}
-                            >
-                              Devolver
-                            </button>
-                            <button
-                              type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
-                                resolverDecision === 'sin_cambios' ? ' is-active' : ''
-                              }`}
-                              onClick={() => {
-                                setResolverDecision('sin_cambios')
-                                setResolverBodegaId('')
-                                setResolverDivisionId('')
-                                setResolverSubdivisionId('')
-                                setResolverNeedsManualLocation(false)
-                                closeResolverLocationDropdown()
-                                setResolverProvBodegaId('')
-                                setResolverProvDivisionId('')
-                                setResolverProvSubdivisionId('')
-                                setResolverProvNeedsManualLocation(false)
-                                closeResolverProvLocationDropdown()
-                              }}
-                              disabled={resolverSubmitting}
-                            >
-                              Mantener
-                            </button>
+                            <div className="transfer-issues-details__decision-wrap">
+                              <button
+                                type="button"
+                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
+                                  resolverDecision === 'devolver_proveedora' ? ' is-active' : ''
+                                }`}
+                                onClick={() => {
+                                  setResolverDecision('devolver_proveedora')
+                                  setResolverBodegaId('')
+                                  setResolverDivisionId('')
+                                  setResolverSubdivisionId('')
+                                  setResolverNeedsManualLocation(false)
+                                  closeResolverLocationDropdown()
+                                  setResolverProvBodegaId('')
+                                  setResolverProvDivisionId('')
+                                  setResolverProvSubdivisionId('')
+                                  setResolverProvNeedsManualLocation(false)
+                                  closeResolverProvLocationDropdown()
+                                }}
+                                disabled={resolverSubmitting}
+                              >
+                                Devolver
+                              </button>
+                              <i
+                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                data-pr-tooltip="Resta las unidades sobrantes del inventario de la sucursal destino y las suma de vuelta a la sucursal proveedora."
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            </div>
+                            <div className="transfer-issues-details__decision-wrap">
+                              <button
+                                type="button"
+                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
+                                  resolverDecision === 'sin_cambios' ? ' is-active' : ''
+                                }`}
+                                onClick={() => {
+                                  setResolverDecision('sin_cambios')
+                                  setResolverBodegaId('')
+                                  setResolverDivisionId('')
+                                  setResolverSubdivisionId('')
+                                  setResolverNeedsManualLocation(false)
+                                  closeResolverLocationDropdown()
+                                  setResolverProvBodegaId('')
+                                  setResolverProvDivisionId('')
+                                  setResolverProvSubdivisionId('')
+                                  setResolverProvNeedsManualLocation(false)
+                                  closeResolverProvLocationDropdown()
+                                }}
+                                disabled={resolverSubmitting}
+                              >
+                                Mantener
+                              </button>
+                              <i
+                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                data-pr-tooltip="Las unidades sobrantes se quedan en la sucursal destino. No se mueve inventario entre sucursales."
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            </div>
                           </div>
                         </>
                       ) : (
@@ -2208,57 +2355,78 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                             Decide si este faltante debe sumarse en la sucursal proveedora, en la sucursal destino, o marcarse como desaparecido.
                           </p>
                           <div className="transfer-issues-details__decisions">
-                            <button
-                              type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--primary${
-                                resolverDecision === 'sumar_proveedora' ? ' is-active' : ''
-                              }`}
-                              onClick={() => {
-                                setResolverDecision('sumar_proveedora')
-                                setResolverBodegaId('')
-                                setResolverDivisionId('')
-                                setResolverSubdivisionId('')
-                                setResolverNeedsManualLocation(false)
-                                closeResolverLocationDropdown()
-                              }}
-                              disabled={resolverSubmitting}
-                            >
-                              Sumar a sucursal proveedora
-                            </button>
-                            <button
-                              type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--success${
-                                resolverDecision === 'sumar_solicitante' ? ' is-active' : ''
-                              }`}
-                              onClick={() => {
-                                setResolverDecision('sumar_solicitante')
-                                setResolverBodegaId('')
-                                setResolverDivisionId('')
-                                setResolverSubdivisionId('')
-                                setResolverNeedsManualLocation(false)
-                                closeResolverLocationDropdown()
-                              }}
-                              disabled={resolverSubmitting}
-                            >
-                              Sumar a sucursal destino
-                            </button>
-                            <button
-                              type="button"
-                              className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--danger${
-                                resolverDecision === 'perdido' ? ' is-active' : ''
-                              }`}
-                              onClick={() => {
-                                setResolverDecision('perdido')
-                                setResolverBodegaId('')
-                                setResolverDivisionId('')
-                                setResolverSubdivisionId('')
-                                setResolverNeedsManualLocation(false)
-                                closeResolverLocationDropdown()
-                              }}
-                              disabled={resolverSubmitting}
-                            >
-                              Marcar como desaparecido
-                            </button>
+                            <div className="transfer-issues-details__decision-wrap">
+                              <button
+                                type="button"
+                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--primary${
+                                  resolverDecision === 'sumar_proveedora' ? ' is-active' : ''
+                                }`}
+                                onClick={() => {
+                                  setResolverDecision('sumar_proveedora')
+                                  setResolverBodegaId('')
+                                  setResolverDivisionId('')
+                                  setResolverSubdivisionId('')
+                                  setResolverNeedsManualLocation(false)
+                                  closeResolverLocationDropdown()
+                                }}
+                                disabled={resolverSubmitting}
+                              >
+                                Sumar a sucursal proveedora
+                              </button>
+                              <i
+                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                data-pr-tooltip="Suma las unidades faltantes de vuelta al inventario de la sucursal proveedora (asume que nunca salieron de ahí)."
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            </div>
+                            <div className="transfer-issues-details__decision-wrap">
+                              <button
+                                type="button"
+                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--success${
+                                  resolverDecision === 'sumar_solicitante' ? ' is-active' : ''
+                                }`}
+                                onClick={() => {
+                                  setResolverDecision('sumar_solicitante')
+                                  setResolverBodegaId('')
+                                  setResolverDivisionId('')
+                                  setResolverSubdivisionId('')
+                                  setResolverNeedsManualLocation(false)
+                                  closeResolverLocationDropdown()
+                                }}
+                                disabled={resolverSubmitting}
+                              >
+                                Sumar a sucursal destino
+                              </button>
+                              <i
+                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                data-pr-tooltip="Suma las unidades faltantes al inventario de la sucursal destino (asume que sí llegaron)."
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            </div>
+                            <div className="transfer-issues-details__decision-wrap">
+                              <button
+                                type="button"
+                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--danger${
+                                  resolverDecision === 'perdido' ? ' is-active' : ''
+                                }`}
+                                onClick={() => {
+                                  setResolverDecision('perdido')
+                                  setResolverBodegaId('')
+                                  setResolverDivisionId('')
+                                  setResolverSubdivisionId('')
+                                  setResolverNeedsManualLocation(false)
+                                  closeResolverLocationDropdown()
+                                }}
+                                disabled={resolverSubmitting}
+                              >
+                                Marcar como desaparecido
+                              </button>
+                              <i
+                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
+                                data-pr-tooltip="Las unidades faltantes se dan de baja como pérdida. No se ajusta inventario en ninguna sucursal."
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            </div>
                           </div>
                         </>
                       )}
