@@ -689,6 +689,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
   const mode = isDark ? 'dark' : 'light'
   const toastRef = useRef(null)
+  const [isMaximized, setIsMaximized] = useState(false)
 
   const [showReceiveExcelDropdown, setShowReceiveExcelDropdown] = useState(false)
   const receiveExcelDropdownRef = useRef(null)
@@ -1061,7 +1062,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: `El Excel no corresponde: faltan ${missing.length} producto(s). Descarga de nuevo desde este modal.`, life: 4500 })
         return
       }
-      setRows(prev => prev.map(row => {
+      const updatedRows = rows.map(row => {
         const fileRow = keyToRow[String(row.id)]
         if (!fileRow) return row
         let cantidadRecibida = row.cantidadRecibida
@@ -1075,8 +1076,10 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           if (rawRevisado !== '') checked = ['si', 'sí', 'yes', 'true', '1', 'x'].includes(rawRevisado)
         }
         return { ...row, cantidadRecibida, checked }
-      }))
-      toastRef.current?.show({ severity: 'success', summary: 'Datos cargados', detail: 'Tabla actualizada desde Excel.', life: 4000 })
+      })
+      setRows(updatedRows)
+      await saveDraftToServer(updatedRows)
+      toastRef.current?.show({ severity: 'success', summary: 'Datos cargados', detail: 'Tabla actualizada desde Excel y guardada.', life: 4000 })
     } catch (e) {
       console.error(e)
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo leer el Excel.', life: 3500 })
@@ -1502,9 +1505,10 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
   // Guarda el progreso actual en la base de datos (no solo en localStorage) para que
   // sobreviva a cerrar el modal, recargar la página o reabrirlo en otro dispositivo.
-  const saveDraftToServer = async () => {
-    const checkedIds = rows.filter(r => r.checked).map(r => r.id)
-    const cantidadesRecibidas = Object.fromEntries(rows.map(r => [r.id, r.cantidadRecibida]))
+  const saveDraftToServer = async (rowsOverride) => {
+    const source = rowsOverride || rows
+    const checkedIds = source.filter(r => r.checked).map(r => r.id)
+    const cantidadesRecibidas = Object.fromEntries(source.map(r => [r.id, r.cantidadRecibida]))
     const borrador = { step, fechaLlegada, checkedIds, cantidadesRecibidas, distribution, recipientsBySucursal }
     try {
       await authFetch(
@@ -1525,7 +1529,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
   return createPortal(
     <>
-      <Toast ref={toastRef} />
+      <Toast ref={toastRef} baseZIndex={2200} />
       <div
         className={`quick-actions__receive-overlay ${mode}`}
         style={{ zIndex: 2100 }}
@@ -1533,7 +1537,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       >
         <div
           className={`quick-actions__receive-dialog ${mode}`}
-          style={{ width: step === 3 ? 'min(950px, 95vw)' : step === 4 ? 'min(860px, 95vw)' : step === 5 ? 'min(700px, 95vw)' : 'min(640px, 90vw)', gridTemplateRows: 'auto 1fr auto', transition: 'width .25s' }}
+          style={{
+            width: isMaximized ? 'min(1600px, 95vw)' : step === 3 ? 'min(950px, 95vw)' : step === 4 ? 'min(860px, 95vw)' : step === 5 ? 'min(700px, 95vw)' : 'min(640px, 90vw)',
+            maxHeight: isMaximized ? '95vh' : undefined,
+            gridTemplateRows: 'auto 1fr auto',
+            transition: 'width .25s, max-height .25s',
+          }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <header className="quick-actions__receive-head">
@@ -1541,9 +1550,19 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               <h4>{imp.codigo}</h4>
               <p>{imp.casa_comercial?.nombre || '-'} · Recepción de productos</p>
             </div>
-            <button type="button" className="quick-actions__receive-close" onClick={handleClose} disabled={submitting}>
-              <X size={16} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                className="create-user__icon-button create-user__icon-button--maximize"
+                onClick={() => setIsMaximized((p) => !p)}
+                aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+              >
+                <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+              </button>
+              <button type="button" className="quick-actions__receive-close" onClick={handleClose} disabled={submitting}>
+                <X size={16} />
+              </button>
+            </div>
           </header>
 
           {/* Step indicator */}
