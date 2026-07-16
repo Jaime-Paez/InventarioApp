@@ -690,6 +690,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const mode = isDark ? 'dark' : 'light'
   const toastRef = useRef(null)
 
+  const [showReceiveExcelDropdown, setShowReceiveExcelDropdown] = useState(false)
+  const receiveExcelDropdownRef = useRef(null)
+  const receiveFileInputRef = useRef(null)
+  useEffect(() => {
+    if (!showReceiveExcelDropdown) return
+    const handle = (e) => { if (!receiveExcelDropdownRef.current?.contains(e.target)) setShowReceiveExcelDropdown(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [showReceiveExcelDropdown])
+
   const [cellHover, setCellHover] = useState(null)
   const cellHoverTimerRef = useRef(null)
   const showCellHover = useCallback((event, items, label) => {
@@ -926,6 +936,96 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const toggleAll = useCallback((checked) => {
     setRows(prev => prev.map(r => ({ ...r, checked })))
   }, [])
+
+  const handleDownloadReceiveExcel = async () => {
+    try {
+      const xlsxMod = await import('xlsx')
+      const XLSX = xlsxMod?.default ?? xlsxMod
+      const data = rows.map(row => ({
+        'Código': row.codigo || '',
+        'Descripción': row.nombre || '',
+        'Referencia': row.referencia || '',
+        'OEM': row.oem || '',
+        'Precio': row.precio != null ? Number(row.precio) : '',
+        'Cant. Esperada': row.cantidad,
+        'Cant. Recibida': row.cantidadRecibida !== '' ? Number(row.cantidadRecibida) : '',
+        'Revisado': row.checked ? 'SI' : 'NO',
+        '_key': row.id,
+      }))
+      const worksheet = XLSX.utils.json_to_sheet(data)
+      worksheet['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 13 }, { wch: 13 }, { wch: 10 }, { wch: 0, hidden: true }]
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Revisión')
+      const out = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `revision-llegada-${imp?.codigo || imp?.id}.xlsx`
+      document.body.appendChild(link); link.click(); document.body.removeChild(link)
+      URL.revokeObjectURL(link.href)
+    } catch (e) {
+      console.error(e)
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el Excel.', life: 3500 })
+    }
+  }
+
+  const handleUploadReceiveExcel = async (file) => {
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo debe ser .xlsx', life: 3500 })
+      return
+    }
+    try {
+      const xlsxMod = await import('xlsx')
+      const xlsx = xlsxMod?.default ?? xlsxMod
+      const buffer = await file.arrayBuffer()
+      const workbook = xlsx.read(buffer, { type: 'array' })
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+      if (rawRows.length < 2) {
+        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no contiene datos.', life: 3500 })
+        return
+      }
+      const fileHeaders = rawRows[0].map(h => String(h || '').trim())
+      const keyIdx = fileHeaders.indexOf('_key')
+      const cantIdx = fileHeaders.indexOf('Cant. Recibida')
+      const revisadoIdx = fileHeaders.indexOf('Revisado')
+      if (keyIdx === -1 || cantIdx === -1) {
+        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta revisión. Descárgalo desde este modal.', life: 4500 })
+        return
+      }
+      const dataRows = rawRows.slice(1).filter(row => row.some(c => c !== ''))
+      const keyToRow = {}
+      dataRows.forEach(row => {
+        const k = String(row[keyIdx] || '').trim()
+        if (k) keyToRow[k] = row
+      })
+      const missing = rows.filter(row => !keyToRow[String(row.id)])
+      if (missing.length > 0) {
+        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: `El Excel no corresponde: faltan ${missing.length} producto(s). Descarga de nuevo desde este modal.`, life: 4500 })
+        return
+      }
+      setRows(prev => prev.map(row => {
+        const fileRow = keyToRow[String(row.id)]
+        if (!fileRow) return row
+        let cantidadRecibida = row.cantidadRecibida
+        const rawCant = fileRow[cantIdx]
+        if (rawCant !== '' && rawCant != null) {
+          cantidadRecibida = String(rawCant).replace(/[^0-9]/g, '')
+        }
+        let checked = row.checked
+        if (revisadoIdx !== -1) {
+          const rawRevisado = String(fileRow[revisadoIdx] || '').trim().toLowerCase()
+          if (rawRevisado !== '') checked = ['si', 'sí', 'yes', 'true', '1', 'x'].includes(rawRevisado)
+        }
+        return { ...row, cantidadRecibida, checked }
+      }))
+      toastRef.current?.show({ severity: 'success', summary: 'Datos cargados', detail: 'Tabla actualizada desde Excel.', life: 4000 })
+    } catch (e) {
+      console.error(e)
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo leer el Excel.', life: 3500 })
+    }
+  }
 
   const filteredRows = useMemo(() => {
     const q = filter.trim().toLowerCase()
@@ -1541,6 +1641,33 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   <div className="quick-actions__receive-search">
                     <input type="text" placeholder="Buscar por código o nombre..." value={filter} onChange={(e) => setFilter(e.target.value)} />
                     {filter && <button type="button" className="quick-actions__receive-search-clear" onClick={() => setFilter('')}>×</button>}
+                  </div>
+                  <div className="imp-verificar-excel-dropdown" style={{ marginLeft: 'auto' }} ref={receiveExcelDropdownRef}>
+                    <button
+                      type="button"
+                      className="users-circle users-circle--excel"
+                      title="Excel"
+                      onClick={() => setShowReceiveExcelDropdown((p) => !p)}
+                    >
+                      <i className="pi pi-file-excel" />
+                    </button>
+                    {showReceiveExcelDropdown && (
+                      <div className="imp-verificar-excel-menu" style={{ bottom: 'auto', top: 'calc(100% + 6px)', left: 'auto', right: 0 }}>
+                        <button type="button" onClick={() => { handleDownloadReceiveExcel(); setShowReceiveExcelDropdown(false) }}>
+                          <i className="pi pi-download" /> Descargar Excel
+                        </button>
+                        <button type="button" onClick={() => { receiveFileInputRef.current?.click(); setShowReceiveExcelDropdown(false) }}>
+                          <i className="pi pi-upload" /> Subir Excel
+                        </button>
+                      </div>
+                    )}
+                    <input
+                      ref={receiveFileInputRef}
+                      type="file"
+                      accept=".xlsx"
+                      style={{ display: 'none' }}
+                      onChange={(e) => { handleUploadReceiveExcel(e.target.files?.[0]); e.target.value = '' }}
+                    />
                   </div>
                 </div>
 
