@@ -939,25 +939,81 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
   const handleDownloadReceiveExcel = async () => {
     try {
-      const xlsxMod = await import('xlsx')
-      const XLSX = xlsxMod?.default ?? xlsxMod
-      const data = rows.map(row => ({
-        'Código': row.codigo || '',
-        'Descripción': row.nombre || '',
-        'Referencia': row.referencia || '',
-        'OEM': row.oem || '',
-        'Precio': row.precio != null ? Number(row.precio) : '',
-        'Cant. Esperada': row.cantidad,
-        'Cant. Recibida': row.cantidadRecibida !== '' ? Number(row.cantidadRecibida) : '',
-        'Revisado': row.checked ? 'SI' : 'NO',
-        '_key': row.id,
-      }))
-      const worksheet = XLSX.utils.json_to_sheet(data)
+      const XLSXStyle = (await import('xlsx-js-style')).default
+      const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
+      const border = { top: bt, bottom: bt, left: bt, right: bt }
+      const RO = 6 // columnas de solo lectura antes de Cant. Recibida
+      const headers = ['Código', 'Descripción', 'Referencia', 'OEM', 'Precio', 'Cant. Esperada', 'Cant. Recibida', 'Revisado', '_key']
+      const mkH = (fill, bot) => ({ font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: fill }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: bot } }, left: bt, right: bt } })
+      const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + 2 ? mkH('15803d', '166534') : { font: { sz: 8, color: { rgb: 'AAAAAA' } } })
+
+      const dataRows = rows.map((row) => {
+        const precio = row.precio != null ? +Number(row.precio).toFixed(2) : null
+        const cantRecibida = row.cantidadRecibida !== '' ? +Number(row.cantidadRecibida) : null
+        return [row.codigo || '', row.nombre || '', row.referencia || '', row.oem || '', precio, +Number(row.cantidad || 0), cantRecibida, row.checked ? 'SI' : 'NO', row.id]
+      })
+
+      const NROWS = dataRows.length; const NCOLS = headers.length
+      const worksheet = { '!ref': XLSXStyle.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: NROWS, c: NCOLS - 1 } }) }
+      const setCell = (r, c, val, s) => {
+        const ref = XLSXStyle.utils.encode_cell({ r, c })
+        if (val == null) { worksheet[ref] = { t: 's', v: '', s }; return }
+        if (typeof val === 'number') { worksheet[ref] = { t: 'n', v: val, s }; return }
+        worksheet[ref] = { t: 's', v: String(val), s }
+      }
+
+      headers.forEach((h, ci) => setCell(0, ci, h, hdrS[ci]))
+
+      dataRows.forEach((row, ri) => {
+        const isEven = (ri + 1) % 2 === 0
+        row.forEach((val, ci) => {
+          const isEditable = ci === RO || ci === RO + 1
+          const bg = isEditable ? (isEven ? 'FFFFFF' : 'F9FAFB') : (isEven ? 'EFF6FF' : 'FFFFFF')
+          const numFmt = ci === 4 ? '0.00' : ci === 5 || ci === RO ? '0' : null
+          const s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(numFmt ? { numFmt } : {}) }
+          setCell(ri + 1, ci, val, s)
+        })
+      })
+
       worksheet['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 13 }, { wch: 13 }, { wch: 10 }, { wch: 0, hidden: true }]
-      const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Revisión')
-      const out = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
-      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      worksheet['!rows'] = [{ hpt: 22 }]
+      const workbook = XLSXStyle.utils.book_new()
+      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Revisión')
+      const rawOut = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
+
+      // Inyecta formato condicional nativo de Excel: así la celda se repinta sola
+      // en blanco al escribir un valor, sin necesidad de volver a descargar el archivo.
+      const unzipped = unzipSync(new Uint8Array(rawOut))
+      const dec = new TextDecoder(); const enc = new TextEncoder()
+
+      let stylesXml = dec.decode(unzipped['xl/styles.xml'])
+      stylesXml = stylesXml.replace(/<dxfs[^>]*\/>/,
+        '<dxfs count="1"><dxf><fill><patternFill><bgColor rgb="FFfef9c3"/></patternFill></fill></dxf></dxfs>')
+      unzipped['xl/styles.xml'] = enc.encode(stylesXml)
+
+      const gCol = XLSXStyle.utils.encode_col(RO)       // G - Cant. Recibida
+      const hCol = XLSXStyle.utils.encode_col(RO + 1)   // H - Revisado
+      const last = NROWS + 1
+      const cfXml =
+        `<conditionalFormatting sqref="${gCol}2:${gCol}${last}">` +
+        `<cfRule type="cellIs" dxfId="0" priority="1" operator="equal"><formula>""</formula></cfRule>` +
+        `</conditionalFormatting>` +
+        `<conditionalFormatting sqref="${hCol}2:${hCol}${last}">` +
+        `<cfRule type="cellIs" dxfId="0" priority="1" operator="notEqual"><formula>"SI"</formula></cfRule>` +
+        `</conditionalFormatting>`
+
+      let sheetXml = dec.decode(unzipped['xl/worksheets/sheet1.xml'])
+      sheetXml = sheetXml.includes('<ignoredErrors')
+        ? sheetXml.replace('<ignoredErrors', cfXml + '<ignoredErrors')
+        : sheetXml.replace('</worksheet>', cfXml + '</worksheet>')
+      unzipped['xl/worksheets/sheet1.xml'] = enc.encode(sheetXml)
+
+      const zippable = {}
+      for (const [zpath, data] of Object.entries(unzipped)) {
+        if (!zpath.endsWith('/')) zippable[zpath] = [data, { level: 0 }]
+      }
+      const finalOut = zipSync(zippable)
+      const blob = new Blob([finalOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
       link.download = `revision-llegada-${imp?.codigo || imp?.id}.xlsx`
@@ -1642,33 +1698,6 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     <input type="text" placeholder="Buscar por código o nombre..." value={filter} onChange={(e) => setFilter(e.target.value)} />
                     {filter && <button type="button" className="quick-actions__receive-search-clear" onClick={() => setFilter('')}>×</button>}
                   </div>
-                  <div className="imp-verificar-excel-dropdown" style={{ marginLeft: 'auto' }} ref={receiveExcelDropdownRef}>
-                    <button
-                      type="button"
-                      className="users-circle users-circle--excel"
-                      title="Excel"
-                      onClick={() => setShowReceiveExcelDropdown((p) => !p)}
-                    >
-                      <i className="pi pi-file-excel" />
-                    </button>
-                    {showReceiveExcelDropdown && (
-                      <div className="imp-verificar-excel-menu" style={{ bottom: 'auto', top: 'calc(100% + 6px)', left: 'auto', right: 0 }}>
-                        <button type="button" onClick={() => { handleDownloadReceiveExcel(); setShowReceiveExcelDropdown(false) }}>
-                          <i className="pi pi-download" /> Descargar Excel
-                        </button>
-                        <button type="button" onClick={() => { receiveFileInputRef.current?.click(); setShowReceiveExcelDropdown(false) }}>
-                          <i className="pi pi-upload" /> Subir Excel
-                        </button>
-                      </div>
-                    )}
-                    <input
-                      ref={receiveFileInputRef}
-                      type="file"
-                      accept=".xlsx"
-                      style={{ display: 'none' }}
-                      onChange={(e) => { handleUploadReceiveExcel(e.target.files?.[0]); e.target.value = '' }}
-                    />
-                  </div>
                 </div>
 
                 <div className="create-user__locations-table importaciones-modal__products-table imp-receive__table" onKeyDown={handleProductsGridKeyDown}>
@@ -1855,7 +1884,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                               <span className="imp-table-cell-text">{row.nombre || '-'}</span>
                             </span>
                             <span className="imp-table-cell-text" style={{ justifyContent: 'center', textAlign: 'center', fontWeight: 700, color: isOver ? '#dc2626' : isComplete ? '#16a34a' : 'var(--color-text-secondary)' }}>
-                              {assigned}/{ceiling}
+                              {ceiling}
                             </span>
                             {sucursales.map(suc => {
                               const isMatriz = Boolean(matrizSucursal && suc.id === matrizSucursal.id)
@@ -1957,6 +1986,33 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
             ) : step === 3 ? (
               <>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)}>Atrás</button>
+                <div className="imp-verificar-excel-dropdown" ref={receiveExcelDropdownRef}>
+                  <button
+                    type="button"
+                    className="users-circle users-circle--excel"
+                    title="Excel"
+                    onClick={() => setShowReceiveExcelDropdown((p) => !p)}
+                  >
+                    <i className="pi pi-file-excel" />
+                  </button>
+                  {showReceiveExcelDropdown && (
+                    <div className="imp-verificar-excel-menu" style={{ right: 0, left: 'auto' }}>
+                      <button type="button" onClick={() => { handleDownloadReceiveExcel(); setShowReceiveExcelDropdown(false) }}>
+                        <i className="pi pi-download" /> Descargar Excel
+                      </button>
+                      <button type="button" onClick={() => { receiveFileInputRef.current?.click(); setShowReceiveExcelDropdown(false) }}>
+                        <i className="pi pi-upload" /> Subir Excel
+                      </button>
+                    </div>
+                  )}
+                  <input
+                    ref={receiveFileInputRef}
+                    type="file"
+                    accept=".xlsx"
+                    style={{ display: 'none' }}
+                    onChange={(e) => { handleUploadReceiveExcel(e.target.files?.[0]); e.target.value = '' }}
+                  />
+                </div>
                 <button type="button" className={`quick-actions__receive-btn${allChecked ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep4} disabled={!allChecked}>Siguiente</button>
               </>
             ) : step === 4 ? (

@@ -1049,11 +1049,13 @@
   padding: 5px 12px;
   text-align: center;
   white-space: nowrap;
+  border-left: 1px solid var(--color-border, #e2e8f0);
 }
 
 .imp-alternos-hover-card__table th:first-child,
 .imp-alternos-hover-card__table td:first-child {
   text-align: left;
+  border-left: none;
 }
 
 .imp-alternos-hover-card__table th {
@@ -1072,6 +1074,11 @@
 
 .dashboard-shell.dark .imp-alternos-hover-card__table td {
   border-top-color: rgba(148, 163, 184, 0.15);
+}
+
+.dashboard-shell.dark .imp-alternos-hover-card__table th,
+.dashboard-shell.dark .imp-alternos-hover-card__table td {
+  border-left-color: rgba(148, 163, 184, 0.15);
 }
 
 .imp-alternos-hover-card__row--principal td {
