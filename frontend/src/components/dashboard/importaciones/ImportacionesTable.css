@@ -512,6 +512,19 @@
   background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
 }
 
+/* Ilumina la fila al pasar el mouse y, por separado, la fila donde se está
+   escribiendo (focus-within) — así pueden quedar dos filas iluminadas a la vez
+   (una por hover, otra por foco) y cada una se apaga de forma independiente. */
+.imp-receive__productos-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty):hover,
+.imp-receive__productos-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty):focus-within {
+  background: var(--table-color-hover);
+}
+
+.dashboard-shell.dark .imp-receive__productos-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty):hover,
+.dashboard-shell.dark .imp-receive__productos-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty):focus-within {
+  background: var(--table-color-dark-hover);
+}
+
 .imp-receive__check-cell {
   padding: 0 !important;
   justify-content: center;
