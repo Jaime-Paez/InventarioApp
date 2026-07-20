@@ -3170,7 +3170,9 @@ function CreateSalida({
       : 'Crear salida'
   const transferSummaryLabel = selectedSolicitudDoc || formData.solicitudTrasladoId || 'N/A'
   const defaultHeaderTitle = 'Nueva salida'
-  const headerDocumentTitle = String(formData.no_documento || '').trim()
+  const rawHeaderDocumentTitle = String(formData.no_documento || '').trim()
+  const headerDocumentTitle =
+    isVenta && rawHeaderDocumentTitle ? `Cliente: ${rawHeaderDocumentTitle}` : rawHeaderDocumentTitle
   const headerTitle = !isSelectorStep && headerDocumentTitle ? headerDocumentTitle : defaultHeaderTitle
 
   return (
@@ -3283,45 +3285,46 @@ function CreateSalida({
                   <>
                     <section className="create-user__section">
                       <div className="create-salida__field-groups">
-                        <div className="create-salida__field-group create-salida__field-group--defined">
-                          <div
-                            className={`create-user__grid create-user__grid--two${
-                              isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
-                            }`}
-                          >
-                    <StaticFieldDisplay
-                      label="Código"
-                      value={formData.no_documento}
-                      helper={documentHelperText}
-                      helperTone={documentHelperTone}
-                      loading={documentStatus === DOCUMENT_STATUS.checking}
-                    />
+                        {!isVenta && (
+                          <div className="create-salida__field-group create-salida__field-group--defined">
+                            <div
+                              className={`create-user__grid create-user__grid--two${
+                                isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
+                              }`}
+                            >
+                              <StaticFieldDisplay
+                                label="Código"
+                                value={formData.no_documento}
+                                helper={documentHelperText}
+                                helperTone={documentHelperTone}
+                                loading={documentStatus === DOCUMENT_STATUS.checking}
+                              />
 
-                    <StaticFieldDisplay label="Tipo" value={selectedSubTipoLabel} />
+                              <StaticFieldDisplay label="Tipo" value={selectedSubTipoLabel} />
 
-                    <StaticFieldDisplay label="Fecha" value={formattedFecha} />
+                              <StaticFieldDisplay label="Fecha" value={formattedFecha} />
 
-                    {isSucursalPrincipalLocked && (
-                      <StaticFieldDisplay
-                        label={isTraslado ? 'Sucursal proveedora' : 'Sucursal'}
-                        value={selectedSucursalName}
-                      />
-                    )}
+                              {isSucursalPrincipalLocked && (
+                                <StaticFieldDisplay
+                                  label={isTraslado ? 'Sucursal proveedora' : 'Sucursal'}
+                                  value={selectedSucursalName}
+                                />
+                              )}
 
-                    {requiresSucursalObjetivo &&
-                      (isPrefilledTransfer || (transferRequiresRequest && selectedObjetivoBranchName)) && (
-                        <StaticFieldDisplay
-                          label="Sucursal destino"
-                          value={selectedObjetivoBranchName}
-                          fullWidth
-                        />
-                      )}
-
+                              {requiresSucursalObjetivo &&
+                                (isPrefilledTransfer || (transferRequiresRequest && selectedObjetivoBranchName)) && (
+                                  <StaticFieldDisplay
+                                    label="Sucursal destino"
+                                    value={selectedObjetivoBranchName}
+                                    fullWidth
+                                  />
+                                )}
+                            </div>
                           </div>
-                        </div>
+                        )}
 
                         <div
-                          className={`create-user__grid create-user__grid--two${
+                          className={`create-user__grid create-user__grid--${isVenta ? 'three' : 'two'}${
                             isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
                           }`}
                         >
@@ -3367,7 +3370,7 @@ function CreateSalida({
                             )}
 
                     {(isVenta || isDevolucion) && (
-                      <label className="create-user__field create-user__field--full">
+                      <label className={`create-user__field${isVenta ? '' : ' create-user__field--full'}`}>
                         <span>No. de Factura</span>
                         <input
                           name="factura_referencia"
@@ -3377,6 +3380,11 @@ function CreateSalida({
                           disabled={loading}
                           required={isVenta || isDevolucion}
                         />
+                        {isVenta && documentHelperText && (
+                          <small className={documentHelperTone === 'error' ? 'create-user__field-error' : 'muted'}>
+                            {documentHelperText}
+                          </small>
+                        )}
                       </label>
                     )}
 
@@ -3431,6 +3439,20 @@ function CreateSalida({
                           </div>,
                           document.body
                         )}
+                      </label>
+                    )}
+
+                    {isVenta && (
+                      <label className="create-user__field">
+                        <span>Fecha</span>
+                        <input
+                          name="fecha"
+                          type="date"
+                          value={formData.fecha}
+                          onChange={handleChange}
+                          disabled={loading}
+                          required
+                        />
                       </label>
                     )}
 

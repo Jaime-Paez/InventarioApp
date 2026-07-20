@@ -3731,6 +3731,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                         <colgroup>
                           <col style={{ width: 100 }} />
                           <col style={{ width: 110 }} />
+                          <col style={{ width: 90 }} />
                           <col />
                           <col style={{ width: 60 }} />
                           <col style={{ width: 80 }} />
@@ -3739,6 +3740,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                           <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Código</th>
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Referencia</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>OEM</th>
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
                             <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
                             <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>PVP</th>
@@ -3790,6 +3792,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                                     <span>{row.referencia || '—'}</span>
                                   )}
                                 </td>
+                                <td style={{ padding: '7px 12px' }}>{row.oem || '—'}</td>
                                 <td style={{ padding: '7px 12px' }}>{row.descripcion || '—'}</td>
                                 <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
                                 <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>${Number(row.pvp || 0).toFixed(2)}</td>

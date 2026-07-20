@@ -567,11 +567,6 @@ function CreateEntrada({
     return providerBranchPool.filter((branch) => String(branch?.id || '').trim() !== selectedSucursalId)
   }, [providerBranchPool, selectedSucursalId])
   const formattedFecha = useMemo(() => formatDate(formData.fecha, ''), [formData.fecha])
-  const documentHelperText = useMemo(() => {
-    if (documentStatus === DOCUMENT_STATUS.error) return 'No se pudo generar el código automáticamente.'
-    return ''
-  }, [documentStatus])
-  const documentHelperTone = documentStatus === DOCUMENT_STATUS.error ? 'error' : 'muted'
 
   const devolucionEstadoOptions = useMemo(
     () =>
@@ -2933,7 +2928,11 @@ function CreateEntrada({
   const showTabs = isVenta || isTraslado
   const showGeneralTab = !showTabs || activeTab === 'general'
   const defaultHeaderTitle = 'Nueva entrada'
-  const headerDocumentTitle = String(formData.no_documento || '').trim()
+  const rawHeaderDocumentTitle = String(formData.no_documento || '').trim()
+  const headerDocumentTitle =
+    rawHeaderDocumentTitle && selectedSubTipoLabel
+      ? `${selectedSubTipoLabel}: ${rawHeaderDocumentTitle}`
+      : rawHeaderDocumentTitle
   const headerTitle = !isSelectorStep && !isCasaComercialStep && headerDocumentTitle ? headerDocumentTitle : defaultHeaderTitle
 
   return (
@@ -3148,58 +3147,22 @@ function CreateEntrada({
                       <p className="create-user__eyebrow">Datos</p>
                       <h4>Informacion general</h4>
                     </div>
+                    {!isEditableEntryDate && (
+                      <span className="create-salida__static-value">{formattedFecha || '-'}</span>
+                    )}
                   </div>
 
                   <div className="create-salida__field-groups">
-                    <div className="create-salida__field-group create-salida__field-group--defined">
-                      <div className="create-user__grid create-user__grid--two">
-                    <StaticFieldDisplay
-                      label="Código"
-                      value={formData.no_documento}
-                      helper={documentHelperText}
-                      helperTone={documentHelperTone}
-                      loading={documentStatus === DOCUMENT_STATUS.checking}
-                    />
-
-                    <StaticFieldDisplay label="Tipo" value={selectedSubTipoLabel} />
-
-                    {isTraslado ? (
-                      <>
-                        <StaticFieldDisplay label="Fecha" value={formattedFecha} />
-
-                        {isSucursalPrincipalLocked && (
+                    {isSucursalPrincipalLocked && (
+                      <div className="create-salida__field-group create-salida__field-group--defined">
+                        <div className="create-user__grid create-user__grid--two">
                           <StaticFieldDisplay
-                            label="Sucursal destino"
+                            label={isTraslado ? 'Sucursal destino' : 'Sucursal'}
                             value={selectedSucursalName}
                           />
-                        )}
-                      </>
-                    ) : !isEditableEntryDate ? (
-                      <>
-                        <StaticFieldDisplay label="Fecha" value={formattedFecha} />
-
-                        {isSucursalPrincipalLocked && (
-                          <StaticFieldDisplay
-                            label="Sucursal"
-                            value={selectedSucursalName}
-                          />
-                        )}
-
-
-                      </>
-                    ) : (
-                      <>
-                        {isSucursalPrincipalLocked && (
-                          <StaticFieldDisplay
-                            label="Sucursal"
-                            value={selectedSucursalName}
-                          />
-                        )}
-                      </>
-                    )}
-
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="create-user__grid create-user__grid--two">
                       {isTraslado ? (
