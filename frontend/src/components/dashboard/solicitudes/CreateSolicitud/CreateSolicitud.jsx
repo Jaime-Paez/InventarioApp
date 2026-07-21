@@ -2080,7 +2080,7 @@ function CreateSolicitud({
                       </label>
 
                       <label className="create-user__field">
-                        <span>Descripción</span>
+                        <span>Nombres</span>
                         <input
                           name="nombres"
                           type="text"

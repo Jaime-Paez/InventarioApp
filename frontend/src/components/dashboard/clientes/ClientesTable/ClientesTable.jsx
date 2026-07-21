@@ -460,7 +460,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   // ---------------- Columns ----------------
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'nombres', header: 'Descripción', filterPlaceholder: 'Buscar por descripción' },
+      { nombrevar: 'nombres', header: 'Nombres', filterPlaceholder: 'Buscar por nombres' },
       { nombrevar: 'apellidos', header: 'Apellidos', filterPlaceholder: 'Buscar por apellidos' },
       { nombrevar: 'cedula_ruc', header: 'Cedula/RUC', filterPlaceholder: 'Buscar por cedula/RUC' },
       { nombrevar: 'autos_count', header: 'Autos', filterPlaceholder: 'Filtrar por autos' },
@@ -1469,7 +1469,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Descripción</span>
+                      <span>Nombres</span>
                       <input name="nombres" type="text" placeholder="Ej: Juan" value={searchCriteria.nombres} onChange={handleSearchInputChange} />
                     </label>
 

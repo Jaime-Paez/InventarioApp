@@ -337,8 +337,8 @@ function CreateSalida({
   const [detailError, setDetailError] = useState('')
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [showProductDropdown, setShowProductDropdown] = useState(false)
-  const [productDropdownDirection, setProductDropdownDirection] = useState('up')
   const [productDropdownMaxHeight, setProductDropdownMaxHeight] = useState(null)
+  const [productDropdownStyle, setProductDropdownStyle] = useState({})
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
   const [productLoading, setProductLoading] = useState(false)
@@ -354,6 +354,7 @@ function CreateSalida({
   const [pendingClienteAutoDraft, setPendingClienteAutoDraft] = useState({ placa: '', modelo: '', anio: '', marca: '' })
   const [fetchingClienteAutos, setFetchingClienteAutos] = useState(false)
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+  const [clienteDropdownStyle, setClienteDropdownStyle] = useState({})
   const [showTipoPagoDropdown, setShowTipoPagoDropdown] = useState(false)
   const [tipoPagoDropdownStyle, setTipoPagoDropdownStyle] = useState({})
   const [formSubmitted, setFormSubmitted] = useState(false)
@@ -383,7 +384,10 @@ function CreateSalida({
   const modalRef = useRef(null)
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
+  const productDropdownPanelRef = useRef(null)
   const clienteDropdownRef = useRef(null)
+  const clienteDropdownTriggerRef = useRef(null)
+  const clienteDropdownPanelRef = useRef(null)
   const tipoPagoDropdownRef = useRef(null)
   const tipoPagoTriggerRef = useRef(null)
   const tipoPagoPanelRef = useRef(null)
@@ -1887,7 +1891,6 @@ function CreateSalida({
     setDetailDraft(initialDetail)
     setDetailError('')
     setShowProductDropdown(false)
-    setProductDropdownDirection('up')
     setProductDropdownMaxHeight(null)
     setProductQuery('')
     setProductOptions([])
@@ -2029,9 +2032,13 @@ function CreateSalida({
       Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing),
       0
     )
-    setProductDropdownDirection((prev) => (prev === 'up' ? prev : 'up'))
     const nextMaxHeight = Math.max(140, Math.min(320, availableAbove))
     setProductDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
+    setProductDropdownStyle({
+      left: triggerRect.left,
+      bottom: Math.max(window.innerHeight - triggerRect.top + spacing, VIEWPORT_PADDING),
+      maxHeight: nextMaxHeight,
+    })
   }, [showProductDropdown])
 
   useEffect(() => {
@@ -2085,6 +2092,30 @@ function CreateSalida({
     }
   }, [clienteQuery, isVenta, open, searchClientes, showClienteDropdown])
 
+  const updateClienteDropdownPosition = useCallback(() => {
+    if (!clienteDropdownTriggerRef.current) return
+    const rect = clienteDropdownTriggerRef.current.getBoundingClientRect()
+    setClienteDropdownStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 9999,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!open || !showClienteDropdown) return undefined
+    updateClienteDropdownPosition()
+    const handleReposition = () => updateClienteDropdownPosition()
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [open, showClienteDropdown, updateClienteDropdownPosition])
+
   const updateTipoPagoDropdownPosition = useCallback(() => {
     if (!tipoPagoTriggerRef.current) return
     const rect = tipoPagoTriggerRef.current.getBoundingClientRect()
@@ -2112,10 +2143,16 @@ function CreateSalida({
   useEffect(() => {
     if (!open || (!showProductDropdown && !showClienteDropdown && !showTipoPagoDropdown)) return undefined
     const handleClick = (event) => {
-      if (productDropdownRef.current && !productDropdownRef.current.contains(event.target)) {
+      const productTouched =
+        (productDropdownRef.current && productDropdownRef.current.contains(event.target)) ||
+        (productDropdownPanelRef.current && productDropdownPanelRef.current.contains(event.target))
+      if (!productTouched) {
         setShowProductDropdown(false)
       }
-      if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
+      const clienteTouched =
+        (clienteDropdownRef.current && clienteDropdownRef.current.contains(event.target)) ||
+        (clienteDropdownPanelRef.current && clienteDropdownPanelRef.current.contains(event.target))
+      if (!clienteTouched) {
         setShowClienteDropdown(false)
       }
       const tipoPagoTouched =
@@ -3171,9 +3208,11 @@ function CreateSalida({
   const transferSummaryLabel = selectedSolicitudDoc || formData.solicitudTrasladoId || 'N/A'
   const defaultHeaderTitle = 'Nueva salida'
   const rawHeaderDocumentTitle = String(formData.no_documento || '').trim()
-  const headerDocumentTitle =
-    isVenta && rawHeaderDocumentTitle ? `Cliente: ${rawHeaderDocumentTitle}` : rawHeaderDocumentTitle
-  const headerTitle = !isSelectorStep && headerDocumentTitle ? headerDocumentTitle : defaultHeaderTitle
+  const headerSubTipoLabel = isVenta ? 'cliente' : isTraslado ? 'sucursal' : isDevolucion ? 'garantía' : ''
+  const headerDocumentTitle = headerSubTipoLabel
+    ? `Nueva salida ${headerSubTipoLabel}: ${rawHeaderDocumentTitle || '-'}`
+    : rawHeaderDocumentTitle
+  const headerTitle = !isSelectorStep && headerSubTipoLabel ? headerDocumentTitle : defaultHeaderTitle
 
   return (
     <div
@@ -3284,34 +3323,45 @@ function CreateSalida({
                 {(activeTab === 'general' || (!isVenta && !isManualTransferMode) || (isManualTransferMode && activeTab === 'general')) && (
                   <>
                     <section className="create-user__section">
-                      <div className="create-salida__field-groups">
+                      <div className="create-user__section-header">
+                        <div>
+                          <p className="create-user__eyebrow">Datos</p>
+                          <h4>Informacion general</h4>
+                        </div>
                         {!isVenta && (
-                          <div className="create-salida__field-group create-salida__field-group--defined">
+                          <span className="create-salida__static-value">{formattedFecha || '-'}</span>
+                        )}
+                      </div>
+
+                      <div className="create-salida__field-groups">
+                          <div className="create-salida__field-group create-salida__field-group--defined create-salida__field-group--paired">
                             <div
-                              className={`create-user__grid create-user__grid--two${
+                              className={`create-user__grid create-user__grid--${isVenta ? 'three' : 'two'}${
                                 isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
                               }`}
                             >
-                              <StaticFieldDisplay
-                                label="Código"
-                                value={formData.no_documento}
-                                helper={documentHelperText}
-                                helperTone={documentHelperTone}
-                                loading={documentStatus === DOCUMENT_STATUS.checking}
-                              />
-
-                              <StaticFieldDisplay label="Tipo" value={selectedSubTipoLabel} />
-
-                              <StaticFieldDisplay label="Fecha" value={formattedFecha} />
-
-                              {isSucursalPrincipalLocked && (
+                              {!isVenta && isSucursalPrincipalLocked && (
                                 <StaticFieldDisplay
                                   label={isTraslado ? 'Sucursal proveedora' : 'Sucursal'}
                                   value={selectedSucursalName}
                                 />
                               )}
 
-                              {requiresSucursalObjetivo &&
+                              {isDevolucion && (
+                                <label className="create-user__field create-user__field--required">
+                                  <span>No. de Factura</span>
+                                  <input
+                                    name="factura_referencia"
+                                    type="text"
+                                    value={formData.factura_referencia}
+                                    onChange={handleChange}
+                                    disabled={loading}
+                                    required
+                                  />
+                                </label>
+                              )}
+
+                              {!isVenta && requiresSucursalObjetivo &&
                                 (isPrefilledTransfer || (transferRequiresRequest && selectedObjetivoBranchName)) && (
                                   <StaticFieldDisplay
                                     label="Sucursal destino"
@@ -3319,12 +3369,119 @@ function CreateSalida({
                                     fullWidth
                                   />
                                 )}
+
+                              {!isVenta && requiresSucursalObjetivo &&
+                                !(isPrefilledTransfer || (transferRequiresRequest && selectedObjetivoBranchName)) && (
+                                  <label className="create-user__field">
+                                    <span>Sucursal destino</span>
+                                    <select
+                                      name="sucursalObjetivoId"
+                                      value={formData.sucursalObjetivoId}
+                                      onChange={handleChange}
+                                      disabled={loading || transferRequiresRequest}
+                                      required={requiresSucursalObjetivo}
+                                    >
+                                      <option value="">Selecciona una sucursal</option>
+                                      {transferDestinationBranches.map((branch) => (
+                                        <option key={branch.id} value={branch.id}>
+                                          {branch.nombre || `Sucursal ${branch.id}`}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                )}
+
+                              {isVenta && (
+                                <>
+                                  <label className="create-user__field create-user__field--required">
+                                    <span>No. de Factura</span>
+                                    <div>
+                                      <input
+                                        name="factura_referencia"
+                                        type="text"
+                                        value={formData.factura_referencia}
+                                        onChange={handleChange}
+                                        disabled={loading}
+                                        required
+                                      />
+                                      {documentHelperText && (
+                                        <small className={documentHelperTone === 'error' ? 'create-user__field-error' : 'muted'}>
+                                          {documentHelperText}
+                                        </small>
+                                      )}
+                                    </div>
+                                  </label>
+
+                                  <label className="create-user__field create-user__field--required">
+                                    <span>Tipo de pago</span>
+                                    <div className="create-user__dropdown" ref={tipoPagoDropdownRef}>
+                                      <button
+                                        ref={tipoPagoTriggerRef}
+                                        type="button"
+                                        className={`create-user__dropdown-trigger${!formData.tipo_pago ? ' create-salida__cliente-trigger--placeholder' : ''}${formSubmitted && !formData.tipo_pago ? ' create-salida__input--invalid' : ''}`}
+                                        onClick={() => {
+                                          if (!showTipoPagoDropdown) updateTipoPagoDropdownPosition()
+                                          setShowTipoPagoDropdown((prev) => !prev)
+                                        }}
+                                        disabled={loading}
+                                        aria-haspopup="listbox"
+                                        aria-expanded={showTipoPagoDropdown}
+                                      >
+                                        <span>{formData.tipo_pago || 'Seleccionar tipo de pago'}</span>
+                                        <i className={`pi pi-chevron-${showTipoPagoDropdown ? 'up' : 'down'}`} />
+                                      </button>
+                                    </div>
+                                    {showTipoPagoDropdown && createPortal(
+                                      <div
+                                        ref={tipoPagoPanelRef}
+                                        className="create-user__dropdown-panel create-salida__cliente-panel"
+                                        style={tipoPagoDropdownStyle}
+                                      >
+                                        <div className="create-user__dropdown-results">
+                                          {TIPO_PAGO_OPTIONS.map((opt) => (
+                                            <button
+                                              key={opt}
+                                              type="button"
+                                              className="create-user__result-option"
+                                              onMouseDown={(e) => e.preventDefault()}
+                                              onClick={() => {
+                                                setError('')
+                                                setFormData((prev) => ({ ...prev, tipo_pago: opt }))
+                                                setShowTipoPagoDropdown(false)
+                                              }}
+                                            >
+                                              <div className="create-user__result-info">
+                                                <strong>{opt}</strong>
+                                              </div>
+                                              {formData.tipo_pago === opt && (
+                                                <span className="create-user__result-tag is-selected">Seleccionado</span>
+                                              )}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>,
+                                      document.body
+                                    )}
+                                  </label>
+
+                                  <label className="create-user__field">
+                                    <span>Fecha</span>
+                                    <input
+                                      name="fecha"
+                                      type="date"
+                                      value={formData.fecha}
+                                      onChange={handleChange}
+                                      disabled={loading}
+                                      required
+                                    />
+                                  </label>
+                                </>
+                              )}
                             </div>
                           </div>
-                        )}
 
                         <div
-                          className={`create-user__grid create-user__grid--${isVenta ? 'three' : 'two'}${
+                          className={`create-user__grid create-user__grid--two${
                             isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
                           }`}
                         >
@@ -3347,114 +3504,6 @@ function CreateSalida({
                               </select>
                             </label>
                           )}
-
-                          {requiresSucursalObjetivo &&
-                            !(isPrefilledTransfer || (transferRequiresRequest && selectedObjetivoBranchName)) && (
-                              <label className="create-user__field create-user__field--full">
-                                <span>Sucursal destino</span>
-                                <select
-                                  name="sucursalObjetivoId"
-                                  value={formData.sucursalObjetivoId}
-                                  onChange={handleChange}
-                                  disabled={loading || transferRequiresRequest}
-                                  required={requiresSucursalObjetivo}
-                                >
-                                  <option value="">Selecciona una sucursal</option>
-                                  {transferDestinationBranches.map((branch) => (
-                                    <option key={branch.id} value={branch.id}>
-                                      {branch.nombre || `Sucursal ${branch.id}`}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            )}
-
-                    {(isVenta || isDevolucion) && (
-                      <label className={`create-user__field${isVenta ? '' : ' create-user__field--full'}`}>
-                        <span>No. de Factura</span>
-                        <input
-                          name="factura_referencia"
-                          type="text"
-                          value={formData.factura_referencia}
-                          onChange={handleChange}
-                          disabled={loading}
-                          required={isVenta || isDevolucion}
-                        />
-                        {isVenta && documentHelperText && (
-                          <small className={documentHelperTone === 'error' ? 'create-user__field-error' : 'muted'}>
-                            {documentHelperText}
-                          </small>
-                        )}
-                      </label>
-                    )}
-
-                    {isVenta && (
-                      <label className="create-user__field create-user__field--required">
-                        <span>Tipo de pago</span>
-                        <div className="create-user__dropdown" ref={tipoPagoDropdownRef}>
-                          <button
-                            ref={tipoPagoTriggerRef}
-                            type="button"
-                            className={`create-user__dropdown-trigger${!formData.tipo_pago ? ' create-salida__cliente-trigger--placeholder' : ''}${formSubmitted && !formData.tipo_pago ? ' create-salida__input--invalid' : ''}`}
-                            onClick={() => {
-                              if (!showTipoPagoDropdown) updateTipoPagoDropdownPosition()
-                              setShowTipoPagoDropdown((prev) => !prev)
-                            }}
-                            disabled={loading}
-                            aria-haspopup="listbox"
-                            aria-expanded={showTipoPagoDropdown}
-                          >
-                            <span>{formData.tipo_pago || 'Seleccionar tipo de pago'}</span>
-                            <i className={`pi pi-chevron-${showTipoPagoDropdown ? 'up' : 'down'}`} />
-                          </button>
-                        </div>
-                        {showTipoPagoDropdown && createPortal(
-                          <div
-                            ref={tipoPagoPanelRef}
-                            className="create-user__dropdown-panel create-salida__cliente-panel"
-                            style={tipoPagoDropdownStyle}
-                          >
-                            <div className="create-user__dropdown-results">
-                              {TIPO_PAGO_OPTIONS.map((opt) => (
-                                <button
-                                  key={opt}
-                                  type="button"
-                                  className="create-user__result-option"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => {
-                                    setError('')
-                                    setFormData((prev) => ({ ...prev, tipo_pago: opt }))
-                                    setShowTipoPagoDropdown(false)
-                                  }}
-                                >
-                                  <div className="create-user__result-info">
-                                    <strong>{opt}</strong>
-                                  </div>
-                                  {formData.tipo_pago === opt && (
-                                    <span className="create-user__result-tag is-selected">Seleccionado</span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          </div>,
-                          document.body
-                        )}
-                      </label>
-                    )}
-
-                    {isVenta && (
-                      <label className="create-user__field">
-                        <span>Fecha</span>
-                        <input
-                          name="fecha"
-                          type="date"
-                          value={formData.fecha}
-                          onChange={handleChange}
-                          disabled={loading}
-                          required
-                        />
-                      </label>
-                    )}
 
                     {isPrefilledTransfer && <input type="hidden" name="solicitudTrasladoId" value={formData.solicitudTrasladoId} />}
                         </div>
@@ -3510,7 +3559,6 @@ function CreateSalida({
                               }
                               const isOpening = !showProductDropdown
                               if (isOpening) {
-                                setProductDropdownDirection('up')
                                 setProductDropdownMaxHeight(null)
                                 setProductQuery('')
                                 setProductOptions([])
@@ -3534,12 +3582,11 @@ function CreateSalida({
                             <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
                           </button>
 
-                          {showProductDropdown && (
+                          {showProductDropdown && createPortal(
                             <div
-                              className={`create-user__dropdown-panel ${
-                                productDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                              }`}
-                              style={productDropdownMaxHeight ? { maxHeight: `${productDropdownMaxHeight}px` } : undefined}
+                              ref={productDropdownPanelRef}
+                              className="create-user__dropdown-panel create-salida__product-panel"
+                              style={productDropdownStyle}
                             >
                               <div className="create-user__dropdown-search">
                                 <i className="pi pi-search" />
@@ -3622,7 +3669,8 @@ function CreateSalida({
                                   )
                                 })}
                               </div>
-                            </div>
+                            </div>,
+                            document.body
                           )}
                         </div>
                       </span>
@@ -3798,6 +3846,7 @@ function CreateSalida({
                           <div className="create-user__dropdown create-salida__cliente-dropdown" ref={clienteDropdownRef}>
                             <button
                               type="button"
+                              ref={clienteDropdownTriggerRef}
                               className={`create-user__dropdown-trigger${
                                 !selectedClienteLabel ? ' create-salida__cliente-trigger--placeholder' : ''
                               }`}
@@ -3809,8 +3858,12 @@ function CreateSalida({
                               <span>{selectedClienteLabel || 'Selecciona un cliente'}</span>
                               <i className={`pi pi-chevron-${showClienteDropdown ? 'up' : 'down'}`} />
                             </button>
-                            {showClienteDropdown && (
-                              <div className="create-user__dropdown-panel create-salida__cliente-panel">
+                            {showClienteDropdown && createPortal(
+                              <div
+                                ref={clienteDropdownPanelRef}
+                                className="create-user__dropdown-panel create-salida__cliente-panel"
+                                style={clienteDropdownStyle}
+                              >
                                 <div className="create-user__dropdown-search">
                                   <i className="pi pi-search" />
                                   <input
@@ -3854,7 +3907,8 @@ function CreateSalida({
                                     )
                                   })}
                                 </div>
-                              </div>
+                              </div>,
+                              document.body
                             )}
                           </div>
                         </label>
@@ -3876,7 +3930,7 @@ function CreateSalida({
                           </label>
 
                           <label className="create-user__field">
-                            <span>Descripción</span>
+                            <span>Nombres</span>
                             <input
                               name="nombres"
                               type="text"

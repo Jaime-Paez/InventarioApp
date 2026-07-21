@@ -327,8 +327,8 @@ function CreateEntrada({
   const [detailError, setDetailError] = useState('')
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [showProductDropdown, setShowProductDropdown] = useState(false)
-  const [productDropdownDirection, setProductDropdownDirection] = useState('up')
   const [productDropdownMaxHeight, setProductDropdownMaxHeight] = useState(null)
+  const [productDropdownStyle, setProductDropdownStyle] = useState({})
   const [productQuery, setProductQuery] = useState('')
   const [productOptions, setProductOptions] = useState([])
   const [productLoading, setProductLoading] = useState(false)
@@ -337,6 +337,7 @@ function CreateEntrada({
   const [selectedCliente, setSelectedCliente] = useState(null)
   const [clienteForm, setClienteForm] = useState(initialClienteForm)
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+  const [clienteDropdownStyle, setClienteDropdownStyle] = useState({})
   const [clienteQuery, setClienteQuery] = useState('')
   const [clienteOptions, setClienteOptions] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
@@ -375,7 +376,10 @@ function CreateEntrada({
   const modalRef = useRef(null)
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
+  const productDropdownPanelRef = useRef(null)
   const clienteDropdownRef = useRef(null)
+  const clienteDropdownTriggerRef = useRef(null)
+  const clienteDropdownPanelRef = useRef(null)
   const casaComercialDropdownRef = useRef(null)
   const locationDropdownRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
@@ -1531,7 +1535,6 @@ function CreateEntrada({
     setDetailDraft(initialDetail)
     setDetailError('')
     setShowProductDropdown(false)
-    setProductDropdownDirection('up')
     setProductDropdownMaxHeight(null)
     setProductQuery('')
     setProductOptions([])
@@ -1710,10 +1713,38 @@ function CreateEntrada({
       Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing),
       0
     )
-    setProductDropdownDirection((prev) => (prev === 'up' ? prev : 'up'))
     const nextMaxHeight = Math.max(140, Math.min(320, availableAbove))
     setProductDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
+    setProductDropdownStyle({
+      left: triggerRect.left,
+      bottom: Math.max(window.innerHeight - triggerRect.top + spacing, VIEWPORT_PADDING),
+      maxHeight: nextMaxHeight,
+    })
   }, [showProductDropdown])
+
+  const updateClienteDropdownPosition = useCallback(() => {
+    if (!clienteDropdownTriggerRef.current) return
+    const rect = clienteDropdownTriggerRef.current.getBoundingClientRect()
+    setClienteDropdownStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 9999,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!open || !showClienteDropdown) return undefined
+    updateClienteDropdownPosition()
+    const handleReposition = () => updateClienteDropdownPosition()
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [open, showClienteDropdown, updateClienteDropdownPosition])
 
   const updateLocationDropdownPlacement = useCallback(() => {
     if (
@@ -1884,10 +1915,16 @@ function CreateEntrada({
       return undefined
     }
     const handleClick = (event) => {
-      if (productDropdownRef.current && !productDropdownRef.current.contains(event.target)) {
+      const productTouched =
+        (productDropdownRef.current && productDropdownRef.current.contains(event.target)) ||
+        (productDropdownPanelRef.current && productDropdownPanelRef.current.contains(event.target))
+      if (!productTouched) {
         setShowProductDropdown(false)
       }
-      if (clienteDropdownRef.current && !clienteDropdownRef.current.contains(event.target)) {
+      const clienteTouched =
+        (clienteDropdownRef.current && clienteDropdownRef.current.contains(event.target)) ||
+        (clienteDropdownPanelRef.current && clienteDropdownPanelRef.current.contains(event.target))
+      if (!clienteTouched) {
         setShowClienteDropdown(false)
       }
       if (casaComercialDropdownRef.current && !casaComercialDropdownRef.current.contains(event.target)) {
@@ -3154,12 +3191,75 @@ function CreateEntrada({
 
                   <div className="create-salida__field-groups">
                     {isSucursalPrincipalLocked && (
-                      <div className="create-salida__field-group create-salida__field-group--defined">
-                        <div className="create-user__grid create-user__grid--two">
+                      <div className="create-salida__field-group create-salida__field-group--defined create-salida__field-group--paired">
+                        <div className={`create-user__grid ${isDevolucion ? 'create-user__grid--three' : 'create-user__grid--two'}`}>
                           <StaticFieldDisplay
                             label={isTraslado ? 'Sucursal destino' : 'Sucursal'}
                             value={selectedSucursalName}
                           />
+                          {!isTraslado && isEditableEntryDate && (
+                            <label className="create-user__field">
+                              <span>Fecha</span>
+                              <input
+                                name="fecha"
+                                type="date"
+                                value={formData.fecha}
+                                onChange={handleChange}
+                                disabled={loading}
+                                required
+                              />
+                            </label>
+                          )}
+                          {isTraslado && (
+                            <label className="create-user__field">
+                              <span>Sucursal proveedora</span>
+                              <select
+                                name="sucursalObjetivoId"
+                                value={formData.sucursalObjetivoId}
+                                onChange={handleChange}
+                                disabled={loading}
+                                required={requiresSucursalObjetivo}
+                              >
+                                <option value="">Selecciona una sucursal</option>
+                                {destinationBranches.map((branch) => (
+                                  <option key={branch.id} value={branch.id}>
+                                    {branch.nombre || `Sucursal ${branch.id}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+                          {isDevolucion && (
+                            <>
+                              <label className="create-user__field">
+                                <span>No. de Factura</span>
+                                <input
+                                  name="factura_referencia"
+                                  type="text"
+                                  value={formData.factura_referencia}
+                                  onChange={handleChange}
+                                  disabled={loading}
+                                  required={isDevolucion}
+                                  placeholder="Factura emitida en la venta"
+                                />
+                              </label>
+
+                              <label className="create-user__field">
+                                <span>Funcional</span>
+                                <select
+                                  name="funcional"
+                                  value={formData.funcional ? 'true' : 'false'}
+                                  onChange={(event) =>
+                                    setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
+                                  }
+                                  disabled={loading}
+                                >
+                                  <option value="true">Sí</option>
+                                  <option value="false">No</option>
+                                </select>
+                              </label>
+                            </>
+                          )}
                         </div>
                       </div>
                     )}
@@ -3187,23 +3287,25 @@ function CreateEntrada({
                             </label>
                           )}
 
-                          <label className="create-user__field create-user__field--full">
-                            <span>Sucursal proveedora</span>
-                            <select
-                              name="sucursalObjetivoId"
-                              value={formData.sucursalObjetivoId}
-                              onChange={handleChange}
-                              disabled={loading}
-                              required={requiresSucursalObjetivo}
-                            >
-                              <option value="">Selecciona una sucursal</option>
-                              {destinationBranches.map((branch) => (
-                                <option key={branch.id} value={branch.id}>
-                                  {branch.nombre || `Sucursal ${branch.id}`}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                          {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field create-user__field--full">
+                              <span>Sucursal proveedora</span>
+                              <select
+                                name="sucursalObjetivoId"
+                                value={formData.sucursalObjetivoId}
+                                onChange={handleChange}
+                                disabled={loading}
+                                required={requiresSucursalObjetivo}
+                              >
+                                <option value="">Selecciona una sucursal</option>
+                                {destinationBranches.map((branch) => (
+                                  <option key={branch.id} value={branch.id}>
+                                    {branch.nombre || `Sucursal ${branch.id}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                         </>
                       ) : !isEditableEntryDate ? (
                         <>
@@ -3227,47 +3329,53 @@ function CreateEntrada({
                             </label>
                           )}
 
-                          <label className="create-user__field">
-                            <span>No. de Factura</span>
-                            <input
-                              name="factura_referencia"
-                              type="text"
-                              value={formData.factura_referencia}
-                              onChange={handleChange}
-                              disabled={loading}
-                              required={isDevolucion}
-                              placeholder="Factura emitida en la venta"
-                            />
-                          </label>
+                          {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field">
+                              <span>No. de Factura</span>
+                              <input
+                                name="factura_referencia"
+                                type="text"
+                                value={formData.factura_referencia}
+                                onChange={handleChange}
+                                disabled={loading}
+                                required={isDevolucion}
+                                placeholder="Factura emitida en la venta"
+                              />
+                            </label>
+                          )}
 
-                          <label className="create-user__field">
-                            <span>Funcional</span>
-                            <select
-                              name="funcional"
-                              value={formData.funcional ? 'true' : 'false'}
-                              onChange={(event) =>
-                                setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
-                              }
-                              disabled={loading}
-                            >
-                              <option value="true">Sí</option>
-                              <option value="false">No</option>
-                            </select>
-                          </label>
+                          {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field">
+                              <span>Funcional</span>
+                              <select
+                                name="funcional"
+                                value={formData.funcional ? 'true' : 'false'}
+                                onChange={(event) =>
+                                  setFormData((prev) => ({ ...prev, funcional: event.target.value === 'true' }))
+                                }
+                                disabled={loading}
+                              >
+                                <option value="true">Sí</option>
+                                <option value="false">No</option>
+                              </select>
+                            </label>
+                          )}
                         </>
                       ) : (
                         <>
-                          <label className={`create-user__field${isSucursalPrincipalLocked ? ' create-user__field--full' : ''}`}>
-                            <span>Fecha</span>
-                            <input
-                              name="fecha"
-                              type="date"
-                              value={formData.fecha}
-                              onChange={handleChange}
-                              disabled={loading}
-                              required
-                            />
-                          </label>
+                          {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field">
+                              <span>Fecha</span>
+                              <input
+                                name="fecha"
+                                type="date"
+                                value={formData.fecha}
+                                onChange={handleChange}
+                                disabled={loading}
+                                required
+                              />
+                            </label>
+                          )}
 
                           {!isSucursalPrincipalLocked && (
                             <label className="create-user__field">
@@ -3290,17 +3398,6 @@ function CreateEntrada({
                           )}
                         </>
                       )}
-
-                      <label className="create-user__field create-user__field--full">
-                        <span>Nota</span>
-                        <input
-                          name="descripcion"
-                          type="text"
-                          value={formData.descripcion}
-                          onChange={handleChange}
-                          disabled={loading}
-                        />
-                      </label>
 
                     </div>
                   </div>
@@ -3343,7 +3440,6 @@ function CreateEntrada({
                               if (!hasProductSourceBranch) return
                               const isOpening = !showProductDropdown
                               if (isOpening) {
-                                setProductDropdownDirection('up')
                                 setProductDropdownMaxHeight(null)
                                 setProductQuery('')
                                 setProductOptions([])
@@ -3367,12 +3463,11 @@ function CreateEntrada({
                             <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
                           </button>
 
-                          {showProductDropdown && (
+                          {showProductDropdown && createPortal(
                             <div
-                              className={`create-user__dropdown-panel ${
-                                productDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                              }`}
-                              style={productDropdownMaxHeight ? { maxHeight: `${productDropdownMaxHeight}px` } : undefined}
+                              ref={productDropdownPanelRef}
+                              className="create-user__dropdown-panel create-salida__product-panel"
+                              style={productDropdownStyle}
                             >
                               <div className="create-user__dropdown-search">
                                 <i className="pi pi-search" />
@@ -3460,7 +3555,8 @@ function CreateEntrada({
                                   )
                                 })}
                               </div>
-                            </div>
+                            </div>,
+                            document.body
                           )}
                         </div>
                       </span>
@@ -3582,6 +3678,19 @@ function CreateEntrada({
 
                 </section>
 
+                <section className="create-user__section">
+                  <label className="create-user__field create-user__field--full">
+                    <span>Nota</span>
+                    <input
+                      name="descripcion"
+                      type="text"
+                      value={formData.descripcion}
+                      onChange={handleChange}
+                      disabled={loading}
+                    />
+                  </label>
+                </section>
+
                 {isTraslado && (
                   <section className="create-entrada__urgente-zone">
                     <div className="create-entrada__urgente-zone-header">
@@ -3652,16 +3761,24 @@ function CreateEntrada({
                           <span>Cliente</span>
                           <div className="create-user__dropdown" ref={clienteDropdownRef}>
                             <input
+                              ref={clienteDropdownTriggerRef}
                               type="text"
                               placeholder="Buscar por cedula o nombre"
                               value={clienteQuery}
                               onChange={handleClienteQueryChange}
-                              onFocus={() => setShowClienteDropdown(Boolean(clienteQuery))}
+                              onFocus={() => {
+                                setShowClienteDropdown(Boolean(clienteQuery))
+                                requestAnimationFrame(() => updateClienteDropdownPosition())
+                              }}
                               disabled={loading}
                               autoComplete="off"
                             />
-                            {showClienteDropdown && (
-                              <div className="create-user__dropdown-panel create-salida__cliente-panel">
+                            {showClienteDropdown && createPortal(
+                              <div
+                                ref={clienteDropdownPanelRef}
+                                className="create-user__dropdown-panel create-salida__cliente-panel"
+                                style={clienteDropdownStyle}
+                              >
                                 <div className="create-user__dropdown-results">
                                   {clienteLoading && <small className="muted">Buscando cliente...</small>}
                                   {!clienteLoading && !clienteQuery.trim() && (
@@ -3693,7 +3810,8 @@ function CreateEntrada({
                                     )
                                   })}
                                 </div>
-                              </div>
+                              </div>,
+                              document.body
                             )}
                           </div>
                         </label>
@@ -3714,7 +3832,7 @@ function CreateEntrada({
                           </label>
 
                           <label className="create-user__field">
-                            <span>Descripción</span>
+                            <span>Nombres</span>
                             <input
                               name="nombres"
                               type="text"

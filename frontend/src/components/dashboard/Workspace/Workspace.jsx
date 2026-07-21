@@ -629,7 +629,7 @@ function Workspace({
             <img src={logo} alt="Logotipo Kava" />
           </div>
           <div className="workspace__copy">
-            <h2>{isLeaving ? farewellTitle : `Qué gusto tenerte de vuelta, ${username}!`}</h2>
+            <h2>{isLeaving ? farewellTitle : `¡Qué gusto tenerte de vuelta, ${username}!`}</h2>
             <p className="workspace__subtitle">
               {isLeaving ? 'Nos vemos pronto.' : 'Para comenzar, selecciona una opción del menú'}
             </p>
