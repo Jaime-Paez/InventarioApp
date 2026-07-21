@@ -16,6 +16,7 @@ const initialForm = {
   telefono: '',
   correo: '',
   dias_entrega: '',
+  esOriginal: false,
 }
 
 const getFlagUrl = (code) => {
@@ -289,7 +290,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
   }, [position])
 
   const handleChange = (event) => {
-    const { name, value } = event.target
+    const { name, value, type, checked } = event.target
     if (name === 'codigo') return
     if (name === 'nombre') {
       setFormData((prev) => ({
@@ -301,7 +302,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
     }
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === 'checkbox' ? checked : value,
     }))
   }
 
@@ -335,6 +336,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
       correo: formData.correo.trim(),
       pais_id: formData.paisId ? Number(formData.paisId) : null,
       dias_entrega: formData.dias_entrega !== '' ? Number(formData.dias_entrega) : null,
+      es_original: Boolean(formData.esOriginal),
     }
 
     if (!payload.nombre) {
@@ -733,6 +735,20 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
                     onChange={handleChange}
                     disabled={loading}
                   />
+                </label>
+
+                <label className="create-user__checkbox">
+                  <input
+                    type="checkbox"
+                    name="esOriginal"
+                    checked={Boolean(formData.esOriginal)}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  <div>
+                    <span>Original</span>
+                    <p>Marca si esta casa comercial provee repuestos originales.</p>
+                  </div>
                 </label>
 
                 <label className="create-user__field create-user__field--full">

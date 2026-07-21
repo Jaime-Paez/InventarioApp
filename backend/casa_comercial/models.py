@@ -31,6 +31,11 @@ class CasaComercial(models.Model):
         blank=True,
         help_text="Días aproximados que tarda la casa comercial en entregar mercadería.",
     )
+    es_original = models.BooleanField(
+        default=False,
+        verbose_name="Original",
+        help_text="Indica si la casa comercial es proveedor de repuestos originales.",
+    )
 
     class Meta:
         ordering = ["nombre"]

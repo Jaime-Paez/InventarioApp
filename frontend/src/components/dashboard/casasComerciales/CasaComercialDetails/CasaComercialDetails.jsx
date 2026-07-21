@@ -18,6 +18,7 @@ const emptyForm = {
   telefono: '',
   correo: '',
   dias_entrega: '',
+  esOriginal: false,
 }
 
 const getFlagUrl = (code) => {
@@ -105,14 +106,15 @@ function CasaComercialDetails({
     telefono: data?.telefono ?? '',
     correo: data?.correo ?? '',
     dias_entrega: data?.dias_entrega != null ? String(data.dias_entrega) : '',
+    esOriginal: Boolean(data?.es_original),
   })
 
   const handleChange = (event) => {
     if (!isEditing) return
-    const { name, value } = event.target
+    const { name, value, type, checked } = event.target
     setFormData((prev) => ({
       ...prev,
-      [name]: name === 'codigo' ? value.toUpperCase() : value,
+      [name]: type === 'checkbox' ? checked : (name === 'codigo' ? value.toUpperCase() : value),
     }))
   }
 
@@ -298,6 +300,7 @@ function CasaComercialDetails({
       correo: formData.correo.trim(),
       pais_id: formData.paisId ? Number(formData.paisId) : null,
       dias_entrega: formData.dias_entrega !== '' ? Number(formData.dias_entrega) : null,
+      es_original: Boolean(formData.esOriginal),
     }
 
     if (!payload.nombre) {
@@ -747,6 +750,20 @@ function CasaComercialDetails({
                     onChange={handleChange}
                     disabled={editorDisabled}
                   />
+                </label>
+
+                <label className="create-user__checkbox">
+                  <input
+                    type="checkbox"
+                    name="esOriginal"
+                    checked={Boolean(formData.esOriginal)}
+                    onChange={handleChange}
+                    disabled={editorDisabled}
+                  />
+                  <div>
+                    <span>Original</span>
+                    <p>Marca si esta casa comercial provee repuestos originales.</p>
+                  </div>
                 </label>
 
                 <label className="create-user__field create-user__field--full">

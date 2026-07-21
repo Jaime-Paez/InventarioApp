@@ -16,7 +16,7 @@ class CasaComercialViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, ProveedoresCasasDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion"]
-    ordering_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion", "tipo", "dias_entrega"]
+    ordering_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion", "tipo", "dias_entrega", "es_original"]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -49,6 +49,12 @@ class CasaComercialViewSet(viewsets.ModelViewSet):
         tipo = (params.get("tipo") or "").strip()
         if tipo:
             queryset = queryset.filter(tipo=tipo)
+
+        es_original = (params.get("es_original") or "").strip().lower()
+        if es_original in ("true", "1"):
+            queryset = queryset.filter(es_original=True)
+        elif es_original in ("false", "0"):
+            queryset = queryset.filter(es_original=False)
 
         queryset = apply_column_filters(
             queryset,

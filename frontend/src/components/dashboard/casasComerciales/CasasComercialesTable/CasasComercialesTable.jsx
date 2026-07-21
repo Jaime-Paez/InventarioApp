@@ -44,6 +44,7 @@ const COMPANY_ORDERING_MAP = {
   correo: 'correo',
   descripcion: 'descripcion',
   dias_entrega: 'dias_entrega',
+  es_original: 'es_original',
 }
 const isCheckboxSelection = (event) => {
   if (event?.type === 'checkbox') return true
@@ -407,6 +408,7 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
       { nombrevar: 'telefono', header: 'Teléfono', filterPlaceholder: 'Buscar por teléfono' },
       { nombrevar: 'correo', header: 'Correo', filterPlaceholder: 'Buscar por correo' },
       { nombrevar: 'dias_entrega', header: 'Días aproximados de entrega', filterPlaceholder: 'Buscar por días' },
+      { nombrevar: 'es_original', header: 'Original', filterPlaceholder: 'Buscar por original' },
       { nombrevar: 'descripcion', header: 'Nota', filterPlaceholder: 'Buscar por nota' },
     ],
     []
@@ -1020,6 +1022,16 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
                   const val = rowData?.dias_entrega
                   return val != null ? `${val} d` : '-'
                 }
+                break
+              case 'es_original':
+                bodyTemplate = (rowData) => (
+                  <span style={{ display: 'flex', justifyContent: 'center' }}>
+                    <i
+                      className={`pi pi-${rowData?.es_original ? 'check-circle' : 'times-circle'}`}
+                      style={{ color: rowData?.es_original ? '#22c55e' : '#9ca3af' }}
+                    />
+                  </span>
+                )
                 break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
