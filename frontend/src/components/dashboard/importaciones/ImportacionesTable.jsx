@@ -3208,10 +3208,20 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       setOemMatchesHover({ triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left, matches })
     }, 150)
   }
+  // Se oculta con un pequeño retraso (en vez de al instante) para que el
+  // usuario pueda mover el mouse desde el ícono hasta la tarjeta y quedarse
+  // ahí — p. ej. para seleccionar y copiar el texto de la tabla — sin que
+  // desaparezca a mitad de camino.
   const hideOemMatchesHover = () => {
     if (oemMatchesHoverTimerRef.current) { clearTimeout(oemMatchesHoverTimerRef.current); oemMatchesHoverTimerRef.current = null }
-    setOemMatchesHover(null)
-    setOemMatchesHoverPos(null)
+    oemMatchesHoverTimerRef.current = setTimeout(() => {
+      oemMatchesHoverTimerRef.current = null
+      setOemMatchesHover(null)
+      setOemMatchesHoverPos(null)
+    }, 250)
+  }
+  const cancelHideOemMatchesHover = () => {
+    if (oemMatchesHoverTimerRef.current) { clearTimeout(oemMatchesHoverTimerRef.current); oemMatchesHoverTimerRef.current = null }
   }
 
   useLayoutEffect(() => {
@@ -3775,7 +3785,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                   type="button"
                   disabled={downloading}
                   onClick={handleDownloadTemplate}
-                  style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#16a34a', border: '1px solid #16a34a', borderRadius: 6, padding: '7px 16px', color: '#fff', fontSize: 'var(--font-size-md)', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+                  style={{ alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#16a34a', border: '1px solid #16a34a', borderRadius: 6, padding: '7px 16px', color: '#fff', fontSize: 'var(--font-size-md)', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
                 >
                   <i className="pi pi-download" />
                   {downloading ? 'Descargando...' : 'Descargar plantilla'}
@@ -4093,6 +4103,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
             left: oemMatchesHoverPos?.left ?? oemMatchesHover.triggerLeft,
             visibility: oemMatchesHoverPos ? 'visible' : 'hidden',
           }}
+          onMouseEnter={cancelHideOemMatchesHover}
+          onMouseLeave={hideOemMatchesHover}
         >
           {oemMatchesHover.matches.length ? (
             <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--oem">

@@ -1160,6 +1160,10 @@
 .imp-alternos-hover-card--oem {
   width: 460px;
   max-width: calc(100vw - 24px);
+  /* A diferencia del resto de tarjetas "hover" (solo informativas), esta
+     permite pasar el mouse encima y seleccionar/copiar su texto. */
+  pointer-events: auto;
+  user-select: text;
 }
 
 .imp-alternos-hover-card__table--oem {
