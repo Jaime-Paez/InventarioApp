@@ -58,11 +58,17 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
         nombre = str(data.get("nombre") or "").strip()
         if not producto and not codigo and not nombre:
             raise serializers.ValidationError("Se requiere producto o código/nombre.")
+        # Un producto ya existente en el catálogo sí necesita una cantidad
+        # real a importar. Un producto pendiente (sin producto_id) puede
+        # crearse con cantidad 0 — solo registra el catálogo, sin pedir
+        # unidades en este envío todavía.
+        if producto and int(data.get("cantidad") or 0) <= 0:
+            raise serializers.ValidationError("La cantidad debe ser mayor a cero.")
         return data
 
     def validate_cantidad(self, value):
-        if int(value or 0) <= 0:
-            raise serializers.ValidationError("La cantidad debe ser mayor a cero.")
+        if int(value or 0) < 0:
+            raise serializers.ValidationError("La cantidad no puede ser negativa.")
         return value
 
 
@@ -230,6 +236,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     referencia=str(item.get("referencia") or ""),
                     cantidad=item["cantidad"],
                     comentario=str(item.get("comentario") or ""),
+                    precio_estimado=item.get("precio_estimado"),
                     precio_confirmado=item.get("precio_confirmado"),
                     cantidad_confirmada=item.get("cantidad_confirmada"),
                     solicitud=item.get("solicitud"),

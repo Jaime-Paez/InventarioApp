@@ -1010,6 +1010,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "matched_producto_codigo": matched.codigo if matched else None,
                 "matched_producto_nombre": matched.nombre if matched else None,
                 "matched_producto_referencia": matched.referencia if matched else None,
+                "matched_producto_precio": float(matched.precio) if matched and matched.precio is not None else None,
                 "oem_matches": oem_matches,
                 "sucursal_quantities": suc_quantities,
                 "conflicto_casa": conflicto_casa,

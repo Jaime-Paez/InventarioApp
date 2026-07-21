@@ -1136,6 +1136,86 @@
   color: var(--color-primary, #2563eb);
 }
 
+/* Líneas verticales entre columnas de la tabla de revisión del Excel
+   (paso 3), además de las horizontales que ya traía cada fila. */
+.imp-excel-review-table th,
+.imp-excel-review-table td {
+  border-right: 1px solid var(--color-border, #e2e8f0);
+}
+
+.imp-excel-review-table th:last-child,
+.imp-excel-review-table td:last-child {
+  border-right: none;
+}
+
+.dashboard-shell.dark .imp-excel-review-table th,
+.dashboard-shell.dark .imp-excel-review-table td {
+  border-right-color: rgba(148, 163, 184, 0.2);
+}
+
+/* Filas del popup de OEM que se pueden clickear para tomar su PVP (sin IVA)
+   como precio del producto nuevo — ver imp-alternos-hover-card__table--oem. */
+/* Código/PVP editables en la tabla de revisión del Excel (paso 3): mismo
+   alto y look que los inputs estándar de la app, con el mismo foco azul
+   (ver .create-user__field input:focus) para que se note que se está
+   editando. El precio usa :focus-within porque lo que recibe foco es el
+   input interno, no el contenedor con el símbolo "$". */
+.imp-excel-review__codigo-input,
+.imp-excel-review__precio-box {
+  height: 30px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 4px 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.imp-excel-review__codigo-input {
+  width: 100%;
+  outline: none;
+  font: inherit;
+  color: inherit;
+  background: var(--color-surface, #fff);
+}
+
+.imp-excel-review__precio-box {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* Mismo rojo que .create-user__field--invalid en el resto de la app. */
+.imp-excel-review__precio-box--invalid {
+  border-color: color-mix(in srgb, #ef4444 55%, var(--color-border, #e2e8f0));
+  box-shadow: 0 0 6px 0 color-mix(in srgb, #ef4444 35%, transparent);
+}
+
+.imp-excel-review__codigo-input:focus,
+.imp-excel-review__precio-box:focus-within {
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
+}
+
+/* Al enfocar un precio inválido, se mantiene el rojo (más intenso) en vez
+   de cambiar a azul — igual que .create-user__field--invalid input:focus. */
+.imp-excel-review__precio-box--invalid:focus-within {
+  border-color: #ef4444;
+  box-shadow: 0 0 8px 0 color-mix(in srgb, #ef4444 45%, transparent);
+}
+
+.imp-alternos-hover-card__row--pickable {
+  cursor: pointer;
+}
+
+.imp-alternos-hover-card__row--pickable:hover td {
+  background: var(--color-primary-light, #eff6ff);
+}
+
+.dashboard-shell.dark .imp-alternos-hover-card__row--pickable:hover td {
+  background: rgba(37, 99, 235, 0.18);
+}
+
 /* Resto de popups "imp-alternos-hover-card" (productos vinculados a un OEM,
    stock por sucursal, productos de un envío): la columna con el nombre del
    producto es la única de largo variable, así que se le pone un tope con

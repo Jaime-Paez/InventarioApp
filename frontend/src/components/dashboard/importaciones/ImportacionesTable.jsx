@@ -801,7 +801,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       nombre: d.producto?.nombre || d.nombre || '',
       oem: getProductoOem(d.producto) || d.oem || '',
       referencia: d.producto?.referencia || d.referencia || '',
-      precio: d.precio_confirmado ?? d.producto?.precio ?? null,
+      precio: d.precio_confirmado ?? d.precio_estimado ?? d.producto?.precio ?? null,
       cantidad: d.cantidad,
       cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
       sinCat: !d.producto?.id,
@@ -847,7 +847,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           nombre: d.producto?.nombre || d.nombre || '',
           oem: getProductoOem(d.producto) || d.oem || '',
           referencia: d.producto?.referencia || d.referencia || '',
-          precio: d.precio_confirmado ?? d.producto?.precio ?? null,
+          precio: d.precio_confirmado ?? d.precio_estimado ?? d.producto?.precio ?? null,
           cantidad: d.cantidad,
           cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
           sinCat: !d.producto?.id,
@@ -3190,6 +3190,25 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const [referenciaDecisions, setReferenciaDecisions] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+
+  // Tooltip simple para valores truncados con "...", como el código dentro
+  // de los botones "Actual"/"Excel" del conflicto de referencia.
+  const [cellHover, setCellHover] = useState(null)
+  const cellHoverTimerRef = useRef(null)
+  const showCellHover = (event, value, label) => {
+    if (!value) return
+    if (cellHoverTimerRef.current) clearTimeout(cellHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    cellHoverTimerRef.current = setTimeout(() => {
+      cellHoverTimerRef.current = null
+      setCellHover({ top: rect.bottom + 4, left: rect.left, value, label })
+    }, 300)
+  }
+  const hideCellHover = () => {
+    if (cellHoverTimerRef.current) { clearTimeout(cellHoverTimerRef.current); cellHoverTimerRef.current = null }
+    setCellHover(null)
+  }
 
   // Icono "i" junto al OEM: muestra qué productos del catálogo ya tienen
   // registrado ese mismo código OEM (para detectar duplicados antes de crear
@@ -3200,12 +3219,12 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const oemMatchesHoverCardRef = useRef(null)
   const oemMatchesHoverTimerRef = useRef(null)
 
-  const showOemMatchesHover = (event, matches) => {
+  const showOemMatchesHover = (event, matches, filaExcel) => {
     if (oemMatchesHoverTimerRef.current) clearTimeout(oemMatchesHoverTimerRef.current)
     const rect = event.currentTarget.getBoundingClientRect()
     oemMatchesHoverTimerRef.current = setTimeout(() => {
       oemMatchesHoverTimerRef.current = null
-      setOemMatchesHover({ triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left, matches })
+      setOemMatchesHover({ triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left, matches, filaExcel })
     }, 150)
   }
   // Se oculta con un pequeño retraso (en vez de al instante) para que el
@@ -3236,12 +3255,27 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     return excelRef.length > 0 && excelRef !== dbRef
   }
 
+  // Si el OEM de una fila sin catálogo ya está registrado en un producto que
+  // pertenece a la MISMA casa comercial de este import, no es un producto
+  // nuevo: el backend solo no lo detectó porque el Excel no traía código ni
+  // una referencia que calzara. Se usa ese producto ya existente tal cual.
+  const findExistingMatchForCasa = (row, casaCodigo) => {
+    const targetSuffix = (casaCodigo || '').trim().toUpperCase()
+    if (!targetSuffix) return null
+    return (row.oem_matches || []).find((match) =>
+      (match.casas_comerciales_codigos || []).some(
+        (c) => (c || '').trim().toUpperCase() === targetSuffix
+      )
+    ) || null
+  }
+
   // Los códigos JP se arman como <base><sufijo de casa comercial>. Si el OEM
   // de una fila sin catálogo ya está registrado en un producto de OTRA casa
-  // comercial, se toma su código, se le quita el sufijo de esa otra casa
-  // (buscando cuál de sus casas comerciales calza como terminación) y se le
-  // pega el sufijo de la casa comercial seleccionada en este import — así el
-  // producto pendiente nace con el código que le correspondería en esta casa.
+  // comercial (y ninguno pertenece ya a la casa actual), se toma su código,
+  // se le quita el sufijo de esa otra casa (buscando cuál de sus casas
+  // comerciales calza como terminación) y se le pega el sufijo de la casa
+  // comercial seleccionada en este import — así el producto pendiente nace
+  // con el código que le correspondería en esta casa.
   const deriveSuggestedCodigo = (row, casaCodigo) => {
     const targetSuffix = (casaCodigo || '').trim().toUpperCase()
     if (!targetSuffix) return ''
@@ -3539,6 +3573,17 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       if (!resp.ok) throw new Error(data.detail || 'Error al procesar el archivo.')
       const rowsWithSuggestions = (data.rows || []).map((row) => {
         if (row.matched_producto_id || row.codigo) return row
+        const existing = findExistingMatchForCasa(row, selectedCasa?.codigo)
+        if (existing) {
+          return {
+            ...row,
+            codigo: existing.codigo,
+            matched_producto_id: existing.producto_id,
+            matched_producto_codigo: existing.codigo,
+            matched_producto_nombre: existing.nombre,
+            matched_producto_referencia: existing.referencia,
+          }
+        }
         const suggested = deriveSuggestedCodigo(row, selectedCasa?.codigo)
         return suggested ? { ...row, codigo: suggested, codigo_sugerido: true } : row
       })
@@ -3554,6 +3599,19 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   }
 
   const handleCreate = async () => {
+    if (!allConflictsResolved || !allPricesSet) {
+      setSubmitAttempted(true)
+      const reasons = []
+      if (!allPricesSet) reasons.push(`falta el precio de ${pendingPriceCount} producto${pendingPriceCount !== 1 ? 's' : ''} nuevo${pendingPriceCount !== 1 ? 's' : ''}`)
+      if (!allConflictsResolved) reasons.push('hay conflictos de referencia sin resolver')
+      toastRef.current?.show({
+        severity: 'warn',
+        summary: 'Faltan datos',
+        detail: `No se puede crear la sugerencia: ${reasons.join(' y ')}.`,
+        life: 4500,
+      })
+      return
+    }
     setSubmitError('')
     setSubmitting(true)
     try {
@@ -3567,7 +3625,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 ? { update_referencia: true, nueva_referencia: row.referencia }
                 : {}),
             }
-          : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad }
+          : row.codigo_sugerido
+            // Producto realmente nuevo para esta casa (código sugerido a
+            // partir de un OEM compartido con otra casa): se crea el
+            // catálogo sin pedir unidades todavía — cantidad 0, el precio
+            // que se cargó queda como estimado para cuando se cree el
+            // producto real al marcar la llegada.
+            ? { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: 0, precio_estimado: (parseInt(row.precio_nuevo || '0', 10) / 100).toFixed(2) }
+            : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad }
       )
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/`,
@@ -3603,6 +3668,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
   const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
   const allConflictsResolved = validRows.every((row, i) => !hasReferenciaConflict(row) || referenciaDecisions[i] !== undefined)
+  const pendingPriceCount = validRows.filter(r => r.codigo_sugerido && (!r.precio_nuevo || parseInt(r.precio_nuevo, 10) <= 0)).length
+  const allPricesSet = pendingPriceCount === 0
 
   const selectAllDecision = (decision) => {
     const updates = {}
@@ -3614,6 +3681,26 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     setParsedRows(prev => prev.map(r => (
       r.fila_excel === filaExcel ? { ...r, codigo: value, codigo_sugerido: false } : r
     )))
+  }
+
+  // Precio (PVP sin IVA) para los productos nuevos con código sugerido: se
+  // puede escribir a mano o tomarlo con un clic desde la tarjeta de
+  // coincidencias por OEM (columna "PVP", no la de "PVP + IVA"). Se guarda
+  // como string de centavos (solo dígitos), igual que en "Verificaciones"
+  // de importaciones, para mostrarlo siempre con el mismo formato "$ 0.00".
+  const updateRowPrecioCentavos = (filaExcel, centavosDigits) => {
+    setParsedRows(prev => prev.map(r => (
+      r.fila_excel === filaExcel ? { ...r, precio_nuevo: centavosDigits } : r
+    )))
+  }
+
+  const formatCentavos = (centsStr) => {
+    const digits = String(centsStr || '').replace(/\D/g, '')
+    if (!digits) return '0.00'
+    const n = parseInt(digits, 10)
+    const intPart = Math.floor(n / 100)
+    const decPart = n % 100
+    return `${intPart.toLocaleString('en-US')}.${String(decPart).padStart(2, '0')}`
   }
 
   const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa los productos'
@@ -3956,11 +4043,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                     )}
 
                     <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
-                      <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 620 }}>
+                      <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 620 }}>
                         <colgroup>
                           <col style={{ width: 100 }} />
-                          <col style={{ width: 110 }} />
-                          <col style={{ width: 90 }} />
+                          <col style={{ width: 190 }} />
+                          <col style={{ width: '16%' }} />
                           <col />
                           <col style={{ width: 60 }} />
                           <col style={{ width: 80 }} />
@@ -3981,22 +4068,23 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             const decision = referenciaDecisions[i]
                             return (
                               <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: conflict && decision === undefined ? '#fffbeb' : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
-                                <td style={{ padding: row.matched_producto_id ? '7px 12px' : '4px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {row.matched_producto_id ? (
-                                    <span title={row.codigo || ''}>{row.codigo || '—'}</span>
-                                  ) : (
+                                <td
+                                  style={{ padding: row.codigo_sugerido ? '4px 8px' : '7px 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                  title={!row.matched_producto_id && !row.codigo_sugerido ? 'Sin catálogo' : undefined}
+                                >
+                                  {row.codigo_sugerido ? (
                                     <input
                                       type="text"
+                                      className="imp-excel-review__codigo-input"
                                       value={row.codigo || ''}
                                       onChange={(e) => updateRowCodigo(row.fila_excel, e.target.value.toUpperCase())}
-                                      placeholder="Sin catálogo"
-                                      title={row.codigo_sugerido ? 'Código sugerido a partir de un producto con el mismo OEM en otra casa comercial. Puedes corregirlo.' : undefined}
-                                      style={{
-                                        width: '100%', boxSizing: 'border-box', border: `1px solid ${row.codigo_sugerido ? '#fbbf24' : 'var(--color-border, #e2e8f0)'}`,
-                                        borderRadius: 4, padding: '4px 6px', fontSize: 'inherit', fontFamily: 'inherit',
-                                        background: row.codigo_sugerido ? '#fffbeb' : 'transparent', color: 'inherit',
-                                      }}
+                                      title="Código sugerido a partir de un producto con el mismo OEM en otra casa comercial. Puedes corregirlo."
+                                      style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
                                     />
+                                  ) : row.matched_producto_id ? (
+                                    <span title={row.codigo || ''}>{row.codigo || '—'}</span>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin catálogo</span>
                                   )}
                                 </td>
                                 <td style={{ padding: '7px 12px' }}>
@@ -4005,30 +4093,42 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                       <span style={{ fontSize: 'var(--font-size-sm)', color: decision === undefined ? '#c2410c' : '#6b7280', fontWeight: 600 }}>
                                         {decision === undefined ? '⚠ Sin seleccionar' : '✓ Seleccionado'}
                                       </span>
-                                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                      <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
                                         <button
                                           type="button"
                                           onClick={() => setReferenciaDecisions(p => ({ ...p, [i]: 'keep' }))}
+                                          onMouseEnter={(e) => showCellHover(e, row.matched_producto_referencia, 'Actual (BD)')}
+                                          onMouseLeave={hideCellHover}
                                           style={{
-                                            fontSize: 'var(--font-size-sm)', padding: '2px 7px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
+                                            flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
+                                            fontSize: 'var(--font-size-sm)', padding: '3px 6px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
                                             border: `1px solid ${decision === 'keep' ? '#1e40af' : '#cbd5e1'}`,
                                             background: decision === 'keep' ? '#1e40af' : 'transparent',
                                             color: decision === 'keep' ? '#fff' : '#64748b',
                                           }}
                                         >
-                                          Actual: {row.matched_producto_referencia || '—'}
+                                          <span style={{ fontSize: '0.85em', opacity: 0.85 }}>Actual</span>
+                                          <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                                            {row.matched_producto_referencia || '—'}
+                                          </span>
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => setReferenciaDecisions(p => ({ ...p, [i]: 'excel' }))}
+                                          onMouseEnter={(e) => showCellHover(e, row.referencia, 'Excel')}
+                                          onMouseLeave={hideCellHover}
                                           style={{
-                                            fontSize: 'var(--font-size-sm)', padding: '2px 7px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
+                                            flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
+                                            fontSize: 'var(--font-size-sm)', padding: '3px 6px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
                                             border: `1px solid ${decision === 'excel' ? '#c2410c' : '#cbd5e1'}`,
                                             background: decision === 'excel' ? '#c2410c' : 'transparent',
                                             color: decision === 'excel' ? '#fff' : '#64748b',
                                           }}
                                         >
-                                          Excel: {row.referencia || '—'}
+                                          <span style={{ fontSize: '0.85em', opacity: 0.85 }}>Excel</span>
+                                          <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                                            {row.referencia || '—'}
+                                          </span>
                                         </button>
                                       </div>
                                     </div>
@@ -4054,7 +4154,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                         size={13}
                                         style={{ flexShrink: 0 }}
                                         className={`imp-distribucion__info-icon${(row.oem_matches || []).length ? '' : ' imp-distribucion__info-icon--empty'}`}
-                                        onMouseEnter={(e) => showOemMatchesHover(e, row.oem_matches || [])}
+                                        onMouseEnter={(e) => showOemMatchesHover(e, row.oem_matches || [], row.fila_excel)}
                                         onMouseLeave={hideOemMatchesHover}
                                       />
                                     </div>
@@ -4062,7 +4162,51 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                 </td>
                                 <td style={{ padding: '7px 12px' }}>{row.descripcion || '—'}</td>
                                 <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
-                                <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>${Number(row.pvp || 0).toFixed(2)}</td>
+                                <td style={{ padding: row.codigo_sugerido ? '4px 8px' : '7px 12px', textAlign: 'right' }}>
+                                  {row.codigo_sugerido ? (() => {
+                                    const priceInvalid = !row.precio_nuevo || parseInt(row.precio_nuevo, 10) <= 0
+                                    const showInvalid = submitAttempted && priceInvalid
+                                    return (
+                                      <div className={`imp-excel-review__precio-box${showInvalid ? ' imp-excel-review__precio-box--invalid' : ''}`}>
+                                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.85em', flexShrink: 0 }}>$</span>
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          value={formatCentavos(row.precio_nuevo)}
+                                          onChange={() => {}}
+                                          title="Precio (PVP sin IVA) del producto nuevo. Escríbelo o pasa el mouse sobre el ícono del OEM y haz clic en una de las coincidencias."
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Backspace') {
+                                              e.preventDefault()
+                                              updateRowPrecioCentavos(row.fila_excel, String(row.precio_nuevo || '').replace(/\D/g, '').slice(0, -1))
+                                            } else if (/^\d$/.test(e.key)) {
+                                              e.preventDefault()
+                                              updateRowPrecioCentavos(row.fila_excel, String(row.precio_nuevo || '').replace(/\D/g, '') + e.key)
+                                            }
+                                          }}
+                                          style={{
+                                            flex: 1, minWidth: 0, textAlign: 'right', border: 'none', outline: 'none', background: 'transparent',
+                                            padding: 0, fontSize: 'inherit', fontFamily: 'inherit', fontWeight: 600, color: 'inherit', cursor: 'text',
+                                          }}
+                                        />
+                                      </div>
+                                    )
+                                  })() : (() => {
+                                    // Si el Excel no trae PVP para un producto ya vinculado al
+                                    // catálogo, se muestra el precio que ya tiene ese producto
+                                    // en vez de un "$0.00" sin sentido.
+                                    const fromCatalogo = !(Number(row.pvp) > 0) && row.matched_producto_precio != null
+                                    const displayPvp = fromCatalogo ? row.matched_producto_precio : row.pvp
+                                    return (
+                                      <span
+                                        style={{ fontWeight: 600, whiteSpace: 'nowrap', color: fromCatalogo ? 'var(--color-text-secondary)' : undefined }}
+                                        title={fromCatalogo ? 'El Excel no traía PVP para este producto; se muestra el precio actual del catálogo.' : undefined}
+                                      >
+                                        ${Number(displayPvp || 0).toFixed(2)}
+                                      </span>
+                                    )
+                                  })()}
+                                </td>
                               </tr>
                             )
                           })}
@@ -4119,8 +4263,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                     type="button"
                     className="create-user__action create-user__action--primary"
                     onClick={handleCreate}
-                    disabled={submitting || validRows.length === 0 || !allConflictsResolved}
-                    title={validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia' : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos' : undefined}
+                    disabled={submitting || validRows.length === 0}
+                    title={
+                      validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia'
+                        : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos'
+                        : !allPricesSet ? `Debes ingresar el precio para ${pendingPriceCount} producto${pendingPriceCount !== 1 ? 's' : ''} nuevo${pendingPriceCount !== 1 ? 's' : ''}`
+                        : undefined
+                    }
                   >
                     {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 && conflictoRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
                   </button>
@@ -4141,6 +4290,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           )}
         </div>
       </div>
+      {cellHover && createPortal(
+        <div className="imp-cell-hover-card" style={{ top: cellHover.top, left: cellHover.left }}>
+          <div className="imp-cell-hover-card__title">{cellHover.label}</div>
+          <div className="imp-cell-hover-card__row">{cellHover.value}</div>
+        </div>,
+        getPortalRoot()
+      )}
       {oemMatchesHover && createPortal(
         <div
           ref={oemMatchesHoverCardRef}
@@ -4159,15 +4315,23 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 <tr><th>Código</th><th>Nombre</th><th>Referencia</th><th>PVP</th><th>PVP + IVA</th></tr>
               </thead>
               <tbody>
-                {oemMatchesHover.matches.map((p, i) => (
-                  <tr key={i}>
-                    <td title={p.codigo || ''}>{p.codigo || '-'}</td>
-                    <td>{p.nombre || '-'}</td>
-                    <td title={p.referencia || ''}>{p.referencia || '-'}</td>
-                    <td>{p.precio != null ? `$${Number(p.precio).toFixed(2)}` : '-'}</td>
-                    <td>{p.precio_con_iva != null ? `$${Number(p.precio_con_iva).toFixed(2)}` : '-'}</td>
-                  </tr>
-                ))}
+                {oemMatchesHover.matches.map((p, i) => {
+                  const canPickPrice = Boolean(oemMatchesHover.filaExcel) && p.precio != null
+                  return (
+                    <tr
+                      key={i}
+                      title={canPickPrice ? 'Clic para usar este PVP (sin IVA) como precio del producto nuevo' : undefined}
+                      onClick={canPickPrice ? () => { updateRowPrecioCentavos(oemMatchesHover.filaExcel, String(Math.round(Number(p.precio) * 100))); hideOemMatchesHover() } : undefined}
+                      className={canPickPrice ? 'imp-alternos-hover-card__row--pickable' : undefined}
+                    >
+                      <td title={p.codigo || ''}>{p.codigo || '-'}</td>
+                      <td>{p.nombre || '-'}</td>
+                      <td title={p.referencia || ''}>{p.referencia || '-'}</td>
+                      <td>{p.precio != null ? `$${Number(p.precio).toFixed(2)}` : '-'}</td>
+                      <td>{p.precio_con_iva != null ? `$${Number(p.precio_con_iva).toFixed(2)}` : '-'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           ) : (
