@@ -60,6 +60,7 @@ const PRODUCT_FILTER_DEFAULT_MODES = {
 const PRODUCT_ORDERING_MAP = {
   codigo: 'codigo',
   nombre: 'nombre',
+  referencia: 'referencia',
   costo_minimo: 'costo_minimo',
   precio: 'precio',
   precio_con_iva: 'precio_con_iva_backend',
@@ -1677,7 +1678,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
                 field={column.nombrevar}
                 header={columnHeader}
                 body={bodyTemplate}
-                sortable
+                sortable={column.nombrevar !== 'oem_codes'}
                 reorderable
                 frozen={isCodigoColumn && isCodigoColumnFrozen}
                 className={className}

@@ -13,6 +13,31 @@ def _is_admin(user):
     return user is not None and getattr(user, "is_authenticated", False) and is_app_admin(user)
 
 
+ORDERING_FIELDS = {
+    "id": ["id"],
+    "accion": ["accion"],
+    "modelo": ["content_type__model"],
+    "representacion_objeto": ["representacion_objeto"],
+    "registrado_en": ["registrado_en"],
+    "usuario": ["usuario__first_name", "usuario__last_name", "usuario__email"],
+}
+
+
+def _apply_ordering(qs, raw_ordering):
+    raw_ordering = (raw_ordering or "").strip()
+    if not raw_ordering:
+        return qs.order_by("-registrado_en")
+
+    descending = raw_ordering.startswith("-")
+    key = raw_ordering[1:] if descending else raw_ordering
+    fields = ORDERING_FIELDS.get(key)
+    if not fields:
+        return qs.order_by("-registrado_en")
+
+    ordered_fields = [f"-{field}" if descending else field for field in fields]
+    return qs.order_by(*ordered_fields, "-registrado_en")
+
+
 def _serialize_registro(r):
     usuario = None
     if r.usuario_id is not None and r.usuario is not None:
@@ -57,7 +82,6 @@ class AuditoriaListAPIView(APIView):
         qs = (
             RegistroAuditoria.objects
             .select_related("usuario", "content_type")
-            .order_by("-registrado_en")
         )
 
         accion = request.query_params.get("accion", "").strip()
@@ -94,6 +118,8 @@ class AuditoriaListAPIView(APIView):
                 | Q(username__icontains=usuario_search)
             ).values_list("id", flat=True)
             qs = qs.filter(usuario_id__in=list(matching_ids))
+
+        qs = _apply_ordering(qs, request.query_params.get("ordering", ""))
 
         try:
             page_size = min(int(request.query_params.get("page_size", 50)), 200)

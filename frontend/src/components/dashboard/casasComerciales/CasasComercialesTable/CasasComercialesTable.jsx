@@ -38,7 +38,7 @@ const COMPANY_FILTER_DEFAULT_MODES = {
 const COMPANY_ORDERING_MAP = {
   nombre: 'nombre',
   codigo: 'codigo',
-  tipo: 'tipo',
+  tipo_label: 'tipo',
   pais_nombre: 'pais__nombre',
   telefono: 'telefono',
   correo: 'correo',

@@ -16,7 +16,7 @@ class CasaComercialViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, ProveedoresCasasDependentReadPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion"]
-    ordering_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion"]
+    ordering_fields = ["nombre", "codigo", "pais__nombre", "telefono", "correo", "descripcion", "tipo", "dias_entrega"]
 
     def get_queryset(self):
         queryset = super().get_queryset()

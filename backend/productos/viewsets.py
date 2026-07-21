@@ -80,6 +80,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         "nombre",
         "codigo",
         "descripcion",
+        "referencia",
         "casas_comerciales__nombre",
         "costo_minimo",
         "precio",

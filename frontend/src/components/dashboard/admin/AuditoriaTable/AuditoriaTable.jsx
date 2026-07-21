@@ -11,6 +11,7 @@ import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
+import { buildPrimeOrdering } from '../../../../utils/primeTableQuery'
 
 const ACCION_COLORS = {
   creacion: '#22c55e',
@@ -46,6 +47,15 @@ const columnsData = [
   { field: 'registrado_en', header: 'Fecha / Hora' },
 ]
 
+const AUDITORIA_ORDERING_MAP = {
+  id: 'id',
+  usuario: 'usuario',
+  accion: 'accion',
+  modelo: 'modelo',
+  representacion_objeto: 'representacion_objeto',
+  registrado_en: 'registrado_en',
+}
+
 function AuditoriaTable({ token }) {
   const toast = useRef(null)
   const opRef = useRef(null)
@@ -65,6 +75,10 @@ function AuditoriaTable({ token }) {
   const [page, setPage] = useState(1)
   const [first, setFirst] = useState(0)
   const [rows, setRows] = useState(25)
+
+  // server-side sort
+  const [sortField, setSortField] = useState(null)
+  const [sortOrder, setSortOrder] = useState(null)
 
   // quick search (inline)
   const [quickSearch, setQuickSearch] = useState('')
@@ -129,6 +143,11 @@ function AuditoriaTable({ token }) {
       p.set('page', String(overrides.page ?? page))
       p.set('page_size', String(overrides.rows ?? rows))
 
+      const nextSortField = overrides.sortField ?? sortField
+      const nextSortOrder = overrides.sortOrder ?? sortOrder
+      const ordering = buildPrimeOrdering(nextSortField, nextSortOrder, AUDITORIA_ORDERING_MAP)
+      if (ordering) p.set('ordering', ordering)
+
       const res = await authFetch(`${API_URL}/auditoria/registros/?${p.toString()}`, {}, token)
       if (!res.ok) throw new Error('No se pudieron cargar los registros de auditoría.')
       const data = await res.json()
@@ -143,12 +162,12 @@ function AuditoriaTable({ token }) {
       setIsRefreshing(false)
       setIsQuickSearchLoading(false)
     }
-  }, [token, quickSearch, filters, page, rows])
+  }, [token, quickSearch, filters, page, rows, sortField, sortOrder])
 
   useEffect(() => {
     void fetchRecords()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, page, rows, quickSearch, filters])
+  }, [token, page, rows, quickSearch, filters, sortField, sortOrder])
 
   // cleanup debounce on unmount
   useEffect(() => () => {
@@ -159,6 +178,16 @@ function AuditoriaTable({ token }) {
     setFirst(e.first)
     setRows(e.rows)
     setPage(Math.floor(e.first / e.rows) + 1)
+  }
+
+  const handleSortChange = (e) => {
+    const rawSortOrder = Number(e?.sortOrder)
+    const normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
+    const nextSortField = normalizedSortOrder ? e?.sortField || null : null
+    setSortField(nextSortField)
+    setSortOrder(normalizedSortOrder)
+    setPage(1)
+    setFirst(0)
   }
 
   const handleRefresh = () => {
@@ -186,6 +215,8 @@ function AuditoriaTable({ token }) {
     setFilters(emptyFilters())
     setPage(1)
     setFirst(0)
+    setSortField(null)
+    setSortOrder(null)
   }
 
   const autoFitColumns = useCallback(() => {
@@ -441,6 +472,9 @@ function AuditoriaTable({ token }) {
           first={first}
           onPage={handlePage}
           rowsPerPageOptions={[5, 10, 25, 50]}
+          sortField={sortField || undefined}
+          sortOrder={sortOrder || 0}
+          onSort={handleSortChange}
           removableSort
           key={tableResetKey}
           resizableColumns
@@ -454,6 +488,7 @@ function AuditoriaTable({ token }) {
               key={col.field}
               field={col.field}
               header={col.header}
+              sortable
               className={col.small ? 'column-max-min-width--small' : 'column-max-min-width'}
               headerClassName={col.small ? 'column-max-min-width--small' : 'column-max-min-width'}
               style={col.field === 'id' ? { minWidth: '70px', maxWidth: '90px' } : undefined}

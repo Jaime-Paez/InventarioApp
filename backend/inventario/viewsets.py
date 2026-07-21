@@ -667,9 +667,10 @@ class InventarioViewSet(viewsets.ModelViewSet):
             "cantidad": "total_general",
             "codigo": "codigo",
             "nombre": "nombre",
+            "referencia": "referencia",
             "costo_minimo": "costo_minimo",
             "precio": "precio",
-            "precio_con_iva": "precio",
+            "precio_con_iva_backend": "precio",
             "total_general": "total_general",
         }
         for branch in branches:
