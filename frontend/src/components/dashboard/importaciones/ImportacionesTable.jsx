@@ -3174,6 +3174,34 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
+  // Icono "i" junto al OEM: muestra qué productos del catálogo ya tienen
+  // registrado ese mismo código OEM (para detectar duplicados antes de crear
+  // un producto pendiente nuevo). Si no hay coincidencias, el ícono se ve
+  // opaco en vez de ocultarse.
+  const [oemMatchesHover, setOemMatchesHover] = useState(null)
+  const [oemMatchesHoverPos, setOemMatchesHoverPos] = useState(null)
+  const oemMatchesHoverCardRef = useRef(null)
+  const oemMatchesHoverTimerRef = useRef(null)
+
+  const showOemMatchesHover = (event, matches) => {
+    if (oemMatchesHoverTimerRef.current) clearTimeout(oemMatchesHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    oemMatchesHoverTimerRef.current = setTimeout(() => {
+      oemMatchesHoverTimerRef.current = null
+      setOemMatchesHover({ triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left, matches })
+    }, 150)
+  }
+  const hideOemMatchesHover = () => {
+    if (oemMatchesHoverTimerRef.current) { clearTimeout(oemMatchesHoverTimerRef.current); oemMatchesHoverTimerRef.current = null }
+    setOemMatchesHover(null)
+    setOemMatchesHoverPos(null)
+  }
+
+  useLayoutEffect(() => {
+    if (!oemMatchesHover || !oemMatchesHoverCardRef.current) return
+    setOemMatchesHoverPos(computeSmartPopoverPosition(oemMatchesHover, oemMatchesHoverCardRef.current))
+  }, [oemMatchesHover])
+
   const hasReferenciaConflict = (row) => {
     if (!row.matched_producto_id) return false
     const excelRef = (row.referencia || '').trim().toLowerCase()
@@ -3792,7 +3820,19 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                                     <span>{row.referencia || '—'}</span>
                                   )}
                                 </td>
-                                <td style={{ padding: '7px 12px' }}>{row.oem || '—'}</td>
+                                <td style={{ padding: '7px 12px' }}>
+                                  {row.oem ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <span>{row.oem}</span>
+                                      <Info
+                                        size={13}
+                                        className={`imp-distribucion__info-icon${(row.oem_matches || []).length ? '' : ' imp-distribucion__info-icon--empty'}`}
+                                        onMouseEnter={(e) => showOemMatchesHover(e, row.oem_matches || [])}
+                                        onMouseLeave={hideOemMatchesHover}
+                                      />
+                                    </div>
+                                  ) : '—'}
+                                </td>
                                 <td style={{ padding: '7px 12px' }}>{row.descripcion || '—'}</td>
                                 <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
                                 <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>${Number(row.pvp || 0).toFixed(2)}</td>
@@ -3858,6 +3898,33 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
           </footer>
         </div>
       </div>
+      {oemMatchesHover && createPortal(
+        <div
+          ref={oemMatchesHoverCardRef}
+          className="imp-alternos-hover-card"
+          style={{
+            top: oemMatchesHoverPos?.top ?? oemMatchesHover.triggerBottom + 4,
+            left: oemMatchesHoverPos?.left ?? oemMatchesHover.triggerLeft,
+            visibility: oemMatchesHoverPos ? 'visible' : 'hidden',
+          }}
+        >
+          {oemMatchesHover.matches.length ? (
+            <table className="imp-alternos-hover-card__table">
+              <thead>
+                <tr><th>Código</th><th>Nombre</th><th>Referencia</th></tr>
+              </thead>
+              <tbody>
+                {oemMatchesHover.matches.map((p, i) => (
+                  <tr key={i}><td>{p.codigo || '-'}</td><td>{p.nombre || '-'}</td><td>{p.referencia || '-'}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="imp-alternos-hover-card__message">Ningún producto del catálogo tiene este OEM registrado.</div>
+          )}
+        </div>,
+        getPortalRoot()
+      )}
     </>,
     portalRoot
   )

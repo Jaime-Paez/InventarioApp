@@ -19,7 +19,7 @@ from django.db.models import F
 
 from app.models import ReminderState
 from inventario.models import Inventario, SubDivision
-from productos.models import Producto
+from productos.models import OEMProducto, Producto
 
 from .models import (
     Importacion,
@@ -884,6 +884,34 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             casa_comercial_id = None
 
+        # Junta todos los códigos OEM del Excel para resolverlos en una sola
+        # consulta (en vez de una por fila) y así poder mostrar, por fila, qué
+        # productos del catálogo ya tienen registrado ese mismo OEM.
+        from django.db.models.functions import Lower
+
+        all_oem_codes_lower = set()
+        for row in all_rows[1:]:
+            for code in safe_str(cell(row, "oem")).split(","):
+                code = code.strip()
+                if code:
+                    all_oem_codes_lower.add(code.lower())
+
+        oem_matches_by_code = {}
+        if all_oem_codes_lower:
+            oem_links = (
+                OEMProducto.objects
+                .select_related("producto", "oem")
+                .annotate(codigo_lower=Lower("oem__codigo"))
+                .filter(codigo_lower__in=all_oem_codes_lower)
+            )
+            for link in oem_links:
+                oem_matches_by_code.setdefault(link.codigo_lower, []).append({
+                    "producto_id": link.producto_id,
+                    "codigo": link.producto.codigo,
+                    "nombre": link.producto.nombre,
+                    "referencia": link.producto.referencia,
+                })
+
         parsed = []
         for fila_excel, row in enumerate(all_rows[1:], start=2):
             codigo = safe_str(cell(row, "codigo"))
@@ -944,6 +972,15 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 if qty > 0:
                     suc_quantities[str(suc_id)] = qty
 
+            oem_matches_dict = {}
+            for code in oem.split(","):
+                code = code.strip()
+                if not code:
+                    continue
+                for m in oem_matches_by_code.get(code.lower(), []):
+                    oem_matches_dict[m["producto_id"]] = m
+            oem_matches = list(oem_matches_dict.values())
+
             parsed.append({
                 "fila_excel": fila_excel,
                 "codigo": codigo,
@@ -956,6 +993,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "matched_producto_codigo": matched.codigo if matched else None,
                 "matched_producto_nombre": matched.nombre if matched else None,
                 "matched_producto_referencia": matched.referencia if matched else None,
+                "oem_matches": oem_matches,
                 "sucursal_quantities": suc_quantities,
                 "conflicto_casa": conflicto_casa,
                 "conflicto_casa_nombre": conflicto_casa_nombre,

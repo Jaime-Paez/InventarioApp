@@ -1029,6 +1029,14 @@
   color: var(--color-primary, #2563eb);
 }
 
+.imp-distribucion__info-icon--empty {
+  opacity: 0.35;
+}
+
+.imp-distribucion__info-icon--empty:hover {
+  color: var(--color-text-secondary, #64748b);
+}
+
 .imp-alternos-hover-card {
   position: fixed;
   z-index: 11000;
