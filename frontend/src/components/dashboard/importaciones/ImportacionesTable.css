@@ -1193,7 +1193,7 @@
 .imp-alternos-hover-card__table--oem th:nth-child(5),
 .imp-alternos-hover-card__table--oem td:nth-child(5) {
   width: 78px;
-  text-align: right;
+  text-align: center;
 }
 
 .imp-alternos-hover-card__table--oem td:nth-child(1),
