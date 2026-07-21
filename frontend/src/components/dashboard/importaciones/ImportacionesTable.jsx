@@ -3236,6 +3236,30 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     return excelRef.length > 0 && excelRef !== dbRef
   }
 
+  // Los códigos JP se arman como <base><sufijo de casa comercial>. Si el OEM
+  // de una fila sin catálogo ya está registrado en un producto de OTRA casa
+  // comercial, se toma su código, se le quita el sufijo de esa otra casa
+  // (buscando cuál de sus casas comerciales calza como terminación) y se le
+  // pega el sufijo de la casa comercial seleccionada en este import — así el
+  // producto pendiente nace con el código que le correspondería en esta casa.
+  const deriveSuggestedCodigo = (row, casaCodigo) => {
+    const targetSuffix = (casaCodigo || '').trim().toUpperCase()
+    if (!targetSuffix) return ''
+    for (const match of row.oem_matches || []) {
+      const matchCodigo = (match.codigo || '').trim().toUpperCase()
+      if (!matchCodigo) continue
+      for (const otherSuffix of match.casas_comerciales_codigos || []) {
+        const suffix = (otherSuffix || '').trim().toUpperCase()
+        if (!suffix || suffix === targetSuffix) continue
+        if (matchCodigo.endsWith(suffix)) {
+          const base = matchCodigo.slice(0, matchCodigo.length - suffix.length)
+          if (base) return `${base}${targetSuffix}`
+        }
+      }
+    }
+    return ''
+  }
+
   // Solo el paso 3 (la tabla) se beneficia de maximizar — los pasos 1/2 son
   // contenido corto y fijo que no crece con el modal, así que no ofrecen esa
   // opción.
@@ -3513,7 +3537,12 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data.detail || 'Error al procesar el archivo.')
-      setParsedRows(data.rows || [])
+      const rowsWithSuggestions = (data.rows || []).map((row) => {
+        if (row.matched_producto_id || row.codigo) return row
+        const suggested = deriveSuggestedCodigo(row, selectedCasa?.codigo)
+        return suggested ? { ...row, codigo: suggested, codigo_sugerido: true } : row
+      })
+      setParsedRows(rowsWithSuggestions)
       setReferenciaDecisions({})
       setSubmitError('')
       setStep(3)
@@ -3579,6 +3608,12 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     const updates = {}
     validRows.forEach((row, i) => { if (hasReferenciaConflict(row)) updates[i] = decision })
     setReferenciaDecisions(prev => ({ ...prev, ...updates }))
+  }
+
+  const updateRowCodigo = (filaExcel, value) => {
+    setParsedRows(prev => prev.map(r => (
+      r.fila_excel === filaExcel ? { ...r, codigo: value, codigo_sugerido: false } : r
+    )))
   }
 
   const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa los productos'
@@ -3946,11 +3981,23 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             const decision = referenciaDecisions[i]
                             return (
                               <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: conflict && decision === undefined ? '#fffbeb' : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
-                                <td
-                                  style={{ padding: '7px 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                                  title={row.matched_producto_id ? (row.codigo || '') : 'Sin catálogo'}
-                                >
-                                  {row.matched_producto_id ? (row.codigo || '—') : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin catálogo</span>}
+                                <td style={{ padding: row.matched_producto_id ? '7px 12px' : '4px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {row.matched_producto_id ? (
+                                    <span title={row.codigo || ''}>{row.codigo || '—'}</span>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      value={row.codigo || ''}
+                                      onChange={(e) => updateRowCodigo(row.fila_excel, e.target.value.toUpperCase())}
+                                      placeholder="Sin catálogo"
+                                      title={row.codigo_sugerido ? 'Código sugerido a partir de un producto con el mismo OEM en otra casa comercial. Puedes corregirlo.' : undefined}
+                                      style={{
+                                        width: '100%', boxSizing: 'border-box', border: `1px solid ${row.codigo_sugerido ? '#fbbf24' : 'var(--color-border, #e2e8f0)'}`,
+                                        borderRadius: 4, padding: '4px 6px', fontSize: 'inherit', fontFamily: 'inherit',
+                                        background: row.codigo_sugerido ? '#fffbeb' : 'transparent', color: 'inherit',
+                                      }}
+                                    />
+                                  )}
                                 </td>
                                 <td style={{ padding: '7px 12px' }}>
                                   {conflict ? (

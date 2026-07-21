@@ -907,6 +907,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             oem_links = (
                 OEMProducto.objects
                 .select_related("producto", "oem")
+                .prefetch_related("producto__casas_comerciales")
                 .annotate(codigo_lower=Lower("oem__codigo"))
                 .filter(codigo_lower__in=all_oem_codes_lower)
             )
@@ -917,6 +918,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     "codigo": link.producto.codigo,
                     "nombre": link.producto.nombre,
                     "referencia": link.producto.referencia,
+                    # Códigos JP se arman como <base><sufijo de la casa comercial>;
+                    # se manda el sufijo de cada casa a la que pertenece este
+                    # producto para que el frontend pueda inferir la base y
+                    # sugerir el código con el sufijo de la casa actual.
+                    "casas_comerciales_codigos": [
+                        c.codigo for c in link.producto.casas_comerciales.all() if c.codigo
+                    ],
                     "precio": precio,
                     "precio_con_iva": with_iva(precio),
                 })
