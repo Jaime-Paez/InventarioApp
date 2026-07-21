@@ -161,6 +161,34 @@
   min-height: 0 !important;
 }
 
+/* Wizard "Sugerencia desde Excel": cada paso se ajusta a su propio
+   contenido en vez de forzar el alto mínimo grande de los demás modales
+   (este wizard es mucho más corto). El ancho sí se sigue controlando desde
+   JS por paso (más angosto en 1/2, más ancho en 3 para la tabla). */
+.importaciones-modal--wizard {
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+/* .create-user__content/.create-user__form normally flex-grow to fill their
+   modal (útil cuando el paso 3 se maximiza); en modo compacto (sin
+   maximizar) eso deja un hueco vacío debajo del contenido corto de los
+   pasos 1/2 porque igual intentan crecer aunque el modal ya esté ajustado
+   al contenido. Se los limita a su tamaño natural aquí. */
+.importaciones-modal--wizard .create-user__content,
+.importaciones-modal--wizard .create-user__form {
+  flex: 0 1 auto;
+}
+
+.importaciones-modal__step-label {
+  align-self: flex-start;
+  margin: 16px 0 12px 18px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  text-align: left;
+  color: var(--color-text-primary);
+}
+
 .importaciones-modal--selector .create-user__header {
   border-top-left-radius: inherit;
   border-top-right-radius: inherit;

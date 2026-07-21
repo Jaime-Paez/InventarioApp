@@ -3139,7 +3139,7 @@ function HistorialConfirmacionModal({ imp, onClose }) {
   )
 }
 
-function ImportacionExcelModal({ token, onClose, onCreated }) {
+function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const toastRef = useRef(null)
 
   const [step, setStep] = useState('casa')
@@ -3159,6 +3159,14 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   // Modal arrastrable/redimensionable/maximizable, igual que el resto de
   // modales de la app (p. ej. CreateImportacionModal más abajo en este mismo
   // archivo): antes este wizard usaba un popup estático sin estas opciones.
+  // El ancho preferido varía por paso (paso 3 necesita más espacio para la
+  // tabla) y el alto siempre se ajusta al contenido en vez de forzar un
+  // mínimo grande — este wizard es mucho más corto que otros modales.
+  const EXCEL_MODAL_MIN_WIDTH = 460
+  const EXCEL_MODAL_MIN_HEIGHT = 260
+  const EXCEL_STEP_WIDTH = 820
+  const EXCEL_STEP3_WIDTH = 820
+
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -3218,29 +3226,31 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
     return excelRef.length > 0 && excelRef !== dbRef
   }
 
+  // Solo el paso 3 (la tabla) se beneficia de maximizar — los pasos 1/2 son
+  // contenido corto y fijo que no crece con el modal, así que no ofrecen esa
+  // opción.
+  const isMaximizableStep = step === 3
+
   useLayoutEffect(() => {
+    // Si se vuelve a un paso que no permite maximizar (p. ej. con "Atrás"
+    // desde el paso 3 estando maximizado), hay que forzar el tamaño
+    // compacto normal en vez de quedarse con el ancho de pantalla completa.
+    const forceRestore = !isMaximizableStep && isMaximized
+    if (isMaximized && !forceRestore) return
+    if (forceRestore) setIsMaximized(false)
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
     const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    if (isCasaStep) {
-      const nextWidth = Math.min(SELECTOR_WIDTH, availableWidth)
-      const measuredHeight = modalRef.current?.offsetHeight || (casaDraft ? 380 : 200)
-      const nextHeight = Math.min(measuredHeight, availableHeight)
-      setModalSize({ width: nextWidth, height: SELECTOR_HEIGHT_EMPTY })
-      setModalPosition({
-        x: Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING),
-        y: Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING),
-      })
-    } else if (!isMaximized) {
-      const nextWidth = Math.min(MIN_WIDTH, availableWidth)
-      const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
-      setModalSize({ width: nextWidth, height: nextHeight })
-      setModalPosition({
-        x: Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING),
-        y: Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING),
-      })
-    }
+    const preferredWidth = isCasaStep ? SELECTOR_WIDTH : (step === 3 ? EXCEL_STEP3_WIDTH : EXCEL_STEP_WIDTH)
+    const nextWidth = Math.min(preferredWidth, availableWidth)
+    const measuredHeight = modalRef.current?.offsetHeight || (isCasaStep ? (casaDraft ? 380 : 200) : 300)
+    const nextHeight = Math.min(measuredHeight, availableHeight)
+    setModalSize({ width: nextWidth, height: SELECTOR_HEIGHT_EMPTY })
+    setModalPosition({
+      x: Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING),
+      y: Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING),
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCasaStep, casaDraft])
+  }, [step, casaDraft])
 
   useLayoutEffect(() => {
     if (!showCasaDropdown || !casaDropdownRef.current) { setCasaPanelStyle(null); return }
@@ -3287,20 +3297,20 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
         setModalPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
         return
       }
-      if (isCasaStep) return
       setModalSize((prev) => {
-        const width = clamp(prev.width, MIN_WIDTH, availableWidth)
-        const height = clamp(prev.height, MIN_HEIGHT, availableHeight)
+        const width = clamp(prev.width, EXCEL_MODAL_MIN_WIDTH, availableWidth)
+        const height = typeof prev.height === 'number' ? clamp(prev.height, EXCEL_MODAL_MIN_HEIGHT, availableHeight) : prev.height
+        const heightForBounds = typeof height === 'number' ? height : (modalRef.current?.offsetHeight || EXCEL_MODAL_MIN_HEIGHT)
         setModalPosition((prevPos) => ({
           x: clamp(prevPos.x, VIEWPORT_PADDING, Math.max(window.innerWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING)),
-          y: clamp(prevPos.y, VIEWPORT_PADDING, Math.max(window.innerHeight - height - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+          y: clamp(prevPos.y, VIEWPORT_PADDING, Math.max(window.innerHeight - heightForBounds - VIEWPORT_PADDING, VIEWPORT_PADDING)),
         }))
         return { width, height }
       })
     }
     window.addEventListener('resize', handleWindowResize)
     return () => window.removeEventListener('resize', handleWindowResize)
-  }, [isMaximized, isCasaStep])
+  }, [isMaximized])
 
   const toggleMaximize = () => {
     modalDrag.current.active = false
@@ -3337,17 +3347,21 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
       startX: e.clientX,
       startY: e.clientY,
       startWidth: modalSizeRef.current.width,
-      startHeight: modalSizeRef.current.height,
+      // La altura puede ser 'auto' (ajustada al contenido) hasta el primer
+      // resize manual: en ese caso se parte de la altura real ya renderizada.
+      startHeight: typeof modalSizeRef.current.height === 'number'
+        ? modalSizeRef.current.height
+        : (modalRef.current?.offsetHeight || EXCEL_MODAL_MIN_HEIGHT),
     }
     const handleResizeMove = (moveEvent) => {
       if (!resizeData.current.active) return
       const deltaX = moveEvent.clientX - resizeData.current.startX
       const deltaY = moveEvent.clientY - resizeData.current.startY
-      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - modalPositionRef.current.x - VIEWPORT_PADDING)
-      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - modalPositionRef.current.y - VIEWPORT_PADDING)
+      const maxWidth = Math.max(EXCEL_MODAL_MIN_WIDTH, window.innerWidth - modalPositionRef.current.x - VIEWPORT_PADDING)
+      const maxHeight = Math.max(EXCEL_MODAL_MIN_HEIGHT, window.innerHeight - modalPositionRef.current.y - VIEWPORT_PADDING)
       setModalSize({
-        width: clamp(resizeData.current.startWidth + deltaX, MIN_WIDTH, maxWidth),
-        height: clamp(resizeData.current.startHeight + deltaY, MIN_HEIGHT, maxHeight),
+        width: clamp(resizeData.current.startWidth + deltaX, EXCEL_MODAL_MIN_WIDTH, maxWidth),
+        height: clamp(resizeData.current.startHeight + deltaY, EXCEL_MODAL_MIN_HEIGHT, maxHeight),
       })
     }
     const handleResizeUp = () => {
@@ -3535,6 +3549,16 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
 
   const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa los productos'
   const portalRoot = document.querySelector('.dashboard-shell') || document.body
+  // Mientras el usuario no haya redimensionado ni maximizado manualmente,
+  // el alto sigue siendo 'auto' (ajustado al contenido) — apenas resize o
+  // maximize se disparan, modalSize.height pasa a ser un número concreto y
+  // el modal queda libre para crecer de verdad.
+  const isCompactHeight = typeof modalSize.height !== 'number'
+
+  // No se desmonta al cambiar de pestaña del workspace (eso perdería el
+  // progreso del wizard) — solo deja de pintarse mientras esa pestaña no
+  // está activa, igual que ImportacionDetailsModal más abajo en este archivo.
+  if (isTabActive === false) return null
 
   return createPortal(
     <>
@@ -3547,24 +3571,27 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
       >
         <div
           ref={modalRef}
-          className={`create-user__modal${isCasaStep ? ' importaciones-modal--selector' : ''}`}
+          className={`create-user__modal${isCompactHeight ? ' importaciones-modal--wizard' : ''}${isCasaStep ? ' importaciones-modal--selector' : ''}`}
           style={{
             top: modalPosition.y,
             left: modalPosition.x,
             width: modalSize.width,
             height: modalSize.height,
-            minWidth: isCasaStep ? undefined : MIN_WIDTH,
-            minHeight: isCasaStep ? undefined : MIN_HEIGHT,
+            minWidth: isCasaStep ? undefined : EXCEL_MODAL_MIN_WIDTH,
+            minHeight: isCasaStep ? undefined : EXCEL_MODAL_MIN_HEIGHT,
             maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
             maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
           }}
         >
           <header className="create-user__header" onMouseDown={handleModalMouseDown}>
             <div className="create-user__header-text">
-              <h3>Sugerencia desde Excel{!isCasaStep ? ` · Paso ${step} de 3 — ${stepLabel}` : ''}</h3>
+              <h3>Sugerencia desde Excel</h3>
             </div>
+            {!isCasaStep && (
+              <p className="importaciones-modal__step-label">Paso {step}: {stepLabel}</p>
+            )}
             <div className="create-user__header-actions">
-              {!isCasaStep && (
+              {isMaximizableStep && (
                 <button
                   type="button"
                   className="create-user__icon-button create-user__icon-button--maximize"
@@ -3699,22 +3726,22 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
           ) : (
           <form className="create-user__form" noValidate onSubmit={(e) => e.preventDefault()}>
           <div className="create-user__content">
-          <div className="create-user__body" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div className="create-user__body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 18, paddingBottom: 18 }}>
 
             {/* ── PASO 1: Descargar ── */}
             {step === 1 && (
               <>
-                <p style={{ fontSize: 'var(--font-size-md)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
                   Descarga la plantilla y rellénala con los productos a sugerir. No incluye columnas de sucursales.
                 </p>
                 <div style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <strong style={{ fontSize: 'var(--font-size-md)' }}>Columnas de la plantilla</strong>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 5, minWidth: 0 }}>
                     {[
                       { label: 'CODIGO JP', type: 'texto' }, { label: 'REFERENCIA', type: 'texto' }, { label: 'OEM', type: 'texto' },
                       { label: 'DESCRIPCIÓN', type: 'texto' }, { label: 'CANTIDAD', type: 'número' }, { label: 'PVP', type: 'número, opcional' },
                     ].map(col => (
-                      <span key={col.label} style={{ background: '#1A1A2E', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 'var(--font-size-md)', fontWeight: 600 }}>
+                      <span key={col.label} style={{ background: '#1A1A2E', color: '#fff', borderRadius: 4, padding: '2px 6px', fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
                         {col.label} <span style={{ opacity: 0.55, fontWeight: 400 }}>({col.type})</span>
                       </span>
                     ))}
@@ -3741,10 +3768,13 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                   onDragLeave={() => setDragOver(false)}
                   onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFileSelect(e.dataTransfer.files[0]) }}
                   style={{
+                    width: '100%',
+                    marginTop: 6,
                     border: `2px dashed ${dragOver ? 'var(--color-primary, #2563eb)' : selectedFile ? '#16a34a' : 'var(--color-border, #e2e8f0)'}`,
                     borderRadius: 10, padding: '28px 20px', textAlign: 'center', cursor: 'pointer',
                     background: dragOver ? 'var(--color-primary-light, #eff6ff)' : selectedFile ? '#f0fdf4' : 'var(--color-surface, #f8fafc)',
                     transition: 'all .2s',
+                    boxSizing: 'border-box',
                   }}
                 >
                   <input ref={fileInputRef} type="file" accept=".xlsx" hidden onChange={(e) => handleFileSelect(e.target.files[0])} />
@@ -3856,7 +3886,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                       </div>
                     )}
 
-                    <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', maxHeight: 'min(380px, 45vh)' }}>
+                    <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
                       <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 620 }}>
                         <colgroup>
                           <col style={{ width: 100 }} />
@@ -4020,7 +4050,7 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
           </form>
           )}
 
-          {!isCasaStep && (
+          {isMaximizableStep && (
             <button
               type="button"
               aria-label="Cambiar tamaño de ventana"
@@ -8348,6 +8378,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       {showExcelImport && (
         <ImportacionExcelModal
           token={token}
+          isTabActive={isTabActive}
           onClose={() => setShowExcelImport(false)}
           onCreated={() => { setShowExcelImport(false); invalidateImportacionesItemsCache(); fetchItems(true) }}
         />
