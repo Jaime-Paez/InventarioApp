@@ -176,7 +176,8 @@
    pasos 1/2 porque igual intentan crecer aunque el modal ya esté ajustado
    al contenido. Se los limita a su tamaño natural aquí. */
 .importaciones-modal--wizard .create-user__content,
-.importaciones-modal--wizard .create-user__form {
+.importaciones-modal--wizard .create-user__form,
+.importaciones-modal--wizard .create-user__body {
   flex: 0 1 auto;
 }
 

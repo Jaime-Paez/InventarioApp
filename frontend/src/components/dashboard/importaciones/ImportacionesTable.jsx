@@ -3230,6 +3230,16 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // contenido corto y fijo que no crece con el modal, así que no ofrecen esa
   // opción.
   const isMaximizableStep = step === 3
+  // El paso 1 se ajusta a su contenido ("fit-content"); el paso 2 reutiliza
+  // ese mismo ancho ya medido para que la transición entre ambos no salte
+  // de tamaño de forma rara.
+  const step1MeasuredWidthRef = useRef(null)
+
+  useLayoutEffect(() => {
+    if (step !== 1) return
+    const measured = modalRef.current?.offsetWidth
+    if (measured) step1MeasuredWidthRef.current = measured
+  }, [step, modalSize.width])
 
   useLayoutEffect(() => {
     // Si se vuelve a un paso que no permite maximizar (p. ej. con "Atrás"
@@ -3240,13 +3250,24 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     if (forceRestore) setIsMaximized(false)
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
     const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    const preferredWidth = isCasaStep ? SELECTOR_WIDTH : (step === 3 ? EXCEL_STEP3_WIDTH : EXCEL_STEP_WIDTH)
-    const nextWidth = Math.min(preferredWidth, availableWidth)
+    // El paso 1 se ajusta a su contenido ("fit-content"); el paso 2 usa ese
+    // mismo ancho ya medido (su subidor de archivos ocupa el 100% del
+    // modal, así que necesita un ancho definido, no fit-content) para que
+    // no se vea un salto de tamaño raro entre ambos pasos.
+    const preferredWidth = isCasaStep
+      ? SELECTOR_WIDTH
+      : step === 3
+        ? EXCEL_STEP3_WIDTH
+        : step === 1
+          ? 'fit-content'
+          : (step1MeasuredWidthRef.current || EXCEL_STEP_WIDTH)
+    const nextWidth = preferredWidth === 'fit-content' ? 'fit-content' : Math.min(preferredWidth, availableWidth)
+    const measuredWidth = typeof nextWidth === 'number' ? nextWidth : (modalRef.current?.offsetWidth || EXCEL_STEP_WIDTH)
     const measuredHeight = modalRef.current?.offsetHeight || (isCasaStep ? (casaDraft ? 380 : 200) : 300)
     const nextHeight = Math.min(measuredHeight, availableHeight)
     setModalSize({ width: nextWidth, height: SELECTOR_HEIGHT_EMPTY })
     setModalPosition({
-      x: Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING),
+      x: Math.max((window.innerWidth - measuredWidth) / 2, VIEWPORT_PADDING),
       y: Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING),
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3298,11 +3319,12 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         return
       }
       setModalSize((prev) => {
-        const width = clamp(prev.width, EXCEL_MODAL_MIN_WIDTH, availableWidth)
+        const width = typeof prev.width === 'number' ? clamp(prev.width, EXCEL_MODAL_MIN_WIDTH, availableWidth) : prev.width
         const height = typeof prev.height === 'number' ? clamp(prev.height, EXCEL_MODAL_MIN_HEIGHT, availableHeight) : prev.height
+        const widthForBounds = typeof width === 'number' ? width : (modalRef.current?.offsetWidth || EXCEL_MODAL_MIN_WIDTH)
         const heightForBounds = typeof height === 'number' ? height : (modalRef.current?.offsetHeight || EXCEL_MODAL_MIN_HEIGHT)
         setModalPosition((prevPos) => ({
-          x: clamp(prevPos.x, VIEWPORT_PADDING, Math.max(window.innerWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+          x: clamp(prevPos.x, VIEWPORT_PADDING, Math.max(window.innerWidth - widthForBounds - VIEWPORT_PADDING, VIEWPORT_PADDING)),
           y: clamp(prevPos.y, VIEWPORT_PADDING, Math.max(window.innerHeight - heightForBounds - VIEWPORT_PADDING, VIEWPORT_PADDING)),
         }))
         return { width, height }
@@ -3346,9 +3368,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       active: true,
       startX: e.clientX,
       startY: e.clientY,
-      startWidth: modalSizeRef.current.width,
-      // La altura puede ser 'auto' (ajustada al contenido) hasta el primer
-      // resize manual: en ese caso se parte de la altura real ya renderizada.
+      // El ancho/alto pueden no ser números (contenido ajustado) hasta el
+      // primer resize manual: en ese caso se parte del tamaño ya renderizado.
+      startWidth: typeof modalSizeRef.current.width === 'number'
+        ? modalSizeRef.current.width
+        : (modalRef.current?.offsetWidth || EXCEL_MODAL_MIN_WIDTH),
       startHeight: typeof modalSizeRef.current.height === 'number'
         ? modalSizeRef.current.height
         : (modalRef.current?.offsetHeight || EXCEL_MODAL_MIN_HEIGHT),
@@ -3726,7 +3750,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           ) : (
           <form className="create-user__form" noValidate onSubmit={(e) => e.preventDefault()}>
           <div className="create-user__content">
-          <div className="create-user__body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 18, paddingBottom: 18 }}>
+          <div className="create-user__body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 18, paddingBottom: 14 }}>
 
             {/* ── PASO 1: Descargar ── */}
             {step === 1 && (
@@ -3734,7 +3758,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
                   Descarga la plantilla y rellénala con los productos a sugerir. No incluye columnas de sucursales.
                 </p>
-                <div style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ alignSelf: 'flex-start', maxWidth: '100%', background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <strong style={{ fontSize: 'var(--font-size-md)' }}>Columnas de la plantilla</strong>
                   <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 5, minWidth: 0 }}>
                     {[
