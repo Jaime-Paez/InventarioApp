@@ -332,14 +332,14 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
             visibility: productsHoverPos ? 'visible' : 'hidden',
           }}
         >
-          <table className="imp-alternos-hover-card__table">
+          <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--producto">
             <thead>
               <tr><th>Código</th><th>Producto</th></tr>
             </thead>
             <tbody>
               {productsHover.productos.map((p, i) => {
                 const { codigo, nombre } = parseProductoLabel(p)
-                return <tr key={i}><td>{codigo || '-'}</td><td>{nombre}</td></tr>
+                return <tr key={i}><td title={codigo}>{codigo || '-'}</td><td title={nombre}>{nombre}</td></tr>
               })}
             </tbody>
           </table>
@@ -365,13 +365,13 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
           {groupInfo && groupInfo !== 'loading' && (
             <>
               <div className="imp-alternos-hover-card__section-title">Productos alternos</div>
-              <table className="imp-alternos-hover-card__table">
+              <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--producto">
                 <thead>
                   <tr><th>Código</th><th>Producto</th></tr>
                 </thead>
                 <tbody>
                   {groupInfo.productos.map((p, i) => (
-                    <tr key={i}><td>{p.codigo || '-'}</td><td>{p.nombre}</td></tr>
+                    <tr key={i}><td title={p.codigo}>{p.codigo || '-'}</td><td title={p.nombre}>{p.nombre}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -2269,7 +2269,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           ) : alternosHover.data.sucursales.length === 0 ? (
             <div className="imp-alternos-hover-card__message">Sin stock registrado en ninguna sucursal.</div>
           ) : (
-            <table className="imp-alternos-hover-card__table">
+            <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--stock">
               <thead>
                 <tr>
                   <th>Producto</th>
@@ -2306,7 +2306,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           {envioItemsHover.items.length === 0 ? (
             <div className="imp-alternos-hover-card__message">Sin productos asignados.</div>
           ) : (
-            <table className="imp-alternos-hover-card__table">
+            <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--envio">
               <thead>
                 <tr>
                   <th>Código</th>
@@ -2317,8 +2317,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               <tbody>
                 {envioItemsHover.items.map(item => (
                   <tr key={item.id}>
-                    <td>{item.codigo || '-'}</td>
-                    <td style={{ textAlign: 'left' }}>{item.nombre || '-'}</td>
+                    <td title={item.codigo || ''}>{item.codigo || '-'}</td>
+                    <td style={{ textAlign: 'left' }} title={item.nombre || ''}>{item.nombre || '-'}</td>
                     <td>{item.qty}</td>
                   </tr>
                 ))}
@@ -3140,8 +3140,6 @@ function HistorialConfirmacionModal({ imp, onClose }) {
 }
 
 function ImportacionExcelModal({ token, onClose, onCreated }) {
-  const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
-  const mode = isDark ? 'dark' : 'light'
   const toastRef = useRef(null)
 
   const [step, setStep] = useState('casa')
@@ -3155,10 +3153,21 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   const [casaLoading, setCasaLoading] = useState(false)
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const casaTimerRef = useRef(null)
-  const casaModalRef = useRef(null)
-  const casaModalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
-  const [casaModalPos, setCasaModalPos] = useState({ x: 0, y: 0 })
   const casaDropdownRef = useRef(null)
+  const isCasaStep = step === 'casa'
+
+  // Modal arrastrable/redimensionable/maximizable, igual que el resto de
+  // modales de la app (p. ej. CreateImportacionModal más abajo en este mismo
+  // archivo): antes este wizard usaba un popup estático sin estas opciones.
+  const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
+  const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
+  const [isMaximized, setIsMaximized] = useState(false)
+  const modalRef = useRef(null)
+  const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
+  const modalSizeRef = useRef(modalSize)
+  const modalPositionRef = useRef(modalPosition)
+  const modalRestoreRef = useRef(null)
+  const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const [casaPanelStyle, setCasaPanelStyle] = useState(null)
 
   // Step 2: file upload
@@ -3210,14 +3219,28 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   }
 
   useLayoutEffect(() => {
-    if (step !== 'casa') return
-    const w = Math.min(SELECTOR_WIDTH, window.innerWidth - VIEWPORT_PADDING * 2)
-    const h = casaModalRef.current?.offsetHeight || (casaDraft ? 380 : 200)
-    setCasaModalPos({
-      x: Math.max((window.innerWidth - w) / 2, VIEWPORT_PADDING),
-      y: Math.max((window.innerHeight - h) / 2, VIEWPORT_PADDING),
-    })
-  }, [step, casaDraft])
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+    if (isCasaStep) {
+      const nextWidth = Math.min(SELECTOR_WIDTH, availableWidth)
+      const measuredHeight = modalRef.current?.offsetHeight || (casaDraft ? 380 : 200)
+      const nextHeight = Math.min(measuredHeight, availableHeight)
+      setModalSize({ width: nextWidth, height: SELECTOR_HEIGHT_EMPTY })
+      setModalPosition({
+        x: Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING),
+        y: Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING),
+      })
+    } else if (!isMaximized) {
+      const nextWidth = Math.min(MIN_WIDTH, availableWidth)
+      const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
+      setModalSize({ width: nextWidth, height: nextHeight })
+      setModalPosition({
+        x: Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING),
+        y: Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING),
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCasaStep, casaDraft])
 
   useLayoutEffect(() => {
     if (!showCasaDropdown || !casaDropdownRef.current) { setCasaPanelStyle(null); return }
@@ -3230,24 +3253,111 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
       maxHeight: Math.min(260, window.innerHeight - rect.bottom - 8),
       zIndex: 9999,
     })
-  }, [showCasaDropdown, casaModalPos])
+  }, [showCasaDropdown, modalPosition])
+
+  useEffect(() => { modalSizeRef.current = modalSize }, [modalSize])
+  useEffect(() => { modalPositionRef.current = modalPosition }, [modalPosition])
 
   useEffect(() => {
-    const handleMove = (e) => {
-      if (!casaModalDrag.current.active) return
+    const handleMouseMove = (e) => {
+      if (!modalDrag.current.active) return
       e.preventDefault()
-      const w = casaModalRef.current?.offsetWidth || SELECTOR_WIDTH
-      const h = casaModalRef.current?.offsetHeight || 200
-      setCasaModalPos({
-        x: Math.min(Math.max(e.clientX - casaModalDrag.current.offsetX, VIEWPORT_PADDING), window.innerWidth - w - VIEWPORT_PADDING),
-        y: Math.min(Math.max(e.clientY - casaModalDrag.current.offsetY, VIEWPORT_PADDING), window.innerHeight - h - VIEWPORT_PADDING),
+      const maxX = Math.max(window.innerWidth - modalSizeRef.current.width - VIEWPORT_PADDING, VIEWPORT_PADDING)
+      const modalHeight = typeof modalSizeRef.current.height === 'number'
+        ? modalSizeRef.current.height
+        : (modalRef.current?.offsetHeight || 0)
+      const maxY = Math.max(window.innerHeight - modalHeight - VIEWPORT_PADDING, VIEWPORT_PADDING)
+      setModalPosition({
+        x: clamp(e.clientX - modalDrag.current.offsetX, VIEWPORT_PADDING, maxX),
+        y: clamp(e.clientY - modalDrag.current.offsetY, VIEWPORT_PADDING, maxY),
       })
     }
-    const handleUp = () => { casaModalDrag.current.active = false }
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('mouseup', handleUp)
-    return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp) }
+    const handleMouseUp = () => { modalDrag.current.active = false }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp) }
   }, [])
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+      const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+      if (isMaximized) {
+        setModalSize({ width: availableWidth, height: availableHeight })
+        setModalPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+        return
+      }
+      if (isCasaStep) return
+      setModalSize((prev) => {
+        const width = clamp(prev.width, MIN_WIDTH, availableWidth)
+        const height = clamp(prev.height, MIN_HEIGHT, availableHeight)
+        setModalPosition((prevPos) => ({
+          x: clamp(prevPos.x, VIEWPORT_PADDING, Math.max(window.innerWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+          y: clamp(prevPos.y, VIEWPORT_PADDING, Math.max(window.innerHeight - height - VIEWPORT_PADDING, VIEWPORT_PADDING)),
+        }))
+        return { width, height }
+      })
+    }
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
+  }, [isMaximized, isCasaStep])
+
+  const toggleMaximize = () => {
+    modalDrag.current.active = false
+    if (isMaximized) {
+      const restore = modalRestoreRef.current
+      if (restore) {
+        setModalSize(restore.size)
+        setModalPosition(restore.position)
+      }
+      setIsMaximized(false)
+      return
+    }
+    modalRestoreRef.current = { size: { ...modalSizeRef.current }, position: { ...modalPositionRef.current } }
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+    setModalSize({ width: availableWidth, height: availableHeight })
+    setModalPosition({ x: VIEWPORT_PADDING, y: VIEWPORT_PADDING })
+    setIsMaximized(true)
+  }
+
+  const handleModalMouseDown = (e) => {
+    if (isMaximized) return
+    if (!modalRef.current) return
+    const rect = modalRef.current.getBoundingClientRect()
+    modalDrag.current = { active: true, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top }
+  }
+
+  const handleResizeMouseDown = (e) => {
+    if (isMaximized) return
+    e.preventDefault()
+    e.stopPropagation()
+    resizeData.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: modalSizeRef.current.width,
+      startHeight: modalSizeRef.current.height,
+    }
+    const handleResizeMove = (moveEvent) => {
+      if (!resizeData.current.active) return
+      const deltaX = moveEvent.clientX - resizeData.current.startX
+      const deltaY = moveEvent.clientY - resizeData.current.startY
+      const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - modalPositionRef.current.x - VIEWPORT_PADDING)
+      const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - modalPositionRef.current.y - VIEWPORT_PADDING)
+      setModalSize({
+        width: clamp(resizeData.current.startWidth + deltaX, MIN_WIDTH, maxWidth),
+        height: clamp(resizeData.current.startHeight + deltaY, MIN_HEIGHT, maxHeight),
+      })
+    }
+    const handleResizeUp = () => {
+      resizeData.current.active = false
+      window.removeEventListener('mousemove', handleResizeMove)
+      window.removeEventListener('mouseup', handleResizeUp)
+    }
+    window.addEventListener('mousemove', handleResizeMove)
+    window.addEventListener('mouseup', handleResizeUp)
+  }
 
   useEffect(() => {
     const handleMouseDown = (e) => {
@@ -3279,12 +3389,6 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
     }, 280)
     return () => clearTimeout(casaTimerRef.current)
   }, [casaQuery, token, showCasaDropdown, step])
-
-  const handleCasaHeaderMouseDown = (e) => {
-    if (!casaModalRef.current) return
-    const rect = casaModalRef.current.getBoundingClientRect()
-    casaModalDrag.current = { active: true, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top }
-  }
 
   const handleDownloadTemplate = async () => {
     setDownloading(true)
@@ -3432,33 +3536,58 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
   const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa los productos'
   const portalRoot = document.querySelector('.dashboard-shell') || document.body
 
-  if (step === 'casa') {
-    return createPortal(
-      <>
-        <Toast ref={toastRef} />
-        <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ zIndex: 2100 }}>
-          <div
-            ref={casaModalRef}
-            className="create-user__modal importaciones-modal--selector"
-            style={{ top: casaModalPos.y, left: casaModalPos.x, width: SELECTOR_WIDTH }}
-          >
-            <header className="create-user__header" onMouseDown={handleCasaHeaderMouseDown}>
-              <div className="create-user__header-text">
-                <h3>Sugerencia desde Excel</h3>
-              </div>
-              <div className="create-user__header-actions">
+  return createPortal(
+    <>
+      <Toast ref={toastRef} />
+      <div
+        className="create-user__overlay"
+        role="dialog"
+        aria-modal="true"
+        style={{ padding: `${VIEWPORT_PADDING}px`, zIndex: 2100 }}
+      >
+        <div
+          ref={modalRef}
+          className={`create-user__modal${isCasaStep ? ' importaciones-modal--selector' : ''}`}
+          style={{
+            top: modalPosition.y,
+            left: modalPosition.x,
+            width: modalSize.width,
+            height: modalSize.height,
+            minWidth: isCasaStep ? undefined : MIN_WIDTH,
+            minHeight: isCasaStep ? undefined : MIN_HEIGHT,
+            maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
+            maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+          }}
+        >
+          <header className="create-user__header" onMouseDown={handleModalMouseDown}>
+            <div className="create-user__header-text">
+              <h3>Sugerencia desde Excel{!isCasaStep ? ` · Paso ${step} de 3 — ${stepLabel}` : ''}</h3>
+            </div>
+            <div className="create-user__header-actions">
+              {!isCasaStep && (
                 <button
                   type="button"
-                  className="create-user__icon-button"
+                  className="create-user__icon-button create-user__icon-button--maximize"
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={onClose}
-                  aria-label="Cerrar"
+                  onClick={toggleMaximize}
+                  aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
                 >
-                  <i className="pi pi-times" aria-hidden="true" />
+                  <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
                 </button>
-              </div>
-            </header>
+              )}
+              <button
+                type="button"
+                className="create-user__icon-button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={onClose}
+                aria-label="Cerrar"
+              >
+                <i className="pi pi-times" aria-hidden="true" />
+              </button>
+            </div>
+          </header>
 
+          {isCasaStep ? (
             <form className="create-user__form importaciones-modal__selector-form" noValidate onSubmit={(e) => e.preventDefault()}>
               <div className="create-salida__selector-shell" style={{ flex: 'none', overflow: 'visible' }}>
                 <section className="create-user__section create-salida__selector-card">
@@ -3567,37 +3696,10 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                 </div>
               </div>
             </form>
-          </div>
-        </div>
-      </>,
-      portalRoot
-    )
-  }
-
-  return createPortal(
-    <>
-      <Toast ref={toastRef} />
-      <div
-        className={`quick-actions__receive-overlay ${mode}`}
-        style={{ zIndex: 2100 }}
-        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-      >
-        <div
-          className={`quick-actions__receive-dialog ${mode}`}
-          style={{ width: step === 3 ? 'min(720px, 95vw)' : 'min(540px, 92vw)', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto', transition: 'width .25s' }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <header className="quick-actions__receive-head">
-            <div>
-              <h4>Sugerencia desde Excel</h4>
-              <p style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                Paso {step} de 3 — {stepLabel}
-              </p>
-            </div>
-            <button type="button" className="quick-actions__receive-close" onClick={onClose}><X size={16} /></button>
-          </header>
-
-          <div className="quick-actions__receive-body" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          ) : (
+          <form className="create-user__form" noValidate onSubmit={(e) => e.preventDefault()}>
+          <div className="create-user__content">
+          <div className="create-user__body" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
             {/* ── PASO 1: Descargar ── */}
             {step === 1 && (
@@ -3780,7 +3882,10 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                             const decision = referenciaDecisions[i]
                             return (
                               <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: conflict && decision === undefined ? '#fffbeb' : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
-                                <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                                <td
+                                  style={{ padding: '7px 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                  title={row.matched_producto_id ? (row.codigo || '') : 'Sin catálogo'}
+                                >
                                   {row.matched_producto_id ? (row.codigo || '—') : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin catálogo</span>}
                                 </td>
                                 <td style={{ padding: '7px 12px' }}>
@@ -3817,15 +3922,26 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
                                       </div>
                                     </div>
                                   ) : (
-                                    <span>{row.referencia || '—'}</span>
+                                    <span
+                                      title={row.referencia || ''}
+                                      style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                    >
+                                      {row.referencia || '—'}
+                                    </span>
                                   )}
                                 </td>
                                 <td style={{ padding: '7px 12px' }}>
                                   {row.oem ? (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <span>{row.oem}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                      <span
+                                        title={row.oem}
+                                        style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                      >
+                                        {row.oem}
+                                      </span>
                                       <Info
                                         size={13}
+                                        style={{ flexShrink: 0 }}
                                         className={`imp-distribucion__info-icon${(row.oem_matches || []).length ? '' : ' imp-distribucion__info-icon--empty'}`}
                                         onMouseEnter={(e) => showOemMatchesHover(e, row.oem_matches || [])}
                                         onMouseLeave={hideOemMatchesHover}
@@ -3856,52 +3972,68 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
               </>
             )}
           </div>
+          </div>
 
-          <footer className="quick-actions__receive-actions">
-            {step === 1 && (
-              <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep('casa')}>Atrás</button>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={() => setStep(2)}>Siguiente</button>
-              </>
-            )}
-            {step === 2 && (
-              <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)} disabled={parsing}>Atrás</button>
+          <div className="create-user__footer">
+            <div className="user-details__footer-left">
+              {step === 1 && (
+                <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setStep('casa')}>Atrás</button>
+              )}
+              {step === 2 && (
+                <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setStep(1)} disabled={parsing}>Atrás</button>
+              )}
+              {step === 3 && !incompleteRows.length && (
+                <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
+              )}
+            </div>
+            <div className="user-details__footer-right">
+              {step === 1 && (
+                <button type="button" className="create-user__action create-user__action--primary" onClick={() => setStep(2)}>Siguiente</button>
+              )}
+              {step === 2 && (
                 <button
                   type="button"
-                  className={`quick-actions__receive-btn${canProcess ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
+                  className="create-user__action create-user__action--primary"
                   onClick={handleProcess}
                   disabled={!canProcess || parsing}
                 >
                   {parsing ? 'Procesando...' : 'Procesar archivo'}
                 </button>
-              </>
-            )}
-            {step === 3 && (
-              incompleteRows.length > 0 ? (
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={handleRetry}>Volver a intentar</button>
-              ) : (
-                <>
-                  <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
+              )}
+              {step === 3 && (
+                incompleteRows.length > 0 ? (
+                  <button type="button" className="create-user__action create-user__action--primary" onClick={handleRetry}>Volver a intentar</button>
+                ) : (
                   <button
                     type="button"
-                    className={`quick-actions__receive-btn${validRows.length > 0 && allConflictsResolved ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
+                    className="create-user__action create-user__action--primary"
                     onClick={handleCreate}
                     disabled={submitting || validRows.length === 0 || !allConflictsResolved}
                     title={validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia' : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos' : undefined}
                   >
                     {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 && conflictoRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
                   </button>
-                </>
-              )
-            )}
-          </footer>
+                )
+              )}
+            </div>
+          </div>
+          </form>
+          )}
+
+          {!isCasaStep && (
+            <button
+              type="button"
+              aria-label="Cambiar tamaño de ventana"
+              className="create-user__resize-handle"
+              onMouseDown={handleResizeMouseDown}
+            />
+          )}
         </div>
       </div>
       {oemMatchesHover && createPortal(
         <div
           ref={oemMatchesHoverCardRef}
-          className="imp-alternos-hover-card"
+          className={`imp-alternos-hover-card${oemMatchesHover.matches.length ? ' imp-alternos-hover-card--oem' : ''}`}
           style={{
             top: oemMatchesHoverPos?.top ?? oemMatchesHover.triggerBottom + 4,
             left: oemMatchesHoverPos?.left ?? oemMatchesHover.triggerLeft,
@@ -3909,13 +4041,17 @@ function ImportacionExcelModal({ token, onClose, onCreated }) {
           }}
         >
           {oemMatchesHover.matches.length ? (
-            <table className="imp-alternos-hover-card__table">
+            <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--oem">
               <thead>
                 <tr><th>Código</th><th>Nombre</th><th>Referencia</th></tr>
               </thead>
               <tbody>
                 {oemMatchesHover.matches.map((p, i) => (
-                  <tr key={i}><td>{p.codigo || '-'}</td><td>{p.nombre || '-'}</td><td>{p.referencia || '-'}</td></tr>
+                  <tr key={i}>
+                    <td title={p.codigo || ''}>{p.codigo || '-'}</td>
+                    <td>{p.nombre || '-'}</td>
+                    <td title={p.referencia || ''}>{p.referencia || '-'}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>

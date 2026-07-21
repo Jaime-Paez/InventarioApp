@@ -1107,6 +1107,67 @@
   color: var(--color-primary, #2563eb);
 }
 
+/* Resto de popups "imp-alternos-hover-card" (productos vinculados a un OEM,
+   stock por sucursal, productos de un envío): la columna con el nombre del
+   producto es la única de largo variable, así que se le pone un tope con
+   elipsis para que nunca empuje la tarjeta fuera de su fondo blanco. Las
+   demás columnas (código, cantidades) ya son cortas por naturaleza. */
+.imp-alternos-hover-card__table--producto th:nth-child(2),
+.imp-alternos-hover-card__table--producto td:nth-child(2),
+.imp-alternos-hover-card__table--stock th:first-child,
+.imp-alternos-hover-card__table--stock td:first-child,
+.imp-alternos-hover-card__table--envio th:nth-child(2),
+.imp-alternos-hover-card__table--envio td:nth-child(2) {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Popup de coincidencias por OEM (Código / Nombre / Referencia): ancho fijo
+   para que table-layout:fixed reparta las columnas de forma predecible y el
+   nombre (potencialmente largo) haga salto de línea en vez de desbordar la
+   tarjeta blanca; código y referencia se truncan con elipsis. */
+.imp-alternos-hover-card--oem {
+  width: 460px;
+  max-width: calc(100vw - 24px);
+}
+
+.imp-alternos-hover-card__table--oem {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.imp-alternos-hover-card__table--oem th,
+.imp-alternos-hover-card__table--oem td {
+  padding: 5px 8px;
+  vertical-align: top;
+}
+
+.imp-alternos-hover-card__table--oem th:nth-child(1),
+.imp-alternos-hover-card__table--oem td:nth-child(1) {
+  width: 72px;
+}
+
+.imp-alternos-hover-card__table--oem th:nth-child(3),
+.imp-alternos-hover-card__table--oem td:nth-child(3) {
+  width: 92px;
+}
+
+.imp-alternos-hover-card__table--oem td:nth-child(1),
+.imp-alternos-hover-card__table--oem td:nth-child(3) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.imp-alternos-hover-card__table--oem th:nth-child(2),
+.imp-alternos-hover-card__table--oem td:nth-child(2) {
+  white-space: normal;
+  word-break: break-word;
+  text-align: left;
+}
+
 .imp-alternos-hover-card--group {
   display: flex;
   flex-direction: column;
