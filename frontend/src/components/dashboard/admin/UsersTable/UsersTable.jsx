@@ -398,7 +398,13 @@ function UsersTable({
 
   useEffect(() => {
     const stored = tableLayoutStore.getItem('usuarios-table-columns')
-    if (stored) setSelectedColumns(JSON.parse(stored))
+    if (stored) {
+      try {
+        setSelectedColumns(JSON.parse(stored))
+      } catch {
+        tableLayoutStore.removeItem('usuarios-table-columns')
+      }
+    }
     return () => {
       tableLayoutStore.setItem('usuarios-table-columns', JSON.stringify(selectedColumnsRef.current))
     }

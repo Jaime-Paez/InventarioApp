@@ -344,7 +344,13 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
 
   useEffect(() => {
     const stored = tableLayoutStore.getItem('sucursales-table-columns')
-    if (stored) setSelectedColumns(JSON.parse(stored))
+    if (stored) {
+      try {
+        setSelectedColumns(JSON.parse(stored))
+      } catch {
+        tableLayoutStore.removeItem('sucursales-table-columns')
+      }
+    }
     return () => {
       tableLayoutStore.setItem('sucursales-table-columns', JSON.stringify(selectedColumnsRef.current))
     }

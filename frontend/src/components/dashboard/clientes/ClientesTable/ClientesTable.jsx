@@ -481,7 +481,13 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
 
   useEffect(() => {
     const stored = tableLayoutStore.getItem('clientes-table-columns')
-    if (stored) setSelectedColumns(JSON.parse(stored))
+    if (stored) {
+      try {
+        setSelectedColumns(JSON.parse(stored))
+      } catch {
+        tableLayoutStore.removeItem('clientes-table-columns')
+      }
+    }
     return () => {
       tableLayoutStore.setItem('clientes-table-columns', JSON.stringify(selectedColumnsRef.current))
     }

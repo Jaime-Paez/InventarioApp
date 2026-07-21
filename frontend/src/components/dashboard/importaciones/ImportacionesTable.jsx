@@ -11,6 +11,7 @@ import { Check, Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { API_URL, authFetch } from '../../../utils/api'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
+import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import { formatDate } from '../../../utils/dateFormat'
 import { toUpperCode } from '../../../utils/textInput'
@@ -7861,6 +7862,43 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const [activeStatus, setActiveStatus] = useState('borrador')
   const status = statusProp || activeStatus
   const [isStatusStale, setIsStatusStale] = useState(false)
+
+  const importacionesBaseFields = useMemo(() => {
+    const fields = ['codigo', 'fecha']
+    if (status === 'importada') fields.push('creado_en', 'fecha_llegada')
+    fields.push('casa_nombre', 'estado', 'dias_entrega_estimados', 'productos_resumen')
+    return fields
+  }, [status])
+
+  const [columnOrder, setColumnOrder] = useState(importacionesBaseFields)
+
+  useEffect(() => {
+    const stored = tableLayoutStore.getItem('importaciones-table-columns')
+    let nextOrder = importacionesBaseFields
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed) && parsed.length) {
+          const validFields = new Set(importacionesBaseFields)
+          const filtered = parsed.filter((field) => validFields.has(field))
+          const missing = importacionesBaseFields.filter((field) => !filtered.includes(field))
+          nextOrder = [...filtered, ...missing]
+        }
+      } catch {
+        tableLayoutStore.removeItem('importaciones-table-columns')
+      }
+    }
+    setColumnOrder(nextOrder)
+  }, [importacionesBaseFields])
+
+  const handleColumnReorder = useCallback((e) => {
+    const order = (Array.isArray(e?.columns) ? e.columns : [])
+      .map((col) => col.props.field)
+      .filter(Boolean)
+    if (!order.length) return
+    setColumnOrder(order)
+    tableLayoutStore.setItemNow('importaciones-table-columns', JSON.stringify(order))
+  }, [])
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -8433,6 +8471,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           globalFilterFields={['codigo', 'fecha', 'casa_nombre', 'productos_resumen']}
           removableSort
           reorderableColumns
+          onColReorder={handleColumnReorder}
           resizableColumns
           columnResizeMode="expand"
           onRowClick={handleRowClick}
@@ -8466,79 +8505,115 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
             reorderable={false}
             resizable={false}
           />
-          <Column
-            field="codigo"
-            header="Código"
-            sortable
-            reorderable
-            className="column-max-min-width"
-            style={{ minWidth: '120px' }}
-          />
-          <Column
-            field="fecha"
-            header="Fecha"
-            sortable
-            reorderable
-            className="column-max-min-width"
-            style={{ minWidth: '100px' }}
-            body={(row) => formatDate(row.fecha)}
-          />
-          {status === 'importada' && (
-            <Column
-              field="creado_en"
-              header="Fecha de creación"
-              sortable
-              reorderable
-              className="column-max-min-width"
-              style={{ minWidth: '120px' }}
-              body={(row) => formatDate(row.creado_en)}
-            />
-          )}
-          {status === 'importada' && (
-            <Column
-              field="fecha_llegada"
-              header="Fecha de llegada"
-              sortable
-              reorderable
-              className="column-max-min-width"
-              style={{ minWidth: '120px' }}
-              body={(row) => formatDate(row.fecha_llegada)}
-            />
-          )}
-          <Column
-            field="casa_nombre"
-            header="Casa comercial"
-            sortable
-            reorderable
-            className="column-max-min-width"
-            style={{ minWidth: '150px' }}
-          />
-          <Column
-            field="estado"
-            header="Estado"
-            sortable
-            reorderable
-            className="column-max-min-width"
-            style={{ minWidth: '110px' }}
-            body={estadoBodyTemplate}
-          />
-          <Column
-            field="dias_entrega_estimados"
-            header="Días est."
-            sortable
-            reorderable
-            className="column-max-min-width"
-            style={{ minWidth: '90px' }}
-            body={(row) => (row.dias_entrega_estimados != null ? `${row.dias_entrega_estimados} d` : '-')}
-          />
-          <Column
-            field="productos_resumen"
-            header="Productos"
-            reorderable
-            className="column-max-min-width"
-            style={{ minWidth: '180px' }}
-            body={importacionProductBodyTemplate}
-          />
+          {columnOrder
+            .filter((field) => importacionesBaseFields.includes(field))
+            .map((field) => {
+              switch (field) {
+                case 'codigo':
+                  return (
+                    <Column
+                      key="codigo"
+                      field="codigo"
+                      header="Código"
+                      sortable
+                      reorderable
+                      className="column-max-min-width"
+                      style={{ minWidth: '120px' }}
+                    />
+                  )
+                case 'fecha':
+                  return (
+                    <Column
+                      key="fecha"
+                      field="fecha"
+                      header="Fecha"
+                      sortable
+                      reorderable
+                      className="column-max-min-width"
+                      style={{ minWidth: '100px' }}
+                      body={(row) => formatDate(row.fecha)}
+                    />
+                  )
+                case 'creado_en':
+                  return (
+                    <Column
+                      key="creado_en"
+                      field="creado_en"
+                      header="Fecha de creación"
+                      sortable
+                      reorderable
+                      className="column-max-min-width"
+                      style={{ minWidth: '120px' }}
+                      body={(row) => formatDate(row.creado_en)}
+                    />
+                  )
+                case 'fecha_llegada':
+                  return (
+                    <Column
+                      key="fecha_llegada"
+                      field="fecha_llegada"
+                      header="Fecha de llegada"
+                      sortable
+                      reorderable
+                      className="column-max-min-width"
+                      style={{ minWidth: '120px' }}
+                      body={(row) => formatDate(row.fecha_llegada)}
+                    />
+                  )
+                case 'casa_nombre':
+                  return (
+                    <Column
+                      key="casa_nombre"
+                      field="casa_nombre"
+                      header="Casa comercial"
+                      sortable
+                      reorderable
+                      className="column-max-min-width"
+                      style={{ minWidth: '150px' }}
+                    />
+                  )
+                case 'estado':
+                  return (
+                    <Column
+                      key="estado"
+                      field="estado"
+                      header="Estado"
+                      sortable
+                      reorderable
+                      className="column-max-min-width"
+                      style={{ minWidth: '110px' }}
+                      body={estadoBodyTemplate}
+                    />
+                  )
+                case 'dias_entrega_estimados':
+                  return (
+                    <Column
+                      key="dias_entrega_estimados"
+                      field="dias_entrega_estimados"
+                      header="Días est."
+                      sortable
+                      reorderable
+                      className="column-max-min-width"
+                      style={{ minWidth: '90px' }}
+                      body={(row) => (row.dias_entrega_estimados != null ? `${row.dias_entrega_estimados} d` : '-')}
+                    />
+                  )
+                case 'productos_resumen':
+                  return (
+                    <Column
+                      key="productos_resumen"
+                      field="productos_resumen"
+                      header="Productos"
+                      reorderable
+                      className="column-max-min-width"
+                      style={{ minWidth: '180px' }}
+                      body={importacionProductBodyTemplate}
+                    />
+                  )
+                default:
+                  return null
+              }
+            })}
         </DataTable>
       </div>
 

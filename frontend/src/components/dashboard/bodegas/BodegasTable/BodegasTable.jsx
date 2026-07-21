@@ -357,7 +357,13 @@ function BodegasTable({ token, onSelect, moduleActions }) {
 
   useEffect(() => {
     const stored = tableLayoutStore.getItem('bodegas-table-columns')
-    if (stored) setSelectedColumns(JSON.parse(stored))
+    if (stored) {
+      try {
+        setSelectedColumns(JSON.parse(stored))
+      } catch {
+        tableLayoutStore.removeItem('bodegas-table-columns')
+      }
+    }
     return () => {
       tableLayoutStore.setItem('bodegas-table-columns', JSON.stringify(selectedColumnsRef.current))
     }

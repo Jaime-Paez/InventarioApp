@@ -272,7 +272,13 @@ function SalidasTable({
 
   useEffect(() => {
     const stored = tableLayoutStore.getItem('salidas-table-columns')
-    if (stored) setSelectedColumns(JSON.parse(stored))
+    if (stored) {
+      try {
+        setSelectedColumns(JSON.parse(stored))
+      } catch {
+        tableLayoutStore.removeItem('salidas-table-columns')
+      }
+    }
     return () => {
       tableLayoutStore.setItem('salidas-table-columns', JSON.stringify(selectedColumnsRef.current))
     }

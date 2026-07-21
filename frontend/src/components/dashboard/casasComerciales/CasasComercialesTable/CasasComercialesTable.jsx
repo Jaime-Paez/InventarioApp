@@ -424,7 +424,13 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
 
   useEffect(() => {
     const stored = tableLayoutStore.getItem('casas-comerciales-table-columns')
-    if (stored) setSelectedColumns(JSON.parse(stored))
+    if (stored) {
+      try {
+        setSelectedColumns(JSON.parse(stored))
+      } catch {
+        tableLayoutStore.removeItem('casas-comerciales-table-columns')
+      }
+    }
     return () => {
       tableLayoutStore.setItem('casas-comerciales-table-columns', JSON.stringify(selectedColumnsRef.current))
     }

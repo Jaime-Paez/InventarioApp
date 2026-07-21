@@ -280,7 +280,13 @@ function EntradasTable({
 
   useEffect(() => {
     const stored = tableLayoutStore.getItem('entradas-table-columns')
-    if (stored) setSelectedColumns(JSON.parse(stored))
+    if (stored) {
+      try {
+        setSelectedColumns(JSON.parse(stored))
+      } catch {
+        tableLayoutStore.removeItem('entradas-table-columns')
+      }
+    }
     return () => {
       tableLayoutStore.setItem('entradas-table-columns', JSON.stringify(selectedColumnsRef.current))
     }
