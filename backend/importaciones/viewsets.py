@@ -18,6 +18,7 @@ from usuarios.utils import is_app_admin
 from django.db.models import F
 
 from app.models import ReminderState
+from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision
 from productos.models import OEMProducto, Producto
 
@@ -896,6 +897,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 if code:
                     all_oem_codes_lower.add(code.lower())
 
+        iva_rate = ConfiguracionSistema.get_solo().iva_rate or 0
+
+        def with_iva(precio):
+            return round(float(precio) * (1 + float(iva_rate)), 2) if precio is not None else None
+
         oem_matches_by_code = {}
         if all_oem_codes_lower:
             oem_links = (
@@ -905,11 +911,14 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 .filter(codigo_lower__in=all_oem_codes_lower)
             )
             for link in oem_links:
+                precio = float(link.producto.precio) if link.producto.precio is not None else None
                 oem_matches_by_code.setdefault(link.codigo_lower, []).append({
                     "producto_id": link.producto_id,
                     "codigo": link.producto.codigo,
                     "nombre": link.producto.nombre,
                     "referencia": link.producto.referencia,
+                    "precio": precio,
+                    "precio_con_iva": with_iva(precio),
                 })
 
         parsed = []

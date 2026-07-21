@@ -4109,7 +4109,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           {oemMatchesHover.matches.length ? (
             <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--oem">
               <thead>
-                <tr><th>Código</th><th>Nombre</th><th>Referencia</th></tr>
+                <tr><th>Código</th><th>Nombre</th><th>Referencia</th><th>PVP</th><th>PVP + IVA</th></tr>
               </thead>
               <tbody>
                 {oemMatchesHover.matches.map((p, i) => (
@@ -4117,6 +4117,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                     <td title={p.codigo || ''}>{p.codigo || '-'}</td>
                     <td>{p.nombre || '-'}</td>
                     <td title={p.referencia || ''}>{p.referencia || '-'}</td>
+                    <td>{p.precio != null ? `$${Number(p.precio).toFixed(2)}` : '-'}</td>
+                    <td>{p.precio_con_iva != null ? `$${Number(p.precio_con_iva).toFixed(2)}` : '-'}</td>
                   </tr>
                 ))}
               </tbody>

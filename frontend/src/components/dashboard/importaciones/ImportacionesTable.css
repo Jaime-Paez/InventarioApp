@@ -1153,12 +1153,13 @@
   white-space: nowrap;
 }
 
-/* Popup de coincidencias por OEM (Código / Nombre / Referencia): ancho fijo
-   para que table-layout:fixed reparta las columnas de forma predecible y el
-   nombre (potencialmente largo) haga salto de línea en vez de desbordar la
-   tarjeta blanca; código y referencia se truncan con elipsis. */
+/* Popup de coincidencias por OEM (Código / Nombre / Referencia / PVP /
+   PVP + IVA): ancho fijo para que table-layout:fixed reparta las columnas
+   de forma predecible y el nombre (potencialmente largo) haga salto de
+   línea en vez de desbordar la tarjeta blanca; código y referencia se
+   truncan con elipsis. */
 .imp-alternos-hover-card--oem {
-  width: 460px;
+  width: 620px;
   max-width: calc(100vw - 24px);
   /* A diferencia del resto de tarjetas "hover" (solo informativas), esta
      permite pasar el mouse encima y seleccionar/copiar su texto. */
@@ -1187,8 +1188,18 @@
   width: 92px;
 }
 
+.imp-alternos-hover-card__table--oem th:nth-child(4),
+.imp-alternos-hover-card__table--oem td:nth-child(4),
+.imp-alternos-hover-card__table--oem th:nth-child(5),
+.imp-alternos-hover-card__table--oem td:nth-child(5) {
+  width: 78px;
+  text-align: right;
+}
+
 .imp-alternos-hover-card__table--oem td:nth-child(1),
-.imp-alternos-hover-card__table--oem td:nth-child(3) {
+.imp-alternos-hover-card__table--oem td:nth-child(3),
+.imp-alternos-hover-card__table--oem td:nth-child(4),
+.imp-alternos-hover-card__table--oem td:nth-child(5) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
