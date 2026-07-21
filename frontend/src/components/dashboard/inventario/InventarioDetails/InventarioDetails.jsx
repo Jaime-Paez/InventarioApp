@@ -6,7 +6,6 @@ import './InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { emitRemindersSync } from '../../common/reminders/remindersStorage'
 import useModalAnimation from '../../common/useModalAnimation'
-import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 import ProductoRatingTab from '../../productos/ProductoRatingTab/ProductoRatingTab'
 
 const parseNumber = (value) => {
@@ -26,8 +25,6 @@ function InventarioDetails({
   onClose,
   onSaved,
   onError,
-  currentUser,
-  allowEdit = true,
 }) {
   const [draftQuantities, setDraftQuantities] = useState({})
   const [saving, setSaving] = useState(false)
@@ -352,13 +349,6 @@ function InventarioDetails({
             </button>
             <button
               type="button"
-              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('recordatorios')}
-            >
-              Recordatorios
-            </button>
-            <button
-              type="button"
               className={`create-user__tab ${activeTab === 'calificaciones' ? 'create-user__tab--active' : ''}`}
               onClick={() => setActiveTab('calificaciones')}
             >
@@ -437,23 +427,6 @@ function InventarioDetails({
               </div>
             )}
               </>
-            )}
-
-            {activeTab === 'recordatorios' && (
-              <EntityRemindersTab
-                token={token}
-                currentUser={currentUser}
-                entityType="inventario"
-                entityId={product?.id}
-                isOpen={open}
-                entityLabel={
-                  product?.codigo
-                    ? `${product.codigo} - ${product.nombre || 'Producto'}`
-                    : product?.nombre || 'Inventario'
-                }
-                canCreateReminder={allowEdit}
-                onError={onError}
-              />
             )}
 
             {activeTab === 'calificaciones' && (

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Loader2, Plus, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate, formatDateTime } from '../../../utils/dateFormat'
@@ -675,11 +675,6 @@ const formatDateKey = (value) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-const isSundayDateKey = (value) => {
-  const parsed = parseDateKey(value)
-  return Boolean(parsed && parsed.getDay() === 0)
-}
-
 const normalizeWorkingDateKey = (value) => {
   const parsed = parseDateKey(value)
   if (!parsed || Number.isNaN(parsed.getTime())) return ''
@@ -787,7 +782,6 @@ function RecordatoriosPopup({
   currentReceiveBranchIds,
   reminders,
   allReminders,
-  onCreateReminder,
   onMarkReminderSeen,
   darkMode,
   onError,
@@ -804,16 +798,6 @@ function RecordatoriosPopup({
   onOpenSolicitudCliente,
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
-  const [users, setUsers] = useState([])
-  const [loadingUsers, setLoadingUsers] = useState(false)
-  const [usersError, setUsersError] = useState('')
-  const [date, setDate] = useState('')
-  const [time, setTime] = useState('')
-  const [description, setDescription] = useState('')
-  const [selectedRecipientIds, setSelectedRecipientIds] = useState([])
-  const [submitError, setSubmitError] = useState('')
-  const [activeView, setActiveView] = useState('list')
-  const previousViewRef = useRef('list')
   const [activeDecisionReminderId, setActiveDecisionReminderId] = useState('')
   const [decisionDetail, setDecisionDetail] = useState(null)
   const [decisionLoading, setDecisionLoading] = useState(false)
@@ -1538,16 +1522,6 @@ function RecordatoriosPopup({
     setSelectedTimelineDate((current) => normalizeWorkingDateKey(addDaysToDateKey(current, offset)))
   }, [])
 
-  const handleDateChange = useCallback((event) => {
-    const nextDate = String(event?.target?.value || '').trim()
-    if (!nextDate) {
-      setDate('')
-      return
-    }
-
-    setDate(normalizeWorkingDateKey(nextDate) || nextDate)
-  }, [])
-
   const closeDecisionPanel = useCallback(() => {
     setActiveDecisionReminderId('')
     setDecisionDetail(null)
@@ -1611,11 +1585,6 @@ function RecordatoriosPopup({
     [loadDecisionDetail]
   )
 
-  const selectableUsers = useMemo(
-    () => users.filter((userItem) => userItem.id !== creatorRecipientId),
-    [users, creatorRecipientId]
-  )
-
   useEffect(() => {
     if (!open) {
       closeDecisionPanel()
@@ -1636,14 +1605,7 @@ function RecordatoriosPopup({
       return
     }
     const defaults = getNowDateParts()
-    setDate(defaults.date)
-    setTime(defaults.time)
-    setDescription('')
-    setSelectedRecipientIds([])
-    setSubmitError('')
     setSelectedTimelineDate(defaults.date)
-    setActiveView('list')
-    previousViewRef.current = 'list'
     setOpeningTransferReminderId('')
     setHighlightedReminderId('')
     setPendingScrollReminderId('')
@@ -1655,104 +1617,6 @@ function RecordatoriosPopup({
     setActiveDetailIssuesError('')
     closeDecisionPanel()
   }, [open, currentPrimaryUserId, closeDecisionPanel])
-
-  useEffect(() => {
-    if (!usersError) return
-    notifyError(usersError)
-  }, [notifyError, usersError])
-
-  useEffect(() => {
-    if (!submitError) return
-    notifyError(submitError)
-  }, [notifyError, submitError])
-
-  useEffect(() => {
-    if (!open) return undefined
-
-    let cancelled = false
-
-    const ensureCurrentUserInList = (list) => {
-      const currentId = currentPrimaryUserId || extractUserId(currentUser)
-      if (!currentId) return list
-      if (list.some((userItem) => userItem.id === currentId)) return list
-
-      return [
-        {
-          id: currentId,
-          name: currentUserName || formatCurrentUserName(currentUser),
-          email: currentUser?.correo || currentUser?.email || '',
-        },
-        ...list,
-      ]
-    }
-
-    const fetchUsers = async () => {
-      if (!token) {
-        setLoadingUsers(false)
-        setUsers(ensureCurrentUserInList([]))
-        setUsersError('')
-        return
-      }
-
-      setLoadingUsers(true)
-      setUsersError('')
-
-      try {
-        const list = []
-        let url = `${API_URL}/usuarios/listado/destinatarios/?page_size=200`
-
-        while (url) {
-          const response = await authFetch(url, {}, token)
-          if (!response.ok) throw new Error('No se pudo cargar la lista de usuarios.')
-
-          const data = await response.json()
-          if (Array.isArray(data)) {
-            list.push(...data)
-            url = null
-          } else {
-            const pageResults = Array.isArray(data?.results) ? data.results : []
-            list.push(...pageResults)
-            url = data?.next || null
-          }
-        }
-
-        if (cancelled) return
-
-        const dedupedUsers = []
-        const seenIds = new Set()
-        list.forEach((item) => {
-          const id = extractUserId(item)
-          if (!id || seenIds.has(id)) return
-          seenIds.add(id)
-          dedupedUsers.push({
-            id,
-            name: formatCurrentUserName(item),
-            email: item?.correo || item?.email || '',
-          })
-        })
-
-        const withCurrentUser = ensureCurrentUserInList(dedupedUsers).sort((a, b) =>
-          String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' })
-        )
-
-        setUsers(withCurrentUser)
-      } catch (error) {
-        if (cancelled) return
-        setUsersError(error?.message || 'No se pudieron cargar los usuarios.')
-        setUsers(ensureCurrentUserInList([]))
-      } finally {
-        if (!cancelled) {
-          setLoadingUsers(false)
-        }
-      }
-    }
-
-    fetchUsers()
-
-    return () => {
-      cancelled = true
-    }
-  }, [open, token, currentPrimaryUserId, currentUser, currentUserName])
 
   useEffect(() => {
     if (!open) return undefined
@@ -1788,101 +1652,10 @@ function RecordatoriosPopup({
       setSelectedTimelineDate(normalizeWorkingDateKey(reminderDateKey) || reminderDateKey)
     }
     if (reminder && (isSpecialTransferDecisionReminder(reminder) || isGarantiaApprovalReminder(reminder))) {
-      setActiveView('list')
       openDecisionPanel(reminder)
     }
     onFocusReminderHandled?.()
   }, [focusReminderId, onFocusReminderHandled, open, openDecisionPanel, reminders])
-
-  const toggleRecipient = (recipientId) => {
-    const normalizedId = normalizeId(recipientId)
-    if (!normalizedId) return
-
-    setSelectedRecipientIds((prev) =>
-      prev.includes(normalizedId)
-        ? prev.filter((id) => id !== normalizedId)
-        : [...prev, normalizedId]
-    )
-  }
-
-  const handleSubmit = (event) => {
-    event.preventDefault()
-    setSubmitError('')
-
-    if (!date || !time) {
-      setSubmitError('Debes completar fecha y hora.')
-      return
-    }
-
-    if (isSundayDateKey(date)) {
-      setSubmitError('Los recordatorios no se pueden programar en domingo.')
-      return
-    }
-
-    const normalizedDescription = String(description || '').trim()
-    if (!normalizedDescription) {
-      setSubmitError('Debes escribir la descripcion del recordatorio.')
-      return
-    }
-
-    if (!creatorRecipientId) {
-      setSubmitError('No se pudo resolver el usuario creador.')
-      return
-    }
-
-    const usersById = new Map(users.map((userItem) => [userItem.id, userItem]))
-    const selectedRecipients = selectedRecipientIds
-      .map((recipientId) => {
-        const userItem = usersById.get(recipientId)
-        if (!userItem) return null
-
-        return {
-          id: userItem.id,
-          name: userItem.name,
-        }
-      })
-      .filter(Boolean)
-
-    const recipients = [
-      { id: creatorRecipientId, name: creatorRecipientName },
-      ...selectedRecipients,
-    ].filter((recipient, index, list) => list.findIndex((item) => item.id === recipient.id) === index)
-
-    if (!recipients.length) {
-      setSubmitError('No se pudo resolver la lista de destinatarios.')
-      return
-    }
-
-    const created = onCreateReminder?.({
-      date,
-      time,
-      description: normalizedDescription,
-      recipients,
-    })
-
-    if (created === false) {
-      setSubmitError('No se pudo crear el recordatorio.')
-      return
-    }
-
-    const defaults = getNowDateParts()
-    setDate(defaults.date)
-    setTime(defaults.time)
-    setDescription('')
-    setSelectedRecipientIds([])
-    setActiveView(previousViewRef.current || 'list')
-  }
-
-  const handleOpenCreateView = () => {
-    previousViewRef.current = activeView || 'list'
-    setSubmitError('')
-    setActiveView('create')
-  }
-
-  const handleCloseCreateView = () => {
-    setSubmitError('')
-    setActiveView(previousViewRef.current || 'list')
-  }
 
   const handleTransferDecision = async (decisionType) => {
     const reminder = activeDecisionReminder
@@ -2744,16 +2517,6 @@ function RecordatoriosPopup({
         <header className="recordatorios-popup__header">
           <div className="recordatorios-popup__header-title">
             <h3>Recordatorios</h3>
-            {activeView !== 'create' && (
-              <button
-                type="button"
-                className="recordatorios-popup__button recordatorios-popup__button--primary recordatorios-popup__add-header"
-                onClick={handleOpenCreateView}
-                aria-label="Añadir recordatorio"
-              >
-                +
-              </button>
-            )}
           </div>
           <button type="button" className="recordatorios-popup__close" onClick={() => onClose?.()} aria-label="Cerrar recordatorios">
             <X />
@@ -2761,86 +2524,7 @@ function RecordatoriosPopup({
         </header>
 
         <div className="recordatorios-popup__content">
-          {activeView === 'create' ? (
-            <form className="recordatorios-popup__form recordatorios-popup__form--fullscreen" noValidate onSubmit={handleSubmit}>
-              <div className="recordatorios-popup__section-head">
-                <h4>Nuevo recordatorio</h4>
-                {loadingUsers && (
-                  <span className="recordatorios-popup__loading">
-                    <Loader2 />
-                    Cargando usuarios...
-                  </span>
-                )}
-              </div>
-
-              <div className="recordatorios-popup__grid">
-                <label className="recordatorios-popup__field">
-                  <span>Fecha</span>
-                  <input type="date" value={date} onChange={handleDateChange} required />
-                  <small className="recordatorios-popup__helper">No se programan recordatorios los domingos.</small>
-                </label>
-
-                <label className="recordatorios-popup__field">
-                  <span>Hora</span>
-                  <input type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
-                </label>
-
-                <label className="recordatorios-popup__field recordatorios-popup__field--full">
-                  <span>Nota</span>
-                  <textarea
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder="Escribe de que trata este recordatorio"
-                    required
-                  />
-                </label>
-              </div>
-
-              <section className="recordatorios-popup__recipients">
-                <div className="recordatorios-popup__section-head">
-                  <h4>Dirigido a</h4>
-                </div>
-                <p className="recordatorios-popup__helper">El creador siempre esta incluido.</p>
-
-                <div className="recordatorios-popup__recipient-list recordatorios-popup__recipient-list--fullscreen">
-                  {!selectableUsers.length && !loadingUsers && (
-                    <p className="recordatorios-popup__empty-list">No hay mas usuarios disponibles.</p>
-                  )}
-
-                  {selectableUsers.map((userItem) => {
-                    const checked = selectedRecipientIds.includes(userItem.id)
-                    return (
-                      <label key={userItem.id} className="recordatorios-popup__recipient">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleRecipient(userItem.id)}
-                        />
-                        <span className="recordatorios-popup__recipient-name">{userItem.name}</span>
-                        {userItem.email && (
-                          <small className="recordatorios-popup__recipient-meta">{userItem.email}</small>
-                        )}
-                      </label>
-                    )
-                  })}
-                </div>
-              </section>
-
-              <div className="recordatorios-popup__actions">
-                <button
-                  type="button"
-                  className="recordatorios-popup__button recordatorios-popup__button--ghost"
-                  onClick={handleCloseCreateView}
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="recordatorios-popup__button recordatorios-popup__button--primary">
-                  Guardar recordatorio
-                </button>
-              </div>
-            </form>
-          ) : (
-            <section className="recordatorios-popup__history recordatorios-popup__history--fullscreen">
+          <section className="recordatorios-popup__history recordatorios-popup__history--fullscreen">
 <>
                 <section className="recordatorios-popup__timeline" aria-label="Linea de tiempo semanal">
                   <div className="recordatorios-popup__timeline-head">
@@ -3591,7 +3275,6 @@ function RecordatoriosPopup({
                 </div>
               </>
             </section>
-          )}
         </div>
 
         {activeDecisionReminder && (

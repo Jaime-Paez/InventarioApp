@@ -25,10 +25,13 @@ import {
   emitRemindersSync,
   fetchRemindersFromBackend,
   formatCurrentUserName,
+  getReminderActionSeverity,
   getReminderDecisionStatus,
   getReminderDeadlineTimestamp,
   getReminderTimestamp,
   getLatestTransferHistoryEntry,
+  getResolvedTransferIssuesBySolicitudId,
+  getTransferLatestProgressBySolicitudId,
   getTransferReminderHistory,
   getTransferReminderPendingSnapshotKey,
   isReminderCreatedByCurrentUser,
@@ -71,26 +74,6 @@ const RANDOM_INSPECTION_VERIFY_ITEM_ENDPOINT = `${API_URL}/recordatorios/inspecc
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
-const isSundayReminderDate = (value) => {
-  const raw = String(value || '').trim()
-  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match) return false
-
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const day = Number(match[3])
-  const parsed = new Date(year, month - 1, day)
-  if (
-    Number.isNaN(parsed.getTime()) ||
-    parsed.getFullYear() !== year ||
-    parsed.getMonth() !== month - 1 ||
-    parsed.getDate() !== day
-  ) {
-    return false
-  }
-
-  return parsed.getDay() === 0
-}
 const toPositiveInt = (value, fallback = 0) => {
   const parsed = Number.parseInt(String(value ?? ''), 10)
   if (!Number.isFinite(parsed)) return fallback
@@ -1011,15 +994,40 @@ function QuickActions({
   const hasInTransitShipments = visibleInTransitShipments.length > 0
   const canOpenInTransitShipments = canViewInTransitShipments || fallbackInTransitShipments.length > 0
 
-  const hasPendingReminder = useMemo(
-    () => pendingRemindersForCurrentUser.length > 0,
-    [pendingRemindersForCurrentUser]
+  const remindersTransferIssueResolutionBySolicitudId = useMemo(
+    () => getResolvedTransferIssuesBySolicitudId(reminders),
+    [reminders]
   )
 
-  const pendingReminderDotCount = useMemo(
-    () => Math.min(pendingRemindersForCurrentUser.length, 3),
-    [pendingRemindersForCurrentUser]
+  const remindersTransferLatestProgressBySolicitudId = useMemo(
+    () => getTransferLatestProgressBySolicitudId(reminders),
+    [reminders]
   )
+
+  // A reminder only lights up the bell when it represents an unresolved action —
+  // identical rule set to what colors a day red/yellow in the reminders timeline.
+  const actionRequiredRemindersForCurrentUser = useMemo(
+    () =>
+      reminders.filter((reminder) => {
+        if (!isReminderForCurrentUser(reminder, currentUserIds)) return false
+        const severity = getReminderActionSeverity(reminder, {
+          currentUserIdSet: currentUserIds,
+          currentUserName,
+          resolvedTransferIssuesBySolicitudId: remindersTransferIssueResolutionBySolicitudId,
+          transferLatestProgressBySolicitudId: remindersTransferLatestProgressBySolicitudId,
+        })
+        return severity !== 'default'
+      }),
+    [
+      reminders,
+      currentUserIds,
+      currentUserName,
+      remindersTransferIssueResolutionBySolicitudId,
+      remindersTransferLatestProgressBySolicitudId,
+    ]
+  )
+
+  const hasPendingReminder = actionRequiredRemindersForCurrentUser.length > 0
 
   const generalPendingRemindersForCurrentUser = useMemo(
     () =>
@@ -2613,55 +2621,6 @@ function QuickActions({
       return normalized
     })
   }, [])
-
-  const handleCreateReminder = ({ date, time, description, recipients, context }) => {
-    const normalizedDate = String(date || '').trim()
-    const normalizedTime = String(time || '').trim()
-    const normalizedDescription = String(description || '').trim()
-    const normalizedRecipients = (Array.isArray(recipients) ? recipients : [])
-      .map(sanitizeRecipient)
-      .filter(Boolean)
-
-    if (!normalizedDate || !normalizedTime || !normalizedDescription || !normalizedRecipients.length) {
-      return false
-    }
-
-    if (isSundayReminderDate(normalizedDate)) {
-      showErrorToast('Los recordatorios no se pueden programar en domingo.')
-      return false
-    }
-
-    const contextType = normalizeId(context?.type)
-    const contextId = normalizeId(context?.id)
-    const normalizedContext =
-      contextType && contextId
-        ? {
-            type: contextType,
-            id: contextId,
-            label: String(context?.label || '').trim(),
-          }
-        : null
-
-    applyReminderUpdate((prev) => [
-      {
-        id: createReminderId(),
-        date: normalizedDate,
-        time: normalizedTime,
-        description: normalizedDescription,
-        creator: {
-          id: currentPrimaryUserId,
-          name: currentUserName,
-        },
-        recipients: normalizedRecipients,
-        context: normalizedContext,
-        createdAt: new Date().toISOString(),
-        completedBy: [],
-      },
-      ...prev,
-    ])
-
-    return true
-  }
 
   const handleMarkReminderSeen = (reminderId) => {
     const normalizedReminderId = normalizeId(reminderId)
@@ -4540,7 +4499,6 @@ function QuickActions({
         currentReceiveBranchIds={currentReceiveBranchIds}
         reminders={personalReminders}
         allReminders={reminders}
-        onCreateReminder={handleCreateReminder}
         onMarkReminderSeen={handleMarkReminderSeen}
         darkMode={darkMode}
         onError={showErrorToast}

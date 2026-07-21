@@ -9,7 +9,6 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import InventarioEditor from '../../inventario/InventarioEditor/InventarioEditor'
 import useModalAnimation from '../../common/useModalAnimation'
-import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
 import { formatMoneyFromValue, formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 import { toUpperCode } from '../../../../utils/textInput'
@@ -1562,14 +1561,6 @@ function ProductoDetails({
             </button>}
             {!onlyGeneralTab && <button
               type="button"
-              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('recordatorios')}
-              aria-selected={activeTab === 'recordatorios'}
-            >
-              Recordatorios
-            </button>}
-            {!onlyGeneralTab && <button
-              type="button"
               className={`create-user__tab ${activeTab === 'calificaciones' ? 'create-user__tab--active' : ''}`}
               onClick={() => setActiveTab('calificaciones')}
               aria-selected={activeTab === 'calificaciones'}
@@ -2007,23 +1998,6 @@ function ProductoDetails({
                   </div>
                 )}
               </>
-            )}
-
-            {activeTab === 'recordatorios' && (
-              <EntityRemindersTab
-                token={token}
-                currentUser={currentUser}
-                entityType="producto"
-                entityId={productoId}
-                isOpen={open}
-                entityLabel={
-                  formData.codigo
-                    ? `${formData.codigo} - ${formData.nombre || 'Producto'}`
-                    : formData.nombre || (productoId ? `Producto #${productoId}` : 'Producto')
-                }
-                canCreateReminder={allowComment && isEditing}
-                onError={notifyError}
-              />
             )}
 
             {activeTab === 'calificaciones' && (

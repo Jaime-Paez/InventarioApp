@@ -4,7 +4,6 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
-import EntityRemindersTab from '../../common/reminders/EntityRemindersTab'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -35,7 +34,6 @@ function ClienteDetails({
   onUpdated,
   onDeleted,
   onError,
-  currentUser,
   allowEdit = true,
   allowDelete = true,
 }) {
@@ -564,13 +562,6 @@ function ClienteDetails({
             >
               General
             </button>
-            <button
-              type="button"
-              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('recordatorios')}
-            >
-              Recordatorios
-            </button>
           </div>
 
           <div className="create-user__body">
@@ -753,22 +744,6 @@ function ClienteDetails({
                 </div>
               )}
               </section>
-            )}
-
-            {activeTab === 'recordatorios' && (
-              <EntityRemindersTab
-                token={token}
-                currentUser={currentUser}
-                entityType="cliente"
-                entityId={clienteId}
-                isOpen={open}
-                entityLabel={
-                  `${formData.nombres || ''} ${formData.apellidos || ''}`.trim() ||
-                  (clienteId ? `Cliente #${clienteId}` : 'Cliente')
-                }
-                canCreateReminder={allowEdit && isEditing}
-                onError={notifyError}
-              />
             )}
           </div>
         </div>

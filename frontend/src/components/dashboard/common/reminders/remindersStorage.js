@@ -1095,3 +1095,212 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
     canMarkSeen: !isSpecialReminder,
   }
 }
+
+const TRANSFER_PROGRESS_STAGE_RANK = {
+  pendiente: 0,
+  aceptada: 1,
+  enviado: 2,
+  recibido: 3,
+}
+
+export const normalizeTransferProgressStage = (value) => {
+  const normalized = normalizeComparableText(value)
+  if (!normalized) return 'pendiente'
+  if (normalized.includes('recib') || normalized.includes('llego')) return 'recibido'
+  if (normalized.includes('envi') || normalized.includes('traslado') || normalized.includes('transito')) {
+    return 'enviado'
+  }
+  if (normalized.includes('acept')) return 'aceptada'
+  return 'pendiente'
+}
+
+export const getReminderDateTimeTimestamp = (reminder) => {
+  const date = String(reminder?.date || '').trim()
+  if (!date) return Number.NaN
+  const time = String(reminder?.time || '').trim()
+  const timestamp = Date.parse(`${date}T${time || '00:00'}:00`)
+  return Number.isFinite(timestamp) ? timestamp : Number.NaN
+}
+
+export const hasRandomInspectionDraft = (inspectionId) => {
+  if (!inspectionId) return false
+  try {
+    return !!localStorage.getItem(`ri_draft_${inspectionId}`)
+  } catch {
+    return false
+  }
+}
+
+export const getResolvedTransferIssuesBySolicitudId = (reminders) => {
+  const source = Array.isArray(reminders) ? reminders : []
+  const bySolicitudId = new Map()
+
+  source.forEach((reminder) => {
+    if (!isTransferIssueReminder(reminder)) return
+
+    const solicitudId = normalizeId(reminder?.context?.id)
+    if (!solicitudId) return
+
+    const timestamp = Number.isFinite(getReminderDateTimeTimestamp(reminder))
+      ? getReminderDateTimeTimestamp(reminder)
+      : Date.parse(String(reminder?.createdAt || '').trim()) || 0
+    const description = String(reminder?.description || '').toLowerCase()
+    const isResolved = (
+      reminderCompletedByIds(reminder).length > 0 ||
+      description.includes('resuelto') ||
+      description.includes('resueltos') ||
+      description.includes('perdido')
+    )
+
+    const previous = bySolicitudId.get(solicitudId)
+    if (!previous || timestamp >= previous.timestamp) {
+      bySolicitudId.set(solicitudId, { resolved: isResolved, timestamp })
+    }
+  })
+
+  return bySolicitudId
+}
+
+export const getTransferLatestProgressBySolicitudId = (reminders) => {
+  const map = {}
+  ;(Array.isArray(reminders) ? reminders : []).forEach((reminder) => {
+    if (normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_') !== 'solicitud_traslado') return
+
+    const solicitudId = normalizeId(reminder?.context?.id)
+    if (!solicitudId) return
+
+    const receiptOutcome = getTransferReceiptOutcome(reminder)
+    const decisionStatus = getReminderDecisionStatus(reminder)
+    const stage = receiptOutcome
+      ? 'recibido'
+      : (decisionStatus === 'enviado' ? 'enviado' : (decisionStatus === 'aceptada' ? 'aceptada' : 'pendiente'))
+    const rank = TRANSFER_PROGRESS_STAGE_RANK[stage] ?? 0
+    const timestamp = getReminderDateTimeTimestamp(reminder)
+    const safeTimestamp = Number.isFinite(timestamp) ? timestamp : 0
+    const reminderId = normalizeId(reminder?.id)
+
+    const current = map[solicitudId]
+    if (!current || rank > current.rank || (rank === current.rank && safeTimestamp >= current.timestamp)) {
+      map[solicitudId] = { stage, rank, receiptOutcome: receiptOutcome || '', timestamp: safeTimestamp, reminderId }
+    }
+  })
+  return map
+}
+
+const getTransferVisualDecisionStatus = ({ decisionStatus, latestTransferStage, receiptOutcome = '' }) => {
+  if (receiptOutcome === 'completo' || receiptOutcome === 'incompleto') return 'recibido'
+  const normalizedStage = normalizeTransferProgressStage(latestTransferStage)
+  if (normalizedStage === 'recibido') return 'recibido'
+  if (normalizedStage === 'enviado') return 'enviado'
+  if (normalizedStage === 'aceptada') return 'aceptada'
+  return decisionStatus
+}
+
+const getTransferVisualStatus = (baseStatus, visualDecisionStatus) => {
+  if (visualDecisionStatus === 'recibido') return { label: 'Cumplido', className: 'arrived', canMarkSeen: false }
+  if (visualDecisionStatus === 'enviado') return { label: 'Enviado', className: 'sent', canMarkSeen: false }
+  if (visualDecisionStatus === 'aceptada') return { label: 'Aceptada', className: 'accepted', canMarkSeen: false }
+  if (visualDecisionStatus === 'rechazada') return { label: 'Rechazada', className: 'rejected', canMarkSeen: false }
+  if (visualDecisionStatus === 'cancelado') return { label: 'Cancelado', className: 'cancelled', canMarkSeen: false }
+  return baseStatus
+}
+
+// Single source of truth for "does this reminder represent an unresolved action" —
+// used both by the timeline day markers (RecordatoriosPopup) and the bell dot (QuickActions),
+// so both stay identical by construction instead of by convention.
+export const getReminderActionSeverity = (reminder, {
+  currentUserIdSet,
+  currentUserName = '',
+  resolvedTransferIssuesBySolicitudId = new Map(),
+  transferLatestProgressBySolicitudId = {},
+  transferLifecycleBySolicitudId = {},
+} = {}) => {
+  if (isGarantiaResultReminder(reminder)) return 'default'
+
+  const baseStatus = buildReminderStatusForUser(reminder, currentUserIdSet)
+  const isTransferIssue = isTransferIssueReminder(reminder)
+  const isTransferContextReminder =
+    normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_') === 'solicitud_traslado'
+  const decisionStatus = getReminderDecisionStatus(reminder)
+  const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
+  const solicitudId = normalizeId(reminder?.context?.id)
+
+  const transferLifecycle = transferLifecycleBySolicitudId?.[solicitudId] || null
+  const latestTransferProgress = solicitudId ? (transferLatestProgressBySolicitudId?.[solicitudId] || null) : null
+  const latestTransferStageFromReminders = normalizeTransferProgressStage(latestTransferProgress?.stage)
+  const latestTransferStageFromLifecycle = normalizeTransferProgressStage(transferLifecycle?.stage || '')
+  const latestTransferStage = (() => {
+    const reminderRank = TRANSFER_PROGRESS_STAGE_RANK[latestTransferStageFromReminders] ?? 0
+    const lifecycleRank = TRANSFER_PROGRESS_STAGE_RANK[latestTransferStageFromLifecycle] ?? 0
+    return lifecycleRank > reminderRank ? latestTransferStageFromLifecycle : latestTransferStageFromReminders
+  })()
+  const visualDecisionStatus = getTransferVisualDecisionStatus({
+    decisionStatus,
+    latestTransferStage,
+    receiptOutcome: transferReceiptOutcome,
+  })
+  const status = getTransferVisualStatus(baseStatus, visualDecisionStatus)
+
+  const issueResolution = solicitudId ? resolvedTransferIssuesBySolicitudId.get(solicitudId) : null
+  const isIssueResolved = Boolean(issueResolution?.resolved)
+  const isReminderOwnedByCurrentUser = isReminderCreatedByCurrentUser(reminder, currentUserIdSet, currentUserName)
+
+  const displayStatus = (() => {
+    if (visualDecisionStatus === 'recibido') {
+      const outcomeForLabel = String(latestTransferProgress?.receiptOutcome || '').trim() || transferReceiptOutcome
+      if (isTransferIssue) {
+        return isIssueResolved
+          ? { ...status, label: 'Cumplido', className: 'arrived' }
+          : { ...status, label: 'Pendiente', className: 'pending' }
+      }
+      if (outcomeForLabel === 'incompleto' && !isIssueResolved) {
+        return { ...status, label: 'Entregada con novedades', className: 'issue' }
+      }
+      if (isReminderOwnedByCurrentUser) {
+        return { ...status, label: 'Cumplido', className: 'arrived' }
+      }
+      return { ...status, label: 'Recibida', className: 'arrived' }
+    }
+    return status
+  })()
+
+  const isPendingInspectionAlert = (
+    status.className === 'pending' &&
+    (
+      isRandomInspectionDailyReminder(reminder) ||
+      isRandomInspectionVerifyReminder(reminder) ||
+      isRandomInspectionAdminSummaryReminder(reminder)
+    )
+  )
+  const isInspectionInProgress = (
+    isPendingInspectionAlert &&
+    !isRandomInspectionAdminSummaryReminder(reminder) &&
+    hasRandomInspectionDraft(solicitudId)
+  )
+
+  if (
+    displayStatus.className === 'rejected' ||
+    displayStatus.className === 'issue' ||
+    (isPendingInspectionAlert && !isInspectionInProgress)
+  ) {
+    return 'critical'
+  }
+
+  if (isInspectionInProgress) return 'warning'
+
+  if (isTransferContextReminder && visualDecisionStatus === 'rechazada' && !isReminderOwnedByCurrentUser) {
+    return 'critical'
+  }
+
+  if (
+    isTransferContextReminder &&
+    Boolean(reminder?.context?.urgente) &&
+    visualDecisionStatus !== 'recibido' &&
+    visualDecisionStatus !== 'completo' &&
+    visualDecisionStatus !== 'incompleto'
+  ) {
+    return 'critical'
+  }
+
+  return 'default'
+}

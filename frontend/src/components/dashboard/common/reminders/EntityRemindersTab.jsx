@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Minus, Plus } from 'lucide-react'
-import { API_URL, authFetch } from '../../../../utils/api'
 import { formatDateTime } from '../../../../utils/dateFormat'
 import {
   REMINDERS_STORAGE_KEY,
   REMINDERS_SYNC_EVENT,
   buildReminderStatusForUser,
   buildUserIdSet,
-  createReminderId,
   emitRemindersSync,
-  extractUserId,
   fetchRemindersFromBackend,
   formatCurrentUserName,
   formatReminderDateTime,
@@ -149,15 +145,6 @@ const mergeTransferHistoryForContext = (reminders, contextId) => {
   )
 }
 
-const getNowDateParts = () => {
-  const now = new Date()
-  const pad = (value) => String(value).padStart(2, '0')
-  return {
-    date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
-    time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
-  }
-}
-
 const formatIsoDateTime = (value) => {
   const raw = String(value || '').trim()
   if (!raw) return '-'
@@ -232,22 +219,11 @@ function EntityRemindersTab({
   entityType,
   entityId,
   entityLabel,
-  canCreateReminder = true,
-  showCreateButton = true,
   isOpen = true,
   transferSolicitudId = '',
   onError,
 }) {
   const [allReminders, setAllReminders] = useState(() => readRemindersFromStorage())
-  const [users, setUsers] = useState([])
-  const [loadingUsers, setLoadingUsers] = useState(false)
-  const [usersError, setUsersError] = useState('')
-  const [activeView, setActiveView] = useState('list')
-  const [date, setDate] = useState('')
-  const [time, setTime] = useState('')
-  const [description, setDescription] = useState('')
-  const [selectedRecipientIds, setSelectedRecipientIds] = useState([])
-  const [submitError, setSubmitError] = useState('')
   const [activeReminderDetailId, setActiveReminderDetailId] = useState('')
   const missingContextToastRef = useRef(false)
 
@@ -266,9 +242,6 @@ function EntityRemindersTab({
   )
 
   const currentUserIdSet = useMemo(() => new Set(currentUserIdValues), [currentUserIdValues])
-  const currentPrimaryUserId = currentUserIdValues[0] || ''
-  const creatorRecipientId = currentPrimaryUserId || extractUserId(currentUser)
-  const creatorRecipientName = currentUserName || formatCurrentUserName(currentUser)
 
   const normalizedTransferSolicitudId = useMemo(
     () => normalizeId(transferSolicitudId),
@@ -299,16 +272,6 @@ function EntityRemindersTab({
   const contextName = String(entityLabel || '').trim()
 
   useEffect(() => {
-    if (!usersError) return
-    notifyError(usersError)
-  }, [notifyError, usersError])
-
-  useEffect(() => {
-    if (!submitError) return
-    notifyError(submitError)
-  }, [notifyError, submitError])
-
-  useEffect(() => {
     if (!isOpen) return
     if (reminderContext) {
       missingContextToastRef.current = false
@@ -318,11 +281,6 @@ function EntityRemindersTab({
     missingContextToastRef.current = true
     notifyError('No se pudo resolver el registro para recordatorios.')
   }, [isOpen, notifyError, reminderContext])
-
-  const selectableUsers = useMemo(
-    () => users.filter((userItem) => userItem.id !== creatorRecipientId),
-    [users, creatorRecipientId]
-  )
 
   const relatedReminders = useMemo(() => {
     if (!reminderContext) return []
@@ -478,21 +436,8 @@ function EntityRemindersTab({
   }, [activeReminderDetail])
 
   useEffect(() => {
-    const defaults = getNowDateParts()
-    setDate(defaults.date)
-    setTime(defaults.time)
-    setDescription('')
-    setSelectedRecipientIds([])
-    setSubmitError('')
     setActiveReminderDetailId('')
-    setActiveView('list')
   }, [entityType, entityId])
-
-  useEffect(() => {
-    if (canCreateReminder || activeView !== 'create') return
-    setSubmitError('')
-    setActiveView('list')
-  }, [canCreateReminder, activeView])
 
   useEffect(() => {
     const targetId = normalizeId(activeReminderDetailId)
@@ -551,92 +496,6 @@ function EntityRemindersTab({
     }
   }, [token])
 
-  useEffect(() => {
-    let cancelled = false
-
-    const ensureCurrentUserInList = (list) => {
-      const currentUserId = currentPrimaryUserId || extractUserId(currentUser)
-      if (!currentUserId) return list
-      if (list.some((userItem) => userItem.id === currentUserId)) return list
-
-      return [
-        {
-          id: currentUserId,
-          name: currentUserName || formatCurrentUserName(currentUser),
-          email: currentUser?.correo || currentUser?.email || '',
-        },
-        ...list,
-      ]
-    }
-
-    const fetchUsers = async () => {
-      if (!token) {
-        setLoadingUsers(false)
-        setUsers(ensureCurrentUserInList([]))
-        setUsersError('')
-        return
-      }
-
-      setLoadingUsers(true)
-      setUsersError('')
-
-      try {
-        const list = []
-        let url = `${API_URL}/usuarios/listado/destinatarios/?page_size=200`
-
-        while (url) {
-          const response = await authFetch(url, {}, token)
-          if (!response.ok) throw new Error('No se pudo cargar la lista de usuarios.')
-
-          const data = await response.json()
-          if (Array.isArray(data)) {
-            list.push(...data)
-            url = null
-          } else {
-            const pageResults = Array.isArray(data?.results) ? data.results : []
-            list.push(...pageResults)
-            url = data?.next || null
-          }
-        }
-
-        if (cancelled) return
-
-        const dedupedUsers = []
-        const seenIds = new Set()
-        list.forEach((item) => {
-          const id = extractUserId(item)
-          if (!id || seenIds.has(id)) return
-          seenIds.add(id)
-          dedupedUsers.push({
-            id,
-            name: formatCurrentUserName(item),
-            email: item?.correo || item?.email || '',
-          })
-        })
-
-        const withCurrentUser = ensureCurrentUserInList(dedupedUsers).sort((a, b) =>
-          String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' })
-        )
-
-        setUsers(withCurrentUser)
-      } catch (error) {
-        if (cancelled) return
-        setUsersError(error?.message || 'No se pudieron cargar los usuarios.')
-        setUsers(ensureCurrentUserInList([]))
-      } finally {
-        if (!cancelled) {
-          setLoadingUsers(false)
-        }
-      }
-    }
-
-    fetchUsers()
-
-    return () => {
-      cancelled = true
-    }
-  }, [token, currentPrimaryUserId, currentUser, currentUserName])
-
   const applyReminderUpdate = (updater) => {
     setAllReminders((prev) => {
       const source = Array.isArray(prev) ? prev : []
@@ -645,95 +504,6 @@ function EntityRemindersTab({
       emitRemindersSync()
       return normalized
     })
-  }
-
-  const toggleRecipient = (recipientId) => {
-    const normalizedId = normalizeId(recipientId)
-    if (!normalizedId) return
-
-    setSelectedRecipientIds((prev) =>
-      prev.includes(normalizedId)
-        ? prev.filter((id) => id !== normalizedId)
-        : [...prev, normalizedId]
-    )
-  }
-
-  const handleCreateReminder = (event) => {
-    event.preventDefault()
-    setSubmitError('')
-
-    if (!canCreateReminder) {
-      setSubmitError('No tienes permisos para crear recordatorios en este registro.')
-      return
-    }
-
-    if (!reminderContext) {
-      setSubmitError('No se pudo resolver el registro actual.')
-      return
-    }
-
-    if (!date || !time) {
-      setSubmitError('Debes completar fecha y hora.')
-      return
-    }
-
-    const normalizedDescription = String(description || '').trim()
-    if (!normalizedDescription) {
-      setSubmitError('Debes escribir la descripcion del recordatorio.')
-      return
-    }
-
-    if (!creatorRecipientId) {
-      setSubmitError('No se pudo resolver el usuario creador.')
-      return
-    }
-
-    const usersById = new Map(users.map((userItem) => [userItem.id, userItem]))
-    const selectedRecipients = selectedRecipientIds
-      .map((recipientId) => {
-        const userItem = usersById.get(recipientId)
-        if (!userItem) return null
-        return {
-          id: userItem.id,
-          name: userItem.name,
-        }
-      })
-      .filter(Boolean)
-
-    const recipients = [
-      { id: creatorRecipientId, name: creatorRecipientName },
-      ...selectedRecipients,
-    ].filter((recipient, index, list) => list.findIndex((item) => item.id === recipient.id) === index)
-
-    if (!recipients.length) {
-      setSubmitError('No se pudo resolver la lista de destinatarios.')
-      return
-    }
-
-    const reminder = {
-      id: createReminderId(),
-      date,
-      time,
-      description: normalizedDescription,
-      creator: {
-        id: creatorRecipientId,
-        name: creatorRecipientName,
-      },
-      recipients,
-      context: reminderContext,
-      createdAt: new Date().toISOString(),
-      completedBy: [],
-    }
-
-    applyReminderUpdate((prev) => [reminder, ...prev])
-
-    const defaults = getNowDateParts()
-    setDate(defaults.date)
-    setTime(defaults.time)
-    setDescription('')
-    setSelectedRecipientIds([])
-    setSubmitError('')
-    setActiveView('list')
   }
 
   const handleMarkReminderSeen = (reminderId) => {
@@ -771,106 +541,9 @@ function EntityRemindersTab({
           <p className="create-user__eyebrow">Recordatorios</p>
           <h4>{contextName ? `Recordatorios de ${contextName}` : 'Recordatorios'}</h4>
         </div>
-        {showCreateButton && (
-          <button
-            type="button"
-            className="create-user__action create-user__action--primary entity-reminders__toggle"
-            onClick={() => {
-              if (!canCreateReminder) return
-              setSubmitError('')
-              setActiveView((prev) => (prev === 'create' ? 'list' : 'create'))
-            }}
-            disabled={!reminderContext || !canCreateReminder}
-            title={!canCreateReminder ? 'No tienes permiso para crear recordatorios.' : undefined}
-          >
-            {activeView === 'create' && canCreateReminder ? <Minus size={14} /> : <Plus size={14} />}
-            {activeView === 'create' && canCreateReminder ? 'Ocultar formulario' : 'Anadir recordatorio'}
-          </button>
-        )}
       </div>
 
-      {activeView === 'create' ? (
-        <div className="entity-reminders__pane entity-reminders__pane--form">
-          <form className="entity-reminders__form" noValidate onSubmit={handleCreateReminder}>
-            <div className="entity-reminders__form-top">
-              <div className="entity-reminders__datetime-stack">
-                <label className="create-user__field">
-                  <span>Fecha</span>
-                  <input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
-                </label>
-
-                <label className="create-user__field">
-                  <span>Hora</span>
-                  <input type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
-                </label>
-              </div>
-
-              <label className="create-user__field entity-reminders__description-field">
-                <span>Nota</span>
-                <textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  placeholder="Escribe de que trata este recordatorio"
-                  required
-                />
-              </label>
-            </div>
-
-            <section className="entity-reminders__recipients">
-              <div className="entity-reminders__recipients-head">
-                <h5>Dirigido a</h5>
-                {loadingUsers && (
-                  <span className="entity-reminders__loading">
-                    <Loader2 size={13} />
-                    Cargando usuarios...
-                  </span>
-                )}
-              </div>
-
-              <p className="entity-reminders__helper">El creador siempre esta incluido.</p>
-              <div className="entity-reminders__recipient-list">
-                {!selectableUsers.length && !loadingUsers && (
-                  <p className="entity-reminders__empty">No hay mas usuarios disponibles.</p>
-                )}
-
-                {selectableUsers.map((userItem) => {
-                  const checked = selectedRecipientIds.includes(userItem.id)
-                  return (
-                    <label key={userItem.id} className="entity-reminders__recipient-item">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleRecipient(userItem.id)}
-                      />
-                      <div>
-                        <strong>{userItem.name}</strong>
-                        {userItem.email && <small>{userItem.email}</small>}
-                      </div>
-                    </label>
-                  )
-                })}
-              </div>
-            </section>
-
-            <div className="entity-reminders__actions">
-              <button
-                type="button"
-                className="create-user__action create-user__action--cancel"
-                onClick={() => {
-                  setSubmitError('')
-                  setActiveView('list')
-                }}
-              >
-                Cancelar
-              </button>
-              <button type="submit" className="create-user__action create-user__action--primary">
-                Guardar recordatorio
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : (
-        <div className="entity-reminders__pane entity-reminders__pane--list entity-reminders__table-wrap">
+      <div className="entity-reminders__pane entity-reminders__pane--list entity-reminders__table-wrap">
           {normalizedTransferSolicitudId && (
             <div className="entity-reminders__transfer-history">
               <div className="entity-reminders__transfer-head">
@@ -1002,7 +675,6 @@ function EntityRemindersTab({
             </table>
           )}
         </div>
-      )}
 
       {activeReminderDetail && activeReminderDetailStatus && (
         <div

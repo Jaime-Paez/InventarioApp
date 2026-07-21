@@ -2965,8 +2965,6 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     entityId={entradaId}
                     isOpen={open}
                     entityLabel={modalTitle}
-                    canCreateReminder={false}
-                    showCreateButton={false}
                     transferSolicitudId={transferSolicitudId}
                     onError={notifyError}
                   />
