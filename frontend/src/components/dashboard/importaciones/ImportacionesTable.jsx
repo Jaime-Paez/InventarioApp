@@ -3642,7 +3642,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
             // que se cargó queda como estimado para cuando se cree el
             // producto real al marcar la llegada.
             ? { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: 0, precio_estimado: (parseInt(row.precio_nuevo || '0', 10) / 100).toFixed(2) }
-            : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad }
+            : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (parseInt(row.precio_nuevo || '0', 10) / 100).toFixed(2) }
       )
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/`,
@@ -3680,10 +3680,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const allConflictsResolved = validRows.every((row, i) => !hasReferenciaConflict(row) || referenciaDecisions[i] !== undefined)
   const pendingPriceCount = validRows.filter(r => r.codigo_sugerido && (!r.precio_nuevo || parseInt(r.precio_nuevo, 10) <= 0)).length
   const allPricesSet = pendingPriceCount === 0
-  // Un producto pendiente (sin catálogo) sí necesita un nombre para poder
-  // crearse — se completa en esta misma tabla o con un clic sobre las
-  // coincidencias por OEM, así que no bloquea el paso 3, solo la creación.
-  const pendingDescripcionCount = validRows.filter(r => !r.matched_producto_id && !String(r.descripcion || '').trim()).length
+  // Un producto con código sugerido (match por OEM) sí se crea de una vez en
+  // el catálogo, así que necesita nombre. Uno realmente "sin catálogo" (sin
+  // código) solo queda como detalle de la sugerencia, se completa después.
+  const pendingDescripcionCount = validRows.filter(r => r.codigo_sugerido && !String(r.descripcion || '').trim()).length
   const allDescripcionesSet = pendingDescripcionCount === 0
 
   const selectAllDecision = (decision) => {
@@ -4188,25 +4188,29 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                   {row.matched_producto_id ? (
                                     row.descripcion || '—'
                                   ) : (() => {
-                                    const showInvalid = submitAttempted && !String(row.descripcion || '').trim()
+                                    const showInvalid = row.codigo_sugerido && submitAttempted && !String(row.descripcion || '').trim()
                                     return (
                                       <input
                                         type="text"
                                         className={`imp-excel-review__codigo-input${showInvalid ? ' imp-excel-review__codigo-input--invalid' : ''}`}
                                         value={row.descripcion || ''}
                                         onChange={(e) => updateRowDescripcion(row.fila_excel, e.target.value)}
-                                        placeholder="Descripción"
-                                        title="Nombre del producto nuevo. Escríbelo o pasa el mouse sobre el ícono del OEM y haz clic en una de las coincidencias."
+                                        placeholder={row.codigo_sugerido ? 'Descripción' : 'Descripción (opcional)'}
+                                        title={
+                                          row.codigo_sugerido
+                                            ? 'Nombre del producto nuevo. Escríbelo o pasa el mouse sobre el ícono del OEM y haz clic en una de las coincidencias.'
+                                            : 'Opcional: este producto no tiene código asignado, se creará como pendiente y se puede completar más tarde al vincularlo con el catálogo.'
+                                        }
                                         style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
                                       />
                                     )
                                   })()}
                                 </td>
                                 <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
-                                <td style={{ padding: row.codigo_sugerido ? '4px 8px' : '7px 12px', textAlign: 'right' }}>
-                                  {row.codigo_sugerido ? (() => {
+                                <td style={{ padding: row.matched_producto_id ? '7px 12px' : '4px 8px', textAlign: 'right' }}>
+                                  {!row.matched_producto_id ? (() => {
                                     const priceInvalid = !row.precio_nuevo || parseInt(row.precio_nuevo, 10) <= 0
-                                    const showInvalid = submitAttempted && priceInvalid
+                                    const showInvalid = row.codigo_sugerido && submitAttempted && priceInvalid
                                     return (
                                       <div className={`imp-excel-review__precio-box${showInvalid ? ' imp-excel-review__precio-box--invalid' : ''}`}>
                                         <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.85em', flexShrink: 0 }}>$</span>
