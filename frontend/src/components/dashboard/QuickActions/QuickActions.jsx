@@ -1643,7 +1643,9 @@ function QuickActions({
     responseSnapshots.forEach(({ reminderId, snapshotKey, reminder }) => {
       if (seenIds.has(snapshotKey)) return
       nextReminderIdsSet.add(reminderId)
-      if (reminder?.context?.urgente) hasNewUrgente = true
+      if (reminder?.context?.urgente && getReminderDecisionStatus(reminder) === 'rechazada') {
+        hasNewUrgente = true
+      }
     })
     seenTransferResponseReminderIdsRef.current = nextIds
     const newReminderIds = Array.from(nextReminderIdsSet)
