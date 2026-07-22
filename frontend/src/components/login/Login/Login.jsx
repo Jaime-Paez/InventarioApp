@@ -207,7 +207,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
         <div className="panel-footer">
           <div className="helper-row">
             <button type="button" className="link-button">
-              Olvidaste tu contraseña
+              ¿Olvidaste tu contraseña?
             </button>
           </div>
 
