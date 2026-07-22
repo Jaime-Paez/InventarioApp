@@ -15,6 +15,7 @@ import '../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../common/useModalAnimation'
 import {
   REMINDERS_TRANSFER_NOTIFICATION_EVENT,
+  fetchRemindersFromBackend,
 } from '../common/reminders/remindersStorage'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
@@ -1116,6 +1117,7 @@ function EntradasTable({
       setShowDetailsModal(false)
       setSelectedSolicitudPreview(null)
       setSelectedId(null)
+      void fetchRemindersFromBackend(token)
       void refreshData()
     } catch (error) {
       toast.current?.show({
@@ -1168,6 +1170,7 @@ function EntradasTable({
       setShowDetailsModal(false)
       setSelectedSolicitudPreview(null)
       setSelectedId(null)
+      void fetchRemindersFromBackend(token)
       void refreshData()
     } catch (error) {
       toast.current?.show({

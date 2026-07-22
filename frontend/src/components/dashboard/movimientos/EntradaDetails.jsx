@@ -2983,17 +2983,24 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                 {isReadOnlyMode && !isEditing ? 'Cerrar' : 'Cancelar'}
               </button>
               {!isReadOnlyMode && effectiveAllowEdit && (
-                  <button
-                    type="button"
-                    className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
-                    onClick={handleEditToggleClick}
-                    disabled={loadingData || saving || deleteLoading}
-                  >
-                  <span className="user-details__toggle-icon" aria-hidden="true">
-                    {isEditing ? <Eye size={14} /> : <Pencil size={14} />}
+                  <span className="entrada-details__edit-hint-wrapper">
+                    {isRejectedSolicitudRibbon && !isEditing && (
+                      <span className="entrada-details__edit-hint" role="note">
+                        Presiona Editar para volver a intentar con la solicitud
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className={`create-user__action create-user__action--edit user-details__edit-toggle${isEditing ? ' user-details__edit-toggle--active' : ''}`}
+                      onClick={handleEditToggleClick}
+                      disabled={loadingData || saving || deleteLoading}
+                    >
+                    <span className="user-details__toggle-icon" aria-hidden="true">
+                      {isEditing ? <Eye size={14} /> : <Pencil size={14} />}
+                    </span>
+                    <span>{isEditing ? 'Solo lectura' : 'Editar'}</span>
+                  </button>
                   </span>
-                  <span>{isEditing ? 'Solo lectura' : 'Editar'}</span>
-                </button>
               )}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>

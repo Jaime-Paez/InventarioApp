@@ -1622,6 +1622,7 @@ function QuickActions({
       .map((reminder) => ({
         reminderId: normalizeId(reminder?.id),
         snapshotKey: getTransferReminderPendingSnapshotKey(reminder) || normalizeId(reminder?.id),
+        reminder,
       }))
       .filter((item) => item.reminderId && item.snapshotKey)
     const nextReminderIds = responseSnapshots.map((item) => item.reminderId)
@@ -1638,14 +1639,17 @@ function QuickActions({
 
     const seenIds = seenTransferResponseReminderIdsRef.current
     const nextReminderIdsSet = new Set()
-    responseSnapshots.forEach(({ reminderId, snapshotKey }) => {
-      if (!seenIds.has(snapshotKey)) nextReminderIdsSet.add(reminderId)
+    let hasNewUrgente = false
+    responseSnapshots.forEach(({ reminderId, snapshotKey, reminder }) => {
+      if (seenIds.has(snapshotKey)) return
+      nextReminderIdsSet.add(reminderId)
+      if (reminder?.context?.urgente) hasNewUrgente = true
     })
     seenTransferResponseReminderIdsRef.current = nextIds
     const newReminderIds = Array.from(nextReminderIdsSet)
 
 	    if (newReminderIds.length) {
-	      playNotificationTone({ forceForAdmin: true })
+	      playNotificationTone({ forceForAdmin: true, urgent: hasNewUrgente })
 	      const notificationDetail = {
 	        type: 'solicitud_traslado_resuelta',
 	        reminderIds: newReminderIds,

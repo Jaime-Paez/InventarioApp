@@ -3360,6 +3360,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     append_unique(candidate)
             append_unique(request_creator)
             append_unique(actor_recipient)
+
+            already_aware_ids = []
+            for candidate in (request_creator, actor_recipient):
+                candidate_id = str((candidate or {}).get("id") or "").strip()
+                if candidate_id and candidate_id not in already_aware_ids:
+                    already_aware_ids.append(candidate_id)
+
             deadline_at = now.replace(hour=23, minute=59, second=59, microsecond=999000)
             full_history = self._append_solicitud_transfer_history_event(
                 solicitud=solicitud,
@@ -3396,7 +3403,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 },
                 "transferHistory": full_history,
                 "createdAt": resolved_at,
-                "completedBy": [],
+                "completedBy": already_aware_ids,
             }
 
             merged = self._upsert_transfer_context_reminder(
