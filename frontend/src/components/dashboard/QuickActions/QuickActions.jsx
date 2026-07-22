@@ -6,6 +6,7 @@ import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
+import urgentNotificationAudioSrc from '../common/reminders/urgentnotifications.mp3'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
 import {
@@ -51,7 +52,7 @@ import {
 } from '../common/reminders/remindersStorage'
 
 const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
-const URGENT_URGENTE_NEAR_FULL_MS = 10 * 60 * 1000
+const URGENT_URGENTE_NEAR_FULL_MS = 5 * 60 * 1000
 const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
 const URGENT_URGENTE_DECISION_MESSAGE = '¡Urgente! Tienes una solicitud de traslado pendiente.'
 const URGENT_SHIPMENT_MESSAGE = 'Tienes un envío pendiente por despachar.'
@@ -442,6 +443,7 @@ function QuickActions({
   const receiveLocationDropdownRefs = useRef({})
   const audioContextRef = useRef(null)
   const notificationAudioRef = useRef(null)
+  const urgentNotificationAudioRef = useRef(null)
   const didPlayLoginToneRef = useRef(false)
   const didInitUrgentSnapshotRef = useRef(false)
   const seenUrgentReminderIdsRef = useRef(new Set())
@@ -831,7 +833,10 @@ function QuickActions({
   const playNotificationTone = useCallback((options = {}) => {
     const forceForAdmin = Boolean(options?.forceForAdmin)
     if (suppressAdminAlerts && !forceForAdmin) return
-    const audio = notificationAudioRef.current
+    const useUrgentTone = Boolean(options?.urgent)
+    const audio = useUrgentTone
+      ? (urgentNotificationAudioRef.current || notificationAudioRef.current)
+      : notificationAudioRef.current
     if (audio) {
       try {
         audio.currentTime = 0
@@ -1111,6 +1116,17 @@ function QuickActions({
         }
       }
 
+      const urgentNotificationAudio = urgentNotificationAudioRef.current
+      urgentNotificationAudioRef.current = null
+      if (urgentNotificationAudio) {
+        try {
+          urgentNotificationAudio.pause()
+          urgentNotificationAudio.src = ''
+        } catch {
+          // Ignore cleanup errors.
+        }
+      }
+
       const context = audioContextRef.current
       audioContextRef.current = null
       if (context && typeof context.close === 'function') {
@@ -1126,6 +1142,11 @@ function QuickActions({
     audio.preload = 'auto'
     audio.volume = 0.9
     notificationAudioRef.current = audio
+
+    const urgentAudio = new Audio(urgentNotificationAudioSrc)
+    urgentAudio.preload = 'auto'
+    urgentAudio.volume = 0.9
+    urgentNotificationAudioRef.current = urgentAudio
   }, [])
 
   useEffect(() => {
@@ -1441,15 +1462,20 @@ function QuickActions({
 
     const seenIds = seenUrgentReminderIdsRef.current
     const newReminderIds = []
+    let hasNewUrgente = false
     nextSnapshotKeys.forEach((snapshotKey) => {
       if (seenIds.has(snapshotKey)) return
       const reminderId = normalizeId(String(snapshotKey).split(':')[0])
       if (reminderId) newReminderIds.push(reminderId)
+      const matchingReminder = eligibleUrgentDecisionReminders.find(
+        (reminder) => getTransferReminderPendingSnapshotKey(reminder) === snapshotKey
+      )
+      if (matchingReminder?.context?.urgente) hasNewUrgente = true
     })
     seenUrgentReminderIdsRef.current = nextSnapshotKeys
 
     if (newReminderIds.length) {
-      playNotificationTone({ forceForAdmin: true })
+      playNotificationTone({ forceForAdmin: true, urgent: hasNewUrgente })
       const notificationDetail = {
         type: 'solicitud_traslado_pendiente',
         reminderIds: newReminderIds,
@@ -2576,7 +2602,7 @@ function QuickActions({
     if (typeof window === 'undefined') return undefined
     const timer = window.setInterval(() => {
       if (hasUrgenteActiveRef.current) {
-        playNotificationTone({ forceForAdmin: true })
+        playNotificationTone({ forceForAdmin: true, urgent: true })
       }
     }, 60 * 1000)
     return () => window.clearInterval(timer)
