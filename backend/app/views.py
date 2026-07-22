@@ -1880,6 +1880,7 @@ def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, d
     inventory_row.save(update_fields=["cantidad"])
 
 
+# Health check usado por Render para verificar que el servicio esté vivo.
 def ping(request):
     return JsonResponse({"message": "pong", "framework": "Django"})
 
