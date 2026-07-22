@@ -1703,7 +1703,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             request_creator = self._resolve_transfer_request_creator_from_payload(
                 normalized_payload,
                 solicitud_id=solicitud_id,
-            )
+            ) or self._normalize_reminder_recipient(getattr(solicitud, "creado_por", None))
 
             current_context_reminder = None
             for item in normalized_payload:
@@ -1837,7 +1837,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             request_creator = self._resolve_transfer_request_creator_from_payload(
                 normalized,
                 solicitud_id=solicitud_id,
-            )
+            ) or self._normalize_reminder_recipient(getattr(solicitud, "creado_por", None))
             seed_history = self._get_transfer_context_history_from_payload(
                 normalized,
                 solicitud_id=solicitud_id,
@@ -3319,7 +3319,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             request_creator = self._resolve_transfer_request_creator_from_payload(
                 normalized_payload,
                 solicitud_id=solicitud_id,
-            )
+            ) or self._normalize_reminder_recipient(getattr(solicitud, "creado_por", None))
 
             existing_assigned = []
             if isinstance(current_context_reminder, dict):

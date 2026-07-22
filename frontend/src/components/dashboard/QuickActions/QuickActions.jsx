@@ -57,6 +57,7 @@ const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
 const URGENT_URGENTE_DECISION_MESSAGE = '¡Urgente! Tienes una solicitud de traslado pendiente.'
 const URGENT_SHIPMENT_MESSAGE = 'Tienes un envío pendiente por despachar.'
 const URGENT_REJECTED_TRANSFER_MESSAGE = 'Corrige tu solicitud de traslado rechazada.'
+const URGENT_URGENTE_REJECTED_TRANSFER_MESSAGE = '¡Urgente! Corrige tu solicitud de traslado rechazada.'
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
@@ -1672,14 +1673,16 @@ function QuickActions({
               const time = String(reminder?.time || '').trim()
               const dateTimeCandidate = date ? `${date}T${time || '00:00'}:00` : ''
               const targetId = getReminderUrgentSnapshotKey(reminder, 'rejected-transfer')
+              const isUrgente = Boolean(reminder?.context?.urgente)
 
               return {
                 id: targetId || `rejected-transfer-${reminderId}`,
                 reminderId,
                 kind: 'rejected_transfer',
                 anchor: 'top_right',
-                message: URGENT_REJECTED_TRANSFER_MESSAGE,
+                message: isUrgente ? URGENT_URGENTE_REJECTED_TRANSFER_MESSAGE : URGENT_REJECTED_TRANSFER_MESSAGE,
                 priorityTimestamp: resolveReminderStateTimestamp(reminder) || parseEntityTimestamp(dateTimeCandidate),
+                isUrgente,
                 reminder,
               }
             })
@@ -4276,11 +4279,9 @@ function QuickActions({
               aria-label="Envíos en camino"
             >
               <span>Envíos en camino</span>
-              {!suppressAdminAlerts && (
-                <span className="quick-actions__pending-shipments-count">
-                  {inTransitShipmentsLoading ? '...' : visibleInTransitShipments.length}
-                </span>
-              )}
+              <span className="quick-actions__pending-shipments-count">
+                {inTransitShipmentsLoading ? '...' : visibleInTransitShipments.length}
+              </span>
             </button>
 
             {isInTransitShipmentsOpen && (
@@ -4373,11 +4374,9 @@ function QuickActions({
               aria-label="Envíos pendientes"
             >
               <span>Envíos pendientes</span>
-              {!suppressAdminAlerts && (
-                <span className="quick-actions__pending-shipments-count">
-                  {pendingShipmentsLoading ? '...' : pendingShipments.length}
-                </span>
-              )}
+              <span className="quick-actions__pending-shipments-count">
+                {pendingShipmentsLoading ? '...' : pendingShipments.length}
+              </span>
             </button>
 
             {isPendingShipmentsOpen && (

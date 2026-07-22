@@ -50,18 +50,23 @@
 }
 
 .quick-actions__pending-shipments-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
   min-width: 22px;
-  height: 20px;
+  height: 22px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 38%, var(--color-border));
-  background: var(--color-surface);
-  color: var(--color-primary);
+  background: #dc2626;
+  color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 6px;
-  font-size: 0.72rem;
+  padding: 0 5px;
+  font-size: 0.78rem;
   font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .quick-actions__pending-shipments.has-login-animation .quick-actions__pending-shipments-count {
@@ -639,9 +644,8 @@
 }
 
 .quick-actions__dock.dark .quick-actions__pending-shipments-count {
-  background: rgba(17, 24, 39, 0.75);
-  color: var(--color-primary-dark);
-  border-color: color-mix(in srgb, var(--color-primary-dark) 45%, var(--color-border));
+  background: #dc2626;
+  color: #fff;
 }
 
 .quick-actions__dock.dark .quick-actions__pending-shipments-panel {
