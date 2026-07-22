@@ -6150,12 +6150,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '',
       }
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), _detalleId: d.id ?? null, producto: d.producto, cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed }
+        return { _key: String(d.producto.id), _detalleId: d.id ?? null, producto: d.producto, cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed }
       }
       return {
         _key: 'sc_' + (d.id ?? i), _detalleId: d.id ?? null, producto: null,
         codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '', referencia: d.referencia || '',
-        cantidad: String(d.cantidad || ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
+        cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
       }
     })
     setDetails(loaded)
@@ -7219,7 +7219,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         const oem = String(getProductoOem(item.producto) || item.oem || '').trim() || '-'
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
-                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio
+                        const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
+                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
                           <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
