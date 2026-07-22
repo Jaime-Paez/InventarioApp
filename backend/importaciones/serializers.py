@@ -56,8 +56,13 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
         producto = data.get("producto")
         codigo = str(data.get("codigo") or "").strip()
         nombre = str(data.get("nombre") or "").strip()
-        if not producto and not codigo and not nombre:
-            raise serializers.ValidationError("Se requiere producto o código/nombre.")
+        referencia = str(data.get("referencia") or "").strip()
+        oem = str(data.get("oem") or "").strip()
+        # Un producto realmente sin catálogo (sin producto_id, sin código
+        # sugerido) queda como pendiente: alcanza con referencia u OEM para
+        # poder identificarlo y vincularlo después al confirmar la llegada.
+        if not producto and not codigo and not nombre and not referencia and not oem:
+            raise serializers.ValidationError("Se requiere producto, código/nombre, o referencia/OEM.")
         # Un producto ya existente en el catálogo sí necesita una cantidad
         # real a importar. Un producto pendiente (sin producto_id) puede
         # crearse con cantidad 0 — solo registra el catálogo, sin pedir
