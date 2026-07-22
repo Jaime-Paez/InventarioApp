@@ -4079,7 +4079,7 @@ function CreateEntrada({
             onMouseDown={() => setShowUrgenteConfirm(false)}
           >
             <div
-              className="create-salida__confirm-card"
+              className="create-salida__confirm-card create-salida__confirm-card--urgente"
               onMouseDown={(event) => event.stopPropagation()}
             >
               <h4>Confirmar urgencia</h4>
@@ -4094,7 +4094,7 @@ function CreateEntrada({
                 </button>
                 <button
                   type="button"
-                  className="create-user__action"
+                  className="create-user__action create-salida__confirm-danger"
                   onClick={() => {
                     setFormData((prev) => ({ ...prev, urgente: true }))
                     setShowUrgenteConfirm(false)

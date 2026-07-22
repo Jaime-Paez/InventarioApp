@@ -1223,6 +1223,20 @@
   color: #7f1d1d;
 }
 
+.create-salida__confirm-card--urgente {
+  border: 2px solid var(--color-border);
+}
+
+.create-salida__confirm-danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.create-salida__confirm-danger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
 .create-salida__confirm-field {
   display: grid;
   gap: 6px;
