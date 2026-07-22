@@ -1186,7 +1186,8 @@
 }
 
 /* Mismo rojo que .create-user__field--invalid en el resto de la app. */
-.imp-excel-review__precio-box--invalid {
+.imp-excel-review__precio-box--invalid,
+.imp-excel-review__codigo-input--invalid {
   border-color: color-mix(in srgb, #ef4444 55%, var(--color-border, #e2e8f0));
   box-shadow: 0 0 6px 0 color-mix(in srgb, #ef4444 35%, transparent);
 }
@@ -1197,9 +1198,11 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
 }
 
-/* Al enfocar un precio inválido, se mantiene el rojo (más intenso) en vez
-   de cambiar a azul — igual que .create-user__field--invalid input:focus. */
-.imp-excel-review__precio-box--invalid:focus-within {
+/* Al enfocar un precio o descripción inválidos, se mantiene el rojo (más
+   intenso) en vez de cambiar a azul — igual que .create-user__field--invalid
+   input:focus. */
+.imp-excel-review__precio-box--invalid:focus-within,
+.imp-excel-review__codigo-input--invalid:focus {
   border-color: #ef4444;
   box-shadow: 0 0 8px 0 color-mix(in srgb, #ef4444 45%, transparent);
 }

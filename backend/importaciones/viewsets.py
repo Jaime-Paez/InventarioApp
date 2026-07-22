@@ -975,11 +975,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 # base de datos, el Excel debe traerla para poder continuar.
                 if not referencia:
                     faltan_datos.append("Referencia")
-                if not matched:
-                    if not descripcion:
-                        faltan_datos.append("Descripción")
-                if cantidad <= 0:
+                # La cantidad solo es obligatoria si el producto ya existe en el
+                # catálogo: ahí sí se está registrando una entrada real de stock.
+                # Un producto pendiente (sin vincular a uno existente) se puede
+                # crear con cantidad 0 y pedir unidades después, así que no
+                # bloquea este paso (ver ImportacionDetalleSerializer.validate).
+                if matched and cantidad <= 0:
                     faltan_datos.append("Cantidad")
+                # La descripción de un producto pendiente ya no bloquea este
+                # paso: se completa directamente en la revisión (paso 3), igual
+                # que el precio de un producto nuevo con código sugerido.
 
             suc_quantities = {}
             for idx, suc_id in sucursal_col_ids.items():

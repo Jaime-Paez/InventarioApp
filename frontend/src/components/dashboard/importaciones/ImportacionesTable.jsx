@@ -3576,6 +3576,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         if (row.matched_producto_id || row.codigo) return row
         const existing = findExistingMatchForCasa(row, selectedCasa?.codigo)
         if (existing) {
+          // El OEM ya está vinculado a un producto de esta misma casa: es el
+          // mismo producto, el backend solo no lo detectó porque el Excel no
+          // traía código ni una referencia que calzara. Al quedar vinculado a
+          // un producto ya existente sí necesita una cantidad real — el
+          // backend no la pidió porque, desde su punto de vista, no había match.
+          const faltan = [...(row.faltan_datos || [])]
+          if (Number(row.cantidad) <= 0 && !faltan.includes('Cantidad')) faltan.push('Cantidad')
           return {
             ...row,
             codigo: existing.codigo,
@@ -3583,6 +3590,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
             matched_producto_codigo: existing.codigo,
             matched_producto_nombre: existing.nombre,
             matched_producto_referencia: existing.referencia,
+            faltan_datos: faltan,
           }
         }
         const suggested = deriveSuggestedCodigo(row, selectedCasa?.codigo)
@@ -3600,9 +3608,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   }
 
   const handleCreate = async () => {
-    if (!allConflictsResolved || !allPricesSet) {
+    if (!allConflictsResolved || !allPricesSet || !allDescripcionesSet) {
       setSubmitAttempted(true)
       const reasons = []
+      if (!allDescripcionesSet) reasons.push(`falta la descripción de ${pendingDescripcionCount} producto${pendingDescripcionCount !== 1 ? 's' : ''} nuevo${pendingDescripcionCount !== 1 ? 's' : ''}`)
       if (!allPricesSet) reasons.push(`falta el precio de ${pendingPriceCount} producto${pendingPriceCount !== 1 ? 's' : ''} nuevo${pendingPriceCount !== 1 ? 's' : ''}`)
       if (!allConflictsResolved) reasons.push('hay conflictos de referencia sin resolver')
       toastRef.current?.show({
@@ -3671,6 +3680,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const allConflictsResolved = validRows.every((row, i) => !hasReferenciaConflict(row) || referenciaDecisions[i] !== undefined)
   const pendingPriceCount = validRows.filter(r => r.codigo_sugerido && (!r.precio_nuevo || parseInt(r.precio_nuevo, 10) <= 0)).length
   const allPricesSet = pendingPriceCount === 0
+  // Un producto pendiente (sin catálogo) sí necesita un nombre para poder
+  // crearse — se completa en esta misma tabla o con un clic sobre las
+  // coincidencias por OEM, así que no bloquea el paso 3, solo la creación.
+  const pendingDescripcionCount = validRows.filter(r => !r.matched_producto_id && !String(r.descripcion || '').trim()).length
+  const allDescripcionesSet = pendingDescripcionCount === 0
 
   const selectAllDecision = (decision) => {
     const updates = {}
@@ -3692,6 +3706,15 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const updateRowPrecioCentavos = (filaExcel, centavosDigits) => {
     setParsedRows(prev => prev.map(r => (
       r.fila_excel === filaExcel ? { ...r, precio_nuevo: centavosDigits } : r
+    )))
+  }
+
+  // Descripción de un producto pendiente (sin catálogo): se escribe a mano
+  // en la tabla o se toma con un clic desde la tarjeta de coincidencias por
+  // OEM (igual que el precio) — ya no hace falta traerla en el Excel.
+  const updateRowDescripcion = (filaExcel, value) => {
+    setParsedRows(prev => prev.map(r => (
+      r.fila_excel === filaExcel ? { ...r, descripcion: value } : r
     )))
   }
 
@@ -3974,7 +3997,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       ))}
                     </div>
                     <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#9a3412' }}>
-                      Todo producto debe tener referencia y cantidad; si no existe en el catálogo, también necesita descripción. El PVP no es obligatorio en este paso. Corrige esos datos en el Excel y vuelve a subirlo.
+                      Todo producto debe tener referencia. Si ya existe en el catálogo, también necesita una cantidad real a importar. La descripción y el PVP de un producto nuevo se pueden completar en el siguiente paso. Corrige esos datos en el Excel y vuelve a subirlo.
                     </p>
                   </div>
                 ) : (
@@ -4161,7 +4184,24 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                     </div>
                                   ) : '—'}
                                 </td>
-                                <td style={{ padding: '7px 12px' }}>{row.descripcion || '—'}</td>
+                                <td style={{ padding: row.matched_producto_id ? '7px 12px' : '4px 8px' }}>
+                                  {row.matched_producto_id ? (
+                                    row.descripcion || '—'
+                                  ) : (() => {
+                                    const showInvalid = submitAttempted && !String(row.descripcion || '').trim()
+                                    return (
+                                      <input
+                                        type="text"
+                                        className={`imp-excel-review__codigo-input${showInvalid ? ' imp-excel-review__codigo-input--invalid' : ''}`}
+                                        value={row.descripcion || ''}
+                                        onChange={(e) => updateRowDescripcion(row.fila_excel, e.target.value)}
+                                        placeholder="Descripción"
+                                        title="Nombre del producto nuevo. Escríbelo o pasa el mouse sobre el ícono del OEM y haz clic en una de las coincidencias."
+                                        style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
+                                      />
+                                    )
+                                  })()}
+                                </td>
                                 <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
                                 <td style={{ padding: row.codigo_sugerido ? '4px 8px' : '7px 12px', textAlign: 'right' }}>
                                   {row.codigo_sugerido ? (() => {
@@ -4268,6 +4308,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                     title={
                       validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia'
                         : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos'
+                        : !allDescripcionesSet ? `Debes ingresar la descripción para ${pendingDescripcionCount} producto${pendingDescripcionCount !== 1 ? 's' : ''} nuevo${pendingDescripcionCount !== 1 ? 's' : ''}`
                         : !allPricesSet ? `Debes ingresar el precio para ${pendingPriceCount} producto${pendingPriceCount !== 1 ? 's' : ''} nuevo${pendingPriceCount !== 1 ? 's' : ''}`
                         : undefined
                     }
@@ -4317,13 +4358,17 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
               </thead>
               <tbody>
                 {oemMatchesHover.matches.map((p, i) => {
-                  const canPickPrice = Boolean(oemMatchesHover.filaExcel) && p.precio != null
+                  const canPick = Boolean(oemMatchesHover.filaExcel) && (p.precio != null || p.nombre)
                   return (
                     <tr
                       key={i}
-                      title={canPickPrice ? 'Clic para usar este PVP (sin IVA) como precio del producto nuevo' : undefined}
-                      onClick={canPickPrice ? () => { updateRowPrecioCentavos(oemMatchesHover.filaExcel, String(Math.round(Number(p.precio) * 100))); hideOemMatchesHover() } : undefined}
-                      className={canPickPrice ? 'imp-alternos-hover-card__row--pickable' : undefined}
+                      title={canPick ? 'Clic para usar la descripción y el PVP (sin IVA) de este producto' : undefined}
+                      onClick={canPick ? () => {
+                        if (p.nombre) updateRowDescripcion(oemMatchesHover.filaExcel, p.nombre)
+                        if (p.precio != null) updateRowPrecioCentavos(oemMatchesHover.filaExcel, String(Math.round(Number(p.precio) * 100)))
+                        hideOemMatchesHover()
+                      } : undefined}
+                      className={canPick ? 'imp-alternos-hover-card__row--pickable' : undefined}
                     >
                       <td title={p.codigo || ''}>{p.codigo || '-'}</td>
                       <td>{p.nombre || '-'}</td>
