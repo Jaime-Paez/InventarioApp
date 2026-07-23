@@ -1365,6 +1365,24 @@
   background: color-mix(in srgb, #f59e0b 32%, transparent) !important;
 }
 
+.importaciones-aceptados__row--nuevo {
+  background: color-mix(in srgb, #f59e0b 12%, transparent) !important;
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, #f59e0b 55%, transparent);
+}
+
+.importaciones-aceptados__row--nuevo:hover {
+  background: color-mix(in srgb, #f59e0b 18%, transparent) !important;
+}
+
+.dashboard-shell.dark .importaciones-aceptados__row--nuevo {
+  background: color-mix(in srgb, #f59e0b 11%, transparent) !important;
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, #fbbf24 55%, transparent);
+}
+
+.dashboard-shell.dark .importaciones-aceptados__row--nuevo:hover {
+  background: color-mix(in srgb, #f59e0b 16%, transparent) !important;
+}
+
 .importaciones-aceptados__no-catalogo-badge {
   display: inline-block;
   flex-shrink: 0;
@@ -1382,28 +1400,6 @@
 }
 
 .dashboard-shell.dark .importaciones-aceptados__no-catalogo-badge {
-  background: rgba(245, 158, 11, 0.28);
-  color: #fde68a;
-  border-color: rgba(245, 158, 11, 0.55);
-}
-
-.importaciones-aceptados__nuevo-badge {
-  display: inline-block;
-  flex-shrink: 0;
-  margin-left: 5px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: #fde68a;
-  color: #78350f;
-  border: 1px solid #f59e0b;
-  white-space: nowrap;
-}
-
-.dashboard-shell.dark .importaciones-aceptados__nuevo-badge {
   background: rgba(245, 158, 11, 0.28);
   color: #fde68a;
   border-color: rgba(245, 158, 11, 0.55);

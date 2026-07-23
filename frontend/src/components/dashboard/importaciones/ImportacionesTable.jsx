@@ -1770,14 +1770,13 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         ? `Se registrará un inconveniente por sobrante de ${diff} unidad${diff === 1 ? '' : 'es'}.`
                         : ''
                     return (
-                      <div key={row.id} className={`create-user__locations-row imp-receive__productos-row${hasError ? ' has-validation-error' : ''}${row.creadoAqui ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
+                      <div key={row.id} className={`create-user__locations-row imp-receive__productos-row${hasError ? ' has-validation-error' : ''}${row.creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}`}>
                         <span
                           className="imp-table-cell-tip"
                           onMouseEnter={(e) => showCellHover(e, row.codigo, 'Código')}
                           onMouseLeave={hideCellHover}
                         >
                           <span className="imp-table-cell-text">{row.codigo || '-'}</span>
-                          {row.creadoAqui && <span className="importaciones-aceptados__nuevo-badge" title="Producto creado por esta importación">Nuevo</span>}
                         </span>
                         <span
                           className="imp-table-cell-tip"
@@ -2804,7 +2803,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const comentario = d.comentario || '-'
                       const envios = d.producto?.id != null ? (enviosDistribucion.porProducto.get(d.producto.id) || []) : []
                       return (
-                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${(sinCat || creadoAqui) ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
+                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
                           <span
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => !sinCat && showCellHover(e, codigo, 'Código')}
@@ -2812,12 +2811,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           >
                             {sinCat
                               ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                              : (
-                                <>
-                                  <span className="imp-table-cell-text">{codigo}</span>
-                                  {creadoAqui && <span className="importaciones-aceptados__nuevo-badge" title="Producto creado por esta importación">Nuevo</span>}
-                                </>
-                              )}
+                              : <span className="imp-table-cell-text">{codigo}</span>}
                           </span>
                           <span
                             className="imp-table-cell-tip"
@@ -7243,7 +7237,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
-                          <div key={item._key} className={`create-user__locations-row${(sinCatalogo || creadoAqui) ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
+                          <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}`}>
                             <span
                               className="imp-table-cell-tip"
                               onMouseEnter={(e) => !sinCatalogo && showCellHover(e, codigo, 'Código')}
@@ -7251,12 +7245,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             >
                               {sinCatalogo
                                 ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                                : (
-                                  <>
-                                    <span className="imp-table-cell-text">{codigo}</span>
-                                    {creadoAqui && <span className="importaciones-aceptados__nuevo-badge" title="Producto creado por esta importación">Nuevo</span>}
-                                  </>
-                                )}
+                                : <span className="imp-table-cell-text">{codigo}</span>}
                             </span>
                             <span
                               className="imp-table-cell-tip"
