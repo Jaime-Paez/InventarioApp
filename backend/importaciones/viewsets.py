@@ -1213,6 +1213,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Producto no encontrado."}, status=status.HTTP_404_NOT_FOUND)
             detalle.producto = producto
             detalle.save(update_fields=["producto"])
+            # Si el producto se acaba de crear en el paso "completar datos" de
+            # marcar llegada, se marca como generado por esta importación para
+            # poder resaltarlo en amarillo en los demás pasos.
+            if request.data.get("nuevo") and producto.creado_desde_importacion_id is None:
+                producto.creado_desde_importacion = instance
+                producto.save(update_fields=["creado_desde_importacion"])
         serializer = ImportacionDetalleSerializer(detalle)
         return Response(serializer.data)
 

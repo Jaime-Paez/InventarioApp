@@ -806,6 +806,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       cantidad: d.cantidad,
       cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
       sinCat: !d.producto?.id,
+      creadoAqui: Boolean(d.producto?.id) && d.producto?.creado_desde_importacion === imp.id,
       checked: checkedIds.has(d.id),
       newProducto: null,
     }))
@@ -852,6 +853,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           cantidad: d.cantidad,
           cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
           sinCat: !d.producto?.id,
+          creadoAqui: Boolean(d.producto?.id) && d.producto?.creado_desde_importacion === fresh.id,
           checked: checkedIds.has(d.id),
           newProducto: null,
         }))
@@ -1337,7 +1339,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       }
       const created = await resp.json()
       if (item.oem.trim()) await linkOemToProduct(created.id, item.oem)
-      return created
+      return { ...created, __wasCreated: true }
     } catch (e) {
       setFormErrors({ _general: e.message || 'Error al crear el producto.' })
       return null
@@ -1382,11 +1384,22 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       // creado en el catálogo aunque sin vínculo directo a esta línea.
       authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/detalles/${editingId}/`,
-        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: createdProducts[0].id }) },
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ producto_id: createdProducts[0].id, nuevo: Boolean(createdProducts[0].__wasCreated) }) },
         token
       ).catch(() => {})
       setRows(prev => prev.map(r => r.id === editingId
-        ? { ...r, newProducto: createdProducts[0], kitProductos: isKit ? createdProducts : null }
+        ? {
+            ...r,
+            productoId: createdProducts[0].id,
+            codigo: createdProducts[0].codigo,
+            nombre: createdProducts[0].nombre,
+            referencia: createdProducts[0].referencia,
+            precio: createdProducts[0].precio,
+            sinCat: false,
+            creadoAqui: Boolean(createdProducts[0].__wasCreated),
+            newProducto: createdProducts[0],
+            kitProductos: isKit ? createdProducts : null,
+          }
         : r))
       setEditingId(null)
     } finally {
@@ -1757,13 +1770,14 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         ? `Se registrará un inconveniente por sobrante de ${diff} unidad${diff === 1 ? '' : 'es'}.`
                         : ''
                     return (
-                      <div key={row.id} className={`create-user__locations-row imp-receive__productos-row${hasError ? ' has-validation-error' : ''}`}>
+                      <div key={row.id} className={`create-user__locations-row imp-receive__productos-row${hasError ? ' has-validation-error' : ''}${row.creadoAqui ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
                         <span
                           className="imp-table-cell-tip"
                           onMouseEnter={(e) => showCellHover(e, row.codigo, 'Código')}
                           onMouseLeave={hideCellHover}
                         >
                           <span className="imp-table-cell-text">{row.codigo || '-'}</span>
+                          {row.creadoAqui && <span className="importaciones-aceptados__nuevo-badge" title="Producto creado por esta importación">Nuevo</span>}
                         </span>
                         <span
                           className="imp-table-cell-tip"
@@ -2779,6 +2793,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       <div className="create-user__locations-row create-user__locations-row--empty imp-details__productos-row" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
                     ) : detalles.map((d, i) => {
                       const sinCat = !d.producto?.id
+                      const creadoAqui = !sinCat && d.producto?.creado_desde_importacion === imp.id
                       const codigo = d.producto?.codigo || d.codigo || '-'
                       const nombre = d.producto?.nombre || d.nombre || '-'
                       const oem = String(getProductoOem(d.producto) || d.oem || '').trim() || '-'
@@ -2789,13 +2804,20 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const comentario = d.comentario || '-'
                       const envios = d.producto?.id != null ? (enviosDistribucion.porProducto.get(d.producto.id) || []) : []
                       return (
-                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
+                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${(sinCat || creadoAqui) ? ' importaciones-aceptados__row--no-catalogo' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
                           <span
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => !sinCat && showCellHover(e, codigo, 'Código')}
                             onMouseLeave={hideCellHover}
                           >
-                            {sinCat ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span> : <span className="imp-table-cell-text">{codigo}</span>}
+                            {sinCat
+                              ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
+                              : (
+                                <>
+                                  <span className="imp-table-cell-text">{codigo}</span>
+                                  {creadoAqui && <span className="importaciones-aceptados__nuevo-badge" title="Producto creado por esta importación">Nuevo</span>}
+                                </>
+                              )}
                           </span>
                           <span
                             className="imp-table-cell-tip"
@@ -7211,6 +7233,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         <div className="create-user__locations-row create-user__locations-row--empty"><span>Sin productos agregados.</span></div>
                       ) : details.map((item) => {
                         const sinCatalogo = !item.producto?.id
+                        const creadoAqui = !sinCatalogo && item.producto?.creado_desde_importacion === imp.id
                         const codigo = item.producto?.codigo || item.codigo || ''
                         const nombre = item.producto?.nombre || item.nombre || ''
                         const oem = String(getProductoOem(item.producto) || item.oem || '').trim() || '-'
@@ -7220,7 +7243,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                         const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
-                          <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
+                          <div key={item._key} className={`create-user__locations-row${(sinCatalogo || creadoAqui) ? ' importaciones-aceptados__row--no-catalogo' : ''}`}>
                             <span
                               className="imp-table-cell-tip"
                               onMouseEnter={(e) => !sinCatalogo && showCellHover(e, codigo, 'Código')}
@@ -7228,7 +7251,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
                             >
                               {sinCatalogo
                                 ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                                : <span className="imp-table-cell-text">{codigo}</span>}
+                                : (
+                                  <>
+                                    <span className="imp-table-cell-text">{codigo}</span>
+                                    {creadoAqui && <span className="importaciones-aceptados__nuevo-badge" title="Producto creado por esta importación">Nuevo</span>}
+                                  </>
+                                )}
                             </span>
                             <span
                               className="imp-table-cell-tip"

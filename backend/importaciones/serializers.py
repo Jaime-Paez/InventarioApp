@@ -184,7 +184,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("No repitas productos dentro de la misma importacion.")
         return value
 
-    def _resolve_producto_for_detalle(self, item, casa_comercial):
+    def _resolve_producto_for_detalle(self, item, casa_comercial, importacion):
         """Si el detalle trae un código (sugerido por OEM o escrito a mano)
         pero no está vinculado a un producto existente, se crea el producto
         real en el catálogo de una vez (con stock en 0) en lugar de dejarlo
@@ -203,11 +203,15 @@ class ImportacionSerializer(serializers.ModelSerializer):
 
         producto = Producto.objects.filter(codigo__iexact=codigo).first()
         if producto is None:
+            # Se marca de dónde salió este producto para poder resaltarlo en
+            # amarillo en esta importación (y solo en esta) mientras sigue
+            # avanzando por cotización/confirmación/importar.
             producto = Producto.objects.create(
                 codigo=codigo,
                 nombre=nombre,
                 referencia=referencia,
                 precio=precio_estimado,
+                creado_desde_importacion=importacion,
             )
 
         if casa_comercial and not producto.casas_comerciales.filter(pk=casa_comercial.pk).exists():
@@ -231,7 +235,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
         if detalles_data is not None:
             casa_comercial = validated_data.get("casa_comercial") or instance.casa_comercial
             for item in detalles_data:
-                self._resolve_producto_for_detalle(item, casa_comercial)
+                self._resolve_producto_for_detalle(item, casa_comercial, instance)
             instance.detalles.all().delete()
             ImportacionDetalle.objects.bulk_create([
                 ImportacionDetalle(
@@ -272,7 +276,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
 
         importacion = Importacion.objects.create(**validated_data)
         for item in detalles_data:
-            self._resolve_producto_for_detalle(item, casa)
+            self._resolve_producto_for_detalle(item, casa, importacion)
         ImportacionDetalle.objects.bulk_create(
             [
                 ImportacionDetalle(

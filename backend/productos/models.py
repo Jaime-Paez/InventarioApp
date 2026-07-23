@@ -32,6 +32,14 @@ class Producto(models.Model):
         related_name="productos",
         blank=True,
     )
+    creado_desde_importacion = models.ForeignKey(
+        "importaciones.Importacion",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="productos_generados",
+        help_text="Importación desde la que se creó este producto automáticamente por venir sin catálogo.",
+    )
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 

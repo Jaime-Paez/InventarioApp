@@ -341,10 +341,12 @@ class ProductoSerializer(serializers.ModelSerializer):
             "casas_comerciales_ids",
             "oem_productos",
             "alternativas",
+            "creado_desde_importacion",
             "creado_en",
             "actualizado_en",
         ]
         extra_kwargs = {
+            "creado_desde_importacion": {"read_only": True},
             "codigo": {
                 "required": True,
                 "allow_blank": False,
