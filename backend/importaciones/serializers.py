@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from casa_comercial.models import CasaComercial
 from casa_comercial.serializers import CasaComercialSerializer
-from productos.models import Producto
+from productos.models import OEM, OEMProducto, Producto
 from productos.serializers import ProductoSerializer
 from solicitudes.models import Solicitud
 
@@ -184,6 +184,44 @@ class ImportacionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("No repitas productos dentro de la misma importacion.")
         return value
 
+    def _resolve_producto_for_detalle(self, item, casa_comercial):
+        """Si el detalle trae un código (sugerido por OEM o escrito a mano)
+        pero no está vinculado a un producto existente, se crea el producto
+        real en el catálogo de una vez (con stock en 0) en lugar de dejarlo
+        pendiente — así futuras importaciones lo reconocen por OEM/código.
+        """
+        if item.get("producto") is not None:
+            return
+
+        codigo = str(item.get("codigo") or "").strip()
+        if not codigo:
+            return
+
+        nombre = str(item.get("nombre") or "").strip() or codigo
+        referencia = str(item.get("referencia") or "").strip()
+        precio_estimado = item.get("precio_estimado")
+
+        producto = Producto.objects.filter(codigo__iexact=codigo).first()
+        if producto is None:
+            producto = Producto.objects.create(
+                codigo=codigo,
+                nombre=nombre,
+                referencia=referencia,
+                precio=precio_estimado,
+            )
+
+        if casa_comercial and not producto.casas_comerciales.filter(pk=casa_comercial.pk).exists():
+            producto.casas_comerciales.add(casa_comercial)
+
+        for oem_codigo in str(item.get("oem") or "").split(","):
+            oem_codigo = oem_codigo.strip()
+            if not oem_codigo:
+                continue
+            oem_obj, _ = OEM.objects.get_or_create(codigo=oem_codigo)
+            OEMProducto.objects.get_or_create(producto=producto, oem=oem_obj)
+
+        item["producto"] = producto
+
     @transaction.atomic
     def update(self, instance, validated_data):
         detalles_data = validated_data.pop("detalles", None)
@@ -191,6 +229,9 @@ class ImportacionSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         if detalles_data is not None:
+            casa_comercial = validated_data.get("casa_comercial") or instance.casa_comercial
+            for item in detalles_data:
+                self._resolve_producto_for_detalle(item, casa_comercial)
             instance.detalles.all().delete()
             ImportacionDetalle.objects.bulk_create([
                 ImportacionDetalle(
@@ -230,6 +271,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
             validated_data["creado_por"] = request.user
 
         importacion = Importacion.objects.create(**validated_data)
+        for item in detalles_data:
+            self._resolve_producto_for_detalle(item, casa)
         ImportacionDetalle.objects.bulk_create(
             [
                 ImportacionDetalle(

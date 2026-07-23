@@ -3635,14 +3635,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 ? { update_referencia: true, nueva_referencia: row.referencia }
                 : {}),
             }
-          : row.codigo_sugerido
-            // Producto realmente nuevo para esta casa (código sugerido a
-            // partir de un OEM compartido con otra casa): se crea el
-            // catálogo sin pedir unidades todavía — cantidad 0, el precio
-            // que se cargó queda como estimado para cuando se cree el
-            // producto real al marcar la llegada.
-            ? { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: 0, precio_estimado: (parseInt(row.precio_nuevo || '0', 10) / 100).toFixed(2) }
-            : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (parseInt(row.precio_nuevo || '0', 10) / 100).toFixed(2) }
+          // Producto sin producto_id (código sugerido por OEM o realmente sin
+          // catálogo): se crea como pendiente, sin vincular todavía a un
+          // Producto real, pero con la cantidad que trae el Excel — se
+          // vincula al catálogo y se confirma la llegada más tarde.
+          : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (parseInt(row.precio_nuevo || '0', 10) / 100).toFixed(2) }
       )
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/`,
