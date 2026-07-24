@@ -880,6 +880,7 @@ function EntradasTable({
     const normalizedSubTipo = normalizeValue(rowData?.sub_tipo_nombre || rowData?.sub_tipo_movimiento)
     const isTransferRow = isSolicitudTraslado || normalizedSubTipo.includes('trasl')
     const isPendingSolicitud = isSolicitudTraslado && normalizedEstado.includes('pend')
+    const isGuardadoSolicitud = isSolicitudTraslado && normalizedEstado.includes('guardad')
     const isRejectedSolicitud =
       isSolicitudTraslado &&
       (normalizedEstado.includes('rechaz') || normalizedEstado.includes('cancel'))
@@ -895,6 +896,7 @@ function EntradasTable({
     const className = [
       'cell-tooltip',
       field === 'estado_nombre' && isPendingSolicitud ? 'entradas-pending-state-chip' : '',
+      field === 'estado_nombre' && isGuardadoSolicitud ? 'entradas-guardado-state-chip' : '',
       field === 'estado_nombre' && isRejectedSolicitud ? 'entradas-rejected-state-chip' : '',
       field === 'estado_nombre' && isPartialSolicitud ? 'entradas-partial-state-chip' : '',
       field === 'estado_nombre' && isAcceptedSolicitud ? 'entradas-accepted-state-chip' : '',
@@ -1539,6 +1541,9 @@ function EntradasTable({
             }
             if (isSolicitudTraslado && normalizedEstado.includes('pend')) {
               classes.push('entradas-row--pending-solicitud')
+            }
+            if (isSolicitudTraslado && normalizedEstado.includes('guardad')) {
+              classes.push('entradas-row--guardado-solicitud')
             }
             if (isSolicitudTraslado && (normalizedEstado.includes('rechaz') || normalizedEstado.includes('cancel'))) {
               classes.push('entradas-row--rejected-solicitud')

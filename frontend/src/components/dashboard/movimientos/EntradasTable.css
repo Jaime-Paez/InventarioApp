@@ -64,6 +64,32 @@
   background: color-mix(in srgb, #facc15 34%, var(--table-color-selected)) !important;
 }
 
+.users-datatable .p-datatable-tbody > tr.entradas-row--guardado-solicitud > td {
+  background: color-mix(in srgb, #f97316 20%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #c2410c 36%, transparent) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.entradas-row--guardado-solicitud:hover > td {
+  background: color-mix(in srgb, #f97316 30%, var(--table-color-hover)) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.entradas-row--guardado-solicitud.selected-row-shadow > td,
+.users-datatable .p-datatable-tbody > tr.entradas-row--guardado-solicitud.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #f97316 34%, var(--table-color-selected)) !important;
+}
+
+.entradas-guardado-state-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #f97316 34%, transparent);
+  color: #9a3412 !important;
+  font-weight: 700;
+}
+
 .entradas-pending-state-chip {
   display: inline-flex;
   align-items: center;
@@ -197,6 +223,25 @@
 .dashboard-shell.dark .entradas-pending-state-chip {
   background: color-mix(in srgb, #facc15 42%, transparent);
   color: #111827 !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--guardado-solicitud > td {
+  background: color-mix(in srgb, #f97316 24%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #f97316 46%, var(--color-border-dark)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--guardado-solicitud:hover > td {
+  background: color-mix(in srgb, #f97316 30%, var(--table-color-dark-hover)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--guardado-solicitud.selected-row-shadow > td,
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--guardado-solicitud.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #f97316 36%, var(--table-color-selected-dark)) !important;
+}
+
+.dashboard-shell.dark .entradas-guardado-state-chip {
+  background: color-mix(in srgb, #f97316 40%, transparent);
+  color: #fed7aa !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--rejected-solicitud > td {
