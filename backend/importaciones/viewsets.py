@@ -15,7 +15,7 @@ from usuarios.permissions import ImportacionesModulePermission
 from usuarios.sucursal_scope import get_allowed_sucursal_ids, get_readable_sucursal_ids
 from usuarios.utils import is_app_admin
 
-from django.db.models import F
+from django.db.models import F, Q
 
 from app.models import ReminderState
 from configuracion.models import ConfiguracionSistema
@@ -159,6 +159,75 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if casa_comercial_id:
             queryset = queryset.filter(casa_comercial_id=casa_comercial_id)
         return queryset
+
+    @action(detail=False, methods=["get"], url_path="buscar")
+    def buscar(self, request):
+        """
+        Busca importaciones (en cualquier paso) por codigo de producto,
+        nombre, referencia u OEM -- ya sea del catalogo o de una linea sin
+        vincular (importacion pendiente/en camino/etc). Devuelve un listado
+        liviano con el paso (estado) en el que esta cada resultado.
+        """
+        term = (request.query_params.get("q") or "").strip()
+        if len(term) < 2:
+            return Response([])
+
+        matches = (
+            Importacion.objects.select_related("casa_comercial")
+            .prefetch_related(
+                "detalles__producto__oem_productos__oem",
+            )
+            .filter(
+                Q(codigo__icontains=term)
+                | Q(detalles__producto__codigo__icontains=term)
+                | Q(detalles__producto__nombre__icontains=term)
+                | Q(detalles__producto__referencia__icontains=term)
+                | Q(detalles__producto__oem_productos__oem__codigo__icontains=term)
+                | Q(detalles__codigo__icontains=term)
+                | Q(detalles__nombre__icontains=term)
+                | Q(detalles__oem__icontains=term)
+                | Q(detalles__referencia__icontains=term)
+            )
+            .distinct()
+            .order_by("-creado_en")[:30]
+        )
+
+        term_lower = term.lower()
+
+        def detalle_matches(detalle):
+            candidates = [detalle.codigo, detalle.nombre, detalle.oem, detalle.referencia]
+            producto = detalle.producto
+            if producto is not None:
+                candidates.extend([producto.codigo, producto.nombre, producto.referencia])
+                candidates.extend(
+                    op.oem.codigo for op in producto.oem_productos.all() if op.oem_id
+                )
+            return any(term_lower in str(candidate or "").lower() for candidate in candidates)
+
+        payload = []
+        for imp in matches:
+            matched_detalle = next(
+                (d for d in imp.detalles.all() if detalle_matches(d)), None
+            )
+            producto = getattr(matched_detalle, "producto", None) if matched_detalle else None
+            payload.append(
+                {
+                    "id": int(imp.id),
+                    "codigo": str(imp.codigo or "").strip(),
+                    "estado": imp.estado,
+                    "estado_label": imp.get_estado_display(),
+                    "casa_comercial_nombre": str(
+                        getattr(imp.casa_comercial, "nombre", "") or ""
+                    ).strip(),
+                    "producto_codigo": str(
+                        (producto.codigo if producto else getattr(matched_detalle, "codigo", "")) or ""
+                    ).strip(),
+                    "producto_nombre": str(
+                        (producto.nombre if producto else getattr(matched_detalle, "nombre", "")) or ""
+                    ).strip(),
+                }
+            )
+        return Response(payload)
 
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="pedir-cotizacion")

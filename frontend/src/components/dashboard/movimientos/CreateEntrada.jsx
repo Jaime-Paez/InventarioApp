@@ -50,6 +50,8 @@ const initialDetail = {
   productoId: '',
   cantidad: '',
   valor: '',
+  costo: '',
+  descuentoPorcentaje: '',
 }
 
 const initialClienteForm = {
@@ -251,6 +253,13 @@ const resolveProductPrice = (producto) => {
   const parsed = parseNumber(producto?.precio)
   if (parsed === null || parsed < 0) return ''
   const raw = String(producto?.precio ?? '').trim()
+  return raw || parsed.toFixed(2)
+}
+
+const resolveProductCost = (producto) => {
+  const parsed = parseNumber(producto?.costo_minimo)
+  if (parsed === null || parsed < 0) return ''
+  const raw = String(producto?.costo_minimo ?? '').trim()
   return raw || parsed.toFixed(2)
 }
 
@@ -657,6 +666,12 @@ function CreateEntrada({
     () => calculateLineTotal(detailDraft.cantidad, detailDraft.valor),
     [detailDraft.cantidad, detailDraft.valor]
   )
+
+  const draftCostoConIva = useMemo(() => {
+    const costo = parseNumber(detailDraft.costo)
+    if (!Number.isFinite(costo) || costo < 0) return null
+    return costo * (1 + ivaRateValue)
+  }, [detailDraft.costo, ivaRateValue])
 
   const subtotal = useMemo(
     () =>
@@ -2409,11 +2424,14 @@ function CreateEntrada({
       return
     }
     const productPrice = resolveProductPrice(producto)
+    const productCost = resolveProductCost(producto)
     setDetailError('')
     setDetailDraft((prev) => ({
       ...prev,
       productoId: String(producto.id),
       valor: productPrice,
+      costo: productCost,
+      descuentoPorcentaje: '',
       cantidad: '',
     }))
     setProductos((prev) => {
@@ -2431,7 +2449,14 @@ function CreateEntrada({
     const cantidad = parseIntValue(detailDraft.cantidad)
     const estadoProductoId = String(defaultEstadoProductoId || '').trim()
     const producto = productos.find((item) => String(item.id) === productoId)
-    const valor = parseNumber(resolveProductPrice(producto))
+    const valorRaw = String(detailDraft.valor ?? '').trim() || resolveProductPrice(producto)
+    const valor = parseNumber(valorRaw)
+    const costoRaw = String(detailDraft.costo ?? '').trim() || resolveProductCost(producto)
+    const costo = parseNumber(costoRaw)
+    const descuentoPorcentaje = Math.min(
+      100,
+      Math.max(0, parseNumber(detailDraft.descuentoPorcentaje) || 0)
+    )
 
     if (!productoId) {
       setDetailError('Selecciona un producto.')
@@ -2446,7 +2471,11 @@ function CreateEntrada({
       return
     }
     if (!Number.isFinite(valor) || valor < 0) {
-      setDetailError('El producto seleccionado no tiene un precio valido.')
+      setDetailError('Ingresa un precio valido.')
+      return
+    }
+    if (isCompraEntrada && (!Number.isFinite(costo) || costo < 0)) {
+      setDetailError('Ingresa un costo valido.')
       return
     }
     if (isTraslado) {
@@ -2495,11 +2524,15 @@ function CreateEntrada({
         productoId,
         productoCodigo: producto?.codigo ?? '',
         productoNombre: producto?.nombre ?? '',
+        productoReferencia: producto?.referencia ?? '',
+        productoPrecioBD: resolveProductPrice(producto),
         estadoProductoId,
         estadoProductoNombre: estadoProducto?.nombre ?? '',
         cantidad,
         valor,
         valor_total,
+        costo: isCompraEntrada ? costo : null,
+        descuentoPorcentaje: isCompraEntrada ? descuentoPorcentaje : null,
       },
     ])
 
@@ -2532,6 +2565,40 @@ function CreateEntrada({
 
   const handleRemoveDetail = (uid) => {
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
+  }
+
+  const handleDetailFieldChange = (uid, field, rawValue) => {
+    setDetails((prev) =>
+      prev.map((detail) => {
+        if (detail.uid !== uid) return detail
+        if (field === 'valor') {
+          const valor = parseNumber(rawValue)
+          const nextValor = Number.isFinite(valor) && valor >= 0 ? valor : 0
+          return { ...detail, valor: nextValor, valor_total: detail.cantidad * nextValor }
+        }
+        if (field === 'costo') {
+          const costo = parseNumber(rawValue)
+          return { ...detail, costo: Number.isFinite(costo) && costo >= 0 ? costo : 0 }
+        }
+        if (field === 'descuentoPorcentaje') {
+          const descuento = parseNumber(rawValue)
+          const clamped = Number.isFinite(descuento) ? Math.min(100, Math.max(0, descuento)) : 0
+          return { ...detail, descuentoPorcentaje: clamped }
+        }
+        return detail
+      })
+    )
+  }
+
+  const handleResetDetailPrecio = (uid) => {
+    setDetails((prev) =>
+      prev.map((detail) => {
+        if (detail.uid !== uid) return detail
+        const valor = parseNumber(detail.productoPrecioBD)
+        const nextValor = Number.isFinite(valor) && valor >= 0 ? valor : detail.valor
+        return { ...detail, valor: nextValor, valor_total: detail.cantidad * nextValor }
+      })
+    )
   }
 
   const buildDescripcion = (clienteLabel = '') => {
@@ -2636,6 +2703,10 @@ function CreateEntrada({
             estado_producto_id: Number(detail.estadoProductoId),
             valor: detail.valor,
             valor_total: detail.valor_total,
+            costo: isCompraEntrada && Number.isFinite(detail.costo) ? detail.costo : null,
+            descuento_porcentaje: isCompraEntrada && Number.isFinite(detail.descuentoPorcentaje)
+              ? detail.descuentoPorcentaje
+              : null,
           })),
           ubicaciones_iniciales: (Array.isArray(ubicacionesIniciales) ? ubicacionesIniciales : [])
             .map((item) => ({
@@ -3605,12 +3676,23 @@ function CreateEntrada({
                     </div>
                   </div>
 
-                  <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions">
+                  <div
+                    className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions${isCompraEntrada ? ' create-salida__products-table--compra-local' : ''}`}
+                  >
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Código</span>
+                      {isCompraEntrada && <span>Referencia</span>}
                       <span>Descripción</span>
                       <span>Cantidad</span>
-                      <span>Precio</span>
+                      {isCompraEntrada && (
+                        <>
+                          <span>Costo</span>
+                          <span>Descuento %</span>
+                          <span>Costo + IVA</span>
+                          <span>Precio actual (BD)</span>
+                        </>
+                      )}
+                      <span>{isCompraEntrada ? 'Precio nuevo' : 'Precio'}</span>
                       <span>Precio total</span>
                       <span>Acciones</span>
                     </div>
@@ -3754,6 +3836,13 @@ function CreateEntrada({
                           )}
                         </div>
                       </span>
+                      {isCompraEntrada && (
+                        <span>
+                          <span className="create-salida__table-static-value">
+                            {selectedDraftProduct?.referencia || '-'}
+                          </span>
+                        </span>
+                      )}
                       <span className="create-salida__product-name-cell">
                         <span
                           className="create-salida__table-static-value create-salida__table-static-value--name"
@@ -3775,10 +3864,53 @@ function CreateEntrada({
                           aria-invalid={draftCantidadExceedsProveedorStock ? 'true' : 'false'}
                         />
                       </span>
+                      {isCompraEntrada && (
+                        <>
+                          <span>
+                            <input
+                              name="costo"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={detailDraft.costo}
+                              onChange={handleDetailChange}
+                              disabled={loading}
+                            />
+                          </span>
+                          <span>
+                            <input
+                              name="descuentoPorcentaje"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={detailDraft.descuentoPorcentaje}
+                              onChange={handleDetailChange}
+                              disabled={loading}
+                            />
+                          </span>
+                          <span>
+                            <span className="create-salida__table-static-value">
+                              {formatCurrency(draftCostoConIva)}
+                            </span>
+                          </span>
+                          <span>
+                            <span className="create-salida__table-static-value">
+                              {selectedDraftProduct ? formatCurrency(resolveProductPrice(selectedDraftProduct)) : '-'}
+                            </span>
+                          </span>
+                        </>
+                      )}
                       <span>
-                        <span className="create-salida__table-static-value">
-                          {detailDraft.valor || '-'}
-                        </span>
+                        <input
+                          name="valor"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={detailDraft.valor}
+                          onChange={handleDetailChange}
+                          disabled={loading}
+                        />
                       </span>
                       <span>
                         <span className="create-salida__table-static-value">
@@ -3819,6 +3951,10 @@ function CreateEntrada({
                         ? Math.max(0, Math.trunc(stockAvailable))
                         : null
 
+                      const costoConIva = isCompraEntrada && Number.isFinite(detail.costo)
+                        ? detail.costo * (1 + ivaRateValue)
+                        : null
+
                       return (
                         <div key={detail.uid} className="create-user__locations-row">
                           <span>
@@ -3829,6 +3965,9 @@ function CreateEntrada({
                               </small>
                             )}
                           </span>
+                          {isCompraEntrada && (
+                            <span>{detail.productoReferencia || '-'}</span>
+                          )}
                           <span
                             onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Descripción')}
                             onMouseLeave={hideHover}
@@ -3836,7 +3975,45 @@ function CreateEntrada({
                             <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
                           </span>
                           <span>{detail.cantidad}</span>
-                          <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
+                          {isCompraEntrada && (
+                            <>
+                              <span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={detail.costo ?? ''}
+                                  onChange={(event) => handleDetailFieldChange(detail.uid, 'costo', event.target.value)}
+                                  disabled={loading}
+                                />
+                              </span>
+                              <span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.01"
+                                  value={detail.descuentoPorcentaje ?? ''}
+                                  onChange={(event) => handleDetailFieldChange(detail.uid, 'descuentoPorcentaje', event.target.value)}
+                                  disabled={loading}
+                                />
+                              </span>
+                              <span className="create-salida__numeric">{formatCurrency(costoConIva)}</span>
+                              <span className="create-salida__numeric">{formatCurrency(detail.productoPrecioBD)}</span>
+                            </>
+                          )}
+                          <span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={detail.valor}
+                              onChange={(event) => handleDetailFieldChange(detail.uid, 'valor', event.target.value)}
+                              onDoubleClick={() => handleResetDetailPrecio(detail.uid)}
+                              title="Doble clic para restaurar el precio guardado en la base de datos"
+                              disabled={loading}
+                            />
+                          </span>
                           <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                           <span className="create-user__locations-cell create-user__locations-cell--action">
                             <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={loading}>

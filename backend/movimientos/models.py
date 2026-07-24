@@ -227,6 +227,20 @@ class DetalleMovimiento(models.Model):
     )
     valor = models.DecimalField(max_digits=10, decimal_places=2)
     valor_total = models.DecimalField(max_digits=12, decimal_places=2)
+    costo = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Costo unitario inicial (sin descuento) usado en una compra local.",
+    )
+    descuento_porcentaje = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Porcentaje de descuento negociado sobre el costo, informativo.",
+    )
 
     class Meta:
         verbose_name = "Detalle de movimiento"

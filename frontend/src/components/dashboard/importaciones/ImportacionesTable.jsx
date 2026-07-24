@@ -7972,6 +7972,13 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const [showExcelImport, setShowExcelImport] = useState(false)
   const [showCreateMenu, setShowCreateMenu] = useState(false)
   const createMenuRef = useRef(null)
+  const [showSearchImportaciones, setShowSearchImportaciones] = useState(false)
+  const [importSearchQuery, setImportSearchQuery] = useState('')
+  const [importSearchResults, setImportSearchResults] = useState([])
+  const [importSearchLoading, setImportSearchLoading] = useState(false)
+  const searchImportacionesRef = useRef(null)
+  const importSearchTimerRef = useRef(null)
+  const importSearchSeqRef = useRef(0)
   const [selectedImp, setSelectedImp] = useState(null)
   const [showImpDetails, setShowImpDetails] = useState(false)
   const [editImp, setEditImp] = useState(null)
@@ -8344,6 +8351,77 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     }
   }, [token])
 
+  useEffect(() => {
+    if (!showSearchImportaciones) return undefined
+    if (importSearchTimerRef.current) clearTimeout(importSearchTimerRef.current)
+
+    const term = importSearchQuery.trim()
+    if (term.length < 2) {
+      setImportSearchResults([])
+      setImportSearchLoading(false)
+      return undefined
+    }
+
+    setImportSearchLoading(true)
+    const seq = ++importSearchSeqRef.current
+    importSearchTimerRef.current = setTimeout(async () => {
+      try {
+        const response = await authFetch(
+          `${API_URL}/importaciones/importaciones/buscar/?q=${encodeURIComponent(term)}`,
+          {},
+          token
+        )
+        if (seq !== importSearchSeqRef.current) return
+        if (!response.ok) throw new Error('No se pudo buscar.')
+        const data = await response.json()
+        setImportSearchResults(Array.isArray(data) ? data : [])
+      } catch {
+        if (seq === importSearchSeqRef.current) setImportSearchResults([])
+      } finally {
+        if (seq === importSearchSeqRef.current) setImportSearchLoading(false)
+      }
+    }, 320)
+
+    return () => {
+      if (importSearchTimerRef.current) clearTimeout(importSearchTimerRef.current)
+    }
+  }, [importSearchQuery, showSearchImportaciones, token])
+
+  useEffect(() => {
+    if (!showSearchImportaciones) return undefined
+    const handleClickOutside = (event) => {
+      if (searchImportacionesRef.current && !searchImportacionesRef.current.contains(event.target)) {
+        setShowSearchImportaciones(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClickOutside)
+    return () => window.removeEventListener('mousedown', handleClickOutside)
+  }, [showSearchImportaciones])
+
+  const handleOpenSearchResult = useCallback(async (resultId) => {
+    if (!resultId || !token) return
+    setShowImpDetails(false)
+    setShowEditImp(false)
+    try {
+      const response = await authFetch(`${API_URL}/importaciones/importaciones/${resultId}/`, {}, token)
+      if (!response.ok) throw new Error('No se pudo abrir la importación.')
+      const data = await response.json()
+      if (!statusProp) setActiveStatus(data.estado)
+      if (data.estado === 'borrador' || data.estado === 'cotizacion' || data.estado === 'confirmacion') {
+        setEditImp(data)
+        setShowEditImp(true)
+      } else {
+        setSelectedImp(data)
+        setShowImpDetails(true)
+      }
+      setShowSearchImportaciones(false)
+      setImportSearchQuery('')
+      setImportSearchResults([])
+    } catch (err) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: err.message || 'No se pudo abrir la importación.', life: 4000 })
+    }
+  }, [token, statusProp])
+
   const handleRowClick = (event) => {
     const target = event?.originalEvent?.target
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
@@ -8459,45 +8537,106 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
               ))}
             </div>
           )}
-          {canCreate && status === 'borrador' && (
-            <div style={{ position: 'relative', marginLeft: 'auto' }} ref={createMenuRef}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+            <div style={{ position: 'relative' }} ref={searchImportacionesRef}>
               <button
                 type="button"
-                className="p-button users-topbtn users-topbtn--create"
-                onClick={() => setShowCreateMenu(p => !p)}
+                className="p-button users-topbtn users-topbtn--search"
+                onClick={() => setShowSearchImportaciones((p) => !p)}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem', fontWeight: 400 }}
               >
-                <i className="pi pi-plus p-button-icon" />
-                <span className="p-button-label">Crear</span>
-                <i className="pi pi-chevron-down" style={{ fontSize: '0.65rem', opacity: 0.75 }} />
+                <Search size={14} />
+                <span>Buscar</span>
               </button>
-              {showCreateMenu && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 500, background: 'var(--modal-color, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 230, overflow: 'hidden' }}>
-                  <button
-                    type="button"
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowCreate(true); setShowCreateMenu(false) }}
-                  >
-                    <i className="pi pi-file-edit" style={{ color: 'var(--color-primary, #2563eb)' }} />
-                    <span>Crear sugerencia</span>
-                  </button>
-                  <div style={{ height: 1, background: 'var(--color-border, #e2e8f0)', margin: '0 10px' }} />
-                  <button
-                    type="button"
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowExcelImport(true); setShowCreateMenu(false) }}
-                  >
-                    <i className="pi pi-file-excel" style={{ color: '#16a34a' }} />
-                    <span>Sugerencia desde Excel</span>
-                  </button>
+              {showSearchImportaciones && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 500, background: 'var(--modal-color, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', width: 340, overflow: 'hidden' }}>
+                  <div style={{ padding: 8, borderBottom: '1px solid var(--color-border, #e2e8f0)' }}>
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Código, nombre, referencia u OEM..."
+                      value={importSearchQuery}
+                      onChange={(e) => setImportSearchQuery(e.target.value)}
+                      style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 6, fontFamily: 'inherit', fontSize: '0.875rem', background: 'var(--table-color, #fff)', color: 'inherit' }}
+                    />
+                  </div>
+                  <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                    {importSearchLoading && (
+                      <div style={{ padding: '12px 14px', fontSize: '0.85rem', color: 'var(--color-muted, #888)' }}>Buscando...</div>
+                    )}
+                    {!importSearchLoading && importSearchQuery.trim().length >= 2 && !importSearchResults.length && (
+                      <div style={{ padding: '12px 14px', fontSize: '0.85rem', color: 'var(--color-muted, #888)' }}>Sin resultados.</div>
+                    )}
+                    {!importSearchLoading && importSearchQuery.trim().length < 2 && (
+                      <div style={{ padding: '12px 14px', fontSize: '0.85rem', color: 'var(--color-muted, #888)' }}>Escribe al menos 2 caracteres.</div>
+                    )}
+                    {importSearchResults.map((result) => {
+                      const badge = STATUS_BADGE[result.estado] || { label: result.estado_label || result.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
+                      return (
+                        <button
+                          key={result.id}
+                          type="button"
+                          style={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%', padding: '10px 14px', background: 'none', border: 'none', borderBottom: '1px solid var(--color-border, #e2e8f0)', cursor: 'pointer', textAlign: 'left', color: 'inherit', fontFamily: 'inherit' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface, #f8fafc)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'none' }}
+                          onClick={() => handleOpenSearchResult(result.id)}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <strong style={{ fontSize: '0.875rem' }}>{result.codigo}</strong>
+                            <span style={{ fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: badge.bg, color: badge.color, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                              {badge.label}
+                            </span>
+                          </div>
+                          <small style={{ color: 'var(--color-muted, #888)' }}>
+                            {[result.producto_codigo, result.producto_nombre, result.casa_comercial_nombre].filter(Boolean).join(' · ') || '-'}
+                          </small>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </div>
-          )}
+            {canCreate && status === 'borrador' && (
+              <div style={{ position: 'relative' }} ref={createMenuRef}>
+                <button
+                  type="button"
+                  className="p-button users-topbtn users-topbtn--create"
+                  onClick={() => setShowCreateMenu(p => !p)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem', fontWeight: 400 }}
+                >
+                  <i className="pi pi-plus p-button-icon" />
+                  <span className="p-button-label">Crear</span>
+                  <i className="pi pi-chevron-down" style={{ fontSize: '0.65rem', opacity: 0.75 }} />
+                </button>
+                {showCreateMenu && (
+                  <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 500, background: 'var(--modal-color, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 230, overflow: 'hidden' }}>
+                    <button
+                      type="button"
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={() => { setShowCreate(true); setShowCreateMenu(false) }}
+                    >
+                      <i className="pi pi-file-edit" style={{ color: 'var(--color-primary, #2563eb)' }} />
+                      <span>Crear sugerencia</span>
+                    </button>
+                    <div style={{ height: 1, background: 'var(--color-border, #e2e8f0)', margin: '0 10px' }} />
+                    <button
+                      type="button"
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={() => { setShowExcelImport(true); setShowCreateMenu(false) }}
+                    >
+                      <i className="pi pi-file-excel" style={{ color: '#16a34a' }} />
+                      <span>Sugerencia desde Excel</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

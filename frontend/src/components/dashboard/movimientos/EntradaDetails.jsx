@@ -48,6 +48,8 @@ const initialDetail = {
   productoId: '',
   cantidad: '',
   valor: '',
+  costo: '',
+  descuentoPorcentaje: '',
 }
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
@@ -96,6 +98,13 @@ const resolveProductPrice = (producto) => {
   const parsed = parseNumber(producto?.precio)
   if (parsed === null || parsed < 0) return ''
   const raw = String(producto?.precio ?? '').trim()
+  return raw || parsed.toFixed(2)
+}
+
+const resolveProductCost = (producto) => {
+  const parsed = parseNumber(producto?.costo_minimo)
+  if (parsed === null || parsed < 0) return ''
+  const raw = String(producto?.costo_minimo ?? '').trim()
   return raw || parsed.toFixed(2)
 }
 
@@ -627,6 +636,12 @@ function EntradaDetails({
     () => calculateLineTotal(detailDraft.cantidad, detailDraft.valor),
     [detailDraft.cantidad, detailDraft.valor]
   )
+
+  const draftCostoConIva = useMemo(() => {
+    const costo = parseNumber(detailDraft.costo)
+    if (!Number.isFinite(costo) || costo < 0) return null
+    return costo * (1 + ivaRateValue)
+  }, [detailDraft.costo, ivaRateValue])
 
   const subtotal = useMemo(
     () =>
@@ -1736,7 +1751,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
   const handleDetailChange = (event) => {
     if (!isEditing || lineItemsReadOnly) return
     const { name, value } = event.target
-    if (name !== 'cantidad') return
+    if (name !== 'cantidad' && name !== 'costo' && name !== 'descuentoPorcentaje') return
     setDetailError('')
     setDetailDraft((prev) => ({
       ...prev,
@@ -1751,11 +1766,14 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       return
     }
     const productPrice = resolveProductPrice(producto)
+    const productCost = resolveProductCost(producto)
     setDetailError('')
     setDetailDraft((prev) => ({
       ...prev,
       productoId: String(producto.id),
       valor: productPrice,
+      costo: productCost,
+      descuentoPorcentaje: '',
     }))
     setProductos((prev) => {
       if (prev.some((item) => String(item.id) === String(producto.id))) return prev
@@ -1774,6 +1792,13 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     const estadoProductoId = String(defaultEstadoProductoId || '').trim()
     const producto = productos.find((item) => String(item.id) === productoId)
     const valor = parseNumber(resolveProductPrice(producto))
+    const costo = parseNumber(
+      String(detailDraft.costo ?? '').trim() || resolveProductCost(producto)
+    )
+    const descuentoPorcentaje = Math.min(
+      100,
+      Math.max(0, parseNumber(detailDraft.descuentoPorcentaje) || 0)
+    )
 
     if (isTraslado && !stockBranchId) {
       setDetailError('Selecciona primero la sucursal proveedora para cargar disponibilidad.')
@@ -1793,6 +1818,10 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     }
     if (!Number.isFinite(valor) || valor < 0) {
       setDetailError('El producto seleccionado no tiene un precio valido.')
+      return
+    }
+    if (isCompraEntrada && (!Number.isFinite(costo) || costo < 0)) {
+      setDetailError('Ingresa un costo valido.')
       return
     }
     if (isTraslado) {
@@ -1823,11 +1852,15 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
         productoId,
         productoCodigo: producto?.codigo ?? '',
         productoNombre: producto?.nombre ?? '',
+        productoReferencia: producto?.referencia ?? '',
+        productoPrecioBD: resolveProductPrice(producto),
         estadoProductoId,
         estadoProductoNombre: estadoProducto?.nombre ?? '',
         cantidad,
         valor,
         valor_total,
+        costo: isCompraEntrada ? costo : null,
+        descuentoPorcentaje: isCompraEntrada ? descuentoPorcentaje : null,
       },
     ])
 
@@ -1942,7 +1975,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
   }, [formData.descripcion, isVenta])
 
   const handleUpdatePendingSolicitud = useCallback(
-    async (ventaClienteLabel) => {
+    async (ventaClienteLabel, options = {}) => {
       if (!token || !transferSolicitudId) {
         notifyError('No se encontró la solicitud de traslado.')
         return false
@@ -1959,14 +1992,12 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
             valor: Number.isFinite(valor) ? valor : 0,
           }
         })
-        const hasValidSucursalObjetivo = Boolean(String(formData.sucursalObjetivoId || '').trim())
-        const hasCompleteDetails = details.length > 0 && details.every((detail) => {
-          const hasProduct = Boolean(String(detail?.productoId || '').trim())
-          const qty = parseIntValue(detail?.cantidad)
-          const val = parseNumber(detail?.valor)
-          return hasProduct && Number.isFinite(qty) && qty > 0 && Number.isFinite(val) && val >= 0
-        })
-        const guardarBorrador = isPreviewGuardadoSolicitud && !(hasValidSucursalObjetivo && hasCompleteDetails)
+        // Por defecto se preserva el estado actual: si sigue guardado, se
+        // mantiene guardado (edicion normal); el boton "Crear solicitud"
+        // pasa guardarBorrador:false explicitamente para finalizarla.
+        const guardarBorrador = Object.prototype.hasOwnProperty.call(options, 'guardarBorrador')
+          ? Boolean(options.guardarBorrador)
+          : isPreviewGuardadoSolicitud
 
         const payload = {
           sucursal_solicitante_id: Number(formData.sucursalId),
@@ -2028,6 +2059,48 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       transferSolicitudId,
     ]
   )
+
+  const handleCrearSolicitudDesdeGuardado = useCallback(async () => {
+    if (!isPreviewGuardadoSolicitud || !transferSolicitudId || saving) return
+
+    if (!String(formData.sucursalObjetivoId || '').trim()) {
+      notifyError('Selecciona la sucursal proveedora.')
+      return
+    }
+
+    if (String(formData.sucursalId) === String(formData.sucursalObjetivoId)) {
+      notifyError('La sucursal proveedora debe ser diferente a la sucursal solicitante.')
+      return
+    }
+
+    if (!details.length) {
+      notifyError('Agrega al menos un producto.')
+      return
+    }
+
+    const hasIncompleteDetail = details.some((detail) => {
+      const productoId = String(detail?.productoId || '').trim()
+      const cantidad = parseIntValue(detail?.cantidad)
+      const valor = parseNumber(detail?.valor)
+      return !productoId || !Number.isFinite(cantidad) || cantidad <= 0 || !Number.isFinite(valor) || valor < 0
+    })
+
+    if (hasIncompleteDetail) {
+      notifyError('Hay productos con datos incompletos.')
+      return
+    }
+
+    await handleUpdatePendingSolicitud('', { guardarBorrador: false })
+  }, [
+    details,
+    formData.sucursalId,
+    formData.sucursalObjetivoId,
+    handleUpdatePendingSolicitud,
+    isPreviewGuardadoSolicitud,
+    notifyError,
+    saving,
+    transferSolicitudId,
+  ])
 
   const handleSave = async () => {
     if (!allowEdit) return
@@ -2330,6 +2403,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     'create-user__locations-table',
     'create-salida__products-table',
     showDetailActions ? 'create-salida__products-table--with-actions' : '',
+    isCompraEntrada ? 'create-salida__products-table--compra-local-view' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -2600,8 +2674,16 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   <div className={productosTableClassName}>
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Codigo</span>
+                      {isCompraEntrada && <span>Referencia</span>}
                       <span>Descripción</span>
                       <span>Cantidad</span>
+                      {isCompraEntrada && (
+                        <>
+                          <span>Costo</span>
+                          <span>Descuento %</span>
+                          <span>Costo + IVA</span>
+                        </>
+                      )}
                       <span>Precio</span>
                       <span>Precio total</span>
                       {showDetailActions && <span>Acciones</span>}
@@ -2702,6 +2784,13 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                             )}
                           </div>
                         </span>
+                        {isCompraEntrada && (
+                          <span>
+                            <span className="create-salida__table-static-value create-salida__table-static-value--name">
+                              {selectedDraftProduct?.nombre || '-'}
+                            </span>
+                          </span>
+                        )}
                         <span>
                           <input
                             name="cantidad"
@@ -2713,6 +2802,36 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                             disabled={editorDisabled}
                           />
                         </span>
+                        {isCompraEntrada && (
+                          <>
+                            <span>
+                              <input
+                                name="costo"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={detailDraft.costo}
+                                onChange={handleDetailChange}
+                                disabled={editorDisabled}
+                              />
+                            </span>
+                            <span>
+                              <input
+                                name="descuentoPorcentaje"
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={detailDraft.descuentoPorcentaje}
+                                onChange={handleDetailChange}
+                                disabled={editorDisabled}
+                              />
+                            </span>
+                            <span className="create-salida__numeric">
+                              {formatCurrency(draftCostoConIva)}
+                            </span>
+                          </>
+                        )}
                         <span>
                           <input
                             name="valor"
@@ -2752,6 +2871,10 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                           ? Math.max(0, Math.trunc(allowance))
                           : null
 
+                        const costoConIva = isCompraEntrada && Number.isFinite(detail.costo)
+                          ? detail.costo * (1 + ivaRateValue)
+                          : null
+
                         return (
                           <div key={detail.uid} className="create-user__locations-row">
                             <span>
@@ -2762,6 +2885,9 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                                 </small>
                               )}
                             </span>
+                          {isCompraEntrada && (
+                            <span>{detail.productoReferencia || '-'}</span>
+                          )}
                           <span
                             onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Descripción')}
                             onMouseLeave={hideHover}
@@ -2783,6 +2909,15 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                               detail.cantidad
                             )}
                           </span>
+                          {isCompraEntrada && (
+                            <>
+                              <span className="create-salida__numeric">{formatCurrency(detail.costo)}</span>
+                              <span className="create-salida__numeric">
+                                {Number.isFinite(detail.descuentoPorcentaje) ? `${detail.descuentoPorcentaje}%` : '-'}
+                              </span>
+                              <span className="create-salida__numeric">{formatCurrency(costoConIva)}</span>
+                            </>
+                          )}
                           <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                           <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                           {showDetailActions && (
@@ -3055,7 +3190,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   ) : allowEdit && (
                     <button
                       type="button"
-                      className="create-user__action create-user__action--primary"
+                      className="create-user__action create-user__action--secondary"
                       onClick={handleSave}
                       disabled={saving || loadingData}
                     >
@@ -3063,6 +3198,16 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     </button>
                   )}
                 </>
+              )}
+              {isPreviewGuardadoSolicitud && effectiveAllowEdit && !isRejectedSolicitudRibbon && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleCrearSolicitudDesdeGuardado}
+                  disabled={saving || loadingData || deleteLoading}
+                >
+                  {saving ? 'Guardando...' : 'Crear solicitud'}
+                </button>
               )}
             </div>
           </div>

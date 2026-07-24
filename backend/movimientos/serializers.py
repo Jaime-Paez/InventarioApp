@@ -210,7 +210,13 @@ class DetalleMovimientoSerializer(serializers.ModelSerializer):
             "estado_producto_id",
             "valor",
             "valor_total",
+            "costo",
+            "descuento_porcentaje",
         ]
+        extra_kwargs = {
+            "costo": {"required": False, "allow_null": True},
+            "descuento_porcentaje": {"required": False, "allow_null": True},
+        }
 
 
 class PagoMovimientoSerializer(serializers.ModelSerializer):
@@ -756,6 +762,13 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 )
                 raise serializers.ValidationError({"factura_referencia": message})
             attrs["factura_referencia"] = factura_referencia if requires_factura else ""
+
+            if subtipo_key == "compra_local" and detalles_data:
+                for item in detalles_data:
+                    if item.get("costo") is None:
+                        raise serializers.ValidationError(
+                            {"detalles": "Debes ingresar el costo de cada producto."}
+                        )
         else:
             if is_create and not no_documento:
                 raise serializers.ValidationError(
@@ -1217,6 +1230,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             movimiento = super().create(validated_data)
             self._replace_detalles(movimiento, detalles_data)
+            if tipo_name.startswith("ent") and subtipo_key == "compra_local":
+                self._sync_producto_pricing_from_compra_local(detalles_data)
             self._replace_pagos(movimiento, pagos_data)
             self._ensure_entry_location_rows(
                 movimiento,
@@ -1260,6 +1275,10 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 movimiento.detalles.all().delete()
                 self._replace_detalles(movimiento, detalles_data)
                 current_details = detalles_data
+                tipo_name = self._resolve_tipo_name(movimiento.tipo_movimiento)
+                subtipo_key = self._resolve_subtipo_key(movimiento.sub_tipo_movimiento)
+                if tipo_name.startswith("ent") and subtipo_key == "compra_local":
+                    self._sync_producto_pricing_from_compra_local(detalles_data)
             else:
                 current_details = list(movimiento.detalles.select_related("producto").all())
 
@@ -1531,6 +1550,26 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 movimiento_inventario=movimiento,
                 **detalle,
             )
+
+    def _sync_producto_pricing_from_compra_local(self, detalles_data):
+        # El costo que se guarda en el catalogo es siempre el costo inicial
+        # ingresado (sin aplicar el descuento negociado): el descuento es
+        # informativo de esta compra puntual, no redefine el costo base.
+        for detalle in detalles_data:
+            producto = detalle.get("producto")
+            if producto is None:
+                continue
+            update_fields = []
+            costo = detalle.get("costo")
+            if costo is not None:
+                producto.costo_minimo = costo
+                update_fields.append("costo_minimo")
+            valor = detalle.get("valor")
+            if valor is not None:
+                producto.precio = valor
+                update_fields.append("precio")
+            if update_fields:
+                producto.save(update_fields=update_fields)
 
     def _replace_pagos(self, movimiento, pagos_data):
         for pago in pagos_data:

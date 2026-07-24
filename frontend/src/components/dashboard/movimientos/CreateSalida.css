@@ -862,6 +862,61 @@
   min-width: 0;
 }
 
+.create-salida__products-table--compra-local {
+  overflow-x: auto;
+}
+
+.create-salida__products-table--compra-local .create-user__locations-row {
+  grid-template-columns:
+    minmax(90px, 0.9fr)
+    minmax(90px, 0.9fr)
+    minmax(140px, 1.3fr)
+    minmax(70px, 0.5fr)
+    minmax(80px, 0.6fr)
+    minmax(80px, 0.55fr)
+    minmax(92px, 0.62fr)
+    minmax(92px, 0.62fr)
+    minmax(92px, 0.62fr)
+    minmax(92px, 0.62fr)
+    minmax(72px, 0.5fr);
+  min-width: 1180px;
+}
+
+.create-salida__products-table--compra-local .create-salida__totals-label {
+  grid-column: 1 / span 9;
+}
+
+.create-salida__products-table--compra-local .create-salida__totals-value {
+  grid-column: 10;
+}
+
+.create-salida__products-table--compra-local-view {
+  overflow-x: auto;
+}
+
+.create-salida__products-table--compra-local-view .create-user__locations-row {
+  grid-template-columns:
+    minmax(90px, 0.9fr)
+    minmax(90px, 0.9fr)
+    minmax(140px, 1.3fr)
+    minmax(70px, 0.5fr)
+    minmax(80px, 0.6fr)
+    minmax(80px, 0.55fr)
+    minmax(92px, 0.62fr)
+    minmax(92px, 0.62fr)
+    minmax(92px, 0.62fr)
+    minmax(72px, 0.5fr);
+  min-width: 1060px;
+}
+
+.create-salida__products-table--compra-local-view .create-salida__totals-label {
+  grid-column: 1 / span 8;
+}
+
+.create-salida__products-table--compra-local-view .create-salida__totals-value {
+  grid-column: 9;
+}
+
 .create-salida__products-table .create-user__locations-row > span {
   min-width: 0;
 }
