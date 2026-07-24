@@ -2891,6 +2891,16 @@ function CreateEntrada({
       return
     }
 
+    if (isTraslado && !formData.urgente && trasladoConflict?.conflicto) {
+      const isGuardadoConflict = String(trasladoConflict?.estado || '').trim().toLowerCase() === 'guardado'
+      notifyError(
+        isGuardadoConflict
+          ? 'Ya hay un pedido a sucursal guardado a esta sucursal, edítalo o complétalo para poder hacer más solicitudes a esa sucursal.'
+          : `Ya existe una solicitud pendiente para estas sucursales (${trasladoConflict?.no_documento || ''}). Debes aceptarla o rechazarla antes de crear otra.`
+      )
+      return
+    }
+
     if (!isTraslado && !formData.estadoId) {
       notifyError('No se pudo resolver el estado del movimiento.')
       return
@@ -2950,21 +2960,6 @@ function CreateEntrada({
     }
 
     if (isTraslado) {
-      if (!formData.sucursalObjetivoId) {
-        notifyError('Selecciona la sucursal proveedora.')
-        return
-      }
-
-      if (!formData.urgente && trasladoConflict?.conflicto) {
-        const isGuardado = String(trasladoConflict?.estado || '').trim().toLowerCase() === 'guardado'
-        notifyError(
-          isGuardado
-            ? 'Ya hay un pedido a sucursal guardado a esta sucursal, edítalo o complétalo para poder hacer más solicitudes a esa sucursal.'
-            : `Ya existe una solicitud pendiente para estas sucursales (${trasladoConflict?.no_documento || ''}). Debes aceptarla o rechazarla antes de crear otra.`
-        )
-        return
-      }
-
       if (String(formData.sucursalId) === String(formData.sucursalObjetivoId)) {
         notifyError('La sucursal proveedora debe ser diferente a la sucursal solicitante.')
         return
@@ -3390,6 +3385,11 @@ function CreateEntrada({
                                 onChange={handleChange}
                                 disabled={loading}
                                 required={requiresSucursalObjetivo}
+                                className={
+                                  !formData.urgente && trasladoConflict?.conflicto
+                                    ? 'create-salida__input--error'
+                                    : ''
+                                }
                               >
                                 <option value="">Selecciona una sucursal</option>
                                 {destinationBranches.map((branch) => (
@@ -3467,6 +3467,11 @@ function CreateEntrada({
                                 onChange={handleChange}
                                 disabled={loading}
                                 required={requiresSucursalObjetivo}
+                                className={
+                                  !formData.urgente && trasladoConflict?.conflicto
+                                    ? 'create-salida__input--error'
+                                    : ''
+                                }
                               >
                                 <option value="">Selecciona una sucursal</option>
                                 {destinationBranches.map((branch) => (
