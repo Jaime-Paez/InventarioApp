@@ -1174,7 +1174,7 @@ function RecordatoriosPopup({
     if (!targetElement) return undefined
 
     targetElement.scrollIntoView({
-      behavior: 'smooth',
+      behavior: 'auto',
       block: 'center',
       inline: 'nearest',
     })
@@ -2807,7 +2807,7 @@ function RecordatoriosPopup({
                           (visualDecisionStatus === 'aceptada' && hasSentReminderForSameRequest)
                         )
                         const transferEntryActionLabel = shouldUseSentCopyOnTransferEntryAction
-                          ? 'Traslado ya enviado, ver envío en camino'
+                          ? 'Ver envío'
                           : (shouldShowCorrectionAction ? 'Corregir traslado' : 'Ver traslado')
                         const isOpeningTransfer = (
                           normalizeId(openingTransferReminderId) &&

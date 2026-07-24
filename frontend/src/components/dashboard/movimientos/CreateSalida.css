@@ -74,6 +74,16 @@
   will-change: auto;
 }
 
+.create-salida__input--error {
+  border-color: var(--color-error-border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border) 32%, transparent);
+}
+
+.dashboard-shell.dark .create-salida__input--error {
+  border-color: var(--color-error-border-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error-border-dark) 36%, transparent);
+}
+
 .create-salida__selector-shell {
   flex: 1;
   display: flex;

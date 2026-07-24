@@ -79,13 +79,13 @@ const MOVEMENT_PRODUCTS_HOVER_CARD_MAX_HEIGHT = 520
 const SUBTYPE_FILTERS = [
   { key: 'all', label: 'Todos' },
   { key: 'compra_local', label: 'Compra local' },
-  { key: 'importacion', label: 'Importación' },
   { key: 'devolucion', label: 'Devoluciones' },
   { key: 'traslado', label: 'Traslados' },
 ]
 
 const ENTRADAS_FILTER_FIELDS = [
   'no_documento',
+  'factura_referencia',
   'fecha',
   'sucursal_nombre',
   'sub_tipo_nombre',
@@ -98,6 +98,7 @@ const ENTRADAS_FILTER_FIELDS = [
 
 const ENTRADAS_FILTER_DEFAULT_MODES = {
   no_documento: FilterMatchMode.CONTAINS,
+  factura_referencia: FilterMatchMode.CONTAINS,
   fecha: FilterMatchMode.CONTAINS,
   sucursal_nombre: FilterMatchMode.CONTAINS,
   sub_tipo_nombre: FilterMatchMode.CONTAINS,
@@ -110,6 +111,7 @@ const ENTRADAS_FILTER_DEFAULT_MODES = {
 
 const ENTRADAS_ORDERING_MAP = {
   no_documento: 'no_documento',
+  factura_referencia: 'factura_referencia',
   fecha: 'fecha',
   sucursal_nombre: 'sucursal__nombre',
   sub_tipo_nombre: 'sub_tipo_movimiento__nombre',
@@ -122,6 +124,7 @@ const ENTRADAS_ORDERING_MAP = {
 
 const COMPRA_LOCAL_COLUMN_ORDER = [
   'proveedor_nombre',
+  'factura_referencia',
   'productos_resumen',
   'fecha',
   'no_documento',
@@ -236,7 +239,8 @@ function EntradasTable({
   )
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'no_documento', header: 'Documento', filterPlaceholder: 'Buscar por documento' },
+      { nombrevar: 'no_documento', header: 'Código', filterPlaceholder: 'Buscar por código' },
+      { nombrevar: 'factura_referencia', header: 'No. de Factura', filterPlaceholder: 'Buscar por factura' },
       { nombrevar: 'productos_resumen', header: 'Productos', filterPlaceholder: 'Buscar por productos' },
       { nombrevar: 'fecha', header: 'Fecha', filterPlaceholder: 'Buscar por fecha' },
       { nombrevar: 'sucursal_nombre', header: 'Sucursal', filterPlaceholder: 'Buscar por sucursal' },
@@ -319,6 +323,7 @@ function EntradasTable({
           estado_nombre: formatEstadoForTable(row?.estado_nombre || row?.estado_movimiento),
           sucursal_objetivo_nombre: row?.sucursal_objetivo_nombre || row?.sucursal_objetivo || '-',
           proveedor_nombre: (row?.casa_comercial_nombre && row.casa_comercial_nombre !== '-') ? row.casa_comercial_nombre : '-',
+          factura_referencia: row?.factura_referencia || '-',
           funcional_label: row?.funcional_label || (row?.funcional ? 'Si' : 'No'),
           productos,
           productos_resumen: buildMovementProductsSearchText(productos) || '-',
@@ -597,7 +602,6 @@ function EntradasTable({
   const emptyMessageByFilter = {
     all: hasSearchApplied ? 'No se encontraron entradas.' : 'No hay entradas registradas.',
     compra_local: hasSearchApplied ? 'No se encontraron compras locales.' : 'No hay compras locales registradas.',
-    importacion: hasSearchApplied ? 'No se encontraron importaciones.' : 'No hay importaciones registradas.',
     devolucion: hasSearchApplied ? 'No se encontraron devoluciones.' : 'No hay devoluciones registradas.',
     traslado: hasSearchApplied ? 'No se encontraron traslados.' : 'No hay traslados registrados.',
   }
@@ -1751,7 +1755,7 @@ function EntradasTable({
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Documento</span>
+                      <span>Código</span>
                       <input
                         name="no_documento"
                         type="text"

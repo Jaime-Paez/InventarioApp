@@ -743,7 +743,6 @@
 
 .recordatorios-popup__timeline-item-col--clickable {
   cursor: pointer;
-  transition: background-color 0.14s ease;
 }
 
 .recordatorios-popup__timeline-item-col--clickable:hover {
@@ -757,19 +756,6 @@
 .recordatorios-popup__timeline-item--highlighted {
   border-color: color-mix(in srgb, var(--color-primary) 58%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 22%, transparent);
-  animation: recordatorios-popup-highlight-pulse 1.2s ease-in-out 2;
-}
-
-@keyframes recordatorios-popup-highlight-pulse {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 0%, transparent);
-  }
-  50% {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 28%, transparent);
-  }
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 0%, transparent);
-  }
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item {
@@ -1581,18 +1567,6 @@
     0 1px 2px rgba(15, 23, 42, 0.08),
     0 6px 16px rgba(15, 23, 42, 0.08);
   font-weight: 700;
-}
-
-.recordatorios-popup__mark-seen--decision:hover {
-  border-color: #94a3b8;
-  background: linear-gradient(180deg, #ffffff 0%, #eef2f7 100%);
-  box-shadow:
-    0 2px 4px rgba(15, 23, 42, 0.12),
-    0 10px 22px rgba(15, 23, 42, 0.1);
-}
-
-.recordatorios-popup__mark-seen--decision:active {
-  transform: translateY(1px);
 }
 
 .recordatorios-popup__mark-seen--decision:focus-visible {

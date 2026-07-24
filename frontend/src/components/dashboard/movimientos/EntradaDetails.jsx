@@ -2525,6 +2525,9 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                         {isDevolucion && (
                           <StaticFieldDisplay label="No. factura venta origen" value={formData.factura_referencia} />
                         )}
+                        {isCompraEntrada && (
+                          <StaticFieldDisplay label="No. de Factura" value={formData.factura_referencia} />
+                        )}
                         {isTraslado && (
                           <StaticFieldDisplay label="Urgente" value={formData.urgente ? 'Sí' : 'No'} />
                         )}

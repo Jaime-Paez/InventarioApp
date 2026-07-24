@@ -723,11 +723,15 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                     )
                 attrs["no_documento"] = original_document
 
-            if is_create and subtipo_key == "devolucion" and not factura_referencia:
-                raise serializers.ValidationError(
-                    {"factura_referencia": "Debes ingresar la factura de venta para la devolucion."}
+            requires_factura = subtipo_key in ("devolucion", "compra_local")
+            if is_create and requires_factura and not factura_referencia:
+                message = (
+                    "Debes ingresar la factura de venta para la devolucion."
+                    if subtipo_key == "devolucion"
+                    else "Debes ingresar el numero de factura."
                 )
-            attrs["factura_referencia"] = factura_referencia if subtipo_key == "devolucion" else ""
+                raise serializers.ValidationError({"factura_referencia": message})
+            attrs["factura_referencia"] = factura_referencia if requires_factura else ""
         else:
             if is_create and not no_documento:
                 raise serializers.ValidationError(

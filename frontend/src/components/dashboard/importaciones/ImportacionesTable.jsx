@@ -3602,6 +3602,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           return {
             ...row,
             codigo: existing.codigo,
+            referencia: row.referencia || existing.referencia || '',
+            descripcion: row.descripcion || existing.nombre || '',
             matched_producto_id: existing.producto_id,
             matched_producto_codigo: existing.codigo,
             matched_producto_nombre: existing.nombre,

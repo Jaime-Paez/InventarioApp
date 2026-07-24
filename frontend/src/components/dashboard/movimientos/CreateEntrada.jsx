@@ -373,6 +373,8 @@ function CreateEntrada({
   const [casaComercialOptions, setCasaComercialOptions] = useState([])
   const [casaComercialLoading, setCasaComercialLoading] = useState(false)
   const [showCasaComercialDropdown, setShowCasaComercialDropdown] = useState(false)
+  const [casaComercialDropdownStyle, setCasaComercialDropdownStyle] = useState({})
+  const [facturaError, setFacturaError] = useState(false)
   const modalRef = useRef(null)
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
@@ -381,6 +383,7 @@ function CreateEntrada({
   const clienteDropdownTriggerRef = useRef(null)
   const clienteDropdownPanelRef = useRef(null)
   const casaComercialDropdownRef = useRef(null)
+  const casaComercialDropdownPanelRef = useRef(null)
   const locationDropdownRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
   const casaComercialTimerRef = useRef(null)
@@ -477,17 +480,14 @@ function CreateEntrada({
   const entradaSubTipoOptions = useMemo(
     () =>
       subTiposEntrada
+        .filter((subTipo) => !normalizeValue(subTipo?.nombre).includes('import'))
         .map((subTipo, index) => {
           const normalizedName = normalizeValue(subTipo?.nombre)
           let label = formatSubTipoLabel(subTipo)
           let description = 'Selecciona este tipo de entrada.'
           let order = 90 + index
 
-          if (normalizedName.includes('import')) {
-            label = 'Importación'
-            description = 'Proceso para recibir productos de importación.'
-            order = 0
-          } else if (normalizedName.includes('compra')) {
+          if (normalizedName.includes('compra')) {
             label = 'Compra local'
             description = 'Proceso para recibir productos de compra local en el mismo país.'
             order = 1
@@ -501,12 +501,10 @@ function CreateEntrada({
             order = 3
           }
 
-          const isImport = normalizedName.includes('import')
           const isCompra = normalizedName.includes('compra')
           let blocked = false
           if (currentUserEntradasSubtypeActions) {
-            if (isImport) blocked = !currentUserEntradasSubtypeActions.puede_crear_importacion
-            else if (isCompra) blocked = !currentUserEntradasSubtypeActions.puede_crear_compra_local
+            if (isCompra) blocked = !currentUserEntradasSubtypeActions.puede_crear_compra_local
             else if (normalizedName.includes('trasl')) blocked = !currentUserEntradasSubtypeActions.puede_crear_traslado
             else if (normalizedName.includes('devol')) blocked = !currentUserEntradasSubtypeActions.puede_crear_devolucion
           }
@@ -515,15 +513,13 @@ function CreateEntrada({
             value: String(subTipo?.id || ''),
             label,
             description,
-            icon: isImport
-              ? 'import'
-              : isCompra
-                ? 'purchase'
-                : normalizedName.includes('trasl')
-                  ? 'branch'
-                  : normalizedName.includes('devol')
-                    ? 'return'
-                    : 'branch',
+            icon: isCompra
+              ? 'purchase'
+              : normalizedName.includes('trasl')
+                ? 'branch'
+                : normalizedName.includes('devol')
+                  ? 'return'
+                  : 'branch',
             order,
             index,
             blocked,
@@ -543,13 +539,13 @@ function CreateEntrada({
   const isDevolucion = selectedSubTipoName.includes('devol')
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
-  const isImportacion = selectedSubTipoName.includes('import')
-  const isCompraEntrada = selectedSubTipoName.includes('compra') || isImportacion
+  const isCompraEntrada = selectedSubTipoName.includes('compra')
   const isEditableEntryDate = !isTraslado && !isDevolucion
   const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
   const isSelectorStep = !formData.subTipoId
   const isCasaComercialStep = Boolean(formData.subTipoId) && isCompraEntrada && !selectedCasaComercial
+  const isMaximizableStep = !isSelectorStep && !isCasaComercialStep
   const requiresSucursalObjetivo = isTraslado
   const normalizedPrefilledSucursalId = String(prefilledSucursalId || '').trim()
   const isSucursalPrincipalLocked = Boolean(normalizedPrefilledSucursalId)
@@ -1076,14 +1072,18 @@ function CreateEntrada({
         next.funcional = true
         changed = true
       }
-      if (!isDevolucion && next.factura_referencia) {
+      if (!isDevolucion && !isCompraEntrada && next.factura_referencia) {
         next.factura_referencia = ''
         changed = true
       }
 
       return changed ? next : prev
     })
-  }, [formData.subTipoId, isDevolucion, isTraslado, isVenta])
+  }, [formData.subTipoId, isCompraEntrada, isDevolucion, isTraslado, isVenta])
+
+  useEffect(() => {
+    if (!isCompraEntrada) setFacturaError(false)
+  }, [isCompraEntrada])
 
   useEffect(() => {
     if (!formData.subTipoId) {
@@ -1734,6 +1734,30 @@ function CreateEntrada({
     })
   }, [])
 
+  const updateCasaComercialDropdownPosition = useCallback(() => {
+    if (!casaComercialDropdownRef.current) return
+    const rect = casaComercialDropdownRef.current.getBoundingClientRect()
+    setCasaComercialDropdownStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 9999,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!open || !showCasaComercialDropdown) return undefined
+    updateCasaComercialDropdownPosition()
+    const handleReposition = () => updateCasaComercialDropdownPosition()
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [open, showCasaComercialDropdown, updateCasaComercialDropdownPosition])
+
   useEffect(() => {
     if (!open || !showClienteDropdown) return undefined
     updateClienteDropdownPosition()
@@ -1843,7 +1867,7 @@ function CreateEntrada({
       casaComercialTimerRef.current = null
     }
     casaComercialTimerRef.current = setTimeout(() => {
-      searchCasasComerciales(casaComercialQuery.trim(), isImportacion ? 'importacion' : 'local')
+      searchCasasComerciales(casaComercialQuery.trim(), 'local')
     }, 320)
     return () => {
       if (casaComercialTimerRef.current) {
@@ -1851,7 +1875,7 @@ function CreateEntrada({
         casaComercialTimerRef.current = null
       }
     }
-  }, [casaComercialQuery, isCasaComercialStep, isImportacion, open, searchCasasComerciales])
+  }, [casaComercialQuery, isCasaComercialStep, open, searchCasasComerciales])
 
   useEffect(() => {
     if (!open) return
@@ -1927,7 +1951,10 @@ function CreateEntrada({
       if (!clienteTouched) {
         setShowClienteDropdown(false)
       }
-      if (casaComercialDropdownRef.current && !casaComercialDropdownRef.current.contains(event.target)) {
+      const casaComercialTouched =
+        (casaComercialDropdownRef.current && casaComercialDropdownRef.current.contains(event.target)) ||
+        (casaComercialDropdownPanelRef.current && casaComercialDropdownPanelRef.current.contains(event.target))
+      if (!casaComercialTouched) {
         setShowCasaComercialDropdown(false)
       }
       if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target)) {
@@ -2001,18 +2028,25 @@ function CreateEntrada({
     const compactMode = isSelectorStep || isCasaComercialStep
     const { availableWidth, availableHeight, minWidth, minHeight } = getViewportMetrics(compactMode)
     const preferredWidth = compactMode ? SELECTOR_WIDTH : MIN_WIDTH
-    const casaDraftHeight = casaComercialDraft
-      ? 390 +
-        (casaComercialDraft.telefono ? 48 : 0) +
-        (casaComercialDraft.correo ? 48 : 0) +
-        (casaComercialDraft.descripcion ? 48 : 0)
-      : CASA_SELECTOR_HEIGHT_EMPTY
-    const preferredHeight = compactMode
-      ? isCasaComercialStep
-        ? casaDraftHeight
-        : SELECTOR_HEIGHT
-      : MIN_HEIGHT
     const width = Math.min(Math.max(preferredWidth, minWidth), availableWidth)
+
+    if (isCasaComercialStep) {
+      const estimatedHeight = casaComercialDraft
+        ? 390 +
+          (casaComercialDraft.telefono ? 48 : 0) +
+          (casaComercialDraft.correo ? 48 : 0) +
+          (casaComercialDraft.descripcion ? 48 : 0)
+        : CASA_SELECTOR_HEIGHT_EMPTY
+      const boundsHeight = Math.min(modalRef.current?.offsetHeight || estimatedHeight, availableHeight)
+      setModalSize({ width, height: 'auto' })
+      setModalPosition({
+        x: Math.max((window.innerWidth - width) / 2, VIEWPORT_PADDING),
+        y: Math.max((window.innerHeight - boundsHeight) / 2, VIEWPORT_PADDING),
+      })
+      return
+    }
+
+    const preferredHeight = compactMode ? SELECTOR_HEIGHT : MIN_HEIGHT
     const height = Math.min(Math.max(preferredHeight, minHeight), availableHeight)
     setModalSize({ width, height })
     setModalPosition({
@@ -2106,8 +2140,12 @@ function CreateEntrada({
     const handleMouseMove = (event) => {
       if (isMaximized || !modalDrag.current.active) return
       event.preventDefault()
+      const currentHeight =
+        modalSizeRef.current.height === 'auto'
+          ? modalRef.current?.offsetHeight || 0
+          : modalSizeRef.current.height
       const maxX = Math.max(window.innerWidth - modalSizeRef.current.width - VIEWPORT_PADDING, VIEWPORT_PADDING)
-      const maxY = Math.max(window.innerHeight - modalSizeRef.current.height - VIEWPORT_PADDING, VIEWPORT_PADDING)
+      const maxY = Math.max(window.innerHeight - currentHeight - VIEWPORT_PADDING, VIEWPORT_PADDING)
       const x = event.clientX - modalDrag.current.offsetX
       const y = event.clientY - modalDrag.current.offsetY
       setModalPosition({
@@ -2141,7 +2179,8 @@ function CreateEntrada({
 
       setModalSize((prev) => {
         const width = clamp(prev.width, minWidth, availableWidth)
-        const height = clamp(prev.height, minHeight, availableHeight)
+        const height = prev.height === 'auto' ? 'auto' : clamp(prev.height, minHeight, availableHeight)
+        const boundsHeight = height === 'auto' ? (modalRef.current?.offsetHeight || minHeight) : height
 
         setModalPosition((prevPosition) => ({
           x: Math.min(
@@ -2150,7 +2189,7 @@ function CreateEntrada({
           ),
           y: Math.min(
             Math.max(prevPosition.y, VIEWPORT_PADDING),
-            Math.max(window.innerHeight - height - VIEWPORT_PADDING, VIEWPORT_PADDING)
+            Math.max(window.innerHeight - boundsHeight - VIEWPORT_PADDING, VIEWPORT_PADDING)
           ),
         }))
 
@@ -2819,6 +2858,12 @@ function CreateEntrada({
       return
     }
 
+    if (isCompraEntrada && !String(formData.factura_referencia || '').trim()) {
+      setFacturaError(true)
+      notifyError('Ingresa el numero de factura.')
+      return
+    }
+
     if (!details.length) {
       notifyError('Agrega al menos un producto.')
       return
@@ -2993,15 +3038,17 @@ function CreateEntrada({
             </div>
           </div>
           <div className="create-user__header-actions">
-            <button
-              type="button"
-              className="create-user__icon-button create-user__icon-button--maximize"
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={toggleMaximize}
-              aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
-            >
-              <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
-            </button>
+            {isMaximizableStep && (
+              <button
+                type="button"
+                className="create-user__icon-button create-user__icon-button--maximize"
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={toggleMaximize}
+                aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+              >
+                <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+              </button>
+            )}
             <button
               type="button"
               className="create-user__icon-button"
@@ -3037,11 +3084,11 @@ function CreateEntrada({
               </section>
             </div>
           ) : isCasaComercialStep ? (
-            <div className="create-salida__selector-shell">
+            <div className="create-salida__selector-shell" style={{ flex: 'none', overflow: 'visible' }}>
               <section className="create-user__section create-salida__selector-card">
                 <div className="create-user__section-header">
                   <div>
-                    <h4>{isImportacion ? 'Selecciona la casa comercial' : 'Selecciona proveedor'}</h4>
+                    <h4>Selecciona proveedor</h4>
                   </div>
                 </div>
                 <div className="create-salida__selector-inner">
@@ -3054,7 +3101,10 @@ function CreateEntrada({
                       <div
                         className="create-user__dropdown-trigger"
                         style={{ cursor: 'text', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }}
-                        onClick={() => setShowCasaComercialDropdown(true)}
+                        onClick={() => {
+                          setShowCasaComercialDropdown(true)
+                          requestAnimationFrame(() => updateCasaComercialDropdownPosition())
+                        }}
                       >
                         <i className="pi pi-search" style={{ color: 'var(--color-muted, #888)', flexShrink: 0 }} />
                         <input
@@ -3065,8 +3115,12 @@ function CreateEntrada({
                             setCasaComercialQuery(event.target.value)
                             setCasaComercialDraft(null)
                             setShowCasaComercialDropdown(true)
+                            requestAnimationFrame(() => updateCasaComercialDropdownPosition())
                           }}
-                          onFocus={() => setShowCasaComercialDropdown(true)}
+                          onFocus={() => {
+                            setShowCasaComercialDropdown(true)
+                            requestAnimationFrame(() => updateCasaComercialDropdownPosition())
+                          }}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
                           style={{ border: 'none', outline: 'none', flex: 1, background: 'transparent', fontSize: 'inherit', color: 'inherit' }}
                           autoComplete="off"
@@ -3074,8 +3128,12 @@ function CreateEntrada({
                         {casaComercialLoading && <i className="pi pi-spin pi-spinner" style={{ flexShrink: 0 }} />}
                       </div>
 
-                      {showCasaComercialDropdown && (
-                        <div className="create-user__dropdown-panel" style={{ top: '100%', left: 0, right: 0 }}>
+                      {showCasaComercialDropdown && createPortal(
+                        <div
+                          ref={casaComercialDropdownPanelRef}
+                          className="create-user__dropdown-panel"
+                          style={casaComercialDropdownStyle}
+                        >
                           <div className="create-user__dropdown-results">
                             {casaComercialLoading && <small className="muted">Buscando...</small>}
                             {!casaComercialLoading && !casaComercialOptions.length && (
@@ -3108,7 +3166,8 @@ function CreateEntrada({
                               </button>
                             ))}
                           </div>
-                        </div>
+                        </div>,
+                        document.body
                       )}
                     </div>
                   </div>
@@ -3192,11 +3251,28 @@ function CreateEntrada({
                   <div className="create-salida__field-groups">
                     {isSucursalPrincipalLocked && (
                       <div className="create-salida__field-group create-salida__field-group--defined create-salida__field-group--paired">
-                        <div className={`create-user__grid ${isDevolucion ? 'create-user__grid--three' : 'create-user__grid--two'}`}>
+                        <div className={`create-user__grid ${isDevolucion || isCompraEntrada ? 'create-user__grid--three' : 'create-user__grid--two'}`}>
                           <StaticFieldDisplay
                             label={isTraslado ? 'Sucursal destino' : 'Sucursal'}
                             value={selectedSucursalName}
                           />
+                          {isCompraEntrada && (
+                            <label className="create-user__field create-user__field--required">
+                              <span>No. de Factura</span>
+                              <input
+                                name="factura_referencia"
+                                type="text"
+                                value={formData.factura_referencia}
+                                onChange={(event) => {
+                                  handleChange(event)
+                                  setFacturaError(false)
+                                }}
+                                disabled={loading}
+                                className={facturaError ? 'create-salida__input--error' : ''}
+                                placeholder="Factura del proveedor"
+                              />
+                            </label>
+                          )}
                           {!isTraslado && isEditableEntryDate && (
                             <label className="create-user__field">
                               <span>Fecha</span>
@@ -3365,20 +3441,6 @@ function CreateEntrada({
                         <>
                           {!isSucursalPrincipalLocked && (
                             <label className="create-user__field">
-                              <span>Fecha</span>
-                              <input
-                                name="fecha"
-                                type="date"
-                                value={formData.fecha}
-                                onChange={handleChange}
-                                disabled={loading}
-                                required
-                              />
-                            </label>
-                          )}
-
-                          {!isSucursalPrincipalLocked && (
-                            <label className="create-user__field">
                               <span>Sucursal</span>
                               <select
                                 name="sucursalId"
@@ -3394,6 +3456,38 @@ function CreateEntrada({
                                   </option>
                                 ))}
                               </select>
+                            </label>
+                          )}
+
+                          {!isSucursalPrincipalLocked && isCompraEntrada && (
+                            <label className="create-user__field create-user__field--required">
+                              <span>No. de Factura</span>
+                              <input
+                                name="factura_referencia"
+                                type="text"
+                                value={formData.factura_referencia}
+                                onChange={(event) => {
+                                  handleChange(event)
+                                  setFacturaError(false)
+                                }}
+                                disabled={loading}
+                                className={facturaError ? 'create-salida__input--error' : ''}
+                                placeholder="Factura del proveedor"
+                              />
+                            </label>
+                          )}
+
+                          {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field">
+                              <span>Fecha</span>
+                              <input
+                                name="fecha"
+                                type="date"
+                                value={formData.fecha}
+                                onChange={handleChange}
+                                disabled={loading}
+                                required
+                              />
                             </label>
                           )}
                         </>
@@ -4473,12 +4567,14 @@ function CreateEntrada({
           </div>
         )}
 
-        <button
-          type="button"
-          aria-label="Cambiar tamano de ventana"
-          className="create-user__resize-handle"
-          onMouseDown={handleResizeMouseDown}
-        />
+        {isMaximizableStep && (
+          <button
+            type="button"
+            aria-label="Cambiar tamano de ventana"
+            className="create-user__resize-handle"
+            onMouseDown={handleResizeMouseDown}
+          />
+        )}
       </div>
       {cellHoverPortal}
     </div>

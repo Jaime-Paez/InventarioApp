@@ -937,7 +937,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             descripcion = safe_str(cell(row, "descripcion"))
             cantidad = safe_int(cell(row, "cantidad"))
             pvp = safe_float(cell(row, "pvp"))
-            if not codigo and not referencia and not descripcion and cantidad <= 0 and pvp <= 0:
+            if not codigo and not referencia and not oem and not descripcion and cantidad <= 0 and pvp <= 0:
                 continue  # fully blank template row
 
             matched = None
@@ -947,8 +947,23 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 matched = Producto.objects.filter(codigo__iexact=codigo).first()
             if not matched and referencia:
                 matched = Producto.objects.filter(referencia__iexact=referencia).first()
-                if matched and not codigo:
-                    codigo = matched.codigo
+
+            oem_matches_dict = {}
+            for code in oem.split(","):
+                code = code.strip()
+                if not code:
+                    continue
+                for m in oem_matches_by_code.get(code.lower(), []):
+                    oem_matches_dict[m["producto_id"]] = m
+            oem_matches = list(oem_matches_dict.values())
+
+            # Si el Excel solo trae OEM (sin código ni referencia, o con datos
+            # que no encontraron producto), y ese OEM identifica sin ambigüedad
+            # un único producto del catálogo, se usa para vincular la fila igual
+            # que si hubiera traído código o referencia. Referencia u OEM son
+            # identificadores alternativos: basta con uno de los dos.
+            if not matched and len(oem_matches) == 1:
+                matched = Producto.objects.filter(pk=oem_matches[0]["producto_id"]).first()
 
             if matched and casa_comercial_id:
                 casas_ids = list(matched.casas_comerciales.values_list("id", flat=True))
@@ -959,10 +974,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     conflicto_casa_nombre = otra.nombre if otra else "otra casa comercial"
                     matched = None  # treat as unmatched so it never enters the import
 
-            # Si el producto ya existe (por código o por referencia), completa
-            # referencia/descripción con los datos del catálogo cuando el Excel
-            # no los trae: código o referencia solos ya identifican el producto.
+            # Si el producto ya existe (por código, referencia u OEM), completa
+            # código/referencia/descripción con los datos del catálogo cuando el
+            # Excel no los trae: cualquiera de esos identificadores solo ya
+            # identifica el producto.
             if matched:
+                if not codigo:
+                    codigo = matched.codigo
                 if not referencia:
                     referencia = matched.referencia or ""
                 if not descripcion:
@@ -970,11 +988,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
             faltan_datos = []
             if not conflicto_casa:
-                # La referencia es obligatoria para todo producto, esté o no vinculado
-                # al catálogo: si el producto vinculado tampoco tiene referencia en la
-                # base de datos, el Excel debe traerla para poder continuar.
-                if not referencia:
-                    faltan_datos.append("Referencia")
+                # Referencia u OEM identifican el producto (ver
+                # ImportacionDetalleSerializer.validate): basta con que el Excel
+                # traiga uno de los dos, no hace falta ambos ni que el producto
+                # ya exista en el catálogo.
+                if not referencia and not oem:
+                    faltan_datos.append("Referencia u OEM")
                 # La cantidad solo es obligatoria si el producto ya existe en el
                 # catálogo: ahí sí se está registrando una entrada real de stock.
                 # Un producto pendiente (sin vincular a uno existente) se puede
@@ -993,15 +1012,6 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 qty = safe_int(row[idx])
                 if qty > 0:
                     suc_quantities[str(suc_id)] = qty
-
-            oem_matches_dict = {}
-            for code in oem.split(","):
-                code = code.strip()
-                if not code:
-                    continue
-                for m in oem_matches_by_code.get(code.lower(), []):
-                    oem_matches_dict[m["producto_id"]] = m
-            oem_matches = list(oem_matches_dict.values())
 
             parsed.append({
                 "fila_excel": fila_excel,

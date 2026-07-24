@@ -93,6 +93,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "no_documento",
+        "factura_referencia",
         "sucursal__nombre",
         "sucursal_objetivo__nombre",
         "sub_tipo_movimiento__nombre",
@@ -102,6 +103,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         "fecha",
         "id",
         "no_documento",
+        "factura_referencia",
         "sucursal__nombre",
         "sucursal_objetivo__nombre",
         "sub_tipo_movimiento__nombre",
@@ -719,6 +721,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             column_filters,
             {
                 "no_documento": "no_documento",
+                "factura_referencia": "factura_referencia",
                 "fecha": {"lookup": "fecha", "type": "date"},
                 "sucursal_nombre": "sucursal__nombre",
                 "sub_tipo_nombre": "sub_tipo_movimiento__nombre",

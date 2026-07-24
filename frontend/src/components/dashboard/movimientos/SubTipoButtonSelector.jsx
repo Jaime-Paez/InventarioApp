@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
   Building2,
-  Globe,
   RotateCcw,
   ShieldCheck,
   ShoppingBag,
@@ -13,7 +12,6 @@ const ICONS_BY_NAME = {
   branch: Building2,
   customer: UserRound,
   guarantee: ShieldCheck,
-  import: Globe,
   purchase: ShoppingBag,
   return: RotateCcw,
 }

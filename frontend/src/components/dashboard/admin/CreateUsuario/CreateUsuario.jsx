@@ -1364,7 +1364,6 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
                   const entradasSubtypes = [
                     { key: 'puede_crear_compra_local', label: 'Compras locales' },
-                    { key: 'puede_crear_importacion', label: 'Importaciones' },
                     { key: 'puede_crear_traslado', label: 'Traslados' },
                     { key: 'puede_crear_devolucion', label: 'Devoluciones' },
                   ]
