@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Info } from 'lucide-react'
 import '../admin/CreateUsuario/CreateUsuario.css'
+import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
@@ -363,6 +365,7 @@ function CreateEntrada({
   const [selectedReminderUserIds, setSelectedReminderUserIds] = useState([])
   const [documentStatus, setDocumentStatus] = useState(DOCUMENT_STATUS.invalid)
   const [showUrgenteConfirm, setShowUrgenteConfirm] = useState(false)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -3016,6 +3019,15 @@ function CreateEntrada({
       ? `${selectedSubTipoLabel}: ${rawHeaderDocumentTitle}`
       : rawHeaderDocumentTitle
   const headerTitle = !isSelectorStep && !isCasaComercialStep && headerDocumentTitle ? headerDocumentTitle : defaultHeaderTitle
+  const hasUnsavedProgress = Boolean(formData.subTipoId)
+  const attemptClose = () => {
+    if (loading) return
+    if (hasUnsavedProgress) {
+      setShowCloseConfirm(true)
+      return
+    }
+    onClose?.()
+  }
 
   return (
     <div
@@ -3053,7 +3065,7 @@ function CreateEntrada({
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={onClose}
+              onClick={attemptClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -4133,7 +4145,7 @@ function CreateEntrada({
                     setCasaComercialOptions([])
                     setShowCasaComercialDropdown(false)
                   }
-                : onClose}
+                : attemptClose}
               disabled={loading || checkingLocationCoverage}
             >
               {isCasaComercialStep ? 'Atrás' : 'Cancelar'}
@@ -4195,6 +4207,57 @@ function CreateEntrada({
                   }}
                 >
                   Sí, es urgente
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCloseConfirm && (
+          <div
+            className="user-details__confirm-overlay"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !loading) setShowCloseConfirm(false)
+            }}
+          >
+            <div className="user-details__confirm-dialog">
+              <div className="user-details__confirm-icon">
+                <Info size={18} />
+              </div>
+              <div className="user-details__confirm-content">
+                <h4>¿Guardar cambios?</h4>
+                <p>¿Quieres guardar los cambios antes de cerrar?</p>
+              </div>
+              <div className="user-details__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={() => setShowCloseConfirm(false)}
+                  disabled={loading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={() => {
+                    setShowCloseConfirm(false)
+                    onClose?.()
+                  }}
+                  disabled={loading}
+                >
+                  No guardar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={() => {
+                    setShowCloseConfirm(false)
+                    handleSubmit({ preventDefault: () => {} })
+                  }}
+                  disabled={loading}
+                >
+                  {loading ? 'Guardando...' : (isTraslado ? 'Guardar solicitud y cerrar' : 'Guardar y cerrar')}
                 </button>
               </div>
             </div>

@@ -209,6 +209,12 @@ function CasaComercialDetails({
   }, [allowEdit, isEditing])
 
   useEffect(() => {
+    if (!isEditing || formData.tipo !== 'local') return
+    const forcedCode = formData.esOriginal ? 'CLO' : 'CL'
+    setFormData((prev) => (prev.codigo === forcedCode ? prev : { ...prev, codigo: forcedCode }))
+  }, [isEditing, formData.tipo, formData.esOriginal])
+
+  useEffect(() => {
     if (allowDelete || !showDeleteDialog) return
     setShowDeleteDialog(false)
   }, [allowDelete, showDeleteDialog])
@@ -628,7 +634,7 @@ function CasaComercialDetails({
                     autoComplete="off"
                     required
                     maxLength={50}
-                    disabled={editorDisabled}
+                    disabled={editorDisabled || formData.tipo === 'local'}
                   />
                 </label>
 

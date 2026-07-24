@@ -19,6 +19,9 @@ const initialForm = {
   esOriginal: false,
 }
 
+const CODIGO_LOCAL = 'CL'
+const CODIGO_LOCAL_ORIGINAL = 'CLO'
+
 const getFlagUrl = (code) => {
   if (!code) return ''
   const clean = String(code).trim().toLowerCase()
@@ -99,6 +102,7 @@ const generateCasaCode = (name, existingCodes = []) => {
 
 function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
+  const [codigoTouched, setCodigoTouched] = useState(false)
   const [loading, setLoading] = useState(false)
   const [countries, setCountries] = useState([])
   const [existingCodes, setExistingCodes] = useState([])
@@ -196,6 +200,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
   useEffect(() => {
     if (!open) return
     setFormData(initialForm)
+    setCodigoTouched(false)
     setLoading(false)
     setExistingCodes([])
     setCountryQuery('')
@@ -247,6 +252,12 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
 
   useEffect(() => {
     if (!open) return
+    if (formData.tipo === 'local') {
+      const forcedCode = formData.esOriginal ? CODIGO_LOCAL_ORIGINAL : CODIGO_LOCAL
+      setFormData((prev) => (prev.codigo === forcedCode ? prev : { ...prev, codigo: forcedCode }))
+      return
+    }
+    if (codigoTouched) return
     setFormData((prev) => {
       const nombre = String(prev.nombre || '').trim()
       if (!nombre) {
@@ -257,7 +268,11 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
       if (autoCode === prev.codigo) return prev
       return { ...prev, codigo: autoCode }
     })
-  }, [open, existingCodes])
+  }, [open, existingCodes, formData.tipo, formData.esOriginal, formData.nombre, codigoTouched])
+
+  const codigoSuggestion = formData.tipo === 'importacion'
+    ? generateCasaCode(formData.nombre, existingCodes)
+    : ''
 
   useEffect(
     () => () => {
@@ -291,14 +306,13 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
-    if (name === 'codigo') return
-    if (name === 'nombre') {
-      setFormData((prev) => ({
-        ...prev,
-        nombre: value,
-        codigo: generateCasaCode(value, existingCodes),
-      }))
+    if (name === 'codigo') {
+      setCodigoTouched(true)
+      setFormData((prev) => ({ ...prev, codigo: value.toUpperCase() }))
       return
+    }
+    if (name === 'tipo' && value === 'local') {
+      setCodigoTouched(false)
     }
     setFormData((prev) => ({
       ...prev,
@@ -324,12 +338,15 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
-    setLoading(true)
-    const generatedCodigo = generateCasaCode(formData.nombre, existingCodes)
+
+    const isLocal = formData.tipo === 'local'
+    const codigo = isLocal
+      ? (formData.esOriginal ? CODIGO_LOCAL_ORIGINAL : CODIGO_LOCAL)
+      : String(formData.codigo || '').trim().toUpperCase()
 
     const payload = {
       nombre: formData.nombre.trim(),
-      codigo: generatedCodigo,
+      codigo,
       tipo: formData.tipo,
       descripcion: formData.descripcion.trim(),
       telefono: formData.telefono.trim(),
@@ -340,16 +357,22 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
     }
 
     if (!payload.nombre) {
-      setLoading(false)
       notifyError('Define un nombre para la casa comercial.')
       return
     }
 
-    if (!payload.codigo) {
-      setLoading(false)
-      notifyError('No se pudo generar un codigo para la casa comercial.')
-      return
+    if (!isLocal) {
+      if (!payload.codigo) {
+        notifyError('Escribe un código para la casa comercial.')
+        return
+      }
+      if (existingCodes.includes(payload.codigo)) {
+        notifyError('Ya existe una casa comercial con este código.')
+        return
+      }
     }
+
+    setLoading(true)
 
     try {
       const response = await authFetch(
@@ -368,6 +391,7 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
       }
 
       setFormData(initialForm)
+      setCodigoTouched(false)
       setCountryQuery('')
       setCountryOptions([])
       setShowCountryDropdown(false)
@@ -602,16 +626,33 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
                   <span>Código</span>
-                  <input
-                    name="codigo"
-                    type="text"
-                    placeholder="Generado automaticamente"
-                    value={formData.codigo}
-                    readOnly
-                    autoComplete="off"
-                    required
-                    disabled
-                  />
+                  {formData.tipo === 'local' ? (
+                    <input
+                      name="codigo"
+                      type="text"
+                      value={formData.codigo}
+                      readOnly
+                      disabled
+                      autoComplete="off"
+                      required
+                    />
+                  ) : (
+                    <>
+                      <input
+                        name="codigo"
+                        type="text"
+                        placeholder="Ej: ABC"
+                        value={formData.codigo}
+                        onChange={handleChange}
+                        autoComplete="off"
+                        required
+                        disabled={loading}
+                      />
+                      {codigoSuggestion && (
+                        <small className="muted">Sugerencia: {codigoSuggestion}</small>
+                      )}
+                    </>
+                  )}
                 </label>
 
                 <label className="create-user__field">
