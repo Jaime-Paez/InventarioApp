@@ -1054,10 +1054,13 @@ function EntradasTable({
     setSelectedRows([])
     refreshData({ page: 1 })
     const isSolicitudTraslado = Boolean(createdPayload?.sucursal_solicitante_id && createdPayload?.sucursal_proveedora_id)
+    const isGuardado = String(createdPayload?.estado || '').trim().toLowerCase() === 'guardado'
     toast.current?.show({
       severity: 'success',
       summary: 'Exito',
-      detail: isSolicitudTraslado ? 'Solicitud creada correctamente' : 'Entrada creada correctamente',
+      detail: isGuardado
+        ? 'Pedido a sucursal guardado'
+        : (isSolicitudTraslado ? 'Solicitud creada correctamente' : 'Entrada creada correctamente'),
       life: 2500,
     })
   }
@@ -1689,7 +1692,7 @@ function EntradasTable({
               .normalize('NFD')
               .replace(/[\u0300-\u036f]/g, '')
               .toLowerCase()
-              .match(/pend|rechaz|cancel/)
+              .match(/pend|rechaz|cancel|guardad/)
           )
         }
         onClose={() => {

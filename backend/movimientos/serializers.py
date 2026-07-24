@@ -350,6 +350,8 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
 
     def get_estado_label(self, obj):
         estado = str(getattr(obj, "estado", "") or "").strip().lower()
+        if estado == SolicitudTraslado.Estados.GUARDADO:
+            return "Guardado"
         if estado == SolicitudTraslado.Estados.PENDIENTE:
             return "Solicitud pendiente"
         if estado == SolicitudTraslado.Estados.CANCELADA:
@@ -365,6 +367,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        is_borrador = bool(self.context.get("is_borrador"))
         sucursal_solicitante = attrs.get("sucursal_solicitante") or getattr(
             self.instance, "sucursal_solicitante", None
         )
@@ -387,21 +390,33 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
 
         is_urgente = bool(attrs.get("urgente", False))
         if sucursal_solicitante is not None and sucursal_proveedora is not None and not is_urgente:
-            pending_qs = SolicitudTraslado.objects.filter(
+            conflicting_qs = SolicitudTraslado.objects.filter(
                 sucursal_solicitante_id=int(sucursal_solicitante.id),
                 sucursal_proveedora_id=int(sucursal_proveedora.id),
-                estado=SolicitudTraslado.Estados.PENDIENTE,
+                estado__in=[
+                    SolicitudTraslado.Estados.GUARDADO,
+                    SolicitudTraslado.Estados.PENDIENTE,
+                ],
             )
             if self.instance is not None:
-                pending_qs = pending_qs.exclude(pk=self.instance.pk)
+                conflicting_qs = conflicting_qs.exclude(pk=self.instance.pk)
 
-            existing_document = str(
-                pending_qs.order_by("-created_at", "-id")
-                .values_list("no_documento", flat=True)
-                .first()
-                or ""
-            ).strip()
-            if existing_document:
+            conflicting = conflicting_qs.order_by("-created_at", "-id").first()
+            if conflicting is not None:
+                existing_document = str(conflicting.no_documento or "").strip()
+                if conflicting.estado == SolicitudTraslado.Estados.GUARDADO:
+                    intro = (
+                        f"Ya hay un pedido a sucursal guardado para estas sucursales ({existing_document})."
+                        if existing_document
+                        else "Ya hay un pedido a sucursal guardado para estas sucursales."
+                    )
+                    raise serializers.ValidationError(
+                        {
+                            "sucursal_proveedora_id": (
+                                f"{intro} Edítalo o complétalo para poder hacer más solicitudes a esa sucursal."
+                            )
+                        }
+                    )
                 raise serializers.ValidationError(
                     {
                         "sucursal_proveedora_id": (
@@ -412,11 +427,20 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
                     }
                 )
 
+        is_finalizing = (
+            self.instance is not None
+            and getattr(self.instance, "estado", None) == SolicitudTraslado.Estados.GUARDADO
+            and not is_borrador
+        )
         detalles_data = attrs.get("detalles")
-        if self.instance is None and not detalles_data:
-            raise serializers.ValidationError(
-                {"detalles": "Debes agregar al menos un producto en la solicitud."}
-            )
+        if (self.instance is None or is_finalizing) and not is_borrador:
+            effective_detalles = detalles_data
+            if effective_detalles is None and self.instance is not None:
+                effective_detalles = list(self.instance.detalles.all())
+            if not effective_detalles:
+                raise serializers.ValidationError(
+                    {"detalles": "Debes agregar al menos un producto en la solicitud."}
+                )
 
         if detalles_data is not None:
             repeated = set()

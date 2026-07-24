@@ -366,6 +366,7 @@ function CreateEntrada({
   const [documentStatus, setDocumentStatus] = useState(DOCUMENT_STATUS.invalid)
   const [showUrgenteConfirm, setShowUrgenteConfirm] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const [trasladoConflict, setTrasladoConflict] = useState(null)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -392,6 +393,7 @@ function CreateEntrada({
   const casaComercialTimerRef = useRef(null)
   const documentCheckTimerRef = useRef(null)
   const documentCheckSequenceRef = useRef(0)
+  const trasladoConflictTimerRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const justTransitionedFromCasaRef = useRef(false)
@@ -1288,6 +1290,62 @@ function CreateEntrada({
     isCurrentUserAdmin,
     token,
   ])
+
+  useEffect(() => {
+    if (trasladoConflictTimerRef.current) {
+      clearTimeout(trasladoConflictTimerRef.current)
+      trasladoConflictTimerRef.current = null
+    }
+
+    if (!open || !isTraslado || formData.urgente || !token) {
+      setTrasladoConflict(null)
+      return undefined
+    }
+
+    const sucursalSolicitanteId = String(formData.sucursalId || '').trim()
+    const sucursalProveedoraId = String(formData.sucursalObjetivoId || '').trim()
+    if (!sucursalSolicitanteId || !sucursalProveedoraId) {
+      setTrasladoConflict(null)
+      return undefined
+    }
+
+    trasladoConflictTimerRef.current = setTimeout(async () => {
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/conflicto/` +
+            `?sucursal_solicitante_id=${encodeURIComponent(sucursalSolicitanteId)}` +
+            `&sucursal_proveedora_id=${encodeURIComponent(sucursalProveedoraId)}`,
+          {},
+          token
+        )
+        if (!response.ok) {
+          setTrasladoConflict(null)
+          return
+        }
+        const data = await response.json().catch(() => ({}))
+        if (data?.conflicto) {
+          setTrasladoConflict(data)
+          const isGuardado = String(data?.estado || '').trim().toLowerCase() === 'guardado'
+          notifyError(
+            isGuardado
+              ? 'Ya hay un pedido a sucursal guardado a esta sucursal, edítalo o complétalo para poder hacer más solicitudes a esa sucursal.'
+              : `Ya existe una solicitud pendiente para estas sucursales (${data?.no_documento || ''}). Debes aceptarla o rechazarla antes de crear otra.`
+          )
+        } else {
+          setTrasladoConflict(null)
+        }
+      } catch {
+        setTrasladoConflict(null)
+      }
+    }, 350)
+
+    return () => {
+      if (trasladoConflictTimerRef.current) {
+        clearTimeout(trasladoConflictTimerRef.current)
+        trasladoConflictTimerRef.current = null
+      }
+    }
+  }, [open, isTraslado, formData.urgente, formData.sucursalId, formData.sucursalObjetivoId, token, notifyError])
 
   const fetchStockByBranch = useCallback(
     async (sucursalId) => {
@@ -2807,9 +2865,10 @@ function CreateEntrada({
     }
   }
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event, options = {}) => {
     event.preventDefault()
     if (isCasaComercialStep || justTransitionedFromCasaRef.current) return
+    const guardarBorrador = Boolean(options?.guardarBorrador) && isTraslado
     setError('')
 
     if (!entradaTipoId) {
@@ -2867,7 +2926,7 @@ function CreateEntrada({
       return
     }
 
-    if (!details.length) {
+    if (!guardarBorrador && !details.length) {
       notifyError('Agrega al menos un producto.')
       return
     }
@@ -2896,27 +2955,39 @@ function CreateEntrada({
         return
       }
 
+      if (!formData.urgente && trasladoConflict?.conflicto) {
+        const isGuardado = String(trasladoConflict?.estado || '').trim().toLowerCase() === 'guardado'
+        notifyError(
+          isGuardado
+            ? 'Ya hay un pedido a sucursal guardado a esta sucursal, edítalo o complétalo para poder hacer más solicitudes a esa sucursal.'
+            : `Ya existe una solicitud pendiente para estas sucursales (${trasladoConflict?.no_documento || ''}). Debes aceptarla o rechazarla antes de crear otra.`
+        )
+        return
+      }
+
       if (String(formData.sucursalId) === String(formData.sucursalObjetivoId)) {
         notifyError('La sucursal proveedora debe ser diferente a la sucursal solicitante.')
         return
       }
 
-      if (reminderUsersLoading) {
-        setActiveTab('recordatorio')
-        notifyError('Espera a que se carguen los usuarios para recordatorios.')
-        return
-      }
+      if (!guardarBorrador) {
+        if (reminderUsersLoading) {
+          setActiveTab('recordatorio')
+          notifyError('Espera a que se carguen los usuarios para recordatorios.')
+          return
+        }
 
-      if (!hasAdminReminderRecipients) {
-        setActiveTab('recordatorio')
-        notifyError('No se pudo resolver un administrador para el recordatorio obligatorio.')
-        return
-      }
+        if (!hasAdminReminderRecipients) {
+          setActiveTab('recordatorio')
+          notifyError('No se pudo resolver un administrador para el recordatorio obligatorio.')
+          return
+        }
 
-      if (!hasAdditionalReminderRecipients) {
-        setActiveTab('recordatorio')
-        notifyError('Debes seleccionar al menos un usuario adicional para el recordatorio.')
-        return
+        if (!hasAdditionalReminderRecipients) {
+          setActiveTab('recordatorio')
+          notifyError('Debes seleccionar al menos un usuario adicional para el recordatorio.')
+          return
+        }
       }
 
       setLoading(true)
@@ -2937,6 +3008,7 @@ function CreateEntrada({
             cantidad: Number(detail.cantidad),
             valor: detail.valor,
           })),
+          guardar_borrador: guardarBorrador,
         }
 
         const response = await authFetch(
@@ -3018,8 +3090,19 @@ function CreateEntrada({
     rawHeaderDocumentTitle && selectedSubTipoLabel
       ? `${selectedSubTipoLabel}: ${rawHeaderDocumentTitle}`
       : rawHeaderDocumentTitle
-  const headerTitle = !isSelectorStep && !isCasaComercialStep && headerDocumentTitle ? headerDocumentTitle : defaultHeaderTitle
-  const hasUnsavedProgress = Boolean(formData.subTipoId)
+  const headerTitle =
+    !isSelectorStep && !isCasaComercialStep
+      ? headerDocumentTitle || (isTraslado && selectedSubTipoLabel ? `${selectedSubTipoLabel}: -` : defaultHeaderTitle)
+      : defaultHeaderTitle
+  const hasUnsavedProgress = Boolean(formData.subTipoId) && (
+    details.length > 0 ||
+    Boolean(String(formData.sucursalObjetivoId || '').trim()) ||
+    Boolean(String(formData.descripcion || '').trim()) ||
+    Boolean(formData.urgente) ||
+    Boolean(String(formData.factura_referencia || '').trim()) ||
+    Boolean(String(formData.cliente || '').trim()) ||
+    selectedReminderUserIds.length > 0
+  )
   const attemptClose = () => {
     if (loading) return
     if (hasUnsavedProgress) {
@@ -4253,7 +4336,7 @@ function CreateEntrada({
                   className="create-user__action create-user__action--primary"
                   onClick={() => {
                     setShowCloseConfirm(false)
-                    handleSubmit({ preventDefault: () => {} })
+                    handleSubmit({ preventDefault: () => {} }, { guardarBorrador: true })
                   }}
                   disabled={loading}
                 >

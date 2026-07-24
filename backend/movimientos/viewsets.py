@@ -232,6 +232,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     @staticmethod
     def _resolve_solicitud_estado_label(solicitud):
         estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
+        if estado == SolicitudTraslado.Estados.GUARDADO:
+            return "Guardado"
         if estado == SolicitudTraslado.Estados.PENDIENTE:
             return "Solicitud pendiente"
         if estado == SolicitudTraslado.Estados.CANCELADA:
@@ -247,6 +249,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         for solicitud in solicitudes:
             solicitud_id = int(getattr(solicitud, "id", 0) or 0)
             estado_label = self._resolve_solicitud_estado_label(solicitud)
+            is_guardado = str(getattr(solicitud, "estado", "") or "").strip().lower() == SolicitudTraslado.Estados.GUARDADO
             detalles_payload = []
             detalles_rows = getattr(solicitud, "detalles", None)
             if detalles_rows is not None:
@@ -303,6 +306,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         )
                     ),
                     "_sort_id": solicitud_id,
+                    "_sort_priority": 0 if is_guardado else 1,
                 }
             )
         return payload
@@ -408,6 +412,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 ),
                 reverse=descending,
             )
+        # Los pedidos a sucursal guardados (borrador) siempre van primero,
+        # sin importar el criterio de orden que se haya pedido: son los que
+        # necesitan una accion (completarlos) antes que nada.
+        sorted_rows.sort(key=lambda row: row.get("_sort_priority", 1))
         return sorted_rows
 
     def _strip_internal_table_fields(self, rows):
@@ -2571,7 +2579,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get", "post"], url_path="solicitudes-traslado")
     def solicitudes_traslado(self, request):
         if request.method.lower() == "post":
-            serializer = SolicitudTrasladoSerializer(data=request.data)
+            guardar_borrador = bool(request.data.get("guardar_borrador"))
+            serializer = SolicitudTrasladoSerializer(
+                data=request.data,
+                context={"is_borrador": guardar_borrador},
+            )
             serializer.is_valid(raise_exception=True)
             reminder_recipient_ids = serializer.validated_data.get("recordatorio_destinatario_ids") or []
 
@@ -2584,12 +2596,18 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 action_key="puede_crear",
             )
 
-            solicitud = serializer.save(creado_por=request.user)
-            self._append_transfer_request_reminder(
-                solicitud=solicitud,
-                actor_user=request.user,
-                selected_user_ids=reminder_recipient_ids,
+            estado = (
+                SolicitudTraslado.Estados.GUARDADO
+                if guardar_borrador
+                else SolicitudTraslado.Estados.PENDIENTE
             )
+            solicitud = serializer.save(creado_por=request.user, estado=estado)
+            if not guardar_borrador:
+                self._append_transfer_request_reminder(
+                    solicitud=solicitud,
+                    actor_user=request.user,
+                    selected_user_ids=reminder_recipient_ids,
+                )
             output = SolicitudTrasladoSerializer(instance=solicitud)
             return Response(output.data, status=status.HTTP_201_CREATED)
 
@@ -2664,6 +2682,58 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         serializer = SolicitudTrasladoSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=["get"], url_path="solicitudes-traslado/conflicto")
+    def solicitud_traslado_conflicto(self, request):
+        """
+        Chequeo liviano para el formulario de creacion: si ya hay una
+        solicitud guardada o pendiente de esta sucursal hacia la proveedora
+        elegida, se bloquea la creacion de otra no urgente. No requiere
+        permiso de lectura sobre la sucursal proveedora (a diferencia del
+        listado completo), solo de creacion sobre la solicitante.
+        """
+        sucursal_solicitante_raw = (request.query_params.get("sucursal_solicitante_id") or "").strip()
+        sucursal_proveedora_raw = (request.query_params.get("sucursal_proveedora_id") or "").strip()
+        if not sucursal_solicitante_raw.isdigit() or not sucursal_proveedora_raw.isdigit():
+            return Response(
+                {"detail": "Debes enviar sucursal_solicitante_id y sucursal_proveedora_id validos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sucursal_solicitante_id = int(sucursal_solicitante_raw)
+        sucursal_proveedora_id = int(sucursal_proveedora_raw)
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+            sucursal_solicitante_id,
+            field_label="sucursal solicitante",
+            action_key="puede_crear",
+        )
+
+        conflicting = (
+            SolicitudTraslado.objects.filter(
+                sucursal_solicitante_id=sucursal_solicitante_id,
+                sucursal_proveedora_id=sucursal_proveedora_id,
+                estado__in=[
+                    SolicitudTraslado.Estados.GUARDADO,
+                    SolicitudTraslado.Estados.PENDIENTE,
+                ],
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if conflicting is None:
+            return Response({"conflicto": False})
+
+        return Response(
+            {
+                "conflicto": True,
+                "solicitud_id": int(conflicting.id),
+                "estado": conflicting.estado,
+                "no_documento": str(conflicting.no_documento or "").strip(),
+            }
+        )
+
     @action(
         detail=False,
         methods=["get", "put", "delete"],
@@ -2706,13 +2776,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         )
 
         if request.method.upper() != "DELETE" and solicitud.estado not in {
+            SolicitudTraslado.Estados.GUARDADO,
             SolicitudTraslado.Estados.PENDIENTE,
             SolicitudTraslado.Estados.CANCELADA,
         }:
             return Response(
                 {
                     "detail": (
-                        "Solo se pueden editar solicitudes pendientes o rechazadas de traslado."
+                        "Solo se pueden editar solicitudes guardadas, pendientes o rechazadas de traslado."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -2739,9 +2810,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 field_label="sucursal solicitante",
                 action_key="puede_eliminar",
             )
-            if solicitud.estado != SolicitudTraslado.Estados.PENDIENTE:
+            if solicitud.estado not in {
+                SolicitudTraslado.Estados.GUARDADO,
+                SolicitudTraslado.Estados.PENDIENTE,
+            }:
                 return Response(
-                    {"detail": "Solo se pueden eliminar solicitudes de traslado pendientes."},
+                    {"detail": "Solo se pueden eliminar solicitudes de traslado guardadas o pendientes."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             entrada_movimiento = getattr(solicitud, "movimiento_entrada", None)
@@ -2755,9 +2829,27 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             _purge_reminders_for_context("solicitud_traslado", solicitud_token)
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-        serializer = SolicitudTrasladoSerializer(instance=solicitud, data=request.data, partial=True)
+        guardar_borrador = bool(request.data.get("guardar_borrador"))
+        was_borrador = solicitud.estado == SolicitudTraslado.Estados.GUARDADO
+        serializer = SolicitudTrasladoSerializer(
+            instance=solicitud,
+            data=request.data,
+            partial=True,
+            context={"is_borrador": guardar_borrador},
+        )
         serializer.is_valid(raise_exception=True)
-        updated = serializer.save()
+        reminder_recipient_ids = serializer.validated_data.get("recordatorio_destinatario_ids") or []
+        save_kwargs = {}
+        is_finalizing = was_borrador and not guardar_borrador
+        if is_finalizing:
+            save_kwargs["estado"] = SolicitudTraslado.Estados.PENDIENTE
+        updated = serializer.save(**save_kwargs)
+        if is_finalizing:
+            self._append_transfer_request_reminder(
+                solicitud=updated,
+                actor_user=request.user,
+                selected_user_ids=reminder_recipient_ids,
+            )
         output = SolicitudTrasladoSerializer(instance=updated)
         return Response(output.data, status=status.HTTP_200_OK)
 

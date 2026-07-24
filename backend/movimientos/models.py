@@ -101,6 +101,7 @@ class SolicitudTraslado(models.Model):
     """Solicitud de traslado entre sucursales (A solicita a B)."""
 
     class Estados(models.TextChoices):
+        GUARDADO = "guardado", "Guardado"
         PENDIENTE = "pendiente", "Pendiente"
         APROBADA = "aprobada", "Aprobada"
         CANCELADA = "cancelada", "Cancelada"

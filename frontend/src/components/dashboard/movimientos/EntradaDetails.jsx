@@ -378,6 +378,7 @@ function EntradaDetails({
   const isPreviewRejectedSolicitud =
     hasPreviewData &&
     (normalizedSolicitudStateName.includes('rechaz') || normalizedSolicitudStateName.includes('cancel'))
+  const isPreviewGuardadoSolicitud = hasPreviewData && normalizedSolicitudStateName.includes('guardad')
 
   const entradaTipoId = useMemo(() => {
     const entrada = tipoMovimientos.find((tipo) => normalizeValue(tipo?.nombre).startsWith('ent'))
@@ -548,6 +549,7 @@ function EntradaDetails({
     estadoCategoryIds.rejected.has(resolvedEstadoId) ||
     normalizedSelectedEstadoName.includes('rechaz') ||
     normalizedSelectedEstadoName.includes('cancel')
+  const estadoMatchesGuardado = normalizedSelectedEstadoName.includes('guardad')
   const estadoMatchesAccepted =
     estadoCategoryIds.accepted.has(resolvedEstadoId) ||
     normalizedSelectedEstadoName.includes('acept') ||
@@ -564,28 +566,29 @@ function EntradaDetails({
     !estadoMatchesPending && !estadoMatchesRejected && !estadoMatchesAccepted && !estadoMatchesSent
   const isPendingSolicitudRibbon = estadoMatchesPending
   const isRejectedSolicitudRibbon = estadoMatchesRejected
+  const isGuardadoSolicitudRibbon = estadoMatchesGuardado
   const isAcceptedSolicitudRibbon = estadoMatchesAccepted
   const isSentSolicitudRibbon = estadoMatchesSent
   const isReceivedRibbon = estadoMatchesReceived
-  const canEditTrasladoState = !isTraslado || estadoMatchesPending || estadoMatchesRejected
+  const canEditTrasladoState = !isTraslado || estadoMatchesPending || estadoMatchesRejected || estadoMatchesGuardado
   const isReadOnlyMode = Boolean(
     readOnly ||
       isSentSolicitud ||
-      (isTraslado && !estadoMatchesPending && !estadoMatchesRejected)
+      (isTraslado && !estadoMatchesPending && !estadoMatchesRejected && !estadoMatchesGuardado)
   )
   const effectiveAllowEdit =
     canEditTrasladoState &&
-    (allowEdit || isPreviewPendingSolicitud || isPreviewRejectedSolicitud) &&
+    (allowEdit || isPreviewPendingSolicitud || isPreviewRejectedSolicitud || isPreviewGuardadoSolicitud) &&
     !isSentSolicitud
   const canStartEditingPreviewSolicitud = Boolean(
     hasPreviewData &&
     !readOnly &&
-    (isPreviewPendingSolicitud || isPreviewRejectedSolicitud) &&
-    (allowEdit || isPreviewPendingSolicitud || isPreviewRejectedSolicitud)
+    (isPreviewPendingSolicitud || isPreviewRejectedSolicitud || isPreviewGuardadoSolicitud) &&
+    (allowEdit || isPreviewPendingSolicitud || isPreviewRejectedSolicitud || isPreviewGuardadoSolicitud)
   )
   const lineItemsReadOnly = Boolean(isReadOnlyMode || !isEditing)
   const showDetailActions = !isReadOnlyMode && !lineItemsReadOnly
-  const isPendingSolicitudEntry = hasPreviewData && isPreviewPendingSolicitud
+  const isPendingSolicitudEntry = hasPreviewData && (isPreviewPendingSolicitud || isPreviewGuardadoSolicitud)
 
   useEffect(() => {
     if (open) return
@@ -1956,6 +1959,15 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
             valor: Number.isFinite(valor) ? valor : 0,
           }
         })
+        const hasValidSucursalObjetivo = Boolean(String(formData.sucursalObjetivoId || '').trim())
+        const hasCompleteDetails = details.length > 0 && details.every((detail) => {
+          const hasProduct = Boolean(String(detail?.productoId || '').trim())
+          const qty = parseIntValue(detail?.cantidad)
+          const val = parseNumber(detail?.valor)
+          return hasProduct && Number.isFinite(qty) && qty > 0 && Number.isFinite(val) && val >= 0
+        })
+        const guardarBorrador = isPreviewGuardadoSolicitud && !(hasValidSucursalObjetivo && hasCompleteDetails)
+
         const payload = {
           sucursal_solicitante_id: Number(formData.sucursalId),
           sucursal_proveedora_id: Number(formData.sucursalObjetivoId),
@@ -1963,6 +1975,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
           descripcion: buildDescripcion(ventaClienteLabel),
           funcional: Boolean(formData.funcional),
           detalles: detallesPayload,
+          guardar_borrador: guardarBorrador,
         }
 
         const response = await authFetch(
@@ -2008,6 +2021,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       clienteForm,
       details,
       formData,
+      isPreviewGuardadoSolicitud,
       notifyError,
       onUpdated,
       token,
@@ -2057,7 +2071,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       }
     }
 
-    if (!details.length) {
+    if (!isPreviewGuardadoSolicitud && !details.length) {
       notifyError('Agrega al menos un producto.')
       return
     }
@@ -2070,13 +2084,13 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       return hasProduct && hasState && Number.isFinite(qty) && qty > 0 && Number.isFinite(val) && val >= 0
     })
 
-    if (!detailsHaveRequiredData) {
+    if (!isPreviewGuardadoSolicitud && !detailsHaveRequiredData) {
       notifyError('Hay productos con datos incompletos.')
       return
     }
 
     if (!entradaId) {
-      if ((isPendingSolicitudEntry || isPreviewRejectedSolicitud) && transferSolicitudId) {
+      if ((isPendingSolicitudEntry || isPreviewRejectedSolicitud || isPreviewGuardadoSolicitud) && transferSolicitudId) {
         await handleUpdatePendingSolicitud(ventaClienteLabel)
         return
       }
@@ -2284,18 +2298,19 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     isRejectedSolicitudRibbon ||
     isAcceptedSolicitudRibbon ||
     isSentSolicitudRibbon ||
-    isReceivedRibbon
+    isReceivedRibbon ||
+    isGuardadoSolicitudRibbon
   const _ribbonStateLabel = rawApiEstadoNombre || selectedEstadoName || ''
   const solicitudRibbonLabel = isTraslado
-    ? (isRejectedSolicitudRibbon ? 'Solicitud rechazada' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada' : isSentSolicitudRibbon ? 'Solicitud enviada' : 'Solicitud pendiente')
+    ? (isGuardadoSolicitudRibbon ? 'Guardado' : isRejectedSolicitudRibbon ? 'Solicitud rechazada' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada' : isSentSolicitudRibbon ? 'Solicitud enviada' : 'Solicitud pendiente')
     : _ribbonStateLabel
   const solicitudRibbonTitle = isTraslado
-    ? (isRejectedSolicitudRibbon ? 'Solicitud rechazada por la sucursal proveedora' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada por la sucursal proveedora' : isSentSolicitudRibbon ? 'Solicitud en estado de envio (traslado).' : 'Solicitud esperando a ser aceptada')
+    ? (isGuardadoSolicitudRibbon ? 'Pedido a sucursal guardado, aún falta completarlo.' : isRejectedSolicitudRibbon ? 'Solicitud rechazada por la sucursal proveedora' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada por la sucursal proveedora' : isSentSolicitudRibbon ? 'Solicitud en estado de envio (traslado).' : 'Solicitud esperando a ser aceptada')
     : _ribbonStateLabel
   const solicitudRibbonDisplayLabel = isReceivedRibbon
     ? _ribbonStateLabel.replace(' ', '\n')
     : isTraslado
-      ? (isRejectedSolicitudRibbon ? 'Solicitud\nrechazada' : isAcceptedSolicitudRibbon ? 'Solicitud\naceptada' : isSentSolicitudRibbon ? 'Solicitud\nenviada' : 'Solicitud\npendiente')
+      ? (isGuardadoSolicitudRibbon ? 'Guardado' : isRejectedSolicitudRibbon ? 'Solicitud\nrechazada' : isAcceptedSolicitudRibbon ? 'Solicitud\naceptada' : isSentSolicitudRibbon ? 'Solicitud\nenviada' : 'Solicitud\npendiente')
       : _ribbonStateLabel.replace(' ', '\n')
   const solicitudRejectionReason = String(previewData?.motivo_rechazo || '').trim()
   const resolvedSolicitudRejectionReason = (
@@ -3065,7 +3080,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
               </p>
                <p className="create-salida__confirm-warning">
                  {isPendingSolicitudEntry
-                   ? 'Esta solicitud pendiente no movió inventario; al eliminarla no se ajustará el stock.'
+                   ? 'Esta solicitud no movió inventario; al eliminarla no se ajustará el stock.'
                    : 'Elige cómo quieres manejar el inventario asociado a esta entrada.'}
                </p>
                {!isPendingSolicitudEntry && (
