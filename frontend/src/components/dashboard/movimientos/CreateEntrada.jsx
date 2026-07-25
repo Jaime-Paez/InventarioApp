@@ -22,6 +22,7 @@ const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const SELECTOR_WIDTH = 520
+const COMPRA_LOCAL_WIDTH = 1100
 const SELECTOR_HEIGHT = 360
 const CASA_SELECTOR_HEIGHT_EMPTY = 210
 const CASA_SELECTOR_HEIGHT_FULL = 500
@@ -249,6 +250,53 @@ const calculateLineTotal = (cantidad, precio) => {
   return qty * value
 }
 
+const calculateDescuentoValor = (costo, descuentoPorcentaje) => {
+  const costoNum = parseNumber(costo)
+  if (!Number.isFinite(costoNum) || costoNum < 0) return null
+  const descuentoNum = parseNumber(descuentoPorcentaje)
+  if (!Number.isFinite(descuentoNum) || descuentoNum <= 0) return 0
+  return costoNum * (descuentoNum / 100)
+}
+
+const calculateCostoConIva = (costo, descuentoPorcentaje, ivaRate) => {
+  const costoNum = parseNumber(costo)
+  if (!Number.isFinite(costoNum) || costoNum < 0) return null
+  const descuentoValor = calculateDescuentoValor(costo, descuentoPorcentaje) || 0
+  return (costoNum - descuentoValor) * (1 + ivaRate)
+}
+
+// Igual que en Importaciones: los campos de dinero (Costo, PVP Nuevo) se
+// guardan como string de centavos (solo digitos) y se formatean siempre como
+// "0.00", para que escribir "5" de $0.00 pase a $0.05, "50" a $0.50, etc. —
+// sin arrastrar un valor previo que haya que borrar primero. Desc. (%) no usa
+// este formato porque no es dinero.
+const formatCentavos = (centsStr) => {
+  const digits = String(centsStr || '').replace(/\D/g, '')
+  if (!digits) return '0.00'
+  const n = parseInt(digits, 10)
+  const intPart = Math.floor(n / 100)
+  const decPart = n % 100
+  return `${intPart.toLocaleString('en-US')}.${String(decPart).padStart(2, '0')}`
+}
+
+const centavosToNumber = (centsStr) => {
+  const digits = String(centsStr || '').replace(/\D/g, '')
+  if (!digits) return 0
+  return parseInt(digits, 10) / 100
+}
+
+const decimalToCentavos = (value) => {
+  const parsed = parseNumber(value)
+  if (!Number.isFinite(parsed) || parsed < 0) return ''
+  return String(Math.round(parsed * 100))
+}
+
+const calculatePrecioConIva = (precio, ivaRate) => {
+  const precioNum = parseNumber(precio)
+  if (!Number.isFinite(precioNum) || precioNum < 0) return null
+  return precioNum * (1 + ivaRate)
+}
+
 const resolveProductPrice = (producto) => {
   const parsed = parseNumber(producto?.precio)
   if (parsed === null || parsed < 0) return ''
@@ -364,8 +412,8 @@ function CreateEntrada({
   const [locationAssignmentsByProduct, setLocationAssignmentsByProduct] = useState({})
   const [locationDropdownProductId, setLocationDropdownProductId] = useState('')
   const [locationDropdownField, setLocationDropdownField] = useState('')
-  const [locationDropdownDirection, setLocationDropdownDirection] = useState('down')
   const [locationDropdownMaxHeight, setLocationDropdownMaxHeight] = useState(null)
+  const [locationDropdownStyle, setLocationDropdownStyle] = useState({})
   const [locationQuery, setLocationQuery] = useState('')
   const [locationDebouncedQuery, setLocationDebouncedQuery] = useState('')
   const [reminderUsers, setReminderUsers] = useState([])
@@ -388,6 +436,7 @@ function CreateEntrada({
   const [showCasaComercialDropdown, setShowCasaComercialDropdown] = useState(false)
   const [casaComercialDropdownStyle, setCasaComercialDropdownStyle] = useState({})
   const [facturaError, setFacturaError] = useState(false)
+  const [detailFieldErrors, setDetailFieldErrors] = useState({})
   const modalRef = useRef(null)
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
@@ -398,6 +447,16 @@ function CreateEntrada({
   const casaComercialDropdownRef = useRef(null)
   const casaComercialDropdownPanelRef = useRef(null)
   const locationDropdownRef = useRef(null)
+  const locationDropdownPanelRef = useRef(null)
+  // Un ref por campo (en vez de un unico ref compartido y reasignado segun
+  // cual esta abierto): con un solo ref, al pasar de un campo abierto a otro
+  // (p. ej. Division -> Subdivision) el lookup del trigger podia quedarse
+  // apuntando al elemento equivocado y el ultimo dropdown de la fila no
+  // llegaba a posicionarse (por eso parecia "no abrir").
+  // Se indexa por "productoId:campo" (no solo por campo) para que, si hay
+  // varios productos sin ubicacion en la lista, cada fila tenga su propio
+  // trigger y no se pisen entre si.
+  const locationTriggerRefs = useRef({})
   const clienteSearchTimerRef = useRef(null)
   const casaComercialTimerRef = useRef(null)
   const documentCheckTimerRef = useRef(null)
@@ -662,16 +721,35 @@ function CreateEntrada({
     return parsed
   }, [formData.iva_rate])
 
-  const draftLineTotal = useMemo(
-    () => calculateLineTotal(detailDraft.cantidad, detailDraft.valor),
-    [detailDraft.cantidad, detailDraft.valor]
+  const draftCostoDecimal = useMemo(() => centavosToNumber(detailDraft.costo), [detailDraft.costo])
+  const draftDescuentoPorcentajeDecimal = useMemo(
+    () => parseNumber(detailDraft.descuentoPorcentaje),
+    [detailDraft.descuentoPorcentaje]
+  )
+  const draftValorDecimal = useMemo(
+    () => (isCompraEntrada ? centavosToNumber(detailDraft.valor) : parseNumber(detailDraft.valor)),
+    [isCompraEntrada, detailDraft.valor]
   )
 
-  const draftCostoConIva = useMemo(() => {
-    const costo = parseNumber(detailDraft.costo)
-    if (!Number.isFinite(costo) || costo < 0) return null
-    return costo * (1 + ivaRateValue)
-  }, [detailDraft.costo, ivaRateValue])
+  const draftLineTotal = useMemo(
+    () => calculateLineTotal(detailDraft.cantidad, draftValorDecimal),
+    [detailDraft.cantidad, draftValorDecimal]
+  )
+
+  const draftDescuentoValor = useMemo(
+    () => calculateDescuentoValor(draftCostoDecimal, draftDescuentoPorcentajeDecimal),
+    [draftCostoDecimal, draftDescuentoPorcentajeDecimal]
+  )
+
+  const draftCostoConIva = useMemo(
+    () => calculateCostoConIva(draftCostoDecimal, draftDescuentoPorcentajeDecimal, ivaRateValue),
+    [draftCostoDecimal, draftDescuentoPorcentajeDecimal, ivaRateValue]
+  )
+
+  const draftValorConIva = useMemo(
+    () => calculatePrecioConIva(draftValorDecimal, ivaRateValue),
+    [draftValorDecimal, ivaRateValue]
+  )
 
   const subtotal = useMemo(
     () =>
@@ -1585,7 +1663,6 @@ function CreateEntrada({
     setLocationResolverError('')
     setLocationDropdownProductId('')
     setLocationDropdownField('')
-    setLocationDropdownDirection('down')
     setLocationDropdownMaxHeight(null)
     setLocationQuery('')
     setLocationDebouncedQuery('')
@@ -1610,6 +1687,7 @@ function CreateEntrada({
     setDetails([])
     setDetailDraft(initialDetail)
     setDetailError('')
+    setDetailFieldErrors({})
     setShowProductDropdown(false)
     setProductDropdownMaxHeight(null)
     setProductQuery('')
@@ -1634,7 +1712,6 @@ function CreateEntrada({
     setLocationAssignmentsByProduct({})
     setLocationDropdownProductId('')
     setLocationDropdownField('')
-    setLocationDropdownDirection('down')
     setLocationDropdownMaxHeight(null)
     setLocationQuery('')
     setLocationDebouncedQuery('')
@@ -1847,15 +1924,10 @@ function CreateEntrada({
   }, [open, showClienteDropdown, updateClienteDropdownPosition])
 
   const updateLocationDropdownPlacement = useCallback(() => {
-    if (
-      !showLocationResolver ||
-      !locationDropdownProductId ||
-      !locationDropdownField ||
-      !locationDropdownRef.current
-    ) {
+    if (!showLocationResolver || !locationDropdownProductId || !locationDropdownField) {
       return
     }
-    const trigger = locationDropdownRef.current.querySelector('.create-user__dropdown-trigger')
+    const trigger = locationTriggerRefs.current[`${locationDropdownProductId}:${locationDropdownField}`]
     if (!trigger) return
     const triggerRect = trigger.getBoundingClientRect()
     const spacing = 10
@@ -1870,8 +1942,20 @@ function CreateEntrada({
     const nextDirection = availableBelow < 220 && availableAbove > availableBelow ? 'up' : 'down'
     const availableSpace = nextDirection === 'up' ? availableAbove : availableBelow
     const nextMaxHeight = Math.max(140, Math.min(320, availableSpace))
-    setLocationDropdownDirection((prev) => (prev === nextDirection ? prev : nextDirection))
     setLocationDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
+    // Se renderiza con un portal a document.body (como el resto de dropdowns)
+    // para que no quede detras de las filas de Bodega/Division/Subdivision
+    // que le siguen dentro del mismo contenedor.
+    setLocationDropdownStyle({
+      position: 'fixed',
+      left: triggerRect.left,
+      width: triggerRect.width,
+      maxHeight: `${nextMaxHeight}px`,
+      zIndex: 9999,
+      ...(nextDirection === 'up'
+        ? { bottom: Math.max(window.innerHeight - triggerRect.top + spacing, VIEWPORT_PADDING) }
+        : { top: triggerRect.bottom + spacing }),
+    })
   }, [locationDropdownField, locationDropdownProductId, showLocationResolver])
 
   useEffect(() => {
@@ -2033,10 +2117,12 @@ function CreateEntrada({
       if (!casaComercialTouched) {
         setShowCasaComercialDropdown(false)
       }
-      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target)) {
+      const locationTouched =
+        (locationDropdownRef.current && locationDropdownRef.current.contains(event.target)) ||
+        (locationDropdownPanelRef.current && locationDropdownPanelRef.current.contains(event.target))
+      if (!locationTouched) {
         setLocationDropdownProductId('')
         setLocationDropdownField('')
-        setLocationDropdownDirection('down')
         setLocationDropdownMaxHeight(null)
         setLocationQuery('')
         setLocationDebouncedQuery('')
@@ -2103,7 +2189,9 @@ function CreateEntrada({
     if (!open || isMaximized) return
     const compactMode = isSelectorStep || isCasaComercialStep
     const { availableWidth, availableHeight, minWidth, minHeight } = getViewportMetrics(compactMode)
-    const preferredWidth = compactMode ? SELECTOR_WIDTH : MIN_WIDTH
+    const preferredWidth = compactMode
+      ? SELECTOR_WIDTH
+      : (isCompraEntrada ? COMPRA_LOCAL_WIDTH : MIN_WIDTH)
     const width = Math.min(Math.max(preferredWidth, minWidth), availableWidth)
 
     if (isCasaComercialStep) {
@@ -2129,7 +2217,7 @@ function CreateEntrada({
       x: Math.max((window.innerWidth - width) / 2, VIEWPORT_PADDING),
       y: Math.max((window.innerHeight - height) / 2, VIEWPORT_PADDING),
     })
-  }, [getViewportMetrics, isMaximized, isSelectorStep, isCasaComercialStep, casaComercialDraft, open])
+  }, [getViewportMetrics, isMaximized, isSelectorStep, isCasaComercialStep, isCompraEntrada, casaComercialDraft, open])
 
   const handleModalMouseDown = (event) => {
     const target = event?.target
@@ -2416,6 +2504,50 @@ function CreateEntrada({
     }))
   }
 
+  // Permite moverse de input en input dentro de una fila con las flechas
+  // izquierda/derecha, saltando las celdas de solo lectura (Desc. ($),
+  // Costo + IVA, etc.) igual que en una hoja de calculo.
+  const focusAdjacentRowInput = (currentEl, direction) => {
+    const row = currentEl?.closest('.create-user__locations-row')
+    if (!row) return
+    const focusables = Array.from(row.querySelectorAll('input:not(:disabled)'))
+    const index = focusables.indexOf(currentEl)
+    if (index === -1) return
+    const nextEl = focusables[index + direction]
+    if (nextEl) nextEl.focus()
+  }
+
+  const handleRowArrowKeyDown = (event) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      focusAdjacentRowInput(event.currentTarget, -1)
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      focusAdjacentRowInput(event.currentTarget, 1)
+    }
+  }
+
+  const handleDraftCentavosKeyDown = (field, currentDigits, { maxValue } = {}) => (event) => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      handleRowArrowKeyDown(event)
+      return
+    }
+    if (event.key === 'Backspace') {
+      event.preventDefault()
+      setDetailDraft((prev) => ({
+        ...prev,
+        [field]: String(currentDigits || '').replace(/\D/g, '').slice(0, -1),
+      }))
+      return
+    }
+    if (/^\d$/.test(event.key)) {
+      event.preventDefault()
+      const nextDigits = String(currentDigits || '').replace(/\D/g, '') + event.key
+      if (Number.isFinite(maxValue) && centavosToNumber(nextDigits) > maxValue) return
+      setDetailDraft((prev) => ({ ...prev, [field]: nextDigits }))
+    }
+  }
+
   const handleProductSelect = (producto) => {
     if (!producto?.id) return
     const normalizedProductId = String(producto.id || '').trim()
@@ -2424,13 +2556,12 @@ function CreateEntrada({
       return
     }
     const productPrice = resolveProductPrice(producto)
-    const productCost = resolveProductCost(producto)
     setDetailError('')
     setDetailDraft((prev) => ({
       ...prev,
       productoId: String(producto.id),
-      valor: productPrice,
-      costo: productCost,
+      valor: isCompraEntrada ? '' : productPrice,
+      costo: '',
       descuentoPorcentaje: '',
       cantidad: '',
     }))
@@ -2449,14 +2580,13 @@ function CreateEntrada({
     const cantidad = parseIntValue(detailDraft.cantidad)
     const estadoProductoId = String(defaultEstadoProductoId || '').trim()
     const producto = productos.find((item) => String(item.id) === productoId)
-    const valorRaw = String(detailDraft.valor ?? '').trim() || resolveProductPrice(producto)
-    const valor = parseNumber(valorRaw)
-    const costoRaw = String(detailDraft.costo ?? '').trim() || resolveProductCost(producto)
-    const costo = parseNumber(costoRaw)
-    const descuentoPorcentaje = Math.min(
-      100,
-      Math.max(0, parseNumber(detailDraft.descuentoPorcentaje) || 0)
-    )
+    const valorDigits = String(detailDraft.valor ?? '').trim()
+    const valor = isCompraEntrada
+      ? (valorDigits ? centavosToNumber(valorDigits) : parseNumber(resolveProductPrice(producto)))
+      : parseNumber(valorDigits || resolveProductPrice(producto))
+    const costoDigits = String(detailDraft.costo ?? '').trim()
+    const costo = costoDigits ? centavosToNumber(costoDigits) : parseNumber(resolveProductCost(producto))
+    const descuentoPorcentaje = Math.min(100, Math.max(0, parseNumber(detailDraft.descuentoPorcentaje) || 0))
 
     if (!productoId) {
       setDetailError('Selecciona un producto.')
@@ -2529,9 +2659,9 @@ function CreateEntrada({
         estadoProductoId,
         estadoProductoNombre: estadoProducto?.nombre ?? '',
         cantidad,
-        valor,
+        valor: isCompraEntrada ? decimalToCentavos(valor) : valor,
         valor_total,
-        costo: isCompraEntrada ? costo : null,
+        costo: isCompraEntrada ? decimalToCentavos(costo) : null,
         descuentoPorcentaje: isCompraEntrada ? descuentoPorcentaje : null,
       },
     ])
@@ -2565,29 +2695,77 @@ function CreateEntrada({
 
   const handleRemoveDetail = (uid) => {
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
+    setDetailFieldErrors((prev) => {
+      if (!(uid in prev)) return prev
+      const next = { ...prev }
+      delete next[uid]
+      return next
+    })
+  }
+
+  const clearDetailFieldError = (uid, field) => {
+    setDetailFieldErrors((prev) => {
+      if (!prev[uid]?.[field]) return prev
+      const nextRow = { ...prev[uid] }
+      delete nextRow[field]
+      const next = { ...prev }
+      if (Object.keys(nextRow).length) next[uid] = nextRow
+      else delete next[uid]
+      return next
+    })
   }
 
   const handleDetailFieldChange = (uid, field, rawValue) => {
+    clearDetailFieldError(uid, field)
     setDetails((prev) =>
       prev.map((detail) => {
         if (detail.uid !== uid) return detail
         if (field === 'valor') {
           const valor = parseNumber(rawValue)
-          const nextValor = Number.isFinite(valor) && valor >= 0 ? valor : 0
-          return { ...detail, valor: nextValor, valor_total: detail.cantidad * nextValor }
-        }
-        if (field === 'costo') {
-          const costo = parseNumber(rawValue)
-          return { ...detail, costo: Number.isFinite(costo) && costo >= 0 ? costo : 0 }
+          const safeValor = Number.isFinite(valor) && valor >= 0 ? valor : 0
+          return { ...detail, valor: rawValue, valor_total: detail.cantidad * safeValor }
         }
         if (field === 'descuentoPorcentaje') {
-          const descuento = parseNumber(rawValue)
-          const clamped = Number.isFinite(descuento) ? Math.min(100, Math.max(0, descuento)) : 0
-          return { ...detail, descuentoPorcentaje: clamped }
+          return { ...detail, descuentoPorcentaje: rawValue }
         }
         return detail
       })
     )
+  }
+
+  // Costo y PVP Nuevo (compra local) se editan tecla por tecla
+  // como centavos (igual que en Importaciones): Backspace quita el ultimo
+  // digito, cada digito nuevo se agrega al final, y se formatea como "0.00".
+  const applyDetailCentavos = (uid, field, nextDigits) => {
+    clearDetailFieldError(uid, field)
+    setDetails((prev) =>
+      prev.map((detail) => {
+        if (detail.uid !== uid) return detail
+        if (field === 'valor') {
+          const nextValorDecimal = centavosToNumber(nextDigits)
+          return { ...detail, valor: nextDigits, valor_total: detail.cantidad * nextValorDecimal }
+        }
+        return { ...detail, [field]: nextDigits }
+      })
+    )
+  }
+
+  const handleDetailCentavosKeyDown = (uid, field, currentDigits, { maxValue } = {}) => (event) => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      handleRowArrowKeyDown(event)
+      return
+    }
+    if (event.key === 'Backspace') {
+      event.preventDefault()
+      applyDetailCentavos(uid, field, String(currentDigits || '').replace(/\D/g, '').slice(0, -1))
+      return
+    }
+    if (/^\d$/.test(event.key)) {
+      event.preventDefault()
+      const nextDigits = String(currentDigits || '').replace(/\D/g, '') + event.key
+      if (Number.isFinite(maxValue) && centavosToNumber(nextDigits) > maxValue) return
+      applyDetailCentavos(uid, field, nextDigits)
+    }
   }
 
   const handleResetDetailPrecio = (uid) => {
@@ -2595,8 +2773,10 @@ function CreateEntrada({
       prev.map((detail) => {
         if (detail.uid !== uid) return detail
         const valor = parseNumber(detail.productoPrecioBD)
-        const nextValor = Number.isFinite(valor) && valor >= 0 ? valor : detail.valor
-        return { ...detail, valor: nextValor, valor_total: detail.cantidad * nextValor }
+        const currentValorDecimal = isCompraEntrada ? centavosToNumber(detail.valor) : detail.valor
+        const nextValorDecimal = Number.isFinite(valor) && valor >= 0 ? valor : currentValorDecimal
+        const nextValorStored = isCompraEntrada ? decimalToCentavos(nextValorDecimal) : nextValorDecimal
+        return { ...detail, valor: nextValorStored, valor_total: detail.cantidad * nextValorDecimal }
       })
     )
   }
@@ -2701,11 +2881,16 @@ function CreateEntrada({
             producto_id: Number(detail.productoId),
             cantidad: detail.cantidad,
             estado_producto_id: Number(detail.estadoProductoId),
-            valor: detail.valor,
+            valor: isCompraEntrada
+              ? Math.max(0, centavosToNumber(detail.valor))
+              : Math.max(0, parseNumber(detail.valor) ?? 0),
             valor_total: detail.valor_total,
-            costo: isCompraEntrada && Number.isFinite(detail.costo) ? detail.costo : null,
-            descuento_porcentaje: isCompraEntrada && Number.isFinite(detail.descuentoPorcentaje)
-              ? detail.descuentoPorcentaje
+            costo: isCompraEntrada ? Math.max(0, centavosToNumber(detail.costo)) : null,
+            descuento_porcentaje: isCompraEntrada
+              ? Math.min(100, Math.max(0, parseNumber(detail.descuentoPorcentaje) ?? 0))
+              : null,
+            precio_anterior: isCompraEntrada && Number.isFinite(parseNumber(detail.productoPrecioBD))
+              ? parseNumber(detail.productoPrecioBD)
               : null,
           })),
           ubicaciones_iniciales: (Array.isArray(ubicacionesIniciales) ? ubicacionesIniciales : [])
@@ -2783,7 +2968,6 @@ function CreateEntrada({
   const closeLocationDropdown = useCallback(() => {
     setLocationDropdownProductId('')
     setLocationDropdownField('')
-    setLocationDropdownDirection('down')
     setLocationDropdownMaxHeight(null)
     setLocationQuery('')
     setLocationDebouncedQuery('')
@@ -2791,24 +2975,29 @@ function CreateEntrada({
 
   const toggleLocationDropdown = useCallback(
     (productId, field) => {
+      // Igual que el dropdown de casa comercial/cliente: clickear el trigger
+      // siempre ABRE (nunca cierra por segundo click sobre si mismo). Cerrar
+      // es responsabilidad exclusiva del click afuera o de elegir una
+      // opcion. Esto evita que un click en el propio trigger se interprete
+      // como "abrir" y "cerrar" a la vez segun el orden mousedown/click.
       const normalizedProductId = String(productId || '').trim()
       const normalizedField = String(field || '').trim()
       if (!normalizedProductId || !normalizedField) return
-      const opening =
-        locationDropdownProductId !== normalizedProductId || locationDropdownField !== normalizedField
-      setLocationDropdownProductId(opening ? normalizedProductId : '')
-      setLocationDropdownField(opening ? normalizedField : '')
-      setLocationDropdownDirection('down')
+      setLocationDropdownProductId(normalizedProductId)
+      setLocationDropdownField(normalizedField)
       setLocationDropdownMaxHeight(null)
       setLocationQuery('')
       setLocationDebouncedQuery('')
-      if (opening) {
-        requestAnimationFrame(() => {
-          updateLocationDropdownPlacement()
-        })
-      }
+      // No se reposiciona aqui con requestAnimationFrame: ese callback capturaba
+      // updateLocationDropdownPlacement del render anterior (aun con el campo
+      // previo, p. ej. "division"). Al cambiar de un campo abierto a otro sin
+      // pasar por cerrado, ese rAF corria DESPUES del efecto de abajo y
+      // sobrescribia la posicion/alto con los del trigger equivocado, haciendo
+      // que el dropdown recien abierto (p. ej. Subdivision) pareciera
+      // "aparecer y desaparecer". El useEffect que observa locationDropdownField
+      // ya reposiciona con el closure correcto en cada cambio.
     },
-    [locationDropdownField, locationDropdownProductId, updateLocationDropdownPlacement]
+    []
   )
 
   const filterLocationResolverOptions = useCallback(
@@ -3012,20 +3201,26 @@ function CreateEntrada({
       return
     }
 
-    const hasIncompleteDetail = details.some((detail) => {
+    const nextDetailFieldErrors = {}
+    details.forEach((detail) => {
       const productoId = String(detail?.productoId || '').trim()
       const cantidad = parseIntValue(detail?.cantidad)
-      const valor = parseNumber(detail?.valor)
+      const valorDecimal = isCompraEntrada ? centavosToNumber(detail?.valor) : parseNumber(detail?.valor)
       const estadoProductoId = String(detail?.estadoProductoId || '').trim()
+      const rowErrors = {}
 
-      if (!productoId) return true
-      if (!Number.isFinite(cantidad) || cantidad <= 0) return true
-      if (!Number.isFinite(valor) || valor < 0) return true
-      if (!isTraslado && !estadoProductoId) return true
-      return false
+      if (!Number.isFinite(cantidad) || cantidad <= 0) rowErrors.cantidad = true
+      if (!Number.isFinite(valorDecimal) || valorDecimal < 0) rowErrors.valor = true
+      if (isCompraEntrada && !String(detail?.costo ?? '').trim()) rowErrors.costo = true
+      if (!productoId || (!isTraslado && !estadoProductoId)) rowErrors.producto = true
+
+      if (Object.keys(rowErrors).length) nextDetailFieldErrors[detail.uid] = rowErrors
     })
 
+    const hasIncompleteDetail = Object.keys(nextDetailFieldErrors).length > 0
+
     if (hasIncompleteDetail) {
+      setDetailFieldErrors(nextDetailFieldErrors)
       notifyError('Hay productos con datos incompletos.')
       return
     }
@@ -3072,7 +3267,7 @@ function CreateEntrada({
           detalles: details.map((detail) => ({
             producto_id: Number(detail.productoId),
             cantidad: Number(detail.cantidad),
-            valor: detail.valor,
+            valor: Math.max(0, parseNumber(detail.valor) ?? 0),
           })),
           guardar_borrador: guardarBorrador,
         }
@@ -3160,7 +3355,12 @@ function CreateEntrada({
     !isSelectorStep && !isCasaComercialStep
       ? headerDocumentTitle || (isTraslado && selectedSubTipoLabel ? `${selectedSubTipoLabel}: -` : defaultHeaderTitle)
       : defaultHeaderTitle
-  const hasUnsavedProgress = Boolean(formData.subTipoId) && (
+  // El "¿Guardar cambios?" al cerrar solo tiene sentido para Pedido a
+  // sucursal, que es el unico subtipo con un estado real de borrador
+  // guardado en el backend. Los demas (compra local, devolucion, etc.) no
+  // soportan guardar incompleto, asi que cerrar ahi no debe ofrecer esa
+  // opcion: solo se crean completas o no se crean.
+  const hasUnsavedProgress = isTraslado && Boolean(formData.subTipoId) && (
     details.length > 0 ||
     Boolean(String(formData.sucursalObjetivoId || '').trim()) ||
     Boolean(String(formData.descripcion || '').trim()) ||
@@ -3683,18 +3883,20 @@ function CreateEntrada({
                       <span>Código</span>
                       {isCompraEntrada && <span>Referencia</span>}
                       <span>Descripción</span>
-                      <span>Cantidad</span>
                       {isCompraEntrada && (
                         <>
                           <span>Costo</span>
-                          <span>Descuento %</span>
+                          <span>Desc. (%)</span>
+                          <span>Desc. ($)</span>
                           <span>Costo + IVA</span>
-                          <span>Precio actual (BD)</span>
+                          <span>PVP Act.</span>
                         </>
                       )}
-                      <span>{isCompraEntrada ? 'Precio nuevo' : 'Precio'}</span>
-                      <span>Precio total</span>
-                      <span>Acciones</span>
+                      <span>{isCompraEntrada ? 'PVP Nue.' : 'Precio'}</span>
+                      {isCompraEntrada && <span>PVP + IVA</span>}
+                      <span>Cantidad</span>
+                      <span>{isCompraEntrada ? 'PVP Total' : 'Precio total'}</span>
+                      <span className="create-user__locations-cell--action">Acciones</span>
                     </div>
 
                     <div className="create-user__locations-row create-user__locations-row--form">
@@ -3837,44 +4039,36 @@ function CreateEntrada({
                         </div>
                       </span>
                       {isCompraEntrada && (
-                        <span>
+                        <span
+                          onMouseEnter={(e) => showHover(e, [selectedDraftProduct?.referencia].filter(Boolean), 'Referencia')}
+                          onMouseLeave={hideHover}
+                        >
                           <span className="create-salida__table-static-value">
                             {selectedDraftProduct?.referencia || '-'}
                           </span>
                         </span>
                       )}
-                      <span className="create-salida__product-name-cell">
-                        <span
-                          className="create-salida__table-static-value create-salida__table-static-value--name"
-                          title={selectedDraftProductName || undefined}
-                        >
-                          {selectedDraftProductName || '-'}
+                      <span
+                        className="create-salida__product-name-cell"
+                        onMouseEnter={(e) => showHover(e, [selectedDraftProductName].filter(Boolean), 'Descripción')}
+                        onMouseLeave={hideHover}
+                      >
+                        <span className="create-salida__table-static-value create-salida__table-static-value--name">
+                          <span className="create-salida__product-name-text">{selectedDraftProductName || '-'}</span>
                         </span>
-                      </span>
-                      <span>
-                        <input
-                          className={draftCantidadExceedsProveedorStock ? 'create-salida__input--invalid' : ''}
-                          name="cantidad"
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={detailDraft.cantidad}
-                          onChange={handleDetailChange}
-                          disabled={loading}
-                          aria-invalid={draftCantidadExceedsProveedorStock ? 'true' : 'false'}
-                        />
                       </span>
                       {isCompraEntrada && (
                         <>
                           <span>
                             <input
-                              name="costo"
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={detailDraft.costo}
-                              onChange={handleDetailChange}
-                              disabled={loading}
+                              type="text"
+                              inputMode="numeric"
+                              readOnly
+                              className="create-salida__numeric-input"
+                              value={formatCentavos(detailDraft.costo)}
+                              onChange={() => {}}
+                              onKeyDown={handleDraftCentavosKeyDown('costo', detailDraft.costo)}
+                              disabled={loading || !selectedDraftProductId}
                             />
                           </span>
                           <span>
@@ -3884,10 +4078,17 @@ function CreateEntrada({
                               min="0"
                               max="100"
                               step="0.01"
+                              className="create-salida__numeric-input"
                               value={detailDraft.descuentoPorcentaje}
                               onChange={handleDetailChange}
-                              disabled={loading}
+                              onKeyDown={handleRowArrowKeyDown}
+                              disabled={loading || !selectedDraftProductId}
                             />
+                          </span>
+                          <span>
+                            <span className="create-salida__table-static-value">
+                              {formatCurrency(draftDescuentoValor)}
+                            </span>
                           </span>
                           <span>
                             <span className="create-salida__table-static-value">
@@ -3902,14 +4103,50 @@ function CreateEntrada({
                         </>
                       )}
                       <span>
+                        {isCompraEntrada ? (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            readOnly
+                            className="create-salida__numeric-input"
+                            value={formatCentavos(detailDraft.valor)}
+                            onChange={() => {}}
+                            onKeyDown={handleDraftCentavosKeyDown('valor', detailDraft.valor)}
+                            disabled={loading || !selectedDraftProductId}
+                          />
+                        ) : (
+                          <input
+                            name="valor"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={detailDraft.valor}
+                            onChange={handleDetailChange}
+                            onKeyDown={handleRowArrowKeyDown}
+                            disabled={loading || !selectedDraftProductId}
+                          />
+                        )}
+                      </span>
+                      {isCompraEntrada && (
+                        <span>
+                          <span className="create-salida__table-static-value">
+                            {formatCurrency(draftValorConIva)}
+                          </span>
+                        </span>
+                      )}
+                      <span>
                         <input
-                          name="valor"
+                          className={draftCantidadExceedsProveedorStock ? 'create-salida__input--invalid' : ''}
+                          name="cantidad"
                           type="number"
-                          min="0"
-                          step="0.01"
-                          value={detailDraft.valor}
+                          min="1"
+                          step="1"
+                          value={detailDraft.cantidad}
                           onChange={handleDetailChange}
-                          disabled={loading}
+                          onKeyDown={handleRowArrowKeyDown}
+                          disabled={loading || !selectedDraftProductId}
+                          aria-invalid={draftCantidadExceedsProveedorStock ? 'true' : 'false'}
                         />
                       </span>
                       <span>
@@ -3951,8 +4188,19 @@ function CreateEntrada({
                         ? Math.max(0, Math.trunc(stockAvailable))
                         : null
 
-                      const costoConIva = isCompraEntrada && Number.isFinite(detail.costo)
-                        ? detail.costo * (1 + ivaRateValue)
+                      const detailCostoDecimal = centavosToNumber(detail.costo)
+                      const detailDescuentoPorcentajeDecimal = parseNumber(detail.descuentoPorcentaje)
+                      const detailValorDecimal = isCompraEntrada
+                        ? centavosToNumber(detail.valor)
+                        : parseNumber(detail.valor)
+                      const descuentoValor = isCompraEntrada
+                        ? calculateDescuentoValor(detailCostoDecimal, detailDescuentoPorcentajeDecimal)
+                        : null
+                      const costoConIva = isCompraEntrada
+                        ? calculateCostoConIva(detailCostoDecimal, detailDescuentoPorcentajeDecimal, ivaRateValue)
+                        : null
+                      const valorConIva = isCompraEntrada
+                        ? calculatePrecioConIva(detailValorDecimal, ivaRateValue)
                         : null
 
                       return (
@@ -3966,7 +4214,12 @@ function CreateEntrada({
                             )}
                           </span>
                           {isCompraEntrada && (
-                            <span>{detail.productoReferencia || '-'}</span>
+                            <span
+                              onMouseEnter={(e) => showHover(e, [detail.productoReferencia].filter(Boolean), 'Referencia')}
+                              onMouseLeave={hideHover}
+                            >
+                              {detail.productoReferencia || '-'}
+                            </span>
                           )}
                           <span
                             onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Descripción')}
@@ -3974,16 +4227,17 @@ function CreateEntrada({
                           >
                             <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
                           </span>
-                          <span>{detail.cantidad}</span>
                           {isCompraEntrada && (
                             <>
                               <span>
                                 <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={detail.costo ?? ''}
-                                  onChange={(event) => handleDetailFieldChange(detail.uid, 'costo', event.target.value)}
+                                  type="text"
+                                  inputMode="numeric"
+                                  readOnly
+                                  className={`create-salida__numeric-input${detailFieldErrors[detail.uid]?.costo ? ' create-salida__input--error' : ''}`}
+                                  value={formatCentavos(detail.costo)}
+                                  onChange={() => {}}
+                                  onKeyDown={handleDetailCentavosKeyDown(detail.uid, 'costo', detail.costo)}
                                   disabled={loading}
                                 />
                               </span>
@@ -3993,27 +4247,52 @@ function CreateEntrada({
                                   min="0"
                                   max="100"
                                   step="0.01"
+                                  className="create-salida__numeric-input"
                                   value={detail.descuentoPorcentaje ?? ''}
                                   onChange={(event) => handleDetailFieldChange(detail.uid, 'descuentoPorcentaje', event.target.value)}
+                                  onKeyDown={handleRowArrowKeyDown}
                                   disabled={loading}
                                 />
                               </span>
+                              <span className="create-salida__numeric">{formatCurrency(descuentoValor)}</span>
                               <span className="create-salida__numeric">{formatCurrency(costoConIva)}</span>
                               <span className="create-salida__numeric">{formatCurrency(detail.productoPrecioBD)}</span>
                             </>
                           )}
                           <span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={detail.valor}
-                              onChange={(event) => handleDetailFieldChange(detail.uid, 'valor', event.target.value)}
-                              onDoubleClick={() => handleResetDetailPrecio(detail.uid)}
-                              title="Doble clic para restaurar el precio guardado en la base de datos"
-                              disabled={loading}
-                            />
+                            {isCompraEntrada ? (
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                readOnly
+                                className={`create-salida__numeric-input${detailFieldErrors[detail.uid]?.valor ? ' create-salida__input--error' : ''}`}
+                                value={formatCentavos(detail.valor)}
+                                onChange={() => {}}
+                                onKeyDown={handleDetailCentavosKeyDown(detail.uid, 'valor', detail.valor)}
+                                onDoubleClick={() => handleResetDetailPrecio(detail.uid)}
+                                title="Doble clic para restaurar el precio guardado en la base de datos"
+                                disabled={loading}
+                              />
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="0.00"
+                                className={detailFieldErrors[detail.uid]?.valor ? 'create-salida__input--error' : ''}
+                                value={detail.valor}
+                                onChange={(event) => handleDetailFieldChange(detail.uid, 'valor', event.target.value)}
+                                onKeyDown={handleRowArrowKeyDown}
+                                onDoubleClick={() => handleResetDetailPrecio(detail.uid)}
+                                title="Doble clic para restaurar el precio guardado en la base de datos"
+                                disabled={loading}
+                              />
+                            )}
                           </span>
+                          {isCompraEntrada && (
+                            <span className="create-salida__numeric">{formatCurrency(valorConIva)}</span>
+                          )}
+                          <span>{detail.cantidad}</span>
                           <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                           <span className="create-user__locations-cell create-user__locations-cell--action">
                             <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={loading}>
@@ -4630,7 +4909,9 @@ function CreateEntrada({
                               >
                                 <button
                                   type="button"
+                                  ref={(el) => { locationTriggerRefs.current[`${productId}:bodega`] = el }}
                                   className="create-user__dropdown-trigger"
+                                  onMouseDown={(event) => event.stopPropagation()}
                                   onClick={() => toggleLocationDropdown(productId, 'bodega')}
                                   disabled={locationResolverSubmitting}
                                 >
@@ -4642,16 +4923,11 @@ function CreateEntrada({
                                   <i className={`pi pi-chevron-${isBodegaOpen ? 'up' : 'down'}`} />
                                 </button>
 
-                                {isBodegaOpen && (
+                                {isBodegaOpen && createPortal(
                                   <div
-                                    className={`create-user__dropdown-panel ${
-                                      locationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                                    }`}
-                                    style={
-                                      locationDropdownMaxHeight
-                                        ? { maxHeight: `${locationDropdownMaxHeight}px` }
-                                        : undefined
-                                    }
+                                    ref={locationDropdownPanelRef}
+                                    className="create-user__dropdown-panel"
+                                    style={locationDropdownStyle}
                                   >
                                     <div className="create-user__dropdown-search">
                                       <i className="pi pi-search" />
@@ -4695,7 +4971,8 @@ function CreateEntrada({
                                         </button>
                                       ))}
                                     </div>
-                                  </div>
+                                  </div>,
+                                  document.body
                                 )}
                               </div>
                             </div>
@@ -4708,7 +4985,9 @@ function CreateEntrada({
                               >
                                 <button
                                   type="button"
+                                  ref={(el) => { locationTriggerRefs.current[`${productId}:division`] = el }}
                                   className="create-user__dropdown-trigger"
+                                  onMouseDown={(event) => event.stopPropagation()}
                                   onClick={() => toggleLocationDropdown(productId, 'division')}
                                   disabled={locationResolverSubmitting || !selectedBodegaId}
                                 >
@@ -4720,16 +4999,11 @@ function CreateEntrada({
                                   <i className={`pi pi-chevron-${isDivisionOpen ? 'up' : 'down'}`} />
                                 </button>
 
-                                {isDivisionOpen && (
+                                {isDivisionOpen && createPortal(
                                   <div
-                                    className={`create-user__dropdown-panel ${
-                                      locationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                                    }`}
-                                    style={
-                                      locationDropdownMaxHeight
-                                        ? { maxHeight: `${locationDropdownMaxHeight}px` }
-                                        : undefined
-                                    }
+                                    ref={locationDropdownPanelRef}
+                                    className="create-user__dropdown-panel"
+                                    style={locationDropdownStyle}
                                   >
                                     <div className="create-user__dropdown-search">
                                       <i className="pi pi-search" />
@@ -4774,7 +5048,8 @@ function CreateEntrada({
                                         </button>
                                       ))}
                                     </div>
-                                  </div>
+                                  </div>,
+                                  document.body
                                 )}
                               </div>
                             </div>
@@ -4787,7 +5062,9 @@ function CreateEntrada({
                               >
                                 <button
                                   type="button"
+                                  ref={(el) => { locationTriggerRefs.current[`${productId}:subdivision`] = el }}
                                   className="create-user__dropdown-trigger"
+                                  onMouseDown={(event) => event.stopPropagation()}
                                   onClick={() => toggleLocationDropdown(productId, 'subdivision')}
                                   disabled={locationResolverSubmitting || !selectedDivisionId}
                                 >
@@ -4799,16 +5076,11 @@ function CreateEntrada({
                                   <i className={`pi pi-chevron-${isSubdivisionOpen ? 'up' : 'down'}`} />
                                 </button>
 
-                                {isSubdivisionOpen && (
+                                {isSubdivisionOpen && createPortal(
                                   <div
-                                    className={`create-user__dropdown-panel ${
-                                      locationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                                    }`}
-                                    style={
-                                      locationDropdownMaxHeight
-                                        ? { maxHeight: `${locationDropdownMaxHeight}px` }
-                                        : undefined
-                                    }
+                                    ref={locationDropdownPanelRef}
+                                    className="create-user__dropdown-panel"
+                                    style={locationDropdownStyle}
                                   >
                                     <div className="create-user__dropdown-search">
                                       <i className="pi pi-search" />
@@ -4857,7 +5129,8 @@ function CreateEntrada({
                                         </button>
                                       ))}
                                     </div>
-                                  </div>
+                                  </div>,
+                                  document.body
                                 )}
                               </div>
                             </div>

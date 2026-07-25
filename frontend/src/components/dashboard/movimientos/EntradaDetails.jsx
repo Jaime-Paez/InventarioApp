@@ -14,6 +14,7 @@ import StaticFieldDisplay from './StaticFieldDisplay'
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
+const COMPRA_LOCAL_WIDTH = 1020
 const VIEWPORT_PADDING = 12
 const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
 
@@ -92,6 +93,27 @@ const calculateLineTotal = (cantidad, precio) => {
   const value = parseNumber(precio)
   if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(value) || value < 0) return null
   return qty * value
+}
+
+const calculateDescuentoValor = (costo, descuentoPorcentaje) => {
+  const costoNum = parseNumber(costo)
+  if (!Number.isFinite(costoNum) || costoNum < 0) return null
+  const descuentoNum = parseNumber(descuentoPorcentaje)
+  if (!Number.isFinite(descuentoNum) || descuentoNum <= 0) return 0
+  return costoNum * (descuentoNum / 100)
+}
+
+const calculateCostoConIva = (costo, descuentoPorcentaje, ivaRate) => {
+  const costoNum = parseNumber(costo)
+  if (!Number.isFinite(costoNum) || costoNum < 0) return null
+  const descuentoValor = calculateDescuentoValor(costo, descuentoPorcentaje) || 0
+  return (costoNum - descuentoValor) * (1 + ivaRate)
+}
+
+const calculatePrecioConIva = (precio, ivaRate) => {
+  const precioNum = parseNumber(precio)
+  if (!Number.isFinite(precioNum) || precioNum < 0) return null
+  return precioNum * (1 + ivaRate)
 }
 
 const resolveProductPrice = (producto) => {
@@ -637,11 +659,20 @@ function EntradaDetails({
     [detailDraft.cantidad, detailDraft.valor]
   )
 
-  const draftCostoConIva = useMemo(() => {
-    const costo = parseNumber(detailDraft.costo)
-    if (!Number.isFinite(costo) || costo < 0) return null
-    return costo * (1 + ivaRateValue)
-  }, [detailDraft.costo, ivaRateValue])
+  const draftDescuentoValor = useMemo(
+    () => calculateDescuentoValor(detailDraft.costo, detailDraft.descuentoPorcentaje),
+    [detailDraft.costo, detailDraft.descuentoPorcentaje]
+  )
+
+  const draftCostoConIva = useMemo(
+    () => calculateCostoConIva(detailDraft.costo, detailDraft.descuentoPorcentaje, ivaRateValue),
+    [detailDraft.costo, detailDraft.descuentoPorcentaje, ivaRateValue]
+  )
+
+  const draftValorConIva = useMemo(
+    () => calculatePrecioConIva(detailDraft.valor, ivaRateValue),
+    [detailDraft.valor, ivaRateValue]
+  )
 
   const subtotal = useMemo(
     () =>
@@ -914,17 +945,25 @@ function EntradaDetails({
           : Number.isFinite(cantidad) && Number.isFinite(valor)
             ? cantidad * valor
             : 0
+      const costo = parseNumber(detalle?.costo)
+      const descuentoPorcentaje = parseNumber(detalle?.descuento_porcentaje)
+      const productoPrecioBD = parseNumber(detalle?.precio_anterior)
+      const productoReferencia = product?.referencia ?? ''
 
       return {
         uid: `det-${Math.random().toString(36).slice(2, 8)}`,
         productoId: product?.id ? String(product.id) : '',
         productoCodigo: product?.codigo ?? code ?? '',
         productoNombre: product?.nombre ?? stripCodeFromProductLabel(productLabel, code) ?? productLabel,
+        productoReferencia,
         estadoProductoId: estadoProducto?.id ? String(estadoProducto.id) : '',
         estadoProductoNombre: estadoProducto?.nombre ?? detalle?.estado_producto ?? '',
         cantidad: Number.isFinite(cantidad) ? cantidad : 0,
         valor: Number.isFinite(valor) ? valor : 0,
         valor_total,
+        costo: Number.isFinite(costo) ? costo : null,
+        descuentoPorcentaje: Number.isFinite(descuentoPorcentaje) ? descuentoPorcentaje : null,
+        productoPrecioBD: Number.isFinite(productoPrecioBD) ? productoPrecioBD : null,
       }
     })
 
@@ -1507,14 +1546,15 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
   useLayoutEffect(() => {
     if (!open || isMaximized) return
     const { availableWidth, availableHeight, minWidth, minHeight } = getViewportMetrics()
-    const width = Math.min(Math.max(MIN_WIDTH, minWidth), availableWidth)
+    const preferredWidth = isCompraEntrada ? COMPRA_LOCAL_WIDTH : MIN_WIDTH
+    const width = Math.min(Math.max(preferredWidth, minWidth), availableWidth)
     const height = Math.min(Math.max(MIN_HEIGHT, minHeight), availableHeight)
     setModalSize({ width, height })
     setModalPosition({
       x: Math.max((window.innerWidth - width) / 2, VIEWPORT_PADDING),
       y: Math.max((window.innerHeight - height) / 2, VIEWPORT_PADDING),
     })
-  }, [getViewportMetrics, isMaximized, open])
+  }, [getViewportMetrics, isMaximized, isCompraEntrada, open])
 
   const handleModalMouseDown = (event) => {
     const target = event?.target
@@ -2676,17 +2716,20 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       <span>Codigo</span>
                       {isCompraEntrada && <span>Referencia</span>}
                       <span>Descripción</span>
-                      <span>Cantidad</span>
                       {isCompraEntrada && (
                         <>
                           <span>Costo</span>
-                          <span>Descuento %</span>
+                          <span>Desc. (%)</span>
+                          <span>Desc. ($)</span>
                           <span>Costo + IVA</span>
+                          <span>PVP Act.</span>
                         </>
                       )}
-                      <span>Precio</span>
-                      <span>Precio total</span>
-                      {showDetailActions && <span>Acciones</span>}
+                      <span>{isCompraEntrada ? 'PVP Nue.' : 'Precio'}</span>
+                      {isCompraEntrada && <span>PVP + IVA</span>}
+                      <span>Cantidad</span>
+                      <span>{isCompraEntrada ? 'PVP Total' : 'Precio total'}</span>
+                      {showDetailActions && <span className="create-user__locations-cell--action">Acciones</span>}
                     </div>
 
                     {!isReadOnlyMode && !lineItemsReadOnly && (
@@ -2785,23 +2828,15 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                           </div>
                         </span>
                         {isCompraEntrada && (
-                          <span>
+                          <span
+                            onMouseEnter={(e) => showHover(e, [selectedDraftProduct?.nombre].filter(Boolean), 'Descripción')}
+                            onMouseLeave={hideHover}
+                          >
                             <span className="create-salida__table-static-value create-salida__table-static-value--name">
-                              {selectedDraftProduct?.nombre || '-'}
+                              <span className="create-salida__product-name-text">{selectedDraftProduct?.nombre || '-'}</span>
                             </span>
                           </span>
                         )}
-                        <span>
-                          <input
-                            name="cantidad"
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={detailDraft.cantidad}
-                            onChange={handleDetailChange}
-                            disabled={editorDisabled}
-                          />
-                        </span>
                         {isCompraEntrada && (
                           <>
                             <span>
@@ -2828,6 +2863,9 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                               />
                             </span>
                             <span className="create-salida__numeric">
+                              {formatCurrency(draftDescuentoValor)}
+                            </span>
+                            <span className="create-salida__numeric">
                               {formatCurrency(draftCostoConIva)}
                             </span>
                           </>
@@ -2840,6 +2878,22 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                             min="0"
                             value={detailDraft.valor}
                             readOnly
+                            disabled={editorDisabled}
+                          />
+                        </span>
+                        {isCompraEntrada && (
+                          <span className="create-salida__numeric">
+                            {formatCurrency(draftValorConIva)}
+                          </span>
+                        )}
+                        <span>
+                          <input
+                            name="cantidad"
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={detailDraft.cantidad}
+                            onChange={handleDetailChange}
                             disabled={editorDisabled}
                           />
                         </span>
@@ -2871,8 +2925,14 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                           ? Math.max(0, Math.trunc(allowance))
                           : null
 
+                        const descuentoValor = isCompraEntrada
+                          ? calculateDescuentoValor(detail.costo, detail.descuentoPorcentaje)
+                          : null
                         const costoConIva = isCompraEntrada && Number.isFinite(detail.costo)
-                          ? detail.costo * (1 + ivaRateValue)
+                          ? calculateCostoConIva(detail.costo, detail.descuentoPorcentaje, ivaRateValue)
+                          : null
+                        const valorConIva = isCompraEntrada
+                          ? calculatePrecioConIva(detail.valor, ivaRateValue)
                           : null
 
                         return (
@@ -2886,7 +2946,12 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                               )}
                             </span>
                           {isCompraEntrada && (
-                            <span>{detail.productoReferencia || '-'}</span>
+                            <span
+                              onMouseEnter={(e) => showHover(e, [detail.productoReferencia].filter(Boolean), 'Referencia')}
+                              onMouseLeave={hideHover}
+                            >
+                              {detail.productoReferencia || '-'}
+                            </span>
                           )}
                           <span
                             onMouseEnter={(e) => showHover(e, [detail.productoNombre].filter(Boolean), 'Descripción')}
@@ -2894,6 +2959,23 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                           >
                             <span className="create-salida__product-name-text">{detail.productoNombre || '-'}</span>
                           </span>
+                          {isCompraEntrada && (
+                            <>
+                              <span className="create-salida__numeric">{formatCurrency(detail.costo)}</span>
+                              <span className="create-salida__numeric">
+                                {Number.isFinite(detail.descuentoPorcentaje) ? `${detail.descuentoPorcentaje}%` : '-'}
+                              </span>
+                              <span className="create-salida__numeric">{formatCurrency(descuentoValor)}</span>
+                              <span className="create-salida__numeric">{formatCurrency(costoConIva)}</span>
+                              <span className="create-salida__numeric">
+                                {detail.productoPrecioBD !== null ? formatCurrency(detail.productoPrecioBD) : '-'}
+                              </span>
+                            </>
+                          )}
+                          <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
+                          {isCompraEntrada && (
+                            <span className="create-salida__numeric">{formatCurrency(valorConIva)}</span>
+                          )}
                           <span>
                             {!isReadOnlyMode && !lineItemsReadOnly ? (
                                 <input
@@ -2909,16 +2991,6 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                               detail.cantidad
                             )}
                           </span>
-                          {isCompraEntrada && (
-                            <>
-                              <span className="create-salida__numeric">{formatCurrency(detail.costo)}</span>
-                              <span className="create-salida__numeric">
-                                {Number.isFinite(detail.descuentoPorcentaje) ? `${detail.descuentoPorcentaje}%` : '-'}
-                              </span>
-                              <span className="create-salida__numeric">{formatCurrency(costoConIva)}</span>
-                            </>
-                          )}
-                          <span className="create-salida__numeric">{formatCurrency(detail.valor)}</span>
                           <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                           {showDetailActions && (
                             <span className="create-user__locations-cell create-user__locations-cell--action">

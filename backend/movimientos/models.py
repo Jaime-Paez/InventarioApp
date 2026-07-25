@@ -241,6 +241,17 @@ class DetalleMovimiento(models.Model):
         blank=True,
         help_text="Porcentaje de descuento negociado sobre el costo, informativo.",
     )
+    precio_anterior = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=(
+            "Precio de venta del producto (Producto.precio) justo antes de esta "
+            "compra local, informativo. Se captura al crear el detalle porque la "
+            "compra local sobrescribe el precio vigente del producto."
+        ),
+    )
 
     class Meta:
         verbose_name = "Detalle de movimiento"

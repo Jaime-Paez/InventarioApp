@@ -301,9 +301,7 @@
 .create-salida__table-static-value--name {
   justify-content: flex-start;
   text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
 }
 
 .create-salida__product-name-text {
@@ -376,6 +374,17 @@
 .create-salida__content {
   animation: create-salida-reveal 180ms ease;
   min-width: 0;
+}
+
+/*
+ * Por defecto, si el modal crece (maximizar o pantallas altas), el grid del
+ * body reparte el espacio sobrante entre TODAS las filas (secciones), lo que
+ * separa Informacion general / Detalle / Nota con huecos en blanco. Las
+ * secciones deben quedar compactas, sin estirarse innecesariamente: el
+ * espacio sobrante (si lo hay) queda al final, no entre secciones.
+ */
+.create-salida__content .create-user__body {
+  align-content: start;
 }
 
 .create-salida__field-groups {
@@ -845,8 +854,8 @@
   grid-template-columns:
     minmax(108px, 1.18fr)
     minmax(116px, 1.52fr)
-    minmax(50px, 0.6fr)
     minmax(58px, 0.6fr)
+    minmax(50px, 0.6fr)
     minmax(66px, 0.64fr);
   min-width: 0;
 }
@@ -855,8 +864,8 @@
   grid-template-columns:
     minmax(108px, 1.18fr)
     minmax(116px, 1.32fr)
-    minmax(50px, 0.54fr)
     minmax(58px, 0.56fr)
+    minmax(50px, 0.54fr)
     minmax(66px, 0.6fr)
     minmax(72px, 0.68fr);
   min-width: 0;
@@ -868,26 +877,61 @@
 
 .create-salida__products-table--compra-local .create-user__locations-row {
   grid-template-columns:
-    minmax(90px, 0.9fr)
-    minmax(90px, 0.9fr)
-    minmax(140px, 1.3fr)
-    minmax(70px, 0.5fr)
-    minmax(80px, 0.6fr)
-    minmax(80px, 0.55fr)
-    minmax(92px, 0.62fr)
-    minmax(92px, 0.62fr)
-    minmax(92px, 0.62fr)
-    minmax(92px, 0.62fr)
-    minmax(72px, 0.5fr);
-  min-width: 1180px;
+    minmax(90px, 140px)
+    minmax(90px, 160px)
+    minmax(140px, 1fr)
+    minmax(78px, 100px)
+    minmax(68px, 84px)
+    minmax(72px, 92px)
+    minmax(92px, 116px)
+    minmax(64px, 82px)
+    minmax(64px, 82px)
+    minmax(64px, 82px)
+    minmax(70px, 90px)
+    minmax(64px, 82px)
+    minmax(84px, 96px);
 }
 
 .create-salida__products-table--compra-local .create-salida__totals-label {
-  grid-column: 1 / span 9;
+  grid-column: 1 / span 11;
 }
 
 .create-salida__products-table--compra-local .create-salida__totals-value {
-  grid-column: 10;
+  grid-column: 12;
+}
+
+.create-salida__products-table--compra-local .create-user__locations-row--form .create-user__locations-cell--action,
+.create-salida__products-table--compra-local-view .create-user__locations-row--form .create-user__locations-cell--action {
+  justify-content: center;
+}
+
+.create-salida__products-table--compra-local .create-user__locations-row--form .create-user__ghost,
+.create-salida__products-table--compra-local-view .create-user__locations-row--form .create-user__ghost {
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+/* Acciones queda fija a la derecha al hacer scroll horizontal, para no
+   perder el boton de Agregar/quitar cuando la tabla no entra completa. */
+.create-salida__products-table--compra-local .create-user__locations-cell--action,
+.create-salida__products-table--compra-local-view .create-user__locations-cell--action {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  background: var(--color-surface);
+}
+
+.create-salida__products-table--compra-local .create-user__locations-row--head .create-user__locations-cell--action {
+  background: #f3f4f6;
+}
+
+.dashboard-shell.dark .create-salida__products-table--compra-local .create-user__locations-cell--action,
+.dashboard-shell.dark .create-salida__products-table--compra-local-view .create-user__locations-cell--action {
+  background: var(--color-surface-darker);
+}
+
+.dashboard-shell.dark .create-salida__products-table--compra-local .create-user__locations-row--head .create-user__locations-cell--action {
+  background: var(--table-color-dark);
 }
 
 .create-salida__products-table--compra-local-view {
@@ -896,25 +940,26 @@
 
 .create-salida__products-table--compra-local-view .create-user__locations-row {
   grid-template-columns:
-    minmax(90px, 0.9fr)
-    minmax(90px, 0.9fr)
-    minmax(140px, 1.3fr)
-    minmax(70px, 0.5fr)
-    minmax(80px, 0.6fr)
-    minmax(80px, 0.55fr)
-    minmax(92px, 0.62fr)
-    minmax(92px, 0.62fr)
-    minmax(92px, 0.62fr)
-    minmax(72px, 0.5fr);
-  min-width: 1060px;
+    minmax(90px, 140px)
+    minmax(90px, 160px)
+    minmax(140px, 1fr)
+    minmax(78px, 100px)
+    minmax(68px, 84px)
+    minmax(72px, 92px)
+    minmax(92px, 116px)
+    minmax(64px, 82px)
+    minmax(64px, 82px)
+    minmax(64px, 82px)
+    minmax(70px, 90px)
+    minmax(64px, 82px);
 }
 
 .create-salida__products-table--compra-local-view .create-salida__totals-label {
-  grid-column: 1 / span 8;
+  grid-column: 1 / span 11;
 }
 
 .create-salida__products-table--compra-local-view .create-salida__totals-value {
-  grid-column: 9;
+  grid-column: 12;
 }
 
 .create-salida__products-table .create-user__locations-row > span {
@@ -958,21 +1003,21 @@
 }
 
 @media (max-width: 960px) {
-  .create-salida__products-table .create-user__locations-row {
+  .create-salida__products-table:not(.create-salida__products-table--compra-local):not(.create-salida__products-table--compra-local-view) .create-user__locations-row {
     grid-template-columns:
       minmax(96px, 1.05fr)
       minmax(102px, 1.24fr)
-      minmax(46px, 0.5fr)
       minmax(54px, 0.54fr)
+      minmax(46px, 0.5fr)
       minmax(60px, 0.58fr);
   }
 
-  .create-salida__products-table--with-actions .create-user__locations-row {
+  .create-salida__products-table--with-actions:not(.create-salida__products-table--compra-local):not(.create-salida__products-table--compra-local-view) .create-user__locations-row {
     grid-template-columns:
       minmax(96px, 1.05fr)
       minmax(102px, 1.14fr)
-      minmax(46px, 0.48fr)
       minmax(54px, 0.5fr)
+      minmax(46px, 0.48fr)
       minmax(60px, 0.54fr)
       minmax(68px, 0.6fr);
   }
@@ -1123,6 +1168,11 @@
 
 .create-salida__numeric {
   text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.create-salida__numeric-input {
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1608,12 +1658,12 @@
     padding: 14px 14px 10px;
   }
 
-  .create-salida__products-table .create-user__locations-row {
-    grid-template-columns: minmax(104px, 1.08fr) minmax(110px, 1.22fr) minmax(58px, 0.52fr) minmax(64px, 0.52fr) minmax(72px, 0.56fr);
+  .create-salida__products-table:not(.create-salida__products-table--compra-local):not(.create-salida__products-table--compra-local-view) .create-user__locations-row {
+    grid-template-columns: minmax(104px, 1.08fr) minmax(110px, 1.22fr) minmax(64px, 0.52fr) minmax(58px, 0.52fr) minmax(72px, 0.56fr);
   }
 
-  .create-salida__products-table--with-actions .create-user__locations-row {
-    grid-template-columns: minmax(104px, 1.08fr) minmax(110px, 1.16fr) minmax(58px, 0.5fr) minmax(64px, 0.5fr) minmax(72px, 0.54fr) 64px;
+  .create-salida__products-table--with-actions:not(.create-salida__products-table--compra-local):not(.create-salida__products-table--compra-local-view) .create-user__locations-row {
+    grid-template-columns: minmax(104px, 1.08fr) minmax(110px, 1.16fr) minmax(64px, 0.5fr) minmax(58px, 0.5fr) minmax(72px, 0.54fr) 64px;
   }
 }
 
@@ -1673,8 +1723,20 @@
     font-size: 0.8rem;
   }
 
-  .create-salida__products-table .create-user__locations-row {
+  .create-salida__products-table:not(.create-salida__products-table--compra-local):not(.create-salida__products-table--compra-local-view) .create-user__locations-row {
     min-width: 620px;
+  }
+
+  .create-salida__products-table--compra-local .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty):not(.create-salida__totals-row):not(.create-salida__totals-row--strong) > span,
+  .create-salida__products-table--compra-local-view .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty):not(.create-salida__totals-row):not(.create-salida__totals-row--strong) > span,
+  .create-salida__products-table--compra-local .create-user__locations-row--form > span,
+  .create-salida__products-table--compra-local-view .create-user__locations-row--form > span {
+    padding: 6px 6px;
+  }
+
+  .create-salida__products-table--compra-local .create-user__locations-row--head span,
+  .create-salida__products-table--compra-local-view .create-user__locations-row--head span {
+    font-size: 0.72rem;
   }
 }
 

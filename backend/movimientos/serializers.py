@@ -212,10 +212,12 @@ class DetalleMovimientoSerializer(serializers.ModelSerializer):
             "valor_total",
             "costo",
             "descuento_porcentaje",
+            "precio_anterior",
         ]
         extra_kwargs = {
             "costo": {"required": False, "allow_null": True},
             "descuento_porcentaje": {"required": False, "allow_null": True},
+            "precio_anterior": {"required": False, "allow_null": True},
         }
 
 
