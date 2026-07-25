@@ -1931,30 +1931,30 @@ function CreateEntrada({
     if (!trigger) return
     const triggerRect = trigger.getBoundingClientRect()
     const spacing = 10
-    const availableBelow = Math.max(
-      Math.floor(window.innerHeight - triggerRect.bottom - VIEWPORT_PADDING - spacing),
-      0
-    )
     const availableAbove = Math.max(
       Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing),
       0
     )
-    const nextDirection = availableBelow < 220 && availableAbove > availableBelow ? 'up' : 'down'
-    const availableSpace = nextDirection === 'up' ? availableAbove : availableBelow
-    const nextMaxHeight = Math.max(140, Math.min(320, availableSpace))
+    // Siempre se abre hacia arriba (nunca hacia abajo), sin importar el
+    // espacio disponible debajo del trigger. El alto se limita al espacio
+    // real disponible arriba (sin forzar un minimo mayor a eso): forzar un
+    // minimo como 140px aqui empujaba el panel por encima del viewport
+    // cuando el trigger (p. ej. Bodega, el primer campo) esta cerca del
+    // borde superior, dejandolo invisible/inalcanzable.
+    const nextMaxHeight = Math.max(1, Math.min(320, availableAbove))
     setLocationDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
     // Se renderiza con un portal a document.body (como el resto de dropdowns)
     // para que no quede detras de las filas de Bodega/Division/Subdivision
     // que le siguen dentro del mismo contenedor.
     setLocationDropdownStyle({
       position: 'fixed',
+      top: 'auto',
+      right: 'auto',
       left: triggerRect.left,
       width: triggerRect.width,
       maxHeight: `${nextMaxHeight}px`,
       zIndex: 9999,
-      ...(nextDirection === 'up'
-        ? { bottom: Math.max(window.innerHeight - triggerRect.top + spacing, VIEWPORT_PADDING) }
-        : { top: triggerRect.bottom + spacing }),
+      bottom: Math.max(window.innerHeight - triggerRect.top + spacing, VIEWPORT_PADDING),
     })
   }, [locationDropdownField, locationDropdownProductId, showLocationResolver])
 
