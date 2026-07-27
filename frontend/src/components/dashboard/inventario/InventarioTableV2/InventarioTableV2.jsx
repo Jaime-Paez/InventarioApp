@@ -137,6 +137,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const tableWrapperRef = useRef(null)
   const locationHoverHideTimeoutRef = useRef(null)
   const oemHoverHideTimeoutRef = useRef(null)
+  const fetchProductsSeqRef = useRef(0)
   const widthHandlers = useMemo(() => makeWidthStateHandlers(INVENTARIO_TABLE_LAYOUT_STATE_KEY), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
@@ -322,6 +323,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         setLoading(true)
       }
       setError(null)
+      const requestSeq = ++fetchProductsSeqRef.current
+      const isStaleRequest = () => fetchProductsSeqRef.current !== requestSeq
       try {
         const hasExplicitSort = Object.prototype.hasOwnProperty.call(options || {}, 'tableSortField')
         const tableFilters = options?.tableFilters ?? filters
@@ -342,6 +345,12 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         if (!res.ok) throw new Error('No se pudo obtener la lista de inventario.')
 
         const data = await res.json()
+
+        if (isStaleRequest()) {
+          // A newer request was issued after this one (e.g. rapid consecutive
+          // sort clicks); discard this response so it can't overwrite fresher data.
+          return normalizeList(Array.isArray(data) ? data : data?.results || [])
+        }
 
         if (
           data &&
@@ -369,16 +378,19 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         setPageSize(rows)
         return normalized
       } catch (err) {
+        if (isStaleRequest()) return
         const msg = err?.message || 'Ocurrió un error al cargar el inventario.'
         setError(msg)
         setProducts([])
         setTotalRecords(0)
         toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: msg, life: 3500 })
       } finally {
-        if (withOverlay) {
-          setLoading(false)
+        if (!isStaleRequest()) {
+          if (withOverlay) {
+            setLoading(false)
+          }
+          setIsRefreshing(false)
         }
-        setIsRefreshing(false)
       }
     },
     [token, normalizeList, pageSize, buildInventarioListUrl, filters, sortField, sortOrder, globalFilterValue]
@@ -1228,27 +1240,32 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           {
             nombrevar: `sucursal_${branch.id}`,
             header: `Cantidad ${branch.nombre}`,
+            branchId: branch.id,
+            columnType: 'quantity',
           },
         ]
         if (isLocationPermitted) {
           cols.push({
             nombrevar: `ubicacion_sucursal_${branch.id}`,
             header: `Ubicacion ${branch.nombre}`,
+            branchId: branch.id,
+            columnType: 'location',
           })
         }
         return cols
       }),
     [branches, permittedBranchIds]
   )
+  const branchColumnsByField = useMemo(
+    () => new Map(branchColumnsData.map((column) => [column.nombrevar, column])),
+    [branchColumnsData]
+  )
 
   const [selectedColumns, setSelectedColumns] = useState(() => visibleColumnsData)
   const [selectedBranchColumns, setSelectedBranchColumns] = useState([])
-  const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
 
-  useEffect(() => {
-    selectedColumnsRef.current = selectedColumns
-  }, [selectedColumns])
+  const hasRestoredBranchColumnsRef = useRef(false)
 
   useEffect(() => {
     if (!branchColumnsData.length) {
@@ -1257,45 +1274,60 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     }
 
     const defaultBranchColumns = branchColumnsData.map((column) => column.nombrevar)
-    setSelectedBranchColumns((prev) => {
-      const prevFields = new Set(Array.isArray(prev) ? prev : [])
-      const nextSelectedBranchColumns = defaultBranchColumns.filter((field) => prevFields.has(field))
-      return nextSelectedBranchColumns.length ? nextSelectedBranchColumns : defaultBranchColumns
-    })
+    const availableFields = new Set(defaultBranchColumns)
+
+    if (!hasRestoredBranchColumnsRef.current) {
+      hasRestoredBranchColumnsRef.current = true
+      const stored = tableLayoutStore.getItem(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY)
+      if (stored != null) {
+        try {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed)) {
+            // Respect the saved selection exactly, even if the user hid every
+            // branch column on purpose — only drop fields that no longer exist.
+            setSelectedBranchColumns(parsed.filter((field) => availableFields.has(field)))
+            return
+          }
+        } catch {
+          // Ignore malformed stored value and fall back to defaults below.
+        }
+      }
+      setSelectedBranchColumns(defaultBranchColumns)
+      return
+    }
+
+    setSelectedBranchColumns((prev) =>
+      (Array.isArray(prev) ? prev : []).filter((field) => availableFields.has(field))
+    )
   }, [branchColumnsData])
 
-  useEffect(() => {
-    tableLayoutStore.removeItem(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY)
-  }, [token])
-
-  useEffect(() => {
-    const stored = tableLayoutStore.getItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY)
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      const migrated = (Array.isArray(parsed) ? parsed : []).map((col) => {
-        if (col?.nombrevar !== 'casas_comerciales_count') return col
-        return {
-          ...col,
-          nombrevar: 'casa_comercial_nombre',
-          header: 'Casa comercial',
-          filterPlaceholder: 'Buscar por casa comercial',
-        }
-      })
-      const availableFields = new Set(visibleColumnsData.map((column) => column.nombrevar))
-      const visibleColumns = migrated.filter((column) => availableFields.has(column?.nombrevar))
-      setSelectedColumns(
-        visibleColumns.length
-          ? visibleColumns
-          : visibleColumnsData
-      )
-    }
-    return () => {
-      tableLayoutStore.setItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(selectedColumnsRef.current))
-    }
-  }, [visibleColumnsData])
+  const hasRestoredColumnsRef = useRef(false)
 
   useEffect(() => {
     const availableFields = new Set(visibleColumnsData.map((column) => column.nombrevar))
+
+    if (!hasRestoredColumnsRef.current) {
+      hasRestoredColumnsRef.current = true
+      const stored = tableLayoutStore.getItem(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        const migrated = (Array.isArray(parsed) ? parsed : []).map((col) => {
+          if (col?.nombrevar !== 'casas_comerciales_count') return col
+          return {
+            ...col,
+            nombrevar: 'casa_comercial_nombre',
+            header: 'Casa comercial',
+            filterPlaceholder: 'Buscar por casa comercial',
+          }
+        })
+        const visibleColumns = migrated.filter((column) => availableFields.has(column?.nombrevar))
+        setSelectedColumns(visibleColumns.length ? visibleColumns : visibleColumnsData)
+        return
+      }
+      setSelectedColumns(visibleColumnsData)
+      return
+    }
+
     setSelectedColumns((prev) => {
       const filtered = (Array.isArray(prev) ? prev : []).filter((column) => availableFields.has(column?.nombrevar))
       if (!filtered.length) return visibleColumnsData
@@ -1312,36 +1344,37 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     tableLayoutStore.setItemNow(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(next))
   }
 
-  const handleCheckboxChangeBranchColumn = useCallback(
-    (column) => {
-      const field = column?.nombrevar
-      if (!field) return
+  const handleCheckboxChangeBranchColumn = useCallback((column) => {
+    const field = column?.nombrevar
+    if (!field) return
 
-      setSelectedBranchColumns((prev) => {
-        const nextFields = new Set(Array.isArray(prev) ? prev : [])
-        if (nextFields.has(field)) {
-          nextFields.delete(field)
-        } else {
-          nextFields.add(field)
-        }
-
-        return branchColumnsData
-          .map((item) => item.nombrevar)
-          .filter((nombrevar) => nextFields.has(nombrevar))
-      })
-    },
-    [branchColumnsData]
-  )
+    setSelectedBranchColumns((prev) => {
+      const prevList = Array.isArray(prev) ? prev : []
+      const next = prevList.includes(field)
+        ? prevList.filter((item) => item !== field)
+        : [...prevList, field]
+      tableLayoutStore.setItemNow(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+  }, [])
 
   const toggleCodigoColumnFrozen = useCallback(() => {
     setIsCodigoColumnFrozen((prev) => !prev)
   }, [])
 
   const handleOrderChange = (e) => {
-    const columnOrder = e.columns.map((col) => col.props.field)
-    const sorted = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
-    setSelectedColumns(sorted)
-    tableLayoutStore.setItemNow(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(sorted))
+    const columnOrder = e.columns.map((col) => col.props.field).filter(Boolean)
+
+    const sortedColumns = columnOrder.map((field) => selectedColumns.find((c) => c.nombrevar === field)).filter(Boolean)
+    setSelectedColumns(sortedColumns)
+    tableLayoutStore.setItemNow(INVENTARIO_TABLE_COLUMNS_STORAGE_KEY, JSON.stringify(sortedColumns))
+
+    const branchFieldSet = new Set(selectedBranchColumns)
+    const sortedBranchColumns = columnOrder.filter((field) => branchFieldSet.has(field))
+    if (sortedBranchColumns.length) {
+      setSelectedBranchColumns(sortedBranchColumns)
+      tableLayoutStore.setItemNow(INVENTARIO_TABLE_BRANCH_COLUMNS_STORAGE_KEY, JSON.stringify(sortedBranchColumns))
+    }
   }
 
   const exportColumns = useMemo(
@@ -1680,17 +1713,6 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     }
   }, [])
 
-  useEffect(() => {
-    setSelectedColumns((prev) => {
-      if (!prev || !prev.length) return visibleColumnsData
-      const prevKeys = new Set(prev.map((c) => c.nombrevar))
-      const next = visibleColumnsData.filter((col) => prevKeys.has(col.nombrevar))
-      visibleColumnsData.forEach((col) => {
-        if (!prevKeys.has(col.nombrevar)) next.push(col)
-      })
-      return next
-    })
-  }, [visibleColumnsData])
 
   const selectedBranchColumnFields = useMemo(
     () => new Set(selectedBranchColumns),
@@ -2175,30 +2197,30 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             )
           })}
 
-          {branches.reduce((columns, branch) => {
-            const quantityField = `sucursal_${branch.id}`
-            const locationField = `ubicacion_sucursal_${branch.id}`
+          {selectedBranchColumns.reduce((columns, field) => {
+            const colInfo = branchColumnsByField.get(field)
+            if (!colInfo) return columns
+            const branch = branches.find((b) => String(b.id) === String(colInfo.branchId))
+            if (!branch) return columns
 
-            if (selectedBranchColumnFields.has(quantityField)) {
+            if (colInfo.columnType === 'quantity') {
               columns.push(
                 <Column
                   key={`branch_${branch.id}`}
-                  field={quantityField}
+                  field={field}
                   header={abbreviateBranchName(branch.nombre)}
                   sortable
                   reorderable
                   className="column-max-min-width--small inventario-v2__qty-col"
                   style={{ minWidth: '32px' }}
-                  body={(rowData) => quantityBody(rowData, quantityField, branch.id)}
+                  body={(rowData) => quantityBody(rowData, field, branch.id)}
                 />
               )
-            }
-
-            if (selectedBranchColumnFields.has(locationField)) {
+            } else if (colInfo.columnType === 'location') {
               columns.push(
                 <Column
                   key={`branch_location_${branch.id}`}
-                  field={locationField}
+                  field={field}
                   header={`Ub. ${abbreviateBranchName(branch.nombre)}`}
                   sortable
                   reorderable
