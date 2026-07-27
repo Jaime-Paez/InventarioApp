@@ -923,7 +923,6 @@ const handleResetTable = () => {
   )
 
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
-  const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
 
   const columnsDataFlat = useMemo(() => [
@@ -937,15 +936,6 @@ const handleResetTable = () => {
   ], [])
 
   const [selectedColumnsFlat, setSelectedColumnsFlat] = useState(columnsDataFlat)
-  const selectedColumnsFlatRef = useRef(selectedColumnsFlat)
-
-  useEffect(() => {
-    selectedColumnsRef.current = selectedColumns
-  }, [selectedColumns])
-
-  useEffect(() => {
-    selectedColumnsFlatRef.current = selectedColumnsFlat
-  }, [selectedColumnsFlat])
 
   useEffect(() => {
     const stored = tableLayoutStore.getItem('solicitudes-table-columns')
@@ -963,9 +953,8 @@ const handleResetTable = () => {
         setSelectedColumns(columnsData)
       }
     }
-    return () => {
-      tableLayoutStore.setItem('solicitudes-table-columns', JSON.stringify(selectedColumnsRef.current))
-    }
+    // No cleanup-based flush here: handleCheckboxChangeColumn and
+    // handleOrderChange already persist synchronously on every real change.
   }, [columnsData])
 
   useEffect(() => {
@@ -982,9 +971,8 @@ const handleResetTable = () => {
         setSelectedColumnsFlat(columnsDataFlat)
       }
     }
-    return () => {
-      tableLayoutStore.setItem('solicitudes-flat-table-columns', JSON.stringify(selectedColumnsFlatRef.current))
-    }
+    // No cleanup-based flush here: handleOrderChange already persists
+    // synchronously on every real change.
   }, [columnsDataFlat])
 
   const handleCheckboxChangeColumn = (column) => {

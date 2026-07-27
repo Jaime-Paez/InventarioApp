@@ -62,7 +62,6 @@ function AuditoriaTable({ token }) {
   const tableWrapperRef = useRef(null)
   const widthHandlers = useMemo(() => makeWidthStateHandlers('auditoria-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
-  const selectedColumnsRef = useRef(columnsData)
 
   const [records, setRecords] = useState([])
   const [totalRecords, setTotalRecords] = useState(0)
@@ -92,10 +91,6 @@ function AuditoriaTable({ token }) {
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
 
   useEffect(() => {
-    selectedColumnsRef.current = selectedColumns
-  }, [selectedColumns])
-
-  useEffect(() => {
     const stored = tableLayoutStore.getItem('auditoria-table-columns')
     if (stored) {
       try {
@@ -107,9 +102,8 @@ function AuditoriaTable({ token }) {
         // ignore
       }
     }
-    return () => {
-      tableLayoutStore.setItem('auditoria-table-columns', JSON.stringify(selectedColumnsRef.current))
-    }
+    // No cleanup-based flush here: handleToggleColumn already persists
+    // synchronously on every real change.
   }, [])
 
   const handleToggleColumn = (col) => {

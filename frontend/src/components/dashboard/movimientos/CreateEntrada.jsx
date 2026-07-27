@@ -4157,7 +4157,7 @@ function CreateEntrada({
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
                           type="button"
-                          className={`create-user__ghost${disableAddByProveedorStock ? ' create-salida__ghost-disabled' : ''}`}
+                          className={`create-user__ghost create-user__ghost--primary${disableAddByProveedorStock ? ' create-salida__ghost-disabled' : ''}`}
                           title={disableAddByProveedorStock ? proveedorStockDisabledMessageWithAvailable : ''}
                           aria-disabled={disableAddByProveedorStock ? 'true' : 'false'}
                           onClick={(event) => {

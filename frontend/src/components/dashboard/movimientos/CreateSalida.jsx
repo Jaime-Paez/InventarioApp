@@ -3706,7 +3706,7 @@ function CreateSalida({
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
                           type="button"
-                          className="create-user__ghost"
+                          className="create-user__ghost create-user__ghost--primary"
                           onClick={handleAddDetail}
                           disabled={loading || transferRequiresRequest || (requiresStockValidation && stockLoading)}
                         >

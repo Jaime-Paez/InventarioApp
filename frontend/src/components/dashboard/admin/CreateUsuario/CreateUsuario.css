@@ -1201,6 +1201,22 @@
   filter: brightness(0.98);
 }
 
+.create-user__ghost--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-button-primary);
+}
+
+.create-user__ghost--primary:hover {
+  filter: brightness(1.1);
+}
+
+.dashboard-shell.dark .create-user__ghost--primary {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+  color: var(--color-button-primary);
+}
+
 .create-user__ghost:disabled {
   opacity: 0.55;
   cursor: not-allowed;

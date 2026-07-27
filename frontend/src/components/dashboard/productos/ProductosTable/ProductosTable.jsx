@@ -707,41 +707,34 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   )
 
   const [selectedColumns, setSelectedColumns] = useState(() => visibleColumnsData)
-  const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
-
-  useEffect(() => {
-    selectedColumnsRef.current = selectedColumns
-  }, [selectedColumns])
-
-  useEffect(() => {
-    const stored = tableLayoutStore.getItem('productos-table-columns')
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      const migrated = (Array.isArray(parsed) ? parsed : []).map((col) => {
-        if (col?.nombrevar !== 'casas_comerciales_count') return col
-        return {
-          ...col,
-          nombrevar: 'casa_comercial_nombre',
-          header: 'Casa comercial',
-          filterPlaceholder: 'Buscar por casa comercial',
-        }
-      })
-      const availableFields = new Set(visibleColumnsData.map((column) => column.nombrevar))
-      const visibleColumns = migrated.filter((column) => availableFields.has(column?.nombrevar))
-      setSelectedColumns(
-        visibleColumns.length
-          ? visibleColumns
-          : visibleColumnsData
-      )
-    }
-    return () => {
-      tableLayoutStore.setItem('productos-table-columns', JSON.stringify(selectedColumnsRef.current))
-    }
-  }, [visibleColumnsData])
+  const hasRestoredColumnsRef = useRef(false)
 
   useEffect(() => {
     const availableFields = new Set(visibleColumnsData.map((column) => column.nombrevar))
+
+    if (!hasRestoredColumnsRef.current) {
+      hasRestoredColumnsRef.current = true
+      const stored = tableLayoutStore.getItem('productos-table-columns')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        const migrated = (Array.isArray(parsed) ? parsed : []).map((col) => {
+          if (col?.nombrevar !== 'casas_comerciales_count') return col
+          return {
+            ...col,
+            nombrevar: 'casa_comercial_nombre',
+            header: 'Casa comercial',
+            filterPlaceholder: 'Buscar por casa comercial',
+          }
+        })
+        const visibleColumns = migrated.filter((column) => availableFields.has(column?.nombrevar))
+        setSelectedColumns(visibleColumns.length ? visibleColumns : visibleColumnsData)
+        return
+      }
+      setSelectedColumns(visibleColumnsData)
+      return
+    }
+
     setSelectedColumns((prev) => {
       const filtered = (Array.isArray(prev) ? prev : []).filter((column) => availableFields.has(column?.nombrevar))
       if (!filtered.length) return visibleColumnsData
@@ -1190,17 +1183,6 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     }
   }, [])
 
-  useEffect(() => {
-    setSelectedColumns((prev) => {
-      if (!prev || !prev.length) return visibleColumnsData
-      const prevKeys = new Set(prev.map((c) => c.nombrevar))
-      const next = visibleColumnsData.filter((col) => prevKeys.has(col.nombrevar))
-      visibleColumnsData.forEach((col) => {
-        if (!prevKeys.has(col.nombrevar)) next.push(col)
-      })
-      return next
-    })
-  }, [visibleColumnsData])
 
   useEffect(() => {
     const handleWindowResize = () => {

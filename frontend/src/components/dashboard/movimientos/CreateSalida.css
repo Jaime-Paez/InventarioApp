@@ -925,9 +925,19 @@
   background: #f3f4f6;
 }
 
+.create-salida__products-table--compra-local .create-user__locations-row--form .create-user__locations-cell--action,
+.create-salida__products-table--compra-local-view .create-user__locations-row--form .create-user__locations-cell--action {
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
+}
+
 .dashboard-shell.dark .create-salida__products-table--compra-local .create-user__locations-cell--action,
 .dashboard-shell.dark .create-salida__products-table--compra-local-view .create-user__locations-cell--action {
   background: var(--color-surface-darker);
+}
+
+.dashboard-shell.dark .create-salida__products-table--compra-local .create-user__locations-row--form .create-user__locations-cell--action,
+.dashboard-shell.dark .create-salida__products-table--compra-local-view .create-user__locations-row--form .create-user__locations-cell--action {
+  background: color-mix(in srgb, var(--color-primary-dark) 10%, var(--color-surface-darker));
 }
 
 .dashboard-shell.dark .create-salida__products-table--compra-local .create-user__locations-row--head .create-user__locations-cell--action {
@@ -1046,6 +1056,13 @@
   overflow: visible;
   gap: 0;
   padding: 0;
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
+  border-bottom: 2px solid var(--color-border);
+}
+
+.dashboard-shell.dark .create-salida__products-table .create-user__locations-row--form {
+  background: color-mix(in srgb, var(--color-primary-dark) 10%, var(--color-surface-darker));
+  border-bottom-color: var(--color-border-dark);
 }
 
 .create-salida__products-table .create-user__locations-row--form > span {

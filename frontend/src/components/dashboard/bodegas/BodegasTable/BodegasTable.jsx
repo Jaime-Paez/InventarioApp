@@ -348,12 +348,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   )
 
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
-  const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
-
-  useEffect(() => {
-    selectedColumnsRef.current = selectedColumns
-  }, [selectedColumns])
 
   useEffect(() => {
     const stored = tableLayoutStore.getItem('bodegas-table-columns')
@@ -364,9 +359,8 @@ function BodegasTable({ token, onSelect, moduleActions }) {
         tableLayoutStore.removeItem('bodegas-table-columns')
       }
     }
-    return () => {
-      tableLayoutStore.setItem('bodegas-table-columns', JSON.stringify(selectedColumnsRef.current))
-    }
+    // No cleanup-based flush here: handleCheckboxChangeColumn and
+    // handleOrderChange already persist synchronously on every real change.
   }, [])
 
   const handleCheckboxChangeColumn = (column) => {

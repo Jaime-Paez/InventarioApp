@@ -248,7 +248,6 @@ function SalidasTable({
     []
   )
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
-  const selectedColumnsRef = useRef(selectedColumns)
   const [productHoverCard, setProductHoverCard] = useState(null)
   const isTransferSendCreateOpen = Boolean(
     showCreateModal &&
@@ -267,35 +266,19 @@ function SalidasTable({
   )
 
   useEffect(() => {
-    selectedColumnsRef.current = selectedColumns
-  }, [selectedColumns])
-
-  useEffect(() => {
     const stored = tableLayoutStore.getItem('salidas-table-columns')
     if (stored) {
       try {
-        setSelectedColumns(JSON.parse(stored))
+        const parsed = JSON.parse(stored)
+        const availableFields = new Set(columnsData.map((col) => col.nombrevar))
+        const filtered = (Array.isArray(parsed) ? parsed : []).filter((col) => availableFields.has(col?.nombrevar))
+        setSelectedColumns(filtered.length ? filtered : columnsData)
       } catch {
         tableLayoutStore.removeItem('salidas-table-columns')
       }
     }
-    return () => {
-      tableLayoutStore.setItem('salidas-table-columns', JSON.stringify(selectedColumnsRef.current))
-    }
-  }, [])
-
-  useEffect(() => {
-    setSelectedColumns((prev) => {
-      if (!prev || !prev.length) return columnsData
-      const prevKeys = new Set(prev.map((col) => col?.nombrevar))
-      const next = columnsData.filter((col) => prevKeys.has(col.nombrevar))
-      columnsData.forEach((col) => {
-        if (!next.some((item) => item.nombrevar === col.nombrevar)) {
-          next.push(col)
-        }
-      })
-      return next
-    })
+    // No cleanup-based flush here: handleCheckboxChangeColumn and
+    // handleOrderChange already persist synchronously on every real change.
   }, [columnsData])
 
   const normalizeList = useCallback(

@@ -150,7 +150,6 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const [filters, setFilters] = useState(() => createInitialFilters())
   const [globalFilterValue, setGlobalFilterValue] = useState('')
   const [selectedColumns, setSelectedColumns] = useState(columnsData)
-  const selectedColumnsRef = useRef(selectedColumns)
   const [processedRows, setProcessedRows] = useState(null)
   const [selectedRows, setSelectedRows] = useState([])
 
@@ -374,38 +373,19 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   }, [fetchRows])
 
   useEffect(() => {
-    selectedColumnsRef.current = selectedColumns
-  }, [selectedColumns])
-
-  useEffect(() => {
     const stored = tableLayoutStore.getItem('traslados-inconvenientes-table-columns')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
-        if (Array.isArray(parsed) && parsed.length) {
-          setSelectedColumns(parsed)
-        }
+        const availableFields = new Set(columnsData.map((column) => column.nombrevar))
+        const filtered = (Array.isArray(parsed) ? parsed : []).filter((column) => availableFields.has(column?.nombrevar))
+        setSelectedColumns(filtered.length ? filtered : columnsData)
       } catch {
         tableLayoutStore.removeItem('traslados-inconvenientes-table-columns')
       }
     }
-    return () => {
-      tableLayoutStore.setItem('traslados-inconvenientes-table-columns', JSON.stringify(selectedColumnsRef.current))
-    }
-  }, [])
-
-  useEffect(() => {
-    setSelectedColumns((prev) => {
-      if (!prev?.length) return columnsData
-      const currentKeys = new Set(prev.map((column) => column?.nombrevar))
-      const merged = columnsData.filter((column) => currentKeys.has(column.nombrevar))
-      columnsData.forEach((column) => {
-        if (!merged.some((item) => item.nombrevar === column.nombrevar)) {
-          merged.push(column)
-        }
-      })
-      return merged
-    })
+    // No cleanup-based flush here: handleCheckboxChangeColumn already
+    // persists synchronously on every real change.
   }, [columnsData])
 
   const selectedRowIds = useMemo(
