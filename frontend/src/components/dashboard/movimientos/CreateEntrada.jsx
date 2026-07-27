@@ -6,6 +6,7 @@ import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
+import { isBulkProductPasteText, parseBulkProductPasteText } from '../../../utils/bulkProductPaste'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
@@ -309,6 +310,27 @@ const resolveProductCost = (producto) => {
   if (parsed === null || parsed < 0) return ''
   const raw = String(producto?.costo_minimo ?? '').trim()
   return raw || parsed.toFixed(2)
+}
+
+const buildDetailRowFromProduct = (producto, cantidad, { estadoProductoId, estadoProductoNombre, isCompraEntrada }) => {
+  const valor = parseNumber(resolveProductPrice(producto))
+  const costo = parseNumber(resolveProductCost(producto))
+  const valor_total = cantidad * (Number.isFinite(valor) ? valor : 0)
+  return {
+    uid: `det-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    productoId: String(producto.id),
+    productoCodigo: producto?.codigo ?? '',
+    productoNombre: producto?.nombre ?? '',
+    productoReferencia: producto?.referencia ?? '',
+    productoPrecioBD: resolveProductPrice(producto),
+    estadoProductoId,
+    estadoProductoNombre,
+    cantidad,
+    valor: isCompraEntrada ? decimalToCentavos(valor) : valor,
+    valor_total,
+    costo: isCompraEntrada ? decimalToCentavos(costo) : null,
+    descuentoPorcentaje: isCompraEntrada ? 0 : null,
+  }
 }
 
 const resolveClienteNombre = (cliente) => {
@@ -2672,6 +2694,124 @@ function CreateEntrada({
     setProductOptions([])
   }
 
+  const handleBulkAddProducts = useCallback(
+    async (text) => {
+      const entries = parseBulkProductPasteText(text)
+      if (!entries.length) {
+        setDetailError('No se encontraron filas validas para pegar. Se espera codigo y cantidad separados por tabulaciones.')
+        return
+      }
+      if (!hasProductSourceBranch) {
+        setDetailError(
+          isTraslado ? 'Selecciona una sucursal proveedora primero.' : 'Selecciona una sucursal primero.'
+        )
+        return
+      }
+      const estadoProductoId = String(defaultEstadoProductoId || '').trim()
+      if (!estadoProductoId) {
+        setDetailError('No hay estado de producto configurado.')
+        return
+      }
+
+      const mergedByCodigo = new Map()
+      entries.forEach(({ codigo, cantidad }) => {
+        const key = codigo.toUpperCase()
+        const prev = mergedByCodigo.get(key)
+        mergedByCodigo.set(key, { codigo, cantidad: (prev?.cantidad || 0) + cantidad })
+      })
+
+      setDetailError('')
+      setProductLoading(true)
+      try {
+        const codigosParam = Array.from(mergedByCodigo.values()).map((item) => item.codigo)
+        const response = await authFetch(
+          `${API_URL}/productos/listado/?codigos=${encodeURIComponent(codigosParam.join(','))}&page_size=${codigosParam.length}`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron buscar los productos.')
+        const payload = await response.json()
+        const found = parseApiList(payload)
+        const foundByCodigo = new Map(
+          found.map((producto) => [String(producto?.codigo || '').trim().toUpperCase(), producto])
+        )
+
+        const estadoProducto = estadosProducto.find((item) => String(item.id) === estadoProductoId)
+        const addedIds = new Set(detailProductIdSet)
+        const newRows = []
+        const notFound = []
+        const skipped = []
+
+        mergedByCodigo.forEach(({ codigo, cantidad }) => {
+          const producto = foundByCodigo.get(codigo.toUpperCase())
+          if (!producto) {
+            notFound.push(codigo)
+            return
+          }
+          const productoId = String(producto.id)
+          if (addedIds.has(productoId)) {
+            skipped.push(`${codigo} (ya agregado)`)
+            return
+          }
+
+          let finalCantidad = cantidad
+          if (isTraslado) {
+            const remaining = Math.max(Number(stockByProduct[productoId] ?? 0), 0)
+            if (remaining <= 0) {
+              skipped.push(`${codigo} (sin stock en sucursal proveedora)`)
+              return
+            }
+            if (finalCantidad > remaining) finalCantidad = remaining
+          }
+
+          addedIds.add(productoId)
+          newRows.push(
+            buildDetailRowFromProduct(producto, finalCantidad, {
+              estadoProductoId,
+              estadoProductoNombre: estadoProducto?.nombre ?? '',
+              isCompraEntrada,
+            })
+          )
+        })
+
+        if (newRows.length) {
+          setDetails((prev) => [...prev, ...newRows])
+          setProductos((prev) => {
+            const existingIds = new Set(prev.map((item) => String(item.id)))
+            const additions = newRows
+              .map((row) => foundByCodigo.get(String(row.productoCodigo || '').toUpperCase()))
+              .filter((producto) => producto && !existingIds.has(String(producto.id)))
+            return additions.length ? [...additions, ...prev] : prev
+          })
+        }
+
+        const messages = []
+        if (newRows.length) messages.push(`Se agregaron ${newRows.length} producto(s).`)
+        if (notFound.length) messages.push(`No encontrados: ${notFound.join(', ')}.`)
+        if (skipped.length) messages.push(`Omitidos: ${skipped.join(', ')}.`)
+        setDetailError(messages.join(' ') || 'No se agrego ningun producto.')
+
+        setShowProductDropdown(false)
+        setProductQuery('')
+        setProductOptions([])
+      } catch {
+        setDetailError('No se pudieron buscar los productos pegados.')
+      } finally {
+        setProductLoading(false)
+      }
+    },
+    [
+      hasProductSourceBranch,
+      isTraslado,
+      defaultEstadoProductoId,
+      estadosProducto,
+      detailProductIdSet,
+      stockByProduct,
+      isCompraEntrada,
+      token,
+    ]
+  )
+
   const handleBlockedAddByProveedorStock = useCallback(
     (event) => {
       if (!disableAddByProveedorStock) return
@@ -3960,6 +4100,12 @@ function CreateEntrada({
                                   }
                                   value={productQuery}
                                   onChange={(event) => setProductQuery(event.target.value)}
+                                  onPaste={(event) => {
+                                    const text = event.clipboardData?.getData('text') || ''
+                                    if (!isBulkProductPasteText(text)) return
+                                    event.preventDefault()
+                                    handleBulkAddProducts(text)
+                                  }}
                                   autoFocus
                                   disabled={!hasProductSourceBranch}
                                 />

@@ -1,7 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
-from django.db.models import Case, CharField, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Subquery, Sum, Value, When
+from django.db.models import Case, CharField, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.db.models.deletion import ProtectedError
 from django.utils.dateparse import parse_date
@@ -205,6 +205,17 @@ class ProductoViewSet(viewsets.ModelViewSet):
         codigo = (params.get("codigo") or "").strip()
         if codigo:
             queryset = queryset.filter(codigo__icontains=codigo)
+
+        codigos_raw = (params.get("codigos") or "").strip()
+        if codigos_raw:
+            codigos = [c.strip() for c in codigos_raw.split(",") if c.strip()][:300]
+            if codigos:
+                codigos_filter = Q()
+                for value in codigos:
+                    codigos_filter |= Q(codigo__iexact=value)
+                queryset = queryset.filter(codigos_filter)
+            else:
+                queryset = queryset.none()
 
         referencia = (params.get("referencia") or "").strip()
         if referencia:

@@ -6,6 +6,7 @@ import '../clientes/CreateCliente/CreateCliente.css'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
+import { isBulkProductPasteText, parseBulkProductPasteText } from '../../../utils/bulkProductPaste'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
@@ -259,6 +260,23 @@ const resolveProductPrice = (producto) => {
   if (parsed === null || parsed < 0) return ''
   const raw = String(producto?.precio ?? '').trim()
   return raw || parsed.toFixed(2)
+}
+
+const buildDetailRowFromProduct = (producto, cantidad, { estadoProductoId, estadoProductoNombre }) => {
+  const valorRaw = parseNumber(resolveProductPrice(producto))
+  const valor = Number.isFinite(valorRaw) ? valorRaw : 0
+  const valor_total = cantidad * valor
+  return {
+    uid: `det-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    productoId: String(producto.id),
+    productoCodigo: producto?.codigo ?? '',
+    productoNombre: producto?.nombre ?? '',
+    estadoProductoId,
+    estadoProductoNombre,
+    cantidad,
+    valor,
+    valor_total,
+  }
 }
 
 const resolveClienteNombre = (cliente) => {
@@ -2824,6 +2842,125 @@ function CreateSalida({
     setProductOptions([])
   }
 
+  const handleBulkAddProducts = useCallback(
+    async (text) => {
+      const entries = parseBulkProductPasteText(text)
+      if (!entries.length) {
+        setDetailError('No se encontraron filas validas para pegar. Se espera codigo y cantidad separados por tabulaciones.')
+        return
+      }
+      if (transferRequiresRequest) {
+        setDetailError('Los productos del traslado se cargan desde la solicitud seleccionada.')
+        return
+      }
+      if (!hasSelectedSucursal) {
+        setDetailError('Selecciona una sucursal primero.')
+        return
+      }
+      const estadoProductoId = String(defaultEstadoProductoId || '').trim()
+      if (!estadoProductoId) {
+        setDetailError('No hay estado de producto configurado.')
+        return
+      }
+
+      const mergedByCodigo = new Map()
+      entries.forEach(({ codigo, cantidad }) => {
+        const key = codigo.toUpperCase()
+        const prev = mergedByCodigo.get(key)
+        mergedByCodigo.set(key, { codigo, cantidad: (prev?.cantidad || 0) + cantidad })
+      })
+
+      setDetailError('')
+      setProductLoading(true)
+      try {
+        const codigosParam = Array.from(mergedByCodigo.values()).map((item) => item.codigo)
+        const response = await authFetch(
+          `${API_URL}/productos/listado/?codigos=${encodeURIComponent(codigosParam.join(','))}&page_size=${codigosParam.length}`,
+          {},
+          token
+        )
+        if (!response.ok) throw new Error('No se pudieron buscar los productos.')
+        const payload = await response.json()
+        const found = parseApiList(payload)
+        const foundByCodigo = new Map(
+          found.map((producto) => [String(producto?.codigo || '').trim().toUpperCase(), producto])
+        )
+
+        const estadoProducto = estadosProducto.find((item) => String(item.id) === estadoProductoId)
+        const addedIds = new Set(detailProductIdSet)
+        const newRows = []
+        const notFound = []
+        const skipped = []
+
+        mergedByCodigo.forEach(({ codigo, cantidad }) => {
+          const producto = foundByCodigo.get(codigo.toUpperCase())
+          if (!producto) {
+            notFound.push(codigo)
+            return
+          }
+          const productoId = String(producto.id)
+          if (addedIds.has(productoId)) {
+            skipped.push(`${codigo} (ya agregado)`)
+            return
+          }
+
+          let finalCantidad = cantidad
+          if (requiresStockValidation) {
+            const available = Number(stockByProduct[productoId] ?? 0)
+            if (available <= 0) {
+              skipped.push(`${codigo} (sin stock disponible)`)
+              return
+            }
+            if (finalCantidad > available) finalCantidad = available
+          }
+
+          addedIds.add(productoId)
+          newRows.push(
+            buildDetailRowFromProduct(producto, finalCantidad, {
+              estadoProductoId,
+              estadoProductoNombre: estadoProducto?.nombre ?? '',
+            })
+          )
+        })
+
+        if (newRows.length) {
+          setDetails((prev) => [...prev, ...newRows])
+          setProductos((prev) => {
+            const existingIds = new Set(prev.map((item) => String(item.id)))
+            const additions = newRows
+              .map((row) => foundByCodigo.get(String(row.productoCodigo || '').toUpperCase()))
+              .filter((producto) => producto && !existingIds.has(String(producto.id)))
+            return additions.length ? [...additions, ...prev] : prev
+          })
+        }
+
+        const messages = []
+        if (newRows.length) messages.push(`Se agregaron ${newRows.length} producto(s).`)
+        if (notFound.length) messages.push(`No encontrados: ${notFound.join(', ')}.`)
+        if (skipped.length) messages.push(`Omitidos: ${skipped.join(', ')}.`)
+        setDetailError(messages.join(' ') || 'No se agrego ningun producto.')
+
+        setShowProductDropdown(false)
+        setProductQuery('')
+        setProductOptions([])
+      } catch {
+        setDetailError('No se pudieron buscar los productos pegados.')
+      } finally {
+        setProductLoading(false)
+      }
+    },
+    [
+      transferRequiresRequest,
+      hasSelectedSucursal,
+      defaultEstadoProductoId,
+      estadosProducto,
+      detailProductIdSet,
+      requiresStockValidation,
+      stockByProduct,
+      token,
+    ]
+  )
+
   const handleRemoveDetail = (uid) => {
     if (transferRequiresRequest) return
     setDetails((prev) => prev.filter((detail) => detail.uid !== uid))
@@ -3603,6 +3740,12 @@ function CreateSalida({
                                   }
                                   value={productQuery}
                                   onChange={(event) => setProductQuery(event.target.value)}
+                                  onPaste={(event) => {
+                                    const text = event.clipboardData?.getData('text') || ''
+                                    if (!isBulkProductPasteText(text)) return
+                                    event.preventDefault()
+                                    handleBulkAddProducts(text)
+                                  }}
                                   autoFocus
                                   disabled={
                                     transferRequiresRequest ||
