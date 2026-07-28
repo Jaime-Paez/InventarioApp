@@ -804,6 +804,7 @@ function RecordatoriosPopup({
   const [decisionLoading, setDecisionLoading] = useState(false)
   const [decisionSubmitting, setDecisionSubmitting] = useState(false)
   const [decisionError, setDecisionError] = useState('')
+  const [verificandoDetalleId, setVerificandoDetalleId] = useState('')
   const [rejectionReason, setRejectionReason] = useState('')
   const [isRejectReasonModalOpen, setIsRejectReasonModalOpen] = useState(false)
   const [rejectReasonError, setRejectReasonError] = useState('')
@@ -1853,6 +1854,52 @@ function RecordatoriosPopup({
       producto_codigo: (String(d.producto || '').match(/\(([^)]+)\)$/) || [])[1] || '',
     }))
   })()
+
+  const allDetallesVerificados =
+    activeDecisionIsGarantia || decisionDetalles.every((detalle) => Boolean(detalle?.verificado))
+
+  const handleToggleDetalleVerificado = async (detalle) => {
+    const solicitudId = normalizeId(activeDecisionReminder?.context?.id)
+    const detalleId = normalizeId(detalle?.id)
+    if (!solicitudId || !detalleId || !token || decisionSubmitting) return
+
+    const nextValue = !detalle?.verificado
+    setVerificandoDetalleId(detalleId)
+    setDecisionError('')
+
+    const applyValue = (value) => {
+      setDecisionDetail((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          detalles: (Array.isArray(prev.detalles) ? prev.detalles : []).map((d) =>
+            normalizeId(d.id) === detalleId ? { ...d, verificado: value } : d
+          ),
+        }
+      })
+    }
+
+    applyValue(nextValue)
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/detalles/${encodeURIComponent(detalleId)}/verificar/`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ verificado: nextValue }),
+        },
+        token
+      )
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(String(data?.detail || '').trim() || 'No se pudo actualizar el producto.')
+      }
+    } catch (error) {
+      applyValue(!nextValue)
+      setDecisionError(error?.message || 'No se pudo actualizar el producto.')
+    } finally {
+      setVerificandoDetalleId('')
+    }
+  }
 
   const handleRejectButtonClick = () => {
     if (!canSubmitDecision || decisionSubmitting || decisionLoading) return
@@ -3353,7 +3400,8 @@ function RecordatoriosPopup({
                                 <th>Bodega</th>
                                 <th>División</th>
                                 <th>Subdivisión</th>
-                                <th>Mapa</th>
+                                <th className="recordatorios-popup__decision-cell--center">Mapa</th>
+                                <th className="recordatorios-popup__decision-cell--center">Ubicado</th>
                               </>
                             )}
                           </tr>
@@ -3361,7 +3409,7 @@ function RecordatoriosPopup({
                         <tbody>
                           {!decisionDetalles.length && (
                             <tr>
-                              <td colSpan={activeDecisionIsGarantia ? 3 : 7}>Sin productos en esta solicitud.</td>
+                              <td colSpan={activeDecisionIsGarantia ? 3 : 8}>Sin productos en esta solicitud.</td>
                             </tr>
                           )}
                           {decisionDetalles.map((detalle) => (
@@ -3374,7 +3422,7 @@ function RecordatoriosPopup({
                                   <td>{detalle?.ubicacion_bodega || '-'}</td>
                                   <td>{detalle?.ubicacion_division || '-'}</td>
                                   <td>{detalle?.ubicacion_subdivision || '-'}</td>
-                                  <td>
+                                  <td className="recordatorios-popup__decision-cell--center">
                                     {detalle?.ubicacion_bodega_layout ? (
                                       <BodegaLocationPreview
                                         bodega={detalle.ubicacion_bodega_layout}
@@ -3384,6 +3432,16 @@ function RecordatoriosPopup({
                                     ) : (
                                       '-'
                                     )}
+                                  </td>
+                                  <td className="recordatorios-popup__decision-cell--center">
+                                    <input
+                                      type="checkbox"
+                                      className="recordatorios-popup__decision-checkbox"
+                                      checked={Boolean(detalle?.verificado)}
+                                      disabled={!canSubmitDecision || decisionSubmitting || verificandoDetalleId === normalizeId(detalle?.id)}
+                                      onChange={() => handleToggleDetalleVerificado(detalle)}
+                                      aria-label={`Marcar ${detalle?.producto_codigo || 'producto'} como ubicado`}
+                                    />
                                   </td>
                                 </>
                               )}
@@ -3418,11 +3476,17 @@ function RecordatoriosPopup({
                       type="button"
                       className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--accept"
                       onClick={() => activeDecisionIsGarantia ? handleGarantiaDecision('aceptar') : handleTransferDecision('aceptar')}
-                      disabled={decisionSubmitting || decisionLoading}
+                      disabled={decisionSubmitting || decisionLoading || !allDetallesVerificados}
+                      title={allDetallesVerificados ? undefined : 'Marca todos los productos como ubicados antes de aceptar.'}
                     >
                       {decisionSubmitting ? 'Guardando...' : 'Aceptar'}
                     </button>
                   </div>
+                )}
+                {canSubmitDecision && !activeDecisionIsGarantia && !allDetallesVerificados && (
+                  <p className="recordatorios-popup__decision-hint">
+                    Marca todos los productos como ubicados para poder aceptar la solicitud.
+                  </p>
                 )}
               </div>
 

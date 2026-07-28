@@ -2983,6 +2983,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         decision = str(request.data.get("decision") or "").strip().lower()
         if decision in {"aceptar", "aprobar", "aprobada", "approve", "approved"}:
+            pendientes = solicitud.detalles.filter(verificado=False).count()
+            if pendientes:
+                return Response(
+                    {
+                        "detail": (
+                            "Debes marcar como ubicados todos los productos antes de aceptar "
+                            "la solicitud."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             with transaction.atomic():
                 solicitud_locked = (
                     SolicitudTraslado.objects.select_for_update(of=("self",))
@@ -3171,6 +3182,60 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             {"detail": "Debes enviar una decision valida (aceptar o rechazar)."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    @action(
+        detail=False,
+        methods=["patch"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/detalles/(?P<detalle_id>\d+)/verificar",
+    )
+    def verificar_detalle_solicitud_traslado(self, request, solicitud_id=None, detalle_id=None):
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            solicitud.sucursal_proveedora_id,
+            field_label="sucursal proveedora",
+            action_key=("puede_crear", "puede_actualizar"),
+        )
+
+        allowed_recipient_ids = self._get_transfer_decision_reminder_recipient_ids(solicitud.id)
+        if allowed_recipient_ids and not is_app_admin(request.user):
+            current_user_id = str(getattr(request.user, "id", "") or "").strip()
+            if not current_user_id or current_user_id not in allowed_recipient_ids:
+                return Response(
+                    {
+                        "detail": (
+                            "Solo el usuario asignado al recordatorio puede modificar esta solicitud."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        if solicitud.estado != SolicitudTraslado.Estados.PENDIENTE:
+            return Response(
+                {"detail": "La solicitud ya fue procesada y no admite cambios."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        detalle = solicitud.detalles.filter(pk=detalle_id).first()
+        if detalle is None:
+            return Response(
+                {"detail": "No se encontro el detalle indicado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        verificado = bool(request.data.get("verificado"))
+        if detalle.verificado != verificado:
+            detalle.verificado = verificado
+            detalle.save(update_fields=["verificado"])
+
+        return Response({"id": detalle.id, "verificado": detalle.verificado}, status=status.HTTP_200_OK)
 
     @action(
         detail=False,

@@ -197,6 +197,10 @@ class SolicitudTrasladoDetalle(models.Model):
     )
     cantidad = models.PositiveIntegerField()
     valor = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    verificado = models.BooleanField(
+        default=False,
+        help_text="Indica si la persona que recibe ya ubico fisicamente este producto.",
+    )
 
     class Meta:
         verbose_name = "Detalle de solicitud de traslado"

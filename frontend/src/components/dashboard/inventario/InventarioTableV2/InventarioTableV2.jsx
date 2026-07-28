@@ -95,6 +95,7 @@ const INVENTARIO_V2_ORDERING_MAP = {
   precio_con_iva: 'precio_con_iva_backend',
   casa_comercial_nombre: 'casas_comerciales__nombre',
   total_general: 'total_general',
+  oem_codes: 'oem_codes',
 }
 const createBulkCancelError = () => {
   const err = new Error('Seleccion global cancelada.')
@@ -2186,7 +2187,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 field={column.nombrevar}
                 header={columnHeader}
                 body={bodyTemplate}
-                sortable={column.nombrevar !== 'oem_codes' && column.nombrevar !== 'casa_comercial_nombre'}
+                sortable={column.nombrevar !== 'casa_comercial_nombre'}
                 reorderable
                 frozen={isCodigoColumn && isCodigoColumnFrozen}
                 className={className}

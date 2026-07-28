@@ -23,7 +23,7 @@ from rest_framework.response import Response
 
 from core.search_utils import FuzzyTokenSearchFilter, apply_token_search, get_search_tokens
 from core.table_filters import apply_column_filters, parse_column_filters
-from productos.models import Producto
+from productos.models import OEMProducto, Producto
 from usuarios.models import RolPermiso
 from usuarios.permissions import (
     BodegasDependentReadPermission,
@@ -672,6 +672,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             "precio": "precio",
             "precio_con_iva_backend": "precio",
             "total_general": "total_general",
+            "oem_codes": "oem_codes_sort",
         }
         for branch in branches:
             field_name = f"sucursal_{branch.id}"
@@ -967,6 +968,11 @@ class InventarioViewSet(viewsets.ModelViewSet):
         )
 
         product_ids = product_queryset.values("id").distinct()
+        first_oem_codigo_subquery = (
+            OEMProducto.objects.filter(producto_id=OuterRef("id"))
+            .order_by("id")
+            .values("oem__codigo")[:1]
+        )
         aggregated_queryset = (
             Producto.objects.filter(id__in=product_ids)
             .values("id")
@@ -979,6 +985,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             costo_minimo=Max("costo_minimo"),
             precio=Max("precio"),
             creado_en=Max("creado_en"),
+            oem_codes_sort=Subquery(first_oem_codigo_subquery, output_field=CharField()),
             total_general=Coalesce(
                 Sum(
                     "inventarios__cantidad",

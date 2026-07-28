@@ -293,7 +293,11 @@ class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
             "producto_nombre",
             "cantidad",
             "valor",
+            "verificado",
         ]
+        extra_kwargs = {
+            "verificado": {"read_only": True},
+        }
 
     def _resolve_ubicacion_actual(self, instance):
         sucursal_id = getattr(instance.solicitud, "sucursal_proveedora_id", None)
