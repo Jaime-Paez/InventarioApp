@@ -18,6 +18,11 @@
   gap: 8px 14px;
 }
 
+.create-solicitud-details__review-summary-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
 .create-solicitud-details__products-section {
   padding-bottom: 0;
   gap: 8px;
@@ -230,6 +235,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .create-solicitud-details__review-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .create-solicitud-details__vehicle-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -293,6 +302,10 @@
 
 @media (max-width: 640px) {
   .create-solicitud-details__general-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .create-solicitud-details__review-summary-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

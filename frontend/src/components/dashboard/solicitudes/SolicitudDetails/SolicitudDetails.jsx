@@ -1187,6 +1187,9 @@ function SolicitudDetails({
       nombre: item.productoNombre,
       canAcceptWithoutReferences,
       oems: item.productoOems || [],
+      codigo: item.productoCodigo || '',
+      comentario: item.comentario || '',
+      cantidad: item.cantidad ?? null,
     })
     setRevisarFilas([])
     setRevisarDraft(createEmptyRevisarDraft())
@@ -1920,6 +1923,19 @@ function SolicitudDetails({
               </div>
 
               <div className="create-solicitud-details__review-layout">
+                <div className="create-salida__field-group create-salida__field-group--defined create-solicitud-details__general-card">
+                  <div className="create-user__grid create-solicitud-details__review-summary-grid">
+                    <StaticFieldDisplay
+                      label="OEM"
+                      value={revisarTarget.oems && revisarTarget.oems.length ? revisarTarget.oems.join(', ') : '-'}
+                    />
+                    <StaticFieldDisplay label="Descripción" value={revisarTarget.nombre || '-'} />
+                    <StaticFieldDisplay label="Código" value={revisarTarget.codigo || '-'} />
+                    <StaticFieldDisplay label="Comentario" value={revisarTarget.comentario || '-'} />
+                    <StaticFieldDisplay label="Cantidad" value={revisarTarget.cantidad ?? '-'} />
+                  </div>
+                </div>
+
                 <div className="create-solicitud-details__review-helper">
                   <span className="create-solicitud-details__review-helper-label">
                     {revisarTarget.canAcceptWithoutReferences ? 'Producto existente' : 'Producto nuevo'}
